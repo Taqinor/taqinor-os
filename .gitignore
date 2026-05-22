@@ -1,0 +1,49 @@
+# ── Outils d'analyse locale ───────────────────────────────────
+.understand-anything/
+
+# ── Secrets — NE JAMAIS POUSSER ──────────────────────────────
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+*.egg
+
+# ── Node / Frontend ───────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/build/
+
+# ── Django ────────────────────────────────────────────────────
+db.sqlite3
+staticfiles/
+media/
+
+# ── Docker volumes (données locales) ─────────────────────────
+pg_data/
+minio_data/
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/

@@ -1,0 +1,35 @@
+# Core
+Django==5.*
+djangorestframework==3.*
+djangorestframework-simplejwt==5.*
+django-cors-headers==4.*
+
+# Database
+psycopg2-binary==2.*
+pgvector==0.*
+
+# Cache / Queue
+redis==5.*
+django-redis==5.*
+celery==5.*
+
+# PDF generation
+weasyprint==62.*
+pydyf==0.11.0
+Jinja2==3.*
+
+# Email (Phase 2 - Sem. 4)
+django-anymail[sendgrid]==10.*
+
+# File storage MinIO/S3 (Phase 2+)
+django-storages[s3]==1.*
+boto3==1.*
+
+# Image handling
+Pillow==10.*
+
+# HTTP client
+httpx==0.*
+
+# Server
+gunicorn==22.*

@@ -1,0 +1,31 @@
+# Core
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+pydantic==2.*
+python-multipart==0.0.*
+python-dotenv==1.*
+PyJWT==2.*
+
+# Database
+sqlalchemy==2.*
+psycopg2-binary==2.*
+pgvector==0.*
+
+# Cache
+redis==5.*
+
+# AI - Agent SQL (Phase 3 - Sem. 5)
+langchain==0.3.*
+langchain-community==0.3.*
+langchain-openai==0.2.*
+langchain-anthropic==0.3.*
+openai==1.*
+anthropic>=0.69.0,<1.0.0
+
+# OCR — Claude Vision (anthropic déjà présent) + utilitaires
+pypdf>=4.0          # extraction texte PDF (pur Python, pas de dépendances système)
+Pillow>=10.0        # conversion TIFF → PNG pour Claude Vision
+pymupdf>=1.23       # rendu PDF→image pour les PDFs scannés (pas de dépendances système)
+
+# HTTP client
+httpx==0.*

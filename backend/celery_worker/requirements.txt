@@ -1,0 +1,5 @@
+Django==5.*
+celery==5.*
+redis==5.*
+psycopg2-binary==2.*
+django-redis==5.*
