@@ -74,6 +74,7 @@ class Produit(models.Model):
         blank=True,
         related_name='produits'
     )
+    tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)

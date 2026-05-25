@@ -19,6 +19,37 @@ iaApi_instance.interceptors.request.use((config) => {
   return config
 })
 
+// ── Réponse : refresh silencieux sur 401 ──────────────────────
+iaApi_instance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true
+      const refreshToken = sessionStorage.getItem('refresh')
+      if (refreshToken) {
+        try {
+          const { data } = await axios.post(
+            `${ORIGIN}/api/django/token/refresh/`,
+            { refresh: refreshToken }
+          )
+          sessionStorage.setItem('token', data.access)
+          originalRequest.headers.Authorization = `Bearer ${data.access}`
+          return iaApi_instance(originalRequest)
+        } catch {
+          // refresh échoué
+        }
+      }
+      sessionStorage.removeItem('token')
+      sessionStorage.removeItem('refresh')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 const iaApi = {
   queryAgent: (question) =>
     iaApi_instance.post('/sql-agent/query', { question }),

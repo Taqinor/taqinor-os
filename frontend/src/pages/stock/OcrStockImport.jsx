@@ -8,6 +8,7 @@ import {
 import {
   fetchProduits,
   fetchFournisseurs,
+  fetchCategories,
   fetchMouvements,
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
@@ -157,10 +158,12 @@ export default function OcrStockImport() {
 
   const role = useSelector((s) => s.auth.role)
   const { stockOcrResult, stockOcrDocType, stockOcrLoading, stockOcrError } = useSelector((s) => s.ia)
-  const { produits, fournisseurs } = useSelector((s) => s.stock)
+  const { produits, fournisseurs, categories } = useSelector((s) => s.stock)
+  const categoriesRef = useRef([])
 
   useEffect(() => { produitsRef.current = produits }, [produits])
   useEffect(() => { fournisseursRef.current = fournisseurs }, [fournisseurs])
+  useEffect(() => { categoriesRef.current = categories }, [categories])
 
   // step: 1=type, 2=upload, 3=validation, 4=résultats
   const [step, setStep] = useState(1)
@@ -178,6 +181,7 @@ export default function OcrStockImport() {
   useEffect(() => {
     dispatch(fetchProduits())
     dispatch(fetchFournisseurs())
+    dispatch(fetchCategories())
   }, [dispatch])
 
   // Restore step on mount: if scan is in-flight or failed while user navigated away
@@ -190,8 +194,9 @@ export default function OcrStockImport() {
 
   useEffect(() => {
     if (!stockOcrResult) return
-    const cp = produitsRef.current
+const cp = produitsRef.current
     const cf = fournisseursRef.current
+    const cc = categoriesRef.current
     // Restore docType from Redux so purchase-doc rules survive navigation
     if (stockOcrDocType) setDocType(stockOcrDocType)
     // OCR mouvement_suggere takes priority; doc_type was already used as hint
@@ -211,6 +216,49 @@ export default function OcrStockImport() {
       let matched = null
       if (refLower) matched = cp.find(p => (p.sku || '').toLowerCase().trim() === refLower)
       if (!matched && nomLower.length > 2) matched = cp.find(p => p.nom.toLowerCase().includes(nomLower) || nomLower.includes(p.nom.toLowerCase()))
+
+      // Fuzzy match catégorie suggérée contre catégories existantes
+      const suggestion = item.categorie_suggeree ?? null
+      const catMatch = suggestion
+        ? (() => {
+            const sug = suggestion.toLowerCase().trim()
+            return cc.find(c => {
+              const nom = c.nom.toLowerCase()
+              return nom === sug || nom.includes(sug) || sug.includes(nom)
+            }) ?? null
+          })()
+        : null
+
+      // Fallback : si l'IA n'a pas suggéré, cherche par mots-clés dans le nom produit
+      const keywordMatch = !suggestion
+        ? (() => {
+            const nom = (item.nom || '').toLowerCase().replace(/[()[\]]/g, ' ')
+            let best = null, bestScore = 0
+            for (const cat of cc) {
+              const catWords = cat.nom.toLowerCase().split(/\s+/).filter(w => w.length >= 4)
+              if (!catWords.length) continue
+              const matched2 = catWords.filter(cw => nom.includes(cw.slice(0, -1))).length
+              const score = matched2 / catWords.length
+              if (score === 1.0 && score > bestScore) { bestScore = score; best = cat }
+            }
+            return best
+          })()
+        : null
+
+      // Déterminer l'action et la source de la suggestion
+      const isNewProduct = !matched  // action === 'create'
+      let catAction = 'none', catId = '', catNomNew = '', catSource = null
+      if (suggestion && catMatch) {
+        catAction = 'existing'; catId = String(catMatch.id); catSource = 'ia'
+      } else if (suggestion && !catMatch) {
+        catAction = 'create'; catNomNew = suggestion; catSource = 'ia'
+      } else if (!suggestion && keywordMatch) {
+        catAction = 'existing'; catId = String(keywordMatch.id); catSource = 'keyword'
+      } else if (isNewProduct) {
+        // Aucune suggestion IA ni match → "Créer" vide plutôt qu'"Ignorer"
+        catAction = 'create'; catNomNew = ''; catSource = null
+      }
+
       return {
         id: i, ref_ocr: item.reference || '', nom_ocr: item.nom || '',
         quantite: Math.max(1, parseInt(item.quantite) || 1),
@@ -221,10 +269,43 @@ export default function OcrStockImport() {
         nouveau_nom: item.nom || '', nouveau_sku: item.reference || '',
         nouveau_prix_achat: item.prix_unitaire_ht > 0 ? String(item.prix_unitaire_ht) : '',
         nouveau_prix_vente: '',
+        // Catégorie
+        categorie_suggeree: suggestion,
+        categorie_source: catSource,
+        categorie_action: catAction,
+        categorie_id: catId,
+        categorie_nom_new: catNomNew,
       }
     }))
     setStep(3)
   }, [stockOcrResult]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fuzzyMatchCategorie = useCallback((suggestion) => {
+    if (!suggestion) return null
+    const sug = suggestion.toLowerCase().trim()
+    const cats = categoriesRef.current
+    return cats.find(c => {
+      const nom = c.nom.toLowerCase()
+      return nom === sug || nom.includes(sug) || sug.includes(nom)
+    }) ?? null
+  }, [])
+
+  // Fallback : cherche une catégorie existante à partir des mots du nom produit
+  const keywordMatchFromName = useCallback((productName) => {
+    if (!productName) return null
+    const nom = productName.toLowerCase().replace(/[()[\]]/g, ' ')
+    const cats = categoriesRef.current
+    let best = null
+    let bestScore = 0
+    for (const cat of cats) {
+      const catWords = cat.nom.toLowerCase().split(/\s+/).filter(w => w.length >= 4)
+      if (!catWords.length) continue
+      const matched = catWords.filter(cw => nom.includes(cw.slice(0, -1))).length
+      const score = matched / catWords.length
+      if (score === 1.0 && score > bestScore) { bestScore = score; best = cat }
+    }
+    return best
+  }, [])
 
   const handleSelectDocType = useCallback((type) => {
     setDocType(type.value)
@@ -261,6 +342,30 @@ export default function OcrStockImport() {
   const handleApply = async () => {
     setApplying(true)
     const log = []
+    const categoryCache = {}  // nom → id, évite créations doublons dans un même import
+
+    const resolveCategorie = async (ligne) => {
+      if (ligne.categorie_action === 'existing' && ligne.categorie_id) {
+        return parseInt(ligne.categorie_id)
+      }
+      if (ligne.categorie_action === 'create' && ligne.categorie_nom_new?.trim()) {
+        const nom = ligne.categorie_nom_new.trim()
+        if (categoryCache[nom]) return categoryCache[nom]
+        try {
+          const res = await stockApi.createCategorie({ nom })
+          categoryCache[nom] = res.data.id
+          return res.data.id
+        } catch {
+          // Catégorie déjà existante (race) → chercher par nom
+          const existing = categoriesRef.current.find(
+            c => c.nom.toLowerCase() === nom.toLowerCase()
+          )
+          if (existing) { categoryCache[nom] = existing.id; return existing.id }
+        }
+      }
+      return null
+    }
+
     try {
       let resolvedFournisseurId = null
       if (fournisseurMode === 'existing' && fournisseurId) {
@@ -284,6 +389,13 @@ export default function OcrStockImport() {
         if (ligne.action === 'match') {
           if (!ligne.produit_id) { log.push({ ok: false, label, msg: 'Aucun produit sélectionné' }); continue }
           produitId = parseInt(ligne.produit_id)
+          // Mettre à jour la catégorie du produit existant si une est choisie
+          if (ligne.categorie_action !== 'none') {
+            const catId = await resolveCategorie(ligne)
+            if (catId) {
+              try { await stockApi.patchProduit(produitId, { categorie_id: catId }) } catch {}
+            }
+          }
         } else {
           if (!ligne.nouveau_nom.trim()) { log.push({ ok: false, label, msg: 'Nom du produit requis' }); continue }
           const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
@@ -293,9 +405,12 @@ export default function OcrStockImport() {
             : (parseFloat(ligne.nouveau_prix_vente) || prixAchat)
           if (!isPurchaseDoc && prixVente <= 0) { log.push({ ok: false, label, msg: 'Prix de vente requis (> 0)' }); continue }
           try {
+            const catId = await resolveCategorie(ligne)
             const payload = { nom: ligne.nouveau_nom.trim(), prix_achat: prixAchat, prix_vente: prixVente, quantite_stock: 0, seuil_alerte: 0 }
             if (ligne.nouveau_sku.trim()) payload.sku = ligne.nouveau_sku.trim()
             if (resolvedFournisseurId) payload.fournisseur_id = resolvedFournisseurId
+            if (ligne.tva != null) payload.tva = ligne.tva
+            if (catId) payload.categorie_id = catId
             const res = await stockApi.createProduit(payload)
             produitId = res.data.id
           } catch (e) {
@@ -322,7 +437,7 @@ export default function OcrStockImport() {
       }
     } finally {
       setResults(log); setApplying(false); setStep(4)
-      dispatch(fetchProduits()); dispatch(fetchFournisseurs()); dispatch(fetchMouvements())
+      dispatch(fetchProduits()); dispatch(fetchFournisseurs()); dispatch(fetchCategories()); dispatch(fetchMouvements())
     }
   }
 
@@ -370,7 +485,7 @@ export default function OcrStockImport() {
         )}
         {step === 3 && stockOcrResult && (
           <Step2Validate
-            result={stockOcrResult} produits={produits} fournisseurs={fournisseurs}
+            result={stockOcrResult} produits={produits} fournisseurs={fournisseurs} categories={categories}
             mouvementType={mouvementType} setMouvementType={setMouvementType}
             refDocument={refDocument} setRefDocument={setRefDocument}
             fournisseurMode={fournisseurMode} setFournisseurMode={setFournisseurMode}
@@ -653,7 +768,7 @@ function Step1Upload({ inputRef, dragging, loading, error, onFileChange, onDrop,
 
 // ── Étape 2 (ex-Step2) : Validation ───────────────────────────────────────────
 function Step2Validate({
-  result, produits, fournisseurs,
+  result, produits, fournisseurs, categories,
   mouvementType, setMouvementType, refDocument, setRefDocument,
   fournisseurMode, setFournisseurMode, fournisseurId, setFournisseurId,
   nouveauFournisseurNom, setNouveauFournisseurNom,
@@ -805,7 +920,7 @@ function Step2Validate({
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {lignes.map((ligne, idx) => (
-              <LigneCard key={ligne.id} ligne={ligne} produits={produits} onChange={u => updateLigne(idx, u)} docType={docType}/>
+              <LigneCard key={ligne.id} ligne={ligne} produits={produits} categories={categories} onChange={u => updateLigne(idx, u)} docType={docType}/>
             ))}
           </div>
         )}
@@ -842,7 +957,7 @@ function Step2Validate({
 }
 
 // ── Carte ligne produit ───────────────────────────────────────────────────────
-function LigneCard({ ligne, produits, onChange, docType }) {
+function LigneCard({ ligne, produits, categories, onChange, docType }) {
   const isPurchase = docType === 'facture_achat' || docType === 'bon_livraison'
   const hasMatchError  = ligne.action === 'match' && !ligne.produit_id
   const hasCreateError = ligne.action === 'create' && (
@@ -933,6 +1048,54 @@ function LigneCard({ ligne, produits, onChange, docType }) {
             ))}
           </select>
           {hasMatchError && <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#dc2626' }}>Sélectionnez un produit existant</p>}
+        </div>
+      )}
+
+      {/* Catégorie — toujours visible pour "create", visible pour "match" si suggestion */}
+      {ligne.action !== 'skip' && (ligne.action === 'create' || ligne.categorie_suggeree || ligne.categorie_source === 'keyword') && (
+        <div style={{ marginTop: 8, padding: '0.75rem 0.9rem', background: '#fafafa', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: '#374151' }}>Catégorie</span>
+            {ligne.categorie_source === 'ia' && ligne.categorie_suggeree && (
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>— IA suggère : « {ligne.categorie_suggeree} »</span>
+            )}
+            {ligne.categorie_source === 'keyword' && ligne.categorie_action === 'existing' && (
+              <span style={{ fontSize: 11, color: '#0ea5e9' }}>
+                — Détecté depuis le nom du produit
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
+            {[
+              { value: 'existing', label: 'Existante' },
+              { value: 'create',   label: 'Créer' },
+              { value: 'none',     label: 'Ignorer' },
+            ].map(opt => (
+              <button key={opt.value} type="button"
+                onClick={() => onChange({ categorie_action: opt.value })}
+                style={{
+                  padding: '3px 11px', borderRadius: 20, cursor: 'pointer', fontSize: 11.5, fontWeight: 500,
+                  border: `1.5px solid ${ligne.categorie_action === opt.value ? '#7c3aed' : '#e2e8f0'}`,
+                  background: ligne.categorie_action === opt.value ? '#f5f3ff' : '#fff',
+                  color: ligne.categorie_action === opt.value ? '#7c3aed' : '#64748b',
+                  transition: 'all 0.15s',
+                }}>{opt.label}</button>
+            ))}
+          </div>
+          {ligne.categorie_action === 'existing' && (
+            <select className="form-select" style={{ fontSize: 12.5 }}
+              value={ligne.categorie_id}
+              onChange={e => onChange({ categorie_id: e.target.value })}>
+              <option value="">— Sélectionner une catégorie —</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
+          )}
+          {ligne.categorie_action === 'create' && (
+            <input className="form-control" style={{ fontSize: 12.5 }}
+              value={ligne.categorie_nom_new}
+              onChange={e => onChange({ categorie_nom_new: e.target.value })}
+              placeholder="Nom de la nouvelle catégorie" />
+          )}
         </div>
       )}
 

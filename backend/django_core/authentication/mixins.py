@@ -15,3 +15,6 @@ class TenantMixin:
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        serializer.save(company=self.request.user.company)

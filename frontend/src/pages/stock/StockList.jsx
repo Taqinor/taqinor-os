@@ -248,8 +248,11 @@ export default function StockList() {
             <th>Fournisseur</th>
             <th className="ta-right">Stock</th>
             <th className="ta-right">Seuil</th>
+            <th className="ta-right">TVA</th>
             <th className="ta-right">Prix vente HT</th>
+            <th className="ta-right">Prix vente TTC</th>
             <th className="ta-right">Prix achat HT</th>
+            <th className="ta-right">Prix achat TTC</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -269,8 +272,19 @@ export default function StockList() {
                 <strong>{p.quantite_stock}</strong>
               </td>
               <td className="ta-right text-muted">{p.seuil_alerte || '—'}</td>
+              <td className="ta-right text-muted">{p.tva != null ? `${parseFloat(p.tva)}%` : '—'}</td>
               <td className="ta-right">{parseFloat(p.prix_vente).toFixed(2)} DH</td>
+              <td className="ta-right">
+                {p.tva != null
+                  ? <strong>{(parseFloat(p.prix_vente) * (1 + parseFloat(p.tva) / 100)).toFixed(2)} DH</strong>
+                  : <span className="text-muted">—</span>}
+              </td>
               <td className="ta-right">{parseFloat(p.prix_achat).toFixed(2)} DH</td>
+              <td className="ta-right">
+                {p.tva != null && parseFloat(p.prix_achat) > 0
+                  ? <strong>{(parseFloat(p.prix_achat) * (1 + parseFloat(p.tva) / 100)).toFixed(2)} DH</strong>
+                  : <span className="text-muted">—</span>}
+              </td>
               <td>
                 <div className="actions-cell">
                   {(role === 'responsable' || role === 'admin') && (

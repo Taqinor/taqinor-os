@@ -5,11 +5,11 @@ const stockApi = {
   getProduits: (params) => api.get('/stock/produits/', { params }),
   getProduit: (id) => api.get(`/stock/produits/${id}/`),
   createProduit: (data) => api.post('/stock/produits/', data),
-  updateProduit: (id, data) => api.put(`/stock/produits/${id}/`, data),
+  updateProduit: (id, data) => api.patch(`/stock/produits/${id}/`, data),
   patchProduit: (id, data) => api.patch(`/stock/produits/${id}/`, data),
   deleteProduit: (id) => api.delete(`/stock/produits/${id}/`),
   getProduitsArchived: () => api.get('/stock/produits/', { params: { show_archived: 'true' } }),
-  unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/`, { is_archived: false }),
+  unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
 
   // Catégories

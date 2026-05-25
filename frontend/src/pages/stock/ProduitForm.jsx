@@ -35,6 +35,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
+    tva:            produit?.tva != null ? String(produit.tva) : '',
     quantite_stock: String(produit?.quantite_stock ?? '0'),
     seuil_alerte:   String(produit?.seuil_alerte  ?? '0'),
     categorie_id:   produit?.categorie?.id  ? String(produit.categorie.id) : '',
@@ -110,6 +111,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         description:    fields.description.trim() || null,
         prix_vente:     fields.prix_vente,
         prix_achat:     fields.prix_achat,
+        tva:            fields.tva !== '' ? parseFloat(fields.tva) : null,
         quantite_stock: parseInt(fields.quantite_stock) || 0,
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
         categorie_id:   fields.categorie_id   ? parseInt(fields.categorie_id)   : null,
@@ -291,6 +293,27 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                   value={fields.prix_achat}
                   onChange={e => setField('prix_achat', e.target.value)}
                 />
+              </div>
+              <div className="form-group">
+                <label className="form-label">TVA (%)</label>
+                <select
+                  className="form-select"
+                  value={fields.tva}
+                  onChange={e => setField('tva', e.target.value)}
+                >
+                  <option value="">— Sans TVA —</option>
+                  <option value="0">0%</option>
+                  <option value="7">7%</option>
+                  <option value="10">10%</option>
+                  <option value="14">14%</option>
+                  <option value="20">20%</option>
+                </select>
+                {fields.tva !== '' && parseFloat(fields.prix_vente) > 0 && (
+                  <div className="form-hint">
+                    Vente TTC : {(parseFloat(fields.prix_vente) * (1 + parseFloat(fields.tva) / 100)).toFixed(2)} DH
+                    {parseFloat(fields.prix_achat) > 0 && ` · Achat TTC : ${(parseFloat(fields.prix_achat) * (1 + parseFloat(fields.tva) / 100)).toFixed(2)} DH`}
+                  </div>
+                )}
               </div>
             </div>
 

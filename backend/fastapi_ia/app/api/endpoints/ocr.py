@@ -113,6 +113,7 @@ class OcrDocumentItem(BaseModel):
 class StockLigne(BaseModel):
     reference: str | None = None
     nom: str = ""
+    categorie_suggeree: str | None = None
     quantite: int = 1
     prix_unitaire_ht: float | None = None
     tva: float | None = None

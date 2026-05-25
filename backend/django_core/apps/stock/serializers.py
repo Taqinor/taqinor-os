@@ -31,7 +31,7 @@ class MouvementStockSerializer(serializers.ModelSerializer):
 class ProduitSerializer(serializers.ModelSerializer):
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
-        queryset=Categorie.objects.all(),
+        queryset=Categorie.objects.none(),
         source='categorie',
         write_only=True,
         required=False,
@@ -39,12 +39,24 @@ class ProduitSerializer(serializers.ModelSerializer):
     )
     fournisseur = FournisseurSerializer(read_only=True)
     fournisseur_id = serializers.PrimaryKeyRelatedField(
-        queryset=Fournisseur.objects.all(),
+        queryset=Fournisseur.objects.none(),
         source='fournisseur',
         write_only=True,
         required=False,
         allow_null=True,
     )
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'company_id') and request.user.company_id:
+            company = request.user.company
+            fields['categorie_id'].queryset = Categorie.objects.filter(company=company)
+            fields['fournisseur_id'].queryset = Fournisseur.objects.filter(company=company)
+        elif request and request.user.is_superuser:
+            fields['categorie_id'].queryset = Categorie.objects.all()
+            fields['fournisseur_id'].queryset = Fournisseur.objects.all()
+        return fields
     is_low_stock = serializers.SerializerMethodField()
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()

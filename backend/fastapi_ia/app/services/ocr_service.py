@@ -98,6 +98,7 @@ Format attendu :
     {
       "reference": "Code article / REF / SKU tel qu'il apparait dans le document ou null",
       "nom": "Designation complete du produit en francais",
+      "categorie_suggeree": "Nom court de la famille du produit en francais (2-3 mots). OBLIGATOIRE, ne jamais null.",
       "quantite": <nombre entier positif>,
       "prix_unitaire_ht": <float ou null>,
       "tva": <taux TVA en % (ex: 10, 20) ou null si absent>
@@ -122,6 +123,7 @@ Regles importantes :
 - Si le document contient du texte arabe ou melange arabe/francais, traduis les designations en francais.
 - confiance : 1.0 = document parfaitement lisible, 0.3 = scan difficile mais donnees extraites.
 - Ignore les tampons, signatures et annotations manuscrites non pertinentes.
+- categorie_suggeree : OBLIGATOIRE, ne jamais null. Nom court de la famille du produit en francais (2-3 mots max).
 """
 
 _DOC_TYPE_CONTEXT: dict[str, str] = {
@@ -168,6 +170,7 @@ Format attendu :
     {
       "reference": "Code article / REF / SKU ou null",
       "nom": "Designation complete du produit en francais",
+      "categorie_suggeree": "Nom court de la famille du produit en francais (2-3 mots). OBLIGATOIRE, ne jamais null.",
       "quantite": <nombre entier positif>,
       "prix_unitaire_ht": <float HT ou null>,
       "tva": <taux TVA en % (ex: 10, 20) ou null>
@@ -483,7 +486,7 @@ class OCRService:
                 "role": "user",
                 "content": _build_stock_structure_prompt(doc_type) + extracted[:4000],
             }],
-            max_tokens=1024,
+            max_tokens=2048,
         )
         raw = response.choices[0].message.content or ""
         return _parse_json(raw)
@@ -659,6 +662,7 @@ class OCRService:
                     row.get("prix_unitaire_ht") or row.get("prix_unitaire")
                 ),
                 "tva": row.get("tva"),
+                "categorie_suggeree": row.get("categorie_suggeree") or None,
             })
         mouvement = (
             "sortie" if doc_type == "bon_sortie"

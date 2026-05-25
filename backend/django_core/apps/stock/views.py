@@ -49,8 +49,8 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 premiere_date_mouvement=Min('mouvements__date'),
                 derniere_date_mouvement=Max('mouvements__date'),
             )
-        if self.action == 'force_delete':
-            return qs  # archived products must be visible for this action
+        if self.action in ('force_delete', 'unarchive'):
+            return qs  # archived products must be visible for these actions
         return qs.filter(is_archived=False)
 
     def destroy(self, request, *args, **kwargs):
@@ -72,6 +72,19 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 },
                 status=status.HTTP_200_OK,
             )
+
+    @action(detail=True, methods=['patch'], url_path='unarchive')
+    def unarchive(self, request, *args, **kwargs):
+        produit = self.get_object()
+        if not produit.is_archived:
+            return Response(
+                {'detail': 'Ce produit n\'est pas archivé.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        produit.is_archived = False
+        produit.save(update_fields=['is_archived'])
+        serializer = self.get_serializer(produit)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['delete'], url_path='force-delete')
     def force_delete(self, request, *args, **kwargs):
