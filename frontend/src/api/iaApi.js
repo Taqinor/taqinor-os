@@ -74,6 +74,12 @@ const iaApi = {
     })
   },
 
+  getChatHistory: () =>
+    iaApi_instance.get('/sql-agent/history'),
+
+  clearChatHistory: () =>
+    iaApi_instance.delete('/sql-agent/history'),
+
   saveOcrDocument: (data) =>
     iaApi_instance.post('/ocr/save_document', data),
 

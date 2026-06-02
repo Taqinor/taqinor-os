@@ -10,6 +10,23 @@ export const queryAgent = createAsyncThunk('ia/queryAgent', async (question, { r
   }
 })
 
+export const loadChatHistory = createAsyncThunk('ia/loadChatHistory', async (_, { rejectWithValue }) => {
+  try {
+    const res = await iaApi.getChatHistory()
+    return res.data
+  } catch {
+    return rejectWithValue(null) // echec silencieux — pas bloquant
+  }
+})
+
+export const clearChatHistory = createAsyncThunk('ia/clearChatHistory', async (_, { rejectWithValue }) => {
+  try {
+    await iaApi.clearChatHistory()
+  } catch {
+    return rejectWithValue(null)
+  }
+})
+
 export const processOcrStockDocument = createAsyncThunk('ia/processOcrStockDocument', async ({ file, docType = '' }, { rejectWithValue }) => {
   try {
     const res = await iaApi.processStockDocument({ file, docType })
@@ -82,6 +99,7 @@ const iaSlice = createSlice({
   },
   reducers: {
     clearMessages(state) { state.messages = [] },
+    historyLoaded(state, action) { state.messages = action.payload },
     clearOcrResult(state) {
       state.ocrResult = null
       state.savedDocumentId = null
@@ -180,8 +198,15 @@ const iaSlice = createSlice({
       .addCase(deleteOcrDocument.fulfilled, (state, action) => {
         state.documents = state.documents.filter(d => d.id !== action.payload)
       })
+
+      .addCase(loadChatHistory.fulfilled, (state, action) => {
+        if (action.payload?.length) state.messages = action.payload
+      })
+      .addCase(clearChatHistory.fulfilled, (state) => {
+        state.messages = []
+      })
   },
 })
 
-export const { clearMessages, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
+export const { clearMessages, historyLoaded, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
 export default iaSlice.reducer

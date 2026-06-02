@@ -922,3 +922,329 @@ textarea.form-control {
 /* ── Utility ──────────────────────────────────────────── */
 .mb-8  { margin-bottom: 8px; }
 .mt-16 { margin-top: 16px; }
+
+/* ── Agent IA Chat ────────────────────────────────────── */
+.agent-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 0 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.agent-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.agent-avatar-lg {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.agent-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 2px;
+}
+
+.agent-subtitle {
+  font-size: 0.75rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Empty state ── */
+.agent-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem 1rem;
+  margin: auto 0;
+}
+
+.agent-empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.agent-empty-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 0.4rem;
+}
+
+.agent-empty-desc {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0 0 1.5rem;
+  max-width: 360px;
+}
+
+/* ── Suggestion chips ── */
+.agent-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.agent-suggestions-inline {
+  justify-content: flex-start;
+  margin-bottom: 0.6rem;
+}
+
+.agent-suggestion-chip {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  color: #475569;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-align: left;
+}
+
+.agent-suggestion-chip:hover {
+  background: #e0e7ff;
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+.agent-suggestion-chip-sm {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+/* ── Messages ── */
+.agent-msg {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  animation: msgIn 0.18s ease;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.agent-msg-user {
+  flex-direction: row-reverse;
+}
+
+.agent-msg-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.agent-msg-body {
+  max-width: 75%;
+}
+
+.agent-msg-user .agent-msg-body {
+  align-items: flex-end;
+}
+
+.agent-msg-text {
+  margin: 0;
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.agent-msg-agent .agent-msg-text {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+  border-radius: 4px 12px 12px 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.agent-msg-user .agent-msg-text {
+  background: #3b82f6;
+  color: #ffffff;
+  border-radius: 12px 4px 12px 12px;
+}
+
+/* ── SQL block ── */
+.agent-sql {
+  margin-top: 0.5rem;
+}
+
+.agent-sql summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.3rem 0;
+  list-style: none;
+}
+
+.agent-sql summary::-webkit-details-marker { display: none; }
+.agent-sql summary:hover { color: #3b82f6; }
+
+.agent-sql-code {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  margin: 0.35rem 0 0;
+  font-family: 'Courier New', monospace;
+  line-height: 1.5;
+}
+
+/* ── Typing indicator ── */
+.agent-typing {
+  display: flex;
+  gap: 4px;
+  padding: 0.65rem 0.9rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px 12px 12px 12px;
+  width: fit-content;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.agent-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+  animation: typingDot 1.2s ease-in-out infinite;
+}
+
+.agent-typing span:nth-child(2) { animation-delay: 0.2s; }
+.agent-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ── Input area ── */
+.agent-input-area {
+  padding: 0.75rem 0 1rem;
+  border-top: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.agent-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.agent-input {
+  flex: 1;
+  height: 44px;
+  padding: 0 1rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: #1e293b;
+  background: #ffffff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.agent-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+}
+
+.agent-input:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.agent-send-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.agent-send-btn:hover:not(:disabled) {
+  background: #2563eb;
+  box-shadow: 0 4px 12px rgba(59,130,246,0.35);
+}
+
+.agent-send-btn:active:not(:disabled) { transform: translateY(1px); }
+
+.agent-send-btn:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.agent-disclaimer {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-align: center;
+  margin: 0.5rem 0 0;
+}
