@@ -34,6 +34,11 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     create_tables()
+    # Pre-charge le modele sentence-transformers en arriere-plan
+    # pour que le premier appel SQL agent soit rapide
+    import threading
+    from app.services.sql_agent_service import sql_agent_service
+    threading.Thread(target=sql_agent_service._get_embeddings, daemon=True).start()
 
 
 @app.get("/")

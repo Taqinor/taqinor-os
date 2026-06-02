@@ -1,89 +1,503 @@
 """
-Service Agent SQL — LangChain SQL Agent sur PostgreSQL.
-TODO Phase 3 (Sem. 5-6) : implémenter la logique LangChain.
+Service Agent SQL — LangChain + pgvector.
+Architecture :
+  Question NL
+    -> Embedding (sentence-transformers, local, gratuit)
+    -> pgvector : top-5 tables pertinentes
+    -> SQLDatabase filtre
+    -> LangChain SQL Agent (provider configurable via SQL_AGENT_PROVIDER)
+    -> Securite : _SecureQueryTool intercepte chaque SQL avant execution
+       et injecte company_id si absent
+    -> Reponse NL en francais
+
+Changer de LLM : modifier SQL_AGENT_PROVIDER dans .env
+  groq   -> llama-3.3-70b-versatile (defaut, gratuit)
+  openai -> gpt-4o
+  claude -> claude-sonnet-4-6
+  ollama -> modele local
 """
 from __future__ import annotations
 
-import os
+import asyncio
+import logging
+import re
+import threading
 from typing import Any
 
+from langchain.callbacks.base import BaseCallbackHandler
 
-# TODO Sem. 5 : décommenter et implémenter
-# from langchain_community.utilities import SQLDatabase
-# from langchain_community.agent_toolkits import create_sql_agent
-# from langchain_openai import ChatOpenAI
-# from sqlalchemy import create_engine
+from app.core.config import (
+    CHAT_HISTORY_MAX,
+    CHAT_HISTORY_TTL,
+    CLAUDE_API_KEY,
+    DATABASE_URL,
+    GROQ_API_KEY,
+    OPENAI_API_KEY,
+    REDIS_CHAT_URL,
+    SQL_AGENT_MODEL,
+    SQL_AGENT_PROVIDER,
+)
+
+logger = logging.getLogger(__name__)
+
+# ── Tables autorisees (tables Django internes exclues) ────────────────────────
+
+_ALLOWED_TABLES = [
+    "stock_produit",
+    "stock_categorie",
+    "stock_fournisseur",
+    "stock_mouvementstock",
+    "crm_client",
+    "ventes_devis",
+    "ventes_lignedevis",
+    "ventes_boncommande",
+    "ventes_facture",
+    "ventes_lignefacture",
+    "authentication_company",
+    "authentication_customuser",
+    "parametres_companyprofile",
+    "roles_role",
+    "ia_ocr_document",
+]
+
+# Tables qui possedent une colonne company_id → filtrage obligatoire
+_TABLES_WITH_COMPANY_ID = frozenset([
+    "stock_produit",
+    "stock_categorie",
+    "stock_fournisseur",
+    "stock_mouvementstock",
+    "crm_client",
+    "ventes_devis",
+    "ventes_lignedevis",
+    "ventes_boncommande",
+    "ventes_facture",
+    "ventes_lignefacture",
+    "authentication_customuser",
+    "parametres_companyprofile",
+    "ia_ocr_document",
+])
+
+# Descriptions en francais pour pgvector
+_TABLE_DESCRIPTIONS: dict[str, str] = {
+    "stock_produit": (
+        "Produits du stock : nom, reference, prix achat, prix vente, "
+        "quantite en stock, seuil alerte, categorie, fournisseur, TVA"
+    ),
+    "stock_categorie": "Categories de produits du stock",
+    "stock_fournisseur": "Fournisseurs de produits : nom, email, telephone, adresse",
+    "stock_mouvementstock": (
+        "Mouvements de stock : entrees et sorties de produits "
+        "avec quantite, date, motif, produit concerne"
+    ),
+    "crm_client": "Clients de l'entreprise : nom, prenom, email, telephone, adresse",
+    "ventes_devis": (
+        "Devis commerciaux : numero, date, client, montant total, "
+        "statut (brouillon / accepte / refuse / expire)"
+    ),
+    "ventes_lignedevis": (
+        "Lignes de produits dans les devis : produit, quantite, "
+        "prix unitaire, remise, montant"
+    ),
+    "ventes_boncommande": "Bons de commande clients confirmes depuis un devis accepte",
+    "ventes_facture": (
+        "Factures clients : numero, date, client, montant HT, TVA, "
+        "montant TTC, statut paiement"
+    ),
+    "ventes_lignefacture": (
+        "Lignes de produits dans les factures : produit, quantite, "
+        "prix unitaire, montant"
+    ),
+    "authentication_company": "Entreprises (multi-tenant) : nom, adresse, email, telephone",
+    "authentication_customuser": "Utilisateurs du systeme : nom, email, role, entreprise",
+    "parametres_companyprofile": "Parametres de l'entreprise : logo, couleur, informations legales",
+    "roles_role": "Roles et permissions des utilisateurs",
+    "ia_ocr_document": "Documents OCR analyses : factures et bons de livraison scannes",
+}
+
+# ── Prompt systeme ────────────────────────────────────────────────────────────
+
+_AGENT_PREFIX = """\
+Tu es un expert en analyse de donnees pour TAQINOR ERP, \
+un systeme de gestion d'entreprise marocain.
+Tu reponds TOUJOURS en francais, de maniere claire et professionnelle.
+Les montants sont en DH (dirhams marocains).
+
+REGLES OBLIGATOIRES :
+- Utilise UNIQUEMENT des requetes SELECT. \
+Jamais INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE.
+- Limite les resultats a 100 lignes maximum avec LIMIT 100.
+- Si aucune donnee n'est trouvee, explique-le clairement en francais.
+- Ne retourne jamais de donnees brutes JSON — formule une reponse naturelle.
+- Le filtrage par company_id est gere automatiquement par le systeme.
+"""
+
+# ── Securite : injection company_id ──────────────────────────────────────────
+
+
+def _inject_company_filter(sql: str, company_id: int) -> str:
+    """
+    Garantit que toute requete sur une table sensible filtre par company_id.
+    Injecte le filtre si le LLM l'a oublie.
+    """
+    if not company_id:
+        return sql
+
+    sql = sql.strip().rstrip(";")
+
+    # Filtre deja present → rien a faire
+    if re.search(
+        rf"\bcompany_id\s*=\s*{company_id}\b", sql, re.IGNORECASE
+    ):
+        return sql
+
+    # La requete utilise-t-elle une table sensible ?
+    uses_sensitive = any(
+        re.search(rf"\b{re.escape(t)}\b", sql, re.IGNORECASE)
+        for t in _TABLES_WITH_COMPANY_ID
+    )
+    if not uses_sensitive:
+        return sql
+
+    logger.warning(
+        "SECURITE: company_id absent du SQL genere — injection forcee "
+        "(company_id=%s). SQL original: %s",
+        company_id,
+        sql[:200],
+    )
+
+    # Injection dans la requete principale (niveau 0, hors sous-requetes)
+    # Cherche GROUP BY / ORDER BY / HAVING / LIMIT avant WHERE
+    for kw in (r"GROUP\s+BY", r"ORDER\s+BY", r"HAVING", r"LIMIT",
+               r"UNION", r"EXCEPT", r"INTERSECT"):
+        m = re.search(rf"\b{kw}\b", sql, re.IGNORECASE)
+        if m:
+            before = sql[: m.start()]
+            after = sql[m.start():]
+            where_m = re.search(r"\bWHERE\b", before, re.IGNORECASE)
+            if where_m:
+                pos = where_m.end()
+                return (
+                    before[:pos]
+                    + f" company_id = {company_id} AND "
+                    + before[pos:]
+                    + after
+                )
+            return before + f" WHERE company_id = {company_id} " + after
+
+    # WHERE existant sans GROUP BY/ORDER BY
+    where_m = re.search(r"\bWHERE\b", sql, re.IGNORECASE)
+    if where_m:
+        pos = where_m.end()
+        return (
+            sql[:pos]
+            + f" company_id = {company_id} AND "
+            + sql[pos:]
+        )
+
+    # Aucun WHERE — ajout en fin de requete
+    return sql + f" WHERE company_id = {company_id}"
+
+
+# ── Outil SQL securise ────────────────────────────────────────────────────────
+
+
+def _make_secure_query_tool(db, company_id: int):
+    """
+    Retourne un QuerySQLDataBaseTool qui injecte company_id avant execution.
+    """
+    from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
+
+    class _SecureQueryTool(QuerySQLDataBaseTool):
+        _company_id: int = 0
+
+        def _run(self, query: str, run_manager=None) -> str:
+            secured = _inject_company_filter(query, self._company_id)
+            return super()._run(secured, run_manager=run_manager)
+
+    tool = _SecureQueryTool(db=db)
+    tool._company_id = company_id
+    return tool
+
+
+# ── Callback pour capturer la requete SQL generee ─────────────────────────────
+
+
+class _SQLCapture(BaseCallbackHandler):
+    """Intercepte les appels a sql_db_query pour capturer le SQL final."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def on_tool_start(
+        self, serialized: dict, input_str: str, **kwargs: Any
+    ) -> None:
+        if serialized.get("name") == "sql_db_query":
+            self.queries.append(str(input_str))
+
+
+# ── Service ───────────────────────────────────────────────────────────────────
 
 
 class SQLAgentService:
-    """
-    Encapsule le LangChain SQL Agent qui répond aux questions
-    en langage naturel en interrogeant PostgreSQL.
-
-    Architecture (Phase 3) :
-        Question NL → LLM → SQL → DB → Résultat → Réponse NL
-    """
 
     def __init__(self) -> None:
-        self._agent = None  # lazy init
+        self._embeddings = None
+        self._vectorstore = None
+        self._init_lock = threading.Lock()  # evite la race condition au demarrage
 
-    def _get_agent(self):
-        """
-        Initialise l'agent LangChain SQL à la première utilisation.
+    # ── Embeddings (sentence-transformers, local, gratuit) ────────────────
 
-        TODO Sem. 5 :
-        1. Créer un SQLAlchemy engine sur DATABASE_URL
-        2. Créer un SQLDatabase LangChain
-        3. Créer le ChatOpenAI ou ChatAnthropic LLM
-        4. Créer le sql_agent avec create_sql_agent
-        5. Configurer le prefix de sécurité (lecture seule)
-        """
-        if self._agent is None:
-            # PLACEHOLDER
-            pass
-        return self._agent
+    def _get_embeddings(self):
+        if self._embeddings is None:
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+            self._embeddings = HuggingFaceEmbeddings(
+                model_name="all-MiniLM-L6-v2",
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+        return self._embeddings
 
-    async def query(self, question: str, user_id: int | None = None) -> dict[str, Any]:
-        """
-        Exécute une question en langage naturel via l'agent SQL.
+    # ── pgvector : init + recherche de tables pertinentes ─────────────────
 
-        Args:
-            question: La question en langage naturel (ex: "Quel est le chiffre d'affaires du mois?")
-            user_id: ID de l'utilisateur pour le logging
+    def _init_vectorstore(self):
+        from langchain_community.vectorstores import PGVector
+        from langchain.schema import Document
+        from sqlalchemy import create_engine, text
 
-        Returns:
-            {
-              "answer": str,       # Réponse en langage naturel
-              "sql_query": str,    # Requête SQL générée
-              "data": list | None  # Données brutes (optionnel)
-            }
+        engine = create_engine(DATABASE_URL)
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
 
-        TODO Sem. 5 :
-            agent = self._get_agent()
-            result = await agent.ainvoke({"input": question})
-            return {"answer": result["output"], "sql_query": ..., "data": ...}
-        """
-        # PLACEHOLDER — retourne une réponse simulée en attendant
+        docs = [
+            Document(
+                page_content=f"Table: {table}\nDescription: {desc}",
+                metadata={"table_name": table},
+            )
+            for table, desc in _TABLE_DESCRIPTIONS.items()
+        ]
+
+        self._vectorstore = PGVector.from_documents(
+            documents=docs,
+            embedding=self._get_embeddings(),
+            collection_name="sql_agent_table_descriptions",
+            connection=DATABASE_URL,
+            pre_delete_collection=True,
+        )
+
+    def _get_relevant_tables(self, question: str, k: int = 5) -> list[str]:
+        try:
+            # Lock : un seul thread initialise pgvector, les autres attendent
+            if self._vectorstore is None:
+                with self._init_lock:
+                    if self._vectorstore is None:  # double-checked locking
+                        self._init_vectorstore()
+            results = self._vectorstore.similarity_search(question, k=k)
+            tables = [r.metadata["table_name"] for r in results]
+            logger.info("Tables selectionnees: %s", tables)
+            return tables
+        except Exception as exc:
+            logger.warning("pgvector indisponible, toutes les tables: %s", exc)
+            return _ALLOWED_TABLES
+
+    # ── Factory LLM ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_llm():
+        provider = SQL_AGENT_PROVIDER.lower()
+        model = SQL_AGENT_MODEL
+
+        if provider == "groq":
+            if not GROQ_API_KEY:
+                raise RuntimeError("GROQ_API_KEY manquante dans .env")
+            from langchain_groq import ChatGroq
+            return ChatGroq(model=model, api_key=GROQ_API_KEY, temperature=0)
+
+        if provider == "openai":
+            if not OPENAI_API_KEY:
+                raise RuntimeError("OPENAI_API_KEY manquante dans .env")
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(model=model, api_key=OPENAI_API_KEY, temperature=0)
+
+        if provider == "claude":
+            if not CLAUDE_API_KEY:
+                raise RuntimeError("CLAUDE_API_KEY manquante dans .env")
+            from langchain_anthropic import ChatAnthropic
+            return ChatAnthropic(model=model, api_key=CLAUDE_API_KEY, temperature=0)
+
+        if provider == "ollama":
+            from langchain_ollama import ChatOllama
+            return ChatOllama(model=model, temperature=0)
+
+        raise RuntimeError(
+            f"SQL_AGENT_PROVIDER='{provider}' non supporte. "
+            "Valeurs: groq, openai, claude, ollama"
+        )
+
+    # ── Historique Redis ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _history_key(user_id: int) -> str:
+        return f"chat_history:user_{user_id}"
+
+    def _load_history(self, user_id: int) -> list[dict]:
+        """Charge les messages depuis Redis. Retourne [] si Redis indisponible."""
+        try:
+            import redis as redis_lib
+            r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
+            raw = r.lrange(self._history_key(user_id), 0, -1)
+            import json
+            return [json.loads(m) for m in raw]
+        except Exception as exc:
+            logger.warning("Redis historique indisponible (lecture): %s", exc)
+            return []
+
+    def _save_history(
+        self, user_id: int, question: str, answer: str
+    ) -> None:
+        """Sauvegarde un echange dans Redis avec TTL 24h."""
+        try:
+            import json
+            import redis as redis_lib
+            r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
+            key = self._history_key(user_id)
+            pipe = r.pipeline()
+            pipe.rpush(key, json.dumps({"role": "user", "content": question}))
+            pipe.rpush(key, json.dumps({"role": "agent", "content": answer}))
+            # Garde seulement les CHAT_HISTORY_MAX derniers messages
+            pipe.ltrim(key, -CHAT_HISTORY_MAX, -1)
+            # Renouvelle le TTL a chaque echange
+            pipe.expire(key, CHAT_HISTORY_TTL)
+            pipe.execute()
+        except Exception as exc:
+            logger.warning("Redis historique indisponible (ecriture): %s", exc)
+
+    def get_history(self, user_id: int) -> list[dict]:
+        """Endpoint GET /history — retourne l'historique pour le frontend."""
+        return self._load_history(user_id)
+
+    def clear_history(self, user_id: int) -> None:
+        """Endpoint DELETE /history — efface la conversation."""
+        try:
+            import redis as redis_lib
+            r = redis_lib.from_url(REDIS_CHAT_URL, decode_responses=True)
+            r.delete(self._history_key(user_id))
+        except Exception as exc:
+            logger.warning("Redis historique indisponible (suppression): %s", exc)
+
+    # ── Methode principale ────────────────────────────────────────────────
+
+    def _run_agent(
+        self, question: str, company_id: int, user_id: int = 0
+    ) -> dict[str, Any]:
+        """Execution synchrone de l'agent (appelee via asyncio.to_thread)."""
+        from langchain_community.utilities import SQLDatabase
+        from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+        from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
+        from langchain.agents import AgentExecutor, create_tool_calling_agent
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+        from langchain_core.messages import HumanMessage, AIMessage
+
+        # 1. Historique Redis → messages LangChain
+        raw_history = self._load_history(user_id)
+        lc_history = []
+        for msg in raw_history:
+            if msg.get("role") == "user":
+                lc_history.append(HumanMessage(content=msg["content"]))
+            elif msg.get("role") == "agent":
+                lc_history.append(AIMessage(content=msg["content"]))
+
+        # 2. Tables pertinentes via pgvector
+        relevant_tables = self._get_relevant_tables(question)
+
+        # 2. SQLDatabase filtre
+        db = SQLDatabase.from_uri(
+            DATABASE_URL,
+            include_tables=relevant_tables,
+            sample_rows_in_table_info=2,
+        )
+
+        # 3. LLM
+        llm = self._build_llm()
+
+        # 4. Toolkit → remplacement de l'outil query par la version securisee
+        toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+        tools = [
+            _make_secure_query_tool(db, company_id)
+            if isinstance(t, QuerySQLDataBaseTool)
+            else t
+            for t in toolkit.get_tools()
+        ]
+
+        # 5. Prompt avec historique
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", _AGENT_PREFIX),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+
+        # 6. Agent + capture SQL
+        capture = _SQLCapture()
+        agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
+        executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            max_iterations=10,
+            verbose=False,
+            handle_parsing_errors=True,
+        )
+
+        result = executor.invoke(
+            {"input": question, "chat_history": lc_history},
+            config={"callbacks": [capture]},
+        )
+
+        answer = result.get("output", "Aucune reponse obtenue.")
+
+        # Sauvegarde l'echange dans Redis
+        self._save_history(user_id, question, answer)
+
         return {
-            "answer": f"(TODO) Réponse simulée pour : '{question}'",
-            "sql_query": "-- SQL sera généré ici",
+            "answer": answer,
+            "sql_query": capture.queries[-1] if capture.queries else "",
             "data": None,
         }
 
+    async def query(
+        self,
+        question: str,
+        user_id: int | None = None,
+        company_id: int | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return await asyncio.to_thread(
+                self._run_agent, question, company_id or 0, user_id or 0
+            )
+        except RuntimeError as exc:
+            return {"answer": str(exc), "sql_query": "", "data": None}
+        except Exception as exc:
+            logger.error("SQL agent error: %s", exc, exc_info=True)
+            return {
+                "answer": (
+                    "Une erreur s'est produite lors de l'analyse. "
+                    "Verifiez les logs ou reformulez votre question."
+                ),
+                "sql_query": "",
+                "data": None,
+            }
+
     async def get_schema_summary(self) -> dict[str, Any]:
-        """
-        Retourne un résumé du schéma de la base de données.
-
-        TODO Sem. 5 : utiliser db.get_table_info() de LangChain.
-        """
-        # PLACEHOLDER
-        tables = [
-            "auth_user", "stock_produit", "stock_mouvementstock",
-            "crm_client", "ventes_devis", "ventes_ligndevis",
-            "ventes_boncommande", "ventes_facture", "ventes_lignefacture",
-        ]
-        return {"tables": tables, "status": "placeholder"}
+        return {
+            "tables": [
+                {"table": t, "description": _TABLE_DESCRIPTIONS.get(t, "")}
+                for t in _ALLOWED_TABLES
+            ],
+            "provider": SQL_AGENT_PROVIDER,
+            "model": SQL_AGENT_MODEL,
+            "status": "ok",
+        }
 
 
-# Singleton exporté
+# Singleton exporte
 sql_agent_service = SQLAgentService()

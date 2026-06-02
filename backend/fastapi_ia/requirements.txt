@@ -14,13 +14,14 @@ pgvector==0.*
 # Cache
 redis==5.*
 
-# AI - Agent SQL (Phase 3 - Sem. 5)
+# AI - Agent SQL
 langchain==0.3.*
 langchain-community==0.3.*
+langchain-groq==0.2.*
 langchain-openai==0.2.*
 langchain-anthropic==0.3.*
 openai==1.*
-anthropic>=0.69.0,<1.0.0
+sentence-transformers>=2.0
 
 # OCR — Claude Vision (anthropic déjà présent) + utilitaires
 pypdf>=4.0          # extraction texte PDF (pur Python, pas de dépendances système)
