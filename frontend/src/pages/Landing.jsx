@@ -1,7 +1,131 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useInView, useCounter } from '../hooks/useInView'
 import './landing.css'
+import axios from 'axios'
+
+// ── Modal formulaire de contact ───────────────────────────────────────────────
+function ContactModal({ onClose }) {
+  const [form, setForm]     = useState({ nom: '', numero: '', societe: '', email: '', message: '' })
+  const [status, setStatus] = useState(null) // null | 'loading' | 'success' | 'error'
+  const [errMsg, setErrMsg] = useState('')
+
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setStatus('loading')
+    setErrMsg('')
+    try {
+      const { data } = await axios.post('/api/django/contact/', form)
+      setStatus('success')
+    } catch (err) {
+      setErrMsg(err.response?.data?.detail ?? 'Une erreur est survenue. Réessayez.')
+      setStatus('error')
+    }
+  }
+
+  const inputStyle = {
+    width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 14,
+    border: '1.5px solid #e2e8f0', outline: 'none', boxSizing: 'border-box',
+    fontFamily: 'inherit', transition: 'border-color 0.2s',
+  }
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5, display: 'block' }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999, padding: '1rem',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 18, padding: '2rem',
+        width: '100%', maxWidth: 500, boxShadow: '0 25px 60px rgba(0,0,0,0.18)',
+        position: 'relative', maxHeight: '90vh', overflowY: 'auto',
+      }}>
+        {/* Fermer */}
+        <button onClick={onClose} style={{
+          position: 'absolute', top: 14, right: 14,
+          background: '#f1f5f9', border: 'none', borderRadius: 8,
+          width: 32, height: 32, cursor: 'pointer', fontSize: 18,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b',
+        }}>×</button>
+
+        <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.3rem', fontWeight: 700, color: '#0f172a' }}>
+          Démarrer gratuitement
+        </h2>
+        <p style={{ margin: '0 0 1.5rem', fontSize: 13.5, color: '#64748b' }}>
+          Laissez-nous vos coordonnées, nous vous contacterons sous 24h.
+        </p>
+
+        {status === 'success' ? (
+          <div style={{
+            background: '#f0fdf4', border: '1px solid #bbf7d0',
+            borderRadius: 12, padding: '1.5rem', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+            <p style={{ fontWeight: 700, color: '#15803d', margin: '0 0 6px', fontSize: 15 }}>
+              Message envoyé !
+            </p>
+            <p style={{ color: '#166534', fontSize: 13, margin: 0 }}>
+              Nous vous contacterons très bientôt.
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={labelStyle}>Nom complet *</label>
+                <input style={inputStyle} placeholder="Karim Benhadou" value={form.nom} onChange={set('nom')} required />
+              </div>
+              <div>
+                <label style={labelStyle}>Numéro de téléphone</label>
+                <input style={inputStyle} placeholder="+212 6xx xxx xxx" value={form.numero} onChange={set('numero')} />
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Nom de l'entreprise</label>
+              <input style={inputStyle} placeholder="Mon Entreprise SARL" value={form.societe} onChange={set('societe')} />
+            </div>
+            <div>
+              <label style={labelStyle}>Adresse email *</label>
+              <input style={inputStyle} type="email" placeholder="vous@entreprise.ma" value={form.email} onChange={set('email')} required />
+            </div>
+            <div>
+              <label style={labelStyle}>Message *</label>
+              <textarea
+                style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }}
+                placeholder="Décrivez votre besoin..."
+                value={form.message}
+                onChange={set('message')}
+                required
+              />
+            </div>
+
+            {status === 'error' && (
+              <div style={{
+                background: '#fef2f2', border: '1px solid #fecaca',
+                borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#dc2626',
+              }}>
+                {errMsg}
+              </div>
+            )}
+
+            <button type="submit" disabled={status === 'loading'} style={{
+              background: status === 'loading' ? '#93c5fd' : '#2563eb',
+              color: '#fff', border: 'none', borderRadius: 10,
+              padding: '12px 0', fontSize: 15, fontWeight: 700,
+              cursor: status === 'loading' ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s',
+            }}>
+              {status === 'loading' ? 'Envoi en cours…' : 'Envoyer ma demande'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ── Utilitaire : observe un conteneur et anime ses enfants .lp-anim* ────────
 function useStagger(threshold = 0.1) {
@@ -271,6 +395,8 @@ function StatItem({ stat, active, delay }) {
 
 // ── Main component ───────────────────────────────────────────────────────────
 export default function Landing() {
+  const [modalOpen, setModalOpen] = useState(false)
+
   // Section observers
   const [statsRef, statsVisible]         = useInView(0.3)
   const featuresGrid                     = useStagger(0.08)
@@ -316,6 +442,7 @@ export default function Landing() {
   const DELAYS = ['lp-d0', 'lp-d1', 'lp-d2', 'lp-d3', 'lp-d4']
 
   return (
+    <>
     <div className="lp-root">
 
       {/* ── Navbar ── */}
@@ -331,7 +458,7 @@ export default function Landing() {
           </nav>
           <div className="lp-nav-actions">
             <Link to="/login" className="lp-btn-ghost">Se connecter</Link>
-            <Link to="/login" className="lp-btn-primary">Démarrer gratuitement</Link>
+            <button onClick={() => setModalOpen(true)} className="lp-btn-primary" style={{ cursor: 'pointer' }}>Démarrer gratuitement</button>
           </div>
         </div>
       </header>
@@ -354,9 +481,9 @@ export default function Landing() {
               des décisions rapides et efficaces, en temps réel.
             </p>
             <div className="lp-hero-actions">
-              <Link to="/login" className="lp-btn-primary lp-btn-lg">
+              <button onClick={() => setModalOpen(true)} className="lp-btn-primary lp-btn-lg" style={{ cursor: 'pointer' }}>
                 Démarrer gratuitement &nbsp;&rarr;
-              </Link>
+              </button>
               <Link to="/login" className="lp-btn-secondary lp-btn-lg">
                 Voir la démo
               </Link>
@@ -509,9 +636,9 @@ export default function Landing() {
             avec TAQINOR et l'intelligence artificielle.
           </p>
           <div className="lp-cta-actions lp-anim lp-d2">
-            <Link to="/login" className="lp-btn-white">
+            <button onClick={() => setModalOpen(true)} className="lp-btn-white" style={{ cursor: 'pointer' }}>
               Démarrer gratuitement &nbsp;&rarr;
-            </Link>
+            </button>
             <Link to="/login" className="lp-btn-outline-white lp-btn-lg">
               Voir la démo
             </Link>
@@ -566,5 +693,8 @@ export default function Landing() {
       </footer>
 
     </div>
+
+    {modalOpen && <ContactModal onClose={() => setModalOpen(false)} />}
+    </>
   )
 }

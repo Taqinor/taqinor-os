@@ -7,6 +7,7 @@ from .views import (
     CompanyViewSet,
     MeView,
     LogoutView,
+    CookieTokenRefreshView,
 )
 
 router = DefaultRouter()
@@ -22,5 +23,6 @@ urlpatterns = [
     ),
     path('auth/me/', MeView.as_view(), name='auth_me'),
     path('auth/logout/', LogoutView.as_view(), name='auth_logout'),
+    path('auth/token/refresh/', CookieTokenRefreshView.as_view(), name='auth_token_refresh'),
     path('', include(router.urls)),
 ]

@@ -312,7 +312,7 @@ class OCRService:
         except RuntimeError as e:
             return self._error_result(str(e))
         except Exception as e:
-            logger.error("OCR image error: %s", e, exc_info=True)
+            logger.error("OCR image error: %s", e)
             return self._error_result("Erreur inattendue lors de l'analyse.")
 
     async def _process_image_internal(
@@ -368,7 +368,7 @@ class OCRService:
         except RuntimeError as e:
             return {**self._error_result(str(e)), "nb_pages": 0, "pages": []}
         except Exception as e:
-            logger.error("OCR pdf error: %s", e, exc_info=True)
+            logger.error("OCR pdf error: %s", e)
             return {
                 **self._error_result("Erreur inattendue lors de l'analyse PDF."),
                 "nb_pages": 0,
@@ -441,7 +441,7 @@ class OCRService:
         except RuntimeError as e:
             return self._stock_error_result(str(e))
         except Exception as e:
-            logger.error("OCR stock error: %s", e, exc_info=True)
+            logger.error("OCR stock error: %s", e)
             return self._stock_error_result("Erreur inattendue lors de l'analyse.")
 
     async def _process_stock_internal(

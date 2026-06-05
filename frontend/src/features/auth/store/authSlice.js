@@ -1,27 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../../api/axios'
 
-function decodeToken(token) {
-  try {
-    const payload = token.split('.')[1]
-    return JSON.parse(atob(payload))
-  } catch {
-    return null
-  }
-}
-
-const savedToken = sessionStorage.getItem('token')
-const savedPayload = savedToken ? decodeToken(savedToken) : null
-
-const initialState = {
-  user: savedPayload ? { username: savedPayload.username } : null,
-  role: savedPayload?.role || null,
-  role_nom: savedPayload?.role_nom || null,
-  permissions: savedPayload?.permissions || [],
-  token: savedToken,
-  isAuthenticated: !!savedToken,
-}
-
+// Recupere les infos utilisateur depuis l'API (cookie envoye automatiquement)
 export const fetchMe = createAsyncThunk(
   'auth/fetchMe',
   async (_, { rejectWithValue }) => {
@@ -37,13 +17,11 @@ export const fetchMe = createAsyncThunk(
 export const logoutUser = createAsyncThunk(
   'auth/logoutUser',
   async (_, { dispatch }) => {
-    const refresh = sessionStorage.getItem('refresh')
-    if (refresh) {
-      try {
-        await api.post('/auth/logout/', { refresh })
-      } catch {
-        // token already expired — proceed anyway
-      }
+    try {
+      // Le cookie refresh_token est envoye automatiquement
+      await api.post('/auth/logout/', {})
+    } catch {
+      // Continuer meme si le serveur echoue
     }
     dispatch(authSlice.actions.logout())
   }
@@ -51,45 +29,55 @@ export const logoutUser = createAsyncThunk(
 
 const authSlice = createSlice({
   name: 'auth',
-  initialState,
+  initialState: {
+    user: null,
+    role: null,
+    role_nom: null,
+    permissions: [],
+    isAuthenticated: false,
+    loading: true, // true au demarrage : on verifie la session
+  },
   reducers: {
     setCredentials: (state, action) => {
-      const payload = decodeToken(action.payload.token)
       state.user = action.payload.user
-      state.role = payload?.role || 'normal'
-      state.role_nom = payload?.role_nom || null
-      state.permissions = payload?.permissions || []
-      state.token = action.payload.token
+      state.role = action.payload.role || 'normal'
+      state.role_nom = action.payload.role_nom || null
+      state.permissions = action.payload.permissions || []
       state.isAuthenticated = true
-      sessionStorage.setItem('token', action.payload.token)
+      state.loading = false
     },
     logout: (state) => {
       state.user = null
       state.role = null
       state.role_nom = null
       state.permissions = []
-      state.token = null
       state.isAuthenticated = false
-      sessionStorage.removeItem('token')
-      sessionStorage.removeItem('refresh')
+      state.loading = false
     },
   },
   extraReducers: (builder) => {
-    builder.addCase(fetchMe.fulfilled, (state, action) => {
-      state.user = { username: action.payload.username }
-      state.role = action.payload.role_legacy || action.payload.role || 'normal'
-      state.role_nom = action.payload.role_nom || null
-      state.permissions = action.payload.permissions || []
-    })
+    builder
+      .addCase(fetchMe.pending, (state) => {
+        state.loading = true
+      })
+      .addCase(fetchMe.fulfilled, (state, action) => {
+        state.user = { username: action.payload.username }
+        state.role = action.payload.role_legacy || action.payload.role || 'normal'
+        state.role_nom = action.payload.role_nom || null
+        state.permissions = action.payload.permissions || []
+        state.isAuthenticated = true
+        state.loading = false
+      })
+      .addCase(fetchMe.rejected, (state) => {
+        // Pas de session valide
+        state.isAuthenticated = false
+        state.loading = false
+      })
   },
 })
 
 export const { setCredentials, logout } = authSlice.actions
 
-/**
- * Selector: check if the current user has a specific ERP permission.
- * Usage: useSelector(hasPermission('stock_voir'))
- */
 export const hasPermission = (code) => (state) =>
   state.auth.permissions.includes(code)
 

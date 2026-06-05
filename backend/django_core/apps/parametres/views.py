@@ -57,6 +57,24 @@ def upload_signature(request):
     )
 
 
+_MAGIC_BYTES = {
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'\xff\xd8\xff': 'image/jpeg',
+    b'RIFF': 'image/webp',  # verifie aussi bytes 8-11 == WEBP ci-dessous
+}
+_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+
+
+def _detect_image_type(header: bytes) -> str | None:
+    if header[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    if header[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
+
 def _upload_image(request, field, prefix):
     file = request.FILES.get('file')
     if not file:
@@ -65,19 +83,24 @@ def _upload_image(request, field, prefix):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    allowed = {'image/png', 'image/jpeg', 'image/jpg', 'image/webp'}
-    if file.content_type not in allowed:
-        return Response(
-            {'detail': 'Format non supporté. Utilisez PNG, JPEG ou WebP.'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
     if file.size > 2 * 1024 * 1024:
         return Response(
             {'detail': 'Fichier trop volumineux (max 2 Mo).'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    ext = file.name.rsplit('.', 1)[-1].lower()
+    header = file.read(12)
+    file.seek(0)
+    detected = _detect_image_type(header)
+    if detected is None:
+        return Response(
+            {'detail': 'Format non supporté. Utilisez PNG, JPEG ou WebP.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    ext = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
+    if ext not in _ALLOWED_EXTENSIONS:
+        ext = detected.split('/')[-1].replace('jpeg', 'jpg')
     key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
 
     client = get_minio_client()

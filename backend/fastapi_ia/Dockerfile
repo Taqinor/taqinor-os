@@ -1,5 +1,5 @@
 # backend/fastapi_ia/Dockerfile
-FROM python:3.11-slim-bookworm
+FROM python:3.11.11-slim-bookworm
 
 WORKDIR /app
 

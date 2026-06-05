@@ -5,43 +5,35 @@ const ORIGIN = new URL(VITE_URL).origin
 
 const iaApi_instance = axios.create({
   baseURL: ORIGIN,
+  withCredentials: true, // envoie les cookies httpOnly automatiquement
 })
 
-// ── Requête : inject token + préfixe /api/fastapi ─────────────
+// ── Requete : prefixe /api/fastapi uniquement ─────────────────
+// Plus d'injection manuelle du token — le cookie est envoye automatiquement
 iaApi_instance.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
   if (config.url && !config.url.startsWith('/api/')) {
     config.url = '/api/fastapi' + config.url
   }
   return config
 })
 
-// ── Réponse : refresh silencieux sur 401 ──────────────────────
+// ── Reponse : refresh silencieux sur 401 ──────────────────────
 iaApi_instance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
-      const refreshToken = sessionStorage.getItem('refresh')
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post(
-            `${ORIGIN}/api/django/token/refresh/`,
-            { refresh: refreshToken }
-          )
-          sessionStorage.setItem('token', data.access)
-          originalRequest.headers.Authorization = `Bearer ${data.access}`
-          return iaApi_instance(originalRequest)
-        } catch {
-          // refresh échoué
-        }
+      try {
+        await axios.post(
+          `${ORIGIN}/api/django/auth/token/refresh/`,
+          {},
+          { withCredentials: true }
+        )
+        return iaApi_instance(originalRequest)
+      } catch {
+        // Refresh echoue
       }
-      sessionStorage.removeItem('token')
-      sessionStorage.removeItem('refresh')
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
@@ -56,6 +48,12 @@ const iaApi = {
 
   getSchema: () =>
     iaApi_instance.get('/sql-agent/schema'),
+
+  getChatHistory: () =>
+    iaApi_instance.get('/sql-agent/history'),
+
+  clearChatHistory: () =>
+    iaApi_instance.delete('/sql-agent/history'),
 
   processDocument: (file) => {
     const formData = new FormData()
@@ -73,12 +71,6 @@ const iaApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
-
-  getChatHistory: () =>
-    iaApi_instance.get('/sql-agent/history'),
-
-  clearChatHistory: () =>
-    iaApi_instance.delete('/sql-agent/history'),
 
   saveOcrDocument: (data) =>
     iaApi_instance.post('/ocr/save_document', data),

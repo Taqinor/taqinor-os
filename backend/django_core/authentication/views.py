@@ -1,7 +1,10 @@
+from django.conf import settings
 from django.utils.text import slugify
 from rest_framework import generics, permissions, viewsets, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .models import CustomUser, Company
 from .serializers import (
@@ -13,11 +16,88 @@ from .serializers import (
 from .throttles import LoginRateThrottle, RegisterRateThrottle
 from authentication.permissions import IsAdminRole
 
+_COOKIE_SECURE = not settings.DEBUG
+_COOKIE_SAMESITE = 'Strict'
+_ACCESS_MAX_AGE = int(
+    settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
+)
+_REFRESH_MAX_AGE = int(
+    settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()
+)
+
+
+def _set_auth_cookies(response, access, refresh=None):
+    """Positionne les cookies httpOnly sur la reponse Django."""
+    response.set_cookie(
+        'access_token', access,
+        max_age=_ACCESS_MAX_AGE,
+        httponly=True,
+        secure=_COOKIE_SECURE,
+        samesite=_COOKIE_SAMESITE,
+        path='/',
+    )
+    if refresh:
+        response.set_cookie(
+            'refresh_token', refresh,
+            max_age=_REFRESH_MAX_AGE,
+            httponly=True,
+            secure=_COOKIE_SECURE,
+            samesite=_COOKIE_SAMESITE,
+            path='/',
+        )
+
+
+def _clear_auth_cookies(response):
+    """Supprime les cookies d'authentification."""
+    response.delete_cookie('access_token', path='/')
+    response.delete_cookie('refresh_token', path='/')
+
 
 # ── Login ──────────────────────────────────────────────────────
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            access = response.data.pop('access', None)
+            refresh = response.data.pop('refresh', None)
+            _set_auth_cookies(response, access, refresh)
+        return response
+
+
+# ── Refresh cookie ──────────────────────────────────────────────
+class CookieTokenRefreshView(APIView):
+    """
+    Renouvelle le access_token depuis le cookie refresh_token.
+    Le client n'a pas besoin d'envoyer quoi que ce soit dans le body.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        refresh_raw = request.COOKIES.get('refresh_token')
+        if not refresh_raw:
+            return Response(
+                {'detail': 'Refresh token manquant.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        try:
+            token = RefreshToken(refresh_raw)
+            access = str(token.access_token)
+            new_refresh = str(token) if settings.SIMPLE_JWT.get(
+                'ROTATE_REFRESH_TOKENS', False
+            ) else None
+            response = Response({'detail': 'Token rafraichi.'})
+            _set_auth_cookies(response, access, new_refresh)
+            return response
+        except TokenError:
+            resp = Response(
+                {'detail': 'Refresh token invalide ou expire.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            _clear_auth_cookies(resp)
+            return resp
 
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─
@@ -150,15 +230,19 @@ class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.data.get('refresh')
-        if refresh_token:
+        refresh_raw = (
+            request.COOKIES.get('refresh_token')
+            or request.data.get('refresh')
+        )
+        if refresh_raw:
             try:
-                from rest_framework_simplejwt.tokens import RefreshToken
-                token = RefreshToken(refresh_token)
+                token = RefreshToken(refresh_raw)
                 token.blacklist()
             except TokenError:
                 pass
-        return Response({'detail': 'Deconnexion reussie.'})
+        response = Response({'detail': 'Deconnexion reussie.'})
+        _clear_auth_cookies(response)
+        return response
 
 
 # ── Gestion utilisateurs (admin) ───────────────────────────────
@@ -189,7 +273,7 @@ class UserViewSet(viewsets.ModelViewSet):
         target = self.get_object()
         if target == request.user:
             return Response(
-                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},
+                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},  # noqa: E501
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if target.is_superuser:

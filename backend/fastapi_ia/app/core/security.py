@@ -1,39 +1,53 @@
 """
-Dépendance de vérification JWT pour FastAPI.
-Valide les tokens émis par Django SimpleJWT (algorithme HS256, même SECRET_KEY).
+Verification JWT pour FastAPI.
+Lit le token depuis le cookie httpOnly 'access_token' en priorite,
+puis depuis l'en-tete Authorization: Bearer (fallback).
 """
 import os
+from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 from jwt.exceptions import InvalidTokenError
 
-# La même clé secrète que Django (partagée via variable d'environnement)
 _DJANGO_SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 _ALGORITHM = "HS256"
 
-_bearer_scheme = HTTPBearer()
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> dict:
     """
-    Vérifie le token JWT Bearer émis par Django SimpleJWT.
-    Lève une 401 si le token est invalide, expiré, ou s'il ne s'agit pas d'un access token.
+    Verifie le token JWT.
+    Priorite : cookie httpOnly > Authorization: Bearer header.
     """
-    token = credentials.credentials
+    # 1. Cookie httpOnly (inaccessible au JavaScript)
+    token = request.cookies.get("access_token")
+
+    # 2. Fallback : Authorization: Bearer (scripts, tests)
+    if not token and credentials:
+        token = credentials.credentials
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentification requise",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         payload = jwt.decode(token, _DJANGO_SECRET_KEY, algorithms=[_ALGORITHM])
     except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token invalide ou expiré",
+            detail="Token invalide ou expire",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # S'assurer que c'est bien un access token (pas un refresh token)
     if payload.get("token_type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

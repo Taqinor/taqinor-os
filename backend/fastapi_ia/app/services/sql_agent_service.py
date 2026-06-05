@@ -129,6 +129,44 @@ Jamais INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE.
 - Si aucune donnee n'est trouvee, explique-le clairement en francais.
 - Ne retourne jamais de donnees brutes JSON — formule une reponse naturelle.
 - Le filtrage par company_id est gere automatiquement par le systeme.
+- INTERDIT ABSOLU : ne jamais mentionner de noms de tables SQL dans ta reponse \
+(stock_produit, authentication_customuser, crm_client, etc.). \
+Utilise uniquement des termes metier : "produits", "employes", "clients", \
+"factures", "devis", "mouvements de stock". \
+Cela inclut les explications, les notes et les commentaires.
+- Si une table n'existe pas mais qu'une autre peut repondre a la question, \
+utilise-la directement sans demander confirmation.
+
+GUIDE DES TABLES — utilise TOUJOURS la bonne table :
+
+Stock actuel des produits → stock_produit
+  - quantite       = quantite actuellement en stock
+  - prix_vente_ht  = prix de vente HT
+  - prix_achat_ht  = prix d'achat HT
+  - seuil_alerte   = seuil minimum avant rupture
+  - categorie_id   = FK vers stock_categorie
+  - fournisseur_id = FK vers stock_fournisseur
+
+Historique des entrees/sorties → stock_mouvementstock
+  (NE PAS utiliser pour connaitre le stock actuel,
+   utiliser stock_produit.quantite a la place)
+  - type_mouvement = 'entree' ou 'sortie'
+  - quantite       = quantite du mouvement (pas le stock actuel)
+
+Clients → crm_client (nom, prenom, email, telephone)
+
+Devis → ventes_devis + ventes_lignedevis
+  - statut : 'brouillon', 'accepte', 'refuse', 'expire'
+  - montant_total = montant total du devis
+
+Factures → ventes_facture + ventes_lignefacture
+  - statut_paiement : 'non_paye', 'partiel', 'paye'
+  - montant_ttc = montant total TTC
+
+EXEMPLES DE REQUETES CORRECTES :
+- Stock actuel : SELECT nom, quantite FROM stock_produit ORDER BY quantite DESC
+- Ruptures : SELECT nom, quantite FROM stock_produit WHERE quantite <= seuil_alerte
+- CA factures : SELECT SUM(montant_ttc) FROM ventes_facture WHERE statut_paiement='paye'
 """
 
 # ── Securite : injection company_id ──────────────────────────────────────────
@@ -204,19 +242,18 @@ def _inject_company_filter(sql: str, company_id: int) -> str:
 def _make_secure_query_tool(db, company_id: int):
     """
     Retourne un QuerySQLDataBaseTool qui injecte company_id avant execution.
+    Utilise une closure pour eviter les problemes Pydantic avec les attributs prives.
     """
     from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
 
-    class _SecureQueryTool(QuerySQLDataBaseTool):
-        _company_id: int = 0
+    _cid = company_id  # capture par closure — immune aux reinitialisations Pydantic
 
+    class _SecureQueryTool(QuerySQLDataBaseTool):
         def _run(self, query: str, run_manager=None) -> str:
-            secured = _inject_company_filter(query, self._company_id)
+            secured = _inject_company_filter(query, _cid)
             return super()._run(secured, run_manager=run_manager)
 
-    tool = _SecureQueryTool(db=db)
-    tool._company_id = company_id
-    return tool
+    return _SecureQueryTool(db=db)
 
 
 # ── Callback pour capturer la requete SQL generee ─────────────────────────────
@@ -282,7 +319,8 @@ class SQLAgentService:
             embedding=self._get_embeddings(),
             collection_name="sql_agent_table_descriptions",
             connection=DATABASE_URL,
-            pre_delete_collection=True,
+            connection_string=DATABASE_URL,
+            pre_delete_collection=False,
         )
 
     def _get_relevant_tables(self, question: str, k: int = 5) -> list[str]:
@@ -393,15 +431,18 @@ class SQLAgentService:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread)."""
         from langchain_community.utilities import SQLDatabase
         from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
-        from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
         from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_core.messages import HumanMessage, AIMessage
 
-        # 1. Historique Redis → messages LangChain
+        # 1. Historique Redis → messages LangChain (2 derniers echanges seulement)
+        # On limite volontairement pour eviter que d'anciens resultats incorrects
+        # contaminent les nouvelles questions. L'historique complet reste dans Redis
+        # pour l'affichage frontend, mais le LLM ne recoit que le contexte recent.
         raw_history = self._load_history(user_id)
+        recent = raw_history[-4:] if len(raw_history) >= 4 else raw_history
         lc_history = []
-        for msg in raw_history:
+        for msg in recent:
             if msg.get("role") == "user":
                 lc_history.append(HumanMessage(content=msg["content"]))
             elif msg.get("role") == "agent":
@@ -420,11 +461,12 @@ class SQLAgentService:
         # 3. LLM
         llm = self._build_llm()
 
-        # 4. Toolkit → remplacement de l'outil query par la version securisee
+        # 4. Toolkit → remplacement de l'outil sql_db_query par la version securisee
+        # On compare par nom d'outil (fiable) et non par classe (nom instable selon version)
         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
         tools = [
             _make_secure_query_tool(db, company_id)
-            if isinstance(t, QuerySQLDataBaseTool)
+            if t.name == "sql_db_query"
             else t
             for t in toolkit.get_tools()
         ]
@@ -477,11 +519,22 @@ class SQLAgentService:
         except RuntimeError as exc:
             return {"answer": str(exc), "sql_query": "", "data": None}
         except Exception as exc:
-            logger.error("SQL agent error: %s", exc, exc_info=True)
+            err_str = str(exc)
+            logger.error("SQL agent error: %s", exc)
+            if "rate_limit" in err_str.lower() or "429" in err_str:
+                return {
+                    "answer": (
+                        "Le service IA a atteint sa limite d'utilisation journaliere. "
+                        "Veuillez reessayer dans quelques minutes."
+                    ),
+                    "sql_query": "",
+                    "data": None,
+                }
             return {
                 "answer": (
-                    "Une erreur s'est produite lors de l'analyse. "
-                    "Verifiez les logs ou reformulez votre question."
+                    "Je n'ai pas pu traiter votre demande. "
+                    "Essayez de reformuler votre question autrement, "
+                    "ou posez une question plus simple."
                 ),
                 "sql_query": "",
                 "data": None,

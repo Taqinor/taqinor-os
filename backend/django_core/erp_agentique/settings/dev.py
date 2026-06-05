@@ -5,10 +5,17 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = True
 
-# En dev, accepter toutes les origines CORS
-CORS_ALLOW_ALL_ORIGINS = True
+# Origines autorisees en developpement local uniquement
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1',
+    'http://127.0.0.1:3000',
+]
 
-# Logging SQL en dev
+# SQL logging desactive — trop verbeux et logue les donnees utilisateur
+# Activer ponctuellement si besoin : django.db.backends level=DEBUG
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -16,9 +23,9 @@ LOGGING = {
         'console': {'class': 'logging.StreamHandler'},
     },
     'loggers': {
-        'django.db.backends': {
+        'django': {
             'handlers': ['console'],
-            'level': 'DEBUG',
+            'level': 'WARNING',
         },
     },
 }

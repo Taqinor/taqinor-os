@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, redirect } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
+import { fetchMe } from '../features/auth/store/authSlice'
 import Layout from '../components/layout/Layout'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
@@ -22,10 +23,14 @@ const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
-const authLoader = () => {
-  const token = store.getState().auth.token ?? sessionStorage.getItem('token')
-  if (!token) return redirect('/login')
-  return null
+// Verifie la session via le cookie httpOnly — aucun token cote client
+const authLoader = async () => {
+  const state = store.getState().auth
+  if (state.isAuthenticated) return null
+  // Session inconnue : tente de la restaurer depuis le cookie
+  const result = await store.dispatch(fetchMe())
+  if (fetchMe.fulfilled.match(result)) return null
+  return redirect('/login')
 }
 
 const Fallback = () => <div style={{ padding: '2rem', textAlign: 'center' }}>Chargement...</div>

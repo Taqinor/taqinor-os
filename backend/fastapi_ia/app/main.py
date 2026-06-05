@@ -26,8 +26,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRFToken", "Accept"],
 )
 
 
@@ -38,22 +38,17 @@ def on_startup():
     # pour que le premier appel SQL agent soit rapide
     import threading
     from app.services.sql_agent_service import sql_agent_service
-    threading.Thread(target=sql_agent_service._get_embeddings, daemon=True).start()
-
-
-@app.get("/")
-async def root():
-    return {"message": "FastAPI IA/OCR Service is running"}
+    t = threading.Thread(target=sql_agent_service._get_embeddings, daemon=True)
+    t.start()
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    return {"status": "ok"}
 
 
-# With root_path="/api/fastapi", Starlette strips that prefix before routing.
-# Routes must be registered at the path RELATIVE to root_path.
-# nginx passes /api/fastapi/ocr/... → Starlette strips root_path → routes /ocr/...
+# root_path="/api/fastapi" — Starlette strips the prefix before routing.
+# Register routes relative to root_path (e.g. /ocr, not /api/fastapi/ocr).
 app.include_router(
     ocr.router,
     prefix="/ocr",

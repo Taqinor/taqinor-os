@@ -1,5 +1,5 @@
 # backend/nginx/Dockerfile
-FROM nginx:alpine
+FROM nginx:1.27-alpine
 
 # Copie la configuration Nginx personnalisée
 COPY nginx.conf /etc/nginx/nginx.conf

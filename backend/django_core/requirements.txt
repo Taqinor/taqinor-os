@@ -1,35 +1,35 @@
 # Core
-Django==5.*
-djangorestframework==3.*
-djangorestframework-simplejwt==5.*
-django-cors-headers==4.*
+Django==5.1.4
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.6.0
 
 # Database
-psycopg2-binary==2.*
-pgvector==0.*
+psycopg2-binary==2.9.10
+pgvector==0.3.6
 
 # Cache / Queue
-redis==5.*
-django-redis==5.*
-celery==5.*
+redis==5.2.1
+django-redis==5.4.0
+celery==5.4.0
 
 # PDF generation
-weasyprint==62.*
+weasyprint==62.3
 pydyf==0.11.0
-Jinja2==3.*
+Jinja2==3.1.5
 
-# Email (Phase 2 - Sem. 4)
-django-anymail[sendgrid]==10.*
+# Email
+django-anymail[sendgrid]==10.3
 
-# File storage MinIO/S3 (Phase 2+)
-django-storages[s3]==1.*
-boto3==1.*
+# File storage MinIO/S3
+django-storages[s3]==1.14.4
+boto3==1.35.99
 
 # Image handling
-Pillow==10.*
+Pillow==10.4.0
 
 # HTTP client
-httpx==0.*
+httpx==0.28.1
 
 # Server
-gunicorn==22.*
+gunicorn==22.0.0

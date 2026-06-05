@@ -140,21 +140,19 @@ export default function Login() {
   const [loading,  setLoading]  = useState(false)
   const [showPwd,  setShowPwd]  = useState(false)
 
-  useEffect(() => {
-    sessionStorage.removeItem('token')
-    sessionStorage.removeItem('refresh')
-  }, [])
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
+      // Le serveur set les cookies httpOnly — aucun token visible cote frontend
       const res = await api.post('/token/', { username, password })
-      const { access, refresh } = res.data
-      sessionStorage.setItem('token', access)
-      sessionStorage.setItem('refresh', refresh)
-      dispatch(setCredentials({ token: access, user: { username } }))
+      dispatch(setCredentials({
+        user: { username },
+        role: res.data.role || 'normal',
+        role_nom: res.data.role_nom || null,
+        permissions: res.data.permissions || [],
+      }))
       navigate('/dashboard')
     } catch (err) {
       const detail = err.response?.data?.detail
@@ -163,7 +161,7 @@ export default function Login() {
       } else if (err.message === 'Network Error') {
         setError('Impossible de contacter le serveur. Vérifiez votre connexion.')
       } else {
-        setError('Identifiants incorrects. Vérifiez votre nom d\'utilisateur et mot de passe.')
+        setError("Identifiants incorrects. Vérifiez votre nom d'utilisateur et mot de passe.")
       }
     } finally {
       setLoading(false)

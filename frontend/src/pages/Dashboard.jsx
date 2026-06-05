@@ -1,8 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
 
 function KpiIcon({ color, children }) {
   return (
@@ -44,6 +47,25 @@ export function Component() {
   const devisAcceptes    = devis.filter(d => d.statut === 'accepte')
   const facturesEnRetard = factures.filter(f => f.statut === 'en_retard')
   const facturesEmises   = factures.filter(f => f.statut === 'emise')
+
+  // CA mensuel sur 6 mois — calculé depuis les factures payées déjà chargées
+  const caMensuel = useMemo(() => {
+    const MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+    const map = {}
+    const today = new Date()
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      map[key] = { mois: `${MOIS[d.getMonth()]} ${d.getFullYear()}`, ca: 0 }
+    }
+    factures
+      .filter(f => f.statut === 'payee' && f.date_emission)
+      .forEach(f => {
+        const key = f.date_emission.slice(0, 7)
+        if (map[key]) map[key].ca += parseFloat(f.total_ht || 0)
+      })
+    return Object.values(map)
+  }, [factures])
 
   const kpis = [
     {
@@ -142,12 +164,43 @@ export function Component() {
           background: '#ffffff', borderRadius: 14, padding: '1.25rem',
           boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
         }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 600, color: '#1e293b' }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: '0.92rem', fontWeight: 600, color: '#1e293b' }}>
             Chiffre d'affaires mensuel
           </h3>
-          <p style={{ color: '#94a3b8', fontSize: '0.82rem', margin: 0 }}>
-            Graphique disponible en Phase 4
-          </p>
+          {caMensuel.every(m => m.ca === 0) ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', margin: 0 }}>
+              Aucune facture payée sur les 6 derniers mois.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={160}>
+              <AreaChart data={caMensuel} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="caGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickFormatter={v => v >= 1000 ? Math.round(v / 1000) + 'k' : v}
+                />
+                <Tooltip
+                  formatter={v => [
+                    new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v) + ' DH',
+                    'CA HT'
+                  ]}
+                  contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                />
+                <Area
+                  type="monotone" dataKey="ca"
+                  stroke="#3b82f6" strokeWidth={2}
+                  fill="url(#caGrad)" dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Devis par statut */}
