@@ -266,6 +266,7 @@ const cp = produitsRef.current
         action: matched ? 'match' : 'create',
         produit_id: matched ? String(matched.id) : '',
         tva: item.tva ?? null,
+        update_tva: false,
         nouveau_nom: item.nom || '', nouveau_sku: item.reference || '',
         nouveau_prix_achat: item.prix_unitaire_ht > 0 ? String(item.prix_unitaire_ht) : '',
         nouveau_prix_vente: '',
@@ -389,12 +390,23 @@ const cp = produitsRef.current
         if (ligne.action === 'match') {
           if (!ligne.produit_id) { log.push({ ok: false, label, msg: 'Aucun produit sélectionné' }); continue }
           produitId = parseInt(ligne.produit_id)
+          const patchData = {}
           // Mettre à jour la catégorie du produit existant si une est choisie
           if (ligne.categorie_action !== 'none') {
             const catId = await resolveCategorie(ligne)
-            if (catId) {
-              try { await stockApi.patchProduit(produitId, { categorie_id: catId }) } catch {}
-            }
+            if (catId) patchData.categorie_id = catId
+          }
+          // Mettre à jour la TVA si divergence et utilisateur a coché l'option
+          if (ligne.update_tva && ligne.tva !== null && ligne.tva !== undefined) {
+            patchData.tva = ligne.tva
+          }
+          // Assigner le fournisseur si le produit n'en a pas encore
+          if (resolvedFournisseurId) {
+            const existingProd = produitsRef.current.find(p => p.id === produitId)
+            if (!existingProd?.fournisseur) patchData.fournisseur_id = resolvedFournisseurId
+          }
+          if (Object.keys(patchData).length > 0) {
+            try { await stockApi.patchProduit(produitId, patchData) } catch {}
           }
         } else {
           if (!ligne.nouveau_nom.trim()) { log.push({ ok: false, label, msg: 'Nom du produit requis' }); continue }
@@ -966,6 +978,13 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
   )
   const isSkipped = ligne.action === 'skip'
 
+  const matchedProduit = (ligne.action === 'match' && ligne.produit_id)
+    ? produits.find(p => String(p.id) === ligne.produit_id)
+    : null
+  const produitTva = matchedProduit ? (matchedProduit.tva != null ? Number(matchedProduit.tva) : null) : null
+  const ocrTva = (ligne.tva !== null && ligne.tva !== undefined) ? Number(ligne.tva) : null
+  const tvaDivergence = matchedProduit && ocrTva !== null && produitTva !== ocrTva
+
   const ACTION_CFG = {
     match:  { label: 'Associer',    activeColor: '#1d4ed8', activeBg: '#eff6ff' },
     create: { label: 'Créer',       activeColor: '#059669', activeBg: '#f0fdf4' },
@@ -1036,7 +1055,7 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
 
       {/* Match: select existing product */}
       {ligne.action === 'match' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <select
             className={`form-select${hasMatchError ? ' is-invalid' : ''}`}
             value={ligne.produit_id}
@@ -1048,6 +1067,28 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
             ))}
           </select>
           {hasMatchError && <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#dc2626' }}>Sélectionnez un produit existant</p>}
+
+          {/* Fournisseur existant du produit */}
+          {matchedProduit?.fournisseur && (
+            <div style={{ padding: '5px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 11.5, color: '#0369a1', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Ic size={12} color="#0ea5e9"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></Ic>
+              Fournisseur enregistré : <strong style={{ marginLeft: 3 }}>{matchedProduit.fournisseur.nom}</strong>
+            </div>
+          )}
+
+          {/* Divergence TVA */}
+          {tvaDivergence && (
+            <div style={{ padding: '0.65rem 0.9rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#92400e', fontWeight: 600 }}>
+                <Ic size={13} color="#d97706"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Ic>
+                Divergence TVA — produit enregistré : {produitTva != null ? `${produitTva}%` : 'sans TVA'} · document détecte : {ocrTva}%
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#78350f', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!ligne.update_tva} onChange={e => onChange({ update_tva: e.target.checked })}/>
+                Mettre à jour la TVA du produit à {ocrTva}%
+              </label>
+            </div>
+          )}
         </div>
       )}
 
@@ -1109,6 +1150,11 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
           <div>
             <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>SKU / Référence</label>
             <input className="form-control" value={ligne.nouveau_sku} onChange={e => onChange({ nouveau_sku: e.target.value })} placeholder="ART-001"/>
+            {!ligne.ref_ocr && (
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#94a3b8' }}>
+                Aucun code article dans le document — saisissez-en un manuellement si disponible.
+              </p>
+            )}
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
