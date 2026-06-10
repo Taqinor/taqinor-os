@@ -22,11 +22,21 @@ User = get_user_model()
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-def make_user():
+def make_company():
+    from authentication.models import Company
+    company, _ = Company.objects.get_or_create(
+        slug='test-pdf-co', defaults={'nom': 'Test PDF Co'},
+    )
+    return company
+
+
+def make_user(company=None):
+    company = company or make_company()
     return User.objects.create_user(
         username='test_pdf_user',
         password='testpass',
-        role='responsable',
+        role_legacy='responsable',
+        company=company,
     )
 
 
@@ -58,6 +68,7 @@ def make_devis(user, client, produit):
         taux_tva=Decimal('20.00'),
         remise_globale=Decimal('0'),
         created_by=user,
+        company=user.company,
     )
     LigneDevis.objects.create(
         devis=devis,
@@ -78,6 +89,7 @@ def make_facture(user, client, produit):
         taux_tva=Decimal('20.00'),
         remise_globale=Decimal('0'),
         created_by=user,
+        company=user.company,
     )
     LigneFacture.objects.create(
         facture=facture,
@@ -233,7 +245,7 @@ class TestGeneratePdfMocked(TestCase):
         fake_img = b'\x89PNG\r\n\x1a\n' + b'\x00' * 50
         mock_dl.return_value = fake_img
 
-        profile = CompanyProfile.get()
+        profile = CompanyProfile.get(self.user.company)
         profile.logo_key = 'logos/logo.png'
         profile.signature_key = 'signatures/sig.png'
         profile.save()
@@ -259,7 +271,7 @@ class TestGeneratePdfMocked(TestCase):
         """Company branding from CompanyProfile appears in rendered HTML."""
         from apps.ventes.utils.pdf import generate_devis_pdf
 
-        profile = CompanyProfile.get()
+        profile = CompanyProfile.get(self.user.company)
         profile.nom = 'Super Société SARL'
         profile.adresse = '99 avenue des Tests'
         profile.siret = '98765432100019'

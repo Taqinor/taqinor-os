@@ -14,8 +14,14 @@ repo yet, the rule still applies to any future integration.
    canonical stage names from `STAGES.py` at the repo root in backend, frontend
    build constants, scripts, and tests. Do not introduce new hardcoded stage
    lists anywhere. CI runs `scripts/check_stages.py` on every push and fails on
-   divergence. NOTE: `STAGES.py` does not exist yet — the canonical 6 stage
-   names are an open question for the founder. Do NOT invent stage names; ask.
+   divergence. `STAGES.py` now exists; the canonical 6 keys are NEW, CONTACTED,
+   QUOTE_SENT, FOLLOW_UP, SIGNED, COLD (French UI labels live in the same file).
+   Do NOT invent or rename stages; ask the founder.
+   FUTURE INTENT: the pipeline stage is NOT wired to any table yet. It will live
+   on a new CRM `Lead`/`Opportunity` model, to be built in a future session
+   together with the new quote engine. Build nothing for it now. This funnel
+   stage is a separate, permanent layer from the quote/invoice *document*
+   statuses (rule #4) — the two never merge.
 
 3. **Meta Ads CLI — campaigns are born paused.** Any campaign creation through
    the Meta Ads CLI must always carry `--status PAUSED`. Never create an active
@@ -26,6 +32,12 @@ repo yet, the rule still applies to any future integration.
    KNOWN CONFLICT: the `ventes` app currently generates devis PDFs via its
    `generer-pdf` endpoint; the founder is replacing the quote engine — until
    that swap lands, do not extend the ventes PDF path, only maintain it.
+   STATUS PRESERVATION REQUIREMENT: the new quote engine must preserve or
+   explicitly map the existing document statuses — Devis (`brouillon`, `envoye`,
+   `accepte`, `refuse`, `expire`), and the downstream BonCommande/Facture
+   chains. These document statuses are a separate, permanent layer from the
+   `STAGES.py` funnel (rule #2) and must survive the swap. The mapping is
+   tracked in `docs/quote-engine-swap-map.md` — update it before the swap.
 
 5. **Scraper policy.** Scrapers must never run from personal accounts. Any
    scraping with Terms-of-Service risk requires BOTH: (a) a risk file committed
