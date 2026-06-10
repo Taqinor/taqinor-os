@@ -234,6 +234,21 @@ async def process_document(
     )
 
 
+def _require_company_id(token_payload: dict) -> int:
+    """Extract company_id from the JWT or refuse the request.
+
+    Tenant scoping is the security boundary — a token without a company_id
+    must never read or write OCR documents.
+    """
+    company_id = token_payload.get("company_id")
+    if not company_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Aucune entreprise associée à votre compte.",
+        )
+    return int(company_id)
+
+
 @router.post("/save_document", response_model=SaveDocumentResponse)
 def save_document(
     body: SaveDocumentRequest,
@@ -251,10 +266,12 @@ def save_document(
             detail="Seuls les responsables et administrateurs peuvent enregistrer des documents OCR.",
         )
 
+    company_id = _require_company_id(token_payload)
     user_id = int(token_payload.get("user_id", 0))
     username = token_payload.get("username", "")
 
     doc = OcrDocument(
+        company_id=company_id,
         user_id=user_id,
         username=username,
         filename=body.filename,
@@ -279,13 +296,15 @@ def list_documents(
 ):
     """
     Liste les documents OCR sauvegardés.
-    - admin/responsable : voit tous les documents
+    Toujours filtré par entreprise.
+    - admin/responsable : voit tous les documents de leur entreprise
     - autre rôle        : voit uniquement ses propres documents
     """
     role = token_payload.get("role", "")
     user_id = int(token_payload.get("user_id", 0))
+    company_id = _require_company_id(token_payload)
 
-    query = db.query(OcrDocument)
+    query = db.query(OcrDocument).filter(OcrDocument.company_id == company_id)
     if role not in ("responsable", "admin"):
         query = query.filter(OcrDocument.user_id == user_id)
 
@@ -316,12 +335,17 @@ def delete_document(
     token_payload: dict = Depends(verify_token),
     db: Session = Depends(get_db),
 ):
-    """Supprime un document OCR — réservé admin/responsable."""
+    """Supprime un document OCR — réservé admin/responsable, scope entreprise."""
     role = token_payload.get("role", "")
     if role not in ("responsable", "admin"):
         raise HTTPException(status_code=403, detail="Accès refusé.")
 
-    doc = db.query(OcrDocument).filter(OcrDocument.id == doc_id).first()
+    company_id = _require_company_id(token_payload)
+    doc = (
+        db.query(OcrDocument)
+        .filter(OcrDocument.id == doc_id, OcrDocument.company_id == company_id)
+        .first()
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable.")
 

@@ -7,6 +7,10 @@ class OcrDocument(Base):
     __tablename__ = "ia_ocr_document"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # Tenant scoping — every OCR document MUST be linked to a company.
+    # nullable=True only to allow the ALTER TABLE on existing rows; new rows
+    # are always written with a real company_id by the endpoints.
+    company_id = Column(BigInteger, nullable=True, index=True)
     user_id = Column(BigInteger, nullable=False, index=True)
     username = Column(String(150), nullable=False)
     filename = Column(String(255), nullable=False)

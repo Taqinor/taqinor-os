@@ -97,6 +97,13 @@ class MouvementStock(models.Model):
         TRANSFERT = 'transfert', 'Transfert'
         AJUSTEMENT = 'ajustement', 'Ajustement'
 
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='mouvements_stock',
+    )
     produit = models.ForeignKey(
         Produit,
         on_delete=models.PROTECT,

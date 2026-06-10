@@ -250,6 +250,7 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
                     MouvementStock.objects.create(
+                        company=bc.company,
                         produit=produit,
                         type_mouvement=MouvementStock.TypeMouvement.SORTIE,
                         quantite=qte,

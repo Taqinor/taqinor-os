@@ -138,6 +138,7 @@ class Command(BaseCommand):
             )
             produits[sku] = p
             MouvementStock.objects.create(
+                company=company,
                 produit=p,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=stock, quantite_avant=0, quantite_apres=stock,

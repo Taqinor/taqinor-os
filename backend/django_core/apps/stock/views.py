@@ -168,13 +168,20 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         user = self.request.user
         if user.company_id:
-            return qs.filter(produit__company=user.company)
+            # Direct company filter + produit__company belt-and-braces guard
+            # against cross-tenant produit references slipping in.
+            return qs.filter(company=user.company, produit__company=user.company)
         if user.is_superuser:
             return qs
         return qs.none()
 
     def perform_create(self, serializer):
         produit = serializer.validated_data['produit']
+        user = self.request.user
+        # Reject cross-tenant produit references before touching stock.
+        if user.company_id and produit.company_id != user.company_id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Produit hors de votre entreprise.")
         produit.refresh_from_db()
         qte = serializer.validated_data['quantite']
         type_mv = serializer.validated_data['type_mouvement']
@@ -186,7 +193,8 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         else:
             qte_apres = qte
         serializer.save(
-            created_by=self.request.user,
+            created_by=user,
+            company=produit.company,
             quantite_avant=qte_avant,
             quantite_apres=qte_apres,
         )

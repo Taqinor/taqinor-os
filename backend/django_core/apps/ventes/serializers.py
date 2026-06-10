@@ -29,7 +29,8 @@ class DevisWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Devis
         exclude = ['reference', 'fichier_pdf']
-        read_only_fields = ['created_by', 'date_creation']
+        # company is force-assigned in perform_create — never accept it from the body.
+        read_only_fields = ['created_by', 'date_creation', 'company']
 
 
 class BonCommandeSerializer(serializers.ModelSerializer):
@@ -40,7 +41,8 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     class Meta:
         model = BonCommande
         fields = '__all__'
-        read_only_fields = ['reference', 'date_creation']
+        # company is force-assigned in perform_create — never accept it from the body.
+        read_only_fields = ['reference', 'date_creation', 'company']
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()
@@ -81,4 +83,5 @@ class FactureWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Facture
         exclude = ['reference', 'fichier_pdf']
-        read_only_fields = ['created_by', 'date_emission']
+        # company is force-assigned in perform_create — never accept it from the body.
+        read_only_fields = ['created_by', 'date_emission', 'company']

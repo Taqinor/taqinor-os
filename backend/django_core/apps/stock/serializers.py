@@ -23,8 +23,9 @@ class MouvementStockSerializer(serializers.ModelSerializer):
     class Meta:
         model = MouvementStock
         fields = '__all__'
+        # company is force-assigned in perform_create — never accept it from the body.
         read_only_fields = [
-            'quantite_avant', 'quantite_apres', 'created_by', 'date'
+            'quantite_avant', 'quantite_apres', 'created_by', 'date', 'company',
         ]
 
 
