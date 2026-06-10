@@ -1,0 +1,309 @@
+import { useEffect, useState, useMemo } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import {
+  fetchFactures,
+  emettreFacture,
+  marquerPayeeFacture,
+  annulerFacture,
+  genererPdfFacture,
+} from '../../features/ventes/store/ventesSlice'
+import ventesApi from '../../api/ventesApi'
+import FactureForm from './FactureForm'
+
+const STATUT_META = {
+  brouillon: { label: 'Brouillon', bg: '#f1f5f9', color: '#64748b' },
+  emise:     { label: 'Émise',     bg: '#dbeafe', color: '#1d4ed8' },
+  payee:     { label: 'Payée',     bg: '#dcfce7', color: '#15803d' },
+  en_retard: { label: 'En retard', bg: '#fee2e2', color: '#b91c1c' },
+  annulee:   { label: 'Annulée',   bg: '#f1f5f9', color: '#94a3b8' },
+}
+
+const TABS = [
+  { key: 'toutes',    label: 'Toutes' },
+  { key: 'brouillon', label: 'Brouillon' },
+  { key: 'emise',     label: 'Émises' },
+  { key: 'overdue',   label: 'En retard' },
+  { key: 'payee',     label: 'Payées' },
+  { key: 'annulee',   label: 'Annulées' },
+]
+
+const today = new Date().toISOString().slice(0, 10)
+const isOverdue = f =>
+  f.is_overdue ||
+  (f.statut === 'emise' && f.date_echeance && f.date_echeance < today)
+
+function openPdfBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.target = '_blank'
+  a.rel = 'noopener'
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+export default function FactureList() {
+  const dispatch = useDispatch()
+  const { factures, loading, error } = useSelector(s => s.ventes)
+
+  const [showForm, setShowForm]       = useState(false)
+  const [editFacture, setEditFacture] = useState(null)
+  const [activeTab, setActiveTab]     = useState('toutes')
+  const [search, setSearch]           = useState('')
+  const [actionId, setActionId]       = useState(null)
+  const [pdfGenerating, setPdfGenerating] = useState({})
+  const [pdfDownloading, setPdfDownloading] = useState({})
+
+  useEffect(() => { dispatch(fetchFactures()) }, [dispatch])
+
+  const filtered = useMemo(() => {
+    let list = factures
+    if (activeTab === 'overdue') {
+      list = list.filter(isOverdue)
+    } else if (activeTab !== 'toutes') {
+      list = list.filter(f => f.statut === activeTab)
+    }
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(f =>
+        f.reference?.toLowerCase().includes(q) ||
+        (f.client_nom ?? '').toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [factures, activeTab, search])
+
+  const counts = useMemo(() => ({
+    toutes:    factures.length,
+    brouillon: factures.filter(f => f.statut === 'brouillon').length,
+    emise:     factures.filter(f => f.statut === 'emise' && !isOverdue(f)).length,
+    overdue:   factures.filter(isOverdue).length,
+    payee:     factures.filter(f => f.statut === 'payee').length,
+    annulee:   factures.filter(f => f.statut === 'annulee').length,
+  }), [factures])
+
+  const openNew   = () => { setEditFacture(null); setShowForm(true) }
+  const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
+  const closeForm = () => { setShowForm(false);   setEditFacture(null) }
+  const onSaved   = () => dispatch(fetchFactures())
+
+  const doAction = async (thunk, id, confirmMsg) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return
+    setActionId(id)
+    try {
+      await dispatch(thunk(id)).unwrap()
+    } catch (err) {
+      alert(err?.detail ?? JSON.stringify(err))
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const handleGenererPdf = async (f) => {
+    setPdfGenerating(prev => ({ ...prev, [f.id]: true }))
+    try {
+      await dispatch(genererPdfFacture(f.id)).unwrap()
+      let attempts = 0
+      const poll = async () => {
+        if (attempts++ > 15) {
+          alert('La génération PDF prend plus de temps que prévu. Réessayez dans quelques instants.')
+          return
+        }
+        try {
+          const res = await ventesApi.getFacture(f.id)
+          if (res.data.fichier_pdf) {
+            dispatch(fetchFactures())
+          } else {
+            setTimeout(poll, 2000)
+          }
+        } catch {
+          // ignore poll errors
+        }
+      }
+      setTimeout(poll, 2000)
+    } catch (err) {
+      alert(err?.detail ?? 'Erreur lors de la génération PDF.')
+    } finally {
+      setPdfGenerating(prev => ({ ...prev, [f.id]: false }))
+    }
+  }
+
+  const handleTelechargerPdf = async (f) => {
+    setPdfDownloading(prev => ({ ...prev, [f.id]: true }))
+    try {
+      const res = await ventesApi.telechargerPdfFacture(f.id)
+      openPdfBlob(res.data, `${f.reference}.pdf`)
+    } catch {
+      alert('Fichier introuvable. Régénérez le PDF.')
+    } finally {
+      setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
+    }
+  }
+
+  if (loading) return <p className="page-loading">Chargement des factures...</p>
+  if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <h2>
+          Factures
+          {factures.length > 0 && (
+            <span className="count-badge">{factures.length}</span>
+          )}
+        </h2>
+        <div className="page-header-actions">
+          <input
+            className="search-input"
+            type="search"
+            placeholder="Référence, client…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={openNew}>
+            + Nouvelle facture
+          </button>
+        </div>
+      </div>
+
+      {showForm && (
+        <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
+      )}
+
+      {/* ── Tabs ── */}
+      <div className="status-tabs">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            className={`status-tab${activeTab === t.key ? ' active' : ''}${t.key === 'overdue' && counts.overdue > 0 ? ' overdue' : ''}`}
+            onClick={() => setActiveTab(t.key)}
+          >
+            {t.label}
+            {counts[t.key] > 0 && (
+              <span className="tab-count">{counts[t.key]}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Référence</th>
+            <th>Client</th>
+            <th>Émission</th>
+            <th>Échéance</th>
+            <th className="ta-right">Total TTC</th>
+            <th>Statut</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map(f => {
+            const overdue = isOverdue(f)
+            const meta = overdue && f.statut === 'emise'
+              ? STATUT_META.en_retard
+              : (STATUT_META[f.statut] ?? STATUT_META.brouillon)
+            const busy = actionId === f.id
+            const isGenerating = pdfGenerating[f.id]
+            const isDownloading = pdfDownloading[f.id]
+
+            return (
+              <tr key={f.id} className={overdue ? 'row-overdue' : ''}>
+                <td><strong>{f.reference}</strong></td>
+                <td>{f.client_nom ?? '—'}</td>
+                <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+                <td>
+                  <span className={overdue ? 'text-danger' : ''}>
+                    {f.date_echeance
+                      ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
+                      : '—'}
+                  </span>
+                </td>
+                <td className="ta-right">
+                  {f.total_ttc != null
+                    ? `${parseFloat(f.total_ttc).toFixed(2)} DH`
+                    : '—'}
+                </td>
+                <td>
+                  <span className="badge" style={{ background: meta.bg, color: meta.color }}>
+                    {meta.label}
+                  </span>
+                </td>
+                <td>
+                  <div className="actions-cell">
+                    {f.statut === 'brouillon' && (
+                      <button className="btn btn-sm btn-outline" onClick={() => openEdit(f)}>
+                        Éditer
+                      </button>
+                    )}
+                    {f.statut === 'brouillon' && (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        disabled={busy}
+                        onClick={() => doAction(emettreFacture, f.id)}
+                      >
+                        {busy ? '...' : 'Émettre'}
+                      </button>
+                    )}
+                    {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
+                      <button
+                        className="btn btn-sm btn-success"
+                        disabled={busy}
+                        onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}
+                      >
+                        {busy ? '...' : '✓ Payée'}
+                      </button>
+                    )}
+                    {f.statut !== 'payee' && f.statut !== 'annulee' && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        disabled={busy}
+                        onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}
+                      >
+                        Annuler
+                      </button>
+                    )}
+
+                    {f.fichier_pdf ? (
+                      <button
+                        className="btn btn-sm btn-success"
+                        onClick={() => handleTelechargerPdf(f)}
+                        disabled={isDownloading}
+                        title="Télécharger le PDF"
+                      >
+                        {isDownloading ? '...' : '↓ PDF'}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => handleGenererPdf(f)}
+                        disabled={isGenerating}
+                        title="Générer le PDF"
+                      >
+                        {isGenerating ? 'PDF...' : 'PDF'}
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {filtered.length === 0 && !loading && (
+        <p className="empty-state">
+          {search
+            ? `Aucun résultat pour « ${search} »`
+            : activeTab !== 'toutes'
+              ? 'Aucune facture dans cet onglet.'
+              : 'Aucune facture. Créez votre première facture.'}
+        </p>
+      )}
+    </div>
+  )
+}

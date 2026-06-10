@@ -1,0 +1,118 @@
+from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .models import CustomUser, Company
+
+
+class CompanySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Company
+        fields = ('id', 'nom', 'slug', 'actif', 'date_creation')
+        read_only_fields = ('id', 'slug', 'date_creation')
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['username'] = user.username
+        # Backward compat: legacy role string ('admin'/'responsable'/'normal')
+        token['role'] = user.role_legacy
+        token['role_nom'] = user.role.nom if user.role else None
+        token['permissions'] = (
+            list(user.role.permissions) if user.role else []
+        )
+        token['is_superuser'] = user.is_superuser
+        token['company_id'] = user.company_id
+        token['company_nom'] = (
+            user.company.nom if user.company else None
+        )
+        return token
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+    role = serializers.PrimaryKeyRelatedField(
+        required=False,
+        allow_null=True,
+        default=None,
+        read_only=True,
+    )
+
+    class Meta:
+        model = CustomUser
+        fields = (
+            'username', 'password', 'email',
+            'first_name', 'last_name', 'role',
+        )
+
+    def create(self, validated_data):
+        from apps.roles.models import Role
+        company = self.context.get('company')
+        role = self.context.get('role')
+
+        # Default to the company's "Utilisateur" system role
+        if role is None and company:
+            role = Role.objects.filter(
+                company=company, nom='Utilisateur'
+            ).first()
+
+        validated_data.pop('role', None)
+        user = CustomUser.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email', ''),
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            role_legacy=CustomUser.ROLE_NORMAL,
+            role=role,
+            company=company,
+        )
+        return user
+
+
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=False)
+    company_nom = serializers.CharField(
+        source='company.nom', read_only=True
+    )
+    role_nom = serializers.CharField(
+        source='role.nom', read_only=True
+    )
+    permissions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomUser
+        fields = (
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'role', 'role_nom', 'role_legacy', 'permissions',
+            'is_active', 'is_superuser',
+            'password', 'date_joined', 'last_login',
+            'company_id', 'company_nom',
+        )
+        read_only_fields = (
+            'id', 'date_joined', 'last_login',
+            'company_id', 'company_nom',
+            'role_nom', 'role_legacy', 'permissions',
+            'is_superuser',
+        )
+
+    def get_permissions(self, obj):
+        if obj.role:
+            return obj.role.permissions or []
+        return []
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = CustomUser(**validated_data)
+        user.set_password(password)
+        user.save()
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if password:
+            instance.set_password(password)
+        instance.save()
+        return instance

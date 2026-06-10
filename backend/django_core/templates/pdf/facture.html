@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .doc-title { font-size: 28px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 13px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    .parties { display: flex; justify-content: space-between; margin-bottom: 28px; gap: 16px; }
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 14px 16px; width: 48%; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+
+    .meta-row { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+    .meta-item { background: #f0fdf4; border-radius: 4px; padding: 8px 14px; min-width: 100px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+    .statut-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold;
+      background: {% if facture.statut == 'payee' %}#d1fae5{% elif facture.statut == 'en_retard' %}#fee2e2{% else %}#e0f2fe{% endif %};
+      color: {% if facture.statut == 'payee' %}#065f46{% elif facture.statut == 'en_retard' %}#991b1b{% else %}#0369a1{% endif %};
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .text-right { text-align: right; }
+
+    .totaux { margin-left: auto; width: 300px; margin-bottom: 30px; }
+    .totaux-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .totaux-row.remise { color: #dc2626; }
+    .totaux-row.total-ttc { font-size: 16px; font-weight: bold; color: {{ couleur_principale }}; border-top: 2px solid {{ couleur_principale }}; border-bottom: none; padding-top: 10px; margin-top: 4px; }
+
+    .note-block { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 12px 14px; margin-bottom: 24px; font-size: 11px; line-height: 1.5; }
+
+    .rib-block { margin-top: 20px; background: #f0fdf4; border-radius: 6px; padding: 14px 16px; font-size: 11px; line-height: 1.7; border-left: 3px solid {{ couleur_principale }}; }
+    .rib-block strong { display: block; margin-bottom: 4px; color: #1e293b; font-size: 12px; }
+
+    .signature-section { display: flex; justify-content: flex-end; margin-top: 40px; margin-bottom: 20px; }
+    .signature-block { text-align: center; width: 220px; }
+    .signature-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 8px; letter-spacing: 1px; }
+    .signature-img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .signature-line { border-top: 1px solid #cbd5e1; margin-top: 8px; padding-top: 6px; font-size: 10px; color: #555; }
+
+    .footer {
+      margin-top: 40px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 14px;
+      font-size: 10px;
+      color: #94a3b8;
+      text-align: center;
+      line-height: 1.8;
+    }
+    .footer .footer-legal { font-size: 9.5px; color: #b0bec5; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- En-tête -->
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}
+      <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
+      {% endif %}
+      <div class="doc-title">FACTURE</div>
+      <div class="doc-ref">{{ facture.reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
+      {% if entreprise_tva_intra %}TVA : {{ entreprise_tva_intra }}{% endif %}
+    </div>
+  </div>
+
+  <!-- Émetteur / Client -->
+  <div class="parties">
+    <div class="partie-block">
+      <div class="partie-label">Émetteur</div>
+      <div class="partie-nom">{{ entreprise_nom }}</div>
+      <div class="partie-detail">
+        {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+        {% if entreprise_siret %}SIRET : {{ entreprise_siret }}{% endif %}
+      </div>
+    </div>
+    <div class="partie-block">
+      <div class="partie-label">Facturé à</div>
+      <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
+      <div class="partie-detail">
+        {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
+        {% if facture.client.telephone %}{{ facture.client.telephone }}<br />{% endif %}
+        {% if facture.client.adresse %}{{ facture.client.adresse }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Méta -->
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Date d'émission</strong>
+      <span>{{ facture.date_emission.strftime('%d/%m/%Y') }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Échéance</strong>
+      <span>{{ facture.date_echeance.strftime('%d/%m/%Y') if facture.date_echeance else 'N/A' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>TVA</strong>
+      <span>{{ facture.taux_tva }}%</span>
+    </div>
+    <div class="meta-item">
+      <strong>Statut</strong>
+      <span class="statut-badge">{{ facture.get_statut_display() }}</span>
+    </div>
+  </div>
+
+  <!-- Lignes -->
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Désignation</th>
+        <th class="text-right">Qté</th>
+        <th class="text-right">P.U HT</th>
+        <th class="text-right">Remise</th>
+        <th class="text-right">Total HT</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ligne in facture.lignes.all() %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ ligne.designation }}</td>
+        <td class="text-right">{{ ligne.quantite }}</td>
+        <td class="text-right">{{ "%.2f"|format(ligne.prix_unitaire) }} MAD</td>
+        <td class="text-right">{% if ligne.remise > 0 %}{{ ligne.remise }}%{% else %}—{% endif %}</td>
+        <td class="text-right"><strong>{{ "%.2f"|format(ligne.total_ht) }} MAD</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Note -->
+  {% if facture.note %}
+  <div class="note-block"><strong>Note :</strong> {{ facture.note }}</div>
+  {% endif %}
+
+  <!-- Totaux -->
+  <div class="totaux">
+    <div class="totaux-row">
+      <span>Sous-total HT</span>
+      <span>{{ "%.2f"|format(facture.total_ht) }} MAD</span>
+    </div>
+    {% if facture.remise_globale > 0 %}
+    <div class="totaux-row remise">
+      <span>Remise globale ({{ facture.remise_globale }}%)</span>
+      <span>−{{ "%.2f"|format(facture.total_ht * facture.remise_globale / 100) }} MAD</span>
+    </div>
+    {% endif %}
+    <div class="totaux-row">
+      <span>TVA ({{ facture.taux_tva }}%)</span>
+      <span>{{ "%.2f"|format(facture.total_tva) }} MAD</span>
+    </div>
+    <div class="totaux-row total-ttc">
+      <span>Total TTC</span>
+      <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
+    </div>
+  </div>
+
+  <!-- Coordonnées bancaires -->
+  {% if rib %}
+  <div class="rib-block">
+    <strong>Coordonnées bancaires</strong>
+    RIB : {{ rib }}{% if banque %} — {{ banque }}{% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Signature -->
+  {% if signature_uri %}
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">Signature & Cachet</div>
+      <img class="signature-img" src="{{ signature_uri }}" alt="Signature" />
+      <div class="signature-line">{{ entreprise_nom }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Pied de page -->
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
+    {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
+    <div class="footer-legal">
+      {% if entreprise_siret %}SIRET : {{ entreprise_siret }}{% endif %}
+      {% if entreprise_tva_intra %} | TVA : {{ entreprise_tva_intra }}{% endif %}
+      {% if rib %} | RIB : {{ rib }}{% if banque %} ({{ banque }}){% endif %}{% endif %}
+      <br />Facture générée automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

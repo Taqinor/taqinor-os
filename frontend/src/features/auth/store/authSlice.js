@@ -1,0 +1,84 @@
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
+import api from '../../../api/axios'
+
+// Recupere les infos utilisateur depuis l'API (cookie envoye automatiquement)
+export const fetchMe = createAsyncThunk(
+  'auth/fetchMe',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/auth/me/')
+      return data
+    } catch (err) {
+      return rejectWithValue(err.response?.data)
+    }
+  }
+)
+
+export const logoutUser = createAsyncThunk(
+  'auth/logoutUser',
+  async (_, { dispatch }) => {
+    try {
+      // Le cookie refresh_token est envoye automatiquement
+      await api.post('/auth/logout/', {})
+    } catch {
+      // Continuer meme si le serveur echoue
+    }
+    dispatch(authSlice.actions.logout())
+  }
+)
+
+const authSlice = createSlice({
+  name: 'auth',
+  initialState: {
+    user: null,
+    role: null,
+    role_nom: null,
+    permissions: [],
+    isAuthenticated: false,
+    loading: true, // true au demarrage : on verifie la session
+  },
+  reducers: {
+    setCredentials: (state, action) => {
+      state.user = action.payload.user
+      state.role = action.payload.role || 'normal'
+      state.role_nom = action.payload.role_nom || null
+      state.permissions = action.payload.permissions || []
+      state.isAuthenticated = true
+      state.loading = false
+    },
+    logout: (state) => {
+      state.user = null
+      state.role = null
+      state.role_nom = null
+      state.permissions = []
+      state.isAuthenticated = false
+      state.loading = false
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchMe.pending, (state) => {
+        state.loading = true
+      })
+      .addCase(fetchMe.fulfilled, (state, action) => {
+        state.user = { username: action.payload.username }
+        state.role = action.payload.role_legacy || action.payload.role || 'normal'
+        state.role_nom = action.payload.role_nom || null
+        state.permissions = action.payload.permissions || []
+        state.isAuthenticated = true
+        state.loading = false
+      })
+      .addCase(fetchMe.rejected, (state) => {
+        // Pas de session valide
+        state.isAuthenticated = false
+        state.loading = false
+      })
+  },
+})
+
+export const { setCredentials, logout } = authSlice.actions
+
+export const hasPermission = (code) => (state) =>
+  state.auth.permissions.includes(code)
+
+export default authSlice.reducer
