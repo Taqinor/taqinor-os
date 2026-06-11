@@ -66,3 +66,10 @@ repo yet, the rule still applies to any future integration.
 - Key-gated features (work only with API keys in `.env`): OCR (`ZHIPU_API_KEY`),
   chatbot/SQL agent (`GROQ_API_KEY` or alternative), outbound email/contact
   form delivery (`SENDGRID_API_KEY`; defaults to console backend locally).
+- **Public contact form is PARKED (off by default).** The landing-page contact
+  form is disabled: the `apps/contact` endpoint (`/api/django/contact/`) returns
+  404 and sends no email when off, and the landing CTAs route to `/login`
+  instead of opening the form. The code is intact behind two flags. To re-enable
+  in one step: set `CONTACT_FORM_ENABLED=1` and `VITE_CONTACT_FORM_ENABLED=1` in
+  `.env`, then `docker compose up -d --build` (the frontend flag is a build-time
+  arg, so a rebuild is required). To park again: set both back to `0` and rebuild.

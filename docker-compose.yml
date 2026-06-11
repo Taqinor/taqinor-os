@@ -69,6 +69,8 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL}
         VITE_IA_API_URL: ${VITE_IA_API_URL}
+        # Public contact form parked by default (0). Set to 1 + rebuild to show it.
+        VITE_CONTACT_FORM_ENABLED: ${VITE_CONTACT_FORM_ENABLED:-0}
     expose:
       - "80"
     depends_on:

@@ -4,6 +4,11 @@ import { useInView, useCounter } from '../hooks/useInView'
 import './landing.css'
 import axios from 'axios'
 
+// Public contact form is PARKED by default. Set VITE_CONTACT_FORM_ENABLED=1 at
+// build time (see CLAUDE.md) to show it again. While off, the CTA buttons send
+// visitors to the app login instead of opening the (disabled) contact modal.
+const CONTACT_FORM_ENABLED = import.meta.env.VITE_CONTACT_FORM_ENABLED === '1'
+
 // ── Modal formulaire de contact ───────────────────────────────────────────────
 function ContactModal({ onClose }) {
   const [form, setForm]     = useState({ nom: '', numero: '', societe: '', email: '', message: '' })
@@ -397,6 +402,13 @@ function StatItem({ stat, active, delay }) {
 export default function Landing() {
   const [modalOpen, setModalOpen] = useState(false)
 
+  // CTA: open the contact modal when the form is enabled; otherwise (parked)
+  // send the visitor to the app login so the button still does something useful.
+  const handleCta = () => {
+    if (CONTACT_FORM_ENABLED) setModalOpen(true)
+    else window.location.assign('/login')
+  }
+
   // Section observers
   const [statsRef, statsVisible]         = useInView(0.3)
   const featuresGrid                     = useStagger(0.08)
@@ -458,7 +470,7 @@ export default function Landing() {
           </nav>
           <div className="lp-nav-actions">
             <Link to="/login" className="lp-btn-ghost">Se connecter</Link>
-            <button onClick={() => setModalOpen(true)} className="lp-btn-primary" style={{ cursor: 'pointer' }}>Démarrer gratuitement</button>
+            <button onClick={handleCta} className="lp-btn-primary" style={{ cursor: 'pointer' }}>Démarrer gratuitement</button>
           </div>
         </div>
       </header>
@@ -481,7 +493,7 @@ export default function Landing() {
               des décisions rapides et efficaces, en temps réel.
             </p>
             <div className="lp-hero-actions">
-              <button onClick={() => setModalOpen(true)} className="lp-btn-primary lp-btn-lg" style={{ cursor: 'pointer' }}>
+              <button onClick={handleCta} className="lp-btn-primary lp-btn-lg" style={{ cursor: 'pointer' }}>
                 Démarrer gratuitement &nbsp;&rarr;
               </button>
               <Link to="/login" className="lp-btn-secondary lp-btn-lg">
@@ -636,7 +648,7 @@ export default function Landing() {
             avec TAQINOR et l'intelligence artificielle.
           </p>
           <div className="lp-cta-actions lp-anim lp-d2">
-            <button onClick={() => setModalOpen(true)} className="lp-btn-white" style={{ cursor: 'pointer' }}>
+            <button onClick={handleCta} className="lp-btn-white" style={{ cursor: 'pointer' }}>
               Démarrer gratuitement &nbsp;&rarr;
             </button>
             <Link to="/login" className="lp-btn-outline-white lp-btn-lg">
@@ -694,7 +706,7 @@ export default function Landing() {
 
     </div>
 
-    {modalOpen && <ContactModal onClose={() => setModalOpen(false)} />}
+    {CONTACT_FORM_ENABLED && modalOpen && <ContactModal onClose={() => setModalOpen(false)} />}
     </>
   )
 }
