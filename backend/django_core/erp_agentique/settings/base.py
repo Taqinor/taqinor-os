@@ -223,6 +223,11 @@ ENTREPRISE_EMAIL = os.environ.get('ENTREPRISE_EMAIL', '')
 ENTREPRISE_TELEPHONE = os.environ.get('ENTREPRISE_TELEPHONE', '')
 ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 
+# Quote PDF engine. When True (default), client quote PDFs are rendered by the
+# vendored premium engine (apps.ventes.quote_engine). Set to '0' to fall back to
+# the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
+USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
+
 # Security headers (safe in all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'

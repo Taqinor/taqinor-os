@@ -1,10 +1,32 @@
 # Quote-engine swap map
 
 Tracking document for replacing the current in-repo quote engine (the `ventes`
-app's devis generation, including its `generer-pdf` endpoint) with the founder's
-external quote engine. Per `CLAUDE.md` rule #4, `/proposal` will become the only
-path for client-facing quote PDFs once the swap lands. **Until then, do not
-extend the `ventes` PDF path — only maintain it.**
+app's devis generation) with the founder's external quote engine.
+
+## STATUS: swap landed (2026-06-11) — premium engine is live for QUOTES
+
+The founder's quote engine (`RedaSolar/devis-simulator`) has been vendored into
+the OS at `apps/ventes/quote_engine/` and is now the default quote-PDF path:
+
+- **`/proposal`** is implemented as the canonical client-facing quote PDF path:
+  `GET /api/django/ventes/devis/<id>/proposal/` renders the 3-page premium PDF
+  (page 1 layout + pages 2–3 ROI/savings charts), stores it in MinIO, streams it.
+- The existing **`generer-pdf`** action + Celery task now route through the
+  premium engine when `USE_PREMIUM_QUOTE_ENGINE` is on (default). Set that env
+  var to `0` to fall back to the legacy `ventes` WeasyPrint quote PDF, which is
+  **kept in place** (`apps/ventes/utils/pdf.py::generate_devis_pdf`) as a safety net.
+- **Invoices (factures) are untouched** — the legacy invoice PDF still renders
+  via `generate_facture_pdf`. Only the QUOTE pdf changed.
+- ROI numbers (production, savings, payback) are computed **on the fly** from the
+  vendored `pricing.calculate_savings_roi`; **no new DB fields / no migration**.
+  The PDF is stored in the existing `Devis.fichier_pdf` slot.
+- A single OS quote is mapped to the engine's two-option layout by **splitting on
+  battery**: non-battery lines = Option 1 (Sans), all lines = Option 2 (Avec); if
+  the quote has no battery, a default battery is added from the vendored catalog.
+- NOT lifted (per founder): the simulator's auth, frontend, JSON-file storage,
+  cPanel deploy files. No hardcoded passwords or JWT secret were copied.
+
+Document statuses, pipeline stages, invoices and orders are all preserved.
 
 ## Two layers — permanently separate
 
@@ -20,21 +42,21 @@ These never merge. A funnel stage describes a relationship; a document status
 describes one piece of paper. The conversion event (entering `SIGNED` in the
 funnel) is separate from a quote document reaching `accepte`.
 
-## Document statuses the new engine MUST preserve or map
+## Document statuses — preserved 1:1 (engine renders only)
 
-The new quote engine **must preserve or explicitly map** the existing document
-statuses. Do not drop or silently rename them — any mapping must be recorded
-here before the swap.
+The premium engine only **renders** a PDF from an existing `Devis`; it does not
+own or change the document status. All five Devis statuses are preserved exactly
+as-is — there was no rename or remap.
 
-### Devis (quote) — the document being replaced
+### Devis (quote)
 
-| Current key | Current label | New-engine mapping |
+| Current key | Current label | After swap |
 |---|---|---|
-| `brouillon` | Brouillon | _TBD by founder's engine_ |
-| `envoye` | Envoyé | _TBD_ |
-| `accepte` | Accepté | _TBD_ |
-| `refuse` | Refusé | _TBD_ |
-| `expire` | Expiré | _TBD_ |
+| `brouillon` | Brouillon | unchanged |
+| `envoye` | Envoyé | unchanged |
+| `accepte` | Accepté | unchanged (still the trigger to create a bon de commande) |
+| `refuse` | Refusé | unchanged |
+| `expire` | Expiré | unchanged |
 
 ### Downstream documents (stay in `ventes`, not replaced — listed so the swap doesn't break them)
 
@@ -49,11 +71,12 @@ for creating a bon de commande.
 
 ## Open items for the founder
 
-1. Provide the new engine's own status vocabulary so the Devis mapping table
-   above can be filled in.
-2. Confirm whether the new engine owns the devis PDF storage (currently
-   WeasyPrint + Celery + MinIO) or only authoring.
-3. Confirm the `/proposal` route contract (inputs, outputs, who calls it).
-
-_This swap is scheduled for a future session together with the new CRM
-`Lead`/`Opportunity` model. Nothing for it is built yet._
+1. The premium engine derives **system power** (kWc) by reading panel wattage
+   from line-item names (e.g. "Panneau mono 450W"). For quotes without a clear
+   panel line it estimates power from the total. If you want exact power on every
+   quote, a future `puissance_kwc` field on `Devis` would remove the guesswork
+   (that would need a migration — ask-first).
+2. The two-option (Sans/Avec batterie) split currently auto-adds a default
+   catalog battery when a quote has none. Confirm that default battery choice.
+3. Branding/footer in the premium PDF is currently the vendored TAQINOR identity
+   (logo + legal line). Confirm this matches the company profile you want shown.

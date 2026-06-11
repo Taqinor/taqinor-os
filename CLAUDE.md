@@ -29,15 +29,18 @@ repo yet, the rule still applies to any future integration.
 
 4. **`/proposal` is the only path for client-facing quote PDFs.** Do not add or
    keep alternative code paths that render or deliver quote PDFs to clients.
-   KNOWN CONFLICT: the `ventes` app currently generates devis PDFs via its
-   `generer-pdf` endpoint; the founder is replacing the quote engine — until
-   that swap lands, do not extend the ventes PDF path, only maintain it.
-   STATUS PRESERVATION REQUIREMENT: the new quote engine must preserve or
-   explicitly map the existing document statuses — Devis (`brouillon`, `envoye`,
-   `accepte`, `refuse`, `expire`), and the downstream BonCommande/Facture
-   chains. These document statuses are a separate, permanent layer from the
-   `STAGES.py` funnel (rule #2) and must survive the swap. The mapping is
-   tracked in `docs/quote-engine-swap-map.md` — update it before the swap.
+   SWAP LANDED (2026-06-11): the founder's premium engine is vendored at
+   `apps/ventes/quote_engine/` and `/proposal`
+   (`GET /api/django/ventes/devis/<id>/proposal/`) is the canonical quote-PDF
+   path. `generer-pdf` + the Celery task now route through it (toggle
+   `USE_PREMIUM_QUOTE_ENGINE`, default on); the legacy ventes WeasyPrint quote
+   PDF stays only as the off-switch fallback — do not extend it. Invoices
+   (factures) keep their own legacy PDF — only the QUOTE pdf changed.
+   STATUS PRESERVATION: the engine only RENDERS; it does not change statuses.
+   Devis (`brouillon`, `envoye`, `accepte`, `refuse`, `expire`) and the
+   downstream BonCommande/Facture chains are preserved 1:1 — a separate,
+   permanent layer from the `STAGES.py` funnel (rule #2). See
+   `docs/quote-engine-swap-map.md`.
 
 5. **Scraper policy.** Scrapers must never run from personal accounts. Any
    scraping with Terms-of-Service risk requires BOTH: (a) a risk file committed
