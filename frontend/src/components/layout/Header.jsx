@@ -5,6 +5,7 @@ const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
   '/stock': 'Gestion du Stock',
   '/crm': 'CRM — Clients',
+  '/ventes/devis/nouveau': 'Nouveau Devis Solaire',
   '/ventes/devis': 'Devis',
   '/ventes/bons-commande': 'Bons de Commande',
   '/ventes/factures': 'Factures',

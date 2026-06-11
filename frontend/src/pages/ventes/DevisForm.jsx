@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useDispatch } from 'react-redux'
 import {
   createDevis,
@@ -56,7 +56,6 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
-  const initialLineIds = useRef(devis?.lignes?.map(l => l.id) ?? [])
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})

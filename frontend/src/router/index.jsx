@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   Fichier de configuration du routeur (lazy imports + loaders), pas un module
+   de composants : le fast-refresh ne s'y applique pas. */
 import { createBrowserRouter, Navigate, redirect } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
@@ -14,6 +17,7 @@ const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadList = lazy(() => import('../pages/crm/LeadList'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
+const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -61,6 +65,7 @@ const router = createBrowserRouter([
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
+  { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
   { path: '/ventes/bons-commande', loader: authLoader, element: <WithLayout><VentesKanban /></WithLayout> },
   { path: '/ventes/factures', loader: authLoader, element: <WithLayout><FactureList /></WithLayout> },
 

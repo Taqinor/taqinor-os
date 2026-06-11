@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   fetchDevis,
@@ -31,6 +32,7 @@ function openPdfBlob(blob, filename) {
 
 export default function DevisList() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { devis, loading, error } = useSelector(s => s.ventes)
 
   const [showForm, setShowForm]       = useState(false)
@@ -41,7 +43,9 @@ export default function DevisList() {
 
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
 
-  const openNew  = () => { setEditDevis(null); setShowForm(true) }
+  // Création : nouvelle page générateur solaire. L'ancien formulaire modal
+  // (DevisForm) ne sert plus qu'à l'édition d'un devis existant.
+  const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => { setEditDevis(d);   setShowForm(true) }
   const closeForm = () => { setShowForm(false); setEditDevis(null) }
   const onSaved  = () => dispatch(fetchDevis())
