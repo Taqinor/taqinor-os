@@ -67,7 +67,7 @@ const inputClass =
     document.getElementById('rg-title').textContent = info.title;
     document.getElementById('rg-summary').textContent = info.summary;
     document.getElementById('rg-obligations').innerHTML = info.obligations
-      .map((o) => `<li class="flex gap-2.5"><span class="font-mono font-medium text-amber-500" aria-hidden="true">+</span><span>${o}</span></li>`)
+      .map((o) => `<li class="flex gap-2.5"><span class="font-mono font-medium text-amber-700" aria-hidden="true">+</span><span>${o}</span></li>`)
       .join('');
   }
 

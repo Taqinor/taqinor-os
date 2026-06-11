@@ -81,7 +81,7 @@
   /* Encre — charbon chaud, jamais de noir pur */
   --color-ink: #211d17;
   --color-ink-soft: #5d564a;
-  --color-ink-faint: #8a8273;
+  --color-ink-faint: #6f6a59;
 
   /* Nuit — sections sombres chaudes (héros, pied de page) */
   --color-night: #181410;
@@ -167,18 +167,18 @@ body {
   flex: none;
 }
 
-/* Révélation douce à l'entrée dans le viewport (sans JS, repli sage) */
+/* Révélation douce à l'entrée dans le viewport (sans JS, repli sage).
+   Transform uniquement — jamais l'opacité, pour ne pas fausser le
+   contraste mesuré (axe) ni masquer du contenu si l'animation échoue. */
 @media (prefers-reduced-motion: no-preference) {
   .reveal {
-    opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(18px);
     animation: reveal 0.7s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
     animation-timeline: view();
     animation-range: entry 0% entry 32%;
   }
   @keyframes reveal {
     to {
-      opacity: 1;
       transform: none;
     }
   }
