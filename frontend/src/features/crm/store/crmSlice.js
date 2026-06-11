@@ -37,10 +37,21 @@ export const deleteClient = createAsyncThunk('crm/deleteClient', async (id, { re
   }
 })
 
+export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { rejectWithValue }) => {
+  try {
+    const res = await crmApi.getLeads(params)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data ?? err.message)
+  }
+})
+
 const crmSlice = createSlice({
   name: 'crm',
   initialState: {
     clients: [],
+    leads: [],
+    leadsLoading: false,
     loading: false,
     error: null,
     selectedClient: null,
@@ -67,6 +78,15 @@ const crmSlice = createSlice({
       })
       .addCase(deleteClient.fulfilled, (state, action) => {
         state.clients = state.clients.filter(c => c.id !== action.payload)
+      })
+      .addCase(fetchLeads.pending, (state) => { state.leadsLoading = true; state.error = null })
+      .addCase(fetchLeads.fulfilled, (state, action) => {
+        state.leadsLoading = false
+        state.leads = action.payload.results ?? action.payload
+      })
+      .addCase(fetchLeads.rejected, (state, action) => {
+        state.leadsLoading = false
+        state.error = action.payload
       })
   },
 })

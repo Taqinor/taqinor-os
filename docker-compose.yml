@@ -19,6 +19,9 @@ services:
     command: gunicorn erp_agentique.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --worker-class sync
     volumes:
       - ./backend/django_core:/app
+      # Canonical pipeline stages — single source of truth (CLAUDE.md rule #2).
+      # Mounted outside /app so it never creates a placeholder in the source tree.
+      - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
     depends_on:
@@ -51,6 +54,7 @@ services:
     command: celery -A erp_agentique worker -l info
     volumes:
       - ./backend/django_core:/app
+      - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
     depends_on:
