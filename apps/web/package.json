@@ -26,6 +26,8 @@
     "vite": "^7"
   },
   "devDependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "heic-decode": "^2.1.0",
     "vitest": "^4.1.8"
   }
 }

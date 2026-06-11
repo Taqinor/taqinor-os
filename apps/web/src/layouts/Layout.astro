@@ -49,7 +49,9 @@ const jsonLd = {
     <link rel="canonical" href={canonical.href} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
-    <link rel="preload" href="/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/instrument-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={NAP.name} />
     <meta property="og:title" content={title} />
@@ -78,7 +80,7 @@ const jsonLd = {
       })();
     </script>
   </head>
-  <body class="bg-white font-sans text-navy-900 antialiased">
+  <body class="bg-paper font-sans text-ink antialiased">
     <Header />
     <main>
       <slot />

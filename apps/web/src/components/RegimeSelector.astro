@@ -4,30 +4,31 @@
  * La logique vit dans src/lib/regime.ts (testée unitairement).
  */
 import { REGIMES } from '../lib/regime';
+
+const inputClass =
+  'w-full border border-ink/20 bg-paper px-3 py-2.5 text-sm outline-none transition-colors focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30';
 ---
 
-<div class="rounded-2xl border border-navy-100 bg-navy-50 p-6 sm:p-8">
-  <h2 class="text-xl font-bold">Quel régime s'applique à votre installation ?</h2>
-  <p class="mt-1 text-sm text-navy-800/70">Trois questions, réponse immédiate.</p>
+<div class="border border-ink/15 bg-sand/60 p-6 sm:p-8">
+  <p class="tech-label text-ink-soft">Diagnostic immédiat</p>
+  <h2 class="display mt-2 text-2xl">Quel régime s'applique à votre installation ?</h2>
+  <p class="mt-1 text-sm text-ink-soft">Trois questions, réponse immédiate.</p>
 
-  <form id="regime-form" class="mt-6 grid gap-4 sm:grid-cols-3">
+  <form id="regime-form" class="mt-7 grid gap-4 sm:grid-cols-3">
     <div>
       <label for="rg-power" class="mb-1 block text-sm font-semibold">Puissance (kW)</label>
-      <input id="rg-power" type="number" min="0" step="0.1" value="5"
-        class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
+      <input id="rg-power" type="number" min="0" step="0.1" value="5" class={inputClass} />
     </div>
     <div>
       <label for="rg-grid" class="mb-1 block text-sm font-semibold">Raccordement</label>
-      <select id="rg-grid"
-        class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700">
+      <select id="rg-grid" class={inputClass}>
         <option value="yes" selected>Raccordée au réseau</option>
         <option value="no">Site isolé (non raccordé)</option>
       </select>
     </div>
     <div>
       <label for="rg-voltage" class="mb-1 block text-sm font-semibold">Niveau de tension</label>
-      <select id="rg-voltage"
-        class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700">
+      <select id="rg-voltage" class={inputClass}>
         <option value="BT" selected>Basse tension (BT)</option>
         <option value="MT">Moyenne tension (MT)</option>
         <option value="HT">Haute / très haute tension (HT-THT)</option>
@@ -35,12 +36,12 @@ import { REGIMES } from '../lib/regime';
     </div>
   </form>
 
-  <div id="regime-result" class="mt-6 rounded-xl border border-navy-100 bg-white p-5">
-    <p class="text-xs font-bold uppercase tracking-wide text-navy-700">Régime applicable</p>
-    <h3 id="rg-title" class="mt-1 text-lg font-bold"></h3>
-    <p id="rg-summary" class="mt-2 text-sm leading-relaxed text-navy-800/80"></p>
-    <ul id="rg-obligations" class="mt-3 space-y-1.5 text-sm"></ul>
-    <a href="/contact" class="mt-4 inline-block rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800">
+  <div id="regime-result" class="mt-7 border border-ink/15 bg-paper p-6 shadow-[6px_6px_0_0_rgb(245_193_0)]">
+    <p class="tech-label text-amber-700">Régime applicable</p>
+    <h3 id="rg-title" class="display mt-2 text-xl"></h3>
+    <p id="rg-summary" class="mt-2 text-sm leading-relaxed text-ink-soft"></p>
+    <ul id="rg-obligations" class="mt-4 space-y-2 text-sm"></ul>
+    <a href="/contact" class="mt-5 inline-block bg-ink px-5 py-2.5 text-sm font-bold text-paper transition-colors hover:bg-night-soft">
       Faire vérifier mon dossier
     </a>
   </div>
@@ -66,7 +67,7 @@ import { REGIMES } from '../lib/regime';
     document.getElementById('rg-title').textContent = info.title;
     document.getElementById('rg-summary').textContent = info.summary;
     document.getElementById('rg-obligations').innerHTML = info.obligations
-      .map((o) => `<li class="flex gap-2"><span class="text-sun-600 font-bold">✓</span><span>${o}</span></li>`)
+      .map((o) => `<li class="flex gap-2.5"><span class="font-mono font-medium text-amber-500" aria-hidden="true">+</span><span>${o}</span></li>`)
       .join('');
   }
 

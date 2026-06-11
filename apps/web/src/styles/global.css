@@ -1,40 +1,185 @@
 @import "tailwindcss";
 
-/* Sora — auto-hébergé, pas de dépendance Google Fonts */
+/*
+ * TAQINOR — « Lumière marocaine, précision d'ingénieur »
+ * Base blanc cassé chaud, encre charbon, accent ambre solaire.
+ * Typo : Bricolage Grotesque (display) · Instrument Sans (texte) ·
+ * IBM Plex Mono (micro-étiquettes techniques). Tout auto-hébergé.
+ */
+
 @font-face {
-  font-family: 'Sora';
+  font-family: 'Bricolage Grotesque';
   font-style: normal;
-  font-weight: 100 800;
+  font-weight: 200 800;
   font-display: swap;
-  src: url('/fonts/sora-latin-ext.woff2') format('woff2');
+  src: url('/fonts/bricolage-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: 'Sora';
+  font-family: 'Bricolage Grotesque';
   font-style: normal;
-  font-weight: 100 800;
+  font-weight: 200 800;
   font-display: swap;
-  src: url('/fonts/sora-latin.woff2') format('woff2');
+  src: url('/fonts/bricolage-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/instrument-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/instrument-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/plex-mono-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/plex-mono-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @theme {
-  --font-sans: 'Sora', ui-sans-serif, system-ui, sans-serif;
-  --color-navy-50: #f0f3fa;
-  --color-navy-100: #dbe2f1;
-  --color-navy-700: #1d2f5e;
-  --color-navy-800: #14224a;
-  --color-navy-900: #0d1b3e;
-  --color-navy-950: #081129;
-  --color-sun-400: #ffd633;
-  --color-sun-500: #f5c100;
-  --color-sun-600: #d4a700;
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Instrument Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Papier — blanc cassé chaud, lumière de fin d'après-midi */
+  --color-paper: #faf6ef;
+  --color-sand: #f1ebdd;
+  --color-sand-deep: #e7dfcc;
+
+  /* Encre — charbon chaud, jamais de noir pur */
+  --color-ink: #211d17;
+  --color-ink-soft: #5d564a;
+  --color-ink-faint: #8a8273;
+
+  /* Nuit — sections sombres chaudes (héros, pied de page) */
+  --color-night: #181410;
+  --color-night-soft: #2a241c;
+
+  /* Ambre solaire — l'accent unique (jaune du logo en pivot) */
+  --color-amber-300: #ffd633;
+  --color-amber-400: #f5c100;
+  --color-amber-500: #e0a800;
+  --color-amber-700: #8a6d00;
+
+  /* États fonctionnels (formulaires) */
+  --color-ok-600: #3a7d44;
+  --color-ok-50: #eef5ec;
+  --color-alert-600: #b3402a;
+  --color-alert-50: #faeeea;
 }
 
 html {
   scroll-behavior: smooth;
+}
+
+body {
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'ss01' on;
+}
+
+/* ---- Signature « fiche technique » ---------------------------------- */
+
+/* Micro-étiquette mono : TRACÉ · MESURÉ · DÉCLARÉ */
+.tech-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Grand chiffre-objet : kWc, ROI, MAD */
+.fig {
+  font-family: var(--font-display);
+  font-weight: 750;
+  font-variation-settings: 'opsz' 96;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+
+/* Titres display */
+.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variation-settings: 'opsz' 60;
+  letter-spacing: -0.015em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+/* Quadrillage papier millimétré — sections techniques */
+.grid-paper {
+  background-image:
+    linear-gradient(to right, rgb(33 29 23 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(33 29 23 / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.grid-paper-dark {
+  background-image:
+    linear-gradient(to right, rgb(250 246 239 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(250 246 239 / 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Filet technique : trait + pastille ambre, ancre les titres de section */
+.rule-amber {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.rule-amber::before {
+  content: '';
+  width: 2.25rem;
+  height: 2px;
+  background: var(--color-amber-400);
+  flex: none;
+}
+
+/* Révélation douce à l'entrée dans le viewport (sans JS, repli sage) */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: reveal 0.7s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+    animation-timeline: view();
+    animation-range: entry 0% entry 32%;
+  }
+  @keyframes reveal {
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }

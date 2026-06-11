@@ -1,0 +1,53 @@
+---
+/**
+ * Section vidéo de chantier — clic pour lire (la vidéo de 35 s n'est jamais
+ * préchargée : seule l'affiche ~250 Ko est servie au chargement de la page).
+ * Montage auto-hébergé : /videos/chantier.mp4 (pose d'un panneau par
+ * l'équipe + panorama d'un grand champ).
+ */
+---
+
+<section class="bg-night px-4 py-16 text-paper sm:py-20">
+  <div class="mx-auto max-w-6xl">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="tech-label rule-amber text-amber-400">35 secondes de chantier</p>
+        <h2 class="display mt-3 text-3xl text-paper sm:text-4xl">Regardez l'équipe au travail</h2>
+      </div>
+      <p class="max-w-sm text-sm leading-relaxed text-paper/70">
+        Pose d'un panneau, puis panorama d'un champ en cours d'installation.
+        Images brutes de chantier, sans mise en scène.
+      </p>
+    </div>
+
+    <div id="chantier-player" class="group relative mt-8 aspect-video w-full cursor-pointer overflow-hidden border border-paper/15">
+      <picture>
+        <source type="image/avif" srcset="/videos/chantier-poster.avif" />
+        <img src="/videos/chantier-poster.webp" alt="Deux installateurs Taqinor fixant un panneau solaire sur un toit-terrasse"
+          width="1600" height="900" loading="lazy" decoding="async"
+          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" />
+      </picture>
+      <button id="chantier-play" type="button" aria-label="Lire la vidéo de chantier"
+        class="absolute inset-0 flex items-center justify-center bg-night/30 transition-colors group-hover:bg-night/15">
+        <span class="flex h-20 w-20 items-center justify-center rounded-full bg-amber-400 text-ink shadow-lg transition-transform group-hover:scale-110">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+  const wrap = document.getElementById('chantier-player');
+  document.getElementById('chantier-play')?.addEventListener('click', () => {
+    if (!wrap) return;
+    const video = document.createElement('video');
+    video.src = '/videos/chantier.mp4';
+    video.controls = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.className = 'absolute inset-0 h-full w-full object-cover bg-night';
+    wrap.appendChild(video);
+    wrap.classList.remove('cursor-pointer');
+  });
+</script>

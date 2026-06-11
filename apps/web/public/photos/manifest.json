@@ -1,0 +1,116 @@
+{
+  "hero-skyline": {
+    "widths": [
+      2000,
+      1280,
+      768,
+      480
+    ],
+    "ratio": 1.7777777777777777
+  },
+  "crepuscule-penthouse": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "champ-villa": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "villa-zellige": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "terrasse-terre-cuite": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "silhouette-acrotere": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "entretien-jet": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1
+  },
+  "equipe-gilet-taqinor": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1
+  },
+  "mesure-rails": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "industriel-couchant": {
+    "widths": [
+      2000,
+      1280,
+      768,
+      480
+    ],
+    "ratio": 1.7777777777777777
+  },
+  "equipe-trois": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.5
+  },
+  "mur-technique-dyness": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "installation-crepuscule": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
+  },
+  "equipe-pose-structure": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1
+  }
+}

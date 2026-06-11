@@ -1,0 +1,47 @@
+---
+/**
+ * Image responsive servie depuis public/photos/ (sorties de
+ * scripts/process-photos.mjs) : AVIF + WebP, srcset par largeurs.
+ * `name` = nom de base, `widths` = largeurs générées (desc.),
+ * `ratio` = rapport w/h du cadrage (pour width/height anti-CLS).
+ */
+interface Props {
+  name: string;
+  alt: string;
+  widths: number[];
+  ratio: number;
+  sizes?: string;
+  loading?: 'lazy' | 'eager';
+  fetchpriority?: 'high' | 'auto';
+  class?: string;
+}
+const {
+  name,
+  alt,
+  widths,
+  ratio,
+  sizes = '100vw',
+  loading = 'lazy',
+  fetchpriority = 'auto',
+  class: className = '',
+} = Astro.props;
+
+import { intrinsicHeight, largestWidth, photoSrcset } from '../lib/picture';
+
+const largest = largestWidth(widths);
+---
+
+<picture>
+  <source type="image/avif" srcset={photoSrcset(name, widths, 'avif')} sizes={sizes} />
+  <source type="image/webp" srcset={photoSrcset(name, widths, 'webp')} sizes={sizes} />
+  <img
+    src={`/photos/${name}-${largest}.webp`}
+    alt={alt}
+    width={largest}
+    height={intrinsicHeight(largest, ratio)}
+    loading={loading}
+    decoding="async"
+    fetchpriority={fetchpriority}
+    class={className}
+  />
+</picture>

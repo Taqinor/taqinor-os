@@ -11,42 +11,44 @@ interface Props {
   heading?: string;
 }
 const { heading = 'Estimez votre installation en 30 secondes' } = Astro.props;
+
+const inputClass =
+  'w-full border border-ink/20 bg-paper px-3 py-2.5 text-sm outline-none transition-colors focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30';
 ---
 
-<section id="simulateur" class="mx-auto max-w-2xl scroll-mt-20 px-4 py-12">
-  <div class="rounded-2xl border border-navy-100 bg-white p-6 shadow-lg sm:p-8">
-    <h2 class="text-2xl font-bold text-navy-900">{heading}</h2>
-    <p class="mt-1 text-sm text-navy-800/70">
-      Fourchette de puissance et de retour sur investissement, sans engagement.
-      Le devis détaillé est établi après visite technique.
-    </p>
+<section id="simulateur" class="grid-paper scroll-mt-20 px-4 py-16">
+  <div class="mx-auto max-w-2xl border border-ink/15 bg-paper shadow-[8px_8px_0_0_rgb(245_193_0)]">
+    <div class="border-b border-ink/15 px-6 py-5 sm:px-8">
+      <p class="tech-label text-ink-soft">Simulation · sans engagement</p>
+      <h2 class="display mt-2 text-2xl sm:text-3xl">{heading}</h2>
+      <p class="mt-2 text-sm text-ink-soft">
+        Fourchette de puissance et de retour sur investissement, sans engagement.
+        Le devis détaillé est établi après visite technique.
+      </p>
+    </div>
 
-    <form id="lead-form" class="mt-6 flex flex-col gap-4" novalidate>
+    <form id="lead-form" class="flex flex-col gap-4 p-6 sm:p-8" novalidate>
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="lf-name" class="mb-1 block text-sm font-semibold">Nom complet *</label>
-          <input id="lf-name" name="fullName" required autocomplete="name"
-            class="w-full rounded-lg border border-navy-100 px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
+          <input id="lf-name" name="fullName" required autocomplete="name" class={inputClass} />
         </div>
         <div>
           <label for="lf-phone" class="mb-1 block text-sm font-semibold">Téléphone *</label>
           <input id="lf-phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel"
-            placeholder="06 XX XX XX XX"
-            class="w-full rounded-lg border border-navy-100 px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
-          <p id="lf-phone-err" class="mt-1 hidden text-xs text-red-600"></p>
+            placeholder="06 XX XX XX XX" class={inputClass} />
+          <p id="lf-phone-err" class="mt-1 hidden text-xs text-alert-600"></p>
         </div>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="lf-city" class="mb-1 block text-sm font-semibold">Ville / commune *</label>
-          <input id="lf-city" name="city" required autocomplete="address-level2"
-            class="w-full rounded-lg border border-navy-100 px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
+          <input id="lf-city" name="city" required autocomplete="address-level2" class={inputClass} />
         </div>
         <div>
           <label for="lf-roof" class="mb-1 block text-sm font-semibold">Type de toiture *</label>
-          <select id="lf-roof" name="roofType" required
-            class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700">
+          <select id="lf-roof" name="roofType" required class={inputClass}>
             <option value="" disabled selected>Choisir…</option>
             {ROOF_TYPES.map((r) => <option value={r.id}>{r.label}</option>)}
           </select>
@@ -55,20 +57,19 @@ const { heading = 'Estimez votre installation en 30 secondes' } = Astro.props;
 
       <div>
         <label for="lf-bill" class="mb-1 block text-sm font-semibold">Facture d'électricité mensuelle *</label>
-        <select id="lf-bill" name="billRange" required
-          class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700">
+        <select id="lf-bill" name="billRange" required class={inputClass}>
           <option value="" disabled selected>Choisir une tranche…</option>
           {BILL_RANGES.map((r) => <option value={r.id}>{r.label}</option>)}
         </select>
       </div>
 
       <label class="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="whatsappOptIn" class="mt-0.5" checked />
+        <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-amber-500" checked />
         <span>Je préfère être contacté(e) par WhatsApp</span>
       </label>
 
       <label class="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="consent" required class="mt-0.5" />
+        <input type="checkbox" name="consent" required class="mt-0.5 accent-amber-500" />
         <span>
           J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
           demande d'étude solaire. *
@@ -83,19 +84,20 @@ const { heading = 'Estimez votre installation en 30 secondes' } = Astro.props;
       <input type="hidden" name="utm_content" />
       <input type="hidden" name="utm_term" />
 
-      <p id="lf-err" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></p>
+      <p id="lf-err" class="hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
 
       <button type="submit" id="lf-submit"
-        class="rounded-lg bg-sun-500 px-6 py-3 text-base font-bold text-navy-900 hover:bg-sun-400 disabled:opacity-60">
+        class="bg-ink px-6 py-3.5 text-base font-bold text-paper transition-colors hover:bg-night-soft disabled:opacity-60">
         Obtenir mon estimation
       </button>
     </form>
 
-    <div id="lf-success" class="hidden rounded-xl border border-green-200 bg-green-50 p-6 text-center">
-      <p class="text-lg font-bold text-green-800">Merci, votre demande est bien enregistrée.</p>
-      <p id="lf-band" class="mt-2 text-sm text-green-900"></p>
+    <div id="lf-success" class="hidden p-8 text-center">
+      <p class="tech-label text-ok-600">Demande enregistrée</p>
+      <p class="display mt-2 text-2xl">Merci, votre demande est bien enregistrée.</p>
+      <p id="lf-band" class="mx-auto mt-3 max-w-md text-sm leading-relaxed text-ink-soft"></p>
       <a id="lf-wa" href="#" rel="noopener"
-        class="mt-4 inline-block rounded-lg bg-green-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-green-700">
+        class="mt-6 inline-block bg-ok-600 px-6 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
         Continuer sur WhatsApp
       </a>
     </div>
