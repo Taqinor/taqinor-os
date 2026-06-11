@@ -36,7 +36,7 @@ import { REGIMES } from '../lib/regime';
     <div class="mt-8 grid gap-6">
       {Object.values(REGIMES).map((r, i) => (
         <div class="reveal grid gap-4 border border-ink/15 bg-paper p-6 sm:grid-cols-[auto_1fr] sm:p-7">
-          <span class="fig text-4xl text-amber-400" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+          <span class="fig text-4xl text-amber-700" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
           <div>
             <h3 class="display text-xl">{r.title}</h3>
             <p class="mt-2 text-sm leading-relaxed text-ink-soft">{r.summary}</p>
