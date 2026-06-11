@@ -1,0 +1,156 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import LeadForm from '../components/LeadForm.astro';
+import Faq from '../components/Faq.astro';
+
+// PLACEHOLDER(MERYEM): headline + sous-titre du hero — copie provisoire.
+const heroTitle = 'Votre électricité, produite sur votre toit.';
+const heroSub =
+  'Taqinor conçoit, installe et déclare des installations solaires dimensionnées par l’ingénierie — pour villas, industries et hôtels, partout au Maroc.';
+
+// PLACEHOLDER(MERYEM): témoignages provisoires — à remplacer par de vrais
+// clients (nom, ville, citation) avant mise en avant publicitaire.
+const testimonials = [
+  {
+    quote:
+      'Installation de 9 kWc posée en deux jours, dossier de raccordement géré de bout en bout. La facture est passée de 2 400 MAD à moins de 400 MAD.',
+    name: 'H. B.',
+    detail: 'Villa, Casablanca',
+  },
+  {
+    quote:
+      'Le dimensionnement annoncé correspond exactement à la production mesurée. Suivi en ligne clair, équipe joignable.',
+    name: 'S. R.',
+    detail: 'Hangar industriel, Tanger',
+  },
+  {
+    quote:
+      'Ils ont régularisé notre installation existante dans le cadre de l’Article 33 sans interruption d’activité.',
+    name: 'K. M.',
+    detail: 'Hôtel, Marrakech',
+  },
+];
+
+// PLACEHOLDER(MERYEM): FAQ provisoire.
+const faq = [
+  {
+    q: 'Combien coûte une installation solaire résidentielle ?',
+    a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le formulaire ci-dessous vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.',
+  },
+  {
+    q: 'Que dit la loi 82-21 pour les particuliers ?',
+    a: 'En basse tension, une installation de moins de 11 kW relève du régime de déclaration : une formalité préalable, pas une autorisation. Taqinor prépare et dépose la déclaration pour vous.',
+  },
+  {
+    q: 'Mon installation existante n’est pas déclarée. Que faire ?',
+    a: 'L’Article 33 de la loi 82-21 ouvre une fenêtre de régularisation pour les installations existantes. La fenêtre est ouverte : déposez maintenant. Voir la page Régularisation pour la procédure en 5 étapes.',
+  },
+  {
+    q: 'Combien de temps durent les panneaux ?',
+    a: 'Les panneaux sont garantis en performance sur 25 ans (généralement ≥ 84 % de la puissance initiale à 25 ans). Les onduleurs se remplacent typiquement une fois sur la durée de vie de l’installation.',
+  },
+  {
+    q: 'Faut-il des batteries ?',
+    a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.',
+  },
+];
+---
+
+<Layout
+  title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
+  description="Conception, installation et déclaration d'installations solaires pour villas, industries et hôtels au Maroc. Étude gratuite, dimensionnement par l'ingénierie, conformité loi 82-21."
+  ogSlug="accueil"
+>
+  <Article33Ribbon />
+
+  <!-- Hero -->
+  <section class="bg-navy-950 px-4 py-16 text-white sm:py-24">
+    <div class="mx-auto max-w-4xl text-center">
+      <h1 class="text-3xl font-bold leading-tight sm:text-5xl">{heroTitle}</h1>
+      <p class="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg">{heroSub}</p>
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <a href="#simulateur" class="rounded-lg bg-sun-500 px-7 py-3 text-base font-bold text-navy-900 hover:bg-sun-400">
+          Estimer mon installation
+        </a>
+        <a href="/regularization-article-33" class="rounded-lg border border-white/30 px-7 py-3 text-base font-semibold text-white hover:bg-white/10">
+          Régulariser une installation existante
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bande de confiance -->
+  <section class="border-b border-navy-100 bg-navy-50 px-4 py-6">
+    <div class="mx-auto grid max-w-5xl gap-6 text-center sm:grid-cols-3">
+      <div>
+        <p class="font-bold">Fondée par un docteur-ingénieur</p>
+        <p class="mt-1 text-sm text-navy-800/70">Chaque installation est dimensionnée par calcul, pas par catalogue.</p>
+      </div>
+      <div>
+        <p class="font-bold">Des installations réelles, mesurées</p>
+        <p class="mt-1 text-sm text-navy-800/70">Production suivie par monitoring — nous publions ce que nous mesurons.</p>
+      </div>
+      <div>
+        <p class="font-bold">Un investissement sur 25 ans</p>
+        <p class="mt-1 text-sm text-navy-800/70">Retour typique en 3 à 7 ans, puis 18 à 22 ans d'électricité quasi gratuite.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Segments -->
+  <section class="mx-auto max-w-6xl px-4 py-14">
+    <h2 class="text-center text-2xl font-bold">Deux métiers, une exigence d'ingénierie</h2>
+    <div class="mt-8 grid gap-6 md:grid-cols-2">
+      <a href="/résidentiel" class="overflow-hidden rounded-2xl border border-navy-100 transition hover:border-navy-700 hover:shadow-md">
+        <img src="/photos/installation-crepuscule.webp" alt="Installation solaire Taqinor sur toit-terrasse au crépuscule" width="1000" height="760" loading="lazy" decoding="async" class="aspect-[4/3] w-full object-cover" />
+        <div class="p-7 pt-5">
+        <h3 class="text-lg font-bold">Résidentiel</h3>
+        <p class="mt-2 text-sm leading-relaxed text-navy-800/80">
+          Villas et appartements. À partir d'une facture de 1 000 MAD par mois, le solaire
+          devient un placement mesurable. Dimensionnement, pose, déclaration loi 82-21.
+        </p>
+        <span class="mt-4 inline-block text-sm font-bold text-navy-700">Voir le résidentiel →</span>
+        </div>
+      </a>
+      <a href="/professionnel" class="overflow-hidden rounded-2xl border border-navy-100 transition hover:border-navy-700 hover:shadow-md">
+        <img src="/photos/equipe-pose-structure.webp" alt="Équipe Taqinor posant une structure de panneaux sur toiture plate" width="1000" height="1000" loading="lazy" decoding="async" class="aspect-[4/3] w-full object-cover object-top" />
+        <div class="p-7 pt-5">
+        <h3 class="text-lg font-bold">Professionnel</h3>
+        <p class="mt-2 text-sm leading-relaxed text-navy-800/80">
+          Industriels, hôtels, cliniques. Réduction du poste électricité, valorisation du surplus
+          et conformité au régime moyenne tension de la loi 82-21.
+        </p>
+        <span class="mt-4 inline-block text-sm font-bold text-navy-700">Voir le professionnel →</span>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Installation réelle -->
+  <section class="mx-auto max-w-6xl px-4 pb-14">
+    <figure class="overflow-hidden rounded-2xl">
+      <img src="/photos/toit-terrasse-panneaux.webp" alt="Rangée de panneaux solaires installée par Taqinor sur un toit-terrasse au Maroc" width="1600" height="900" loading="lazy" decoding="async" class="w-full object-cover" />
+      <figcaption class="mt-2 text-center text-xs text-navy-800/75">Installation Taqinor sur toit-terrasse — photo de chantier réelle, non retouchée.</figcaption>
+    </figure>
+  </section>
+
+  <!-- Témoignages -->
+  <section class="bg-navy-50 px-4 py-14">
+    <div class="mx-auto max-w-6xl">
+      <h2 class="text-center text-2xl font-bold">Ils produisent déjà leur électricité</h2>
+      <div class="mt-8 grid gap-6 md:grid-cols-3">
+        {testimonials.map((t) => (
+          <figure class="rounded-2xl border border-navy-100 bg-white p-6">
+            <blockquote class="text-sm leading-relaxed text-navy-800/90">« {t.quote} »</blockquote>
+            <figcaption class="mt-4 text-sm font-bold">{t.name} <span class="font-normal text-navy-800/75">— {t.detail}</span></figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <LeadForm />
+
+  <Faq items={faq} />
+</Layout>

@@ -1,0 +1,20 @@
+---
+interface Props {
+  title?: string;
+  buttonLabel?: string;
+  href?: string;
+}
+const {
+  title = 'Une étude technique gratuite, sans engagement.',
+  buttonLabel = 'Demander mon étude',
+  href = '/contact#simulateur',
+} = Astro.props;
+---
+
+<section class="bg-navy-900 px-4 py-12 text-center">
+  <h2 class="text-2xl font-bold text-white">{title}</h2>
+  <a
+    href={href}
+    class="mt-5 inline-block rounded-lg bg-sun-500 px-7 py-3 text-base font-bold text-navy-900 hover:bg-sun-400"
+  >{buttonLabel}</a>
+</section>

@@ -1,0 +1,88 @@
+---
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { NAP } from '../lib/nap';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Nom de fichier OG sans extension, ex. "accueil" → /og/accueil.png */
+  ogSlug?: string;
+}
+const { title, description, ogSlug = 'accueil' } = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL(`/og/${ogSlug}.png`, Astro.site);
+
+// LocalBusiness JSON-LD — mode zone de service (pas d'adresse postale),
+// liste de services alignée exactement sur le Google Business Profile.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'LocalBusiness',
+  name: NAP.name,
+  url: NAP.url,
+  telephone: NAP.phone,
+  email: NAP.email,
+  image: ogImage.href,
+  areaServed: NAP.serviceArea.map((name) =>
+    name === 'Maroc' ? { '@type': 'Country', name } : { '@type': 'City', name },
+  ),
+  hasOfferCatalog: {
+    '@type': 'OfferCatalog',
+    name: 'Services Taqinor',
+    itemListElement: NAP.services.map((s) => ({
+      '@type': 'Offer',
+      itemOffered: { '@type': 'Service', name: s },
+    })),
+  },
+};
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="preload" href="/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={NAP.name} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical.href} />
+    <meta property="og:image" content={ogImage.href} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="fr_MA" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script is:inline>
+      // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
+      // persistés en sessionStorage, repris par le formulaire (gate CAPI).
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search);
+          var keys = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+          for (var i = 0; i < keys.length; i++) {
+            var v = p.get(keys[i]);
+            if (v && !sessionStorage.getItem('tq_' + keys[i])) {
+              sessionStorage.setItem('tq_' + keys[i], v);
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-white font-sans text-navy-900 antialiased">
+    <Header />
+    <main>
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

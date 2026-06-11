@@ -1,0 +1,79 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import CtaBand from '../components/CtaBand.astro';
+
+// Honnêteté de marque : uniquement ce qui est réellement stocké et posé.
+// PLACEHOLDER(REDA): marques et gammes de panneaux à confirmer par l'équipe —
+// la section panneaux reste volontairement générique d'ici là.
+const categories = [
+  {
+    title: 'Onduleurs hybrides — Deye',
+    body: 'Onduleurs hybrides monophasés et triphasés Deye, du résidentiel (3 à 12 kW) au petit tertiaire. Gestion batterie intégrée, suivi de production en ligne.',
+    points: ['Monophasé et triphasé', 'Compatibles batteries basse et haute tension', 'Monitoring inclus'],
+  },
+  {
+    title: 'Onduleurs réseau — Solis',
+    body: 'Onduleurs string Solis pour l’autoconsommation sans stockage, du résidentiel aux toitures industrielles.',
+    points: ['Gammes résidentielles et commerciales', 'Rendement européen élevé', 'Suivi de production en ligne'],
+  },
+  {
+    title: 'Batteries — Dyness',
+    body: 'Batteries lithium fer phosphate (LFP) Dyness, montées en armoire ou en rack. Dimensionnées pour la consommation nocturne ou la continuité de service.',
+    points: ['Chimie LFP éprouvée', 'Extensibles par modules', 'Garantie constructeur longue durée'],
+  },
+  {
+    title: 'Panneaux photovoltaïques',
+    body: 'Modules monocristallins de fabricants Tier 1, 550 à 620 Wc, garantis en performance sur 25 ans. Les marques en stock varient selon les arrivages — demandez la fiche technique du moment.',
+    points: ['Garantie de performance 25 ans', 'Modules 550 – 620 Wc', 'Fiches techniques fournies avec chaque devis'],
+  },
+];
+---
+
+<Layout
+  title="Équipement solaire en stock : Deye, Solis, Dyness | Taqinor"
+  description="Le matériel que Taqinor stocke et installe réellement : onduleurs hybrides Deye, onduleurs réseau Solis, batteries LFP Dyness, panneaux Tier 1 garantis 25 ans."
+  ogSlug="equipement"
+>
+  <Article33Ribbon />
+
+  <section class="bg-navy-950 px-4 py-14 text-white">
+    <div class="mx-auto max-w-3xl">
+      <h1 class="text-3xl font-bold sm:text-4xl">Ce que nous stockons, ce que nous posons</h1>
+      <p class="mt-4 leading-relaxed text-white/80">
+        Pas de catalogue infini : une sélection courte de matériel que nous connaissons,
+        stockons et garantissons. Chaque référence est choisie pour sa fiabilité mesurée et la
+        disponibilité de ses pièces au Maroc.
+      </p>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 pt-10">
+    <figure class="overflow-hidden rounded-2xl">
+      <img src="/photos/batteries-onduleur.webp" alt="Mur technique d'une installation Taqinor : onduleur hybride et batteries Dyness" width="1000" height="940" loading="eager" decoding="async" class="max-h-96 w-full object-cover" />
+      <figcaption class="mt-2 text-center text-xs text-navy-800/75">Onduleur hybride et batteries Dyness — installation Taqinor réelle.</figcaption>
+    </figure>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 py-12">
+    <div class="grid gap-6 md:grid-cols-2">
+      {categories.map((c) => (
+        <div class="rounded-2xl border border-navy-100 p-6">
+          <h2 class="text-lg font-bold">{c.title}</h2>
+          <p class="mt-2 text-sm leading-relaxed text-navy-800/80">{c.body}</p>
+          <ul class="mt-4 space-y-1.5 text-sm">
+            {c.points.map((p) => (
+              <li class="flex gap-2"><span class="font-bold text-sun-600">✓</span><span>{p}</span></li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+    <p class="mt-6 text-sm text-navy-800/70">
+      Le choix final du matériel dépend du dimensionnement : c'est l'étude qui détermine
+      l'équipement, jamais l'inverse.
+    </p>
+  </section>
+
+  <CtaBand title="Le bon matériel, c'est celui que l'étude justifie." />
+</Layout>

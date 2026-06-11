@@ -1,0 +1,61 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import RegimeSelector from '../components/RegimeSelector.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { REGIMES } from '../lib/regime';
+---
+
+<Layout
+  title="Loi 82-21 : les 3 régimes de l'autoproduction au Maroc | Taqinor"
+  description="Déclaration, accord de raccordement ou autorisation ? Identifiez en 3 questions le régime de la loi 82-21 (décret 2-25-100) applicable à votre installation solaire, en vigueur depuis le 9 juin 2026."
+  ogSlug="loi-82-21"
+>
+  <Article33Ribbon />
+
+  <section class="bg-navy-950 px-4 py-14 text-white">
+    <div class="mx-auto max-w-3xl">
+      <h1 class="text-3xl font-bold sm:text-4xl">Loi 82-21 : trois régimes, un seul qui vous concerne</h1>
+      <p class="mt-4 leading-relaxed text-white/80">
+        La loi 82-21 sur l'autoproduction d'énergie électrique et son décret d'application
+        2-25-100 sont en vigueur depuis le 9 juin 2026. Toute installation d'autoproduction —
+        nouvelle ou existante — relève désormais de l'un des trois régimes ci-dessous, selon sa
+        puissance et son raccordement.
+      </p>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-4xl px-4 py-12">
+    <RegimeSelector />
+  </section>
+
+  <section class="mx-auto max-w-4xl px-4 pb-12">
+    <h2 class="text-2xl font-bold">Les trois régimes en détail</h2>
+    <div class="mt-6 grid gap-6">
+      {Object.values(REGIMES).map((r) => (
+        <div class="rounded-2xl border border-navy-100 p-6">
+          <h3 class="text-lg font-bold">{r.title}</h3>
+          <p class="mt-2 text-sm leading-relaxed text-navy-800/80">{r.summary}</p>
+          <ul class="mt-3 space-y-1.5 text-sm">
+            {r.obligations.map((o) => (
+              <li class="flex gap-2"><span class="font-bold text-sun-600">✓</span><span>{o}</span></li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+    <div class="mt-8 rounded-2xl border border-sun-500 bg-sun-500/10 p-6">
+      <h2 class="text-lg font-bold">Vous avez déjà une installation non déclarée ?</h2>
+      <p class="mt-2 text-sm leading-relaxed text-navy-800/85">
+        L'Article 33 de la loi ouvre une fenêtre de régularisation pour les installations
+        existantes. La fenêtre est ouverte — la procédure et les sanctions en cas d'inaction
+        sont détaillées sur la page dédiée.
+      </p>
+      <a href="/regularization-article-33" class="mt-4 inline-block rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800">
+        Régulariser mon installation
+      </a>
+    </div>
+  </section>
+
+  <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" />
+</Layout>
