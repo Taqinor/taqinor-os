@@ -22,7 +22,7 @@ function ContactModal({ onClose }) {
     setStatus('loading')
     setErrMsg('')
     try {
-      const { data } = await axios.post('/api/django/contact/', form)
+      await axios.post('/api/django/contact/', form)
       setStatus('success')
     } catch (err) {
       setErrMsg(err.response?.data?.detail ?? 'Une erreur est survenue. Réessayez.')
@@ -535,11 +535,11 @@ export default function Landing() {
             </p>
           </div>
           <div className="lp-features-grid" ref={featuresGrid}>
-            {FEATURES.map(({ Icon, title, desc }, i) => (
-              <div key={title} className={`lp-feature-card lp-anim ${DELAYS[i % 5]}`}>
-                <div className="lp-feature-icon-wrap"><Icon /></div>
-                <h3 className="lp-h3">{title}</h3>
-                <p className="lp-feature-desc">{desc}</p>
+            {FEATURES.map((feat, i) => (
+              <div key={feat.title} className={`lp-feature-card lp-anim ${DELAYS[i % 5]}`}>
+                <div className="lp-feature-icon-wrap"><feat.Icon /></div>
+                <h3 className="lp-h3">{feat.title}</h3>
+                <p className="lp-feature-desc">{feat.desc}</p>
               </div>
             ))}
           </div>
@@ -556,14 +556,14 @@ export default function Landing() {
             <h2 className="lp-h2 lp-anim lp-d1">Tout ce dont vous avez besoin dans un seul système</h2>
           </div>
           <div className="lp-modules-grid" ref={modulesGrid}>
-            {MODULES.map(({ Icon, title, desc, items }, i) => (
-              <div key={title} className={`lp-module-card lp-anim ${DELAYS[i % 4]}`}>
-                <div className="lp-module-icon-wrap"><Icon /></div>
+            {MODULES.map((mod, i) => (
+              <div key={mod.title} className={`lp-module-card lp-anim ${DELAYS[i % 4]}`}>
+                <div className="lp-module-icon-wrap"><mod.Icon /></div>
                 <div>
-                  <h3 className="lp-h3">{title}</h3>
-                  <p className="lp-module-desc">{desc}</p>
+                  <h3 className="lp-h3">{mod.title}</h3>
+                  <p className="lp-module-desc">{mod.desc}</p>
                   <ul className="lp-module-list">
-                    {items.map((item) => (
+                    {mod.items.map((item) => (
                       <li key={item}>
                         <span className="lp-check">&#10003;</span>
                         {item}

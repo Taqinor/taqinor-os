@@ -230,3 +230,103 @@ class TestPremiumPdfRender(TestCase):
             len(charts), 2,
             'both page-2 charts must render at a visible size (not blank)',
         )
+
+
+class TestGeneratorQuoteFlow(TestCase):
+    """End-to-end flow of the solar generator screen (/ventes/devis/nouveau):
+    the screen creates a plain Devis via the REST API, then posts its lines via
+    devis-lignes — exactly as exercised here. The created quote must get an
+    auto-generated reference and must render the premium PDF in exactly 3 pages.
+    """
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def _create_via_api(self, lignes):
+        resp = self.api.post('/api/django/ventes/devis/', {
+            'client': self.client_obj.id,
+            'statut': 'brouillon',
+            'taux_tva': '20.00',
+            'remise_globale': '0',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis_id = resp.data['id']
+        for desig, qty, pu in lignes:
+            produit = make_produit(self.company, desig, desig[:20], pu)
+            line_resp = self.api.post('/api/django/ventes/devis-lignes/', {
+                'devis': devis_id,
+                'produit': produit.id,
+                'designation': desig,
+                'quantite': qty,
+                'prix_unitaire': pu,
+                'remise': '0',
+            }, format='json')
+            self.assertEqual(line_resp.status_code, 201, line_resp.data)
+        return resp.data
+
+    def test_api_created_devis_gets_auto_reference(self):
+        from apps.ventes.models import Devis
+        first = self._create_via_api([('Panneau mono 550W', '4', '1100')])
+        ref1 = Devis.objects.get(pk=first['id']).reference
+        self.assertRegex(ref1, r'^DEV-\d{6}-0001$')
+        # Second create must not collide (regression: reference used to be '').
+        resp = self.api.post('/api/django/ventes/devis/', {
+            'client': self.client_obj.id,
+            'statut': 'brouillon',
+            'taux_tva': '20.00',
+            'remise_globale': '0',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        ref2 = Devis.objects.get(pk=resp.data['id']).reference
+        self.assertRegex(ref2, r'^DEV-\d{6}-0002$')
+        self.assertNotEqual(ref1, ref2)
+
+    def test_generator_created_quote_renders_three_page_premium_pdf(self):
+        """A quote shaped exactly like the generator's catalogue auto-fill
+        (14 panels, both inverters, battery, structures, socles, power-priced
+        accessories) must produce the premium PDF in exactly 3 pages."""
+        from weasyprint import HTML
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        created = self._create_via_api([
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '2', '14000'),
+            ('Structures acier', '14', '375'),
+            ('Socles', '28', '67'),
+            ('Accessoires', '1', '1666.67'),
+            ('Tableau De Protection AC/DC', '1', '2500'),
+            ('Installation', '1', '6000'),
+            ('Transport', '1', '1000'),
+        ])
+
+        devis = Devis.objects.get(pk=created['id'])
+        data = build_quote_data(devis)
+
+        # Power must come from the panel line the generator wrote.
+        self.assertEqual(data['nb_panneaux'], 14)
+        self.assertEqual(data['watt_par_panneau'], 550)
+
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_generator_flow_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+
+        doc = HTML(string=cap['html']).render()
+        self.assertEqual(
+            len(doc.pages), 3,
+            f'generator-created quote must render exactly 3 pages, got {len(doc.pages)}',
+        )

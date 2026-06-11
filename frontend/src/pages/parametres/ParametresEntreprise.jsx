@@ -211,13 +211,13 @@ function ReferentielBlock({ title, color, icon, items, onCreate, onUpdate, onDel
   const doCreate = async () => {
     const nom = newName.trim(); if (!nom) return
     setBusy(true)
-    try { await onCreate(nom); setNewName(''); setCreating(false) } catch {} finally { setBusy(false) }
+    try { await onCreate(nom); setNewName(''); setCreating(false) } catch { /* erreur affichée ailleurs */ } finally { setBusy(false) }
   }
 
   const doUpdate = async () => {
     const nom = editName.trim(); if (!nom) return
     setBusy(true)
-    try { await onUpdate(editId, nom); setEditId(null) } catch {} finally { setBusy(false) }
+    try { await onUpdate(editId, nom); setEditId(null) } catch { /* erreur affichée ailleurs */ } finally { setBusy(false) }
   }
 
   const doDelete = async (id) => {
@@ -328,6 +328,8 @@ export default function ParametresEntreprise() {
   }, [dispatch])
 
   useEffect(() => {
+    // Synchronisation du formulaire avec le profil chargé depuis le store
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (profile) setForm({
       nom:               profile.nom               ?? '',
       adresse:           profile.adresse           ?? '',
@@ -343,6 +345,7 @@ export default function ParametresEntreprise() {
 
   useEffect(() => {
     if (saveSuccess) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSaved(true)
       const t = setTimeout(() => { dispatch(clearSaveSuccess()); setSaved(false) }, 3000)
       return () => clearTimeout(t)

@@ -59,9 +59,16 @@ class DevisViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
+        now = timezone.now()
+        prefix = f"DEV-{now.strftime('%Y%m')}"
+        company = self.request.user.company
+        count = Devis.objects.filter(
+            reference__startswith=prefix, company=company
+        ).count() + 1
         serializer.save(
+            reference=f"{prefix}-{count:04d}",
             created_by=self.request.user,
-            company=self.request.user.company,
+            company=company,
         )
 
     @action(

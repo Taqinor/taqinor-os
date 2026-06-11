@@ -34,9 +34,9 @@ class DevisWriteSerializer(serializers.ModelSerializer):
 
 
 class BonCommandeSerializer(serializers.ModelSerializer):
-    client_nom      = serializers.CharField(source='client.nom', read_only=True)
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
-    has_facture     = serializers.SerializerMethodField()
+    has_facture = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommande

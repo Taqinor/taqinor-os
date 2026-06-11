@@ -1248,3 +1248,227 @@ textarea.form-control {
   text-align: center;
   margin: 0.5rem 0 0;
 }
+
+/* ── Générateur de devis solaire (/ventes/devis/nouveau) ───── */
+.gen-page { max-width: 1100px; }
+
+.gen-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.gen-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f1e35;
+  border-bottom: 1px solid #eef2f7;
+  background: linear-gradient(to right, #f8fafc, #fff);
+}
+
+.gen-card-body { padding: 1.1rem 1.25rem; }
+
+.gen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.9rem 1.1rem;
+}
+
+.gen-hint {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin: 0 0 0.85rem;
+}
+
+.gen-kwp {
+  padding: 0.5rem 0.75rem;
+  background: #f0f4ff;
+  border: 1px solid #c5d0ee;
+  border-radius: 6px;
+  font-weight: 700;
+  color: #0f1e35;
+  font-size: 1.05rem;
+  min-height: 2.4rem;
+  display: flex;
+  align-items: center;
+}
+
+.gen-radio-group { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+
+.gen-radio {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.gen-radio.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  font-weight: 600;
+}
+
+.gen-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.gen-slider-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.gen-slider-row input[type="range"] { flex: 1; accent-color: #f28e2b; }
+
+.gen-slider-value { font-weight: 700; color: #0f1e35; min-width: 3rem; }
+
+.gen-actions-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.gen-btn-orange {
+  background: #f28e2b;
+  color: #fff;
+  border: none;
+}
+
+.gen-btn-orange:hover { background: #d97a1d; }
+
+.gen-monthly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.gen-month { display: flex; flex-direction: column; gap: 0.2rem; }
+
+.gen-month-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-align: center;
+}
+
+/* Cartes métriques de la simulation */
+.gen-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.gen-metric {
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  text-align: center;
+}
+
+.gen-metric-accent { background: #eff6ff; border-color: #dbeafe; }
+
+.gen-metric-rec { box-shadow: 0 0 0 2px #f5a623; }
+
+.gen-metric-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gen-metric-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #0f1e35;
+  margin-top: 0.25rem;
+}
+
+.gen-metric-unit { font-size: 0.72rem; color: #94a3b8; }
+
+.gen-rec-badge {
+  font-size: 0.6rem;
+  background: #f5a623;
+  color: #0f1e35;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-weight: 700;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.gen-chart-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+/* Totaux par option */
+.gen-totals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid #eef2f7;
+  align-items: center;
+}
+
+.gen-discount-row { background: #f7f8fa; }
+
+.gen-total-item { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.gen-total-inline { flex-direction: row; align-items: center; gap: 0.5rem; }
+
+.gen-total-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.gen-total-value { font-size: 1.15rem; font-weight: 700; color: #0f1e35; }
+
+.gen-total-value.orange { color: #f28e2b; }
+
+.gen-total-label.green, .gen-total-value.green { color: #16a34a; }
+
+.gen-discount-input {
+  width: 72px;
+  text-align: center;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #c5d0ee;
+  border-radius: 5px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: #fff;
+}
