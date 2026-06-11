@@ -7,6 +7,10 @@ const crmApi = {
   updateClient: (id, data) => api.put(`/crm/clients/${id}/`, data),
   patchClient: (id, data) => api.patch(`/crm/clients/${id}/`, data),
   deleteClient: (id) => api.delete(`/crm/clients/${id}/`),
+
+  // Leads / opportunities
+  getLeads: (params) => api.get('/crm/leads/', { params }),
+  getLead: (id) => api.get(`/crm/leads/${id}/`),
 }
 
 export default crmApi

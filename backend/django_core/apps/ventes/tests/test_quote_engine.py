@@ -90,21 +90,41 @@ class TestBuildQuoteData(TestCase):
         self.assertIn('eco_s_monthly', data)
         self.assertEqual(len(data['eco_s_monthly']), 12)
 
-    def test_split_by_battery_autoadds_when_absent(self):
+    def test_split_autoadds_battery_to_avec_only(self):
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 550W', '8', '2000'),
             ('Onduleur reseau', '1', '14000'),
         ])
         data = build_quote_data(devis)
-        # No battery in quote -> Option 2 (avec) gets one added, Option 1 doesn't.
-        self.assertEqual(len(data['sans_items']), 2)
-        self.assertEqual(len(data['avec_items']), 3)
-        self.assertTrue(
-            any('batterie' in it['designation'].lower() for it in data['avec_items'])
-        )
-        # Avec total strictly greater than sans (battery added).
-        self.assertGreater(data['total_avec'], data['total_sans'])
+        sans = [it['designation'].lower() for it in data['sans_items']]
+        avec = [it['designation'].lower() for it in data['avec_items']]
+        # réseau inverter stays in Option 1; Option 2 drops it and gains a battery.
+        self.assertTrue(any('reseau' in d or 'réseau' in d for d in sans))
+        self.assertFalse(any('reseau' in d or 'réseau' in d for d in avec))
+        self.assertTrue(any('batterie' in d for d in avec))
+        self.assertFalse(any('batterie' in d for d in sans))
+
+    def test_option_split_routes_both_inverters(self):
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur réseau', '1', '11700'),
+            ('Onduleur hybride', '1', '24000'),
+            ('Panneau mono 550W', '14', '1100'),
+            ('Batterie 5 kWh', '1', '14000'),
+            ('Installation', '1', '4000'),
+        ])
+        data = build_quote_data(devis)
+        sans = [it['designation'].lower() for it in data['sans_items']]
+        avec = [it['designation'].lower() for it in data['avec_items']]
+        # Option 1: réseau inverter, NO hybrid, NO battery.
+        self.assertTrue(any('réseau' in d or 'reseau' in d for d in sans))
+        self.assertFalse(any('hybride' in d for d in sans))
+        self.assertFalse(any('batterie' in d for d in sans))
+        # Option 2: hybrid inverter + battery, NO réseau inverter.
+        self.assertTrue(any('hybride' in d for d in avec))
+        self.assertTrue(any('batterie' in d for d in avec))
+        self.assertFalse(any('réseau' in d or 'reseau' in d for d in avec))
 
     def test_existing_battery_not_duplicated(self):
         from apps.ventes.quote_engine import build_quote_data
@@ -159,3 +179,54 @@ class TestPremiumPdfRender(TestCase):
         pdf_bytes = mock_upload.call_args[0][0]
         self.assertTrue(pdf_bytes[:4] == b'%PDF')
         self.assertGreater(len(pdf_bytes), 5000)
+
+    def test_premium_pdf_is_exactly_three_pages(self):
+        """A full ~10-line quote must fit in exactly 3 pages (no overflow), and
+        both page-2 charts must render at a visible size (no blank charts)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Panneau mono 550W', '14', '1100'),
+            ('Batterie 5 kWh', '1', '14000'),
+            ('Structures acier', '14', '375'),
+            ('Socles', '30', '67'),
+            ('Accessoires', '1', '1667'),
+            ('Tableau De Protection AC/DC', '1', '1667'),
+            ('Installation', '1', '4000'),
+            ('Transport', '1', '1000'),
+        ])
+        data = build_quote_data(devis)
+
+        # Capture the generated HTML without writing a file.
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_three_page_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+
+        doc = HTML(string=cap['html']).render()
+        self.assertEqual(
+            len(doc.pages), 3,
+            f'premium quote PDF must be exactly 3 pages, got {len(doc.pages)}',
+        )
+
+        # Both charts on page 2 must have a real (non-zero) rendered box.
+        def _walk(box):
+            yield box
+            for child in (getattr(box, 'children', None) or []):
+                yield from _walk(child)
+
+        charts = [
+            b for b in _walk(doc.pages[1]._page_box)
+            if 'Replaced' in type(b).__name__ and b.height > 100 and b.width > 100
+        ]
+        self.assertGreaterEqual(
+            len(charts), 2,
+            'both page-2 charts must render at a visible size (not blank)',
+        )

@@ -12,6 +12,7 @@ const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: 
 const StockList = lazy(() => import('../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
+const LeadList = lazy(() => import('../pages/crm/LeadList'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
@@ -56,6 +57,7 @@ const router = createBrowserRouter([
 
   // CRM
   { path: '/crm', loader: authLoader, element: <WithLayout><ClientList /></WithLayout> },
+  { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadList /></WithLayout> },
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },

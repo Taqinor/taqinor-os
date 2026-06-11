@@ -36,7 +36,7 @@ class Command(BaseCommand):
         from apps.stock.models import (
             Categorie, Fournisseur, Produit, MouvementStock,
         )
-        from apps.crm.models import Client
+        from apps.crm.models import Client, Lead
         from apps.ventes.models import (
             Devis, LigneDevis, BonCommande, Facture, LigneFacture,
         )
@@ -127,6 +127,21 @@ class Command(BaseCommand):
              '850.00', '1190.00', 40, 10, '20.00'),
             ('Kit fixation toiture', 'FIX-KIT', cat_access, f_sunpro,
              '320.00', '450.00', 65, 15, '20.00'),
+            # Full-quote equipment (realistic line items for a complete devis)
+            ('Batterie 5 kWh', 'BAT-5K', cat_onduleurs, f_electra,
+             '11000.00', '14000.00', 20, 3, '20.00'),
+            ('Structures acier', 'STR-AC', cat_access, f_sunpro,
+             '280.00', '375.00', 300, 30, '20.00'),
+            ('Socles', 'SOC-STD', cat_access, f_sunpro,
+             '45.00', '67.00', 400, 40, '20.00'),
+            ('Accessoires', 'ACC-KIT', cat_access, f_electra,
+             '1100.00', '1667.00', 60, 10, '20.00'),
+            ('Tableau De Protection AC/DC', 'TAB-ACDC', cat_access, f_electra,
+             '1100.00', '1667.00', 40, 5, '20.00'),
+            ('Installation', 'INST-STD', cat_access, f_sunpro,
+             '2500.00', '4000.00', 999, 0, '20.00'),
+            ('Transport', 'TRANS-STD', cat_access, f_sunpro,
+             '600.00', '1000.00', 999, 0, '20.00'),
         ]
         produits = {}
         for nom, sku, cat, four, achat, vente, stock, seuil, tva in produits_data:
@@ -190,9 +205,14 @@ class Command(BaseCommand):
                    [('PAN-450M', '12'), ('OND-5KH', '1'), ('FIX-KIT', '3')])
         make_devis('DEV-DEMO-0002', clients[1], Devis.Statut.ENVOYE,
                    [('PAN-550M', '20'), ('OND-10KR', '1'), ('CAB-6MM', '2')])
+        # Full, realistic accepted quote — both inverters present so the premium
+        # PDF can show Option 1 (réseau, no battery) vs Option 2 (hybrid + batt.).
         devis_accepte = make_devis(
             'DEV-DEMO-0003', clients[2], Devis.Statut.ACCEPTE,
-            [('PAN-450M', '8'), ('OND-5KH', '1'), ('FIX-KIT', '2')])
+            [('OND-10KR', '1'), ('OND-5KH', '1'), ('PAN-550M', '14'),
+             ('BAT-5K', '1'), ('STR-AC', '14'), ('SOC-STD', '30'),
+             ('ACC-KIT', '1'), ('TAB-ACDC', '1'), ('INST-STD', '1'),
+             ('TRANS-STD', '1')])
         make_devis('DEV-DEMO-0004', clients[3], Devis.Statut.REFUSE,
                    [('PAN-330P', '6'), ('OND-800M', '6')])
         make_devis('DEV-DEMO-0005', clients[4], Devis.Statut.EXPIRE,
@@ -235,6 +255,22 @@ class Command(BaseCommand):
                      bc=bc_confirme)
         make_facture('FAC-DEMO-0002', clients[0], Facture.Statut.PAYEE,
                      [('CAB-6MM', '3'), ('FIX-KIT', '5')], echeance=-5)
+
+        # ── Leads (native demo, distinct from any future Odoo test import) ──
+        from apps.crm.stages import NEW
+        leads_data = [
+            ('Idrissi', 'Mehdi', 'Idrissi Toitures', '+212 6 70 11 22 33', 'Casablanca'),
+            ('El Amrani', 'Sara', '', '+212 6 71 22 33 44', 'Rabat'),
+            ('Bouazza', 'Hamid', 'Ferme Bouazza', '+212 6 72 33 44 55', 'Béni Mellal'),
+        ]
+        for nom, prenom, societe, tel, ville in leads_data:
+            Lead.objects.get_or_create(
+                company=company, nom=nom, prenom=prenom,
+                defaults={
+                    'societe': societe or None, 'telephone': tel, 'ville': ville,
+                    'stage': NEW, 'source': Lead.Source.OS_NATIVE,
+                },
+            )
 
         self.stdout.write(self.style.SUCCESS(
             '\nDemo data seeded for "TAQINOR Démo".\n'

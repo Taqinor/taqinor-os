@@ -209,6 +209,10 @@ EMAIL_BACKEND = os.environ.get(
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@erp.local')
 CONTACT_EMAIL = os.environ.get('CONTACT_EMAIL', 'reda.kasri@taqinor.ma')
 
+# Public contact form — PARKED by default. When off, the /api/django/contact/
+# endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
+CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
 MINIO_ACCESS_KEY = os.environ.get('MINIO_ROOT_USER', 'erp_admin')

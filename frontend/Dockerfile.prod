@@ -8,8 +8,10 @@ COPY . .
 # Variables d'environnement injectees au moment du build
 ARG VITE_API_URL=http://localhost/api/django
 ARG VITE_IA_API_URL=http://localhost/api/fastapi
+ARG VITE_CONTACT_FORM_ENABLED=0
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_IA_API_URL=$VITE_IA_API_URL
+ENV VITE_CONTACT_FORM_ENABLED=$VITE_CONTACT_FORM_ENABLED
 
 RUN npm run build
 

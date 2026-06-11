@@ -1,5 +1,6 @@
 from django.core.mail import send_mail
 from django.conf import settings
+from django.http import Http404
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -14,6 +15,11 @@ class ContactThrottle(AnonRateThrottle):
 @permission_classes([AllowAny])
 @throttle_classes([ContactThrottle])
 def contact(request):
+    # PARKED switch: when the contact form is disabled the endpoint is treated as
+    # non-existent (404) and never accepts a submission or sends email.
+    if not getattr(settings, 'CONTACT_FORM_ENABLED', False):
+        raise Http404('Contact form is disabled.')
+
     nom     = (request.data.get('nom', '') or '').strip()[:100]
     numero  = (request.data.get('numero', '') or '').strip()[:20]
     societe = (request.data.get('societe', '') or '').strip()[:100]

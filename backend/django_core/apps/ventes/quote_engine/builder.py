@@ -37,6 +37,16 @@ def _is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
 
+def _is_hybrid_inverter(designation: str) -> bool:
+    d = (designation or "").lower()
+    return "onduleur" in d and "hybride" in d
+
+
+def _is_reseau_inverter(designation: str) -> bool:
+    d = (designation or "").lower()
+    return "onduleur" in d and ("réseau" in d or "reseau" in d or "injection" in d)
+
+
 def _is_panel(designation: str, produit_nom: str = "") -> bool:
     blob = f"{designation} {produit_nom}".lower()
     return "panneau" in blob or "panneaux" in blob
@@ -76,12 +86,21 @@ def build_quote_data(devis) -> dict:
             watt = watt or _parse_watt(it["designation"], it.get("_produit_nom", ""))
     watt = watt or _DEFAULT_WATT
 
-    # ── Split by battery: Option 1 (sans) vs Option 2 (avec) ─────────────────
-    sans_items = [it for it in items if not _is_battery(it["designation"])]
-    avec_items = list(items)
-    if not any(_is_battery(it["designation"]) for it in items):
-        # Quote has no battery → synthesize Option 2 by adding a catalog battery.
-        avec_items = list(items) + [pick_default_battery()]
+    # ── Split into the two options ───────────────────────────────────────────
+    # Option 1 "Sans batterie": réseau/injection inverter, NO hybrid, NO battery.
+    # Option 2 "Avec batterie": hybrid inverter + battery, NO réseau inverter.
+    # Shared equipment (panels, structures, socles, etc.) appears in both.
+    sans_items = [
+        it for it in items
+        if not _is_battery(it["designation"]) and not _is_hybrid_inverter(it["designation"])
+    ]
+    avec_items = [
+        it for it in items
+        if not _is_reseau_inverter(it["designation"])
+    ]
+    if not any(_is_battery(it["designation"]) for it in avec_items):
+        # Avec option has no battery → synthesize one from the catalog.
+        avec_items = avec_items + [pick_default_battery()]
 
     def _sum(rows):
         return float(sum(r["quantite"] * r["prix_unit_ttc"] for r in rows))
