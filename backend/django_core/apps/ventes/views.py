@@ -51,7 +51,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc'
+            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal'
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -78,6 +78,35 @@ class DevisViewSet(viewsets.ModelViewSet):
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='proposal',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def proposal(self, request, pk=None):
+        """Canonical client-facing quote PDF path (CLAUDE.md rule #4).
+
+        Renders the premium quote PDF for this devis (synchronously, via the
+        vendored quote engine), stores it in MinIO and streams it inline.
+        """
+        devis = self.get_object()
+        try:
+            from .quote_engine import generate_premium_devis_pdf
+            from .utils.pdf import download_pdf
+            key = generate_premium_devis_pdf(devis.id)
+            pdf_bytes = download_pdf(key)
+        except Exception as exc:
+            return Response(
+                {'detail': f'Génération de la proposition échouée : {exc}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="Proposition_{devis.reference}.pdf"'
+        )
+        return response
 
     @action(
         detail=True,

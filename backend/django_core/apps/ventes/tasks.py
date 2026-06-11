@@ -16,10 +16,20 @@ logger = logging.getLogger(__name__)
     acks_late=True,
 )
 def task_generate_devis_pdf(self, devis_id):
-    """Generate PDF for Devis and store in MinIO. Retries on failure."""
+    """Generate the quote PDF for a Devis and store in MinIO. Retries on failure.
+
+    Uses the premium quote engine when USE_PREMIUM_QUOTE_ENGINE is on (default),
+    otherwise falls back to the legacy ventes WeasyPrint generator. Invoices are
+    unaffected.
+    """
     try:
-        from .utils.pdf import generate_devis_pdf
-        key = generate_devis_pdf(devis_id)
+        from django.conf import settings
+        if getattr(settings, 'USE_PREMIUM_QUOTE_ENGINE', True):
+            from .quote_engine import generate_premium_devis_pdf
+            key = generate_premium_devis_pdf(devis_id)
+        else:
+            from .utils.pdf import generate_devis_pdf
+            key = generate_devis_pdf(devis_id)
         logger.info('task_generate_devis_pdf OK: %s', key)
         return key
     except Exception as exc:
