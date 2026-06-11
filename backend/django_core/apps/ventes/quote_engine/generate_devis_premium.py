@@ -335,7 +335,11 @@ def icon_img(des, _mar=""):
     elif "transport"    in d: key = "transport"
     elif "suivi"        in d: key = "suivi"
     svg = _SVG.get(key, _SVG["accessoires"])
-    return f'<img src="{svg_uri(svg)}" width="36" height="36" style="border-radius:5px;display:block;">'
+    # Size via CSS (not width/height attrs): WeasyPrint ignores the attributes for
+    # an SVG data-URI without an intrinsic size and would render it huge. The
+    # per-row scale logic (.eq .ti img {...!important}) still overrides this.
+    return (f'<img src="{svg_uri(svg)}" width="36" height="36" '
+            f'style="width:36px;height:36px;border-radius:5px;display:block;">')
 
 def badge(mar):
     if not mar or mar.lower() in ("", "nan"): return ""
@@ -929,7 +933,7 @@ def page2(sans_items, img_roi, img_mon):
         f'</svg> \u00c9conomies mensuelles estim\u00e9es (MAD\u00a0/\u00a0mois)</div>'
         f'<div style="font-size:6pt;color:{CG4};font-style:italic;margin-bottom:4px;flex-shrink:0;">'
         f'Facture ONEE vs \u00e9conomies solaires par mois</div>'
-        f'<img src="{img_mon}" style="width:100%;height:175px;object-fit:contain;display:block;">'
+        f'<img src="{img_mon}" style="width:680px;height:170px;object-fit:contain;display:block;">'
         f'</div>'
     ) if img_mon else ""
 
@@ -982,7 +986,7 @@ def page2(sans_items, img_roi, img_mon):
       <div style="font-size:7pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0;">
         <svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Gain cumul\u00e9 sur 25 ans \u2014 Point de retour sur investissement
       </div>
-      <img src="{img_roi}" style="width:100%;height:175px;object-fit:contain;display:block;">
+      <img src="{img_roi}" style="width:680px;height:170px;object-fit:contain;display:block;">
     </div>
     {_monthly_card}
   </div>
