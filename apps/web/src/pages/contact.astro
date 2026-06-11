@@ -1,0 +1,58 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import LeadForm from '../components/LeadForm.astro';
+import { NAP } from '../lib/nap';
+import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
+
+const waGeneral = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite une étude pour une installation solaire.');
+const waRegul = whatsappLink(NAP.whatsapp, regularizationWhatsappText());
+---
+
+<Layout
+  title="Contact — étude solaire gratuite | Taqinor"
+  description="Demandez votre étude solaire gratuite : formulaire d'estimation immédiate, WhatsApp direct, intervention dans tout le Maroc. Réponse sous 24 h ouvrées."
+  ogSlug="contact"
+>
+  <Article33Ribbon />
+
+  <section class="bg-navy-950 px-4 py-12 text-white">
+    <div class="mx-auto max-w-3xl text-center">
+      <h1 class="text-3xl font-bold sm:text-4xl">Parlons de votre installation</h1>
+      <p class="mx-auto mt-3 max-w-xl leading-relaxed text-white/80">
+        Le formulaire vous donne une fourchette immédiate. Pour aller plus vite,
+        écrivez-nous directement sur WhatsApp.
+      </p>
+    </div>
+  </section>
+
+  <LeadForm heading="Demande d'étude — estimation immédiate" />
+
+  <section class="mx-auto max-w-2xl px-4 pb-14">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <a href={waGeneral} rel="noopener"
+        class="rounded-2xl border border-navy-100 p-6 text-center transition hover:border-navy-700 hover:shadow-md">
+        <p class="font-bold">WhatsApp — nouvelle installation</p>
+        <p class="mt-1 text-sm text-navy-800/70">Étude et devis pour un nouveau projet</p>
+      </a>
+      <a href={waRegul} rel="noopener"
+        class="rounded-2xl border border-navy-100 p-6 text-center transition hover:border-navy-700 hover:shadow-md">
+        <p class="font-bold">WhatsApp — régularisation Article 33</p>
+        <p class="mt-1 text-sm text-navy-800/70">Installation existante à mettre en conformité</p>
+      </a>
+    </div>
+
+    <div class="mt-8 rounded-2xl bg-navy-50 p-6 text-center text-sm">
+      <p class="font-bold">{NAP.name}</p>
+      <p class="mt-1">
+        <a href={`tel:${NAP.phone}`} class="underline">{NAP.phoneDisplay}</a>
+        &nbsp;·&nbsp;
+        <a href={`mailto:${NAP.email}`} class="underline">{NAP.email}</a>
+      </p>
+      <p class="mt-2 text-navy-800/70">
+        Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — déplacements dans tout le Maroc.
+      </p>
+      <p class="mt-1 text-xs text-navy-800/75">Interventions sur site uniquement — pas d'accueil du public en agence.</p>
+    </div>
+  </section>
+</Layout>

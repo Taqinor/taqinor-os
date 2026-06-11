@@ -1,0 +1,129 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import { NAP } from '../lib/nap';
+import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
+
+const wa = whatsappLink(NAP.whatsapp, regularizationWhatsappText());
+
+const steps = [
+  {
+    title: 'Inventaire technique',
+    body: 'Relevé de l’installation existante : puissance installée, mode de raccordement, niveau de tension, équipements de protection et de comptage.',
+  },
+  {
+    title: 'Détermination du régime',
+    body: 'Selon la puissance et le raccordement, l’installation relève de la déclaration, de l’accord de raccordement ou de l’autorisation (décret 2-25-100).',
+  },
+  {
+    title: 'Constitution du dossier',
+    body: 'Fiches techniques, schéma unifilaire, attestations de conformité et formulaires du régime applicable — préparés par nos soins.',
+  },
+  {
+    title: 'Dépôt de la demande de régularisation',
+    body: 'Dépôt auprès du gestionnaire de réseau ou de l’autorité compétente, dans le cadre de la fenêtre ouverte par l’Article 33.',
+  },
+  {
+    title: 'Suivi jusqu’à la mise en conformité',
+    body: 'Suivi de l’instruction, réponses aux compléments demandés, et le cas échéant mise à niveau technique de l’installation.',
+  },
+];
+
+const sanctions = [
+  {
+    title: 'Situation irrégulière',
+    body: 'Une installation existante non régularisée est en situation irrégulière au regard de la loi 82-21, désormais en vigueur.',
+  },
+  {
+    title: 'Amendes — article 28',
+    body: 'De 2 000 à 5 000 MAD pour exploitation sans la déclaration requise.',
+  },
+  {
+    title: 'Amendes — article 29',
+    body: 'De 100 000 à 1 000 000 MAD pour exploitation sans accord de raccordement ou sans autorisation.',
+  },
+  {
+    title: 'Mise en demeure et arrêt — articles 25 et 27',
+    body: 'Risque de mise en demeure puis d’arrêt ordonné de l’installation.',
+  },
+  {
+    title: 'Déconnexion du réseau — article 32',
+    body: 'Le gestionnaire de réseau peut déconnecter une installation non conforme.',
+  },
+];
+---
+
+<Layout
+  title="Régularisation Article 33 — installations solaires existantes | Taqinor"
+  description="La loi 82-21 est en vigueur depuis le 9 juin 2026. L'Article 33 ouvre une fenêtre de 18 mois pour régulariser les installations solaires existantes : procédure en 5 étapes, sanctions encourues, prise en charge complète du dossier."
+  ogSlug="article-33"
+>
+  <Article33Ribbon />
+
+  <section class="bg-navy-950 px-4 py-14 text-white">
+    <div class="mx-auto max-w-3xl">
+      <p class="text-sm font-bold uppercase tracking-wide text-sun-400">Loi 82-21 — Article 33</p>
+      <h1 class="mt-2 text-3xl font-bold sm:text-4xl">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
+      <p class="mt-4 leading-relaxed text-white/80">
+        Le décret 2-25-100 et la décision ANRE 04/26 sont entrés en vigueur le 9 juin 2026.
+        Depuis cette date, le régime de la loi 82-21 s'applique à toutes les installations
+        d'autoproduction — y compris celles posées avant la loi.
+      </p>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-3xl px-4 py-12">
+    <h2 class="text-2xl font-bold">Ce que dit l'Article 33</h2>
+    <p class="mt-3 leading-relaxed text-navy-800/85">
+      L'Article 33 de la loi 82-21 accorde aux exploitants d'installations existantes une
+      fenêtre de <strong>18 mois</strong> pour déposer une demande de régularisation.
+      Cette fenêtre est ouverte depuis le 9 juin 2026 : déposez maintenant. Une installation
+      régularisée est sécurisée juridiquement ; une installation non régularisée est en
+      situation irrégulière.
+    </p>
+
+    <h2 class="mt-10 text-2xl font-bold">Qui est concerné ?</h2>
+    <ul class="mt-3 space-y-2 text-sm leading-relaxed text-navy-800/85">
+      <li class="flex gap-2"><span class="font-bold text-sun-600">✓</span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
+      <li class="flex gap-2"><span class="font-bold text-sun-600">✓</span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
+      <li class="flex gap-2"><span class="font-bold text-sun-600">✓</span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
+    </ul>
+
+    <h2 class="mt-10 text-2xl font-bold">La régularisation en 5 étapes</h2>
+    <ol class="mt-5 space-y-4">
+      {steps.map((s, i) => (
+        <li class="flex gap-4 rounded-2xl border border-navy-100 p-5">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sun-500 text-sm font-bold text-navy-900">{i + 1}</span>
+          <div>
+            <h3 class="font-bold">{s.title}</h3>
+            <p class="mt-1 text-sm leading-relaxed text-navy-800/80">{s.body}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+
+    <h2 class="mt-10 text-2xl font-bold">Ce que vous risquez en ne faisant rien</h2>
+    <p class="mt-2 text-sm text-navy-800/70">Sanctions prévues par la loi 82-21 :</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {sanctions.map((s) => (
+        <div class="rounded-2xl border border-red-200 bg-red-50 p-5">
+          <h3 class="text-sm font-bold text-red-800">{s.title}</h3>
+          <p class="mt-1 text-sm leading-relaxed text-red-900/80">{s.body}</p>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-10 rounded-2xl bg-navy-900 p-7 text-center text-white">
+      <h2 class="text-xl font-bold">Confiez-nous le dossier</h2>
+      <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-white/80">
+        Envoyez la puissance approximative et la ville de votre installation : nous identifions
+        le régime applicable et constituons le dossier de régularisation.
+      </p>
+      <a
+        href={wa}
+        rel="noopener"
+        class="mt-5 inline-block rounded-lg bg-sun-500 px-7 py-3 text-base font-bold text-navy-900 hover:bg-sun-400"
+      >Démarrer sur WhatsApp</a>
+    </div>
+  </section>
+</Layout>

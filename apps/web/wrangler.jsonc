@@ -1,0 +1,18 @@
+{
+	"compatibility_date": "2026-06-11",
+	"compatibility_flags": ["global_fetch_strictly_public"],
+	"name": "taqinor-web",
+	// Runtime configuration (Worker secrets/vars — see .dev.vars.example for local dev):
+	//   SIMULATOR_API_URL — upstream simulation API; absent => local estimation fallback
+	//   LEAD_WEBHOOK_URL  — lead forwarding endpoint (Odoo transition CRM webhook)
+	//   CAPI_URL          — Meta Conversions API relay service (taqinor-os)
+	//   WHATSAPP_NUMBER   — destination WhatsApp number, digits only (e.g. 2126XXXXXXXX)
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	}
+}

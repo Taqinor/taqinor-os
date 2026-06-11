@@ -1,0 +1,188 @@
+---
+/**
+ * Formulaire de demande d'étude — composant le plus important du site.
+ * Soumission : POST /api/simulate (proxy Worker, jamais l'API directement).
+ * fbclid + UTM repris du sessionStorage (capture dans Layout) en champs cachés.
+ */
+import { BILL_RANGES } from '../lib/billRange';
+import { ROOF_TYPES } from '../lib/lead';
+
+interface Props {
+  heading?: string;
+}
+const { heading = 'Estimez votre installation en 30 secondes' } = Astro.props;
+---
+
+<section id="simulateur" class="mx-auto max-w-2xl scroll-mt-20 px-4 py-12">
+  <div class="rounded-2xl border border-navy-100 bg-white p-6 shadow-lg sm:p-8">
+    <h2 class="text-2xl font-bold text-navy-900">{heading}</h2>
+    <p class="mt-1 text-sm text-navy-800/70">
+      Fourchette de puissance et de retour sur investissement, sans engagement.
+      Le devis détaillé est établi après visite technique.
+    </p>
+
+    <form id="lead-form" class="mt-6 flex flex-col gap-4" novalidate>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="lf-name" class="mb-1 block text-sm font-semibold">Nom complet *</label>
+          <input id="lf-name" name="fullName" required autocomplete="name"
+            class="w-full rounded-lg border border-navy-100 px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
+        </div>
+        <div>
+          <label for="lf-phone" class="mb-1 block text-sm font-semibold">Téléphone *</label>
+          <input id="lf-phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel"
+            placeholder="06 XX XX XX XX"
+            class="w-full rounded-lg border border-navy-100 px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
+          <p id="lf-phone-err" class="mt-1 hidden text-xs text-red-600"></p>
+        </div>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="lf-city" class="mb-1 block text-sm font-semibold">Ville / commune *</label>
+          <input id="lf-city" name="city" required autocomplete="address-level2"
+            class="w-full rounded-lg border border-navy-100 px-3 py-2.5 text-sm outline-none focus:border-navy-700" />
+        </div>
+        <div>
+          <label for="lf-roof" class="mb-1 block text-sm font-semibold">Type de toiture *</label>
+          <select id="lf-roof" name="roofType" required
+            class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700">
+            <option value="" disabled selected>Choisir…</option>
+            {ROOF_TYPES.map((r) => <option value={r.id}>{r.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label for="lf-bill" class="mb-1 block text-sm font-semibold">Facture d'électricité mensuelle *</label>
+        <select id="lf-bill" name="billRange" required
+          class="w-full rounded-lg border border-navy-100 bg-white px-3 py-2.5 text-sm outline-none focus:border-navy-700">
+          <option value="" disabled selected>Choisir une tranche…</option>
+          {BILL_RANGES.map((r) => <option value={r.id}>{r.label}</option>)}
+        </select>
+      </div>
+
+      <label class="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="whatsappOptIn" class="mt-0.5" checked />
+        <span>Je préfère être contacté(e) par WhatsApp</span>
+      </label>
+
+      <label class="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="consent" required class="mt-0.5" />
+        <span>
+          J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
+          demande d'étude solaire. *
+        </span>
+      </label>
+
+      <!-- fbclid + UTM persistés — remplis depuis sessionStorage au chargement -->
+      <input type="hidden" name="fbclid" />
+      <input type="hidden" name="utm_source" />
+      <input type="hidden" name="utm_medium" />
+      <input type="hidden" name="utm_campaign" />
+      <input type="hidden" name="utm_content" />
+      <input type="hidden" name="utm_term" />
+
+      <p id="lf-err" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></p>
+
+      <button type="submit" id="lf-submit"
+        class="rounded-lg bg-sun-500 px-6 py-3 text-base font-bold text-navy-900 hover:bg-sun-400 disabled:opacity-60">
+        Obtenir mon estimation
+      </button>
+    </form>
+
+    <div id="lf-success" class="hidden rounded-xl border border-green-200 bg-green-50 p-6 text-center">
+      <p class="text-lg font-bold text-green-800">Merci, votre demande est bien enregistrée.</p>
+      <p id="lf-band" class="mt-2 text-sm text-green-900"></p>
+      <a id="lf-wa" href="#" rel="noopener"
+        class="mt-4 inline-block rounded-lg bg-green-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-green-700">
+        Continuer sur WhatsApp
+      </a>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { normalizeMoroccanPhone } from '../lib/phone';
+
+  const form = document.getElementById('lead-form') as HTMLFormElement | null;
+  const success = document.getElementById('lf-success')!;
+  const bandEl = document.getElementById('lf-band')!;
+  const waEl = document.getElementById('lf-wa') as HTMLAnchorElement;
+  const errEl = document.getElementById('lf-err')!;
+  const phoneErr = document.getElementById('lf-phone-err')!;
+  const submitBtn = document.getElementById('lf-submit') as HTMLButtonElement;
+
+  // Reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout)
+  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  for (const k of TRACK_KEYS) {
+    const input = form?.elements.namedItem(k) as HTMLInputElement | null;
+    if (input) {
+      try {
+        input.value = sessionStorage.getItem('tq_' + k) ?? '';
+      } catch {}
+    }
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errEl.classList.add('hidden');
+    phoneErr.classList.add('hidden');
+
+    const fd = new FormData(form);
+    const phone = normalizeMoroccanPhone(String(fd.get('phone') ?? ''));
+    if (!phone.ok) {
+      phoneErr.textContent = phone.error ?? 'Numéro invalide';
+      phoneErr.classList.remove('hidden');
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      fullName: fd.get('fullName'),
+      phone: fd.get('phone'),
+      whatsappOptIn: fd.get('whatsappOptIn') === 'on',
+      city: fd.get('city'),
+      roofType: fd.get('roofType'),
+      billRange: fd.get('billRange'),
+      consent: fd.get('consent') === 'on',
+    };
+    for (const k of TRACK_KEYS) {
+      const v = String(fd.get(k) ?? '');
+      if (v) payload[k] = v;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Calcul en cours…';
+    try {
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        const first = data?.errors ? String(Object.values(data.errors)[0]) : 'Une erreur est survenue. Réessayez.';
+        errEl.textContent = first;
+        errEl.classList.remove('hidden');
+        return;
+      }
+      form.classList.add('hidden');
+      bandEl.textContent = `Estimation préliminaire : ${data.band.kwcLabel} — retour sur investissement ${data.band.paybackLabel}.`;
+      waEl.href = data.whatsappUrl;
+      success.classList.remove('hidden');
+      success.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Sur mobile : ouverture automatique de WhatsApp après l'état de remerciement
+      if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        setTimeout(() => {
+          window.location.href = data.whatsappUrl;
+        }, 1800);
+      }
+    } catch {
+      errEl.textContent = 'Connexion impossible. Vérifiez votre réseau et réessayez.';
+      errEl.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Obtenir mon estimation';
+    }
+  });
+</script>

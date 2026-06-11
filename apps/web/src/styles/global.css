@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* Sora — auto-hébergé, pas de dépendance Google Fonts */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/sora-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/sora-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme {
+  --font-sans: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --color-navy-50: #f0f3fa;
+  --color-navy-100: #dbe2f1;
+  --color-navy-700: #1d2f5e;
+  --color-navy-800: #14224a;
+  --color-navy-900: #0d1b3e;
+  --color-navy-950: #081129;
+  --color-sun-400: #ffd633;
+  --color-sun-500: #f5c100;
+  --color-sun-600: #d4a700;
+}
+
+html {
+  scroll-behavior: smooth;
+}

@@ -1,0 +1,27 @@
+---
+/**
+ * FAQ accessible sans JavaScript (details/summary natifs).
+ * PLACEHOLDER(MERYEM): tout le contenu FAQ est provisoire — à remplacer
+ * par les questions/réponses de Meryem.
+ */
+interface Props {
+  items: { q: string; a: string }[];
+  heading?: string;
+}
+const { items, heading = 'Questions fréquentes' } = Astro.props;
+---
+
+<section class="mx-auto max-w-3xl px-4 py-12">
+  <h2 class="text-2xl font-bold">{heading}</h2>
+  <div class="mt-6 divide-y divide-navy-100 rounded-2xl border border-navy-100">
+    {items.map((item) => (
+      <details class="group px-5 py-4">
+        <summary class="cursor-pointer list-none text-sm font-semibold marker:hidden [&::-webkit-details-marker]:hidden">
+          <span class="mr-2 text-sun-600 group-open:rotate-90 inline-block transition-transform">›</span>
+          {item.q}
+        </summary>
+        <p class="mt-2 pl-5 text-sm leading-relaxed text-navy-800/80">{item.a}</p>
+      </details>
+    ))}
+  </div>
+</section>
