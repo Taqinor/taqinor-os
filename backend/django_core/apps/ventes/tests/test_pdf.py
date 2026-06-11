@@ -7,10 +7,9 @@ Run with:
 """
 import base64
 from decimal import Decimal
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Client
@@ -21,6 +20,7 @@ from apps.parametres.models import CompanyProfile
 User = get_user_model()
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 def make_company():
     from authentication.models import Company

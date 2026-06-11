@@ -187,6 +187,7 @@ export default function OcrStockImport() {
   // Restore step on mount: if scan is in-flight or failed while user navigated away
   useEffect(() => {
     if ((stockOcrLoading || stockOcrError) && stockOcrDocType) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDocType(stockOcrDocType)
       setStep(2)
     }
@@ -198,6 +199,7 @@ const cp = produitsRef.current
     const cf = fournisseursRef.current
     const cc = categoriesRef.current
     // Restore docType from Redux so purchase-doc rules survive navigation
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stockOcrDocType) setDocType(stockOcrDocType)
     // OCR mouvement_suggere takes priority; doc_type was already used as hint
     setMouvementType(stockOcrResult.mouvement_suggere || 'entree')
@@ -281,7 +283,8 @@ const cp = produitsRef.current
     setStep(3)
   }, [stockOcrResult]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fuzzyMatchCategorie = useCallback((suggestion) => {
+  // Conservé pour usage futur (préfixe _ : non branché pour l'instant)
+  const _fuzzyMatchCategorie = useCallback((suggestion) => {
     if (!suggestion) return null
     const sug = suggestion.toLowerCase().trim()
     const cats = categoriesRef.current
@@ -292,7 +295,8 @@ const cp = produitsRef.current
   }, [])
 
   // Fallback : cherche une catégorie existante à partir des mots du nom produit
-  const keywordMatchFromName = useCallback((productName) => {
+  // Conservé pour usage futur (préfixe _ : non branché pour l'instant)
+  const _keywordMatchFromName = useCallback((productName) => {
     if (!productName) return null
     const nom = productName.toLowerCase().replace(/[()[\]]/g, ' ')
     const cats = categoriesRef.current
@@ -406,7 +410,7 @@ const cp = produitsRef.current
             if (!existingProd?.fournisseur) patchData.fournisseur_id = resolvedFournisseurId
           }
           if (Object.keys(patchData).length > 0) {
-            try { await stockApi.patchProduit(produitId, patchData) } catch {}
+            try { await stockApi.patchProduit(produitId, patchData) } catch { /* patch optionnel */ }
           }
         } else {
           if (!ligne.nouveau_nom.trim()) { log.push({ ok: false, label, msg: 'Nom du produit requis' }); continue }

@@ -539,7 +539,7 @@ class OCRService:
         # For purchase invoices: if lines found but no prices at all → vision fallback
         if doc_type == "facture_achat":
             has_any_price = any(
-                l.get("prix_unitaire_ht") for l in parsed.get("lignes", [])
+                ligne.get("prix_unitaire_ht") for ligne in parsed.get("lignes", [])
             )
             if not has_any_price:
                 logger.info(

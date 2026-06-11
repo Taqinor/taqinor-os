@@ -2,7 +2,6 @@
 Tâches Celery métier de l'ERP Agentique.
 Les TODO indiquent où implémenter la logique réelle (Sem. 4).
 """
-import os
 from celery import shared_task
 
 
@@ -102,4 +101,3 @@ def verifier_alertes_stock(self) -> dict:
     """
     # PLACEHOLDER — à implémenter en Sem. 3
     return {'status': 'todo'}
-

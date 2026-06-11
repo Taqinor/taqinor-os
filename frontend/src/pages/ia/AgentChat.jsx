@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { queryAgent, clearMessages, loadChatHistory, clearChatHistory } from '../../features/ia/store/iaSlice'
+import { queryAgent, loadChatHistory, clearChatHistory } from '../../features/ia/store/iaSlice'
 
 const SUGGESTIONS = [
   'Quels produits sont en rupture de stock ?',
