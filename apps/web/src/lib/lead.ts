@@ -22,6 +22,8 @@ export type UtmKey = (typeof UTM_KEYS)[number];
 export interface LeadEnv {
   SIMULATOR_API_URL?: string;
   LEAD_WEBHOOK_URL?: string;
+  /** Secret partagé avec le récepteur taqinor-os (X-Webhook-Secret). */
+  LEAD_WEBHOOK_SECRET?: string;
   CAPI_URL?: string;
   WHATSAPP_NUMBER?: string;
 }
@@ -164,9 +166,15 @@ export async function forwardLead(
   const url = env.LEAD_WEBHOOK_URL?.trim();
   if (!url) return { delivered: false, reason: 'no-webhook-configured' };
   try {
+    // Secret statique attendu par le récepteur taqinor-os
+    // (apps/crm/webhooks.py, en-tête X-Webhook-Secret). Sans secret
+    // configuré, le récepteur refuse tout : les deux vont ensemble.
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const secret = env.LEAD_WEBHOOK_SECRET?.trim();
+    if (secret) headers['x-webhook-secret'] = secret;
     const res = await fetchFn(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(record),
       signal: AbortSignal.timeout(8000),
     });
