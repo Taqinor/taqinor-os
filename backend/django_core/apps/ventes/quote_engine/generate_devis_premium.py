@@ -263,6 +263,8 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
+# Devis deux-options rendu en une page : option 1 seule + mention discrète.
+ONEPAGE_NOTE_BATTERIE = False
 
 # ── SVG equipment icons ──────────────────────────────────────────────────────
 _SVG = {
@@ -496,7 +498,10 @@ def _style_ax(fig, ax):
     ax.grid(axis="y", color="#F3F4F6", linewidth=0.8, zorder=0)
 
 def make_chart_roi():
-    fig, ax = plt.subplots(figsize=(13, 4.5), dpi=130)
+    # Ratio EXACTEMENT celui du cadre d'affichage (680×170 px = 4:1) et
+    # rendu SANS recadrage : l'image remplit son cadre, nette, sans
+    # letterboxing (WeasyPrint ne gère pas object-fit de façon fiable).
+    fig, ax = plt.subplots(figsize=(13.6, 3.4), dpi=140)
     _style_ax(fig, ax)
     x = np.array(YEARS); ys = np.array(CUMUL_S); ya = np.array(CUMUL_A)
     ax.axhline(0, color="#D1D5DB", linewidth=1.0, linestyle="--", zorder=1)
@@ -527,7 +532,9 @@ def make_chart_roi():
     leg = ax.legend(fontsize=9, frameon=True, loc="upper left", edgecolor="#E5E7EB", facecolor="white")
     leg.get_frame().set_linewidth(0.8)
     plt.tight_layout(pad=0.5)
-    buf = io.BytesIO(); plt.savefig(buf, format="png", bbox_inches="tight", facecolor="white"); plt.close(fig)
+    # PAS de bbox_inches="tight" : le recadrage changerait le ratio et
+    # recréerait le letterboxing dans le cadre fixe.
+    buf = io.BytesIO(); plt.savefig(buf, format="png", facecolor="white"); plt.close(fig)
     return b64(buf)
 
 def make_chart_monthly():
@@ -537,7 +544,8 @@ def make_chart_monthly():
     # Real monthly bills from the simulator input
     _onee_m = FACTURES_M
 
-    fig, ax = plt.subplots(figsize=(13, 4.0), dpi=130)
+    # Même ratio 4:1 que le cadre 680×170 — image pleine, jamais en vignette.
+    fig, ax = plt.subplots(figsize=(13.6, 3.4), dpi=140)
     fig.patch.set_facecolor("white"); ax.set_facecolor("white")
     for s in ["top", "right"]: ax.spines[s].set_visible(False)
     ax.spines["left"].set_color("#EAECF0"); ax.spines["bottom"].set_color("#EAECF0")
@@ -592,7 +600,8 @@ def make_chart_monthly():
     leg.get_frame().set_linewidth(0.8)
 
     plt.tight_layout(pad=0.4); fig.subplots_adjust(top=0.82)
-    buf = io.BytesIO(); plt.savefig(buf, format="png", bbox_inches="tight", facecolor="white"); plt.close(fig)
+    # Pas de recadrage : ratio fidèle au cadre 680×170 (pas de vignette).
+    buf = io.BytesIO(); plt.savefig(buf, format="png", facecolor="white"); plt.close(fig)
     return b64(buf)
 
 # ── Equipment rows ────────────────────────────────────────────────────────────
@@ -741,6 +750,10 @@ def page1():
     _s1   = 'display:none;' if SCENARIO == 'Avec batterie' else ''
     _s2   = 'display:none;' if SCENARIO == 'Sans batterie' else ''
     _both = not _s1 and not _s2
+    # Espacement entre cartes par MARGE + padding droit du conteneur
+    # compensé : WeasyPrint ne déduit pas l'espacement des enfants flex:1.
+    _opt1_margin = 'margin-right:12px;' if _both else ''
+    _opts_pad_right = 36 if _both else 24
     # Badge: position:absolute at the top of the card — does NOT shift price downwards
     _badge_css = (f'position:absolute;top:0;left:0;right:0;background:{CA};color:{CN};'
                   f'font-size:7pt;font-weight:700;letter-spacing:1px;padding:5px 9px;'
@@ -859,8 +872,10 @@ def page1():
     </div>
   </div>
 
-  <!-- WHITE CONTENT AREA — fills remaining space, dark strip is compact -->
-  <div style="display:flex;flex-direction:column;padding:0;margin:0;flex:1;background:#FFFFFF !important;">
+  <!-- WHITE CONTENT AREA — bloc simple (le flex-colonne imbriqué faisait
+       ignorer le padding droit des sections à WeasyPrint : colonne de
+       droite rognée au bord de page). flex:1 garde le remplissage vertical. -->
+  <div style="display:block;padding:0;margin:0;flex:1;background:#FFFFFF !important;">
 
   <!-- CLIENT INFO — white area, below header band, no overlap -->
   <div style="padding:8px 24px 4px;flex-shrink:0;background:#FFFFFF !important;">
@@ -872,22 +887,26 @@ def page1():
   <!-- KPI CARDS -->
   <!-- FIX v39: removed box-shadow from all 3 KPI cards (was: 0 3px 14px rgba(0,0,0,0.07) and 0 2px 8px rgba(0,0,0,0.09)) -->
   <!-- FIX v39: padding-bottom on KPI container changed from 8px → 4px (shadow bleed zone closed) -->
-  <div style="padding:2px 24px 4px;flex-shrink:0;background:#FFFFFF !important;">
-    <div style="display:flex;gap:9px;background:#FFFFFF !important;">
+  <div style="padding:2px 42px 4px 24px;flex-shrink:0;background:#FFFFFF !important;">
+    <!-- COMPENSATION WeasyPrint : son flex ne déduit pas les espacements
+         entre enfants flex:1 — la rangée débordait à droite et rognait la
+         carte Économies. Le padding droit du conteneur (42px = 24px de marge
+         + 2×9px d'espacement) ramène le bord droit exactement sur la marge. -->
+    <div style="display:flex;background:#FFFFFF !important;">
 
-      <div style="flex:1;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
+      <div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
         <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>
         <div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{KWC}&nbsp;kWc</div>
         <div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{NB_PAN} panneaux &#215; {WP}&nbsp;W</div>
       </div>
 
-      <div style="flex:1;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
+      <div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
         <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>
         <div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{pk}&nbsp;kWh</div>
         <div style="font-size:6.5pt;color:{CG4};margin-top:3px;">&#233;nergie propre / an</div>
       </div>
 
-      <div style="flex:1;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">
+      <div style="flex:1;min-width:0;overflow-wrap:anywhere;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">
         <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">&#201;conomies estim&#233;es / an</div>
         <div class="serif" style="font-size:{_eco_size};color:{CN};line-height:1.1;">{_eco_val}</div>
         <div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>
@@ -905,10 +924,13 @@ def page1():
   </div>
 
   <!-- OPTION CARDS ROW — equal height, fill remaining space -->
-  <div style="flex:1;min-height:0;display:flex;gap:12px;padding:0 24px 10px;align-items:stretch;background:#FFFFFF !important;">
+  <!-- Rangée d'options : padding droit compensé ({_opts_pad_right}px) — le
+       flex de WeasyPrint ne déduit pas l'espacement entre cartes et rognait
+       la carte Option 2 au bord droit de la page. -->
+  <div style="display:flex;padding:0 {_opts_pad_right}px 10px 24px;align-items:stretch;background:#FFFFFF !important;">
 
     <!-- OPTION 1 -->
-    <div style="flex:1;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFFFFF;position:relative;{_s1}">
+    <div style="flex:1;min-width:0;overflow:hidden;{_opt1_margin}border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFFFFF;position:relative;{_s1}">
       {_r1}
       <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">Option 1</div>
       <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">Sans batterie</div>
@@ -928,7 +950,7 @@ def page1():
     </div>
 
     <!-- OPTION 2 -->
-    <div style="flex:1;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
+    <div style="flex:1;min-width:0;overflow:hidden;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
       {_r2}
       <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">Option 2</div>
       <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">Avec batterie</div>
@@ -1018,7 +1040,7 @@ def page2(sans_items, img_roi, img_mon):
         f'</svg> \u00c9conomies mensuelles estim\u00e9es (MAD\u00a0/\u00a0mois)</div>'
         f'<div style="font-size:6pt;color:{CG4};font-style:italic;margin-bottom:4px;flex-shrink:0;">'
         f'Facture ONEE vs \u00e9conomies solaires par mois</div>'
-        f'<img src="{img_mon}" style="width:680px;height:170px;object-fit:contain;display:block;">'
+        f'<img src="{img_mon}" style="width:680px;height:170px;display:block;">'
         f'</div>'
     ) if img_mon else ""
 
@@ -1071,7 +1093,7 @@ def page2(sans_items, img_roi, img_mon):
       <div style="font-size:7pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0;">
         <svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Gain cumul\u00e9 sur 25 ans \u2014 Point de retour sur investissement
       </div>
-      <img src="{img_roi}" style="width:680px;height:170px;object-fit:contain;display:block;">
+      <img src="{img_roi}" style="width:680px;height:170px;display:block;">
     </div>
     {_monthly_card}
   </div>
@@ -1734,6 +1756,7 @@ def page_onepage(items):
 
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
+    {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option sans batterie. Une option avec batterie est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">&#183; Validit&#233;&#160;: 30 jours</span>
       <span style="margin-right:20px;">&#183; Acompte&#160;: {PAY_A}&#37;</span>
@@ -1835,7 +1858,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
-    global PAY_A, PAY_M, PAY_S
+    global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
 
     CLIENT_NAME  = data["client_name"]
     CLIENT_ADDR  = data["client_addr"]
@@ -1887,6 +1910,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     PAY_A = int(_terms.get("acompte", 30))
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
+    ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     SANS_BULLETS = data.get("sans_bullets") or []
     AVEC_BULLETS = data.get("avec_bullets") or []
 

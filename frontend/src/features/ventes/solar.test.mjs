@@ -46,7 +46,7 @@ const SEEDED = [
   P('Tableau De Protection AC/DC', 2000),
   P('Installation', 4800),
   P('Transport', 1000),
-  P('Suivi journalier, maintenance chaque 12 mois pendent 2 ans', 5000),
+  P('Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 5000),
 ]
 
 const CLEAN_INT = (v) => Number.isInteger(v)
@@ -130,7 +130,7 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
     'Structures acier', 'Structures aluminium', 'Socles', 'Smart Meter',
     'Wifi Dongle', 'Accessoires', 'Tableau De Protection AC/DC',
     'Installation', 'Transport',
-    'Suivi journalier, maintenance chaque 12 mois pendent 2 ans', 'Autres',
+    'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 'Autres',
   ])
   const by = (label) => groups.find(g => g.label === label)
   assert.equal(by('Onduleur Injection').items.length, 10)
@@ -157,6 +157,22 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
   const numberSteps = jsx.split('type="number"').slice(1)
     .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
   numberSteps.forEach(s => assert.equal(s, 'any'))
+})
+
+test('garde-fou : choisir un lead ne réinitialise JAMAIS le mode choisi', () => {
+  const jsx = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
+    'utf-8',
+  )
+  // Le pré-réglage du mode depuis le lead doit être conditionné au fait que
+  // l'utilisateur n'a PAS déjà touché le mode (modeTouched).
+  assert.ok(/!modeTouched\.current[\s\S]{0,120}LEAD_TYPE_TO_MODE/.test(jsx),
+    'applyLead doit vérifier modeTouched avant de changer le mode')
+  assert.ok(jsx.includes('modeTouched.current = true'),
+    'le sélecteur de mode doit marquer le choix utilisateur')
+  // Et l'échec de création ne montre jamais de JSON brut
+  assert.ok(!jsx.includes('JSON.stringify(err)'),
+    'plus de JSON brut affiché à l\'utilisateur en cas d\'échec')
 })
 
 test('ROI : production GHI × kWc × 0.8', () => {

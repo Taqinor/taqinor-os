@@ -230,7 +230,7 @@
       "buy_ttc": 800.0
     }
   },
-  "Suivi journalier, maintenance chaque 12 mois pendent 2 ans": {
+  "Suivi journalier, maintenance chaque 12 mois pendant 2 ans": {
     "__default__": {
       "sell_ttc": 5000.0,
       "buy_ttc": 4000.0

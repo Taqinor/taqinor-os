@@ -34,6 +34,8 @@ export default function DevisList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { devis, loading, error } = useSelector(s => s.ventes)
+  const role = useSelector(s => s.auth.role)
+  const canDelete = role === 'admin'  // règle existante : destroy = admin
 
   const [showForm, setShowForm]       = useState(false)
   const [editDevis, setEditDevis]     = useState(null)
@@ -62,12 +64,25 @@ export default function DevisList() {
 
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
 
-  // Création : nouvelle page générateur solaire. L'ancien formulaire modal
-  // (DevisForm) ne sert plus qu'à l'édition d'un devis existant.
+  // Création ET édition passent par la page générateur solaire (l'ancien
+  // modal DevisForm est conservé mais n'est plus le chemin d'édition).
   const openNew  = () => navigate('/ventes/devis/nouveau')
-  const openEdit = (d) => { setEditDevis(d);   setShowForm(true) }
+  const openEdit = (d) => {
+    if (d.statut !== 'brouillon') return
+    navigate(`/ventes/devis/nouveau?edit=${d.id}`)
+  }
   const closeForm = () => { setShowForm(false); setEditDevis(null) }
   const onSaved  = () => dispatch(fetchDevis())
+
+  const handleDelete = async (d) => {
+    if (!window.confirm(`Supprimer définitivement le devis ${d.reference} ?`)) return
+    try {
+      await ventesApi.deleteDevis(d.id)
+      dispatch(fetchDevis())
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Suppression impossible.')
+    }
+  }
 
   const handleConvertBC = async (d) => {
     if (!window.confirm(`Convertir « ${d.reference} » en bon de commande ?`)) return
@@ -261,9 +276,15 @@ export default function DevisList() {
                     : '—'}
                 </td>
                 <td className="ta-right">
-                  {d.total_ttc != null
-                    ? `${parseFloat(d.total_ttc).toFixed(2)} DH`
+                  {(d.total_affiche ?? d.total_ttc) != null
+                    ? `${parseFloat(d.total_affiche ?? d.total_ttc).toFixed(2)} DH`
                     : '—'}
+                  {d.nb_options === 2 && (
+                    <span className="badge" title="Devis à deux options — total affiché : option 1 (sans batterie), remise incluse"
+                          style={{ background: '#fdf3e0', color: '#92400e', marginLeft: 6, fontSize: '0.65rem' }}>
+                      2 options
+                    </span>
+                  )}
                 </td>
                 <td>
                   <span className="badge" style={{ background: meta.bg, color: meta.color }}>
@@ -272,9 +293,25 @@ export default function DevisList() {
                 </td>
                 <td>
                   <div className="actions-cell">
-                    <button className="btn btn-sm btn-outline" onClick={() => openEdit(d)}>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={() => openEdit(d)}
+                      disabled={d.statut !== 'brouillon'}
+                      title={d.statut === 'brouillon'
+                        ? 'Ouvrir dans le générateur'
+                        : 'Devis envoyé/clôturé — non modifiable (dupliquez-le depuis le générateur si besoin)'}
+                    >
                       Éditer
                     </button>
+                    {canDelete && (
+                      <button
+                        className="btn btn-sm btn-outline btn-danger-outline"
+                        onClick={() => handleDelete(d)}
+                        title="Supprimer ce devis"
+                      >
+                        Supprimer
+                      </button>
+                    )}
 
                     <button
                       className="btn btn-sm btn-outline"

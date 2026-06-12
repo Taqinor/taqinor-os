@@ -120,7 +120,7 @@ export default function ClientForm({ client = null, onClose }) {
                 className="form-control"
                 value={fields.telephone}
                 onChange={e => setField('telephone', e.target.value)}
-                placeholder="+33 6 00 00 00 00"
+                placeholder="+212 6 XX XX XX XX"
               />
             </div>
 

@@ -8,6 +8,7 @@ import {
 import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import ventesApi from '../../api/ventesApi'
 import ProduitPicker from '../../components/ProduitPicker'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
@@ -78,6 +79,14 @@ export default function DevisGenerator() {
   const [errors, setErrors] = useState({})
   const [searchParams] = useSearchParams()
   const autoRan = useRef(false)
+  // Mode choisi PAR L'UTILISATEUR : un lead sélectionné ensuite ne l'écrase
+  // jamais (le pré-réglage depuis le lead ne joue que sur le défaut intact).
+  const modeTouched = useRef(false)
+  // Édition d'un brouillon existant (?edit=ID) : chargé une fois, sauvegarde
+  // EN PLACE (mêmes référence et statut) au lieu d'une création.
+  const editId = searchParams.get('edit')
+  const [editDevis, setEditDevis] = useState(null)
+  const editLoaded = useRef(false)
 
   // ── Document ──
   const [leadId, setLeadId] = useState('')
@@ -219,8 +228,10 @@ export default function DevisGenerator() {
     setClientId('') // le client est résolu côté serveur depuis le lead
     const lead = leads.find(l => String(l.id) === String(id))
     if (!lead) return
-    // Mode présélectionné depuis le type d'installation du lead
-    if (lead.type_installation && LEAD_TYPE_TO_MODE[lead.type_installation]) {
+    // Pré-réglage du mode depuis le lead UNIQUEMENT si l'utilisateur n'a pas
+    // déjà choisi un mode lui-même — son choix ne se réinitialise JAMAIS.
+    if (!modeTouched.current
+        && lead.type_installation && LEAD_TYPE_TO_MODE[lead.type_installation]) {
       onModeChange(LEAD_TYPE_TO_MODE[lead.type_installation])
     }
     if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
@@ -269,11 +280,62 @@ export default function DevisGenerator() {
         })).unwrap()))
       navigate('/ventes/devis')
     } catch (err) {
-      const msg = err?.detail ?? JSON.stringify(err)
+      const msg = typeof err?.detail === 'string'
+        ? err.detail
+        : 'Le devis automatique a échoué — vérifiez le lead et réessayez.'
       setErrors(prev => ({ ...prev, submit: msg }))
       setSaving(false)
     }
   }
+
+  // ── Édition d'un brouillon (?edit=ID) : préremplissage complet ──
+  useEffect(() => {
+    if (!editId || editLoaded.current) return
+    editLoaded.current = true
+    ventesApi.getDevisById(editId).then(({ data: d }) => {
+      if (d.statut !== 'brouillon') {
+        window.alert('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
+        navigate('/ventes/devis')
+        return
+      }
+      setEditDevis({ id: d.id, reference: d.reference,
+                     lineIds: (d.lignes ?? []).map(l => l.id) })
+      if (d.mode_installation) {
+        modeTouched.current = true
+        onModeChange(d.mode_installation)
+      }
+      if (d.lead) setLeadId(String(d.lead))
+      else if (d.client) setClientId(String(d.client))
+      setDiscountPct(String(parseFloat(d.remise_globale) || 0))
+      setTauxTva(String(d.taux_tva ?? '20.00'))
+      if (d.date_validite) setDateValidite(d.date_validite)
+      if (d.note) setNote(d.note)
+      const rows = (d.lignes ?? []).map(l => ({
+        produit: String(l.produit ?? ''),
+        designation: l.designation,
+        quantite: String(parseFloat(l.quantite)),
+        prix_unit_ttc: String(ttcFromHt(l.prix_unitaire, l.taux_tva ?? d.taux_tva)),
+        taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
+      }))
+      setLines(withKeys(rows))
+      linesInitialized.current = true
+      const panneaux = rows
+        .filter(r => /panneau/i.test(r.designation))
+        .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
+      if (panneaux > 0) setNbPanneaux(String(panneaux))
+      const e = d.etude_params || {}
+      if (e.pompe_cv) setPompeCv(String(e.pompe_cv))
+      if (e.hmt_m) setPompeHmt(String(e.hmt_m))
+      if (e.debit_souhaite_m3h) setPompeDebit(String(e.debit_souhaite_m3h))
+      if (e.heures_pompage) setPompeHeures(String(e.heures_pompage))
+      if (e.conso_annuelle) setConsoMensuelle(String(Math.round(e.conso_annuelle / 12)))
+    }).catch(() => {
+      setErrors(prev => ({
+        ...prev,
+        submit: 'Impossible de charger ce devis — il a peut-être été supprimé.',
+      }))
+    })
+  }, [editId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Arrivée depuis le lead (?lead=…&auto=1&discount=…)
   useEffect(() => {
@@ -375,7 +437,18 @@ export default function DevisGenerator() {
       setErrors(e => ({ ...e, autofill: 'Aucun produit solaire reconnu dans le stock.' }))
       return
     }
-    setErrors(e => ({ ...e, autofill: null }))
+    // Dire EXACTEMENT ce qui manque — jamais de ligne « — Produit — » à
+    // 0 MAD laissée sans explication.
+    const manquants = generated
+      .filter(r => !r.produit && parseFloat(r.quantite) > 0)
+      .map(r => r.designation || 'ligne sans produit')
+    setErrors(e => ({
+      ...e,
+      autofill: manquants.length
+        ? `Aucun produit du stock ne correspond à : ${[...new Set(manquants)].join(', ')}. `
+          + 'Complétez le catalogue ou choisissez ces produits à la main dans les lignes.'
+        : null,
+    }))
     setLines(withKeys(generated))
   }
 
@@ -442,14 +515,25 @@ export default function DevisGenerator() {
         etude_params: etudeParams,
         prix_cible_kwc: prixCible !== '' ? prixCible : null,
       }
-      // Lead prioritaire : le client est résolu côté serveur depuis le lead.
-      if (leadId) payload.lead = parseInt(leadId)
-      else payload.client = parseInt(clientId)
-      const devis = await dispatch(createDevis(payload)).unwrap()
+      let devisId
+      if (editDevis) {
+        // ÉDITION EN PLACE : mêmes référence et statut ; les anciennes lignes
+        // sont remplacées par celles du formulaire.
+        await ventesApi.patchDevis(editDevis.id, payload)
+        await Promise.all(editDevis.lineIds.map(id =>
+          ventesApi.deleteLigneDevis(id).catch(() => {})))
+        devisId = editDevis.id
+      } else {
+        // Lead prioritaire : le client est résolu côté serveur depuis le lead.
+        if (leadId) payload.lead = parseInt(leadId)
+        else payload.client = parseInt(clientId)
+        const devis = await dispatch(createDevis(payload)).unwrap()
+        devisId = devis.id
+      }
 
       await Promise.all(usableLines().map(l =>
         dispatch(addLigneDevis({
-          devis: devis.id,
+          devis: devisId,
           produit: parseInt(l.produit),
           designation: l.designation,
           quantite: l.quantite,
@@ -464,7 +548,24 @@ export default function DevisGenerator() {
 
       navigate('/ventes/devis')
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
+      // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
+      const raw = err?.response?.data ?? err
+      let msg
+      if (raw?.lead) {
+        msg = 'Ce lead n\'existe plus (supprimé entre-temps ?). '
+          + 'La liste des leads a été rechargée — choisissez-en un autre.'
+        setLeadId('')
+        crmApi.getLeads()
+          .then(r => setLeads(r.data.results ?? r.data)).catch(() => {})
+      } else if (raw?.client) {
+        msg = 'Ce client n\'existe plus. Choisissez un autre client ou un lead.'
+        setClientId('')
+        crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+      } else if (typeof raw?.detail === 'string') {
+        msg = raw.detail
+      } else {
+        msg = 'L\'enregistrement a échoué — vérifiez les champs et réessayez.'
+      }
       setErrors(prev => ({ ...prev, submit: msg }))
     } finally {
       setSaving(false)
@@ -543,7 +644,7 @@ export default function DevisGenerator() {
                        className={`gen-radio${modeInstallation === value ? ' selected' : ''}`}>
                   <input type="radio" name="mode-installation" value={value}
                          checked={modeInstallation === value}
-                         onChange={() => onModeChange(value)} />
+                         onChange={() => { modeTouched.current = true; onModeChange(value) }} />
                   {label}
                 </label>
               ))}
@@ -1159,11 +1260,19 @@ export default function DevisGenerator() {
           </div>
         </div>
 
-        {errors.submit && <div className="form-error-box">{errors.submit}</div>}
+        {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
+            clic silencieux sans effet. */}
+        {(errors.submit || errors.lines || errors.client || errors.conso) && (
+          <div className="form-error-box">
+            {errors.submit || errors.lines || errors.client || errors.conso}
+          </div>
+        )}
 
         {/* ── Création ── */}
         <div className="gen-card">
-          <div className="gen-card-header">📄 Création du Devis</div>
+          <div className="gen-card-header">
+            {editDevis ? `📄 Modification du devis ${editDevis.reference}` : '📄 Création du Devis'}
+          </div>
           <div className="gen-card-body">
             <p className="gen-hint">
               Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium
@@ -1178,7 +1287,9 @@ export default function DevisGenerator() {
                 Annuler
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Création...' : '☀️ Créer le devis'}
+                {saving
+                  ? 'Enregistrement...'
+                  : (editDevis ? '💾 Enregistrer les modifications' : '☀️ Créer le devis')}
               </button>
             </div>
           </div>

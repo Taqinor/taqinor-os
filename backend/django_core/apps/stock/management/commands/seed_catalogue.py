@@ -59,7 +59,7 @@ CATALOGUE = [
     ('Tableau De Protection AC/DC', 'TAB-PROT', 'Accessoires', 2000, 1500, 999, 0),
     ('Installation',               'INST-CAT',  'Accessoires', 4800, 4000, 999, 0),
     ('Transport',                  'TRANS-CAT', 'Accessoires', 1000, 800, 999, 0),
-    ('Suivi journalier, maintenance chaque 12 mois pendent 2 ans',
+    ('Suivi journalier, maintenance chaque 12 mois pendant 2 ans',
      'SUIVI-2A', 'Accessoires', 5000, 4000, 999, 0),
 ]
 
@@ -561,6 +561,15 @@ class Command(BaseCommand):
                 produit.categorie = cible
                 produit.save(update_fields=['categorie'])
                 recategorises += 1
+
+        # ── Correction de texte client (« pendent » → « pendant ») ──
+        # Renomme le produit maintenance existant ; idempotent, ne touche
+        # ni prix ni quantités. Les désignations des ANCIENNES lignes de
+        # devis (documents historiques) ne sont pas réécrites.
+        for produit in Produit.objects.filter(
+                company=company, nom__contains='pendent 2 ans'):
+            produit.nom = produit.nom.replace('pendent 2 ans', 'pendant 2 ans')
+            produit.save(update_fields=['nom'])
 
         tva_updated = 0
         for produit in Produit.objects.filter(company=company):

@@ -32,12 +32,15 @@ export default function ClientList() {
 
   const handleDelete = async (c) => {
     const fullName = [c.nom, c.prenom].filter(Boolean).join(' ')
-    if (!window.confirm(`Supprimer le client « ${fullName} » ?\nSes devis seront conservés mais sans client lié.`)) return
+    if (!window.confirm(`Supprimer le client « ${fullName} » ?`)) return
     setDeletingId(c.id)
     try {
       await dispatch(deleteClient(c.id)).unwrap()
     } catch (err) {
-      alert(err?.detail ?? JSON.stringify(err))
+      // Message serveur en clair (ex. client protégé par ses devis) —
+      // jamais de JSON brut ni d'échec silencieux.
+      alert(err?.detail
+        ?? 'Suppression impossible — réessayez ou contactez l\'administrateur.')
     } finally {
       setDeletingId(null)
     }

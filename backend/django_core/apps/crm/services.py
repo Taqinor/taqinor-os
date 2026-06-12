@@ -27,9 +27,11 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         ).first()
 
     if client is None:
+        # Séparateur VISIBLE entre rue et ville : un \n disparaît dans les
+        # champs <input> et collait l'adresse à la ville (« …AuditCasablanca »).
         adresse = lead.adresse or ''
         if lead.ville:
-            adresse = f"{adresse}\n{lead.ville}".strip()
+            adresse = ', '.join(p for p in (adresse, lead.ville) if p)
         client = Client.objects.create(
             company=lead.company,
             nom=lead.nom,

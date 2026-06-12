@@ -567,6 +567,52 @@ class TestPdfFormats(TestCase):
         html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
         self.assertEqual(len(doc.pages), 1)
 
+    def test_two_option_quote_one_canonical_total_everywhere(self):
+        """INTÉGRITÉ : pour un devis à DEUX options (remise incluse), le total
+        de liste = total option 1 du premium = total du une-page, au dirham.
+        Le une-page ne mélange JAMAIS les deux options sur une même facture."""
+        from apps.ventes.quote_engine.builder import build_quote_data, display_totals
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67', '20'),
+            ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', '20'),
+            ('Batterie Deyness 10 kWh', '1', '25000', '20'),
+            ('Installation', '1', '4000', '20'),
+        ], remise_globale='5', reference='DEV-QE-2OPT')
+
+        dt = display_totals(devis)
+        full = build_quote_data(devis)
+        one = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertEqual(dt['nb_options'], 2)
+        self.assertEqual(dt['total'], full['totaux_sans']['ttc'])
+        self.assertEqual(dt['total'], one['totaux_all']['ttc'])
+        # le total de liste n'est JAMAIS la somme mensongère des deux options
+        self.assertLess(dt['total'], float(devis.total_ttc))
+
+        # une page : OPTION 1 SEULE — un une-page avec deux onduleurs DOIT
+        # échouer ce test (règle de sécurité demandée)
+        designations = [it['designation'].lower() for it in one['all_items']]
+        self.assertTrue(any('réseau' in d for d in designations))
+        self.assertFalse(any('hybride' in d for d in designations),
+                         'une facture une-page ne contient JAMAIS deux onduleurs')
+        self.assertFalse(any('batterie' in d for d in designations))
+        html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
+        self.assertEqual(len(doc.pages), 1)
+        self.assertIn('option sans batterie', html)
+        self.assertIn('option avec batterie est disponible', html)
+
+    def test_mono_option_quote_display_total_is_full_bill(self):
+        """Devis sans options (liste libre/pompage) : total de liste = total
+        complet, pas de badge deux-options — comportement inchangé."""
+        from apps.ventes.quote_engine.builder import display_totals
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Pompe immergée 5.5 CV', '1', '9166.67', '20'),
+            ('Installation', '1', '4000', '20'),
+        ], reference='DEV-QE-MONO')
+        dt = display_totals(devis)
+        self.assertEqual(dt['nb_options'], 1)
+        self.assertEqual(dt['total'], round((9166.67 + 4000) * 1.2))
+
     def test_payment_terms_by_mode_on_all_formats(self):
         """Conditions de paiement = mapping UNIQUE par mode : résidentiel et
         agricole 30/60/10, industriel 50/40/10 — cohérent sur tous formats."""
