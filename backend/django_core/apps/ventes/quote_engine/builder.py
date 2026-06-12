@@ -74,9 +74,16 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     Carries both HT and TTC unit prices (the PDFs show per-line HT with an
     HT → TVA → TTC totals block) plus the product's commercial sheet
     (brand, description lines, warranty) for rich rendering.
+
+    Réforme TVA : le taux de la LIGNE prime quand il existe (10 % panneaux,
+    20 % le reste) ; une ligne historique (taux NULL) garde le taux du devis —
+    son rendu ne change pas d'un centime.
     """
+    ligne_taux = getattr(ligne, "taux_tva", None)
+    if ligne_taux is None:
+        ligne_taux = taux_tva
     pu_ht = Decimal(ligne.prix_unitaire) * (Decimal(1) - Decimal(ligne.remise) / Decimal(100))
-    pu_ttc = pu_ht * (Decimal(1) + Decimal(taux_tva) / Decimal(100))
+    pu_ttc = pu_ht * (Decimal(1) + Decimal(ligne_taux) / Decimal(100))
     produit = getattr(ligne, "produit", None)
     produit_nom = getattr(produit, "nom", "") or ""
     return {
@@ -87,6 +94,7 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "quantite": float(ligne.quantite),
         "prix_unit_ht": float(round(pu_ht, 2)),
         "prix_unit_ttc": float(round(pu_ttc, 2)),
+        "taux_tva": float(ligne_taux),
         "_produit_nom": produit_nom,
     }
 
@@ -135,6 +143,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     lignes = list(devis.lignes.select_related("produit").all())
 
     items = [_line_to_item(li, taux_tva) for li in lignes]
+    # Mode « réforme » dès qu'une ligne porte son propre taux ; un devis
+    # historique (toutes lignes NULL) reste rendu strictement comme avant.
+    per_line_tva = any(getattr(li, "taux_tva", None) is not None for li in lignes)
 
     # ── Derive power from the panel line(s) ──────────────────────────────────
     nb_panneaux = 0
@@ -184,9 +195,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # default module is sensible — never a token battery on a large plant.
     if has_hybride and not has_batterie and puissance_kwc <= 15:
         synth = dict(pick_default_battery())
+        # Une batterie n'est jamais un panneau : 20 % en mode réforme,
+        # taux du devis pour les devis historiques.
+        synth_taux = 20.0 if per_line_tva else float(taux_tva)
+        synth.setdefault("taux_tva", synth_taux)
         synth.setdefault(
             "prix_unit_ht",
-            round(synth.get("prix_unit_ttc", 0) / (1 + float(taux_tva) / 100), 2))
+            round(synth.get("prix_unit_ttc", 0) / (1 + synth_taux / 100), 2))
         avec_items = avec_items + [synth]
         has_batterie = True
 
@@ -225,20 +240,62 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     tva_pct = float(taux_tva)
 
     def _canonical_totaux(rows):
+        """Chaîne HT → remise → TVA (par taux) → TTC, calculée UNE fois.
+
+        Un seul taux présent (tous les devis historiques) : calcul strictement
+        identique à l'ancien. Taux mixtes (réforme 10/20) : la remise globale
+        s'applique proportionnellement à chaque ligne, donc chaque panier de
+        taux se réduit du même % ; les paniers nets sont réconciliés au
+        centime avec le HT net global avant de calculer chaque TVA.
+        """
         ht_brut = round(sum(r["quantite"] * r["prix_unit_ht"] for r in rows), 2)
         remise = round(ht_brut * discount_pct / 100, 2) if discount_pct > 0 else 0.0
         ht_net = round(ht_brut - remise, 2)
-        tva_amt = round(ht_net * tva_pct / 100, 2)
-        ttc = round(ht_net + tva_amt)
+
+        buckets_brut = {}
+        for r in rows:
+            rate = float(r.get("taux_tva", tva_pct))
+            buckets_brut[rate] = (
+                buckets_brut.get(rate, 0.0) + r["quantite"] * r["prix_unit_ht"])
+
+        if len(buckets_brut) <= 1:
+            rate = next(iter(buckets_brut), tva_pct)
+            tva_amt = round(ht_net * rate / 100, 2)
+            tva_par_taux = [{"taux": rate, "montant": tva_amt, "ht_net": ht_net}]
+        else:
+            rates = sorted(buckets_brut)
+            nets = {
+                rate: round(buckets_brut[rate] * (1 - discount_pct / 100), 2)
+                for rate in rates
+            }
+            residu = round(ht_net - sum(nets.values()), 2)
+            nets[rates[-1]] = round(nets[rates[-1]] + residu, 2)
+            tva_par_taux = [
+                {"taux": rate, "montant": round(nets[rate] * rate / 100, 2),
+                 "ht_net": nets[rate]}
+                for rate in rates
+            ]
+            tva_amt = round(sum(b["montant"] for b in tva_par_taux), 2)
+
+        ttc_exact = round(ht_net + tva_amt, 2)
+        ttc = round(ttc_exact)
+        if len(buckets_brut) <= 1:
+            _rate0 = next(iter(buckets_brut), tva_pct)
+            ttc_avant = round(ht_brut * (1 + _rate0 / 100))  # = calcul historique
+        else:
+            ttc_avant = round(sum(
+                buckets_brut[rate] * (1 + rate / 100) for rate in buckets_brut))
         return {"ht_brut": ht_brut, "remise": remise, "ht_net": ht_net,
-                "tva": tva_amt, "ttc": ttc}
+                "tva": tva_amt, "tva_par_taux": tva_par_taux,
+                "ttc": ttc, "ttc_exact": ttc_exact, "ttc_avant": ttc_avant}
 
     totaux_sans = _canonical_totaux(sans_items)
     totaux_avec = _canonical_totaux(avec_items)
+    totaux_all = _canonical_totaux(items)
     total_sans = totaux_sans["ttc"]
     total_avec = totaux_avec["ttc"]
-    total_sans_before = round(totaux_sans["ht_brut"] * (1 + tva_pct / 100))
-    total_avec_before = round(totaux_avec["ht_brut"] * (1 + tva_pct / 100))
+    total_sans_before = totaux_sans["ttc_avant"]
+    total_avec_before = totaux_avec["ttc_avant"]
 
     # ── Canonical performance figures: ONE source of truth ───────────────────
     # When the quote carries a stored étude (industrial), its consumption-driven
@@ -328,6 +385,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         return out[:6]
 
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
+    # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
+    # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
+    # historiques : l'ancien texte au taux global, rendu inchangé.
+    if per_line_tva:
+        tva_note = ("TVA : 10% panneaux photovoltaïques · "
+                    "20% autres équipements et prestations")
+    else:
+        tva_note = f"TVA {tva_label} % appliquée sur l'ensemble des équipements et travaux."
     data = {
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),
@@ -347,6 +412,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Totaux canoniques (chaîne HT → remise → TVA → TTC calculée UNE fois)
         "totaux_sans": totaux_sans,
         "totaux_avec": totaux_avec,
+        "totaux_all": totaux_all,
+        "per_line_tva": per_line_tva,
         "discount_pct": discount_pct,
         "eco_s_ann": roi["eco_s_ann"],
         "eco_a_ann": roi["eco_a_ann"],
@@ -370,9 +437,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "custom_acompte": opts['custom_acompte'],
         "include_etude": include_etude,
         "taux_tva": tva_pct,
-        # Texte TVA UNIQUE : doit toujours décrire le taux réellement appliqué
-        # (pas de TVA par ligne tant que la décision comptable est en attente).
-        "tva_note": f"TVA {tva_label} % appliquée sur l'ensemble des équipements et travaux.",
+        "tva_note": tva_note,
         "mode_installation": mode,
         "etude": etude,
     }

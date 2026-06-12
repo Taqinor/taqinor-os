@@ -58,13 +58,17 @@ def make_devis(company, user, client, lignes, remise_globale='0', reference='DEV
         statut='brouillon', taux_tva=Decimal('20.00'),
         remise_globale=Decimal(remise_globale), created_by=user,
     )
-    for desig, qty, pu in lignes:
+    for ligne in lignes:
+        # (desig, qty, pu) historique ou (desig, qty, pu, taux_tva) réforme
+        desig, qty, pu = ligne[:3]
+        taux = Decimal(ligne[3]) if len(ligne) > 3 else None
         # SKU unique par devis pour éviter les collisions (company, sku)
         sku = f"{reference[-6:]}-{desig[:13]}"
         LigneDevis.objects.create(
             devis=devis, produit=make_produit(company, desig, sku, pu),
             designation=desig, quantite=Decimal(qty),
             prix_unitaire=Decimal(pu), remise=Decimal('0'),
+            taux_tva=taux,
         )
     return devis
 
@@ -473,6 +477,95 @@ class TestPdfFormats(TestCase):
         self.assertNotIn('m&#179;/jour', html)
         # pas de tiret placeholder dans le bloc résumé
         self.assertNotIn('>&#8212;<', html)
+
+    def test_panel_ht_derivation_at_10_percent(self):
+        """1 400 TTC @ 10 % → 1 272,73 HT par ligne (TTC ancre, jamais 1 166,67)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+        ], reference='DEV-QE-TVA10')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        panel = next(it for it in data['all_items'] if 'Panneau' in it['designation'])
+        self.assertEqual(panel['taux_tva'], 10.0)
+        self.assertEqual(panel['prix_unit_ht'], 1272.73)
+        self.assertEqual(panel['prix_unit_ttc'], 1400.0)
+        ond = next(it for it in data['all_items'] if 'Onduleur' in it['designation'])
+        self.assertEqual(ond['taux_tva'], 20.0)
+        self.assertEqual(ond['prix_unit_ttc'], 20000.0)
+
+    def _mixed_devis(self, remise='0', reference='DEV-QE-MIX'):
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+            ('Structures acier', '14', '416.67', '20'),
+            ('Installation', '1', '4000', '20'),
+        ], remise_globale=remise, reference=reference)
+
+    def test_mixed_rates_buckets_reconcile_to_the_centime(self):
+        """TVA 10 % + TVA 20 % éclatées ; HT net + somme des TVA = TTC exact,
+        avec et sans remise globale."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        for remise, ref in (('0', 'DEV-QE-MIX0'), ('8', 'DEV-QE-MIX8')):
+            devis = self._mixed_devis(remise=remise, reference=ref)
+            data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+            t = data['totaux_all']
+            buckets = {b['taux']: b for b in t['tva_par_taux']}
+            self.assertEqual(set(buckets), {10.0, 20.0})
+            # réconciliation au centime
+            self.assertAlmostEqual(
+                t['ht_net'], sum(b['ht_net'] for b in t['tva_par_taux']), places=2)
+            self.assertAlmostEqual(
+                t['ttc_exact'],
+                round(t['ht_net'] + sum(b['montant'] for b in t['tva_par_taux']), 2),
+                places=2)
+            # la remise réduit chaque panier proportionnellement
+            if remise == '8':
+                self.assertGreater(t['remise'], 0)
+            # montants TVA cohérents avec leurs paniers nets
+            for b in t['tva_par_taux']:
+                self.assertAlmostEqual(
+                    b['montant'], round(b['ht_net'] * b['taux'] / 100, 2), places=2)
+            # le HTML one-page montre les deux lignes TVA et le TTC canonique
+            html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
+            self.assertEqual(len(doc.pages), 1)
+            self.assertIn('TVA (10', html)
+            self.assertIn('TVA (20', html)
+
+    def test_mixed_rates_tva_note_describes_reform(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._mixed_devis(reference='DEV-QE-MIXN')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertIn('10% panneaux photovolta', data['tva_note'])
+        self.assertIn('20% autres', data['tva_note'])
+
+    def test_legacy_single_rate_quote_renders_unchanged(self):
+        """Devis historique (lignes sans taux) : note d'origine, ligne TVA
+        unique au taux du devis, totaux identiques à l'ancien calcul."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           self.FULL_LINES, remise_globale='8',
+                           reference='DEV-QE-LEGTVA')
+        data = build_quote_data(devis)
+        self.assertFalse(data['per_line_tva'])
+        self.assertIn('appliquée sur l\'ensemble', data['tva_note'])
+        t = data['totaux_sans']
+        # ancien calcul exact : TVA unique sur le HT net
+        self.assertAlmostEqual(t['tva'], round(t['ht_net'] * 0.20, 2), places=2)
+        self.assertEqual(len(t['tva_par_taux']), 1)
+        html, _ = self._render(devis=devis)
+        self.assertIn('TVA (20', html)
+        self.assertNotIn('TVA (10', html)
+
+    def test_mixed_rates_onepage_15_lines_still_one_page(self):
+        """Le format une page absorbe la colonne TVA même en table dense."""
+        lignes = [(f'Divers {i} article générique', '2', '500', '20') for i in range(13)]
+        lignes += [('Panneau mono 710W', '14', '1272.73', '10'),
+                   ('Onduleur réseau 10kW', '1', '16666.67', '20')]
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           lignes, reference='DEV-QE-MIX15')
+        html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
+        self.assertEqual(len(doc.pages), 1)
 
     def test_buy_prices_never_in_pdf_html(self):
         """Le prix d'achat (revendeur) n'apparaît dans AUCUN rendu client —

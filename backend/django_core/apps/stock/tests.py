@@ -40,8 +40,10 @@ class TestSeedCatalogue(TestCase):
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
         self.assertEqual(huawei_10t.prix_vente, Decimal('16666.67'))  # 20 000 TTC
+        # Réforme TVA : panneau à 10 % — HT dérivé pour préserver 1 400 TTC
         panneau = qs.get(sku='PAN-CS-710')
-        self.assertEqual(panneau.prix_vente, Decimal('1166.67'))      # 1 400 TTC
+        self.assertEqual(panneau.prix_vente, Decimal('1272.73'))      # 1 400 TTC @ 10 %
+        self.assertEqual(panneau.tva, Decimal('10.00'))
         bat10 = qs.get(sku='BAT-DEY-10')
         self.assertEqual(bat10.prix_vente, Decimal('25000.00'))       # 30 000 TTC
         socles = qs.get(sku='SOC-BET')
@@ -165,6 +167,38 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(actifs.count(), 1)
         self.assertEqual(actifs.first().sku, 'STR-ACIER')
         self.assertEqual(actifs.first().prix_vente, Decimal('416.67'))  # 500 TTC
+
+    def test_tva_reform_panels_10_others_20_ttc_preserved(self):
+        seed(self.company)
+        qs = Produit.objects.filter(company=self.company)
+        # TOUS les panneaux à 10 %, TTC strictement préservé
+        for p in qs.filter(nom__icontains='panneau'):
+            self.assertEqual(p.tva, Decimal('10.00'), p.nom)
+            ttc = p.prix_vente * Decimal('1.10')
+            self.assertEqual(ttc.quantize(Decimal('1')), Decimal('1400'), p.nom)
+        # Tout le reste à 20 % (onduleurs, batteries, structures, pompes…)
+        for p in qs.exclude(nom__icontains='panneau'):
+            self.assertEqual(p.tva, Decimal('20.00'), p.nom)
+        # Idempotent : un second passage ne retouche plus les prix
+        before = dict(qs.values_list('sku', 'prix_vente'))
+        seed(self.company)
+        after = dict(Produit.objects.filter(company=self.company)
+                     .values_list('sku', 'prix_vente'))
+        self.assertEqual(before, after)
+
+    def test_tva_reform_converts_existing_panel_preserving_ttc(self):
+        # Un panneau créé AVANT la réforme (HT à 20 %) est converti :
+        # 1 166,67 HT @20 % (1 400 TTC) → 1 272,73 HT @10 % (1 400 TTC)
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau Maison 550W', sku='PAN-LEGACY',
+            prix_vente=Decimal('1166.67'), prix_achat=Decimal('1000.00'),
+            quantite_stock=5, tva=Decimal('20.00'),
+        )
+        seed(self.company)
+        p.refresh_from_db()
+        self.assertEqual(p.tva, Decimal('10.00'))
+        self.assertEqual(p.prix_vente, Decimal('1272.73'))
+        self.assertEqual(p.prix_achat, Decimal('1090.91'))  # 1 200 TTC préservé
 
     def test_scoped_to_target_company_only(self):
         other = make_company(slug='test-cat-other')

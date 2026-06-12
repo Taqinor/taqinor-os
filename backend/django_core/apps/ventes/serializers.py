@@ -10,6 +10,19 @@ class LigneDevisSerializer(serializers.ModelSerializer):
         model = LigneDevis
         fields = '__all__'
 
+    def create(self, validated_data):
+        # Réforme TVA 2024–2026 : toute NOUVELLE ligne porte son propre taux,
+        # copié du produit (10 % panneaux PV, 20 % le reste) quand il n'est pas
+        # fourni. Les lignes historiques (taux NULL) restent rendues au taux
+        # global de leur devis — jamais réécrites.
+        if validated_data.get('taux_tva') is None:
+            from decimal import Decimal
+            produit = validated_data.get('produit')
+            produit_tva = getattr(produit, 'tva', None)
+            validated_data['taux_tva'] = (
+                produit_tva if produit_tva is not None else Decimal('20.00'))
+        return super().create(validated_data)
+
 
 class DevisSerializer(serializers.ModelSerializer):
     lignes = LigneDevisSerializer(many=True, read_only=True)

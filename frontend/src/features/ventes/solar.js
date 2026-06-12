@@ -167,8 +167,16 @@ export function classifyProduct(nom) {
 }
 
 // Prix TTC affiché depuis le prix de vente HT du stock (TVA 20 %)
-export function ttcFromHt(prixVenteHt) {
-  return Math.round((parseFloat(prixVenteHt) || 0) * 1.2)
+export function ttcFromHt(prixVenteHt, tauxTva = 20) {
+  const factor = 1 + (parseFloat(tauxTva) || 20) / 100
+  return Math.round((parseFloat(prixVenteHt) || 0) * factor)
+}
+
+// Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
+// Produit sans taux renseigné → 20.
+export function tauxTvaOf(produit) {
+  const t = parseFloat(produit?.tva)
+  return Number.isFinite(t) && t > 0 ? t : 20
 }
 
 // Conversion inverse au moment de l'enregistrement : le modèle stocke des
@@ -260,13 +268,14 @@ const lineFrom = (p, quantite, ttcOverride = null) => ({
   designation: p ? p.nom : '',
   quantite,
   prix_unit_ttc: p || ttcOverride != null
-    ? (ttcOverride != null ? ttcOverride : ttcFromHt(p.prix_vente))
+    ? (ttcOverride != null ? ttcOverride : ttcFromHt(p.prix_vente, tauxTvaOf(p)))
     : 0,
+  taux_tva: p ? tauxTvaOf(p) : 20,
 })
 
 // Ligne vide placeholder (désignation canonique, pas de produit)
 const placeholder = (designation, quantite) => ({
-  produit: '', designation, quantite, prix_unit_ttc: 0,
+  produit: '', designation, quantite, prix_unit_ttc: 0, taux_tva: 20,
 })
 
 // ── Table par défaut au chargement (port de getDefaultProductLines) ──────────
@@ -648,7 +657,8 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
     produit: p ? String(p.id) : '',
     designation: p ? p.nom : designation,
     quantite,
-    prix_unit_ttc: p ? ttcFromHt(p.prix_vente) : 0,
+    prix_unit_ttc: p ? ttcFromHt(p.prix_vente, tauxTvaOf(p)) : 0,
+    taux_tva: p ? tauxTvaOf(p) : 20,
   })
 
   const rows = []
@@ -683,6 +693,7 @@ export function discountForTarget(cibleKwc, kwp, totalBrutTtc) {
 
 // Coût d'achat TTC des lignes dont le produit a un prix d'achat renseigné.
 // Retourne null si AUCUN prix d'achat n'existe (alors on n'affiche rien).
+// Le TTC d'achat suit le taux TVA du produit (10 % panneaux, 20 % le reste).
 export function computeBuyCost(lines, produits) {
   const byId = new Map(produits.map(p => [String(p.id), p]))
   let cost = 0
@@ -692,7 +703,7 @@ export function computeBuyCost(lines, produits) {
     const achat = p ? (parseFloat(p.prix_achat) || 0) : 0
     if (achat > 0) {
       any = true
-      cost += (parseFloat(l.quantite) || 0) * achat * 1.2
+      cost += (parseFloat(l.quantite) || 0) * achat * (1 + tauxTvaOf(p) / 100)
     }
   }
   return any ? Math.round(cost) : null
