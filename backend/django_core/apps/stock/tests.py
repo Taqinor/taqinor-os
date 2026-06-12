@@ -70,7 +70,7 @@ class TestSeedCatalogue(TestCase):
         pompe = qs.get(sku='PMP-IMM-5.5T')
         self.assertEqual(str(pompe.pompe_cv), '5.50')
         self.assertEqual(pompe.prix_achat, 0)
-        self.assertEqual(pompe.categorie.nom, 'Pompage')
+        self.assertEqual(pompe.categorie.nom, 'Pompes')
         # Prix existants jamais modifiés par la passe fiches
         self.assertEqual(huawei.prix_vente, Decimal('16666.67'))
 
@@ -84,7 +84,7 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(str(v75.pompe_kw), '7.50')
         self.assertEqual(v75.tension_v, 380)
         self.assertEqual(v75.marque, 'VEICHI')
-        self.assertEqual(v75.categorie.nom, 'Pompage')
+        self.assertEqual(v75.categorie.nom, 'Variateurs')
         # L'afficheur n'a pas de kW : il ne peut jamais être pris pour le variateur
         aff = qs.get(sku='VEI-SI22-AFF')
         self.assertIsNone(aff.pompe_kw)
@@ -199,6 +199,46 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(p.tva, Decimal('10.00'))
         self.assertEqual(p.prix_vente, Decimal('1272.73'))
         self.assertEqual(p.prix_achat, Decimal('1090.91'))  # 1 200 TTC préservé
+
+    def test_taxonomy_every_product_in_exactly_one_ordered_category(self):
+        from apps.stock.models import Categorie
+        seed(self.company)
+        qs = Produit.objects.filter(company=self.company)
+        # chaque produit a une catégorie de la taxonomie (jamais orphelin)
+        noms_taxo = {
+            'Panneaux photovoltaïques', 'Onduleurs réseau', 'Onduleurs hybrides',
+            'Batteries', 'Structures & fixation', 'Protection & accessoires',
+            'Câbles', 'Pompes', 'Variateurs', 'Services & prestations',
+        }
+        for p in qs:
+            self.assertIsNotNone(p.categorie, p.nom)
+            self.assertIn(p.categorie.nom, noms_taxo, p.nom)
+        # hybrides et réseau SÉPARÉS, spot-checks de rangement
+        by = {p.sku: p.categorie.nom for p in qs}
+        self.assertEqual(by['OND-R-HUA-10T'], 'Onduleurs réseau')
+        self.assertEqual(by['OND-H-DEY-5M'], 'Onduleurs hybrides')
+        self.assertEqual(by['PAN-CS-710'], 'Panneaux photovoltaïques')
+        self.assertEqual(by['VEI-SI23-7.5-380'], 'Variateurs')
+        self.assertEqual(by['VEI-SI22-AFF'], 'Variateurs')
+        self.assertEqual(by['PMP-OSP-30-8'], 'Pompes')
+        self.assertEqual(by['STR-ACIER'], 'Structures & fixation')
+        self.assertEqual(by['SOC-BET'], 'Structures & fixation')
+        self.assertEqual(by['CAB-6MM-M'], 'Câbles')
+        self.assertEqual(by['SMART-MET'], 'Protection & accessoires')
+        self.assertEqual(by['INST-CAT'], 'Services & prestations')
+        self.assertEqual(by['SUIVI-2A'], 'Services & prestations')
+        # ordre délibéré : panneaux d'abord, services en dernier
+        cats = list(Categorie.objects.filter(
+            company=self.company, nom__in=noms_taxo).order_by('ordre'))
+        self.assertEqual(cats[0].nom, 'Panneaux photovoltaïques')
+        self.assertEqual(cats[-1].nom, 'Services & prestations')
+        # un produit du fondateur hors seed est aussi rangé (re-catégorisation)
+        perso = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride Growatt 6kW',
+            sku='OND-H-GRW-6', prix_vente=Decimal('15000'), quantite_stock=1)
+        seed(self.company)
+        perso.refresh_from_db()
+        self.assertEqual(perso.categorie.nom, 'Onduleurs hybrides')
 
     def test_scoped_to_target_company_only(self):
         other = make_company(slug='test-cat-other')

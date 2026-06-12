@@ -88,6 +88,53 @@ def ht_at(ttc, taux):
             ).quantize(Decimal('0.01'))
 
 
+# ── Taxonomie catalogue : CATÉGORIE → MARQUE → ARTICLES (2026-06) ────────────
+# Ordre DÉLIBÉRÉ (cœur solaire d'abord, pompage ensuite, services en fin) —
+# pas un accident alphabétique. Onduleurs hybrides et réseau SÉPARÉS.
+# La re-catégorisation des produits existants est explicitement autorisée
+# par le fondateur ; la classification est par MOTS-CLÉS DU NOM, exactement
+# comme l'auto-fill (solar.js / builder.py) — elle ne peut pas diverger.
+TAXONOMIE = [
+    ('Panneaux photovoltaïques', 10),
+    ('Onduleurs réseau', 20),
+    ('Onduleurs hybrides', 30),
+    ('Batteries', 40),
+    ('Structures & fixation', 50),
+    ('Protection & accessoires', 60),
+    ('Câbles', 70),
+    ('Pompes', 80),
+    ('Variateurs', 90),
+    ('Services & prestations', 100),
+]
+
+
+def classify_categorie(nom):
+    """Catégorie cible d'un produit, par mots-clés du nom (insensible accents
+    usuels). Tout produit a EXACTEMENT une catégorie ; l'inconnu tombe dans
+    « Protection & accessoires »."""
+    n = (nom or '').lower().replace('â', 'a').replace('é', 'e').replace('è', 'e')
+    if 'panneau' in n:
+        return 'Panneaux photovoltaïques'
+    if 'onduleur' in n and 'hybride' in n:
+        return 'Onduleurs hybrides'
+    if 'onduleur' in n:
+        return 'Onduleurs réseau'
+    if 'afficheur' in n or 'variateur' in n or 'coffret complet' in n:
+        return 'Variateurs'
+    if 'pompe' in n:
+        return 'Pompes'
+    if 'batterie' in n:
+        return 'Batteries'
+    if 'structure' in n or 'socle' in n:
+        return 'Structures & fixation'
+    if 'cable' in n:
+        return 'Câbles'
+    if ('installation' in n or 'transport' in n or 'suivi' in n
+            or 'maintenance' in n or 'main d' in n):
+        return 'Services & prestations'
+    return 'Protection & accessoires'
+
+
 # ── Catalogue POMPAGE solaire (mode Agricole) ────────────────────────────────
 # Prix TTC reconstitués du marché marocain (cptechmaroc.ma, mrelec.ma,
 # energymarket.ma, ecovolt.ma, magitec.ma — juin 2026) — À CONFIRMER PAR REDA.
@@ -337,11 +384,14 @@ class Command(BaseCommand):
         created, skipped = [], []
         categories = {}
 
+        _ordres = dict(TAXONOMIE)
+
         def get_categorie(nom):
             if nom not in categories:
                 categories[nom], _ = Categorie.objects.get_or_create(
                     company=company, nom=nom,
-                    defaults={'description': 'Catalogue simulateur'},
+                    defaults={'description': 'Catalogue simulateur',
+                              'ordre': _ordres.get(nom, 100)},
                 )
             return categories[nom]
 
@@ -361,7 +411,7 @@ class Command(BaseCommand):
                 company=company,
                 nom=nom,
                 sku=sku,
-                categorie=get_categorie(cat),
+                categorie=get_categorie(classify_categorie(nom)),
                 prix_achat=ht_at(buy_ttc, taux),
                 prix_vente=ht_at(sell_ttc, taux),
                 quantite_stock=qte,
@@ -388,7 +438,7 @@ class Command(BaseCommand):
                 continue
             produit = Produit.objects.create(
                 company=company, nom=nom, sku=sku,
-                categorie=get_categorie('Pompage'),
+                categorie=get_categorie(classify_categorie(nom)),
                 prix_achat=Decimal('0'),  # à remplir par le fondateur
                 prix_vente=ht(ttc),
                 quantite_stock=qte, seuil_alerte=seuil,
@@ -416,7 +466,7 @@ class Command(BaseCommand):
                 continue
             produit = Produit.objects.create(
                 company=company, nom=nom, sku=sku,
-                categorie=get_categorie('Pompage'),
+                categorie=get_categorie(classify_categorie(nom)),
                 prix_achat=ht(buy_ttc),
                 prix_vente=ht(sell_ttc),
                 quantite_stock=20, seuil_alerte=2,
@@ -445,7 +495,7 @@ class Command(BaseCommand):
                 continue
             produit = Produit.objects.create(
                 company=company, nom=nom, sku=sku,
-                categorie=get_categorie('Pompage'),
+                categorie=get_categorie(classify_categorie(nom)),
                 prix_achat=Decimal('0'),
                 prix_vente=Decimal('0'),  # à renseigner par le fondateur
                 quantite_stock=20, seuil_alerte=2,
@@ -492,6 +542,26 @@ class Command(BaseCommand):
         # l'identique ; tout produit sans taux → 20 %. Idempotent : un panneau
         # déjà à 10 % n'est jamais retouché. Seuls tva / prix HT dérivés
         # bougent — le TTC affiché et chiffré ne change JAMAIS.
+        # ── Taxonomie CATÉGORIE → MARQUE (re-catégorisation autorisée) ──
+        # Crée les 10 catégories ordonnées et range CHAQUE produit dans
+        # exactement une. Rien n'est supprimé ; prix/specs/marques intacts.
+        taxo = {}
+        for nom_cat, ordre in TAXONOMIE:
+            cat, created_cat = Categorie.objects.get_or_create(
+                company=company, nom=nom_cat,
+                defaults={'description': 'Taxonomie catalogue', 'ordre': ordre})
+            if cat.ordre != ordre:
+                cat.ordre = ordre
+                cat.save(update_fields=['ordre'])
+            taxo[nom_cat] = cat
+        recategorises = 0
+        for produit in Produit.objects.filter(company=company):
+            cible = taxo[classify_categorie(produit.nom)]
+            if produit.categorie_id != cible.id:
+                produit.categorie = cible
+                produit.save(update_fields=['categorie'])
+                recategorises += 1
+
         tva_updated = 0
         for produit in Produit.objects.filter(company=company):
             if is_panneau(produit.nom):
@@ -514,7 +584,8 @@ class Command(BaseCommand):
             f"{len(created)} created, {len(skipped)} already present (untouched), "
             f"{fiches_updated} fiches commerciales mises à jour, "
             f"{archived_count} placeholders archivés, "
-            f"{tva_updated} taux TVA alignés (réforme 10 % panneaux)."
+            f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
+            f"{recategorises} produits rangés dans la taxonomie."
         ))
         for nom in created:
             self.stdout.write(f"  + {nom}")

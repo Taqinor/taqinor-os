@@ -12,11 +12,15 @@ class Categorie(models.Model):
     )
     nom = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
+    ordre = models.PositiveSmallIntegerField(
+        default=100,
+        help_text="Ordre d'affichage délibéré (plus petit = plus haut).")
 
     class Meta:
         verbose_name = "Catégorie"
         verbose_name_plural = "Catégories"
         unique_together = [('company', 'nom')]
+        ordering = ['ordre', 'nom']
 
     def __str__(self):
         return self.nom
