@@ -16,8 +16,19 @@ class LeadActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
+class _CurrentCompanyDefault:
+    """Société du user courant, injectée CÔTÉ SERVEUR (jamais lue du corps
+    de la requête). Satisfait le validateur d'unicité (company, email) qui,
+    sinon, exigeait `company` dans le payload — cassait « Nouveau client »."""
+    requires_context = True
+
+    def __call__(self, serializer_field):
+        return serializer_field.context['request'].user.company
+
+
 class ClientSerializer(serializers.ModelSerializer):
     devis_count = serializers.SerializerMethodField()
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
 
     class Meta:
         model = Client
