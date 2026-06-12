@@ -20,10 +20,10 @@ def contact(request):
     if not getattr(settings, 'CONTACT_FORM_ENABLED', False):
         raise Http404('Contact form is disabled.')
 
-    nom     = (request.data.get('nom', '') or '').strip()[:100]
-    numero  = (request.data.get('numero', '') or '').strip()[:20]
+    nom = (request.data.get('nom', '') or '').strip()[:100]
+    numero = (request.data.get('numero', '') or '').strip()[:20]
     societe = (request.data.get('societe', '') or '').strip()[:100]
-    email   = (request.data.get('email', '') or '').strip()[:150]
+    email = (request.data.get('email', '') or '').strip()[:150]
     message = (request.data.get('message', '') or '').strip()[:2000]
 
     if not all([nom, email, message]):

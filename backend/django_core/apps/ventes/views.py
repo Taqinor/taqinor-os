@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.http import HttpResponse
-from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,6 +19,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from .utils.references import create_with_reference
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -59,9 +59,35 @@ class DevisViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
-        serializer.save(
-            created_by=self.request.user,
-            company=self.request.user.company,
+        from rest_framework.exceptions import ValidationError
+        from apps.crm.services import resolve_client_for_lead
+
+        company = self.request.user.company
+        lead = serializer.validated_data.get('lead')
+        client = serializer.validated_data.get('client')
+
+        # Tenant safety: lead and client must belong to the user's company.
+        if lead is not None and lead.company_id != company.id:
+            raise ValidationError({'lead': 'Lead inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+
+        # Lead-primary: when no client is given, resolve it from the lead
+        # (reuses the linked/matching client, else creates one — no duplicates).
+        if client is None:
+            if lead is None:
+                raise ValidationError(
+                    {'client': 'Un client ou un lead est requis.'})
+            client = resolve_client_for_lead(lead)
+
+        create_with_reference(
+            Devis, 'DEV', company,
+            lambda ref: serializer.save(
+                reference=ref,
+                client=client,
+                created_by=self.request.user,
+                company=company,
+            ),
         )
 
     @action(
@@ -72,8 +98,11 @@ class DevisViewSet(viewsets.ModelViewSet):
     )
     def generer_pdf(self, request, pk=None):
         devis = self.get_object()
+        from .quote_engine import clean_pdf_options
         from .tasks import task_generate_devis_pdf
-        task = task_generate_devis_pdf.delay(devis.id)
+        # Format options (simulator parity) — whitelisted server-side.
+        pdf_options = clean_pdf_options(request.data)
+        task = task_generate_devis_pdf.delay(devis.id, pdf_options)
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
@@ -93,9 +122,19 @@ class DevisViewSet(viewsets.ModelViewSet):
         """
         devis = self.get_object()
         try:
-            from .quote_engine import generate_premium_devis_pdf
+            from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
             from .utils.pdf import download_pdf
-            key = generate_premium_devis_pdf(devis.id)
+            # Format via query params, e.g. ?pdf_mode=onepage&devis_final=1
+            raw = {
+                'pdf_mode': request.query_params.get('pdf_mode'),
+                'payment_mode': request.query_params.get('payment_mode'),
+                'custom_acompte': request.query_params.get('custom_acompte'),
+            }
+            if 'show_monthly' in request.query_params:
+                raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')
+            if 'devis_final' in request.query_params:
+                raw['devis_final'] = request.query_params['devis_final'] in ('1', 'true')
+            key = generate_premium_devis_pdf(devis.id, clean_pdf_options(raw))
             pdf_bytes = download_pdf(key)
         except Exception as exc:
             return Response(
@@ -160,18 +199,16 @@ class DevisViewSet(viewsets.ModelViewSet):
                 {'detail': 'Un bon de commande existe déjà pour ce devis.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        now = timezone.now()
-        prefix = f"BC-{now.strftime('%Y%m')}"
         company = request.user.company
-        count = BonCommande.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        bc = BonCommande.objects.create(
-            reference=f"{prefix}-{count:04d}",
-            devis=devis,
-            client=devis.client,
-            statut=BonCommande.Statut.EN_ATTENTE,
-            company=company,
+        bc = create_with_reference(
+            BonCommande, 'BC', company,
+            lambda ref: BonCommande.objects.create(
+                reference=ref,
+                devis=devis,
+                client=devis.client,
+                statut=BonCommande.Statut.EN_ATTENTE,
+                company=company,
+            ),
         )
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -225,15 +262,10 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
-        now = timezone.now()
-        prefix = f"BC-{now.strftime('%Y%m')}"
         company = self.request.user.company
-        count = BonCommande.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        serializer.save(
-            reference=f"{prefix}-{count:04d}",
-            company=company,
+        create_with_reference(
+            BonCommande, 'BC', company,
+            lambda ref: serializer.save(reference=ref, company=company),
         )
 
     @action(detail=True, methods=['post'], url_path='confirmer',
@@ -324,15 +356,11 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                 {'detail': 'Une facture existe déjà pour ce BC.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        now = timezone.now()
-        prefix = f"FAC-{now.strftime('%Y%m')}"
         company = request.user.company
-        count = Facture.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        with transaction.atomic():
+
+        def _create_facture(ref):
             facture = Facture.objects.create(
-                reference=f"{prefix}-{count:04d}",
+                reference=ref,
                 bon_commande=bc,
                 client=bc.client,
                 statut=Facture.Statut.BROUILLON,
@@ -349,6 +377,11 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                         prix_unitaire=ligne.prix_unitaire,
                         remise=ligne.remise,
                     )
+            return facture
+
+        # create_with_reference runs _create_facture inside a transaction, so
+        # the facture and its copied lines stay atomic like before.
+        facture = create_with_reference(Facture, 'FAC', company, _create_facture)
         return Response(
             FactureSerializer(facture).data,
             status=status.HTTP_201_CREATED,
@@ -389,16 +422,14 @@ class FactureViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
-        now = timezone.now()
-        prefix = f"FAC-{now.strftime('%Y%m')}"
         company = self.request.user.company
-        count = Facture.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        serializer.save(
-            created_by=self.request.user,
-            reference=f"{prefix}-{count:04d}",
-            company=company,
+        create_with_reference(
+            Facture, 'FAC', company,
+            lambda ref: serializer.save(
+                created_by=self.request.user,
+                reference=ref,
+                company=company,
+            ),
         )
 
     @action(detail=True, methods=['post'], url_path='emettre',

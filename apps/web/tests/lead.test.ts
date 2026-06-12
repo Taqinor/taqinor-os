@@ -160,6 +160,23 @@ describe('forwardLead — tolérance', () => {
     expect(payload.utm.utm_source).toBe('facebook');
     expect(payload.consentTimestamp).toBe('2026-06-11T10:00:00.000Z');
   });
+
+  it('joint le secret X-Webhook-Secret quand il est configuré', async () => {
+    let sentHeaders: Record<string, string> = {};
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      sentHeaders = (init?.headers ?? {}) as Record<string, string>;
+      return new Response('ok');
+    }) as unknown as typeof fetch;
+    const record = buildLeadRecord(makeLead(), band, new Date());
+    await forwardLead(record, {
+      LEAD_WEBHOOK_URL: 'https://crm.example/hook',
+      LEAD_WEBHOOK_SECRET: 's3cret',
+    }, fetchFn);
+    expect(sentHeaders['x-webhook-secret']).toBe('s3cret');
+    // …et jamais d'en-tête sans configuration
+    await forwardLead(record, { LEAD_WEBHOOK_URL: 'https://crm.example/hook' }, fetchFn);
+    expect(sentHeaders['x-webhook-secret']).toBeUndefined();
+  });
 });
 
 describe('fireCapi — fire-and-forget', () => {

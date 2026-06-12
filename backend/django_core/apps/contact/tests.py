@@ -1,5 +1,6 @@
 """Tests for the (parked) public contact form."""
 from django.core import mail
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -13,6 +14,9 @@ VALID = {
 class TestContactParked(TestCase):
     def setUp(self):
         self.api = APIClient()
+        # The endpoint is throttled (5/hour) and the counter lives in the
+        # shared cache — reset it so repeated local test runs stay reliable.
+        cache.clear()
 
     @override_settings(CONTACT_FORM_ENABLED=False)
     def test_disabled_returns_404_and_sends_no_email(self):

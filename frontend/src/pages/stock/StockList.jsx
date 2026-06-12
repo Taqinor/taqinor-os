@@ -8,6 +8,54 @@ import {
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
+import {
+  groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
+} from '../../features/stock/catalogue'
+
+// ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
+function CatalogueRow({ p, role, onEdit, onDelete }) {
+  const spec = keySpec(p)
+  const ttc = prixTtc(p)
+  return (
+    <div className={`cat-row${p.is_low_stock ? ' cat-row-low' : ''}`}>
+      <div className="cat-row-id">
+        <div className="cat-row-nom">{p.nom}</div>
+        <div className="cat-row-sub">
+          {p.sku && <span className="mono-text">{p.sku}</span>}
+          {parseFloat(p.prix_achat) > 0 && (
+            <span> · achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
+          )}
+        </div>
+      </div>
+      <div className="cat-row-spec">{spec && <span className="cat-spec-chip">{spec}</span>}</div>
+      <div className="cat-row-prix">
+        {sansPrix(p)
+          ? <span className="cat-badge cat-badge-prix">prix à renseigner</span>
+          : (
+            <>
+              <div className="cat-prix-ttc">{ttc.toLocaleString('fr-MA')} DH <span>TTC</span></div>
+              <div className="cat-prix-ht">{parseFloat(p.prix_vente).toFixed(2)} HT · TVA {parseFloat(p.tva ?? 20)}%</div>
+            </>
+          )}
+      </div>
+      <div className="cat-row-stock">
+        <span className={p.is_low_stock ? 'text-danger' : ''}>
+          <strong>{p.quantite_stock}</strong> en stock
+        </span>
+        {p.is_low_stock && <span className="cat-badge cat-badge-low">⚠ seuil {p.seuil_alerte}</span>}
+      </div>
+      <div className="cat-row-actions">
+        {(role === 'responsable' || role === 'admin') && (
+          <button className="btn btn-sm btn-outline" onClick={() => onEdit(p)}>Éditer</button>
+        )}
+        {role === 'admin' && (
+          <button className="btn btn-sm btn-outline btn-danger-outline"
+                  onClick={() => onDelete(p)}>Supprimer</button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ── Modal confirmation suppression définitive ──────────────────────────────
 function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
@@ -93,6 +141,7 @@ export default function StockList() {
   const [showForm, setShowForm]       = useState(false)
   const [editProduit, setEditProduit] = useState(null)
   const [filterLow, setFilterLow]     = useState(false)
+  const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
   const [showArchived, setShowArchived]   = useState(false)
   const [archiveNotif, setArchiveNotif]   = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -104,20 +153,21 @@ export default function StockList() {
     if (showArchived) dispatch(fetchProduitsArchived())
   }, [showArchived, dispatch])
 
+  // Catalogue hiérarchisé : la recherche traverse TOUT (nom, SKU, marque,
+  // catégorie, spec) ; sans recherche, le rail filtre par catégorie.
+  const actifs = useMemo(() => produits.filter(p => !p.is_archived), [produits])
+  const searching = search.trim().length > 0
   const filtered = useMemo(() => {
-    let list = filterLow
-      ? produits.filter(p => p.is_low_stock && !p.is_archived)
-      : produits.filter(p => !p.is_archived)
-    const q = search.trim().toLowerCase()
-    if (q) {
-      list = list.filter(p =>
-        p.nom.toLowerCase().includes(q) ||
-        (p.sku ?? '').toLowerCase().includes(q) ||
-        (p.categorie?.nom ?? '').toLowerCase().includes(q)
-      )
-    }
+    let list = filterLow ? actifs.filter(p => p.is_low_stock) : actifs
+    list = searchCatalogue(list, search)
     return list
-  }, [produits, search, filterLow])
+  }, [actifs, search, filterLow])
+  const allGroups = useMemo(() => groupCatalogue(actifs), [actifs])
+  const groups = useMemo(() => {
+    const g = groupCatalogue(filtered)
+    if (searching || !activeCat) return g
+    return g.filter(c => c.nom === activeCat)
+  }, [filtered, searching, activeCat])
 
   const lowCount = useMemo(
     () => produits.filter(p => p.is_low_stock && !p.is_archived).length,
@@ -189,13 +239,6 @@ export default function StockList() {
           )}
         </h2>
         <div className="page-header-actions">
-          <input
-            className="search-input"
-            type="search"
-            placeholder="Nom, SKU, catégorie…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
           {lowCount > 0 && (
             <button
               className={`btn btn-sm${filterLow ? ' btn-danger' : ' btn-outline'}`}
@@ -239,83 +282,69 @@ export default function StockList() {
         <ProduitForm produit={editProduit} onClose={closeForm} onSaved={onSaved} />
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Nom</th>
-            <th>Catégorie</th>
-            <th>Fournisseur</th>
-            <th className="ta-right">Stock</th>
-            <th className="ta-right">Seuil</th>
-            <th className="ta-right">TVA</th>
-            <th className="ta-right">Prix vente HT</th>
-            <th className="ta-right">Prix vente TTC</th>
-            <th className="ta-right">Prix achat HT</th>
-            <th className="ta-right">Prix achat TTC</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map(p => (
-            <tr key={p.id} className={p.is_low_stock ? 'row-low-stock' : ''}>
-              <td><span className="mono-text">{p.sku ?? '—'}</span></td>
-              <td>
-                <strong>{p.nom}</strong>
-                {p.is_low_stock && (
-                  <span className="low-stock-badge" title="Stock bas">⚠</span>
-                )}
-              </td>
-              <td>{p.categorie?.nom ?? <span className="text-muted">—</span>}</td>
-              <td>{p.fournisseur?.nom ?? <span className="text-muted">—</span>}</td>
-              <td className={`ta-right${p.is_low_stock ? ' text-danger' : ''}`}>
-                <strong>{p.quantite_stock}</strong>
-              </td>
-              <td className="ta-right text-muted">{p.seuil_alerte || '—'}</td>
-              <td className="ta-right text-muted">{p.tva != null ? `${parseFloat(p.tva)}%` : '—'}</td>
-              <td className="ta-right">{parseFloat(p.prix_vente).toFixed(2)} DH</td>
-              <td className="ta-right">
-                {p.tva != null
-                  ? <strong>{(parseFloat(p.prix_vente) * (1 + parseFloat(p.tva) / 100)).toFixed(2)} DH</strong>
-                  : <span className="text-muted">—</span>}
-              </td>
-              <td className="ta-right">{parseFloat(p.prix_achat).toFixed(2)} DH</td>
-              <td className="ta-right">
-                {p.tva != null && parseFloat(p.prix_achat) > 0
-                  ? <strong>{(parseFloat(p.prix_achat) * (1 + parseFloat(p.tva) / 100)).toFixed(2)} DH</strong>
-                  : <span className="text-muted">—</span>}
-              </td>
-              <td>
-                <div className="actions-cell">
-                  {(role === 'responsable' || role === 'admin') && (
-                    <button className="btn btn-sm btn-outline" onClick={() => openEdit(p)}>
-                      Éditer
-                    </button>
-                  )}
-                  {role === 'admin' && (
-                    <button
-                      className="btn btn-sm btn-outline btn-danger-outline"
-                      onClick={() => handleDelete(p)}
-                    >
-                      Supprimer
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
+      <div className="cat-layout">
+        <aside className="cat-rail">
+          <input
+            className="form-control cat-rail-search"
+            type="search"
+            placeholder="Chercher partout…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <button type="button"
+                  className={`cat-rail-item${!activeCat && !searching ? ' active' : ''}`}
+                  onClick={() => { setActiveCat(''); setSearch('') }}>
+            <span>Tout le catalogue</span>
+            <span className="cat-rail-count">{actifs.length}</span>
+          </button>
+          {allGroups.map(c => (
+            <button key={c.nom} type="button"
+                    className={`cat-rail-item${activeCat === c.nom && !searching ? ' active' : ''}`}
+                    onClick={() => { setActiveCat(c.nom); setSearch('') }}>
+              <span>{c.nom}</span>
+              <span className="cat-rail-count">{c.count}</span>
+            </button>
           ))}
-        </tbody>
-      </table>
+        </aside>
 
-      {filtered.length === 0 && !loading && (
-        <p className="empty-state">
-          {filterLow
-            ? 'Aucun produit en stock bas.'
-            : search
-              ? `Aucun résultat pour « ${search} »`
-              : 'Aucun produit. Créez votre premier produit.'}
-        </p>
-      )}
+        <main className="cat-main">
+          {searching && (
+            <div className="cat-search-note">
+              {filtered.length} résultat{filtered.length !== 1 ? 's' : ''} pour
+              « {search} » dans tout le catalogue
+            </div>
+          )}
+          {groups.map(c => (
+            <section key={c.nom} className="cat-section">
+              <h3 className="cat-section-title">
+                {c.nom} <span className="cat-rail-count">{c.count}</span>
+              </h3>
+              {c.brands.map(b => (
+                <div key={b.marque} className="cat-brand">
+                  <div className="cat-brand-header">
+                    <span className="cat-brand-name">{b.marque}</span>
+                    <span className="cat-brand-rule" />
+                    <span className="cat-brand-count">{b.items.length} article{b.items.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  {b.items.map(p => (
+                    <CatalogueRow key={p.id} p={p} role={role}
+                                  onEdit={openEdit} onDelete={handleDelete} />
+                  ))}
+                </div>
+              ))}
+            </section>
+          ))}
+          {filtered.length === 0 && !loading && (
+            <p className="empty-state">
+              {filterLow
+                ? 'Aucun produit en stock bas.'
+                : search
+                  ? `Aucun résultat pour « ${search} »`
+                  : 'Aucun produit. Créez votre premier produit.'}
+            </p>
+          )}
+        </main>
+      </div>
 
       {showArchived && (
         <div style={{ marginTop: '2rem' }}>

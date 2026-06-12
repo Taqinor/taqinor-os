@@ -52,17 +52,23 @@ def make_produit(company, nom, sku, prix):
     )
 
 
-def make_devis(company, user, client, lignes, remise_globale='0'):
+def make_devis(company, user, client, lignes, remise_globale='0', reference='DEV-QE-0001'):
     devis = Devis.objects.create(
-        company=company, reference='DEV-QE-0001', client=client,
+        company=company, reference=reference, client=client,
         statut='brouillon', taux_tva=Decimal('20.00'),
         remise_globale=Decimal(remise_globale), created_by=user,
     )
-    for desig, qty, pu in lignes:
+    for ligne in lignes:
+        # (desig, qty, pu) historique ou (desig, qty, pu, taux_tva) réforme
+        desig, qty, pu = ligne[:3]
+        taux = Decimal(ligne[3]) if len(ligne) > 3 else None
+        # SKU unique par devis pour éviter les collisions (company, sku)
+        sku = f"{reference[-6:]}-{desig[:13]}"
         LigneDevis.objects.create(
-            devis=devis, produit=make_produit(company, desig, desig[:20], pu),
+            devis=devis, produit=make_produit(company, desig, sku, pu),
             designation=desig, quantite=Decimal(qty),
             prix_unitaire=Decimal(pu), remise=Decimal('0'),
+            taux_tva=taux,
         )
     return devis
 
@@ -90,20 +96,61 @@ class TestBuildQuoteData(TestCase):
         self.assertIn('eco_s_monthly', data)
         self.assertEqual(len(data['eco_s_monthly']), 12)
 
-    def test_split_autoadds_battery_to_avec_only(self):
+    def test_no_hybrid_means_single_option_no_fabricated_battery(self):
+        """RÈGLE DURE : sans onduleur hybride, l'option « avec batterie » ne
+        se rend pas — document à option unique, jamais de batterie fabriquée
+        sur une option sans onduleur."""
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 550W', '8', '2000'),
             ('Onduleur reseau', '1', '14000'),
         ])
         data = build_quote_data(devis)
+        self.assertEqual(data['scenario'], 'Sans batterie')
+        self.assertEqual(data['recommended'], 'Sans batterie')
         sans = [it['designation'].lower() for it in data['sans_items']]
-        avec = [it['designation'].lower() for it in data['avec_items']]
-        # réseau inverter stays in Option 1; Option 2 drops it and gains a battery.
         self.assertTrue(any('reseau' in d or 'réseau' in d for d in sans))
-        self.assertFalse(any('reseau' in d or 'réseau' in d for d in avec))
+
+    def test_residential_hybrid_without_battery_synthesizes_small_module(self):
+        """Échelle résidentielle (≤ 15 kWc) : hybride présent sans batterie →
+        un module par défaut est ajouté (comportement historique conservé)."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '8', '2000'),
+            ('Onduleur hybride 5kW', '1', '14000'),
+        ])
+        data = build_quote_data(devis)
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        avec = [it['designation'].lower() for it in data['avec_items']]
         self.assertTrue(any('batterie' in d for d in avec))
-        self.assertFalse(any('batterie' in d for d in sans))
+
+    def test_large_plant_never_gets_token_battery(self):
+        """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
+        l'option avec batterie est indisponible."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 710W', '176', '1166.67'),
+            ('Onduleur réseau 100kW', '1', '65000'),
+            ('Onduleur hybride 20kW', '1', '40000'),
+        ])
+        data = build_quote_data(devis)
+        # hybride présent mais pas de batterie et 124.96 kWc → pas de synthèse
+        avec = [it['designation'].lower() for it in data['avec_items']]
+        self.assertFalse(any('batterie' in d for d in avec))
+        self.assertEqual(data['scenario'], 'Sans batterie')
+
+    def test_no_inverter_at_all_fails_option_pdf(self):
+        """Un devis sans aucun onduleur ne peut pas produire le PDF à options."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '6', '1500'),
+            ('Batterie 5 kWh', '1', '16000'),
+        ], reference='DEV-QE-NOINV')
+        with self.assertRaises(ValueError):
+            build_quote_data(devis, {'pdf_mode': 'full'})
+        # …mais le format une page (liste simple, sans options) reste possible
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertEqual(data['pdf_mode'], 'onepage')
 
     def test_option_split_routes_both_inverters(self):
         from apps.ventes.quote_engine import build_quote_data
@@ -130,12 +177,11 @@ class TestBuildQuoteData(TestCase):
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 450W', '6', '1500'),
+            ('Onduleur hybride 5kW', '1', '14000'),
             ('Batterie 5 kWh', '1', '16000'),
         ])
         data = build_quote_data(devis)
-        # Battery already present: sans excludes it, avec keeps the single one.
-        self.assertEqual(len(data['sans_items']), 1)
-        self.assertEqual(len(data['avec_items']), 2)
+        # Battery already present: avec keeps the single one (no synthesis).
         batteries = [it for it in data['avec_items']
                      if 'batterie' in it['designation'].lower()]
         self.assertEqual(len(batteries), 1)
@@ -145,7 +191,8 @@ class TestBuildQuoteData(TestCase):
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 450W', '10', '1000'),
         ], remise_globale='10')
-        data = build_quote_data(devis)
+        # format une page : pas d'options, la règle onduleur ne s'applique pas
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         # 10 x 1000 HT x1.20 TTC = 12000 before; -10% global = 10800.
         self.assertEqual(data['total_sans_before'], 12000.0)
         self.assertEqual(data['discount_pct'], 10.0)
@@ -229,4 +276,654 @@ class TestPremiumPdfRender(TestCase):
         self.assertGreaterEqual(
             len(charts), 2,
             'both page-2 charts must render at a visible size (not blank)',
+        )
+
+
+class TestPdfFormats(TestCase):
+    """Per-format page-count guardrails (replaces the old single '3 pages'
+    rule): the premium format renders exactly 3 pages, the one-page format
+    exactly 1, and the modifiers (monthly chart off, devis final) keep the
+    premium at 3 pages."""
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+        ('Structures acier', '14', '375'),
+        ('Socles', '30', '67'),
+        ('Accessoires', '1', '1667'),
+        ('Tableau De Protection AC/DC', '1', '1667'),
+        ('Installation', '1', '4000'),
+        ('Transport', '1', '1000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES)
+
+    def _render(self, pdf_options=None, devis=None):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(devis or self.devis, pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_format_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html'], HTML(string=cap['html']).render()
+
+    @staticmethod
+    def _charts_on_page(page):
+        def _walk(box):
+            yield box
+            for child in (getattr(box, 'children', None) or []):
+                yield from _walk(child)
+        return [
+            b for b in _walk(page._page_box)
+            if 'Replaced' in type(b).__name__ and b.height > 100 and b.width > 100
+        ]
+
+    def test_premium_default_renders_three_pages(self):
+        html, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+        # default = no payment/RIB block
+        self.assertNotIn('SGMBMAMCXXX', html)
+
+    def test_onepage_format_renders_exactly_one_page(self):
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(
+            len(doc.pages), 1,
+            f'one-page quote must render exactly 1 page, got {len(doc.pages)}',
+        )
+        # the product list is there (designations from the quote lines)
+        self.assertIn('Panneau mono 550W', html)
+
+    def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
+        html, doc = self._render({
+            'devis_final': True,
+            'payment_mode': 'custom',
+            'custom_acompte': 12000,
+        })
+        self.assertEqual(len(doc.pages), 3)
+        self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
+
+    def test_monthly_chart_toggle_keeps_three_pages(self):
+        _, doc_with = self._render({'show_monthly': True})
+        _, doc_without = self._render({'show_monthly': False})
+        self.assertEqual(len(doc_with.pages), 3)
+        self.assertEqual(len(doc_without.pages), 3)
+        # page 2 loses exactly one chart when the monthly chart is off
+        charts_with = len(self._charts_on_page(doc_with.pages[1]))
+        charts_without = len(self._charts_on_page(doc_without.pages[1]))
+        self.assertEqual(charts_with - charts_without, 1)
+
+    def test_onepage_brand_column_filled_from_product_names(self):
+        """The one-page Marque column shows the product brand (extracted from
+        the designation), and stays empty for unbranded items — like the
+        simulator's badge column."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur hybride Deye 5kW', '1', '14166.67'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Panneau Canadien Solar 710W', '10', '1166.67'),
+            ('Socles béton', '20', '66.67'),
+        ], reference='DEV-QE-MARQUE')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        marques = {it['designation']: it['marque'] for it in data['all_items']}
+        self.assertEqual(marques['Onduleur hybride Deye 5kW'], 'Deye')
+        self.assertEqual(marques['Batterie Deyness 10 kWh'], 'Deyness')
+        self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
+        self.assertEqual(marques['Socles béton'], '')
+
+    def test_ht_lines_and_visible_discount(self):
+        """Per-line HT consistent with stored TTC; explicit Remise line with
+        percentage and negative amount; HT → TVA → TTC chain rendered."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           self.FULL_LINES, remise_globale='8',
+                           reference='DEV-QE-HT')
+        data = build_quote_data(devis)
+        for it in data['sans_items'] + data['avec_items']:
+            self.assertAlmostEqual(
+                it['prix_unit_ht'] * 1.2, it['prix_unit_ttc'], places=1)
+        html, doc = self._render(devis=devis)
+        self.assertEqual(len(doc.pages), 3)
+        self.assertIn('Sous-total HT', html)
+        self.assertIn('Remise (8', html)      # ligne remise explicite
+        self.assertIn('TVA (20', html)
+        self.assertIn('P.U. HT', html)
+        # one-page : même chaîne de totaux
+        html1, doc1 = self._render({'pdf_mode': 'onepage'}, devis=devis)
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertIn('Sous-total HT', html1)
+        self.assertIn('Remise (8', html1)
+
+    def test_etude_page_renders_four_pages_with_data_three_without(self):
+        """include_etude adds the étude page (4 pages) only when the quote
+        carries étude data; degrades gracefully to 3 pages otherwise."""
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+            'taux_autoconso': 100, 'taux_couverture': 10.4,
+            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.save()
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('autoconsommation', html)
+        self.assertIn('Taux de couverture', html)
+        # Sans données d'étude → 3 pages, pas d'erreur
+        self.devis.etude_params = None
+        self.devis.save(update_fields=['etude_params'])
+        _, doc2 = self._render({'include_etude': True})
+        self.assertEqual(len(doc2.pages), 3)
+
+    def test_pompage_summary_on_onepage(self):
+        """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
+        self.devis.mode_installation = 'agricole'
+        self.devis.etude_params = {
+            'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+            'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
+        }
+        self.devis.save()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertIn('Puissance pompe', html)
+        self.assertIn('HMT', html)
+
+    def test_pompage_curve_figures_water_per_day_one_page(self):
+        """Curve-sized pump: the one-page summary states pump CV+kW, débit at
+        the HMT, and the m³/day with the hours assumption — exactly 1 page."""
+        self.devis.mode_installation = 'agricole'
+        self.devis.etude_params = {
+            'pompe_cv': '10', 'pompe_kw': 7.5,
+            'pompe_nom': 'Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',
+            'type_pompe': 'immergee', 'alim': 'tri',
+            'hmt_m': '60', 'debit_souhaite_m3h': '30',
+            'debit_hmt_m3h': 30, 'heures_pompage': 7, 'm3_jour': 210,
+            'champ_kwc': 10.65,
+        }
+        self.devis.save()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertIn('10 CV (7.5 kW)', html)
+        self.assertIn('D&#233;bit &#224; 60 m', html)
+        self.assertIn('30 m&#179;/h', html)
+        self.assertIn('Eau / jour (sur 7 h de pompage)', html)
+        self.assertIn('210 m&#179;', html)
+
+    def test_pompage_without_curve_never_shows_water_per_day(self):
+        """No curve → no débit-at-HMT, no m³/day card, no dashes — the card
+        is omitted entirely rather than faked."""
+        self.devis.mode_installation = 'agricole'
+        self.devis.etude_params = {
+            'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+            'alim': 'tri', 'hmt_m': '80', 'champ_kwc': 5.68,
+            'debit_hmt_m3h': None, 'heures_pompage': None, 'm3_jour': None,
+        }
+        self.devis.save()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('Eau / jour', html)
+        self.assertNotIn('m&#179;/jour', html)
+        # pas de tiret placeholder dans le bloc résumé
+        self.assertNotIn('>&#8212;<', html)
+
+    def test_panel_ht_derivation_at_10_percent(self):
+        """1 400 TTC @ 10 % → 1 272,73 HT par ligne (TTC ancre, jamais 1 166,67)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+        ], reference='DEV-QE-TVA10')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        panel = next(it for it in data['all_items'] if 'Panneau' in it['designation'])
+        self.assertEqual(panel['taux_tva'], 10.0)
+        self.assertEqual(panel['prix_unit_ht'], 1272.73)
+        self.assertEqual(panel['prix_unit_ttc'], 1400.0)
+        ond = next(it for it in data['all_items'] if 'Onduleur' in it['designation'])
+        self.assertEqual(ond['taux_tva'], 20.0)
+        self.assertEqual(ond['prix_unit_ttc'], 20000.0)
+
+    def _mixed_devis(self, remise='0', reference='DEV-QE-MIX'):
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+            ('Structures acier', '14', '416.67', '20'),
+            ('Installation', '1', '4000', '20'),
+        ], remise_globale=remise, reference=reference)
+
+    def test_mixed_rates_buckets_reconcile_to_the_centime(self):
+        """TVA 10 % + TVA 20 % éclatées ; HT net + somme des TVA = TTC exact,
+        avec et sans remise globale."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        for remise, ref in (('0', 'DEV-QE-MIX0'), ('8', 'DEV-QE-MIX8')):
+            devis = self._mixed_devis(remise=remise, reference=ref)
+            data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+            t = data['totaux_all']
+            buckets = {b['taux']: b for b in t['tva_par_taux']}
+            self.assertEqual(set(buckets), {10.0, 20.0})
+            # réconciliation au centime
+            self.assertAlmostEqual(
+                t['ht_net'], sum(b['ht_net'] for b in t['tva_par_taux']), places=2)
+            self.assertAlmostEqual(
+                t['ttc_exact'],
+                round(t['ht_net'] + sum(b['montant'] for b in t['tva_par_taux']), 2),
+                places=2)
+            # la remise réduit chaque panier proportionnellement
+            if remise == '8':
+                self.assertGreater(t['remise'], 0)
+            # montants TVA cohérents avec leurs paniers nets
+            for b in t['tva_par_taux']:
+                self.assertAlmostEqual(
+                    b['montant'], round(b['ht_net'] * b['taux'] / 100, 2), places=2)
+            # le HTML one-page montre les deux lignes TVA et le TTC canonique
+            html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
+            self.assertEqual(len(doc.pages), 1)
+            self.assertIn('TVA (10', html)
+            self.assertIn('TVA (20', html)
+
+    def test_mixed_rates_tva_note_describes_reform(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._mixed_devis(reference='DEV-QE-MIXN')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertIn('10% panneaux photovolta', data['tva_note'])
+        self.assertIn('20% autres', data['tva_note'])
+
+    def test_legacy_single_rate_quote_renders_unchanged(self):
+        """Devis historique (lignes sans taux) : note d'origine, ligne TVA
+        unique au taux du devis, totaux identiques à l'ancien calcul."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           self.FULL_LINES, remise_globale='8',
+                           reference='DEV-QE-LEGTVA')
+        data = build_quote_data(devis)
+        self.assertFalse(data['per_line_tva'])
+        self.assertIn('appliquée sur l\'ensemble', data['tva_note'])
+        t = data['totaux_sans']
+        # ancien calcul exact : TVA unique sur le HT net
+        self.assertAlmostEqual(t['tva'], round(t['ht_net'] * 0.20, 2), places=2)
+        self.assertEqual(len(t['tva_par_taux']), 1)
+        html, _ = self._render(devis=devis)
+        self.assertIn('TVA (20', html)
+        self.assertNotIn('TVA (10', html)
+
+    def test_mixed_rates_onepage_15_lines_still_one_page(self):
+        """Le format une page absorbe la colonne TVA même en table dense."""
+        lignes = [(f'Divers {i} article générique', '2', '500', '20') for i in range(13)]
+        lignes += [('Panneau mono 710W', '14', '1272.73', '10'),
+                   ('Onduleur réseau 10kW', '1', '16666.67', '20')]
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           lignes, reference='DEV-QE-MIX15')
+        html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
+        self.assertEqual(len(doc.pages), 1)
+
+    def test_buy_prices_never_in_pdf_html(self):
+        """Le prix d'achat (revendeur) n'apparaît dans AUCUN rendu client —
+        sweep sur les deux formats avec un prix d'achat très reconnaissable."""
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('VARIATEUR VEICHI SI23 7.5KW 380V', '1', '3333.33'),
+            ('Pompe immergée OSP 30/8', '1', '12500'),
+            ('Panneau Canadien Solar 710W', '15', '1166.67'),
+        ], reference='DEV-QE-SWEEP')
+        # prix d'achat distinctifs sur les produits liés
+        for ligne in devis.lignes.all():
+            ligne.produit.prix_achat = Decimal('9876.54')
+            ligne.produit.save(update_fields=['prix_achat'])
+        devis.mode_installation = 'agricole'
+        devis.etude_params = {'pompe_cv': '10', 'pompe_kw': 7.5, 'hmt_m': '60'}
+        devis.save()
+        for opts in ({'pdf_mode': 'onepage'}, None):
+            html, _ = self._render(opts, devis=devis)
+            for marker in ('9876', '9 876', '9\u202f876', '9&#8239;876', 'achat'):
+                self.assertNotIn(marker, html.lower())
+
+    def test_onepage_15_rich_lines_stays_one_page_with_totals_visible(self):
+        """Adaptive density: a 15-line quote with long product descriptions
+        must compact (descriptions suppressed > 12 lines) so the table AND
+        the totals block fit on exactly one page."""
+        from apps.stock.models import Produit
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        lignes = [(f'P{i:02d} produit audit', '2', '1000') for i in range(15)]
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           lignes, reference='DEV-QE-15L')
+        # Toutes les fiches portent une longue description + garantie
+        Produit.objects.filter(
+            lignes_devis__devis=devis).update(
+            description='Ligne 1 de description\nLigne 2\nLigne 3\nLigne 4',
+            garantie='Garantie constructeur 10 ans')
+
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_15l.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        html = cap['html']
+        doc = HTML(string=html).render()
+        self.assertEqual(len(doc.pages), 1)
+        # > 12 lignes → mode compact : pas de lignes de description ni de
+        # garanties (le tableau + totaux tiennent alors largement sur la page,
+        # vérifié visuellement sur un rendu réel)
+        self.assertNotIn('Ligne 1 de description', html)
+        self.assertNotIn('Garantie constructeur 10 ans', html)
+        self.assertIn('Sous-total HT', html)
+
+        # Cas confortable : 6 lignes → descriptions présentes
+        devis2 = make_devis(self.company, self.user, self.client_obj,
+                            [(f'C{i} produit confort', '1', '500') for i in range(6)],
+                            reference='DEV-QE-6L')
+        Produit.objects.filter(lignes_devis__devis=devis2).update(
+            description='Desc visible A\nDesc visible B')
+        data2 = build_quote_data(devis2, {'pdf_mode': 'onepage'})
+        cap2 = {}
+        G._render_pdf_weasyprint = lambda html, out: cap2.update(html=html)
+        try:
+            G.generate_premium_pdf(data2, '/tmp/_6l.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        self.assertIn('Desc visible A', cap2['html'])
+        self.assertEqual(len(HTML(string=cap2['html']).render().pages), 1)
+
+    def test_figures_identical_on_every_page(self):
+        """ONE source of truth: the page-1 headline totals equal the page-2
+        totals block exactly (no rounding drift), and the étude repeats the
+        page-1 production/savings/payback verbatim."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 156978, 'conso_annuelle': 120000,
+            'taux_autoconso': 71.4, 'taux_couverture': 93.3,
+            'economies_annuelles': 274711, 'payback': 2.1, 'prix_kwc': 4557,
+            'prod_mensuelle': [13081] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.save()
+        data = build_quote_data(self.devis)
+        # totaux canoniques : la valeur page 1 EST la valeur du bloc page 2
+        self.assertEqual(data['total_sans'], data['totaux_sans']['ttc'])
+        self.assertEqual(data['total_avec'], data['totaux_avec']['ttc'])
+        # production/économies de l'étude = celles de la page 1 (canoniques)
+        self.assertEqual(data['prod_kwh'], data['etude']['production_annuelle'])
+        self.assertEqual(data['eco_s_ann'], data['etude']['economies_annuelles'])
+        self.assertEqual(data['roi_s'], data['etude']['payback'])
+        # prix/kWc recalculé depuis le total canonique (jamais l'ancien stocké)
+        ref_total = data['total_sans']
+        self.assertEqual(data['etude']['prix_kwc'],
+                         round(ref_total / data['puissance_kwc']))
+        # rendu : le Total TTC canonique apparaît plusieurs fois — même nombre
+        # partout (les pages diffèrent seulement par le type d'espace fine)
+        import re
+        html, doc = self._render()
+        digits = str(data['totaux_sans']['ttc'])
+        pattern = r'[\s   ]?'.join(
+            [digits[max(0, len(digits) - 3 * (i + 1)):len(digits) - 3 * i]
+             for i in range((len(digits) + 2) // 3 - 1, -1, -1)])
+        self.assertGreaterEqual(len(re.findall(pattern, html)), 2)
+
+    def test_tva_note_matches_applied_math(self):
+        """Le texte TVA décrit exactement le taux appliqué — l'ancienne
+        mention contradictoire 10 %/20 % a disparu de tout le document."""
+        html, _ = self._render()
+        self.assertIn('TVA 20 % appliquée sur l’ensemble'.replace('’', "'"),
+                      html.replace('&#8217;', "'").replace('’', "'"))
+        self.assertNotIn('10&#37; sur les modules', html)
+        self.assertNotIn('10&#37; modules', html)
+
+    def test_industrial_document_single_option_with_etude(self):
+        """Document industriel : option unique sans batterie (jamais d'option
+        avec batterie fabriquée), étude incluse d'office → 4 pages, mode
+        affiché Industrielle, confirmation unique en signature."""
+        from apps.ventes.models import Devis
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '176', '1166.67'),
+            ('Onduleur réseau Huawei 100kW Triphasé', '1', '65000'),
+            ('Structures acier', '176', '416.67'),
+            ('Installation', '1', '52000'),
+        ], reference='DEV-QE-IND')
+        Devis.objects.filter(pk=devis.pk).update(
+            mode_installation='industriel',
+            etude_params={
+                'kwc': 124.96, 'production_annuelle': 156978,
+                'conso_annuelle': 240000, 'taux_autoconso': 92.1,
+                'taux_couverture': 60.2, 'economies_annuelles': 252000,
+                'payback': 2.2, 'prix_kwc': 4500,
+                'prod_mensuelle': [13081] * 12, 'conso_mensuelle': [20000] * 12,
+            })
+        devis.refresh_from_db()
+        html, doc = self._render(devis=devis)
+        self.assertEqual(len(doc.pages), 4)  # 1 proposition, 2 équipements, 3 étude, 4 signature
+        # option unique : pas de boilerplate « Onduleur hybride Deye »,
+        # pas de batterie inventée, cases à deux options absentes
+        self.assertNotIn('Onduleur hybride Deye', html)
+        self.assertNotIn('Batterie de stockage incluse', html)
+        self.assertIn('Confirmation de la commande', html)
+        self.assertIn('Industrielle / Commerciale', html)
+        # taux réels présents (consommation fournie)
+        self.assertIn('Taux de couverture', html)
+
+    def test_etude_without_consumption_omits_rates_no_dashes(self):
+        """Étude sans consommation : les cartes taux sont OMISES (pas de tiret,
+        pas d'« autoconsommation 100 % » fabriquée)."""
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 12486,
+            'conso_annuelle': None, 'taux_autoconso': 100,
+            'taux_couverture': None, 'economies_annuelles': 21851,
+            'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': None,
+        }
+        self.devis.save()
+        html, doc = self._render()
+        self.assertNotIn("Taux d'autoconsommation", html)
+        self.assertNotIn('Taux de couverture', html)
+        self.assertNotIn('Consommation annuelle', html)
+
+    def test_unknown_options_are_whitelisted_away(self):
+        from apps.ventes.quote_engine import clean_pdf_options
+        opts = clean_pdf_options({
+            'pdf_mode': 'evil', 'show_monthly': 1, 'devis_final': 'yes',
+            'payment_mode': 'weird', 'custom_acompte': 'abc', 'junk': True,
+        })
+        self.assertEqual(opts['pdf_mode'], 'full')
+        self.assertTrue(opts['show_monthly'])
+        self.assertTrue(opts['devis_final'])
+        self.assertEqual(opts['payment_mode'], 'standard')
+        self.assertIsNone(opts['custom_acompte'])
+        self.assertNotIn('junk', opts)
+
+
+class TestGeneratorQuoteFlow(TestCase):
+    """End-to-end flow of the solar generator screen (/ventes/devis/nouveau):
+    the screen creates a plain Devis via the REST API, then posts its lines via
+    devis-lignes — exactly as exercised here. The created quote must get an
+    auto-generated reference and must render the premium PDF in exactly 3 pages.
+    """
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def _create_via_api(self, lignes):
+        resp = self.api.post('/api/django/ventes/devis/', {
+            'client': self.client_obj.id,
+            'statut': 'brouillon',
+            'taux_tva': '20.00',
+            'remise_globale': '0',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis_id = resp.data['id']
+        for desig, qty, pu in lignes:
+            produit = make_produit(self.company, desig, desig[:20], pu)
+            line_resp = self.api.post('/api/django/ventes/devis-lignes/', {
+                'devis': devis_id,
+                'produit': produit.id,
+                'designation': desig,
+                'quantite': qty,
+                'prix_unitaire': pu,
+                'remise': '0',
+            }, format='json')
+            self.assertEqual(line_resp.status_code, 201, line_resp.data)
+        return resp.data
+
+    def test_api_created_devis_gets_auto_reference(self):
+        from apps.ventes.models import Devis
+        first = self._create_via_api([('Panneau mono 550W', '4', '1100')])
+        ref1 = Devis.objects.get(pk=first['id']).reference
+        self.assertRegex(ref1, r'^DEV-\d{6}-0001$')
+        # Second create must not collide (regression: reference used to be '').
+        resp = self.api.post('/api/django/ventes/devis/', {
+            'client': self.client_obj.id,
+            'statut': 'brouillon',
+            'taux_tva': '20.00',
+            'remise_globale': '0',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        ref2 = Devis.objects.get(pk=resp.data['id']).reference
+        self.assertRegex(ref2, r'^DEV-\d{6}-0002$')
+        self.assertNotEqual(ref1, ref2)
+
+    def test_generator_created_quote_renders_three_page_premium_pdf(self):
+        """A quote shaped exactly like the generator's catalogue auto-fill
+        (14 panels, both inverters, battery, structures, socles, power-priced
+        accessories) must produce the premium PDF in exactly 3 pages."""
+        from weasyprint import HTML
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        created = self._create_via_api([
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '2', '14000'),
+            ('Structures acier', '14', '375'),
+            ('Socles', '28', '67'),
+            ('Accessoires', '1', '1666.67'),
+            ('Tableau De Protection AC/DC', '1', '2500'),
+            ('Installation', '1', '6000'),
+            ('Transport', '1', '1000'),
+        ])
+
+        devis = Devis.objects.get(pk=created['id'])
+        data = build_quote_data(devis)
+
+        # Power must come from the panel line the generator wrote.
+        self.assertEqual(data['nb_panneaux'], 14)
+        self.assertEqual(data['watt_par_panneau'], 550)
+
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_generator_flow_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+
+        doc = HTML(string=cap['html']).render()
+        self.assertEqual(
+            len(doc.pages), 3,
+            f'generator-created quote must render exactly 3 pages, got {len(doc.pages)}',
+        )
+
+    def test_catalogue_quote_renders_three_page_premium_pdf(self):
+        """A quote composed from the seeded simulator catalogue (exactly what
+        the generator's auto-fill produces for 14 panels x 710 W) must render
+        the premium PDF in exactly 3 pages. Prices are the screen's TTC
+        converted back to HT, as the save path does."""
+        from django.core.management import call_command
+        from weasyprint import HTML
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        call_command('seed_catalogue', company_slug=self.company.slug)
+
+        # Auto-fill output for 14 x 710 W (9.94 kWc), as saved by the screen:
+        # (sku, qty, prix HT = TTC simulateur / 1.2)
+        lines = [
+            ('OND-R-HUA-10T', '1', None),       # 20 000 TTC
+            ('OND-H-DEY-10T', '1', None),       # 28 000 TTC
+            ('SMART-MET', '1', None),           # 1 800 TTC
+            ('WIFI-DON', '1', None),            # 1 200 TTC
+            ('PAN-CS-710', '14', None),         # 1 400 TTC
+            ('BAT-DEY-10', '1', None),          # 30 000 TTC
+            ('STR-ACIER', '14', None),          # 500 TTC
+            ('SOC-BET', '28', None),            # 80 TTC
+            ('ACC-CAT', '1', '1666.67'),        # formule : 2 blocs x 1000 TTC
+            ('TAB-PROT', '1', '2500.00'),       # formule : 2 blocs x 1500 TTC
+            ('INST-CAT', '1', '6000.00'),       # formule : 3 x 2400 TTC
+            ('TRANS-CAT', '1', None),           # 1 000 TTC
+        ]
+
+        resp = self.api.post('/api/django/ventes/devis/', {
+            'client': self.client_obj.id,
+            'statut': 'brouillon',
+            'taux_tva': '20.00',
+            'remise_globale': '0',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis_id = resp.data['id']
+
+        for sku, qty, prix_ht in lines:
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            line_resp = self.api.post('/api/django/ventes/devis-lignes/', {
+                'devis': devis_id,
+                'produit': produit.id,
+                'designation': produit.nom,
+                'quantite': qty,
+                'prix_unitaire': prix_ht or str(produit.prix_vente),
+                'remise': '0',
+            }, format='json')
+            self.assertEqual(line_resp.status_code, 201, line_resp.data)
+
+        devis = Devis.objects.get(pk=devis_id)
+        data = build_quote_data(devis)
+
+        # Power from the catalogue panel line; both options split correctly.
+        self.assertEqual(data['nb_panneaux'], 14)
+        self.assertEqual(data['watt_par_panneau'], 710)
+        sans = [it['designation'] for it in data['sans_items']]
+        avec = [it['designation'] for it in data['avec_items']]
+        self.assertIn('Onduleur réseau Huawei 10kW Triphasé', sans)
+        self.assertNotIn('Onduleur réseau Huawei 10kW Triphasé', avec)
+        self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
+        self.assertIn('Batterie Deyness 10 kWh', avec)
+        self.assertNotIn('Batterie Deyness 10 kWh', sans)
+        # Option totals match the simulator for the same inputs (±1 MAD rounding)
+        self.assertAlmostEqual(data['total_sans'], 65040, delta=1)
+        self.assertAlmostEqual(data['total_avec'], 103040, delta=1)
+
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_catalogue_quote_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+
+        doc = HTML(string=cap['html']).render()
+        self.assertEqual(
+            len(doc.pages), 3,
+            f'catalogue quote must render exactly 3 pages, got {len(doc.pages)}',
         )

@@ -1,0 +1,10 @@
+# Reverse proxy public du Taqinor OS — HTTPS automatique (Let's Encrypt).
+# L'hôte vient de PUBLIC_HOSTNAME (.env du serveur). Migration future vers
+# api.taqinor.ma : changer PUBLIC_HOSTNAME et relancer caddy, rien d'autre.
+{$PUBLIC_HOSTNAME} {
+	encode gzip
+	reverse_proxy nginx:80 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

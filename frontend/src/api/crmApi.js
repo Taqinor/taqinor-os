@@ -11,6 +11,8 @@ const crmApi = {
   // Leads / opportunities
   getLeads: (params) => api.get('/crm/leads/', { params }),
   getLead: (id) => api.get(`/crm/leads/${id}/`),
+  createLead: (data) => api.post('/crm/leads/', data),
+  updateLead: (id, data) => api.patch(`/crm/leads/${id}/`, data),
 }
 
 export default crmApi

@@ -10,6 +10,19 @@ class LigneDevisSerializer(serializers.ModelSerializer):
         model = LigneDevis
         fields = '__all__'
 
+    def create(self, validated_data):
+        # Réforme TVA 2024–2026 : toute NOUVELLE ligne porte son propre taux,
+        # copié du produit (10 % panneaux PV, 20 % le reste) quand il n'est pas
+        # fourni. Les lignes historiques (taux NULL) restent rendues au taux
+        # global de leur devis — jamais réécrites.
+        if validated_data.get('taux_tva') is None:
+            from decimal import Decimal
+            produit = validated_data.get('produit')
+            produit_tva = getattr(produit, 'tva', None)
+            validated_data['taux_tva'] = (
+                produit_tva if produit_tva is not None else Decimal('20.00'))
+        return super().create(validated_data)
+
 
 class DevisSerializer(serializers.ModelSerializer):
     lignes = LigneDevisSerializer(many=True, read_only=True)
@@ -17,6 +30,12 @@ class DevisSerializer(serializers.ModelSerializer):
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_ttc = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    lead_nom = serializers.SerializerMethodField()
+
+    def get_lead_nom(self, obj):
+        if not obj.lead_id:
+            return None
+        return f"{obj.lead.nom} {obj.lead.prenom or ''}".strip()
 
     class Meta:
         model = Devis
@@ -25,18 +44,25 @@ class DevisSerializer(serializers.ModelSerializer):
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
-    """Création/modification sans lignes imbriquées."""
+    """Création/modification sans lignes imbriquées.
+
+    Le client devient optionnel À LA CRÉATION quand un lead est fourni : il est
+    alors résolu côté serveur depuis le lead (apps.crm.services), jamais déduit
+    côté navigateur. La vue garantit qu'au moins l'un des deux est présent et
+    que lead/client appartiennent à la société de l'utilisateur.
+    """
     class Meta:
         model = Devis
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
         read_only_fields = ['created_by', 'date_creation', 'company']
+        extra_kwargs = {'client': {'required': False}}
 
 
 class BonCommandeSerializer(serializers.ModelSerializer):
-    client_nom      = serializers.CharField(source='client.nom', read_only=True)
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
-    has_facture     = serializers.SerializerMethodField()
+    has_facture = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommande

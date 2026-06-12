@@ -92,3 +92,220 @@ class TestLeadAPI(TestCase):
         data = resp.data['results'] if 'results' in resp.data else resp.data
         names = [row['nom'] for row in data]
         self.assertEqual(names, ['Imported'])
+
+
+class TestLeadBills(TestCase):
+    """A lead stores its electricity bill, with the summer-differs toggle."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='lead_bill_user', password='x',
+            role_legacy='responsable', company=self.company,
+        )
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def test_lead_stores_bills_and_toggle(self):
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'Bennis', 'telephone': '+212600000003',
+            'facture_hiver': '650', 'facture_ete': '420',
+            'ete_differente': True,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(pk=resp.data['id'])
+        self.assertEqual(str(lead.facture_hiver), '650.00')
+        self.assertEqual(str(lead.facture_ete), '420.00')
+        self.assertTrue(lead.ete_differente)
+
+    def test_toggle_off_single_bill(self):
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'Sefrioui', 'facture_hiver': '533.50',
+            'ete_differente': False,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(pk=resp.data['id'])
+        # Arbitrary typed value kept exactly (no snapping).
+        self.assertEqual(str(lead.facture_hiver), '533.50')
+        self.assertFalse(lead.ete_differente)
+        self.assertIsNone(lead.facture_ete)
+
+    def test_client_link_not_writable_from_browser(self):
+        from apps.crm.models import Client
+        sneaky = Client.objects.create(
+            company=self.company, nom='Sneaky', email='sneaky@example.com')
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'Hack', 'client': sneaky.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertIsNone(Lead.objects.get(pk=resp.data['id']).client_id)
+
+
+class TestResolveClientForLead(TestCase):
+    """Lead → client resolution: reuse, match by email, else create. Never duplicates."""
+
+    def setUp(self):
+        from apps.crm.models import Client
+        self.company = make_company()
+        self.Client = Client
+
+    def test_reuses_already_linked_client(self):
+        from apps.crm.services import resolve_client_for_lead
+        client = self.Client.objects.create(
+            company=self.company, nom='Linked', email='linked@example.com')
+        lead = Lead.objects.create(
+            company=self.company, nom='Linked', client=client)
+        self.assertEqual(resolve_client_for_lead(lead).id, client.id)
+        self.assertEqual(self.Client.objects.count(), 1)
+
+    def test_matches_existing_client_by_email(self):
+        from apps.crm.services import resolve_client_for_lead
+        existing = self.Client.objects.create(
+            company=self.company, nom='Match', email='Match@Example.com')
+        lead = Lead.objects.create(
+            company=self.company, nom='Match', email='match@example.com')
+        resolved = resolve_client_for_lead(lead)
+        self.assertEqual(resolved.id, existing.id)
+        lead.refresh_from_db()
+        self.assertEqual(lead.client_id, existing.id)
+        self.assertEqual(self.Client.objects.count(), 1)  # no duplicate
+
+    def test_creates_client_from_lead_without_email(self):
+        from apps.crm.services import resolve_client_for_lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Nouveau', prenom='Prospect',
+            telephone='+212600000004', ville='Rabat',
+        )
+        resolved = resolve_client_for_lead(lead)
+        self.assertEqual(resolved.nom, 'Nouveau')
+        self.assertEqual(resolved.company_id, self.company.id)
+        self.assertIsNone(resolved.email)
+        # Second resolution reuses the same client (persisted link).
+        self.assertEqual(resolve_client_for_lead(lead).id, resolved.id)
+        self.assertEqual(self.Client.objects.count(), 1)
+
+    def test_email_match_is_company_scoped(self):
+        from apps.crm.services import resolve_client_for_lead
+        other = make_company(slug='other-bills-co', nom='Other')
+        self.Client.objects.create(
+            company=other, nom='Foreign', email='shared@example.com')
+        lead = Lead.objects.create(
+            company=self.company, nom='Local', email='shared@example.com')
+        resolved = resolve_client_for_lead(lead)
+        # Must NOT link the other company's client.
+        self.assertEqual(resolved.company_id, self.company.id)
+        self.assertEqual(self.Client.objects.count(), 2)
+
+
+class TestLeadActivity(TestCase):
+    """Historique chatter : journal automatique + notes manuelles."""
+
+    def setUp(self):
+        from apps.crm.models import LeadActivity
+        self.LeadActivity = LeadActivity
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='chatter_user', password='x',
+            role_legacy='responsable', company=self.company,
+        )
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def _create(self, **extra):
+        payload = {'nom': 'Chatter', **extra}
+        resp = self.api.post('/api/django/crm/leads/', payload, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return resp.data['id']
+
+    def test_creation_is_logged_with_user(self):
+        lead_id = self._create()
+        acts = self.LeadActivity.objects.filter(lead_id=lead_id)
+        self.assertEqual(acts.count(), 1)
+        act = acts.first()
+        self.assertEqual(act.kind, 'creation')
+        self.assertEqual(act.user_id, self.user.id)
+        self.assertIn('chatter_user', act.body)
+        self.assertEqual(act.company_id, self.company.id)
+
+    def test_field_changes_logged_old_to_new(self):
+        lead_id = self._create(facture_hiver='600')
+        resp = self.api.patch(f'/api/django/crm/leads/{lead_id}/', {
+            'stage': 'CONTACTED',
+            'facture_hiver': '750.50',
+            'type_toiture': 'tole_metal',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        acts = self.LeadActivity.objects.filter(
+            lead_id=lead_id, kind='modification')
+        by_field = {a.field: a for a in acts}
+        self.assertEqual(by_field['stage'].old_value, 'Nouveau')
+        self.assertEqual(by_field['stage'].new_value, 'Contacté')
+        self.assertEqual(by_field['facture_hiver'].old_value, '600.00')
+        self.assertEqual(by_field['facture_hiver'].new_value, '750.50')
+        self.assertEqual(by_field['type_toiture'].old_value, '—')
+        self.assertEqual(by_field['type_toiture'].new_value, 'Tôle/Métal')
+        for a in acts:
+            self.assertEqual(a.user_id, self.user.id)
+
+    def test_unchanged_fields_not_logged(self):
+        lead_id = self._create(ville='Rabat')
+        self.api.patch(f'/api/django/crm/leads/{lead_id}/',
+                       {'ville': 'Rabat'}, format='json')
+        self.assertEqual(
+            self.LeadActivity.objects.filter(
+                lead_id=lead_id, kind='modification').count(), 0)
+
+    def test_manual_note_posted_and_listed(self):
+        lead_id = self._create()
+        resp = self.api.post(f'/api/django/crm/leads/{lead_id}/noter/',
+                             {'body': 'Rappelé, pas de réponse'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['user_nom'], 'chatter_user')
+        hist = self.api.get(f'/api/django/crm/leads/{lead_id}/historique/')
+        self.assertEqual(hist.status_code, 200)
+        kinds = [a['kind'] for a in hist.data]
+        self.assertIn('note', kinds)
+        self.assertIn('creation', kinds)
+        # plus récent en premier
+        self.assertEqual(hist.data[0]['kind'], 'note')
+
+    def test_empty_note_rejected(self):
+        lead_id = self._create()
+        resp = self.api.post(f'/api/django/crm/leads/{lead_id}/noter/',
+                             {'body': '   '}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_new_solar_fields_save_and_reload(self):
+        lead_id = self._create(
+            whatsapp='+212611223344', canal='meta_ads', priorite='haute',
+            tags='Régularisation 82-21, VIP', type_installation='industriel',
+            conso_mensuelle_kwh='1234.56', raccordement='triphase',
+            regularisation_8221=True, type_toiture='bac_acier',
+            surface_toiture_m2='850.25', orientation='sud',
+            inclinaison_deg='0', ombrage='partiel',
+            ombrage_notes='cheminée au sud-ouest', nb_etages='2',
+            structure_pref='aluminium', taille_souhaitee_kwc='99.99',
+            batterie_souhaitee='les_deux', visite_prevue_le='2026-06-20',
+            relance_date='2026-06-15', gps_lat='33.589886', gps_lng='-7.603869',
+        )
+        data = self.api.get(f'/api/django/crm/leads/{lead_id}/').data
+        self.assertEqual(data['canal'], 'meta_ads')
+        self.assertEqual(data['priorite'], 'haute')
+        self.assertEqual(data['tags'], 'Régularisation 82-21, VIP')
+        self.assertEqual(data['conso_mensuelle_kwh'], '1234.56')
+        self.assertEqual(data['surface_toiture_m2'], '850.25')
+        self.assertEqual(data['taille_souhaitee_kwc'], '99.99')
+        self.assertEqual(data['gps_lat'], '33.589886')
+        self.assertTrue(data['regularisation_8221'])
+        self.assertEqual(data['batterie_souhaitee'], 'les_deux')
+
+    def test_owner_must_be_same_company(self):
+        other = make_company(slug='chatter-other', nom='Other')
+        foreign_user = User.objects.create_user(
+            username='foreign_owner', password='x', company=other)
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'X', 'owner': foreign_user.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)

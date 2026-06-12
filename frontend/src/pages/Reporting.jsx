@@ -46,7 +46,7 @@ function KpiCard({ label, value, icon, color, sub }) {
 function SectionTitle({ children }) {
   return (
     <h3 style={{
-      fontSize: '0.95rem', fontWeight: 700, color: '#1e293b',
+      fontWeight: 700, color: '#1e293b',
       margin: '0 0 0.75rem', textTransform: 'uppercase',
       letterSpacing: '0.06em', fontSize: 12,
     }}>

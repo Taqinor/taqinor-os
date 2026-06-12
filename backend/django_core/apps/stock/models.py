@@ -12,11 +12,15 @@ class Categorie(models.Model):
     )
     nom = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
+    ordre = models.PositiveSmallIntegerField(
+        default=100,
+        help_text="Ordre d'affichage délibéré (plus petit = plus haut).")
 
     class Meta:
         verbose_name = "Catégorie"
         verbose_name_plural = "Catégories"
         unique_together = [('company', 'nom')]
+        ordering = ['ordre', 'nom']
 
     def __str__(self):
         return self.nom
@@ -76,6 +80,37 @@ class Produit(models.Model):
     )
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+
+    # ── Fiche commerciale (devis PDF riches, 2026-06) — tout optionnel ──
+    marque = models.CharField(max_length=100, blank=True, null=True)
+    description = models.TextField(
+        blank=True, null=True,
+        help_text='Lignes descriptives affichées sous la désignation dans les PDF (une par ligne).')
+    garantie = models.CharField(
+        max_length=255, blank=True, null=True,
+        help_text='Texte garantie constructeur / performance.')
+
+    # ── Spécifications pompage solaire (mode Agricole) ──
+    pompe_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance pompe en chevaux (CV).')
+    hmt_m = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Hauteur manométrique totale max (m).')
+    debit_m3j = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Débit max indicatif (m³/jour).')
+    pompe_kw = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance nominale (kW) — pompes ET variateurs.')
+    tension_v = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Tension nominale (V) : 220 ou 380.')
+    courbe_pompe = models.JSONField(
+        null=True, blank=True,
+        help_text="Courbe de performance constructeur : "
+                  '{"debits_m3h": [0, 12, ...], "hmt_m": [91, 85, ...]} '
+                  '(HMT délivrée à chaque débit).')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
 

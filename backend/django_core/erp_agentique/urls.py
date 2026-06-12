@@ -34,3 +34,16 @@ urlpatterns = [
     path('api/django/reporting/', include('apps.reporting.urls')),
     path('api/django/contact/', include('apps.contact.urls')),
 ]
+
+# En production (DEBUG off + gunicorn), les statiques (admin Django) sont
+# servis par Django lui-même derrière nginx — volume faible (UI interne),
+# pas de dépendance supplémentaire. Activé explicitement par l'env.
+if os.environ.get('DJANGO_SERVE_STATIC') == '1':
+    from django.conf import settings
+    from django.urls import re_path
+    from django.views.static import serve as _static_serve
+
+    urlpatterns += [
+        re_path(r'^static/(?P<path>.*)$', _static_serve,
+                {'document_root': settings.STATIC_ROOT}),
+    ]

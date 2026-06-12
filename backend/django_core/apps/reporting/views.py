@@ -1,8 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum, Count, Q
-from django.db.models.functions import TruncMonth
+from django.db.models import Sum, Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -49,10 +48,6 @@ def dashboard(request):
 
     nb_clients = Client.objects.filter(**co).count()
 
-    valeur_stock = Produit.objects.filter(**co, is_archived=False).aggregate(
-        total=Sum('quantite_stock')
-    )['total'] or 0
-
     # Valeur stock = quantite * prix_vente
     produits = Produit.objects.filter(**co, is_archived=False)
     valeur_stock_dh = sum(
@@ -61,13 +56,6 @@ def dashboard(request):
 
     # ── CA mensuel (12 derniers mois) ─────────────────────────────────────────
     debut = date.today().replace(day=1) - timedelta(days=365)
-    ca_mensuel_raw = (
-        Facture.objects
-        .filter(**co, statut=Facture.Statut.PAYEE, date_emission__gte=debut)
-        .annotate(mois=TruncMonth('date_emission'))
-        .values('mois')
-        .order_by('mois')
-    )
     # Calcule le CA HT par mois via les lignes
     ca_mensuel = _ca_mensuel(
         factures_qs.filter(statut=Facture.Statut.PAYEE, date_emission__gte=debut)
@@ -112,34 +100,7 @@ def dashboard(request):
         statut__in=[Facture.Statut.BROUILLON, Facture.Statut.ANNULEE]
     ).count()
 
-    # ── Stock critique (produits sous seuil) ──────────────────────────────────
-    stock_critique = list(
-        Produit.objects
-        .filter(**co, is_archived=False, quantite_stock__lte=0)
-        .exclude(seuil_alerte=0)
-        .order_by('quantite_stock')
-        .values('nom', 'quantite_stock', 'seuil_alerte')[:10]
-    )
-    stock_alerte = list(
-        Produit.objects
-        .filter(
-            **co,
-            is_archived=False,
-            quantite_stock__gt=0,
-            quantite_stock__lte=0,
-        )
-        .order_by('quantite_stock')
-        .values('nom', 'quantite_stock', 'seuil_alerte')[:10]
-    )
-    # Produits dont quantite_stock <= seuil_alerte (et seuil > 0)
-    stock_alerte_list = list(
-        Produit.objects
-        .filter(**co, is_archived=False)
-        .exclude(seuil_alerte=0)
-        .filter(quantite_stock__lte=0)  # rupture totale
-        .values('nom', 'quantite_stock', 'seuil_alerte')[:20]
-    )
-    # Correction : tous les produits sous seuil
+    # ── Stock critique (produits sous seuil, seuil > 0) ───────────────────────
     from django.db.models import F
     stock_alerte_list = list(
         Produit.objects
@@ -169,8 +130,8 @@ def dashboard(request):
                 'jours_retard_max': 0,
             }
         montant = sum(
-            l.quantite * l.prix_unitaire * (1 - l.remise / 100)
-            for l in f.lignes.all()
+            ligne.quantite * ligne.prix_unitaire * (1 - ligne.remise / 100)
+            for ligne in f.lignes.all()
         )
         creances[cid]['nb_factures'] += 1
         creances[cid]['montant_total'] += montant
@@ -222,8 +183,8 @@ def _ca_factures(qs):
     """Calcule le CA HT total d'un queryset de Facture."""
     total = Decimal('0')
     for f in qs.prefetch_related('lignes'):
-        for l in f.lignes.all():
-            total += l.quantite * l.prix_unitaire * (1 - l.remise / 100)
+        for ligne in f.lignes.all():
+            total += ligne.quantite * ligne.prix_unitaire * (1 - ligne.remise / 100)
     return total
 
 
@@ -233,13 +194,12 @@ def _ca_mensuel(factures_qs):
     Format : [{'mois': 'Jan 2025', 'ca': 12345.67}, ...]
     """
     from collections import defaultdict
-    import calendar
 
     par_mois = defaultdict(Decimal)
     for f in factures_qs.prefetch_related('lignes'):
         cle = f.date_emission.strftime('%Y-%m')
-        for l in f.lignes.all():
-            par_mois[cle] += l.quantite * l.prix_unitaire * (1 - l.remise / 100)
+        for ligne in f.lignes.all():
+            par_mois[cle] += ligne.quantite * ligne.prix_unitaire * (1 - ligne.remise / 100)
 
     mois_labels = {
         '01': 'Jan', '02': 'Fév', '03': 'Mar', '04': 'Avr',

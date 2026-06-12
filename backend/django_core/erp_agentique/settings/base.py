@@ -33,6 +33,14 @@ DEBUG = _DEBUG_FLAG
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Origines de confiance CSRF (obligatoire derrière HTTPS : Django vérifie
+# l'Origin des POST). Liste séparée par des virgules, schéma inclus,
+# ex. CSRF_TRUSTED_ORIGINS=https://taqinor-os.example.com
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if o.strip()
+]
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -212,6 +220,12 @@ CONTACT_EMAIL = os.environ.get('CONTACT_EMAIL', 'reda.kasri@taqinor.ma')
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+
+# Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
+# Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.
+WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')
+# Tenant cible des leads web (id de Company) ; à défaut, la première Company.
+WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
 
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')

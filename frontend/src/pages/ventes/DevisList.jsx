@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   fetchDevis,
@@ -31,6 +32,7 @@ function openPdfBlob(blob, filename) {
 
 export default function DevisList() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { devis, loading, error } = useSelector(s => s.ventes)
 
   const [showForm, setShowForm]       = useState(false)
@@ -39,9 +41,30 @@ export default function DevisList() {
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
 
+  // ── Choix du format PDF (parité simulateur) ──
+  const [pdfTarget, setPdfTarget] = useState(null) // devis ciblé par la modale
+  const [pdfMode, setPdfMode] = useState('full')
+  const [showMonthly, setShowMonthly] = useState(true)
+  const [devisFinal, setDevisFinal] = useState(false)
+  const [paymentMode, setPaymentMode] = useState('standard')
+  const [customAcompte, setCustomAcompte] = useState('')
+  const [includeEtude, setIncludeEtude] = useState(false)
+
+  const openPdfModal = (d) => {
+    setPdfTarget(d)
+    setPdfMode('full')
+    setShowMonthly(true)
+    setDevisFinal(false)
+    setPaymentMode('standard')
+    setCustomAcompte('')
+    setIncludeEtude(false)
+  }
+
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
 
-  const openNew  = () => { setEditDevis(null); setShowForm(true) }
+  // Création : nouvelle page générateur solaire. L'ancien formulaire modal
+  // (DevisForm) ne sert plus qu'à l'édition d'un devis existant.
+  const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => { setEditDevis(d);   setShowForm(true) }
   const closeForm = () => { setShowForm(false); setEditDevis(null) }
   const onSaved  = () => dispatch(fetchDevis())
@@ -60,9 +83,19 @@ export default function DevisList() {
   }
 
   const handleGenererPdf = async (d) => {
+    const options = {
+      pdf_mode: pdfMode,
+      show_monthly: showMonthly,
+      devis_final: devisFinal,
+      payment_mode: paymentMode,
+      custom_acompte: (devisFinal && paymentMode === 'custom' && customAcompte !== '')
+        ? parseFloat(customAcompte) : null,
+      include_etude: pdfMode === 'full' && includeEtude,
+    }
+    setPdfTarget(null)
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
     try {
-      await dispatch(genererPdfDevis(d.id)).unwrap()
+      await dispatch(genererPdfDevis({ id: d.id, options })).unwrap()
       // Poll until fichier_pdf is ready (max 30s, every 2s)
       let attempts = 0
       const poll = async () => {
@@ -115,6 +148,91 @@ export default function DevisList() {
         <DevisForm devis={editDevis} onClose={closeForm} onSaved={onSaved} />
       )}
 
+      {/* ── Modale de génération PDF : formats du simulateur ── */}
+      {pdfTarget && (
+        <div className="modal-overlay" onClick={() => setPdfTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">📄 Générer le PDF — {pdfTarget.reference}</h3>
+              <button type="button" className="modal-close" onClick={() => setPdfTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Format</label>
+                <div className="pdf-format-options">
+                  <label className={`gen-radio${pdfMode === 'full' ? ' selected' : ''}`}>
+                    <input type="radio" name="pdf-mode" value="full"
+                           checked={pdfMode === 'full'} onChange={() => setPdfMode('full')} />
+                    Devis premium (3 pages — options, analyse, garanties)
+                  </label>
+                  <label className={`gen-radio${pdfMode === 'onepage' ? ' selected' : ''}`}>
+                    <input type="radio" name="pdf-mode" value="onepage"
+                           checked={pdfMode === 'onepage'} onChange={() => setPdfMode('onepage')} />
+                    Devis une page (liste produits uniquement, sans graphiques)
+                  </label>
+                </div>
+              </div>
+
+              {pdfMode === 'full' && (
+                <label className="pdf-toggle">
+                  <input type="checkbox" checked={showMonthly}
+                         onChange={e => setShowMonthly(e.target.checked)} />
+                  <span>Économies mensuelles <small>(graphique mensuel page 2)</small></span>
+                </label>
+              )}
+
+              {pdfMode === 'full' && (
+                <label className="pdf-toggle">
+                  <input type="checkbox" checked={includeEtude}
+                         onChange={e => setIncludeEtude(e.target.checked)} />
+                  <span>Inclure l'étude <small>(page autoconsommation — devis industriel)</small></span>
+                </label>
+              )}
+
+              <label className="pdf-toggle">
+                <input type="checkbox" checked={devisFinal}
+                       onChange={e => setDevisFinal(e.target.checked)} />
+                <span>Devis Final <small>(ajoute modalités de paiement + RIB)</small></span>
+              </label>
+
+              {devisFinal && (
+                <div className="pdf-payment-box">
+                  <label className="pdf-toggle">
+                    <input type="radio" name="payment-mode" value="standard"
+                           checked={paymentMode === 'standard'}
+                           onChange={() => setPaymentMode('standard')} />
+                    <span>Standard (30/60/10)</span>
+                  </label>
+                  <label className="pdf-toggle">
+                    <input type="radio" name="payment-mode" value="custom"
+                           checked={paymentMode === 'custom'}
+                           onChange={() => setPaymentMode('custom')} />
+                    <span>Acompte personnalisé</span>
+                  </label>
+                  {paymentMode === 'custom' && (
+                    <div className="form-group" style={{ marginTop: 8 }}>
+                      <label className="form-label">Montant acompte (MAD)</label>
+                      <input type="number" min="0" step="any" className="form-control"
+                             value={customAcompte}
+                             onChange={e => setCustomAcompte(e.target.value)} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => setPdfTarget(null)}>
+                Annuler
+              </button>
+              <button type="button" className="btn btn-primary"
+                      onClick={() => handleGenererPdf(pdfTarget)}>
+                📄 Générer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <table className="data-table">
         <thead>
           <tr>
@@ -158,23 +276,22 @@ export default function DevisList() {
                       Éditer
                     </button>
 
-                    {d.fichier_pdf ? (
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={() => openPdfModal(d)}
+                      disabled={isGenerating}
+                      title="Générer le PDF (choix du format)"
+                    >
+                      {isGenerating ? 'PDF...' : 'PDF'}
+                    </button>
+                    {d.fichier_pdf && (
                       <button
                         className="btn btn-sm btn-success"
                         onClick={() => handleTelechargerPdf(d)}
                         disabled={isDownloading}
-                        title="Télécharger le PDF"
+                        title="Télécharger le dernier PDF généré"
                       >
-                        {isDownloading ? '...' : '↓ PDF'}
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => handleGenererPdf(d)}
-                        disabled={isGenerating}
-                        title="Générer le PDF"
-                      >
-                        {isGenerating ? 'PDF...' : 'PDF'}
+                        {isDownloading ? '...' : '↓'}
                       </button>
                     )}
 
