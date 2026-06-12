@@ -75,12 +75,14 @@ for (const p of PAGES) {
   }
   ok(!/"\w[^"]{3,60}\w"/.test(body), `${page}: guillemets droits "..." détectés dans la copie`);
 
-  // Chiffres kWc / kWh non tracés
-  for (const m of body.matchAll(/(\d[\d\s,.]*)\s*(kWc|kWh)/g)) {
+  // Chiffres kWc / kWh non tracés (groupes de milliers à espace, décimale
+  // à virgule — sans avaler un nombre voisin comme une année)
+  const flat = body.replace(/\s+/g, ' ');
+  for (const m of flat.matchAll(/(\d{1,3}(?: \d{3})*(?:,\d+)?) (?:kWc|kWh)/g)) {
     const v = m[1].trim();
     const known = FACTS.some((f) => v.startsWith(f.replace(' ×', ''))) ||
       ['3', '5', '9', '15', '30', '100', '11', '25', '2 800', '3 400', '4', '6', '10', '12', '60', '75'].includes(v.replace(/\s.*/, ''));
-    ok(known, `${page}: chiffre non tracé « ${v} ${m[2]} »`);
+    ok(known, `${page}: chiffre non tracé « ${v} »`);
   }
 }
 

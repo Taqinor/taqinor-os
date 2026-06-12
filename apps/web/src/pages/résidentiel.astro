@@ -47,14 +47,27 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       />
       <div class="absolute inset-0 bg-gradient-to-r from-azur-950/95 via-azur-950/45 to-azur-950/5"></div>
     </div>
-    <div class="mx-auto max-w-6xl px-4 py-16 sm:py-24">
-      <p class="tech-label rule-brass text-brass-300">Villas · appartements</p>
-      <h1 class="display mt-4 max-w-[18ch] text-[clamp(1.9rem,6vw,3.4rem)]">Solaire résidentiel : un placement qui se calcule</h1>
-      <p class="mt-5 max-w-xl leading-relaxed text-white/85">
-        Une installation bien dimensionnée couvre 60 à 90 % de la consommation d'une villa.
-        Le calcul part de votre facture réelle, du profil de consommation et de l'orientation
-        de la toiture — pas d'un kit standard.
-      </p>
+    <div class="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:py-20 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+      <div>
+        <p class="tech-label rule-brass text-brass-300">Villas · appartements</p>
+        <h1 class="display mt-4 max-w-[18ch] text-[clamp(1.9rem,6vw,3.4rem)]">Solaire résidentiel : un placement qui se calcule</h1>
+        <p class="mt-5 max-w-xl leading-relaxed text-white/85">
+          Une installation bien dimensionnée couvre 60 à 90 % de la consommation d'une villa.
+          Le calcul part de votre facture réelle, du profil de consommation et de l'orientation
+          de la toiture — pas d'un kit standard.
+        </p>
+      </div>
+      <!-- Extrait d'étude (variante 3-B validée) — données réelles réf. 400 -->
+      <aside class="border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-[0_30px_70px_-30px_rgb(0_0_0/0.6)]">
+        <p class="tech-label text-brass-600">Extrait d'étude — réf. 400 · Casablanca · avril 2026</p>
+        <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6">
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Puissance installée</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Production mesurée</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panneaux</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Stockage Dyness LFP</p></div>
+        </div>
+        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production suivie sur SolarMan — accès client inclus.</p>
+      </aside>
     </div>
   </section>
 
