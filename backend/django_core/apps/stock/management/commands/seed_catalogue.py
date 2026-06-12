@@ -69,6 +69,25 @@ def ht(ttc):
     return (Decimal(ttc) / Decimal('1.2')).quantize(Decimal('0.01'))
 
 
+# ── Réforme TVA marocaine 2024–2026 (confirmée par le fondateur) ─────────────
+# 10 % : panneaux photovoltaïques UNIQUEMENT. 20 % : tout le reste (onduleurs,
+# batteries, structures, câbles, pompes, variateurs et toutes prestations).
+# Le TTC reste l'ancre : le HT stocké d'un panneau est dérivé à 10 %
+# (1 400 TTC → 1 272,73 HT) pour que le prix TTC affiché ne bouge JAMAIS.
+def is_panneau(nom):
+    return 'panneau' in (nom or '').lower()
+
+
+def taux_tva_for(nom):
+    return Decimal('10.00') if is_panneau(nom) else Decimal('20.00')
+
+
+def ht_at(ttc, taux):
+    """Prix HT (2 décimales) depuis un TTC au taux donné."""
+    return (Decimal(str(ttc)) * Decimal(100) / (Decimal(100) + Decimal(taux))
+            ).quantize(Decimal('0.01'))
+
+
 # ── Catalogue POMPAGE solaire (mode Agricole) ────────────────────────────────
 # Prix TTC reconstitués du marché marocain (cptechmaroc.ma, mrelec.ma,
 # energymarket.ma, ecovolt.ma, magitec.ma — juin 2026) — À CONFIRMER PAR REDA.
@@ -337,16 +356,17 @@ class Command(BaseCommand):
                 skipped.append(nom)
                 continue
 
+            taux = taux_tva_for(nom)
             produit = Produit.objects.create(
                 company=company,
                 nom=nom,
                 sku=sku,
                 categorie=get_categorie(cat),
-                prix_achat=ht(buy_ttc),
-                prix_vente=ht(sell_ttc),
+                prix_achat=ht_at(buy_ttc, taux),
+                prix_vente=ht_at(sell_ttc, taux),
                 quantite_stock=qte,
                 seuil_alerte=seuil,
-                tva=Decimal('20.00'),
+                tva=taux,
             )
             MouvementStock.objects.create(
                 company=company,
@@ -467,11 +487,34 @@ class Command(BaseCommand):
                                         if f in fiche])
             fiches_updated += 1
 
+        # ── Réforme TVA 2024–2026 (autorisation explicite du fondateur) ──
+        # Panneaux PV → 10 % avec HT re-dérivé pour PRÉSERVER le TTC à
+        # l'identique ; tout produit sans taux → 20 %. Idempotent : un panneau
+        # déjà à 10 % n'est jamais retouché. Seuls tva / prix HT dérivés
+        # bougent — le TTC affiché et chiffré ne change JAMAIS.
+        tva_updated = 0
+        for produit in Produit.objects.filter(company=company):
+            if is_panneau(produit.nom):
+                if produit.tva == Decimal('10.00'):
+                    continue
+                old_taux = produit.tva if produit.tva is not None else Decimal('20.00')
+                facteur = (Decimal(100) + old_taux) / Decimal(110)
+                produit.prix_vente = (produit.prix_vente * facteur).quantize(Decimal('0.01'))
+                produit.prix_achat = (produit.prix_achat * facteur).quantize(Decimal('0.01'))
+                produit.tva = Decimal('10.00')
+                produit.save(update_fields=['prix_vente', 'prix_achat', 'tva'])
+                tva_updated += 1
+            elif produit.tva is None:
+                produit.tva = Decimal('20.00')
+                produit.save(update_fields=['tva'])
+                tva_updated += 1
+
         self.stdout.write(self.style.SUCCESS(
             f"\nCatalogue seed for '{company.nom}': "
             f"{len(created)} created, {len(skipped)} already present (untouched), "
             f"{fiches_updated} fiches commerciales mises à jour, "
-            f"{archived_count} placeholders archivés."
+            f"{archived_count} placeholders archivés, "
+            f"{tva_updated} taux TVA alignés (réforme 10 % panneaux)."
         ))
         for nom in created:
             self.stdout.write(f"  + {nom}")

@@ -426,6 +426,24 @@ test('auto-fill courbe complet : pompe OSP + VEICHI assorti + afficheur, sans on
   assert.ok(!names.some(n => /batterie/i.test(n)))
 })
 
+// ══ Réforme TVA 2024–2026 : 10 % panneaux PV, 20 % le reste ═════════════════
+import { ttcFromHt as _ttc, htFromTtc as _htf, tauxTvaOf } from './solar.js'
+
+test('TVA 10 % panneau : aller-retour TTC↔HT lossless (1 400 ↔ 1 272,73)', () => {
+  assert.equal(_htf(1400, 10), '1272.73')
+  assert.equal(_ttc('1272.73', 10), 1400)
+  // taux du produit : 10 pour un panneau seedé, 20 par défaut
+  assert.equal(tauxTvaOf({ tva: '10.00' }), 10)
+  assert.equal(tauxTvaOf({ tva: '20.00' }), 20)
+  assert.equal(tauxTvaOf({}), 20)
+  assert.equal(tauxTvaOf(null), 20)
+  // tout TTC tapé à la dirham près reste exact aux deux taux
+  for (const ttc of [999, 1400, 13571, 250000]) {
+    assert.equal(_ttc(_htf(ttc, 10), 10), ttc)
+    assert.equal(_ttc(_htf(ttc, 20), 20), ttc)
+  }
+})
+
 test('prix/kWc + prix cible appliqué via remise transparente', () => {
   assert.equal(prixParKwc(99400, 9.94), 10000)
   // cible 9 000 MAD/kWc sur un brut de 99 400 → remise ≈ 9.96 %

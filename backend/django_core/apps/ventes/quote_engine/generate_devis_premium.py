@@ -259,6 +259,7 @@ PAYMENT_MODE   = "standard"   # "standard" or "custom"
 CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 PAGES_TOTAL = 3                # nombre réel de pages (4 avec l'étude)
 PAGE3_NUM = 3                  # numéro de la page de signature
+TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 
 # ── SVG equipment icons ──────────────────────────────────────────────────────
 _SVG = {
@@ -644,8 +645,17 @@ def _totals_block_rows(totaux, colspan):
         pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
         rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True)
         rows += row("Total HT", _fmt2(net_ht))
-    tva_pct = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
-    rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva))
+    # TVA \u00e9clat\u00e9e par taux (r\u00e9forme 10/20) \u2014 une ligne par taux pr\u00e9sent ;
+    # un seul taux (devis historiques) \u2192 exactement l'ancienne ligne unique.
+    buckets = totaux.get("tva_par_taux") or []
+    if len(buckets) > 1:
+        for b in buckets:
+            r = int(b["taux"]) if b["taux"] == int(b["taux"]) else b["taux"]
+            rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]))
+    else:
+        rate = buckets[0]["taux"] if buckets else TVA_PCT
+        tva_pct = int(rate) if rate == int(rate) else rate
+        rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva))
     rows += row("Total TTC", fmt(ttc), navy=True)
     return rows
 
@@ -674,13 +684,16 @@ def equip_rows(items, totaux, hi_bat=False):
         dash = "\u2014"
         pu_ht_s = _fmt2(pu_ht) if pu_ht > 0 else dash
         tot_ht_s = _fmt2(qty * pu_ht) if pu_ht > 0 else dash
+        taux = it.get("taux_tva", TVA_PCT)
+        taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
                  f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
                  f'<td class="tc">{qty_s}</td>'
                  f'<td class="tr">{pu_ht_s}</td>'
+                 f'<td class="tc" style="font-size:5.5pt;">{taux_s}</td>'
                  f'<td class="tr">{tot_ht_s}</td></tr>')
-    rows += _totals_block_rows(totaux, colspan=4)
+    rows += _totals_block_rows(totaux, colspan=5)
     return rows
 
 # ── Global CSS ────────────────────────────────────────────────────────────────
@@ -1026,7 +1039,7 @@ def page2(sans_items, img_roi, img_mon):
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>D\u00e9signation</th>
-            <th class="tc">Garantie</th><th class="tc">Qt\u00e9</th><th class="tr">P.U. HT</th><th class="tr">Total HT</th>
+            <th class="tc">Garantie</th><th class="tc">Qt\u00e9</th><th class="tr">P.U. HT</th><th class="tc">TVA</th><th class="tr">Total HT</th>
           </tr></thead>
           <tbody>{sr}</tbody>
         </table>
@@ -1037,7 +1050,7 @@ def page2(sans_items, img_roi, img_mon):
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>D\u00e9signation</th>
-            <th class="tc">Garantie</th><th class="tc">Qt\u00e9</th><th class="tr">P.U. HT</th><th class="tr">Total HT</th>
+            <th class="tc">Garantie</th><th class="tc">Qt\u00e9</th><th class="tr">P.U. HT</th><th class="tc">TVA</th><th class="tr">Total HT</th>
           </tr></thead>
           <tbody>{ar}</tbody>
         </table>
@@ -1497,16 +1510,27 @@ def build_html():
 # ── ONE-PAGE MODE ─────────────────────────────────────────────────────────────
 def page_onepage(items):
     """Single A4 page: header + summary strip + client block + HT product table + footer."""
-    # Totaux HT → Remise → TVA → TTC (cohérents avec les valeurs stockées)
-    total_ht = sum(
-        float(it.get("quantite", 0)) * _item_pu_ht(it)
-        for it in items
-        if float(it.get("quantite", 0)) > 0
-    )
-    remise = total_ht * DISCOUNT_PCT / 100 if DISCOUNT_PCT > 0 else 0.0
-    net_ht = total_ht - remise
-    tva_amt = net_ht * TVA_PCT / 100
-    total = net_ht + tva_amt
+    # Totaux CANONIQUES du builder (chaîne HT → remise → TVA par taux → TTC,
+    # calculée UNE fois) ; recalcul local uniquement en mode autonome.
+    if TOTAUX_ALL:
+        totaux = TOTAUX_ALL
+    else:
+        _ht = sum(
+            float(it.get("quantite", 0)) * _item_pu_ht(it)
+            for it in items
+            if float(it.get("quantite", 0)) > 0
+        )
+        _rem = _ht * DISCOUNT_PCT / 100 if DISCOUNT_PCT > 0 else 0.0
+        _net = _ht - _rem
+        _tva = _net * TVA_PCT / 100
+        totaux = {"ht_brut": _ht, "remise": _rem, "ht_net": _net,
+                  "tva": _tva, "tva_par_taux": [],
+                  "ttc": round(_net + _tva)}
+    total_ht = totaux["ht_brut"]
+    remise = totaux["remise"]
+    net_ht = totaux["ht_net"]
+    tva_amt = totaux["tva"]
+    total = totaux["ttc"]
 
     # ── Bloc résumé système (style devis concurrent) ──
     if ETUDE.get("pompe_cv"):
@@ -1597,6 +1621,8 @@ def page_onepage(items):
             detail_html += (
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
                 f'padding-left:6px;">&#10003; {gar}</div>')
+        _taux = it.get("taux_tva", TVA_PCT)
+        _taux_s = f"{int(_taux)}&#37;" if _taux == int(_taux) else f"{_taux}&#37;"
         rows_html += (
             f'<tr style="background:{bg};">'
             f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
@@ -1604,6 +1630,7 @@ def page_onepage(items):
             f'<td style="padding:{pad_px}px 10px;">{marque_html}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:center;color:{CG7};">{qty_str}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:right;color:{CG7};">{_fmt2(pu_ht)}</td>'
+            f'<td style="padding:{pad_px}px 10px;text-align:center;color:{CG4};font-size:7.5pt;">{_taux_s}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:right;font-weight:500;color:{CN};">{_fmt2(line_total)}</td>'
             f'</tr>'
         )
@@ -1628,8 +1655,18 @@ def page_onepage(items):
         totals_html += _tot_line(
             f"Remise ({_pct}&#8201;%)", "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True)
         totals_html += _tot_line("Total HT", _fmt2(net_ht) + "&nbsp;MAD")
-    _tva_pct = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
-    totals_html += _tot_line(f"TVA ({_tva_pct}&#8201;%)", _fmt2(tva_amt) + "&nbsp;MAD")
+    # TVA éclatée par taux présent (réforme 10/20) ; un seul taux → ligne
+    # unique identique aux devis historiques.
+    _buckets = totaux.get("tva_par_taux") or []
+    if len(_buckets) > 1:
+        for _b in _buckets:
+            _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
+            totals_html += _tot_line(
+                f"TVA ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD")
+    else:
+        _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
+        _tva_pct = int(_rate) if _rate == int(_rate) else _rate
+        totals_html += _tot_line(f"TVA ({_tva_pct}&#8201;%)", _fmt2(tva_amt) + "&nbsp;MAD")
     totals_html += _tot_line("Total TTC", fmt(total), navy=True)
 
     return f"""
@@ -1664,11 +1701,12 @@ def page_onepage(items):
   <div style="padding:12px 24px 0;">
     <table style="width:100%;border-collapse:collapse;font-size:8.5pt;table-layout:fixed;">
       <colgroup>
-        <col style="width:42%">
-        <col style="width:13%">
-        <col style="width:8%">
-        <col style="width:17%">
-        <col style="width:20%">
+        <col style="width:39%">
+        <col style="width:12%">
+        <col style="width:7%">
+        <col style="width:16%">
+        <col style="width:7%">
+        <col style="width:19%">
       </colgroup>
       <thead>
         <tr style="background:{CN};">
@@ -1676,6 +1714,7 @@ def page_onepage(items):
           <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:left;text-transform:uppercase;letter-spacing:.5px;">Marque</th>
           <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:center;text-transform:uppercase;letter-spacing:.5px;">Qt&#233;</th>
           <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:right;text-transform:uppercase;letter-spacing:.5px;">P.U. HT (MAD)</th>
+          <th style="padding:8px 6px;color:white;font-weight:700;font-size:7.5pt;text-align:center;text-transform:uppercase;letter-spacing:.5px;">TVA</th>
           <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:right;text-transform:uppercase;letter-spacing:.5px;">Total HT (MAD)</th>
         </tr>
       </thead>
@@ -1695,7 +1734,8 @@ def page_onepage(items):
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">&#183; Validit&#233;&#160;: 30 jours</span>
       <span style="margin-right:20px;">&#183; Acompte&#160;: 50&#37;</span>
-      <span>&#183; Solde &#224; la livraison&#160;: 50&#37;</span>
+      <span style="margin-right:20px;">&#183; Solde &#224; la livraison&#160;: 50&#37;</span>
+      <span>&#183; {TVA_NOTE}</span>
     </div>
   </div>
 
@@ -1790,7 +1830,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
     global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
-    global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, SANS_BULLETS, AVEC_BULLETS
+    global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
 
     CLIENT_NAME  = data["client_name"]
     CLIENT_ADDR  = data["client_addr"]
@@ -1837,6 +1877,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
                 "tva": tva, "ttc": round(ht_net + tva)}
     TOTAUX_SANS = data.get("totaux_sans") or _fallback_totaux(data["sans_items"])
     TOTAUX_AVEC = data.get("totaux_avec") or _fallback_totaux(data["avec_items"])
+    TOTAUX_ALL = data.get("totaux_all") or None
     SANS_BULLETS = data.get("sans_bullets") or []
     AVEC_BULLETS = data.get("avec_bullets") or []
 

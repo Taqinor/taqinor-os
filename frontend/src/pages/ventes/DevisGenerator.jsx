@@ -11,6 +11,7 @@ import stockApi from '../../api/stockApi'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
+  tauxTvaOf,
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
   groupProduitsByCategory, computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -37,6 +38,7 @@ const withKeys = (rows) => rows.map(r => ({
   designation: r.designation,
   quantite: String(r.quantite),
   prix_unit_ttc: String(r.prix_unit_ttc),
+  taux_tva: String(r.taux_tva ?? 20),
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -46,6 +48,7 @@ const emptyLine = () => ({
   designation: '',
   quantite: '0',
   prix_unit_ttc: '0',
+  taux_tva: '20',
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
@@ -258,8 +261,10 @@ export default function DevisGenerator() {
           produit: parseInt(r.produit),
           designation: r.designation,
           quantite: String(r.quantite),
-          prix_unitaire: htFromTtc(r.prix_unit_ttc, '20.00'),
+          // TTC ancre : HT dérivé au taux de la ligne (10 % panneaux / 20 %)
+          prix_unitaire: htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20),
           remise: '0',
+          taux_tva: String(r.taux_tva ?? 20),
         })).unwrap()))
       navigate('/ventes/devis')
     } catch (err) {
@@ -323,7 +328,8 @@ export default function DevisGenerator() {
             ...l,
             produit: produitId,
             designation: p?.nom ?? l.designation,
-            prix_unit_ttc: p ? String(ttcFromHt(p.prix_vente)) : l.prix_unit_ttc,
+            prix_unit_ttc: p ? String(ttcFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
+            taux_tva: p ? String(tauxTvaOf(p)) : (l.taux_tva ?? '20'),
           }
         : l
     ))
@@ -446,9 +452,12 @@ export default function DevisGenerator() {
           produit: parseInt(l.produit),
           designation: l.designation,
           quantite: l.quantite,
-          // le modèle stocke des prix HT ; l'écran travaille en TTC comme le simulateur
-          prix_unitaire: htFromTtc(l.prix_unit_ttc, tauxTva),
+          // le modèle stocke des prix HT ; l'écran travaille en TTC comme le
+          // simulateur. Réforme TVA : le HT est dérivé au taux DE LA LIGNE
+          // (10 % panneaux / 20 % le reste) pour que le TTC tapé soit exact.
+          prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
           remise: '0',
+          taux_tva: String(l.taux_tva ?? 20),
         })).unwrap()
       ))
 
@@ -1005,6 +1014,7 @@ export default function DevisGenerator() {
                     <th style={{ minWidth: 170 }}>Produit (stock)</th>
                     <th className="col-num">Qté</th>
                     <th className="col-num">Prix Unit. TTC</th>
+                    <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
                     <th className="col-num">Total TTC</th>
                     <th className="col-del"></th>
                   </tr>
@@ -1046,6 +1056,13 @@ export default function DevisGenerator() {
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.prix_unit_ttc}
                                  onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
+                        </td>
+                        <td>
+                          <input type="number" min="0" step="any"
+                                 className="form-control form-control-sm ta-right"
+                                 style={{ width: 56, fontSize: '0.75rem', color: '#64748b' }}
+                                 value={l.taux_tva ?? '20'}
+                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
                         <td className="line-total">{formatMoney(lineTtc)}</td>
                         <td>

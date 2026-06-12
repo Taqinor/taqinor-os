@@ -89,7 +89,12 @@ class Devis(models.Model):
 
     @property
     def total_tva(self):
-        return self.total_ht * (self.taux_tva / 100)
+        # TVA par ligne quand un taux de ligne existe, sinon taux du devis
+        # (anciens devis : toutes lignes NULL → strictement l'ancien calcul).
+        return sum(
+            ligne.total_ht * (ligne.taux_tva_effectif / 100)
+            for ligne in self.lignes.all()
+        )
 
     @property
     def total_ttc(self):
@@ -113,6 +118,12 @@ class LigneDevis(models.Model):
     remise = models.DecimalField(
         max_digits=5, decimal_places=2, default=0
     )
+    # TVA par ligne (réforme marocaine 2024–2026 : 10 % panneaux PV, 20 %
+    # le reste). NULL = ligne historique → le taux du devis s'applique,
+    # rendu strictement inchangé pour les anciens devis.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Taux TVA de la ligne (%). Vide = taux global du devis.')
 
     class Meta:
         verbose_name = 'Ligne de Devis'
@@ -123,6 +134,11 @@ class LigneDevis(models.Model):
         return (
             self.quantite * self.prix_unitaire * (1 - self.remise / 100)
         )
+
+    @property
+    def taux_tva_effectif(self):
+        """Taux réellement appliqué : celui de la ligne, sinon celui du devis."""
+        return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
 
 
 class BonCommande(models.Model):
