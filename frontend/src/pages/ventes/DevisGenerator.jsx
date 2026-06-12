@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -9,24 +9,32 @@ import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSl
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import {
-  MONTHS_FR, interpolerFactures, estimerPanneaux, computeROI,
-  batteryKwhFromLines, optionTotalsTTC, autoFillLines,
+  MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
+  formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt,
+  batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
 } from '../../features/ventes/solar'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
 
+const withKeys = (rows) => rows.map(r => ({
+  _key: newKey(),
+  produit: String(r.produit ?? ''),
+  designation: r.designation,
+  quantite: String(r.quantite),
+  prix_unit_ttc: String(r.prix_unit_ttc),
+}))
+
+// Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
 const emptyLine = () => ({
   _key: newKey(),
   produit: '',
   designation: '',
-  quantite: '1',
-  prix_unitaire: '0',
-  remise: '0',
+  quantite: '0',
+  prix_unit_ttc: '0',
 })
 
-const mad = (v) =>
-  new Intl.NumberFormat('fr-MA', { maximumFractionDigits: 0 }).format(Math.round(v ?? 0)) + ' MAD'
+const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
 
 function MetricCard({ label, value, unit, recommended, accent }) {
   return (
@@ -58,26 +66,34 @@ export default function DevisGenerator() {
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [note, setNote] = useState('')
 
-  // ── Factures électriques ──
+  // ── Factures électriques (valeurs initiales du simulateur) ──
   const [fHiver, setFHiver] = useState('')
   const [fEte, setFEte] = useState('')
-  const [monthly, setMonthly] = useState(Array(12).fill(500))
+  const [monthly, setMonthly] = useState(DEFAULT_MONTHLY_BILLS)
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
   const [panelW, setPanelW] = useState('710')
   const [structureType, setStructureType] = useState('acier')
-  const [dayUsage, setDayUsage] = useState(60)
+  const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
 
-  // ── Lignes & remise ──
-  const [lines, setLines] = useState([emptyLine()])
+  // ── Lignes (prix TTC, comme le simulateur) & remise ──
+  const [lines, setLines] = useState([])
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
+  const linesInitialized = useRef(false)
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
   }, [])
+
+  // Table par défaut du simulateur une fois le stock chargé
+  useEffect(() => {
+    if (linesInitialized.current || !produits.length) return
+    linesInitialized.current = true
+    setLines(withKeys(defaultProductLines(produits)))
+  }, [produits])
 
   const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
 
@@ -91,8 +107,8 @@ export default function DevisGenerator() {
 
   // ── Totaux + simulation, recalculés en direct ──
   const totals = useMemo(
-    () => optionTotalsTTC(lines, tauxTva, discountPct),
-    [lines, tauxTva, discountPct],
+    () => optionTotalsTTC(lines, discountPct),
+    [lines, discountPct],
   )
 
   const roi = useMemo(() => {
@@ -110,12 +126,27 @@ export default function DevisGenerator() {
   const chartData = useMemo(() => {
     if (!roi) return []
     return roi.monthly_detail.map((d, i) => ({
-      month: MONTHS_FR[i],
+      month: CHART_MONTHS[i],
       facture: d.facture,
       ecoSans: Math.round(d.eco_sans),
       ecoAvec: Math.round(d.eco_avec),
     }))
   }, [roi])
+
+  // ── Type d'installation → autoconsommation par défaut (simulateur) ──
+  const onInstTypeChange = (type) => {
+    setInstType(type)
+    setDayUsage(DAY_USAGE_DEFAULTS[type] ?? 50)
+  }
+
+  // ── Scénario / recommandation : réinitialisation si incompatible ──
+  const onScenarioChange = (v) => {
+    setScenario(v)
+    if ((v === 'Sans batterie' && recommendedChoice === 'Avec batterie') ||
+        (v === 'Avec batterie' && recommendedChoice === 'Sans batterie')) {
+      setRecommendedChoice('Auto')
+    }
+  }
 
   // ── Factures : estimation hiver/été + suggestion panneaux ──
   const syncBillEstimator = (hiverVal, eteVal) => {
@@ -124,7 +155,18 @@ export default function DevisGenerator() {
     if (hiver <= 0) return
     const suggested = estimerPanneaux(hiver)
     if (suggested > 0) setNbPanneaux(String(suggested))
-    setMonthly(interpolerFactures(hiver, ete > 0 ? ete : hiver).map(v => Math.round(v)))
+    setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
+  }
+
+  const handleEstimerMois = () => {
+    const hiver = parseFloat(fHiver) || 0
+    const ete = parseFloat(fEte) || 0
+    if (hiver <= 0 && ete <= 0) {
+      setErrors(e => ({ ...e, bills: 'Entrez au moins une facture (hiver ou été)' }))
+      return
+    }
+    setErrors(e => ({ ...e, bills: null }))
+    setMonthly(estimerMois(hiver, ete))
   }
 
   const setMonth = (i, v) =>
@@ -138,7 +180,12 @@ export default function DevisGenerator() {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
-        ? { ...l, produit: produitId, designation: p?.nom ?? '', prix_unitaire: p ? String(p.prix_vente) : '0' }
+        ? {
+            ...l,
+            produit: produitId,
+            designation: p?.nom ?? l.designation,
+            prix_unit_ttc: p ? String(ttcFromHt(p.prix_vente)) : l.prix_unit_ttc,
+          }
         : l
     ))
   }
@@ -161,22 +208,25 @@ export default function DevisGenerator() {
       return
     }
     setErrors(e => ({ ...e, autofill: null }))
-    setLines(generated.map(g => ({
-      _key: newKey(),
-      produit: String(g.produit),
-      designation: g.designation,
-      quantite: String(g.quantite),
-      prix_unitaire: String(g.prix_unitaire),
-      remise: '0',
-    })))
+    setLines(withKeys(generated))
   }
 
   // ── Sauvegarde ──
+  // Une ligne est enregistrée si elle a un produit et une quantité > 0 ;
+  // les lignes placeholder (sans produit, prix 0) sont ignorées silencieusement.
+  const usableLines = () =>
+    lines.filter(l => l.produit && parseFloat(l.quantite) > 0)
+
   const validate = () => {
     const e = {}
     if (!clientId) e.client = 'Client requis'
-    const usable = lines.filter(l => l.produit && parseFloat(l.quantite) > 0)
-    if (!usable.length) e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
+    const orphan = lines.find(l =>
+      !l.produit && parseFloat(l.quantite) > 0 && parseFloat(l.prix_unit_ttc) > 0)
+    if (orphan) {
+      e.lines = `Sélectionnez un produit du stock pour la ligne « ${orphan.designation || '—'} »`
+    } else if (!usableLines().length) {
+      e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -195,15 +245,16 @@ export default function DevisGenerator() {
         note: note || null,
       })).unwrap()
 
-      const usable = lines.filter(l => l.produit && parseFloat(l.quantite) > 0)
-      await Promise.all(usable.map(l =>
+      const tvaFactor = 1 + (parseFloat(tauxTva) || 20) / 100
+      await Promise.all(usableLines().map(l =>
         dispatch(addLigneDevis({
           devis: devis.id,
           produit: parseInt(l.produit),
           designation: l.designation,
           quantite: l.quantite,
-          prix_unitaire: l.prix_unitaire,
-          remise: l.remise || '0',
+          // le modèle stocke des prix HT ; l'écran travaille en TTC comme le simulateur
+          prix_unitaire: ((parseFloat(l.prix_unit_ttc) || 0) / tvaFactor).toFixed(2),
+          remise: '0',
         })).unwrap()
       ))
 
@@ -239,7 +290,7 @@ export default function DevisGenerator() {
               </div>
               <div className="form-group">
                 <label className="form-label">Type d'Installation</label>
-                <select className="form-select" value={instType} onChange={e => setInstType(e.target.value)}>
+                <select className="form-select" value={instType} onChange={e => onInstTypeChange(e.target.value)}>
                   <option>Résidentielle</option>
                   <option>Commerciale</option>
                   <option>Industrielle</option>
@@ -248,7 +299,7 @@ export default function DevisGenerator() {
               </div>
               <div className="form-group">
                 <label className="form-label">Scénario</label>
-                <select className="form-select" value={scenario} onChange={e => setScenario(e.target.value)}>
+                <select className="form-select" value={scenario} onChange={e => onScenarioChange(e.target.value)}>
                   <option value="Les deux (Sans + Avec)">Les deux (Sans + Avec batterie)</option>
                   <option value="Sans batterie">Sans batterie seulement</option>
                   <option value="Avec batterie">Avec batterie seulement</option>
@@ -258,6 +309,7 @@ export default function DevisGenerator() {
                 <label className="form-label">Option Recommandée</label>
                 <select className="form-select" value={recommendedChoice} onChange={e => setRecommendedChoice(e.target.value)}>
                   <option value="Auto">Auto (défaut)</option>
+                  <option value="Aucune recommandation">Aucune recommandation</option>
                   <option value="Sans batterie">Sans batterie</option>
                   <option value="Avec batterie">Avec batterie</option>
                 </select>
@@ -312,7 +364,7 @@ export default function DevisGenerator() {
           <div className="gen-card-body">
             <p className="gen-hint">
               Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants
-              hiver/été. Ces valeurs alimentent l'aperçu de simulation.
+              hiver/été. Ces valeurs servent au calcul ROI dans le devis.
             </p>
             <div className="gen-grid">
               <div className="form-group">
@@ -327,7 +379,13 @@ export default function DevisGenerator() {
                        placeholder="ex: 400" value={fEte}
                        onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }} />
               </div>
+              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={handleEstimerMois}>
+                  📊 Estimer 12 mois
+                </button>
+              </div>
             </div>
+            {errors.bills && <div className="form-feedback">{errors.bills}</div>}
             <div className="gen-monthly-grid">
               {MONTHS_FR.map((m, i) => (
                 <div key={m} className="gen-month">
@@ -400,22 +458,23 @@ export default function DevisGenerator() {
           <div className="gen-card-body">
             {!roi ? (
               <p className="gen-hint" style={{ textAlign: 'center' }}>
-                Renseignez le nombre de panneaux et les factures pour voir la simulation.
+                Renseignez le nombre de panneaux et les factures, puis la simulation
+                s'actualise automatiquement.
               </p>
             ) : (
               <>
                 <div className="gen-metrics-grid">
                   <MetricCard label="Production annuelle"
-                              value={Math.round(roi.production_annuelle_kwh).toLocaleString('fr-MA')}
+                              value={fmtNum(Math.round(roi.production_annuelle_kwh))}
                               unit="kWh / an" accent />
                   {showSans && (
                     <MetricCard label="Éco. Option 1 – Sans batterie"
-                                value={Math.round(roi.eco_annuelle_sans).toLocaleString('fr-MA')}
+                                value={fmtNum(Math.round(roi.eco_annuelle_sans))}
                                 unit="MAD / an" recommended={sansRec} />
                   )}
                   {showAvec && (
                     <MetricCard label="Éco. Option 2 – Avec batterie"
-                                value={Math.round(roi.eco_annuelle_avec).toLocaleString('fr-MA')}
+                                value={fmtNum(Math.round(roi.eco_annuelle_avec))}
                                 unit="MAD / an" recommended={avecRec} />
                   )}
                   {showSans && (
@@ -430,12 +489,12 @@ export default function DevisGenerator() {
                   )}
                   {showSans && (
                     <MetricCard label="Coût Option 1 – Sans"
-                                value={Math.round(totals.totalSans).toLocaleString('fr-MA')}
+                                value={fmtNum(Math.round(totals.totalSans))}
                                 unit="MAD TTC" recommended={sansRec} />
                   )}
                   {showAvec && (
                     <MetricCard label="Coût Option 2 – Avec"
-                                value={Math.round(totals.totalAvec).toLocaleString('fr-MA')}
+                                value={fmtNum(Math.round(totals.totalAvec))}
                                 unit="MAD TTC" recommended={avecRec} />
                   )}
                 </div>
@@ -445,8 +504,9 @@ export default function DevisGenerator() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.07)" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }}
-                           label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }} />
-                    <Tooltip formatter={(v, name) => [mad(v), name]} />
+                           label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }}
+                           tickFormatter={(v) => v.toLocaleString('fr-MA')} />
+                    <Tooltip formatter={(v, name) => [`${Math.round(v).toLocaleString('fr-MA')} MAD`, name]} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="facture" name="Facture ONEE (MAD)"
                          fill="rgba(181,192,206,0.55)" stroke="rgba(181,192,206,0.8)" radius={[3, 3, 0, 0]} />
@@ -483,10 +543,10 @@ export default function DevisGenerator() {
               <table className="lines-table">
                 <thead>
                   <tr>
+                    <th style={{ minWidth: 160 }}>Désignation</th>
                     <th style={{ minWidth: 170 }}>Produit (stock)</th>
-                    <th>Désignation</th>
                     <th className="col-num">Qté</th>
-                    <th className="col-num">Prix HT (DH)</th>
+                    <th className="col-num">Prix Unit. TTC</th>
                     <th className="col-num">Total TTC</th>
                     <th className="col-del"></th>
                   </tr>
@@ -494,11 +554,14 @@ export default function DevisGenerator() {
                 <tbody>
                   {lines.map(l => {
                     const lineTtc =
-                      (parseFloat(l.quantite) || 0) *
-                      (parseFloat(l.prix_unitaire) || 0) *
-                      (1 + (parseFloat(tauxTva) || 0) / 100)
+                      (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
                     return (
                       <tr key={l._key}>
+                        <td>
+                          <input className="form-control form-control-sm" value={l.designation}
+                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
+                                 placeholder="Désignation" />
+                        </td>
                         <td>
                           <select className="form-select form-select-sm" value={l.produit}
                                   onChange={e => onProduitChange(l._key, e.target.value)}>
@@ -509,26 +572,19 @@ export default function DevisGenerator() {
                           </select>
                         </td>
                         <td>
-                          <input className="form-control form-control-sm" value={l.designation}
-                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
-                                 placeholder="Désignation" />
-                        </td>
-                        <td>
                           <input type="number" min="0" step="1"
                                  className="form-control form-control-sm ta-right" value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
                         <td>
-                          <input type="number" min="0" step="0.01"
-                                 className="form-control form-control-sm ta-right" value={l.prix_unitaire}
-                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
+                          <input type="number" min="0" step="100"
+                                 className="form-control form-control-sm ta-right" value={l.prix_unit_ttc}
+                                 onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
                         </td>
-                        <td className="line-total">{mad(lineTtc)}</td>
+                        <td className="line-total">{formatMoney(lineTtc)}</td>
                         <td>
-                          {lines.length > 1 && (
-                            <button type="button" className="btn-icon-danger"
-                                    onClick={() => removeLine(l._key)} title="Supprimer">✕</button>
-                          )}
+                          <button type="button" className="btn-icon-danger"
+                                  onClick={() => removeLine(l._key)} title="Supprimer">✕</button>
                         </td>
                       </tr>
                     )
@@ -541,13 +597,13 @@ export default function DevisGenerator() {
               {showSans && (
                 <div className="gen-total-item">
                   <span className="gen-total-label">Total SANS batterie{sansRec ? ' ⭐' : ''}</span>
-                  <span className="gen-total-value">{mad(totals.totalSansBrut)}</span>
+                  <span className="gen-total-value">{formatMoney(totals.totalSansBrut)}</span>
                 </div>
               )}
               {showAvec && (
                 <div className="gen-total-item">
                   <span className="gen-total-label">Total AVEC batterie{avecRec ? ' ⭐' : ''}</span>
-                  <span className="gen-total-value orange">{mad(totals.totalAvecBrut)}</span>
+                  <span className="gen-total-value orange">{formatMoney(totals.totalAvecBrut)}</span>
                 </div>
               )}
             </div>
@@ -567,13 +623,13 @@ export default function DevisGenerator() {
               {parseFloat(discountPct) > 0 && showSans && (
                 <div className="gen-total-item">
                   <span className="gen-total-label green">Total final SANS batterie</span>
-                  <span className="gen-total-value green">{mad(totals.totalSans)}</span>
+                  <span className="gen-total-value green">{formatMoney(totals.totalSans)}</span>
                 </div>
               )}
               {parseFloat(discountPct) > 0 && showAvec && (
                 <div className="gen-total-item">
                   <span className="gen-total-label green">Total final AVEC batterie</span>
-                  <span className="gen-total-value green">{mad(totals.totalAvec)}</span>
+                  <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
                 </div>
               )}
             </div>
