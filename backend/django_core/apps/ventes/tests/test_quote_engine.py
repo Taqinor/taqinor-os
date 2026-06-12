@@ -403,7 +403,6 @@ class TestPdfFormats(TestCase):
         from weasyprint import HTML
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine import generate_devis_premium as G
-        from apps.ventes.models import LigneDevis
 
         lignes = [(f'P{i:02d} produit audit', '2', '1000') for i in range(15)]
         devis = make_devis(self.company, self.user, self.client_obj,
