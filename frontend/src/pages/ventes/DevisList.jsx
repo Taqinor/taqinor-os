@@ -272,14 +272,14 @@ export default function DevisList() {
             return (
               <tr key={d.id}>
                 <td><strong>{d.reference}</strong></td>
-                <td>{d.client_nom ?? '—'}</td>
-                <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
-                <td>
+                <td data-label="Client">{d.client_nom ?? '—'}</td>
+                <td data-label="Créé le">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+                <td className="m-hide">
                   {d.date_validite
                     ? new Date(d.date_validite).toLocaleDateString('fr-FR')
                     : '—'}
                 </td>
-                <td className="ta-right">
+                <td className="ta-right" data-label="Total TTC">
                   {(d.total_affiche ?? d.total_ttc) != null
                     ? `${parseFloat(d.total_affiche ?? d.total_ttc).toFixed(2)} DH`
                     : '—'}
@@ -290,7 +290,7 @@ export default function DevisList() {
                     </span>
                   )}
                 </td>
-                <td>
+                <td data-label="Statut">
                   <span className="badge" style={{ background: meta.bg, color: meta.color }}>
                     {meta.label}
                   </span>

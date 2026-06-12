@@ -109,17 +109,17 @@ export default function LeadList() {
           {filtered.map(l => (
             <tr key={l.id}>
               <td><div className="client-name">{l.nom}{l.prenom ? ` ${l.prenom}` : ''}</div></td>
-              <td>{l.societe || '—'}</td>
-              <td>{l.email ? <a className="link-blue" href={`mailto:${l.email}`}>{l.email}</a> : '—'}</td>
-              <td>{l.telephone || '—'}</td>
-              <td>{l.ville || '—'}</td>
-              <td><span className="count-pill">{l.stage_label || STAGE_LABELS[l.stage] || l.stage}</span></td>
-              <td>
+              <td className="m-hide">{l.societe || '—'}</td>
+              <td className="m-hide">{l.email ? <a className="link-blue" href={`mailto:${l.email}`}>{l.email}</a> : '—'}</td>
+              <td data-label="Téléphone">{l.telephone || '—'}</td>
+              <td className="m-hide">{l.ville || '—'}</td>
+              <td data-label="Stade"><span className="count-pill">{l.stage_label || STAGE_LABELS[l.stage] || l.stage}</span></td>
+              <td data-label="Facture">
                 {l.facture_hiver
                   ? `${Math.round(parseFloat(l.facture_hiver))}${l.ete_differente && l.facture_ete ? ` / ${Math.round(parseFloat(l.facture_ete))}` : ''} MAD`
                   : '—'}
               </td>
-              <td>{(l.devis ?? []).length || '—'}</td>
+              <td className="m-hide">{(l.devis ?? []).length || '—'}</td>
               <td>
                 <div className="actions-cell">
                   <button className="btn btn-sm btn-outline" onClick={() => openEdit(l)}>
