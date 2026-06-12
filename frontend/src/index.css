@@ -1472,3 +1472,27 @@ textarea.form-control {
   font-weight: 700;
   background: #fff;
 }
+
+/* ── Modale formats PDF (devis) ────────────────────────────── */
+.pdf-format-options { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.pdf-format-options .gen-radio { flex: none; }
+
+.pdf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.pdf-toggle small { color: #64748b; }
+
+.pdf-payment-box {
+  margin-left: 1.6rem;
+  padding: 0.5rem 1rem;
+  background: #f8f9fa;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+}

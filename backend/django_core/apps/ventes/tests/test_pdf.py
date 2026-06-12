@@ -324,7 +324,36 @@ class TestPdfEndpoints(TestCase):
         resp = api.post(f'/api/django/ventes/devis/{devis.id}/generer-pdf/')
         self.assertEqual(resp.status_code, 202)
         self.assertIn('task_id', resp.data)
-        mock_task.delay.assert_called_once_with(devis.id)
+        # default options = premium 3-page format
+        from apps.ventes.quote_engine.builder import DEFAULT_PDF_OPTIONS
+        mock_task.delay.assert_called_once_with(devis.id, dict(DEFAULT_PDF_OPTIONS))
+
+    @patch('apps.ventes.tasks.task_generate_devis_pdf')
+    def test_generer_pdf_devis_passes_format_options(self, mock_task):
+        """The format chosen in the UI reaches the Celery task (whitelisted)."""
+        mock_task.delay.return_value = MagicMock(id='fake-task-id')
+        devis = make_devis(self.user, self.client_obj, self.produit)
+
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = api.post(
+            f'/api/django/ventes/devis/{devis.id}/generer-pdf/',
+            {'pdf_mode': 'onepage', 'devis_final': True,
+             'payment_mode': 'custom', 'custom_acompte': 15000,
+             'not_a_real_option': 'ignored'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 202)
+        called_options = mock_task.delay.call_args[0][1]
+        self.assertEqual(called_options['pdf_mode'], 'onepage')
+        self.assertTrue(called_options['devis_final'])
+        self.assertEqual(called_options['payment_mode'], 'custom')
+        self.assertEqual(called_options['custom_acompte'], 15000.0)
+        self.assertNotIn('not_a_real_option', called_options)
 
     @patch('apps.ventes.tasks.task_generate_facture_pdf')
     def test_generer_pdf_facture_returns_202(self, mock_task):

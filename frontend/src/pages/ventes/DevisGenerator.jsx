@@ -12,6 +12,7 @@ import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
+  groupProduitsByCategory,
 } from '../../features/ventes/solar'
 
 let _keyCounter = 0
@@ -267,6 +268,12 @@ export default function DevisGenerator() {
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
+  const produitGroups = useMemo(() => groupProduitsByCategory(produits), [produits])
+
+  // Réinitialiser : recharge la page, comme le bouton du simulateur
+  const handleReset = () => {
+    if (window.confirm('Réinitialiser le formulaire ?')) window.location.reload()
+  }
 
   return (
     <div className="page gen-page">
@@ -567,8 +574,12 @@ export default function DevisGenerator() {
                           <select className="form-select form-select-sm" value={l.produit}
                                   onChange={e => onProduitChange(l._key, e.target.value)}>
                             <option value="">— Produit —</option>
-                            {produits.map(p => (
-                              <option key={p.id} value={p.id}>{p.nom}</option>
+                            {produitGroups.map(g => (
+                              <optgroup key={g.label} label={g.label}>
+                                {g.items.map(p => (
+                                  <option key={p.id} value={p.id}>{p.nom}</option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                         </td>
@@ -658,6 +669,9 @@ export default function DevisGenerator() {
               3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
             </p>
             <div className="gen-actions-right">
+              <button type="button" className="btn btn-outline" onClick={handleReset}>
+                🔄 Réinitialiser
+              </button>
               <button type="button" className="btn btn-outline"
                       onClick={() => navigate('/ventes/devis')}>
                 Annuler

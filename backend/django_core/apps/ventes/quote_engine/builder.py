@@ -66,7 +66,38 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     }
 
 
-def build_quote_data(devis) -> dict:
+# Whitelisted PDF format options (mirroring the simulator's payload). The
+# defaults reproduce today's premium 3-page output exactly.
+DEFAULT_PDF_OPTIONS = {
+    'pdf_mode': 'full',        # 'full' (3 pages) | 'onepage' (1 page)
+    'show_monthly': True,      # monthly-savings chart on page 2
+    'devis_final': False,      # payment terms + RIB block on page 3
+    'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
+    'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
+}
+
+
+def clean_pdf_options(raw) -> dict:
+    """Sanitize client-supplied options to the simulator's exact value space."""
+    raw = raw or {}
+    opts = dict(DEFAULT_PDF_OPTIONS)
+    if raw.get('pdf_mode') in ('full', 'onepage'):
+        opts['pdf_mode'] = raw['pdf_mode']
+    if 'show_monthly' in raw:
+        opts['show_monthly'] = bool(raw['show_monthly'])
+    if 'devis_final' in raw:
+        opts['devis_final'] = bool(raw['devis_final'])
+    if raw.get('payment_mode') in ('standard', 'custom'):
+        opts['payment_mode'] = raw['payment_mode']
+    try:
+        acompte = raw.get('custom_acompte')
+        opts['custom_acompte'] = float(acompte) if acompte not in (None, '') else None
+    except (TypeError, ValueError):
+        opts['custom_acompte'] = None
+    return opts
+
+
+def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
     from .catalog import pick_default_battery
@@ -130,10 +161,20 @@ def build_quote_data(devis) -> dict:
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 
+    # Raw unfiltered item list for the one-page layout (qty > 0 rows only),
+    # mirroring the simulator's `all_items`. OS designations already carry
+    # brand/spec (they are the stock product names).
+    all_items = [
+        {k: v for k, v in it.items() if k != "_produit_nom"}
+        for it in items if it["quantite"] > 0
+    ]
+
     # Strip the internal helper key before handing items to the generator.
     for rows in (sans_items, avec_items):
         for r in rows:
             r.pop("_produit_nom", None)
+
+    opts = clean_pdf_options(pdf_options)
 
     data = {
         "ref": devis.reference,
@@ -164,6 +205,14 @@ def build_quote_data(devis) -> dict:
         "avec_items": avec_items,
         "scenario": "Les deux (Sans + Avec)",
         "recommended": "Avec batterie",
+        # Format options (simulator parity) — defaults reproduce the premium
+        # 3-page output unchanged.
+        "all_items": all_items,
+        "pdf_mode": opts['pdf_mode'],
+        "show_monthly": opts['show_monthly'],
+        "devis_final": opts['devis_final'],
+        "payment_mode": opts['payment_mode'],
+        "custom_acompte": opts['custom_acompte'],
     }
     return data
 
@@ -191,10 +240,11 @@ def _ensure_pdf_bucket() -> None:
             logger.warning("Could not ensure MinIO bucket %s: %s", bucket, exc)
 
 
-def generate_premium_devis_pdf(devis_id) -> str:
-    """Render the premium quote PDF for a Devis and store it in MinIO.
-
-    Returns the stored MinIO key (also saved on devis.fichier_pdf).
+def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
+    """Render the quote PDF for a Devis in the requested format and store it
+    in MinIO. pdf_options (see DEFAULT_PDF_OPTIONS) selects the simulator
+    format: full 3-page premium (default) or one-page, with the monthly-chart
+    and devis-final modifiers. Returns the stored MinIO key.
     """
     from apps.ventes.models import Devis
     from apps.ventes.utils.pdf import _upload_pdf
@@ -207,7 +257,7 @@ def generate_premium_devis_pdf(devis_id) -> str:
         .get(pk=devis_id)
     )
 
-    data = build_quote_data(devis)
+    data = build_quote_data(devis, pdf_options)
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
         tmp_path = tf.name

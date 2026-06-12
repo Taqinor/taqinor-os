@@ -206,6 +206,43 @@ export function optionTotalsTTC(lines, discountPct) {
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 
+// ── Catégories du catalogue simulateur (clés de brand_catalog.json) ──────────
+// Le sélecteur de produits est groupé exactement selon ces catégories.
+export const PRODUCT_CATEGORIES = [
+  ['onduleur_reseau', 'Onduleur Injection'],
+  ['onduleur_hybride', 'Onduleur Hybride'],
+  ['panneau', 'Panneaux'],
+  ['batterie', 'Batterie'],
+  ['structure_acier', 'Structures acier'],
+  ['structure_alu', 'Structures aluminium'],
+  ['socle', 'Socles'],
+  ['smart_meter', 'Smart Meter'],
+  ['wifi_dongle', 'Wifi Dongle'],
+  ['accessoires', 'Accessoires'],
+  ['tableau', 'Tableau De Protection AC/DC'],
+  ['installation', 'Installation'],
+  ['transport', 'Transport'],
+  ['suivi', 'Suivi journalier, maintenance chaque 12 mois pendent 2 ans'],
+]
+
+export function groupProduitsByCategory(produits) {
+  const buckets = new Map(PRODUCT_CATEGORIES.map(([key]) => [key, []]))
+  const autres = []
+  for (const p of produits) {
+    let type = classifyProduct(p.nom)
+    if (type === 'structure') {
+      type = _norm(p.nom).includes('alu') ? 'structure_alu' : 'structure_acier'
+    }
+    if (type && buckets.has(type)) buckets.get(type).push(p)
+    else autres.push(p)
+  }
+  const groups = PRODUCT_CATEGORIES
+    .map(([key, label]) => ({ label, items: buckets.get(key) }))
+    .filter(g => g.items.length)
+  if (autres.length) groups.push({ label: 'Autres', items: autres })
+  return groups
+}
+
 // ── Indexation par type des produits du stock ─────────────────────────────────
 function indexProduits(produits) {
   const byType = {}

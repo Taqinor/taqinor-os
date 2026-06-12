@@ -77,8 +77,11 @@ class DevisViewSet(viewsets.ModelViewSet):
     )
     def generer_pdf(self, request, pk=None):
         devis = self.get_object()
+        from .quote_engine import clean_pdf_options
         from .tasks import task_generate_devis_pdf
-        task = task_generate_devis_pdf.delay(devis.id)
+        # Format options (simulator parity) — whitelisted server-side.
+        pdf_options = clean_pdf_options(request.data)
+        task = task_generate_devis_pdf.delay(devis.id, pdf_options)
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
@@ -98,9 +101,19 @@ class DevisViewSet(viewsets.ModelViewSet):
         """
         devis = self.get_object()
         try:
-            from .quote_engine import generate_premium_devis_pdf
+            from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
             from .utils.pdf import download_pdf
-            key = generate_premium_devis_pdf(devis.id)
+            # Format via query params, e.g. ?pdf_mode=onepage&devis_final=1
+            raw = {
+                'pdf_mode': request.query_params.get('pdf_mode'),
+                'payment_mode': request.query_params.get('payment_mode'),
+                'custom_acompte': request.query_params.get('custom_acompte'),
+            }
+            if 'show_monthly' in request.query_params:
+                raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')
+            if 'devis_final' in request.query_params:
+                raw['devis_final'] = request.query_params['devis_final'] in ('1', 'true')
+            key = generate_premium_devis_pdf(devis.id, clean_pdf_options(raw))
             pdf_bytes = download_pdf(key)
         except Exception as exc:
             return Response(

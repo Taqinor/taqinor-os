@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
+  groupProduitsByCategory,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -118,6 +119,28 @@ test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
   const lines = [{ designation: 'Transport', quantite: '1', prix_unit_ttc: '1000' }]
   const { totalSans } = optionTotalsTTC(lines, '12.5')
   assert.equal(totalSans, 875) // 1000 × (1 − 0.125), arrondi simulateur
+})
+
+test('sélecteur produits : groupé selon les catégories du catalogue simulateur', () => {
+  const groups = groupProduitsByCategory(
+    [...SEEDED, { id: 999, nom: 'Câble solaire 6mm² (100m)', prix_vente: '850' }])
+  const labels = groups.map(g => g.label)
+  assert.deepEqual(labels, [
+    'Onduleur Injection', 'Onduleur Hybride', 'Panneaux', 'Batterie',
+    'Structures acier', 'Structures aluminium', 'Socles', 'Smart Meter',
+    'Wifi Dongle', 'Accessoires', 'Tableau De Protection AC/DC',
+    'Installation', 'Transport',
+    'Suivi journalier, maintenance chaque 12 mois pendent 2 ans', 'Autres',
+  ])
+  const by = (label) => groups.find(g => g.label === label)
+  assert.equal(by('Onduleur Injection').items.length, 10)
+  assert.equal(by('Onduleur Hybride').items.length, 5)
+  assert.equal(by('Panneaux').items.length, 2)
+  assert.equal(by('Batterie').items.length, 4)
+  assert.equal(by('Structures acier').items.length, 1)
+  assert.equal(by('Structures aluminium').items.length, 1)
+  // produit non solaire → groupe Autres
+  assert.equal(by('Autres').items[0].nom, 'Câble solaire 6mm² (100m)')
 })
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
