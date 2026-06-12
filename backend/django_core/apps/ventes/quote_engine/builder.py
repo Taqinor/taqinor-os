@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 _DEFAULT_WATT = 450
 
+# Brand tokens from the simulator catalogue — longest/most specific first so
+# 'Deyness' wins over its substring 'Deye'.
+_BRAND_TOKENS = [
+    "Canadien Solar", "Canadian Solar", "Deyness", "Jinko",
+    "Huawei", "Deye", "Lithium", "Gel",
+]
+
+
+def _parse_marque(*texts) -> str:
+    """Extract the product brand from designation/product name (one-page badge)."""
+    blob = " ".join(t for t in texts if t).lower()
+    for brand in _BRAND_TOKENS:
+        if brand.lower() in blob:
+            return brand
+    return ""
+
 
 def _parse_watt(*texts) -> int | None:
     """Pull a panel wattage (e.g. '450W', '550 Wc') from any of the given strings."""
@@ -163,9 +179,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # Raw unfiltered item list for the one-page layout (qty > 0 rows only),
     # mirroring the simulator's `all_items`. OS designations already carry
-    # brand/spec (they are the stock product names).
+    # brand/spec (they are the stock product names); the brand badge of the
+    # one-page Marque column is extracted from them.
     all_items = [
-        {k: v for k, v in it.items() if k != "_produit_nom"}
+        {
+            **{k: v for k, v in it.items() if k != "_produit_nom"},
+            "marque": _parse_marque(it["designation"], it.get("_produit_nom", "")),
+        }
         for it in items if it["quantite"] > 0
     ]
 

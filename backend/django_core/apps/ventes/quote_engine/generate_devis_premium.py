@@ -1330,10 +1330,14 @@ def page_onepage(items):
         row_idx += 1
 
     return f"""
-<div class="page">
+<div class="page" style="position:relative;display:block;">
+
+  <!-- CONTENT AREA: block flow, footer space reserved (WeasyPrint-robuste :
+       pas de flex:1 ni de gap, qui rendaient le total par-dessus le footer) -->
+  <div style="position:absolute;top:0;left:0;right:0;bottom:72px;overflow:hidden;">
 
   <!-- HEADER: navy -->
-  <div style="background:{CN};padding:14px 24px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+  <div style="background:{CN};padding:14px 24px;display:flex;align-items:center;justify-content:space-between;">
     {logo_html("80px")}
     <div style="text-align:right;">
       <div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;<span style="color:{CA};">N&#176;&#160;{REF}</span></div>
@@ -1342,7 +1346,7 @@ def page_onepage(items):
   </div>
 
   <!-- CLIENT BLOCK -->
-  <div style="background:{CG1};padding:12px 24px;flex-shrink:0;border-bottom:1px solid {CG2};">
+  <div style="background:{CG1};padding:12px 24px;border-bottom:1px solid {CG2};">
     <div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Client</div>
     <div style="font-size:11pt;font-weight:700;color:{CN};">{CLIENT_NAME}</div>
     <div style="font-size:8.5pt;color:{CG7};margin-top:2px;">{CLIENT_ADDR}</div>
@@ -1351,7 +1355,7 @@ def page_onepage(items):
   </div>
 
   <!-- PRODUCT TABLE -->
-  <div style="flex:1;overflow:hidden;padding:0 24px 0;">
+  <div style="padding:12px 24px 0;">
     <table style="width:100%;border-collapse:collapse;font-size:8.5pt;table-layout:fixed;">
       <colgroup>
         <col style="width:40%">
@@ -1375,29 +1379,31 @@ def page_onepage(items):
     </table>
   </div>
 
-  <!-- TOTAL ROW -->
-  <div style="background:{CAL};border-top:2px solid {CA};padding:10px 24px;flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:16px;margin:0 24px;">
-    <span style="font-size:9.5pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;">Total TTC</span>
-    {'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">'
-     '<span style="font-size:9pt;color:' + CG4 + ';text-decoration:line-through;opacity:0.8;white-space:nowrap;">' + fnum(total_raw) + '&nbsp;MAD</span>'
-     '<span style="background:' + CA + ';color:' + CN + ';border-radius:3px;padding:1px 7px;font-size:6pt;font-weight:800;align-self:flex-end;">' + chr(0x2212) + str(int(DISCOUNT_PCT)) + chr(0x202f) + '%' + chr(0xa0) + 'REMISE</span>'
-     '<span style="font-size:13pt;font-weight:800;color:' + CGR + ';white-space:nowrap;">' + fmt(total) + '</span>'
-     '</div>'
+  <!-- TOTAL ROW: directement sous le tableau, libellé espacé du montant -->
+  <div style="background:{CAL};border-top:2px solid {CA};padding:10px 14px;margin:12px 24px 0;text-align:right;">
+    <span style="font-size:9.5pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-right:18px;vertical-align:middle;">Total TTC</span>
+    {'<span style="display:inline-block;text-align:right;vertical-align:middle;">'
+     '<span style="display:block;font-size:9pt;color:' + CG4 + ';text-decoration:line-through;opacity:0.8;white-space:nowrap;">' + fnum(total_raw) + '&nbsp;MAD</span>'
+     '<span style="display:inline-block;background:' + CA + ';color:' + CN + ';border-radius:3px;padding:1px 7px;font-size:6pt;font-weight:800;margin:2px 0;">' + chr(0x2212) + str(int(DISCOUNT_PCT)) + chr(0x202f) + '%' + chr(0xa0) + 'REMISE</span>'
+     '<span style="display:block;font-size:13pt;font-weight:800;color:' + CGR + ';white-space:nowrap;">' + fmt(total) + '</span>'
+     '</span>'
      if DISCOUNT_PCT > 0 else
-     '<span style="font-size:13pt;font-weight:800;color:' + CN + ';">' + fmt(total) + '</span>'}
+     '<span style="font-size:13pt;font-weight:800;color:' + CN + ';vertical-align:middle;white-space:nowrap;">' + fmt(total) + '</span>'}
   </div>
 
-  <!-- CONDITIONS -->
-  <div style="padding:8px 24px;flex-shrink:0;">
-    <div style="font-size:7pt;color:{CG4};display:flex;gap:20px;flex-wrap:wrap;">
-      <span>&#183; Validit&#233;&#160;: 30 jours</span>
-      <span>&#183; Acompte&#160;: 50&#37;</span>
+  <!-- CONDITIONS : sous le total -->
+  <div style="padding:8px 24px;">
+    <div style="font-size:7pt;color:{CG4};">
+      <span style="margin-right:20px;">&#183; Validit&#233;&#160;: 30 jours</span>
+      <span style="margin-right:20px;">&#183; Acompte&#160;: 50&#37;</span>
       <span>&#183; Solde &#224; la livraison&#160;: 50&#37;</span>
     </div>
   </div>
 
-  <!-- FOOTER: navy + legal identity -->
-  <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;">
+  </div><!-- /CONTENT AREA -->
+
+  <!-- FOOTER: navy + legal identity, toujours en bas de page, jamais chevauché -->
+  <div style="position:absolute;left:0;right:0;bottom:0;background:{CN};padding:6px 24px 5px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>
       <div style="font-size:7pt;color:#888;text-align:center;">

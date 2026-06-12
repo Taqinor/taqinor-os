@@ -52,9 +52,9 @@ def make_produit(company, nom, sku, prix):
     )
 
 
-def make_devis(company, user, client, lignes, remise_globale='0'):
+def make_devis(company, user, client, lignes, remise_globale='0', reference='DEV-QE-0001'):
     devis = Devis.objects.create(
-        company=company, reference='DEV-QE-0001', client=client,
+        company=company, reference=reference, client=client,
         statut='brouillon', taux_tva=Decimal('20.00'),
         remise_globale=Decimal(remise_globale), created_by=user,
     )
@@ -317,6 +317,24 @@ class TestPdfFormats(TestCase):
         charts_with = len(self._charts_on_page(doc_with.pages[1]))
         charts_without = len(self._charts_on_page(doc_without.pages[1]))
         self.assertEqual(charts_with - charts_without, 1)
+
+    def test_onepage_brand_column_filled_from_product_names(self):
+        """The one-page Marque column shows the product brand (extracted from
+        the designation), and stays empty for unbranded items — like the
+        simulator's badge column."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur hybride Deye 5kW', '1', '14166.67'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Panneau Canadien Solar 710W', '10', '1166.67'),
+            ('Socles béton', '20', '66.67'),
+        ], reference='DEV-QE-MARQUE')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        marques = {it['designation']: it['marque'] for it in data['all_items']}
+        self.assertEqual(marques['Onduleur hybride Deye 5kW'], 'Deye')
+        self.assertEqual(marques['Batterie Deyness 10 kWh'], 'Deyness')
+        self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
+        self.assertEqual(marques['Socles béton'], '')
 
     def test_unknown_options_are_whitelisted_away(self):
         from apps.ventes.quote_engine import clean_pdf_options
