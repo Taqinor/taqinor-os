@@ -1,9 +1,9 @@
 ---
 /**
- * Section vidéo de chantier — clic pour lire (la vidéo de 35 s n'est jamais
- * préchargée : seule l'affiche ~250 Ko est servie au chargement de la page).
- * Montage auto-hébergé : /videos/chantier.mp4 (pose d'un panneau par
- * l'équipe + panorama d'un grand champ).
+ * Section vidéo de chantier — clic pour lire (la vidéo n'est jamais
+ * préchargée : seule l'affiche ~250 Ko est servie au chargement).
+ * Montage narratif sur les installations réelles (coupe A « calme » par
+ * défaut ; la coupe B et le choix final : /media-test, page privée).
  */
 ---
 
@@ -11,12 +11,12 @@
   <div class="mx-auto max-w-6xl">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="tech-label rule-brass text-azur-200">35 secondes de chantier</p>
+        <p class="tech-label rule-brass text-azur-200">30 secondes de chantier — 3 installations réelles</p>
         <h2 class="display mt-3 text-3xl text-white sm:text-4xl">Regardez l'équipe au travail</h2>
       </div>
       <p class="max-w-sm text-sm leading-relaxed text-white/70">
-        Pose d'un panneau, puis panorama d'un champ en cours d'installation.
-        Images brutes de chantier, sans mise en scène.
+        Portage, pose, mise en service, et le soleil sur les panneaux d'El Jadida.
+        Images brutes de nos chantiers de Nouaceur et El Jadida — sans mise en scène.
       </p>
     </div>
 
@@ -42,7 +42,7 @@
   document.getElementById('chantier-play')?.addEventListener('click', () => {
     if (!wrap) return;
     const video = document.createElement('video');
-    video.src = '/videos/chantier.mp4';
+    video.src = '/videos/chantier-a.mp4';
     video.controls = true;
     video.autoplay = true;
     video.playsInline = true;

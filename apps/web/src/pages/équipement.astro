@@ -6,52 +6,74 @@ import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 
-// Honnêteté de marque : uniquement ce qui est réellement stocké et posé.
-// PLACEHOLDER(REDA): marques et gammes de panneaux à confirmer par l'équipe —
-// la section panneaux reste volontairement générique d'ici là.
+// Matériel RÉEL du dossier entreprise 2026 — uniquement ce qui est
+// effectivement posé sur les installations Taqinor (réfs 468/400/236/134
+// avec Canadian Solar + Deye + Dyness ; NC-10/25 avec JA Solar).
 const categories = [
   {
-    ref: 'OND-H',
-    title: 'Onduleurs hybrides — Deye',
-    body: 'Onduleurs hybrides monophasés et triphasés Deye, du résidentiel (3 à 12 kW) au petit tertiaire. Gestion batterie intégrée, suivi de production en ligne.',
-    points: ['Monophasé et triphasé', 'Compatibles batteries basse et haute tension', 'Monitoring inclus'],
+    ref: 'PV-1',
+    title: 'Panneaux — Canadian Solar TOPBiHiKu',
+    body: 'Modules bifaciaux 705 à 720 Wc, fabricant mondial tier-1 (100+ GW livrés). Certifications IEC 61215 / IEC 61730. Posés sur nos installations de Casablanca et El Jadida.',
+    points: ['Bifacial 705 – 720 Wc', 'Garantie produit 12 ans', 'Garantie performance 25 ans (≥ 84,8 %)'],
   },
   {
-    ref: 'OND-R',
-    title: 'Onduleurs réseau — Solis',
-    body: 'Onduleurs string Solis pour l’autoconsommation sans stockage, du résidentiel aux toitures industrielles.',
-    points: ['Gammes résidentielles et commerciales', 'Rendement européen élevé', 'Suivi de production en ligne'],
+    ref: 'PV-2',
+    title: 'Panneaux — JA Solar DeepBlue',
+    body: 'Modules monocristallins DeepBlue, fabricant tier-1. Posés sur notre installation de Nouaceur.',
+    points: ['Monocristallin haut rendement', 'Garantie produit 12 ans', 'Garantie performance 25 ans'],
+  },
+  {
+    ref: 'OND-1',
+    title: 'Onduleurs hybrides — Deye',
+    body: 'Onduleurs hybrides monophasés et triphasés 5 à 30 kW (gammes SUN-SG04LP1, SUN-SG04LP3, SUN-SG01HP3). Leader mondial de l’onduleur hybride résidentiel et tertiaire. CEI 61727, VDE-AR-N-4105.',
+    points: ['Monophasé et triphasé, 5 – 30 kW', 'Gestion batterie CAN BMS intégrée', 'Garantie 10 ans'],
+  },
+  {
+    ref: 'OND-2',
+    title: 'Onduleurs réseau — Huawei SUN2000',
+    body: 'Onduleurs string Huawei SUN2000 pour l’autoconsommation sans stockage, du résidentiel aux toitures tertiaires.',
+    points: ['Rendement européen élevé', 'Optimisation par chaîne', 'Garantie 10 ans'],
   },
   {
     ref: 'BAT',
-    title: 'Batteries — Dyness',
-    body: 'Batteries lithium fer phosphate (LFP) Dyness, montées en armoire ou en rack. Dimensionnées pour la consommation nocturne ou la continuité de service.',
-    points: ['Chimie LFP éprouvée', 'Extensibles par modules', 'Garantie constructeur longue durée'],
+    title: 'Batteries — Dyness DL5.0C',
+    body: 'Batteries lithium-fer-phosphate (LFP) DL5.0C / DL5.0C PRO, modules de 5 kWh extensibles. Communication CAN BMS native avec les onduleurs Deye. Certifiées CE, IEC 62619, UN38.3.',
+    points: ['Chimie LFP — 6 000+ cycles à 90 % DoD', 'Modulaire : 5 à 15 kWh et plus', 'Garantie 10 ans'],
   },
   {
-    ref: 'PV',
-    title: 'Panneaux photovoltaïques',
-    body: 'Modules monocristallins de fabricants Tier 1, 550 à 620 Wc, garantis en performance sur 25 ans. Les marques en stock varient selon les arrivages — demandez la fiche technique du moment.',
-    points: ['Garantie de performance 25 ans', 'Modules 550 – 620 Wc', 'Fiches techniques fournies avec chaque devis'],
+    ref: 'MON',
+    title: 'Monitoring — SolarMan Smart',
+    body: 'Chaque installation est équipée d’un dongle WiFi/Ethernet et supervisée sur SolarMan : production temps réel, alertes automatiques, historiques. Le client reçoit son accès personnel ; Taqinor surveille l’ensemble du parc pour un SAV proactif.',
+    points: ['Production mesurée en continu', 'Alertes automatiques — SAV proactif', 'Accès client via application mobile'],
   },
+];
+
+// Garanties contractuelles — chiffres du dossier entreprise.
+const warranties = [
+  { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
+  { item: 'Panneaux photovoltaïques (performance)', years: '25 ans', note: '≥ 84,8 % de la puissance initiale' },
+  { item: 'Onduleurs (Deye, Huawei)', years: '10 ans' },
+  { item: 'Batteries Dyness LFP', years: '10 ans' },
+  { item: 'Structure acier galvanisé', years: '20 ans' },
+  { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },
 ];
 ---
 
 <Layout
-  title="Équipement solaire en stock : Deye, Solis, Dyness | Taqinor"
-  description="Le matériel que Taqinor stocke et installe réellement : onduleurs hybrides Deye, onduleurs réseau Solis, batteries LFP Dyness, panneaux Tier 1 garantis 25 ans."
+  title="Équipement posé : Canadian Solar, JA Solar, Deye, Huawei, Dyness | Taqinor"
+  description="Le matériel réellement posé sur les installations Taqinor : panneaux Canadian Solar TOPBiHiKu et JA Solar, onduleurs hybrides Deye et Huawei SUN2000, batteries Dyness LFP, monitoring SolarMan. Garanties 10 à 25 ans."
   ogSlug="equipement"
 >
   <Article33Ribbon />
 
   <section class="bg-azur-900 px-4 py-16 text-white sm:py-20">
     <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-brass text-brass-300">Stock réel · références courtes</p>
-      <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Ce que nous stockons, ce que nous posons</h1>
+      <p class="tech-label rule-brass text-brass-300">Marques tier-1 · distributeurs officiels au Maroc</p>
+      <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Ce que nous posons réellement</h1>
       <p class="mt-5 max-w-xl leading-relaxed text-white/85">
-        Pas de catalogue infini : une sélection courte de matériel que nous connaissons,
-        stockons et garantissons. Chaque référence est choisie pour sa fiabilité mesurée et la
-        disponibilité de ses pièces au Maroc.
+        Pas de catalogue infini, aucun matériel no-name : les marques ci-dessous sont celles
+        posées sur nos installations de 2026, sourcées via des distributeurs officiels
+        implantés au Maroc — stock local, garanties locales activables.
       </p>
     </div>
   </section>
@@ -62,16 +84,31 @@ const categories = [
       <figure class="reveal overflow-hidden border border-azur-900/15">
         <Picture
           name="mur-technique-dyness"
-          alt="Mur technique d'une installation Taqinor : onduleur hybride, deux batteries Dyness et borne de recharge"
+          alt="Mur technique d'une installation Taqinor à Casablanca : onduleur hybride Deye, deux batteries Dyness et borne de recharge"
           widths={[1600, 1024, 640]}
           ratio={4 / 3}
-          sizes="(min-width: 640px) 58vw, 100vw"
+          sizes="(min-width: 1024px) 40vw, (min-width: 640px) 50vw, 100vw"
           loading="eager"
           class="w-full object-cover"
         />
         <figcaption class="bg-blanc px-3 py-2.5">
-          <span class="tech-label block text-azur-700">Maroc · stockage résidentiel</span>
-          <span class="mt-0.5 block text-xs text-encre-soft">Onduleur hybride · 2 batteries Dyness · borne de recharge</span>
+          <span class="tech-label block text-azur-700">Casablanca · 11,36 kWc</span>
+          <span class="mt-0.5 block text-xs text-encre-soft">Onduleur hybride Deye 10 kW · 2 × Dyness DL5.0C · borne de recharge</span>
+        </figcaption>
+      </figure>
+      <figure class="reveal overflow-hidden border border-azur-900/15">
+        <Picture
+          name="detail-cablage"
+          alt="Gros plan sur les bornes des batteries Dyness et le coffret de protections, câblage soigné, El Jadida"
+          widths={[1600, 1024, 640]}
+          ratio={4 / 3}
+          sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw"
+          loading="eager"
+          class="h-full w-full object-cover"
+        />
+        <figcaption class="bg-blanc px-3 py-2.5">
+          <span class="tech-label block text-azur-700">El Jadida · 17,04 kWc</span>
+          <span class="mt-0.5 block text-xs text-encre-soft">Bornes batteries + coffret de protections · le soin du détail</span>
         </figcaption>
       </figure>
       <figure class="reveal overflow-hidden border border-azur-900/15">
@@ -80,28 +117,13 @@ const categories = [
           alt="Panneau photovoltaïque et chauffe-eau solaire sur acrotère blanc contre un ciel bleu profond"
           widths={[1600, 1024, 640]}
           ratio={4 / 3}
-          sizes="(min-width: 640px) 40vw, 100vw"
-          loading="eager"
-          class="h-full w-full object-cover"
-        />
-        <figcaption class="bg-blanc px-3 py-2.5">
-          <span class="tech-label block text-azur-700">Maroc · détail de toiture</span>
-          <span class="mt-0.5 block text-xs text-encre-soft">Modules PV + chauffe-eau solaire · installation réelle</span>
-        </figcaption>
-      </figure>
-      <figure class="reveal overflow-hidden border border-azur-900/15">
-        <Picture
-          name="detail-cablage"
-          alt="Gros plan sur les bornes de batteries Dyness et le coffret de protections, câblage soigné"
-          widths={[1600, 1024, 640]}
-          ratio={4 / 3}
           sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw"
           loading="eager"
           class="h-full w-full object-cover"
         />
         <figcaption class="bg-blanc px-3 py-2.5">
-          <span class="tech-label block text-azur-700">Maroc · câblage</span>
-          <span class="mt-0.5 block text-xs text-encre-soft">Bornes batteries + coffret de protections · le soin du détail</span>
+          <span class="tech-label block text-azur-700">Détail de toiture</span>
+          <span class="mt-0.5 block text-xs text-encre-soft">Modules PV + chauffe-eau solaire</span>
         </figcaption>
       </figure>
     </div>
@@ -128,13 +150,34 @@ const categories = [
         </div>
       ))}
     </div>
-    <p class="mx-auto mt-8 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-      Le choix final du matériel dépend du dimensionnement : c'est l'étude qui détermine
-      l'équipement, jamais l'inverse.
-    </p>
   </section>
 
   <ZelligeDivider />
+
+  <!-- Tableau des garanties — chiffres contractuels du dossier -->
+  <section class="bg-blanc-azur px-4 py-16 sm:py-20">
+    <div class="mx-auto max-w-3xl">
+      <p class="tech-label rule-brass text-azur-600">Engagements contractuels</p>
+      <h2 class="display mt-4 text-3xl">Les garanties, noir sur blanc</h2>
+      <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+        Chaque installation est livrée avec son dossier technique complet : schémas
+        unifilaires, calcul de câbles, liste des protections, procédure de mise en service
+        et accès monitoring SolarMan.
+      </p>
+      <div class="mt-8 border-t-2 border-azur-900 bg-blanc">
+        {warranties.map((w) => (
+          <div class="flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4">
+            <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
+            <span class="fig whitespace-nowrap text-2xl text-azur-600">{w.years}</span>
+          </div>
+        ))}
+      </div>
+      <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+        Le choix final du matériel dépend du dimensionnement : c'est l'étude qui détermine
+        l'équipement, jamais l'inverse.
+      </p>
+    </div>
+  </section>
 
   <CtaBand title="Le bon matériel, c'est celui que l'étude justifie." />
 
