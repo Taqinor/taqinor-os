@@ -395,6 +395,59 @@ class TestPdfFormats(TestCase):
         self.assertIn('Puissance pompe', html)
         self.assertIn('HMT', html)
 
+    def test_onepage_15_rich_lines_stays_one_page_with_totals_visible(self):
+        """Adaptive density: a 15-line quote with long product descriptions
+        must compact (descriptions suppressed > 12 lines) so the table AND
+        the totals block fit on exactly one page."""
+        from apps.stock.models import Produit
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.models import LigneDevis
+
+        lignes = [(f'P{i:02d} produit audit', '2', '1000') for i in range(15)]
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           lignes, reference='DEV-QE-15L')
+        # Toutes les fiches portent une longue description + garantie
+        Produit.objects.filter(
+            lignes_devis__devis=devis).update(
+            description='Ligne 1 de description\nLigne 2\nLigne 3\nLigne 4',
+            garantie='Garantie constructeur 10 ans')
+
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_15l.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        html = cap['html']
+        doc = HTML(string=html).render()
+        self.assertEqual(len(doc.pages), 1)
+        # > 12 lignes → mode compact : pas de lignes de description ni de
+        # garanties (le tableau + totaux tiennent alors largement sur la page,
+        # vérifié visuellement sur un rendu réel)
+        self.assertNotIn('Ligne 1 de description', html)
+        self.assertNotIn('Garantie constructeur 10 ans', html)
+        self.assertIn('Sous-total HT', html)
+
+        # Cas confortable : 6 lignes → descriptions présentes
+        devis2 = make_devis(self.company, self.user, self.client_obj,
+                            [(f'C{i} produit confort', '1', '500') for i in range(6)],
+                            reference='DEV-QE-6L')
+        Produit.objects.filter(lignes_devis__devis=devis2).update(
+            description='Desc visible A\nDesc visible B')
+        data2 = build_quote_data(devis2, {'pdf_mode': 'onepage'})
+        cap2 = {}
+        G._render_pdf_weasyprint = lambda html, out: cap2.update(html=html)
+        try:
+            G.generate_premium_pdf(data2, '/tmp/_6l.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        self.assertIn('Desc visible A', cap2['html'])
+        self.assertEqual(len(HTML(string=cap2['html']).render().pages), 1)
+
     def test_unknown_options_are_whitelisted_away(self):
         from apps.ventes.quote_engine import clean_pdf_options
         opts = clean_pdf_options({
