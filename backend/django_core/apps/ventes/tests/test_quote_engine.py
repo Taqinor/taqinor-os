@@ -330,3 +330,86 @@ class TestGeneratorQuoteFlow(TestCase):
             len(doc.pages), 3,
             f'generator-created quote must render exactly 3 pages, got {len(doc.pages)}',
         )
+
+    def test_catalogue_quote_renders_three_page_premium_pdf(self):
+        """A quote composed from the seeded simulator catalogue (exactly what
+        the generator's auto-fill produces for 14 panels x 710 W) must render
+        the premium PDF in exactly 3 pages. Prices are the screen's TTC
+        converted back to HT, as the save path does."""
+        from django.core.management import call_command
+        from weasyprint import HTML
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        call_command('seed_catalogue', company_slug=self.company.slug)
+
+        # Auto-fill output for 14 x 710 W (9.94 kWc), as saved by the screen:
+        # (sku, qty, prix HT = TTC simulateur / 1.2)
+        lines = [
+            ('OND-R-HUA-10T', '1', None),       # 20 000 TTC
+            ('OND-H-DEY-10T', '1', None),       # 28 000 TTC
+            ('SMART-MET', '1', None),           # 1 800 TTC
+            ('WIFI-DON', '1', None),            # 1 200 TTC
+            ('PAN-CS-710', '14', None),         # 1 400 TTC
+            ('BAT-DEY-10', '1', None),          # 30 000 TTC
+            ('STR-ACIER', '14', None),          # 500 TTC
+            ('SOC-BET', '28', None),            # 80 TTC
+            ('ACC-CAT', '1', '1666.67'),        # formule : 2 blocs x 1000 TTC
+            ('TAB-PROT', '1', '2500.00'),       # formule : 2 blocs x 1500 TTC
+            ('INST-CAT', '1', '6000.00'),       # formule : 3 x 2400 TTC
+            ('TRANS-CAT', '1', None),           # 1 000 TTC
+        ]
+
+        resp = self.api.post('/api/django/ventes/devis/', {
+            'client': self.client_obj.id,
+            'statut': 'brouillon',
+            'taux_tva': '20.00',
+            'remise_globale': '0',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis_id = resp.data['id']
+
+        for sku, qty, prix_ht in lines:
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            line_resp = self.api.post('/api/django/ventes/devis-lignes/', {
+                'devis': devis_id,
+                'produit': produit.id,
+                'designation': produit.nom,
+                'quantite': qty,
+                'prix_unitaire': prix_ht or str(produit.prix_vente),
+                'remise': '0',
+            }, format='json')
+            self.assertEqual(line_resp.status_code, 201, line_resp.data)
+
+        devis = Devis.objects.get(pk=devis_id)
+        data = build_quote_data(devis)
+
+        # Power from the catalogue panel line; both options split correctly.
+        self.assertEqual(data['nb_panneaux'], 14)
+        self.assertEqual(data['watt_par_panneau'], 710)
+        sans = [it['designation'] for it in data['sans_items']]
+        avec = [it['designation'] for it in data['avec_items']]
+        self.assertIn('Onduleur réseau Huawei 10kW Triphasé', sans)
+        self.assertNotIn('Onduleur réseau Huawei 10kW Triphasé', avec)
+        self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
+        self.assertIn('Batterie Deyness 10 kWh', avec)
+        self.assertNotIn('Batterie Deyness 10 kWh', sans)
+        # Option totals match the simulator for the same inputs (±1 MAD rounding)
+        self.assertAlmostEqual(data['total_sans'], 65040, delta=1)
+        self.assertAlmostEqual(data['total_avec'], 103040, delta=1)
+
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_catalogue_quote_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+
+        doc = HTML(string=cap['html']).render()
+        self.assertEqual(
+            len(doc.pages), 3,
+            f'catalogue quote must render exactly 3 pages, got {len(doc.pages)}',
+        )
