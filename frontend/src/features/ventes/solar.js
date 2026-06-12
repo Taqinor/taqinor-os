@@ -449,10 +449,13 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
 export const CV_TO_KW = 0.7355
+// Heures de pompage effectives par défaut (champ 1.4× surdimensionné →
+// la pompe tourne à régime nominal bien au-delà des heures équivalentes
+// plein-soleil ; ~7 h/jour est l'hypothèse marché retenue — modifiable).
+export const HEURES_POMPAGE_DEFAUT = 7
 
 // Champ PV ≈ 1.4 × puissance pompe (approche marché 1.3–1.5×), panneaux 710 W
-export function computePompage(cv) {
-  const kw = (parseFloat(cv) || 0) * CV_TO_KW
+export function champFromKw(kw) {
   const champKw = Math.round(kw * 1.4 * 100) / 100
   const nbPanneaux = Math.max(2, Math.ceil(champKw * 1000 / 710))
   return {
@@ -463,39 +466,165 @@ export function computePompage(cv) {
   }
 }
 
+export function computePompage(cv) {
+  return champFromKw((parseFloat(cv) || 0) * CV_TO_KW)
+}
+
+// ── Courbe de performance : débit délivré (m³/h) à une HMT donnée ─────────────
+// courbe = { debits_m3h: [0, 12, ...], hmt_m: [91, 85, ...] } — la HMT décroît
+// quand le débit monte. Interpolation linéaire entre les points constructeur.
+export function debitAtHmt(courbe, hmt) {
+  const H = parseFloat(hmt)
+  if (!courbe || !Array.isArray(courbe.debits_m3h) || !Array.isArray(courbe.hmt_m)) return null
+  const d = courbe.debits_m3h.map(Number)
+  const h = courbe.hmt_m.map(Number)
+  if (d.length < 2 || d.length !== h.length || !(H > 0)) return null
+  if (H > h[0]) return 0                       // au-delà de la capacité de la pompe
+  if (H <= h[h.length - 1]) return d[d.length - 1]  // borné au dernier point mesuré
+  for (let i = 0; i < h.length - 1; i++) {
+    if (H <= h[i] && H > h[i + 1]) {
+      const t = (h[i] - H) / (h[i] - h[i + 1])
+      return Math.round((d[i] + t * (d[i + 1] - d[i])) * 10) / 10
+    }
+  }
+  return null
+}
+
+const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
+
+// Pompe à courbe : la plus petite (kW) qui délivre ≥ le débit souhaité (m³/h)
+// à la HMT demandée. Jamais de produit sans prix sur un devis : si seules des
+// pompes « prix à renseigner » conviennent, on le dit au lieu d'en chiffrer une.
+export function selectPompeByCurve(produits, { hmt, debit, typePompe }) {
+  const H = parseFloat(hmt)
+  const Q = parseFloat(debit)
+  if (!(H > 0) || !(Q > 0)) return { pump: null, sansPrix: [] }
+  const wantSurface = typePompe === 'surface'
+  const cands = produits
+    .map(p => ({
+      p, n: _norm(p.nom),
+      kw: parseFloat(p.pompe_kw) || 0,
+      q: debitAtHmt(p.courbe_pompe, H),
+    }))
+    .filter(x => x.p.courbe_pompe && x.kw > 0 && x.q != null && x.q >= Q)
+    .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
+    .sort((a, b) => a.kw - b.kw
+      || (parseFloat(a.p.prix_vente) || 0) - (parseFloat(b.p.prix_vente) || 0))
+  const priced = cands.filter(x => _hasPrix(x.p))
+  if (priced.length) {
+    const best = priced[0]
+    return { pump: best.p, kw: best.kw, debitHmt: best.q, sansPrix: [] }
+  }
+  return { pump: null, sansPrix: cands.map(x => x.p.nom) }
+}
+
+// Variateur VEICHI : le plus petit dont kW ≥ kW pompe, tension assortie
+// (mono 220 V / tri 380 V). L'afficheur (sans kW) n'est jamais candidat.
+export function selectVariateurVeichi(produits, kw, alim) {
+  const want = alim === 'mono' ? 220 : 380
+  const volts = (p) => {
+    if (p.tension_v) return Number(p.tension_v)
+    if (/220\s*v/i.test(p.nom)) return 220
+    if (/380\s*v/i.test(p.nom)) return 380
+    return null
+  }
+  const cands = produits
+    .map(p => ({ p, n: _norm(p.nom), kw: parseFloat(p.pompe_kw) || 0, v: volts(p) }))
+    .filter(x => x.n.includes('variateur') && !x.n.includes('afficheur')
+      && x.kw > 0 && x.v === want && _hasPrix(x.p))
+    .sort((a, b) => a.kw - b.kw
+      || (parseFloat(a.p.prix_vente) || 0) - (parseFloat(b.p.prix_vente) || 0))
+  return cands.find(x => x.kw >= kw)?.p ?? cands[cands.length - 1]?.p ?? null
+}
+
+export function findAfficheurVariateur(produits) {
+  return produits.find(p =>
+    _norm(p.nom).includes('afficheur') && _hasPrix(p)) ?? null
+}
+
+// ── Dimensionnement pompage unifié (source unique écran + devis + PDF) ────────
+// Si HMT + débit souhaité sont renseignés et qu'une pompe à courbe convient,
+// elle pilote tout (kW réels, débit interpolé, m³/jour). Sinon : sélection
+// historique par CV, débit manuel, pas de m³/jour (jamais de chiffre inventé).
+export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }) {
+  const sel = selectPompeByCurve(produits, { hmt, debit, typePompe })
+  if (sel.pump) {
+    const kw = sel.kw
+    const cvP = parseFloat(sel.pump.pompe_cv)
+      || Math.round(kw / CV_TO_KW * 10) / 10
+    const hrs = parseFloat(heures) || 0
+    return {
+      mode: 'courbe',
+      pump: sel.pump,
+      cv: cvP,
+      kw,
+      dims: champFromKw(kw),
+      debitHmt: sel.debitHmt,
+      m3Jour: hrs > 0 ? Math.round(sel.debitHmt * hrs) : null,
+      sansPrix: [],
+    }
+  }
+  const cvNum = parseFloat(cv) || 0
+  return {
+    mode: 'cv',
+    pump: null,
+    cv: cvNum,
+    kw: Math.round(cvNum * CV_TO_KW * 100) / 100,
+    dims: computePompage(cv),
+    debitHmt: null,
+    m3Jour: null,
+    sansPrix: sel.sansPrix,
+  }
+}
+
 const _isPompe = (n) => n.includes('pompe ') || n.startsWith('pompe')
 const _isVfdPompage = (n) =>
   (n.includes('variateur') || n.includes('coffret')) && n.includes('pompage')
 const _isCableMetre = (n) => n.includes('cable') && n.includes('metre')
 
-// Équipement pompage : pompe + variateur assorti + champ PV + structures/socles
-// + câble à la distance — PAS de batterie ni d'onduleur réseau/hybride.
-export function autoFillPompage(produits, { cv, alim, typePompe, distance, structureType }) {
-  const cvNum = parseFloat(cv) || 0
+// Équipement pompage : pompe + variateur assorti (+ afficheur) + champ PV
+// + structures/socles + câble à la distance — PAS de batterie ni d'onduleur
+// réseau/hybride. Jamais de produit « prix à renseigner » sur un devis.
+export function autoFillPompage(produits, { cv, alim, typePompe, distance, structureType,
+                                            hmt, debit, heures }) {
+  const sel = pompageSelection(produits, { cv, alim, typePompe, hmt, debit, heures })
+  const cvNum = sel.cv
   if (cvNum <= 0) return []
   const wantTri = alim === 'tri'
   const wantSurface = typePompe === 'surface'
 
-  const pumps = produits
-    .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
-    .filter(x => _isPompe(x.n) && !_isVfdPompage(x.n) && x.cv != null)
-    .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
-    .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
-  // pompe : CV exact et phase voulue, sinon plus petite pompe >= CV
-  let pump = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
-    ?? pumps.find(x => x.cv === cvNum)
-    ?? pumps.find(x => x.cv >= cvNum)
-    ?? pumps[pumps.length - 1] ?? null
+  let pump = null
+  if (sel.pump) {
+    pump = { p: sel.pump }
+  } else if (!sel.sansPrix.length) {
+    // Sélection historique par CV (pompes sans courbe, débit manuel)
+    const pumps = produits
+      .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
+      .filter(x => _isPompe(x.n) && !_isVfdPompage(x.n) && x.cv != null && _hasPrix(x.p))
+      .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
+      .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
+    pump = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
+      ?? pumps.find(x => x.cv === cvNum)
+      ?? pumps.find(x => x.cv >= cvNum)
+      ?? pumps[pumps.length - 1] ?? null
+  }
+  // sel.sansPrix non vide → seules des pompes sans prix conviennent :
+  // on n'en chiffre AUCUNE (l'écran l'explique), le reste du système est rempli.
 
-  const vfds = produits
-    .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
-    .filter(x => _isVfdPompage(x.n) && x.cv != null)
-    .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
-  let vfd = vfds.find(x => x.cv >= cvNum && x.tri === wantTri)
-    ?? vfds.find(x => x.cv >= cvNum)
-    ?? vfds[vfds.length - 1] ?? null
+  // Variateur : VEICHI par kW + tension d'abord, anciens coffrets par CV sinon
+  let vfdP = selectVariateurVeichi(produits, sel.kw, alim)
+  if (!vfdP) {
+    const vfds = produits
+      .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
+      .filter(x => _isVfdPompage(x.n) && x.cv != null && _hasPrix(x.p))
+      .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
+    vfdP = (vfds.find(x => x.cv >= cvNum && x.tri === wantTri)
+      ?? vfds.find(x => x.cv >= cvNum)
+      ?? vfds[vfds.length - 1] ?? null)?.p ?? null
+  }
+  const afficheur = vfdP && /veichi/i.test(vfdP.nom) ? findAfficheurVariateur(produits) : null
 
-  const dims = computePompage(cvNum)
+  const dims = sel.dims
   const byType = {}
   for (const p of produits) {
     const t = classifyProduct(p.nom)
@@ -522,12 +651,14 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
     prix_unit_ttc: p ? ttcFromHt(p.prix_vente) : 0,
   })
 
-  const rows = [
-    line(pump?.p ?? null, 'Pompe solaire', 1),
-    line(vfd?.p ?? null, 'Variateur pompage solaire (coffret)', 1),
+  const rows = []
+  if (pump?.p) rows.push(line(pump.p, 'Pompe solaire', 1))
+  if (vfdP) rows.push(line(vfdP, 'Variateur solaire', 1))
+  if (afficheur) rows.push(line(afficheur, 'Afficheur variateur', 1))
+  rows.push(
     line(panel, 'Panneaux', dims.nbPanneaux),
     line(struct, 'Structures', dims.nbPanneaux),
-  ]
+  )
   if ((byType.socle ?? []).length) rows.push(line(byType.socle[0], 'Socles', dims.nbPanneaux * 2))
   if (cable && distM > 0) rows.push(line(cable, 'Câble solaire (m)', distM))
   if ((byType.installation ?? []).length) rows.push(line(byType.installation[0], 'Installation', 1))

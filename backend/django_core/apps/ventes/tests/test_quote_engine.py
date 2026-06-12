@@ -436,6 +436,64 @@ class TestPdfFormats(TestCase):
         self.assertIn('Puissance pompe', html)
         self.assertIn('HMT', html)
 
+    def test_pompage_curve_figures_water_per_day_one_page(self):
+        """Curve-sized pump: the one-page summary states pump CV+kW, débit at
+        the HMT, and the m³/day with the hours assumption — exactly 1 page."""
+        self.devis.mode_installation = 'agricole'
+        self.devis.etude_params = {
+            'pompe_cv': '10', 'pompe_kw': 7.5,
+            'pompe_nom': 'Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',
+            'type_pompe': 'immergee', 'alim': 'tri',
+            'hmt_m': '60', 'debit_souhaite_m3h': '30',
+            'debit_hmt_m3h': 30, 'heures_pompage': 7, 'm3_jour': 210,
+            'champ_kwc': 10.65,
+        }
+        self.devis.save()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertIn('10 CV (7.5 kW)', html)
+        self.assertIn('D&#233;bit &#224; 60 m', html)
+        self.assertIn('30 m&#179;/h', html)
+        self.assertIn('Eau / jour (sur 7 h de pompage)', html)
+        self.assertIn('210 m&#179;', html)
+
+    def test_pompage_without_curve_never_shows_water_per_day(self):
+        """No curve → no débit-at-HMT, no m³/day card, no dashes — the card
+        is omitted entirely rather than faked."""
+        self.devis.mode_installation = 'agricole'
+        self.devis.etude_params = {
+            'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+            'alim': 'tri', 'hmt_m': '80', 'champ_kwc': 5.68,
+            'debit_hmt_m3h': None, 'heures_pompage': None, 'm3_jour': None,
+        }
+        self.devis.save()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('Eau / jour', html)
+        self.assertNotIn('m&#179;/jour', html)
+        # pas de tiret placeholder dans le bloc résumé
+        self.assertNotIn('>&#8212;<', html)
+
+    def test_buy_prices_never_in_pdf_html(self):
+        """Le prix d'achat (revendeur) n'apparaît dans AUCUN rendu client —
+        sweep sur les deux formats avec un prix d'achat très reconnaissable."""
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('VARIATEUR VEICHI SI23 7.5KW 380V', '1', '3333.33'),
+            ('Pompe immergée OSP 30/8', '1', '12500'),
+            ('Panneau Canadien Solar 710W', '15', '1166.67'),
+        ], reference='DEV-QE-SWEEP')
+        # prix d'achat distinctifs sur les produits liés
+        for ligne in devis.lignes.all():
+            ligne.produit.prix_achat = Decimal('9876.54')
+            ligne.produit.save(update_fields=['prix_achat'])
+        devis.mode_installation = 'agricole'
+        devis.etude_params = {'pompe_cv': '10', 'pompe_kw': 7.5, 'hmt_m': '60'}
+        devis.save()
+        for opts in ({'pdf_mode': 'onepage'}, None):
+            html, _ = self._render(opts, devis=devis)
+            for marker in ('9876', '9 876', '9\u202f876', '9&#8239;876', 'achat'):
+                self.assertNotIn(marker, html.lower())
+
     def test_onepage_15_rich_lines_stays_one_page_with_totals_visible(self):
         """Adaptive density: a 15-line quote with long product descriptions
         must compact (descriptions suppressed > 12 lines) so the table AND

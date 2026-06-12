@@ -96,6 +96,17 @@ class Produit(models.Model):
     debit_m3j = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text='Débit max indicatif (m³/jour).')
+    pompe_kw = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance nominale (kW) — pompes ET variateurs.')
+    tension_v = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Tension nominale (V) : 220 ou 380.')
+    courbe_pompe = models.JSONField(
+        null=True, blank=True,
+        help_text="Courbe de performance constructeur : "
+                  '{"debits_m3h": [0, 12, ...], "hmt_m": [91, 85, ...]} '
+                  '(HMT délivrée à chaque débit).')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
 

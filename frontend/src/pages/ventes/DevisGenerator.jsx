@@ -12,8 +12,9 @@ import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
-  groupProduitsByCategory, computeEtudeIndustrielle, computePompage,
-  autoFillPompage, isBattery, isHybridInverter, prixParKwc, discountForTarget,
+  groupProduitsByCategory, computeEtudeIndustrielle,
+  autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
+  isBattery, isHybridInverter, prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE,
 } from '../../features/ventes/solar'
 
@@ -112,6 +113,7 @@ export default function DevisGenerator() {
   const [pompeDebit, setPompeDebit] = useState('')
   const [pompeProfondeur, setPompeProfondeur] = useState('')
   const [pompeDistance, setPompeDistance] = useState('20')
+  const [pompeHeures, setPompeHeures] = useState(String(HEURES_POMPAGE_DEFAUT))
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
@@ -336,14 +338,15 @@ export default function DevisGenerator() {
       const generated = autoFillPompage(produits, {
         cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
         distance: pompeDistance, structureType,
+        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
       })
       if (!generated.length) {
-        setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV).' }))
+        setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV) ou HMT + débit souhaité.' }))
         return
       }
       setErrors(e => ({ ...e, autofill: null }))
       setLines(withKeys(generated))
-      setNbPanneaux(String(computePompage(pompeCv).nbPanneaux))
+      if (pompageSel) setNbPanneaux(String(pompageSel.dims.nbPanneaux))
       return
     }
     if (kwp <= 0) {
@@ -404,17 +407,22 @@ export default function DevisGenerator() {
       let etudeParams = null
       if (modeInstallation === 'industriel' && etudeIndustrielle) {
         etudeParams = etudeIndustrielle
-      } else if (modeInstallation === 'agricole' && pompageDims) {
+      } else if (modeInstallation === 'agricole' && pompageSel) {
+        // Chiffres canoniques : calculés UNE fois ici, le PDF les rend tels quels
         etudeParams = {
-          pompe_cv: pompeCv,
-          pompe_kw: pompageDims.kw,
+          pompe_cv: String(pompageSel.cv),
+          pompe_kw: pompageSel.kw,
+          pompe_nom: pompageSel.pump?.nom || null,
           type_pompe: pompeType,
           alim: pompeAlim,
           hmt_m: pompeHmt || null,
-          debit_m3j: pompeDebit || null,
+          debit_souhaite_m3h: pompeDebit || null,
+          debit_hmt_m3h: pompageSel.debitHmt,
+          heures_pompage: pompageSel.m3Jour != null ? (parseFloat(pompeHeures) || null) : null,
+          m3_jour: pompageSel.m3Jour,
           profondeur_m: pompeProfondeur || null,
           distance_m: pompeDistance || null,
-          champ_kwc: pompageDims.champKwc,
+          champ_kwc: pompageSel.dims.champKwc,
         }
       }
       const payload = {
@@ -478,8 +486,16 @@ export default function DevisGenerator() {
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
   const showAvecWarning = showAvec && lines.length > 0 && !avecDispo.available
 
-  const pompageDims = modeInstallation === 'agricole'
-    ? computePompage(pompeCv) : null
+  // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
+  // Courbe constructeur (HMT + débit souhaité) si une pompe à courbe convient,
+  // sinon sélection historique par CV (débit manuel, pas de m³/jour inventé).
+  const pompageSel = modeInstallation === 'agricole'
+    ? pompageSelection(produits, {
+        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
+        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+      })
+    : null
+  const pompageDims = pompageSel?.dims ?? null
 
   const pkwc = prixParKwc(kpiTotal, kwp)
   const buyCost = useMemo(() => computeBuyCost(lines, produits), [lines, produits])
@@ -712,12 +728,15 @@ export default function DevisGenerator() {
           <div className="gen-card-body">
             <div className="gen-grid">
               <div className="form-group">
-                <label className="form-label">Puissance pompe (CV)</label>
+                <label className="form-label">
+                  Puissance pompe (CV)
+                  {pompageSel?.mode === 'courbe' && ' — auto (courbe)'}
+                </label>
                 <input type="number" min="0" step="any" className="form-control"
                        value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
                 {pompageDims && (
                   <div className="gen-hint" style={{ marginTop: 4 }}>
-                    ≈ {pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
+                    ≈ {pompageSel?.kw ?? pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
                     ({pompageDims.nbPanneaux} panneaux 710 W)
                   </div>
                 )}
@@ -765,10 +784,16 @@ export default function DevisGenerator() {
                        onChange={e => setPompeHmt(e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">Débit souhaité (m³/jour)</label>
+                <label className="form-label">Débit souhaité (m³/h)</label>
                 <input type="number" min="0" step="any" className="form-control"
-                       placeholder="ex: 40" value={pompeDebit}
+                       placeholder="ex: 30" value={pompeDebit}
                        onChange={e => setPompeDebit(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Heures de pompage effectives / jour</label>
+                <input type="number" min="0" step="any" className="form-control"
+                       value={pompeHeures}
+                       onChange={e => setPompeHeures(e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Profondeur forage (m) — optionnel</label>
@@ -783,6 +808,29 @@ export default function DevisGenerator() {
                        onChange={e => setPompeDistance(e.target.value)} />
               </div>
             </div>
+
+            {/* ── Résultat du dimensionnement (source des chiffres du PDF) ── */}
+            {pompageSel?.mode === 'courbe' && (
+              <div className="gen-resolved-client"
+                   style={{ marginTop: '0.75rem', background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e40af' }}>
+                <strong>Pompe sélectionnée : {pompageSel.pump.nom}</strong>
+                <div style={{ marginTop: 4 }}>
+                  {pompageSel.cv} CV ({pompageSel.kw} kW) · débit à {pompeHmt} m
+                  de HMT : <strong>{pompageSel.debitHmt} m³/h</strong>
+                  {pompageSel.m3Jour != null && (
+                    <> · <strong>≈ {pompageSel.m3Jour} m³/jour</strong> sur {pompeHeures} h
+                    de pompage effectif</>
+                  )}
+                </div>
+              </div>
+            )}
+            {pompageSel?.sansPrix?.length > 0 && (
+              <div className="form-error-box" style={{ marginTop: '0.75rem' }}>
+                ⚠ Seules des pompes <strong>sans prix renseigné</strong> conviennent à cette
+                HMT et ce débit ({pompageSel.sansPrix.join(', ')}). Renseignez leur prix
+                dans Stock pour les chiffrer — aucune pompe ne sera ajoutée au devis.
+              </div>
+            )}
           </div>
         </div>
         )}
@@ -979,7 +1027,11 @@ export default function DevisGenerator() {
                             {produitGroups.map(g => (
                               <optgroup key={g.label} label={g.label}>
                                 {g.items.map(p => (
-                                  <option key={p.id} value={p.id}>{p.nom}</option>
+                                  <option key={p.id} value={p.id}
+                                          disabled={!(parseFloat(p.prix_vente) > 0)}>
+                                    {p.nom}
+                                    {!(parseFloat(p.prix_vente) > 0) && ' — prix à renseigner'}
+                                  </option>
                                 ))}
                               </optgroup>
                             ))}

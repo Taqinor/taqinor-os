@@ -323,6 +323,109 @@ test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans ba
   assert.equal(Number(pan.quantite), dims.nbPanneaux)
 })
 
+// ══ Courbes de pompe + VEICHI (matériel réel) ════════════════════════════════
+import {
+  debitAtHmt, selectPompeByCurve, selectVariateurVeichi,
+  findAfficheurVariateur, pompageSelection, HEURES_POMPAGE_DEFAUT,
+} from './solar.js'
+
+const OSP_CURVE_30_8 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [91, 85, 70, 60, 43, 34] }
+const OSP_CURVE_30_13 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [148, 138, 114, 98, 70, 55] }
+
+const VEICHI_FIXTURE = [
+  { id: 901, nom: 'AFFICHEUR VARIATEUR SI22', prix_vente: '350.00', pompe_kw: null, tension_v: null },
+  { id: 902, nom: 'VARIATEUR VEICHI SI22 2.2KW 220V', prix_vente: '1316.67', pompe_kw: '2.2', tension_v: 220 },
+  { id: 903, nom: 'VARIATEUR VEICHI SI23 2.2KW 220V', prix_vente: '2108.33', pompe_kw: '2.2', tension_v: 220 },
+  { id: 904, nom: 'VARIATEUR VEICHI SI23 5.5KW 380V', prix_vente: '2708.33', pompe_kw: '5.5', tension_v: 380 },
+  { id: 905, nom: 'VARIATEUR VEICHI SI23 7.5KW 380V', prix_vente: '3333.33', pompe_kw: '7.5', tension_v: 380 },
+  { id: 906, nom: 'VARIATEUR VEICHI SI23 11KW 380V', prix_vente: '4125.00', pompe_kw: '11', tension_v: 380 },
+]
+
+const ospPump = (overrides = {}) => ({
+  id: 950, nom: 'Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',
+  prix_vente: '12500.00', pompe_cv: '10', pompe_kw: '7.5', tension_v: 380,
+  courbe_pompe: OSP_CURVE_30_8, ...overrides,
+})
+const ospPump13 = (overrides = {}) => ({
+  id: 951, nom: 'Pompe immergée OSP 30/13 — 15 CV / 11 kW (3", 380V)',
+  prix_vente: '0.00', pompe_cv: '15', pompe_kw: '11', tension_v: 380,
+  courbe_pompe: OSP_CURVE_30_13, ...overrides,
+})
+
+test('courbe : débit interpolé à la HMT (points exacts, interpolation, bornes)', () => {
+  assert.equal(debitAtHmt(OSP_CURVE_30_8, 60), 30)      // point exact
+  assert.equal(debitAtHmt(OSP_CURVE_30_8, 65), 27)      // interpolation 70→60
+  assert.equal(debitAtHmt(OSP_CURVE_30_8, 91), 0)       // HMT max → débit nul
+  assert.equal(debitAtHmt(OSP_CURVE_30_8, 120), 0)      // au-delà de la pompe
+  assert.equal(debitAtHmt(OSP_CURVE_30_8, 20), 39)      // borné au dernier point
+  assert.equal(debitAtHmt(null, 60), null)              // pas de courbe → null
+})
+
+test('sélection pompe : HMT 60 m + débit 30 m³/h → OSP 30/8 (la plus petite qui suffit)', () => {
+  const produits = [ospPump(), ospPump13({ prix_vente: '15000.00' })]
+  const sel = selectPompeByCurve(produits, { hmt: '60', debit: '30', typePompe: 'immergee' })
+  assert.equal(sel.pump.id, 950)
+  assert.equal(sel.kw, 7.5)
+  assert.equal(sel.debitHmt, 30)
+  assert.deepEqual(sel.sansPrix, [])
+})
+
+test('pompes sans prix : jamais chiffrées — signalées à la place', () => {
+  const produits = [ospPump({ prix_vente: '0.00' }), ospPump13()]
+  const sel = selectPompeByCurve(produits, { hmt: '60', debit: '30', typePompe: 'immergee' })
+  assert.equal(sel.pump, null)
+  assert.ok(sel.sansPrix.length >= 1)
+  assert.ok(sel.sansPrix[0].includes('OSP'))
+  // …et l'auto-fill n'ajoute AUCUNE ligne pompe dans ce cas
+  const rows = autoFillPompage(produits.concat(VEICHI_FIXTURE, SEEDED), {
+    cv: '', alim: 'tri', typePompe: 'immergee', distance: '20',
+    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
+  })
+  assert.ok(!rows.some(r => /OSP|pompe/i.test(r.designation)))
+})
+
+test('variateur VEICHI : plus petit kW suffisant, tension assortie, jamais l\'afficheur', () => {
+  const v = selectVariateurVeichi(VEICHI_FIXTURE, 7.5, 'tri')
+  assert.equal(v.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
+  // pompe mono 1.1 kW → 220 V, le moins cher des 2.2 kW (SI22)
+  const v220 = selectVariateurVeichi(VEICHI_FIXTURE, 1.1, 'mono')
+  assert.equal(v220.nom, 'VARIATEUR VEICHI SI22 2.2KW 220V')
+  // l'afficheur (sans kW) n'est jamais candidat
+  assert.ok(!/afficheur/i.test(v.nom) && !/afficheur/i.test(v220.nom))
+  assert.equal(findAfficheurVariateur(VEICHI_FIXTURE).id, 901)
+})
+
+test('m³/jour = débit à la HMT × heures de pompage (défaut 7 h)', () => {
+  assert.equal(HEURES_POMPAGE_DEFAUT, 7)
+  const sel = pompageSelection([ospPump()], {
+    cv: '', typePompe: 'immergee', hmt: '60', debit: '30', heures: '7',
+  })
+  assert.equal(sel.mode, 'courbe')
+  assert.equal(sel.m3Jour, 210)              // 30 m³/h × 7 h
+  // champ PV ≈ 1.4 × kW réels de la pompe
+  assert.ok(sel.dims.champKw >= sel.kw * 1.3 && sel.dims.champKw <= sel.kw * 1.5)
+  // sans heures valides → pas de m³/jour inventé
+  const sel0 = pompageSelection([ospPump()], {
+    cv: '', typePompe: 'immergee', hmt: '60', debit: '30', heures: '',
+  })
+  assert.equal(sel0.m3Jour, null)
+})
+
+test('auto-fill courbe complet : pompe OSP + VEICHI assorti + afficheur, sans onduleur', () => {
+  const produits = [ospPump()].concat(VEICHI_FIXTURE, SEEDED)
+  const rows = autoFillPompage(produits, {
+    cv: '', alim: 'tri', typePompe: 'immergee', distance: '40',
+    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
+  })
+  const names = rows.map(r => r.designation)
+  assert.ok(names.some(n => n.includes('OSP 30/8')))
+  assert.ok(names.includes('VARIATEUR VEICHI SI23 7.5KW 380V'))
+  const aff = rows.find(r => /AFFICHEUR/i.test(r.designation))
+  assert.equal(Number(aff.quantite), 1)      // afficheur par défaut (supprimable)
+  assert.ok(!names.some(n => /onduleur/i.test(n)))
+  assert.ok(!names.some(n => /batterie/i.test(n)))
+})
+
 test('prix/kWc + prix cible appliqué via remise transparente', () => {
   assert.equal(prixParKwc(99400, 9.94), 10000)
   // cible 9 000 MAD/kWc sur un brut de 99 400 → remise ≈ 9.96 %
