@@ -9,7 +9,20 @@ interface Props {
   heading?: string;
 }
 const { items, heading = 'Questions fréquentes' } = Astro.props;
+
+// JSON-LD FAQPage — strictement aligné sur les questions rendues ci-dessous
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: items.map((item) => ({
+    '@type': 'Question',
+    name: item.q,
+    acceptedAnswer: { '@type': 'Answer', text: item.a },
+  })),
+};
 ---
+
+<script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
 
 <section class="mx-auto max-w-3xl px-4 py-16">
   <p class="tech-label rule-brass text-azur-600">FAQ</p>

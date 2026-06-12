@@ -25,6 +25,7 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
       WhatsApp
     </a>
     <a
+      id="sticky-diag"
       href="/contact#simulateur"
       class="flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none"
     >Diagnostic gratuit</a>
@@ -34,6 +35,12 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
 <script>
   const bar = document.getElementById('sticky-cta');
   const form = document.getElementById('simulateur');
+
+  // Si le diagnostic est sur CETTE page : on y défile, on ne quitte jamais la page
+  if (form) {
+    (document.getElementById('sticky-diag') as HTMLAnchorElement).href = '#simulateur';
+  }
+
   let pastHero = false;
   let formVisible = false;
 

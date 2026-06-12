@@ -15,6 +15,15 @@ interface Props {
 }
 const { heading = 'Diagnostic solaire — 60 secondes' } = Astro.props;
 
+// Aide à la saisie : grandes villes/communes — la saisie libre reste acceptée
+const VILLES = [
+  'Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Fès', 'Meknès',
+  'Oujda', 'Kénitra', 'Tétouan', 'Salé', 'Témara', 'Mohammedia', 'El Jadida',
+  'Nouaceur', 'Bouskoura', 'Dar Bouazza', 'Settat', 'Berrechid', 'Khouribga',
+  'Béni Mellal', 'Safi', 'Essaouira', 'Nador', 'Al Hoceïma', 'Larache',
+  'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
+];
+
 const inputClass =
   'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
 ---
@@ -60,7 +69,10 @@ const inputClass =
         <legend class="display mb-1 text-lg">Votre commune</legend>
         <div>
           <label for="lf-city" class="mb-1 block text-sm font-semibold">Ville / commune *</label>
-          <input id="lf-city" name="city" required autocomplete="address-level2" class={inputClass} />
+          <input id="lf-city" name="city" required autocomplete="address-level2" list="lf-villes" class={inputClass} />
+          <datalist id="lf-villes">
+            {VILLES.map((v) => <option value={v} />)}
+          </datalist>
         </div>
         <p id="diag-sun" class="hidden border-l-4 border-azur-600 bg-blanc-azur py-2.5 pl-4 pr-3 text-sm font-semibold text-azur-700" aria-live="polite"></p>
       </fieldset>
@@ -88,7 +100,7 @@ const inputClass =
           <input type="checkbox" name="consent" required class="mt-0.5 accent-azur-600" />
           <span>
             J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
-            demande d'étude solaire. *
+            demande d'étude solaire. * <a href="/politique-de-confidentialite" target="_blank" rel="noopener" class="text-encre-faint underline underline-offset-2 hover:text-azur-700">Politique de confidentialité</a>
           </span>
         </label>
       </fieldset>

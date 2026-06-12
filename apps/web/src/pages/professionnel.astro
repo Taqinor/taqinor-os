@@ -41,6 +41,8 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         ? `à partir de ${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} — étude dédiée`
         : `${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
     payback: band.paybackLabel,
+    // Ancrage preuve : la réf. 468 (17,04 kWc) tombe dans la bande 15-30 kWc
+    exemple: id === '5000-10000' ? 'Exemple réel : réf. 468 — 17,04 kWc, El Jadida, avril 2026' : null,
   };
 });
 ---
@@ -117,11 +119,14 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </p>
       <div class="mt-8 border-t-2 border-azur-900">
         {proBrackets.map((b) => (
-          <div class="grid gap-1.5 border-b border-azur-900/15 py-5 sm:grid-cols-[1fr_0.7fr_1.3fr_0.7fr] sm:items-baseline sm:gap-4">
-            <span class="font-display text-base font-bold">{b.bill}</span>
-            <span class="fig text-xl text-azur-600 sm:text-2xl">{b.kwc}</span>
-            <span class="fig text-lg text-encre sm:text-xl">{b.invest}</span>
-            <span class="fig text-xl text-brass-600 sm:text-2xl">{b.payback}</span>
+          <div class="border-b border-azur-900/15 py-5">
+            <div class="grid gap-1.5 sm:grid-cols-[1fr_0.7fr_1.3fr_0.7fr] sm:items-baseline sm:gap-4">
+              <span class="font-display text-base font-bold">{b.bill}</span>
+              <span class="fig text-xl text-azur-600 sm:text-2xl">{b.kwc}</span>
+              <span class="fig text-lg text-encre sm:text-xl">{b.invest}</span>
+              <span class="fig text-xl text-brass-600 sm:text-2xl">{b.payback}</span>
+            </div>
+            {b.exemple && <p class="tech-label mt-2.5 text-encre-faint">{b.exemple}</p>}
           </div>
         ))}
       </div>
@@ -191,7 +196,7 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
   <DiagnosticForm heading="Diagnostic pour votre site professionnel" />
 
-  <CtaBand title="Vos courbes de charge méritent une étude sérieuse." />
+  <CtaBand title="Vos courbes de charge méritent une étude sérieuse." href="#simulateur" />
 
   <StickyCta />
 </Layout>

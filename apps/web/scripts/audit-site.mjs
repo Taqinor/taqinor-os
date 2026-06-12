@@ -7,7 +7,7 @@
  *   node scripts/audit-site.mjs [base]
  */
 const base = process.argv[2] ?? 'http://127.0.0.1:8788';
-const PAGES = ['/', '/r%C3%A9sidentiel', '/professionnel', '/%C3%A9quipement', '/contact', '/loi-82-21', '/regularization-article-33'];
+const PAGES = ['/', '/r%C3%A9sidentiel', '/professionnel', '/%C3%A9quipement', '/contact', '/loi-82-21', '/regularization-article-33', '/mentions-legales', '/politique-de-confidentialite'];
 
 // Chiffres autorisés : dossier entreprise + logique ROI (billRange.ts) + loi 82-21
 const FACTS = [
