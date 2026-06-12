@@ -43,14 +43,24 @@ await send('Emulation.setDeviceMetricsOverride', {
 });
 await send('Page.navigate', { url });
 await new Promise((r) => setTimeout(r, 6000));
-const metrics = await send('Page.getLayoutMetrics');
-const height = Math.min(maxH, Math.ceil(metrics.result.cssContentSize.height));
-await send('Emulation.setDeviceMetricsOverride', {
-  width, height, deviceScaleFactor: 1, mobile: width < 700,
+// Parcourt toute la page pour déclencher les images lazy, puis remonte
+await send('Runtime.evaluate', {
+  expression: `(async () => {
+    const step = 700;
+    for (let y = 0; y < document.body.scrollHeight; y += step) {
+      scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    scrollTo(0, 0);
+  })()`,
+  awaitPromise: true,
 });
-await new Promise((r) => setTimeout(r, 1200));
+await new Promise((r) => setTimeout(r, 1500));
+// NE PAS redimensionner le viewport à la hauteur du contenu : les unités
+// svh s'y réfèrent (un héros min-h-[92svh] exploserait). captureBeyondViewport
+// suffit pour la pleine page avec un viewport réaliste de 900 px.
 const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
 writeFileSync(out, Buffer.from(shot.result.data, 'base64'));
-console.log(out, `${width}x${height}`);
+console.log(out, `${width}px`);
 chrome.kill();
 process.exit(0);

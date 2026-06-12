@@ -11,8 +11,10 @@ interface Props {
   ogSlug?: string;
   /** Précharge l'affiche du héros vidéo (élément LCP de l'accueil) */
   preloadHeroPoster?: boolean;
+  /** Pages de travail privées : jamais indexées */
+  noindex?: boolean;
 }
-const { title, description, ogSlug = 'accueil', preloadHeroPoster = false } = Astro.props;
+const { title, description, ogSlug = 'accueil', preloadHeroPoster = false, noindex = false } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL(`/og/${ogSlug}.png`, Astro.site);
@@ -46,8 +48,10 @@ const jsonLd = {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#070b1d" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <link rel="canonical" href={canonical.href} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
@@ -90,7 +94,7 @@ const jsonLd = {
       })();
     </script>
   </head>
-  <body class="bg-blanc font-sans text-encre antialiased">
+  <body class="bg-nuit font-sans text-lune antialiased">
     <Header />
     <main>
       <slot />

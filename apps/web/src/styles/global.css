@@ -1,14 +1,19 @@
 @import "tailwindcss";
 
 /*
- * TAQINOR — « L'Étude » : l'étude d'ingénierie publiée.
- * Palette « Ville Blanche » conservée : blanc architectural, bleu Majorelle
- * dominant, laiton réservé aux CTA et chiffres clés. Exécution éditoriale :
- * grille magazine, blancs généreux, compositions asymétriques, chiffres
- * protagonistes (Archivo tabulaire). Zellige réduit à une empreinte —
- * un seul marqueur géométrique en filets, jamais de fond maillé.
+ * TAQINOR — « Cinéma du chantier » : la salle est sombre, la lumière vient
+ * des chantiers. Canvas bleu nuit (#070b1d), photographie pleine page qui
+ * rayonne, chiffres dorés lumineux (.lum), dramaturgie sombre→claire : sur
+ * chaque page, la zone diagnostic/CTA arrive comme l'acte final éclairé
+ * (la « salle blanche », palette « L'Étude » conservée pour cet acte).
+ * Zellige réduit à une empreinte — un seul marqueur géométrique en filets.
  * Typo : Archivo variable (display, élargi) · Hanken Grotesk (texte).
  * Auto-hébergées, sous-ensemble latin/latin-ext (couvre le français).
+ *
+ * DISCIPLINE PLEIN SOLEIL — le site se lit à midi en terrasse :
+ * texte courant sur nuit = --color-lune (≈13:1, AAA) ; secondaire =
+ * --color-lune-soft (≈8:1, AAA) ; --color-lune-faint (≈5,5:1, AA) réservé
+ * aux micro-étiquettes en gras/capitales. Jamais de texte fin sous AA.
  */
 
 @font-face {
@@ -58,9 +63,19 @@
   --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Archivo', 'Hanken Grotesk', sans-serif;
 
-  /* Blanc architectural */
+  /* Blanc architectural — l'acte final éclairé (« salle blanche ») */
   --color-blanc: #ffffff;
   --color-blanc-azur: #f3f6fc;
+
+  /* Nuit — le canvas du cinéma */
+  --color-nuit: #070b1d;
+  --color-nuit-800: #0b1226;
+  --color-nuit-700: #101a3c;
+
+  /* Lune — encres sur nuit, calibrées plein soleil */
+  --color-lune: #d6dbe9;
+  --color-lune-soft: #adb5cd;
+  --color-lune-faint: #8d96b4;
 
   /* Bleu Majorelle — la couleur de marque dominante */
   --color-azur-100: #dde5f8;
@@ -86,6 +101,8 @@
   --color-ok-50: #edf6ee;
   --color-alert-600: #b3402a;
   --color-alert-50: #faeeea;
+  /* Alerte sur nuit — assez claire pour le plein soleil (≈7:1) */
+  --color-alert-300: #f4a18a;
 }
 
 html {
@@ -150,6 +167,35 @@ body {
   border: 1.5px solid currentColor;
 }
 
+/* ---- Langage « Cinéma du chantier » ---------------------------------- */
+
+/* Lueur des chiffres — la seule « lumière artificielle » du site.
+   #f3cc66 sur nuit ≈ 12:1 (AAA) : l'or survit au plein soleil. */
+.lum {
+  color: var(--color-brass-300);
+  text-shadow: 0 0 26px rgb(232 181 74 / 0.35);
+}
+
+/* Carte braise : surface à peine éclairée sur la nuit */
+.cine-card {
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  box-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.8);
+}
+
+/* CTA doré qui irradie au survol */
+.glow {
+  box-shadow: 0 0 0 0 rgb(232 181 74 / 0.4);
+}
+
+/* Couture de lumière : la nuit s'ouvre sur l'acte final éclairé */
+.seam-lumiere {
+  height: 7rem;
+  background:
+    radial-gradient(60% 130% at 50% 100%, rgb(232 181 74 / 0.16), transparent 70%),
+    linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+}
+
 /* Révélation au défilement — translation seule, 350 ms, jamais d'opacité
    (contraste mesurable, aucun contenu masqué si l'animation échoue). */
 @media (prefers-reduced-motion: no-preference) {
@@ -162,6 +208,39 @@ body {
   @keyframes reveal {
     to {
       transform: none;
+    }
+  }
+
+  .glow:hover {
+    box-shadow: 0 0 38px -6px rgb(232 181 74 / 0.55);
+  }
+
+  /* Entrée du générique : uniquement au chargement, translation + fondu */
+  .cine-in {
+    opacity: 0;
+    transform: translateY(22px);
+    animation: cineIn 0.8s cubic-bezier(0.2, 0.65, 0.25, 1) forwards;
+  }
+  @keyframes cineIn {
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Les photos émergent de la nuit : léger éclaircissement à l'entrée.
+     Gardé derrière @supports — sans scroll-timeline, jamais d'assombrissement. */
+  @supports (animation-timeline: view()) {
+    .emerge {
+      filter: brightness(0.85);
+      animation: emerge 0.6s ease-out forwards;
+      animation-timeline: view();
+      animation-range: entry 0% entry 25%;
+    }
+  }
+  @keyframes emerge {
+    to {
+      filter: brightness(1);
     }
   }
 }

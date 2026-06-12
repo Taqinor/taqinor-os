@@ -199,10 +199,14 @@ function treatIndividual(img, meta, t) {
   return out;
 }
 
-/** Étalonnure commune : contraste doux + blanc légèrement chaud — la même
- * pour toutes les photos, pour une lecture « une seule prise de vue ». */
+/** Étalonnure commune « cinéma du chantier » : les photos sont les sources
+ * de lumière du site sombre. Noirs légèrement creusés + hautes lumières
+ * relevées (contraste projeté), voile chaud par gains R>V>B — JAMAIS de
+ * tint() : il remplace la chrominance et rendait les photos quasi
+ * monochromes. La couleur du chantier (ciel, gilets, reflets dorés) est
+ * la lumière du site. */
 function unifyGrade(img) {
-  return img.linear(1.02, -3).tint({ r: 255, g: 252, b: 246 });
+  return img.linear([1.09, 1.06, 1.02], [-8, -8, -6]);
 }
 
 await mkdir(outDir, { recursive: true });

@@ -3,11 +3,12 @@
  * dans Chrome headless (CDP) — étape 1 → 2 (signal ville) → 3 → soumission
  * → extrait d'étude. Vérifie aussi qu'un parcours incomplet ne soumet rien.
  *
- *   node scripts/e2e-diagnostic.mjs [url]
+ *   node scripts/e2e-diagnostic.mjs [url] [nomDuLead]
  */
 import { execFile } from 'node:child_process';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:8788/contact';
+const leadName = process.argv[3] ?? 'Test Parcours';
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const PORT = 9225;
 
@@ -60,7 +61,7 @@ const results = await evaluate(`(async () => {
   document.getElementById('diag-next').click(); await sleep(150);
   out.push(['étape 3 atteinte + bouton soumettre', visible('fieldset[data-step="3"]') && visible('#lf-submit')]);
 
-  set('#lf-name', 'Test Parcours'); set('#lf-phone', '0661850410');
+  set('#lf-name', ${JSON.stringify(leadName)}); set('#lf-phone', '0661850410');
   document.querySelector('input[name="consent"]').click();
   document.getElementById('lf-submit').click();
   await sleep(3500);

@@ -16,11 +16,11 @@ const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
 >
   <Article33Ribbon />
 
-  <section class="bg-azur-900 px-4 py-14 text-white">
+  <section class="px-4 py-14 text-white">
     <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-brass text-brass-300">Réponse sous 24 h ouvrées</p>
-      <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Parlons de votre installation</h1>
-      <p class="mt-4 max-w-xl leading-relaxed text-white/85">
+      <p class="tech-label rule-brass cine-in text-brass-300">Réponse sous 24 h ouvrées</p>
+      <h1 class="display cine-in mt-4 max-w-2xl text-4xl sm:text-5xl [animation-delay:120ms]">Parlons de votre installation</h1>
+      <p class="cine-in mt-4 max-w-xl leading-relaxed text-white/85 [animation-delay:240ms]">
         Le formulaire vous donne une fourchette immédiate. Pour aller plus vite,
         écrivez-nous directement sur WhatsApp.
       </p>
@@ -29,7 +29,9 @@ const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
 
   <DiagnosticForm heading="Diagnostic solaire — estimation immédiate" />
 
-  <section class="mx-auto max-w-2xl px-4 pb-16">
+  <!-- Toujours dans l'acte éclairé : les raccourcis WhatsApp et la fiche NAP -->
+  <section class="bg-blanc-azur px-4 pb-16 text-encre">
+    <div class="mx-auto max-w-2xl">
     <div class="grid gap-4 sm:grid-cols-2">
       <a href={waGeneral} rel="noopener"
         class="group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]">
@@ -56,6 +58,7 @@ const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
         Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — déplacements dans tout le Maroc.
       </p>
       <p class="mt-1 text-xs text-encre-faint">Interventions sur site uniquement — pas d'accueil du public en agence.</p>
+    </div>
     </div>
   </section>
 </Layout>
