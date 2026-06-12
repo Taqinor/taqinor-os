@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.http import HttpResponse
-from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,6 +19,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from .utils.references import create_with_reference
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -59,16 +59,14 @@ class DevisViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
-        now = timezone.now()
-        prefix = f"DEV-{now.strftime('%Y%m')}"
         company = self.request.user.company
-        count = Devis.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        serializer.save(
-            reference=f"{prefix}-{count:04d}",
-            created_by=self.request.user,
-            company=company,
+        create_with_reference(
+            Devis, 'DEV', company,
+            lambda ref: serializer.save(
+                reference=ref,
+                created_by=self.request.user,
+                company=company,
+            ),
         )
 
     @action(
@@ -167,18 +165,16 @@ class DevisViewSet(viewsets.ModelViewSet):
                 {'detail': 'Un bon de commande existe déjà pour ce devis.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        now = timezone.now()
-        prefix = f"BC-{now.strftime('%Y%m')}"
         company = request.user.company
-        count = BonCommande.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        bc = BonCommande.objects.create(
-            reference=f"{prefix}-{count:04d}",
-            devis=devis,
-            client=devis.client,
-            statut=BonCommande.Statut.EN_ATTENTE,
-            company=company,
+        bc = create_with_reference(
+            BonCommande, 'BC', company,
+            lambda ref: BonCommande.objects.create(
+                reference=ref,
+                devis=devis,
+                client=devis.client,
+                statut=BonCommande.Statut.EN_ATTENTE,
+                company=company,
+            ),
         )
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -232,15 +228,10 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
-        now = timezone.now()
-        prefix = f"BC-{now.strftime('%Y%m')}"
         company = self.request.user.company
-        count = BonCommande.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        serializer.save(
-            reference=f"{prefix}-{count:04d}",
-            company=company,
+        create_with_reference(
+            BonCommande, 'BC', company,
+            lambda ref: serializer.save(reference=ref, company=company),
         )
 
     @action(detail=True, methods=['post'], url_path='confirmer',
@@ -331,15 +322,11 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                 {'detail': 'Une facture existe déjà pour ce BC.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        now = timezone.now()
-        prefix = f"FAC-{now.strftime('%Y%m')}"
         company = request.user.company
-        count = Facture.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        with transaction.atomic():
+
+        def _create_facture(ref):
             facture = Facture.objects.create(
-                reference=f"{prefix}-{count:04d}",
+                reference=ref,
                 bon_commande=bc,
                 client=bc.client,
                 statut=Facture.Statut.BROUILLON,
@@ -356,6 +343,11 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                         prix_unitaire=ligne.prix_unitaire,
                         remise=ligne.remise,
                     )
+            return facture
+
+        # create_with_reference runs _create_facture inside a transaction, so
+        # the facture and its copied lines stay atomic like before.
+        facture = create_with_reference(Facture, 'FAC', company, _create_facture)
         return Response(
             FactureSerializer(facture).data,
             status=status.HTTP_201_CREATED,
@@ -396,16 +388,14 @@ class FactureViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
-        now = timezone.now()
-        prefix = f"FAC-{now.strftime('%Y%m')}"
         company = self.request.user.company
-        count = Facture.objects.filter(
-            reference__startswith=prefix, company=company
-        ).count() + 1
-        serializer.save(
-            created_by=self.request.user,
-            reference=f"{prefix}-{count:04d}",
-            company=company,
+        create_with_reference(
+            Facture, 'FAC', company,
+            lambda ref: serializer.save(
+                created_by=self.request.user,
+                reference=ref,
+                company=company,
+            ),
         )
 
     @action(detail=True, methods=['post'], url_path='emettre',
