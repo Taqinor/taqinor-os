@@ -42,17 +42,20 @@ const sections = [
   description="Ce que le diagnostic solaire Taqinor collecte, pourquoi, qui y accède, et vos droits (loi 09-08) — en langage clair."
   ogSlug="accueil"
 >
-  <section class="bg-azur-900 px-4 py-14 text-white">
+  <section class="px-4 py-14 text-white">
     <div class="mx-auto max-w-3xl">
-      <p class="tech-label rule-brass text-brass-300">Loi 09-08 · langage clair</p>
-      <h1 class="display mt-4 text-4xl">Politique de confidentialité</h1>
-      <p class="mt-4 max-w-xl leading-relaxed text-white/85">
+      <p class="tech-label rule-brass cine-in text-brass-300">Loi 09-08 · langage clair</p>
+      <h1 class="display cine-in mt-4 text-4xl [animation-delay:120ms]">Politique de confidentialité</h1>
+      <p class="cine-in mt-4 max-w-xl leading-relaxed text-white/85 [animation-delay:240ms]">
         Ce que nous collectons, pourquoi, et ce que vous pouvez exiger — sans jargon.
       </p>
     </div>
   </section>
 
-  <section class="mx-auto max-w-3xl px-4 py-16">
+  <!-- Le document, en pleine lumière -->
+  <div class="seam-lumiere" aria-hidden="true"></div>
+  <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
+    ><div class="mx-auto max-w-3xl">
     {sections.map((s, i) => (
       <div class="border-b border-azur-900/15 py-7 first:pt-0">
         <h2 class="display flex items-baseline gap-4 text-xl">
@@ -66,5 +69,6 @@ const sections = [
       Dernière mise à jour : juin 2026 — TAQINOR Solutions SARLAU, RC 691213 (Casablanca).
       Voir aussi les <a href="/mentions-legales" class="underline decoration-azur-600 underline-offset-2">mentions légales</a>.
     </p>
+    </div>
   </section>
 </Layout>

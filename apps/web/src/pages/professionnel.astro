@@ -54,8 +54,8 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 >
   <Article33Ribbon />
 
-  <!-- Hero — chantier industriel au couchant -->
-  <section class="relative isolate overflow-hidden bg-azur-950 text-white">
+  <!-- ACTE I — le couchant industriel plein cadre -->
+  <section class="relative isolate overflow-hidden text-white">
     <div class="absolute inset-0 -z-10">
       <Picture
         name="industriel-couchant"
@@ -67,28 +67,28 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         fetchpriority="high"
         class="h-full w-full object-cover object-[70%_30%]"
       />
-      <div class="absolute inset-0 bg-gradient-to-r from-azur-950/95 via-azur-950/50 to-azur-950/10"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/40 to-transparent"></div>
     </div>
-    <div class="mx-auto max-w-6xl px-4 py-16 sm:py-24">
-      <p class="tech-label rule-brass text-brass-300">Industriels · hôtels · cliniques</p>
-      <h1 class="display mt-4 max-w-[20ch] text-[clamp(1.9rem,6vw,3.4rem)]">L'électricité, un poste de coût que vous pouvez reprendre en main</h1>
-      <p class="mt-5 max-w-xl leading-relaxed text-white/85">
+    <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+      <p class="tech-label rule-brass cine-in text-brass-300">Industriels · hôtels · cliniques</p>
+      <h1 class="display cine-in mt-4 max-w-[20ch] text-[clamp(1.9rem,6vw,3.4rem)] [animation-delay:120ms]">L'électricité, un poste de coût que vous pouvez reprendre en main</h1>
+      <p class="cine-in mt-5 max-w-xl leading-relaxed text-white/85 [animation-delay:240ms]">
         Pour un site professionnel, une installation solaire n'est pas un geste d'image :
         c'est un actif productif, amorti en 3 à 5 ans, qui produit ensuite pendant plus de
         20 ans. Taqinor dimensionne sur vos courbes de charge réelles.
       </p>
-      <dl class="mt-10 grid max-w-2xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
+      <dl class="cine-in mt-10 grid max-w-2xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6 [animation-delay:360ms]">
         <div>
-          <dd class="fig text-base text-brass-300 sm:text-4xl">3–5 ans</dd>
-          <dt class="tech-label mt-2 text-white/70">Amortissement</dt>
+          <dd class="fig lum text-base sm:text-4xl">3–5 ans</dd>
+          <dt class="tech-label mt-2 text-lune">Amortissement</dt>
         </div>
         <div>
-          <dd class="fig text-base text-brass-300 sm:text-4xl">+20 ans</dd>
-          <dt class="tech-label mt-2 text-white/70">De production</dt>
+          <dd class="fig lum text-base sm:text-4xl">+20 ans</dd>
+          <dt class="tech-label mt-2 text-lune">De production</dt>
         </div>
         <div>
-          <dd class="fig text-base text-brass-300 sm:text-4xl">5 MW</dd>
-          <dt class="tech-label mt-2 text-white/70">Seuil d'autorisation</dt>
+          <dd class="fig lum text-base sm:text-4xl">5 MW</dd>
+          <dt class="tech-label mt-2 text-lune">Seuil d'autorisation</dt>
         </div>
       </dl>
     </div>
@@ -98,35 +98,35 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   <section class="mx-auto max-w-6xl px-4 py-20 sm:py-24">
     <div class="grid gap-6 md:grid-cols-3">
       {segments.map((s) => (
-        <div class="reveal border-l-2 border-azur-600 pl-6">
-          <p class="fig text-2xl text-azur-600">{s.n}</p>
-          <h2 class="display mt-2 text-2xl">{s.title}</h2>
-          <p class="mt-3 text-sm leading-relaxed text-encre-soft">{s.body}</p>
+        <div class="reveal border-l-2 border-brass-400/60 pl-6">
+          <p class="fig lum text-2xl">{s.n}</p>
+          <h2 class="display mt-2 text-2xl text-white">{s.title}</h2>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
         </div>
       ))}
     </div>
   </section>
 
-  <!-- Ordres de grandeur pro -->
-  <section class="bg-blanc-azur px-4 py-20 sm:py-24">
+  <!-- Ordres de grandeur pro — le grand livre lumineux -->
+  <section class="border-y border-white/10 px-4 py-20 sm:py-24">
     <div class="mx-auto max-w-4xl">
-      <p class="tech-label rule-brass text-azur-600">Transparence des prix</p>
-      <h2 class="display mt-4 text-3xl">Ordres de grandeur pour un site professionnel</h2>
-      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-encre-soft">
-        Fourchettes indicatives en toiture professionnelle — <strong class="text-encre">jamais un devis</strong> :
+      <p class="tech-label rule-brass text-brass-300">Transparence des prix</p>
+      <h2 class="display mt-4 text-3xl text-white">Ordres de grandeur pour un site professionnel</h2>
+      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-lune-soft">
+        Fourchettes indicatives en toiture professionnelle — <strong class="text-lune">jamais un devis</strong> :
         le dimensionnement réel part de vos courbes de charge et des conditions de votre
         raccordement.
       </p>
-      <div class="mt-8 border-t-2 border-azur-900">
+      <div class="mt-8 border-t-2 border-brass-400/60">
         {proBrackets.map((b) => (
-          <div class="border-b border-azur-900/15 py-5">
+          <div class="reveal border-b border-white/10 py-5">
             <div class="grid gap-1.5 sm:grid-cols-[1fr_0.7fr_1.3fr_0.7fr] sm:items-baseline sm:gap-4">
-              <span class="font-display text-base font-bold">{b.bill}</span>
-              <span class="fig text-xl text-azur-600 sm:text-2xl">{b.kwc}</span>
-              <span class="fig text-lg text-encre sm:text-xl">{b.invest}</span>
-              <span class="fig text-xl text-brass-600 sm:text-2xl">{b.payback}</span>
+              <span class="font-display text-base font-bold text-white">{b.bill}</span>
+              <span class="fig lum text-xl sm:text-2xl">{b.kwc}</span>
+              <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
+              <span class="fig text-xl text-brass-300 sm:text-2xl">{b.payback}</span>
             </div>
-            {b.exemple && <p class="tech-label mt-2.5 text-encre-faint">{b.exemple}</p>}
+            {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
           </div>
         ))}
       </div>
@@ -136,67 +136,68 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   <!-- Précision du geste — photos de chantier légendées -->
   <section class="mx-auto max-w-6xl px-4 py-20 sm:py-24">
     <div class="grid gap-4 sm:grid-cols-2">
-      <figure class="reveal overflow-hidden border border-azur-900/15 bg-blanc">
+      <figure class="reveal emerge cine-card group relative overflow-hidden">
         <Picture
           name="mesure-rails"
           alt="Traçage et mesure au mètre des rails de fixation sur toiture professionnelle"
           widths={[1600, 1024, 640]}
           ratio={4 / 3}
           sizes="(min-width: 640px) 50vw, 100vw"
-          class="w-full object-cover"
+          class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
-        <figcaption class="px-3 py-2.5">
-          <span class="tech-label block text-azur-700">Nouaceur · 3,72 kWc · implantation</span>
-          <span class="mt-0.5 block text-xs text-encre-soft">Chaque rail est tracé et mesuré avant fixation</span>
+        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+          <span class="tech-label block text-brass-300">Nouaceur · 3,72 kWc · implantation</span>
+          <span class="mt-0.5 block text-xs text-lune">Chaque rail est tracé et mesuré avant fixation</span>
         </figcaption>
       </figure>
-      <figure class="reveal overflow-hidden border border-azur-900/15 bg-blanc">
+      <figure class="reveal emerge cine-card group relative overflow-hidden">
         <Picture
           name="equipe-trois"
           alt="Équipe Taqinor devant une longue rangée de panneaux en fin de chantier"
           widths={[1600, 1024, 640]}
           ratio={3 / 2}
           sizes="(min-width: 640px) 50vw, 100vw"
-          class="w-full object-cover"
+          class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
-        <figcaption class="px-3 py-2.5">
-          <span class="tech-label block text-azur-700">El Jadida · 17,04 kWc · 21 406 kWh/an</span>
-          <span class="mt-0.5 block text-xs text-encre-soft">Fin de chantier · 24 × Canadian Solar 710 Wc · Deye 15 kW triphasé</span>
+        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+          <span class="tech-label block text-brass-300">El Jadida · 17,04 kWc · 21 406 kWh/an</span>
+          <span class="mt-0.5 block text-xs text-lune">Fin de chantier · 24 × Canadian Solar 710 Wc · Deye 15 kW triphasé</span>
         </figcaption>
       </figure>
     </div>
   </section>
 
-  <ZelligeDivider />
+  <ZelligeDivider tone="white" />
 
   <!-- Surplus + régimes MT -->
-  <section class="bg-blanc-azur px-4 py-20 sm:py-24">
+  <section class="px-4 py-20 sm:py-24">
     <div class="mx-auto max-w-3xl">
-      <p class="tech-label rule-brass text-azur-600">Loi 82-21 · moyenne tension</p>
-      <h2 class="display mt-4 text-3xl">Le surplus ne se perd pas</h2>
-      <p class="mt-4 leading-relaxed text-encre-soft">
+      <p class="tech-label rule-brass text-brass-300">Loi 82-21 · moyenne tension</p>
+      <h2 class="display mt-4 text-3xl text-white">Le surplus ne se perd pas</h2>
+      <p class="mt-4 leading-relaxed text-lune-soft">
         La loi 82-21 encadre l'autoproduction et la valorisation de l'excédent injecté au
         réseau. Pour un site en moyenne tension, le dimensionnement intègre dès l'étude la
         part autoconsommée et la part excédentaire, selon les conditions de votre accord de
         raccordement — pour que chaque kWh produit ait une valeur.
       </p>
-      <h2 class="display mt-10 text-3xl">Moyenne et haute tension : votre régime loi 82-21</h2>
-      <p class="mt-4 leading-relaxed text-encre-soft">
+      <h2 class="display mt-10 text-3xl text-white">Moyenne et haute tension : votre régime loi 82-21</h2>
+      <p class="mt-4 leading-relaxed text-lune-soft">
         Jusqu'à 5 MW raccordés en basse ou moyenne tension, l'installation relève de
-        l'<strong class="text-encre">accord de raccordement</strong> avec le gestionnaire de réseau. À partir de
+        l'<strong class="text-lune">accord de raccordement</strong> avec le gestionnaire de réseau. À partir de
         5 MW (moyenne, haute ou très haute tension), elle relève du régime
-        d'<strong class="text-encre">autorisation</strong>. Taqinor constitue le dossier technique et suit la
+        d'<strong class="text-lune">autorisation</strong>. Taqinor constitue le dossier technique et suit la
         procédure jusqu'à la mise en service.
       </p>
-      <a href="/loi-82-21" class="mt-7 inline-block bg-azur-700 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-azur-600">
+      <a href="/loi-82-21" class="mt-7 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
         Identifier mon régime en 3 questions
       </a>
     </div>
   </section>
 
+  <!-- ACTE FINAL — la salle blanche -->
   <DiagnosticForm heading="Diagnostic pour votre site professionnel" />
 
-  <CtaBand title="Vos courbes de charge méritent une étude sérieuse." href="#simulateur" />
+  <CtaBand title="Vos courbes de charge méritent une étude sérieuse." href="#simulateur" seam={false} />
 
   <StickyCta />
 </Layout>

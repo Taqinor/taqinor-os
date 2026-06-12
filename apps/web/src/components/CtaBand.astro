@@ -10,15 +10,19 @@ interface Props {
   title?: string;
   buttonLabel?: string;
   href?: string;
+  /** false si la section précédente est déjà claire (pas de couture nuit→jour) */
+  seam?: boolean;
 }
 const {
   title = 'Une étude technique gratuite, sans engagement.',
   buttonLabel = 'Recevez votre étude sur WhatsApp',
   href = '/contact#simulateur',
+  seam = true,
 } = Astro.props;
 ---
 
-<section class="bg-blanc px-4 py-16 sm:py-20">
+{seam && <div class="seam-lumiere" aria-hidden="true"></div>}
+<section class="bg-blanc-azur px-4 py-16 text-encre sm:py-20">
   <ZelligeDivider />
   <div class="mx-auto mt-6 max-w-3xl border-2 border-azur-600 bg-blanc px-6 py-10 text-center sm:px-10">
     <p class="tech-label text-azur-600">Étude gratuite</p>

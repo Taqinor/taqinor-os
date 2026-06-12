@@ -6,22 +6,22 @@ import { whatsappLink } from '../lib/whatsapp';
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
 ---
 
-<footer class="bg-azur-950 text-white/85">
+<footer class="border-t border-white/10 bg-nuit text-lune">
   <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-4">
     <div>
       <Logo size={22} theme="dark" />
-      <p class="mt-4 text-sm leading-relaxed text-white/70">
+      <p class="mt-4 text-sm leading-relaxed text-lune-soft">
         Installations solaires dimensionnées par l'ingénierie, conformes à la loi 82-21.
       </p>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-azur-200">Services</h2>
+      <h2 class="tech-label mb-4 text-brass-300">Services</h2>
       <ul class="space-y-2 text-sm">
         {NAP.services.map((s) => <li>{s}</li>)}
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-azur-200">Pages</h2>
+      <h2 class="tech-label mb-4 text-brass-300">Pages</h2>
       <ul class="space-y-2 text-sm">
         <li><a href="/résidentiel" class="transition-colors hover:text-white">Résidentiel</a></li>
         <li><a href="/professionnel" class="transition-colors hover:text-white">Professionnel</a></li>
@@ -32,16 +32,16 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations s
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-azur-200">Contact</h2>
+      <h2 class="tech-label mb-4 text-brass-300">Contact</h2>
       <ul class="space-y-2 text-sm">
         <li><a href={`tel:${NAP.phone}`} class="transition-colors hover:text-white">{NAP.phoneDisplay}</a></li>
         <li><a href={`mailto:${NAP.email}`} class="transition-colors hover:text-white">{NAP.email}</a></li>
         <li><a href={wa} rel="noopener" class="transition-colors hover:text-white">WhatsApp</a></li>
-        <li class="text-white/60">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
+        <li class="text-lune-soft">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
       </ul>
     </div>
   </div>
-  <div class="space-y-1.5 border-t border-white/10 px-4 py-5 text-center text-xs text-white/50">
+  <div class="space-y-1.5 border-t border-white/10 px-4 py-5 text-center text-xs text-lune-faint">
     <p>TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067</p>
     <p>
       © 2026 {NAP.name}. Tous droits réservés ·

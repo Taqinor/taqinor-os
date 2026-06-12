@@ -63,11 +63,11 @@ const sanctions = [
 >
   <Article33Ribbon />
 
-  <section class="bg-azur-900 px-4 py-16 text-white sm:py-20">
+  <section class="px-4 py-16 text-white sm:py-20">
     <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-brass text-brass-300">Loi 82-21 — Article 33</p>
-      <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
-      <p class="mt-5 max-w-xl leading-relaxed text-white/85">
+      <p class="tech-label rule-brass cine-in text-brass-300">Loi 82-21 — Article 33</p>
+      <h1 class="display cine-in mt-4 max-w-2xl text-4xl sm:text-5xl [animation-delay:120ms]">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
+      <p class="cine-in mt-5 max-w-xl leading-relaxed text-white/85 [animation-delay:240ms]">
         Le décret 2-25-100 et la décision ANRE 04/26 sont entrés en vigueur le 9 juin 2026.
         Depuis cette date, le régime de la loi 82-21 s'applique à toutes les installations
         d'autoproduction — y compris celles posées avant la loi.
@@ -76,45 +76,50 @@ const sanctions = [
   </section>
 
   <section class="mx-auto max-w-3xl px-4 py-14">
-    <p class="tech-label rule-brass text-azur-600">Le texte</p>
-    <h2 class="display mt-3 text-3xl">Ce que dit l'Article 33</h2>
-    <p class="mt-4 leading-relaxed text-encre-soft">
+    <p class="tech-label rule-brass text-brass-300">Le texte</p>
+    <h2 class="display mt-3 text-3xl text-white">Ce que dit l'Article 33</h2>
+    <p class="mt-4 leading-relaxed text-lune-soft">
       L'Article 33 de la loi 82-21 accorde aux exploitants d'installations existantes une
-      fenêtre de <strong class="fig text-xl text-encre">18 mois</strong> pour déposer une demande de régularisation.
+      fenêtre de <strong class="fig lum text-xl">18 mois</strong> pour déposer une demande de régularisation.
       Cette fenêtre est ouverte depuis le 9 juin 2026 : déposez maintenant. Une installation
       régularisée est sécurisée juridiquement ; une installation non régularisée est en
       situation irrégulière.
     </p>
 
-    <h2 class="display mt-12 text-3xl">Qui est concerné ?</h2>
-    <ul class="mt-4 space-y-2.5 text-sm leading-relaxed text-encre-soft">
-      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
-      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
-      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
+    <h2 class="display mt-12 text-3xl text-white">Qui est concerné ?</h2>
+    <ul class="mt-4 space-y-2.5 text-sm leading-relaxed text-lune-soft">
+      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
+      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
+      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
     </ul>
 
-    <h2 class="display mt-12 text-3xl">La régularisation en 5 étapes</h2>
-    <ol class="mt-7 border-l-2 border-azur-600">
+    <h2 class="display mt-12 text-3xl text-white">La régularisation en 5 étapes</h2>
+    <ol class="mt-7 border-l-2 border-brass-400/60">
       {steps.map((s, i) => (
         <li class="reveal relative pb-8 pl-8 last:pb-0">
-          <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-azur-700 text-lg text-white">{i + 1}</span>
-          <h3 class="display pt-1.5 text-lg">{s.title}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-encre-soft">{s.body}</p>
+          <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+          <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
         </li>
       ))}
     </ol>
 
-    <h2 class="display mt-12 text-3xl">Ce que vous risquez en ne faisant rien</h2>
-    <p class="mt-2 text-sm text-encre-soft">Sanctions prévues par la loi 82-21 :</p>
+    <h2 class="display mt-12 text-3xl text-white">Ce que vous risquez en ne faisant rien</h2>
+    <p class="mt-2 text-sm text-lune-soft">Sanctions prévues par la loi 82-21 :</p>
     <div class="mt-5 grid gap-4 sm:grid-cols-2">
       {sanctions.map((s) => (
-        <div class="reveal border border-alert-600/25 bg-alert-50 p-5">
-          <h3 class="font-display text-sm font-bold text-alert-600">{s.title}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-encre-soft">{s.body}</p>
+        <div class="reveal cine-card border-alert-300/30 p-5">
+          <h3 class="font-display text-sm font-bold text-alert-300">{s.title}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
         </div>
       ))}
     </div>
+  </section>
 
+  <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
+  <div class="seam-lumiere" aria-hidden="true"></div>
+  <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
+    <div class="mx-auto max-w-3xl">
     <ZelligeDivider />
 
     <!-- Mini-formulaire Article 33 : 2 champs → message WhatsApp COMPLET.
@@ -148,6 +153,7 @@ const sanctions = [
         rel="noopener"
         class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
       >Démarrer sur WhatsApp</a>
+    </div>
     </div>
   </section>
 
