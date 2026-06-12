@@ -255,9 +255,13 @@ class Command(BaseCommand):
             return categories[nom]
 
         for nom, sku, cat, sell_ttc, buy_ttc, qte, seuil in CATALOGUE:
-            # match by SKU or by exact name — never touch what already exists
+            # match by SKU (all rows — the DB unique constraint includes
+            # archived ones) or by exact name among ACTIVE products only:
+            # an archived demo product frees its name for the catalogue item.
             if (Produit.objects.filter(company=company, sku=sku).exists()
-                    or Produit.objects.filter(company=company, nom__iexact=nom).exists()):
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
                 skipped.append(nom)
                 continue
 
@@ -285,7 +289,9 @@ class Command(BaseCommand):
         # ── Catalogue POMPAGE (additif, prix d'achat laissés vides) ──
         for nom, sku, ttc, qte, seuil, cv, hmt, debit in POMPAGE:
             if (Produit.objects.filter(company=company, sku=sku).exists()
-                    or Produit.objects.filter(company=company, nom__iexact=nom).exists()):
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
                 skipped.append(nom)
                 continue
             produit = Produit.objects.create(

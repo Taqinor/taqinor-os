@@ -108,6 +108,21 @@ class TestSeedCatalogue(TestCase):
                 company=self.company, nom__iexact='Structures acier').count(), 1)
         self.assertIn('Structures acier', out)
 
+    def test_archived_product_frees_its_name_for_the_catalogue(self):
+        # Un produit démo ARCHIVÉ ne bloque plus la création de la version
+        # catalogue portant le même nom (l'actif, lui, bloque toujours).
+        Produit.objects.create(
+            company=self.company, nom='Structures acier', sku='STR-LEGACY2',
+            prix_vente=Decimal('375.00'), quantite_stock=5, is_archived=True,
+        )
+        seed(self.company)
+        actifs = Produit.objects.filter(
+            company=self.company, nom__iexact='Structures acier',
+            is_archived=False)
+        self.assertEqual(actifs.count(), 1)
+        self.assertEqual(actifs.first().sku, 'STR-ACIER')
+        self.assertEqual(actifs.first().prix_vente, Decimal('416.67'))  # 500 TTC
+
     def test_scoped_to_target_company_only(self):
         other = make_company(slug='test-cat-other')
         seed(self.company)
