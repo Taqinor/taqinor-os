@@ -92,20 +92,61 @@ class TestBuildQuoteData(TestCase):
         self.assertIn('eco_s_monthly', data)
         self.assertEqual(len(data['eco_s_monthly']), 12)
 
-    def test_split_autoadds_battery_to_avec_only(self):
+    def test_no_hybrid_means_single_option_no_fabricated_battery(self):
+        """RÈGLE DURE : sans onduleur hybride, l'option « avec batterie » ne
+        se rend pas — document à option unique, jamais de batterie fabriquée
+        sur une option sans onduleur."""
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 550W', '8', '2000'),
             ('Onduleur reseau', '1', '14000'),
         ])
         data = build_quote_data(devis)
+        self.assertEqual(data['scenario'], 'Sans batterie')
+        self.assertEqual(data['recommended'], 'Sans batterie')
         sans = [it['designation'].lower() for it in data['sans_items']]
-        avec = [it['designation'].lower() for it in data['avec_items']]
-        # réseau inverter stays in Option 1; Option 2 drops it and gains a battery.
         self.assertTrue(any('reseau' in d or 'réseau' in d for d in sans))
-        self.assertFalse(any('reseau' in d or 'réseau' in d for d in avec))
+
+    def test_residential_hybrid_without_battery_synthesizes_small_module(self):
+        """Échelle résidentielle (≤ 15 kWc) : hybride présent sans batterie →
+        un module par défaut est ajouté (comportement historique conservé)."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '8', '2000'),
+            ('Onduleur hybride 5kW', '1', '14000'),
+        ])
+        data = build_quote_data(devis)
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        avec = [it['designation'].lower() for it in data['avec_items']]
         self.assertTrue(any('batterie' in d for d in avec))
-        self.assertFalse(any('batterie' in d for d in sans))
+
+    def test_large_plant_never_gets_token_battery(self):
+        """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
+        l'option avec batterie est indisponible."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 710W', '176', '1166.67'),
+            ('Onduleur réseau 100kW', '1', '65000'),
+            ('Onduleur hybride 20kW', '1', '40000'),
+        ])
+        data = build_quote_data(devis)
+        # hybride présent mais pas de batterie et 124.96 kWc → pas de synthèse
+        avec = [it['designation'].lower() for it in data['avec_items']]
+        self.assertFalse(any('batterie' in d for d in avec))
+        self.assertEqual(data['scenario'], 'Sans batterie')
+
+    def test_no_inverter_at_all_fails_option_pdf(self):
+        """Un devis sans aucun onduleur ne peut pas produire le PDF à options."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '6', '1500'),
+            ('Batterie 5 kWh', '1', '16000'),
+        ], reference='DEV-QE-NOINV')
+        with self.assertRaises(ValueError):
+            build_quote_data(devis, {'pdf_mode': 'full'})
+        # …mais le format une page (liste simple, sans options) reste possible
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertEqual(data['pdf_mode'], 'onepage')
 
     def test_option_split_routes_both_inverters(self):
         from apps.ventes.quote_engine import build_quote_data
@@ -132,12 +173,11 @@ class TestBuildQuoteData(TestCase):
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 450W', '6', '1500'),
+            ('Onduleur hybride 5kW', '1', '14000'),
             ('Batterie 5 kWh', '1', '16000'),
         ])
         data = build_quote_data(devis)
-        # Battery already present: sans excludes it, avec keeps the single one.
-        self.assertEqual(len(data['sans_items']), 1)
-        self.assertEqual(len(data['avec_items']), 2)
+        # Battery already present: avec keeps the single one (no synthesis).
         batteries = [it for it in data['avec_items']
                      if 'batterie' in it['designation'].lower()]
         self.assertEqual(len(batteries), 1)
@@ -147,7 +187,8 @@ class TestBuildQuoteData(TestCase):
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 450W', '10', '1000'),
         ], remise_globale='10')
-        data = build_quote_data(devis)
+        # format une page : pas d'options, la règle onduleur ne s'applique pas
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         # 10 x 1000 HT x1.20 TTC = 12000 before; -10% global = 10800.
         self.assertEqual(data['total_sans_before'], 12000.0)
         self.assertEqual(data['discount_pct'], 10.0)
@@ -446,6 +487,99 @@ class TestPdfFormats(TestCase):
             G._render_pdf_weasyprint = orig
         self.assertIn('Desc visible A', cap2['html'])
         self.assertEqual(len(HTML(string=cap2['html']).render().pages), 1)
+
+    def test_figures_identical_on_every_page(self):
+        """ONE source of truth: the page-1 headline totals equal the page-2
+        totals block exactly (no rounding drift), and the étude repeats the
+        page-1 production/savings/payback verbatim."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 156978, 'conso_annuelle': 120000,
+            'taux_autoconso': 71.4, 'taux_couverture': 93.3,
+            'economies_annuelles': 274711, 'payback': 2.1, 'prix_kwc': 4557,
+            'prod_mensuelle': [13081] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.save()
+        data = build_quote_data(self.devis)
+        # totaux canoniques : la valeur page 1 EST la valeur du bloc page 2
+        self.assertEqual(data['total_sans'], data['totaux_sans']['ttc'])
+        self.assertEqual(data['total_avec'], data['totaux_avec']['ttc'])
+        # production/économies de l'étude = celles de la page 1 (canoniques)
+        self.assertEqual(data['prod_kwh'], data['etude']['production_annuelle'])
+        self.assertEqual(data['eco_s_ann'], data['etude']['economies_annuelles'])
+        self.assertEqual(data['roi_s'], data['etude']['payback'])
+        # prix/kWc recalculé depuis le total canonique (jamais l'ancien stocké)
+        ref_total = data['total_sans']
+        self.assertEqual(data['etude']['prix_kwc'],
+                         round(ref_total / data['puissance_kwc']))
+        # rendu : le Total TTC canonique apparaît plusieurs fois — même nombre
+        # partout (les pages diffèrent seulement par le type d'espace fine)
+        import re
+        html, doc = self._render()
+        digits = str(data['totaux_sans']['ttc'])
+        pattern = r'[\s   ]?'.join(
+            [digits[max(0, len(digits) - 3 * (i + 1)):len(digits) - 3 * i]
+             for i in range((len(digits) + 2) // 3 - 1, -1, -1)])
+        self.assertGreaterEqual(len(re.findall(pattern, html)), 2)
+
+    def test_tva_note_matches_applied_math(self):
+        """Le texte TVA décrit exactement le taux appliqué — l'ancienne
+        mention contradictoire 10 %/20 % a disparu de tout le document."""
+        html, _ = self._render()
+        self.assertIn('TVA 20 % appliquée sur l’ensemble'.replace('’', "'"),
+                      html.replace('&#8217;', "'").replace('’', "'"))
+        self.assertNotIn('10&#37; sur les modules', html)
+        self.assertNotIn('10&#37; modules', html)
+
+    def test_industrial_document_single_option_with_etude(self):
+        """Document industriel : option unique sans batterie (jamais d'option
+        avec batterie fabriquée), étude incluse d'office → 4 pages, mode
+        affiché Industrielle, confirmation unique en signature."""
+        from apps.ventes.models import Devis
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '176', '1166.67'),
+            ('Onduleur réseau Huawei 100kW Triphasé', '1', '65000'),
+            ('Structures acier', '176', '416.67'),
+            ('Installation', '1', '52000'),
+        ], reference='DEV-QE-IND')
+        Devis.objects.filter(pk=devis.pk).update(
+            mode_installation='industriel',
+            etude_params={
+                'kwc': 124.96, 'production_annuelle': 156978,
+                'conso_annuelle': 240000, 'taux_autoconso': 92.1,
+                'taux_couverture': 60.2, 'economies_annuelles': 252000,
+                'payback': 2.2, 'prix_kwc': 4500,
+                'prod_mensuelle': [13081] * 12, 'conso_mensuelle': [20000] * 12,
+            })
+        devis.refresh_from_db()
+        html, doc = self._render(devis=devis)
+        self.assertEqual(len(doc.pages), 4)  # 1 proposition, 2 équipements, 3 étude, 4 signature
+        # option unique : pas de boilerplate « Onduleur hybride Deye »,
+        # pas de batterie inventée, cases à deux options absentes
+        self.assertNotIn('Onduleur hybride Deye', html)
+        self.assertNotIn('Batterie de stockage incluse', html)
+        self.assertIn('Confirmation de la commande', html)
+        self.assertIn('Industrielle / Commerciale', html)
+        # taux réels présents (consommation fournie)
+        self.assertIn('Taux de couverture', html)
+
+    def test_etude_without_consumption_omits_rates_no_dashes(self):
+        """Étude sans consommation : les cartes taux sont OMISES (pas de tiret,
+        pas d'« autoconsommation 100 % » fabriquée)."""
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 12486,
+            'conso_annuelle': None, 'taux_autoconso': 100,
+            'taux_couverture': None, 'economies_annuelles': 21851,
+            'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': None,
+        }
+        self.devis.save()
+        html, doc = self._render()
+        self.assertNotIn("Taux d'autoconsommation", html)
+        self.assertNotIn('Taux de couverture', html)
+        self.assertNotIn('Consommation annuelle', html)
 
     def test_unknown_options_are_whitelisted_away(self):
         from apps.ventes.quote_engine import clean_pdf_options

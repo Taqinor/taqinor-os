@@ -257,6 +257,8 @@ RECOMMENDED = "Avec batterie"
 DEVIS_FINAL    = False
 PAYMENT_MODE   = "standard"   # "standard" or "custom"
 CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
+PAGES_TOTAL = 3                # nombre réel de pages (4 avec l'étude)
+PAGE3_NUM = 3                  # numéro de la page de signature
 
 # ── SVG equipment icons ──────────────────────────────────────────────────────
 _SVG = {
@@ -413,11 +415,12 @@ def footer_p1():
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>'
             f'<div style="font-size:7pt;color:#888888;text-align:center;">'
             f'contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma</div>'
-            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;3 &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
             f'</div>')
 
-def footer(n, total=3):
+def footer(n, total=None):
     """Pages 2-3 footer — dark navy."""
+    total = total or PAGES_TOTAL
     return (f'<div style="background:{CN};padding:7px 24px;flex-shrink:0;display:flex;'
             f'align-items:center;justify-content:space-between;">'
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>'
@@ -433,7 +436,7 @@ def footer_p3(extra_style=""):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma</div>'
-            f'<div style="font-size:7pt;color:#888;">Page 3&nbsp;/&nbsp;3 &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
             f'</div>'
             f'<div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">'
             f'Taqinor Solutions SARLAU &middot; RC 691213 &middot; ICE 003799642000067 &middot; '
@@ -614,12 +617,17 @@ def _desc_lines_html(it, max_lines, font_pt):
         for ln in lines)
 
 
-def _totals_block_rows(total_ht, colspan):
-    """Sous-total HT \u2192 Remise visible \u2192 Total HT \u2192 TVA \u2192 Total TTC."""
-    remise = total_ht * DISCOUNT_PCT / 100 if DISCOUNT_PCT > 0 else 0.0
-    net_ht = total_ht - remise
-    tva = net_ht * TVA_PCT / 100
-    ttc = net_ht + tva
+def _totals_block_rows(totaux, colspan):
+    """Sous-total HT \u2192 Remise visible \u2192 Total HT \u2192 TVA \u2192 Total TTC.
+
+    Renders the CANONICAL totals computed once by the builder \u2014 every page
+    shows these exact figures (never re-derived, no rounding drift).
+    """
+    total_ht = totaux["ht_brut"]
+    remise = totaux["remise"]
+    net_ht = totaux["ht_net"]
+    tva = totaux["tva"]
+    ttc = totaux["ttc"]
 
     def row(label, value, navy=False, neg=False):
         color = CA if navy else (CGR if neg else CG7)
@@ -642,13 +650,12 @@ def _totals_block_rows(total_ht, colspan):
     return rows
 
 
-def equip_rows(items, hi_bat=False):
-    rows = ""; total_ht = 0.0
+def equip_rows(items, totaux, hi_bat=False):
+    rows = ""
     for i, it in enumerate(items):
         des = it["designation"]; qty = it["quantite"]
         pu_ht = _item_pu_ht(it)
         mar = (it.get("marque") or "").strip()
-        total_ht += qty * pu_ht
         # Enrich panel designation with watt info
         if "panneaux" in des.lower() and WP:
             des = f"{des} {WP}\u00a0Wc"
@@ -658,10 +665,8 @@ def equip_rows(items, hi_bat=False):
             gar = "\u2014"
             for k, v in _GAR.items():
                 if k in des.lower(): gar = v; break
-        # Colonne \u00e9troite : version courte (texte complet en description)
-        gar_short = gar.split("\u00b7")[0].strip()
-        if len(gar_short) > 22:
-            gar_short = gar_short[:21] + "\u2026"
+        # Texte de garantie complet \u2014 il S'ENROULE dans la colonne, jamais
+        # tronqu\u00e9 en plein mot.
         is_bat = "batterie" in des.lower() and hi_bat
         bg = f"background:{CAL};" if is_bat else (f"background:{CG1};" if i % 2 == 1 else "")
         qty_s = int(qty) if qty == int(qty) else qty
@@ -671,10 +676,11 @@ def equip_rows(items, hi_bat=False):
         tot_ht_s = _fmt2(qty * pu_ht) if pu_ht > 0 else dash
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
                  f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
-                 f'<td class="tc">{gar_short}</td><td class="tc">{qty_s}</td>'
+                 f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
+                 f'<td class="tc">{qty_s}</td>'
                  f'<td class="tr">{pu_ht_s}</td>'
                  f'<td class="tr">{tot_ht_s}</td></tr>')
-    rows += _totals_block_rows(total_ht, colspan=4)
+    rows += _totals_block_rows(totaux, colspan=4)
     return rows
 
 # ── Global CSS ────────────────────────────────────────────────────────────────
@@ -768,6 +774,12 @@ def page1():
     # Prix par kWc installé (résumé compétiteur) — sous chaque prix d'option
     _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / KWC)}/kWc' if KWC > 0 else ''
     _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / KWC)}/kWc' if KWC > 0 else ''
+    # Puces générées depuis l'équipement RÉEL de chaque option (jamais de
+    # texte boilerplate qui contredirait la liste d'équipements).
+    _sb_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in SANS_BULLETS) or \
+        f"<li>{SVG_CHECK}Équipement détaillé en page 2</li>"
+    _ab_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in AVEC_BULLETS) or \
+        f"<li>{SVG_CHECK}Équipement détaillé en page 2</li>"
     # KPI economies card — scenario-aware
     if SCENARIO == 'Sans batterie':
         _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}</span>'
@@ -890,11 +902,7 @@ def page1():
       <div style="display:inline-block;align-self:flex-start;background:#e8f5e9;color:#2e7d32;border-radius:12px;padding:4px 10px;font-size:13px;font-weight:600;margin-bottom:7px;">{SVG_CHART}Retour en {ROI_S} ans</div>
       <div style="height:1px;background:{CG2};margin-bottom:6px;"></div>
       <ul style="list-style:none;padding:0;font-size:7pt;line-height:1.8;color:{CG7};margin-bottom:6px;">
-        <li>{SVG_CHECK}{NB_PAN} panneaux {WP}&nbsp;W</li>
-        <li>{SVG_CHECK}Onduleur r&#233;seau Huawei</li>
-        <li>{SVG_CHECK}Smart Meter + Wifi Dongle</li>
-        <li>{SVG_CHECK}Monitoring int&#233;gr&#233; via app Huawei</li>
-        <li>{SVG_CHECK}Structures + installation compl&#232;te</li>
+        {_sb_lis}
       </ul>
       <div style="height:1px;background:{CG2};margin-top:auto;margin-bottom:6px;"></div>
       <div style="background:{CG1};border:1px solid {CG2};border-radius:5px;padding:5px 9px;">
@@ -914,11 +922,7 @@ def page1():
       <div style="display:inline-block;align-self:flex-start;background:#1a1a2e;color:white;border-radius:12px;padding:4px 10px;font-size:13px;font-weight:600;margin-bottom:7px;">{SVG_CHART2}Retour en {ROI_A} ans</div>
       <div style="height:1px;background:{CG2};margin-bottom:6px;"></div>
       <ul style="list-style:none;padding:0;font-size:7pt;line-height:1.8;color:{CG7};margin-bottom:6px;">
-        <li>{SVG_CHECK}{NB_PAN} panneaux {WP}&nbsp;W</li>
-        <li>{SVG_CHECK}Onduleur hybride Deye</li>
-        <li>{SVG_BOLT}Batterie de stockage incluse</li>
-        <li>{SVG_CHECK}Monitoring int&#233;gr&#233; via app Deye</li>
-        <li>{SVG_CHECK}Structures + installation compl&#232;te</li>
+        {_ab_lis}
       </ul>
       <div style="height:1px;background:{CG2};margin-top:auto;margin-bottom:6px;"></div>
       <div style="background:white;border:1px solid {CG2};border-radius:5px;padding:5px 9px;">
@@ -950,8 +954,8 @@ def page1():
 
 # ── PAGE 2 — equipment tables + charts ───────────────────────────────────────
 def page2(sans_items, img_roi, img_mon):
-    sr = equip_rows(sans_items, hi_bat=False)
-    ar = equip_rows(AVEC_ITEMS, hi_bat=True)
+    sr = equip_rows(sans_items, TOTAUX_SANS, hi_bat=False)
+    ar = equip_rows(AVEC_ITEMS, TOTAUX_AVEC, hi_bat=True)
 
     # Scenario visibility
     _p2_s1 = 'display:none;' if SCENARIO == 'Avec batterie' else ''
@@ -1041,7 +1045,7 @@ def page2(sans_items, img_roi, img_mon):
 
     </div>
     <div style="margin-top:4px;font-size:6pt;color:{CG4};font-style:italic;">
-      * TVA&#160;: 10&#37; sur les modules photovolta\u00efques, 20&#37; sur les autres \u00e9quipements et travaux.
+      * {TVA_NOTE}
     </div>
   </div>
 
@@ -1088,7 +1092,24 @@ def page3():
         f'</div>'
         f'</div>'
         f'</div>'
-    ) if SCENARIO == "Les deux (Sans + Avec)" else ""
+    ) if SCENARIO == "Les deux (Sans + Avec)" else (
+        # Document à option unique : UNE confirmation, pas de cases à choix
+        f'<div style="margin-bottom:6px;">'
+        f'<div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;'
+        f'letter-spacing:1px;margin-bottom:5px;">Confirmation de la commande</div>'
+        f'<div style="border:1.5px solid {CA};border-radius:7px;padding:7px 11px;'
+        f'background:{CAL};display:flex;align-items:center;gap:9px;">'
+        f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
+        f'<div>'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};">'
+        f'Syst&#232;me photovolta&#239;que {KWC}&#160;kWc &#8212; '
+        f'{"Sans batterie" if SCENARIO == "Sans batterie" else "Avec batterie"}</div>'
+        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">'
+        f'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
 
     # ── Payment section (Devis Final only) ──
     _payment_html = ""
@@ -1260,7 +1281,7 @@ def page3():
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>60&#37; \u00e0 la r\u00e9ception du mat\u00e9riel</li>
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>10&#37; apr\u00e8s la mise en marche</li>
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>D\u00e9lai d&#8217;installation&#160;: 7\u201314 jours ouvr\u00e9s</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>TVA 10&#37; modules / 20&#37; autres</li>
+        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{TVA_NOTE}</li>
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Tarifs de r\u00e9f\u00e9rence&#160;: bar\u00e8me ONEE/SRM</li>
       </ul>
     </div>
@@ -1385,24 +1406,35 @@ def page_etude():
                 f'text-transform:uppercase;margin-bottom:3px;">{label}</div>'
                 f'<div class="serif" style="font-size:14pt;color:{CN};">{value}</div></div>')
 
-    def _g(key, suffix="", default="\u2014"):
+    def _card_if(label, key, suffix="", accent=False):
+        """Card rendered ONLY when the value exists \u2014 a figure that cannot be
+        computed is omitted entirely, never printed as a dash or a default."""
         v = e.get(key)
         if v in (None, ""):
-            return default
-        return f"{v}{suffix}"
+            return ""
+        return card(label, f"{v}{suffix}", accent=accent)
 
+    # Sans consommation r\u00e9elle, les taux n'ont pas de sens : on les omet
+    # (jamais d'\u00ab Autoconsommation 100 % \u00bb fabriqu\u00e9e).
+    has_conso = e.get("conso_annuelle") not in (None, "", 0)
     cards1 = (
         card("Puissance cr\u00eate", f"{KWC}\u00a0kWc", accent=True)
-        + card("Production annuelle", _g("production_annuelle", "\u00a0kWh"))
-        + card("Consommation annuelle", _g("conso_annuelle", "\u00a0kWh"))
-        + card("Prix par kWc", _g("prix_kwc", "\u00a0MAD"))
+        + _card_if("Production annuelle", "production_annuelle", "\u00a0kWh")
+        + _card_if("Consommation annuelle", "conso_annuelle", "\u00a0kWh")
+        + _card_if("Prix par kWc", "prix_kwc", "\u00a0MAD")
     )
     cards2 = (
-        card("Taux d'autoconsommation", _g("taux_autoconso", "\u00a0%"), accent=True)
-        + card("Taux de couverture", _g("taux_couverture", "\u00a0%"), accent=True)
-        + card("\u00c9conomies annuelles", _g("economies_annuelles", "\u00a0MAD"))
-        + card("Retour sur investissement", _g("payback", "\u00a0ans"))
+        (_card_if("Taux d'autoconsommation", "taux_autoconso", "\u00a0%", accent=True)
+         if has_conso else "")
+        + (_card_if("Taux de couverture", "taux_couverture", "\u00a0%", accent=True)
+           if has_conso else "")
+        + _card_if("\u00c9conomies annuelles", "economies_annuelles", "\u00a0MAD")
+        + _card_if("Retour sur investissement", "payback", "\u00a0ans")
     )
+    _rates_note = (
+        "* Taux d'autoconsommation : part de la production solaire "
+        "consommée sur site. Taux de couverture : part de la "
+        "consommation totale couverte par le solaire. ") if has_conso else ""
     chart_html = (
         f'<div style="background:{CG1};border-radius:7px;padding:10px 12px;'
         f'border:1px solid {CG2};margin-top:10px;">'
@@ -1433,9 +1465,7 @@ def page_etude():
     <div style="display:flex;gap:9px;">{cards2}</div>
     {chart_html}
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
-      * Taux d'autoconsommation\u00a0: part de la production solaire consomm\u00e9e sur site.
-      Taux de couverture\u00a0: part de la consommation totale couverte par le solaire.
-      Estimations non contractuelles.
+      {_rates_note}Estimations non contractuelles.
     </div>
   </div>
 
@@ -1733,6 +1763,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
     global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
+    global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, SANS_BULLETS, AVEC_BULLETS
 
     CLIENT_NAME  = data["client_name"]
     CLIENT_ADDR  = data["client_addr"]
@@ -1764,6 +1795,30 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
+    _tva_lbl = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
+    TVA_NOTE       = data.get("tva_note") or (
+        f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
+
+    # Totaux canoniques (une seule source pour toutes les pages). À défaut
+    # (anciens appels), reconstruits une fois ici avec la même chaîne.
+    def _fallback_totaux(rows):
+        ht_brut = round(sum(r["quantite"] * _item_pu_ht(r) for r in rows), 2)
+        remise = round(ht_brut * DISCOUNT_PCT / 100, 2) if DISCOUNT_PCT > 0 else 0.0
+        ht_net = round(ht_brut - remise, 2)
+        tva = round(ht_net * TVA_PCT / 100, 2)
+        return {"ht_brut": ht_brut, "remise": remise, "ht_net": ht_net,
+                "tva": tva, "ttc": round(ht_net + tva)}
+    TOTAUX_SANS = data.get("totaux_sans") or _fallback_totaux(data["sans_items"])
+    TOTAUX_AVEC = data.get("totaux_avec") or _fallback_totaux(data["avec_items"])
+    SANS_BULLETS = data.get("sans_bullets") or []
+    AVEC_BULLETS = data.get("avec_bullets") or []
+
+    # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
+    # (l'étude insérée entre les pages 2 et 3 porte le total à 4).
+    global PAGES_TOTAL, PAGE3_NUM
+    _with_etude = bool(INCLUDE_ETUDE and ETUDE) and data.get("pdf_mode", "full") == "full"
+    PAGES_TOTAL = 4 if _with_etude else 3
+    PAGE3_NUM = PAGES_TOTAL
     SANS_ITEMS   = data["sans_items"]
     AVEC_ITEMS   = data["avec_items"]
     ECO_S_M      = data["eco_s_monthly"]

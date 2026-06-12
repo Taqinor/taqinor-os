@@ -566,3 +566,31 @@ export function computeBuyCost(lines, produits) {
   }
   return any ? Math.round(cost) : null
 }
+
+// ── Disponibilité de l'option « avec batterie » ───────────────────────────────
+// Règle dure (alignée moteur PDF) : une option ne se rend jamais sans onduleur.
+// Composer des hybrides en parallèle est raisonnable jusqu'à MAX_HYBRID_UNITS.
+export const MAX_HYBRID_UNITS = 8
+
+export function avecBatterieAvailability(lines, produits, kwp) {
+  const hasHyb = lines.some(l =>
+    isHybridInverter(l.designation) && parseFloat(l.quantite) > 0)
+  const hasBat = lines.some(l =>
+    isBattery(l.designation) && parseFloat(l.quantite) > 0)
+  if (hasHyb && hasBat) return { available: true }
+  // Diagnostic : le plus gros hybride du stock suffit-il, même composé ?
+  const maxKw = Math.max(0, ...produits
+    .filter(p => isHybridInverter(p.nom))
+    .map(p => parseKw(p.nom) || 0))
+  const unitsNeeded = maxKw > 0 ? Math.ceil((kwp || 0) / maxKw) : Infinity
+  let reason
+  if (!hasHyb && maxKw > 0 && unitsNeeded > MAX_HYBRID_UNITS) {
+    reason = `puissance requise ${kwp} kWc — il faudrait ${unitsNeeded} onduleurs `
+      + `hybrides de ${maxKw} kW en parallèle (déraisonnable au-delà de ${MAX_HYBRID_UNITS})`
+  } else if (!hasHyb) {
+    reason = 'aucun onduleur hybride dans la liste'
+  } else {
+    reason = 'aucune batterie dans la liste'
+  }
+  return { available: false, reason }
+}
