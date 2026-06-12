@@ -1281,6 +1281,157 @@ textarea.form-control {
   100% { background-position: -200% 0; }
 }
 
+/* ════ MOBILE (≤ 768 px) — tout vit DANS la media query : le bureau
+   au-dessus de 768 px reste pixel-identique. Modèle visuel : le
+   formulaire lead (sections → onglets) et l'identité navy/gold. ════ */
+.header-menu-btn {
+  display: none;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  padding: 10px;
+  margin-right: 4px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.drawer-overlay { display: none; }
+.gen-preview-toggle { display: none; }
+
+@media (max-width: 768px) {
+  html, body { overflow-x: hidden; }
+
+  /* ── Coquille : sidebar → tiroir ── */
+  .header-menu-btn { display: flex; align-items: center; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1500;
+    width: 264px;
+    min-height: 100dvh;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    box-shadow: 8px 0 28px rgba(15, 23, 42, 0.35);
+  }
+  .layout.drawer-open .sidebar { transform: none; }
+  .drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    background: rgba(15, 23, 42, 0.5);
+  }
+  .sidebar--collapsed { width: 264px; }
+  .sidebar-toggle { display: none; }
+  .layout-content { padding: 0.9rem; }
+  .page-header { flex-wrap: wrap; gap: 0.5rem; }
+  .page-header-actions { flex-wrap: wrap; gap: 0.5rem; }
+  .search-input { width: 100%; }
+
+  /* ── Tactile : cibles ≥ 44 px, pas de défilement horizontal ── */
+  .btn, .btn-sm, .form-select, .form-control, .pp-trigger { min-height: 44px; }
+  .actions-cell { flex-wrap: wrap; gap: 6px; }
+  .modal-overlay { padding: 8px; }
+  .modal { max-height: calc(100dvh - 16px); }
+
+  /* ── Listes (leads, devis, clients) : lignes → cartes ── */
+  .data-table thead { display: none; }
+  .data-table, .data-table tbody, .data-table tr { display: block; width: 100%; }
+  .data-table tr {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid var(--cat-navy);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+  }
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border: none;
+    padding: 6px 0;
+    text-align: right;
+  }
+  .data-table td::before {
+    content: attr(data-label);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  .data-table td:not([data-label]) { justify-content: flex-start; text-align: left; }
+  .data-table td:not([data-label])::before { content: none; }
+  .data-table td.m-hide { display: none; }
+
+  /* ── Générateur : lignes de produits → cartes empilées ── */
+  .lines-table-wrap { overflow: visible; }
+  .lines-table thead { display: none; }
+  .lines-table, .lines-table tbody, .lines-table tr { display: block; width: 100%; }
+  .lines-table tr {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid var(--cat-gold);
+    border-radius: 10px;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+  }
+  .lines-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: none;
+    padding: 4px 0;
+  }
+  .lines-table td::before {
+    content: attr(data-label);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    flex-shrink: 0;
+  }
+  .lines-table td:not([data-label])::before { content: none; }
+  .lines-table td .form-control-sm,
+  .lines-table td .form-select-sm { max-width: 60%; }
+  .lines-table td:not([data-label]) .form-control-sm { max-width: 100%; width: 100%; }
+  .pp-pop { width: min(92vw, 380px); }
+
+  /* ── Boutons d'action du générateur : footer collant ── */
+  .gen-actions-sticky {
+    position: sticky;
+    bottom: 0;
+    z-index: 60;
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+    padding: 10px 0 6px;
+    flex-wrap: wrap;
+  }
+  .gen-actions-sticky .btn-primary { flex: 1 1 100%; min-height: 48px; }
+
+  /* ── Aperçu de simulation repliable ── */
+  .gen-preview-toggle {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+  }
+  .gen-preview-body.m-collapsed { display: none; }
+
+  /* Groupes radio (modes, type de pompe…) : multi-lignes, cibles 44px */
+  .gen-radio-group { flex-wrap: wrap; }
+  .gen-radio { min-height: 44px; }
+
+  /* Catalogue : actions tactiles */
+  .cat-row-actions .btn-sm { min-height: 44px; }
+}
+
 /* ── Utility ──────────────────────────────────────────── */
 .mb-8  { margin-bottom: 8px; }
 .mt-16 { margin-top: 16px; }

@@ -110,6 +110,7 @@ export default function DevisGenerator() {
 
   // ── Lignes (prix TTC, comme le simulateur) & remise ──
   const [lines, setLines] = useState([])
+  const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
@@ -1010,8 +1011,15 @@ export default function DevisGenerator() {
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}
         {modeInstallation !== 'agricole' && (
         <div className="gen-card">
-          <div className="gen-card-header">📊 Aperçu de la Simulation</div>
-          <div className="gen-card-body">
+          <div className="gen-card-header">
+            📊 Aperçu de la Simulation
+            {/* Repliable sur téléphone uniquement (bouton caché sur bureau) */}
+            <button type="button" className="btn btn-sm btn-outline gen-preview-toggle"
+                    onClick={() => setPreviewCollapsed(v => !v)}>
+              {previewCollapsed ? 'Afficher' : 'Replier'}
+            </button>
+          </div>
+          <div className={`gen-card-body gen-preview-body${previewCollapsed ? ' m-collapsed' : ''}`}>
             {etudeIndustrielle && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
                 <MetricCard label="Taux d'autoconsommation"
@@ -1147,24 +1155,24 @@ export default function DevisGenerator() {
                             onChange={id => onProduitChange(l._key, id)}
                           />
                         </td>
-                        <td>
+                        <td data-label="Qté">
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
-                        <td>
+                        <td data-label="Prix unit. TTC">
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.prix_unit_ttc}
                                  onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
                         </td>
-                        <td>
+                        <td data-label="TVA %">
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right"
                                  style={{ width: 56, fontSize: '0.75rem', color: '#64748b' }}
                                  value={l.taux_tva ?? '20'}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="line-total">{formatMoney(lineTtc)}</td>
+                        <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
                         <td>
                           <button type="button" className="btn-icon-danger"
                                   onClick={() => removeLine(l._key)} title="Supprimer">✕</button>
@@ -1287,7 +1295,7 @@ export default function DevisGenerator() {
               Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium
               3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
             </p>
-            <div className="gen-actions-right">
+            <div className="gen-actions-right gen-actions-sticky">
               <button type="button" className="btn btn-outline" onClick={handleReset}>
                 🔄 Réinitialiser
               </button>

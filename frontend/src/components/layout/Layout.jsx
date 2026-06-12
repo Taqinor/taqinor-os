@@ -9,6 +9,9 @@ import Header from './Header'
 export default function Layout({ children }) {
   const dispatch = useDispatch()
   const [collapsed, setCollapsed] = useState(false)
+  // Tiroir mobile (≤ 768 px) — sans effet sur le bureau (classe ignorée
+  // hors media query). Fermé à chaque navigation.
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const isAuthenticated = useSelector(s => s.auth.isAuthenticated)
   const profile = useSelector(s => s.parametres.profile)
   const navigation = useNavigation()
@@ -22,12 +25,16 @@ export default function Layout({ children }) {
   }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="layout">
+    <div className={`layout${drawerOpen ? ' drawer-open' : ''}`}>
       {/* Indicateur de navigation instantané — plus d'écran périmé muet */}
       {navigation.state !== 'idle' && <div className="route-progress" />}
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(v => !v)} />
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(v => !v)}
+               onNavigate={() => setDrawerOpen(false)} />
+      {drawerOpen && (
+        <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
+      )}
       <div className="layout-main">
-        <Header />
+        <Header onMenu={() => setDrawerOpen(v => !v)} />
         <main className="layout-content">
           {children}
         </main>

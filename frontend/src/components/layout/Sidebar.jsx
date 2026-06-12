@@ -96,7 +96,7 @@ const NAV_SECTIONS = [
   },
 ]
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const dispatch    = useDispatch()
   const navigate    = useNavigate()
   const role        = useSelector((s) => s.auth.role) || 'normal'
@@ -156,6 +156,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                   to={item.to}
                   end
                   title={collapsed ? item.label : undefined}
+                  onClick={onNavigate}
                   className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
                 >
                   <span className="sidebar-nav-icon">{item.icon}</span>
