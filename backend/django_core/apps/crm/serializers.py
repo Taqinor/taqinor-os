@@ -1,5 +1,19 @@
 from rest_framework import serializers
-from .models import Client, Lead
+from .models import Client, Lead, LeadActivity
+
+
+class LeadActivitySerializer(serializers.ModelSerializer):
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LeadActivity
+        fields = [
+            'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user_nom', 'created_at',
+        ]
+
+    def get_user_nom(self, obj):
+        return getattr(obj.user, 'username', None)
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -18,6 +32,17 @@ class LeadSerializer(serializers.ModelSerializer):
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
     devis = serializers.SerializerMethodField()
+    owner_nom = serializers.SerializerMethodField()
+
+    def get_owner_nom(self, obj):
+        return getattr(obj.owner, 'username', None)
+
+    def validate_owner(self, value):
+        # Le responsable assigné doit appartenir à la même société.
+        request = self.context.get('request')
+        if value and request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
     class Meta:
         model = Lead

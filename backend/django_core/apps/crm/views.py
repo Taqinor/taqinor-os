@@ -1,7 +1,10 @@
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from .models import Client, Lead
-from .serializers import ClientSerializer, LeadSerializer
+from .serializers import ClientSerializer, LeadSerializer, LeadActivitySerializer
+from . import activity
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -31,6 +34,11 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Leads + historique « chatter » (journal automatique + notes manuelles).
+
+    L'utilisateur acteur et la société viennent toujours de la requête côté
+    serveur — jamais du corps envoyé par le navigateur.
+    """
     queryset = Lead.objects.all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -49,11 +57,42 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(source=source)
         return qs
 
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        activity.log_creation(serializer.instance, self.request.user)
+
+    def perform_update(self, serializer):
+        # Snapshot avant écriture pour journaliser ancien → nouveau.
+        old = Lead.objects.get(pk=serializer.instance.pk)
+        super().perform_update(serializer)
+        activity.log_changes(old, serializer.instance, self.request.user)
+
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + ['noter']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
+    def historique(self, request, pk=None):
+        """Timeline chatter du lead (auto + notes), du plus récent au plus ancien."""
+        lead = self.get_object()
+        return Response(
+            LeadActivitySerializer(lead.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def noter(self, request, pk=None):
+        """Note manuelle (appel, commentaire…) — auteur pris de la requête."""
+        lead = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = activity.log_note(lead, request.user, body)
+        return Response(LeadActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)

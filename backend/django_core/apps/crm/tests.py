@@ -196,3 +196,116 @@ class TestResolveClientForLead(TestCase):
         # Must NOT link the other company's client.
         self.assertEqual(resolved.company_id, self.company.id)
         self.assertEqual(self.Client.objects.count(), 2)
+
+
+class TestLeadActivity(TestCase):
+    """Historique chatter : journal automatique + notes manuelles."""
+
+    def setUp(self):
+        from apps.crm.models import LeadActivity
+        self.LeadActivity = LeadActivity
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='chatter_user', password='x',
+            role_legacy='responsable', company=self.company,
+        )
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def _create(self, **extra):
+        payload = {'nom': 'Chatter', **extra}
+        resp = self.api.post('/api/django/crm/leads/', payload, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return resp.data['id']
+
+    def test_creation_is_logged_with_user(self):
+        lead_id = self._create()
+        acts = self.LeadActivity.objects.filter(lead_id=lead_id)
+        self.assertEqual(acts.count(), 1)
+        act = acts.first()
+        self.assertEqual(act.kind, 'creation')
+        self.assertEqual(act.user_id, self.user.id)
+        self.assertIn('chatter_user', act.body)
+        self.assertEqual(act.company_id, self.company.id)
+
+    def test_field_changes_logged_old_to_new(self):
+        lead_id = self._create(facture_hiver='600')
+        resp = self.api.patch(f'/api/django/crm/leads/{lead_id}/', {
+            'stage': 'CONTACTED',
+            'facture_hiver': '750.50',
+            'type_toiture': 'tole_metal',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        acts = self.LeadActivity.objects.filter(
+            lead_id=lead_id, kind='modification')
+        by_field = {a.field: a for a in acts}
+        self.assertEqual(by_field['stage'].old_value, 'Nouveau')
+        self.assertEqual(by_field['stage'].new_value, 'Contacté')
+        self.assertEqual(by_field['facture_hiver'].old_value, '600.00')
+        self.assertEqual(by_field['facture_hiver'].new_value, '750.50')
+        self.assertEqual(by_field['type_toiture'].old_value, '—')
+        self.assertEqual(by_field['type_toiture'].new_value, 'Tôle/Métal')
+        for a in acts:
+            self.assertEqual(a.user_id, self.user.id)
+
+    def test_unchanged_fields_not_logged(self):
+        lead_id = self._create(ville='Rabat')
+        self.api.patch(f'/api/django/crm/leads/{lead_id}/',
+                       {'ville': 'Rabat'}, format='json')
+        self.assertEqual(
+            self.LeadActivity.objects.filter(
+                lead_id=lead_id, kind='modification').count(), 0)
+
+    def test_manual_note_posted_and_listed(self):
+        lead_id = self._create()
+        resp = self.api.post(f'/api/django/crm/leads/{lead_id}/noter/',
+                             {'body': 'Rappelé, pas de réponse'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['user_nom'], 'chatter_user')
+        hist = self.api.get(f'/api/django/crm/leads/{lead_id}/historique/')
+        self.assertEqual(hist.status_code, 200)
+        kinds = [a['kind'] for a in hist.data]
+        self.assertIn('note', kinds)
+        self.assertIn('creation', kinds)
+        # plus récent en premier
+        self.assertEqual(hist.data[0]['kind'], 'note')
+
+    def test_empty_note_rejected(self):
+        lead_id = self._create()
+        resp = self.api.post(f'/api/django/crm/leads/{lead_id}/noter/',
+                             {'body': '   '}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_new_solar_fields_save_and_reload(self):
+        lead_id = self._create(
+            whatsapp='+212611223344', canal='meta_ads', priorite='haute',
+            tags='Régularisation 82-21, VIP', type_installation='industriel',
+            conso_mensuelle_kwh='1234.56', raccordement='triphase',
+            regularisation_8221=True, type_toiture='bac_acier',
+            surface_toiture_m2='850.25', orientation='sud',
+            inclinaison_deg='0', ombrage='partiel',
+            ombrage_notes='cheminée au sud-ouest', nb_etages='2',
+            structure_pref='aluminium', taille_souhaitee_kwc='99.99',
+            batterie_souhaitee='les_deux', visite_prevue_le='2026-06-20',
+            relance_date='2026-06-15', gps_lat='33.589886', gps_lng='-7.603869',
+        )
+        data = self.api.get(f'/api/django/crm/leads/{lead_id}/').data
+        self.assertEqual(data['canal'], 'meta_ads')
+        self.assertEqual(data['priorite'], 'haute')
+        self.assertEqual(data['tags'], 'Régularisation 82-21, VIP')
+        self.assertEqual(data['conso_mensuelle_kwh'], '1234.56')
+        self.assertEqual(data['surface_toiture_m2'], '850.25')
+        self.assertEqual(data['taille_souhaitee_kwc'], '99.99')
+        self.assertEqual(data['gps_lat'], '33.589886')
+        self.assertTrue(data['regularisation_8221'])
+        self.assertEqual(data['batterie_souhaitee'], 'les_deux')
+
+    def test_owner_must_be_same_company(self):
+        other = make_company(slug='chatter-other', nom='Other')
+        foreign_user = User.objects.create_user(
+            username='foreign_owner', password='x', company=other)
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'X', 'owner': foreign_user.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
