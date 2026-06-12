@@ -83,13 +83,61 @@ POMPAGE = [
     ('Pompe immergée solaire 10 CV Triphasé',   'PMP-IMM-10T',  19000, 20, 2, '10', '250', '80'),
     ('Pompe de surface solaire 1.5 CV Monophasé', 'PMP-SUR-1.5M', 3000, 20, 2, '1.5', '40', '20'),
     ('Pompe de surface solaire 3 CV Triphasé',    'PMP-SUR-3T',   5500, 20, 2, '3', '60', '40'),
-    ('Variateur pompage solaire 1.5 CV Monophasé (coffret complet)', 'VFD-PMP-1.5M', 4000, 20, 2, '1.5', None, None),
-    ('Variateur pompage solaire 3 CV Triphasé (coffret complet)',   'VFD-PMP-3T',   4800, 20, 2, '3', None, None),
-    ('Variateur pompage solaire 4 CV Triphasé (coffret complet)',   'VFD-PMP-4T',   5500, 20, 2, '4', None, None),
-    ('Variateur pompage solaire 5.5 CV Triphasé (coffret complet)', 'VFD-PMP-5.5T', 6500, 20, 2, '5.5', None, None),
-    ('Variateur pompage solaire 7.5 CV Triphasé (coffret complet)', 'VFD-PMP-7.5T', 8000, 20, 2, '7.5', None, None),
-    ('Variateur pompage solaire 10 CV Triphasé (coffret complet)',  'VFD-PMP-10T',  10500, 20, 2, '10', None, None),
     ('Câble solaire 6mm² (au mètre)', 'CAB-6MM-M', 13, 5000, 200, None, None, None),
+]
+
+# ── Variateurs VEICHI (prix réels fondateur, 2026-06) ────────────────────────
+# "Prix public" = prix de vente TTC ; "prix revendeur" = prix d'ACHAT TTC
+# (alimente l'indicateur de marge INTERNE — jamais dans un PDF client).
+# Remplacent les anciens coffrets "Variateur pompage solaire ... (coffret
+# complet)" aux prix estimés : ces placeholders sont ARCHIVÉS par le seeder
+# (autorisation explicite du fondateur, 2026-06-12) — la protection qu'ils
+# regroupaient est couverte par les articles protection/accessoires existants.
+# (nom, sku, sell_ttc, buy_ttc, kw, tension_v)
+VEICHI = [
+    ('AFFICHEUR VARIATEUR SI22',           'VEI-SI22-AFF',     420,     360,    None,  None),
+    ('VARIATEUR VEICHI SI22 2.2KW 220V',   'VEI-SI22-2.2-220', 1580,    1400,   '2.2', 220),
+    ('VARIATEUR VEICHI SI23 2.2KW 220V',   'VEI-SI23-2.2-220', 2530,    2300,   '2.2', 220),
+    ('VARIATEUR VEICHI SI23 2.2KW 380V',   'VEI-SI23-2.2-380', 2812.5,  2250,   '2.2', 380),
+    ('VARIATEUR VEICHI SI23 4KW 380V',     'VEI-SI23-4-380',   2750,    2400,   '4',   380),
+    ('VARIATEUR VEICHI SI23 5.5KW 380V',   'VEI-SI23-5.5-380', 3250,    2850,   '5.5', 380),
+    ('VARIATEUR VEICHI SI23 7.5KW 380V',   'VEI-SI23-7.5-380', 4000,    3450,   '7.5', 380),
+    ('VARIATEUR VEICHI SI23 11KW 380V',    'VEI-SI23-11-380',  4950,    4300,   '11',  380),
+    ('VARIATEUR VEICHI SI23 15KW 380V',    'VEI-SI23-15-380',  6200,    5500,   '15',  380),
+    ('VARIATEUR VEICHI SI23 18KW 380V',    'VEI-SI23-18-380',  7000,    6750,   '18',  380),
+    ('VARIATEUR VEICHI SI23 22KW 380V',    'VEI-SI23-22-380',  8800,    8000,   '22',  380),
+    ('VARIATEUR VEICHI SI23 30KW 380V',    'VEI-SI23-30-380',  10800,   9900,   '30',  380),
+    ('VARIATEUR VEICHI SI23 37KW 380V',    'VEI-SI23-37-380',  15500,   14150,  '37',  380),
+    ('VARIATEUR VEICHI SI23 45KW 380V',    'VEI-SI23-45-380',  21250,   19260,  '45',  380),
+    ('VARIATEUR VEICHI SI23 55KW 380V',    'VEI-SI23-55-380',  22550,   20550,  '55',  380),
+    ('VARIATEUR VEICHI SI23 75KW 380V',    'VEI-SI23-75-380',  24750,   22500,  '75',  380),
+]
+
+# Placeholders à archiver (jamais supprimés — autorisation fondateur 2026-06-12)
+PLACEHOLDER_VFD_SKUS = [
+    'VFD-PMP-1.5M', 'VFD-PMP-3T', 'VFD-PMP-4T',
+    'VFD-PMP-5.5T', 'VFD-PMP-7.5T', 'VFD-PMP-10T',
+]
+
+# ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
+# Courbes de performance constructeur : HMT (m) délivrée à chaque débit (m³/h).
+# PRIX VOLONTAIREMENT VIDES (0) : à renseigner par le fondateur — tant que le
+# prix est vide, le produit est exclu du chiffrage automatique ("prix à
+# renseigner" dans le générateur).
+OSP_DEBITS_M3H = [0, 12, 24, 30, 36, 39]
+# (nom, sku, cv, kw, [hmt aux débits ci-dessus])
+OSP = [
+    ('Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',    'PMP-OSP-30-8',  '10',   '7.5',  [91, 85, 70, 60, 43, 34]),
+    ('Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3", 380V)', 'PMP-OSP-30-11', '12.5', '9.3',  [125, 117, 97, 83, 59, 46]),
+    ('Pompe immergée OSP 30/13 — 15 CV / 11 kW (3", 380V)',    'PMP-OSP-30-13', '15',   '11',   [148, 138, 114, 98, 70, 55]),
+    ('Pompe immergée OSP 30/15 — 17.5 CV / 13 kW (3", 380V)',  'PMP-OSP-30-15', '17.5', '13',   [171, 159, 132, 113, 81, 63]),
+    ('Pompe immergée OSP 30/16 — 20 CV / 15 kW (3", 380V)',    'PMP-OSP-30-16', '20',   '15',   [182, 170, 141, 120, 86, 67]),
+    ('Pompe immergée OSP 30/17 — 20 CV / 15 kW (3", 380V)',    'PMP-OSP-30-17', '20',   '15',   [194, 180, 150, 128, 92, 71]),
+    ('Pompe immergée OSP 30/20 — 25 CV / 18.5 kW (3", 380V)',  'PMP-OSP-30-20', '25',   '18.5', [228, 212, 176, 150, 108, 84]),
+    ('Pompe immergée OSP 30/21 — 25 CV / 18.5 kW (3", 380V)',  'PMP-OSP-30-21', '25',   '18.5', [239, 223, 185, 158, 113, 88]),
+    ('Pompe immergée OSP 30/25 — 30 CV / 22 kW (3", 380V)',    'PMP-OSP-30-25', '30',   '22',   [285, 265, 220, 188, 135, 105]),
+    ('Pompe immergée OSP 30/26 — 30 CV / 22 kW (3", 380V)',    'PMP-OSP-30-26', '30',   '22',   [296, 276, 229, 195, 140, 109]),
+    ('Pompe immergée OSP 30/35 — 40 CV / 30 kW (3", 380V)',    'PMP-OSP-30-35', '40',   '30',   [399, 371, 308, 263, 189, 147]),
 ]
 
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
@@ -97,9 +145,12 @@ _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
                    'Adaptée à l\'irrigation et l\'alimentation en eau agricole')
 _DESC_POMPE_SUR = ('Pompe de surface pour puits/bassin, amorçage facilité\n'
                    'Pilotée par variateur solaire (AC, compatible champ PV)')
-_DESC_VFD = ('Coffret pompage complet pré-câblé : variateur MPPT dédié pompe\n'
-             'Sectionneur + disjoncteurs DC/AC + parafoudre DC\n'
-             'Relais de niveau (protection marche à sec / cuve pleine)')
+_DESC_VEICHI = ('Variateur solaire dédié pompage : MPPT intégré, entrée PV directe\n'
+                'Pilotage automatique lever/coucher du soleil, protection marche à sec\n'
+                'Compatible pompes AC triphasées/monophasées standards')
+_DESC_OSP = ('Pompe immergée 3 pouces pour forage, triphasée 380 V\n'
+             'Pilotée par variateur solaire (AC, compatible champ PV)\n'
+             'Courbe de performance constructeur intégrée (débit ↔ HMT)')
 
 # ── Fiches commerciales (marque / description / garantie) ───────────────────
 # Garanties issues des termes constructeurs publiés (recherche 2026-06) ;
@@ -214,12 +265,33 @@ FICHES = {
                            'PMP-IMM-5.5T', 'PMP-IMM-7.5T', 'PMP-IMM-10T')},
     **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_POMPE_SUR,
              } for sku in ('PMP-SUR-1.5M', 'PMP-SUR-3T')},
-    **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_VFD,
-             } for sku in ('VFD-PMP-1.5M', 'VFD-PMP-3T', 'VFD-PMP-4T',
-                           'VFD-PMP-5.5T', 'VFD-PMP-7.5T', 'VFD-PMP-10T')},
     'CAB-6MM-M': {
         'description': 'Câble solaire 6 mm² double isolation, résistant UV (prix au mètre)',
     },
+    # Variateurs VEICHI
+    'VEI-SI22-AFF': {
+        'marque': 'VEICHI',
+        'garantie': 'Garantie constructeur 2 ans',
+        'description': ('Afficheur déporté pour variateur VEICHI SI22\n'
+                        'Lecture des paramètres et défauts au pied du coffret'),
+    },
+    **{sku: {'marque': 'VEICHI', 'garantie': 'Garantie constructeur 2 ans',
+             'description': _DESC_VEICHI,
+             } for sku in ('VEI-SI22-2.2-220', 'VEI-SI23-2.2-220',
+                           'VEI-SI23-2.2-380', 'VEI-SI23-4-380',
+                           'VEI-SI23-5.5-380', 'VEI-SI23-7.5-380',
+                           'VEI-SI23-11-380', 'VEI-SI23-15-380',
+                           'VEI-SI23-18-380', 'VEI-SI23-22-380',
+                           'VEI-SI23-30-380', 'VEI-SI23-37-380',
+                           'VEI-SI23-45-380', 'VEI-SI23-55-380',
+                           'VEI-SI23-75-380')},
+    # Pompes OSP série 30
+    **{sku: {'marque': 'OSP', 'garantie': 'Garantie constructeur 2 ans',
+             'description': _DESC_OSP,
+             } for sku in ('PMP-OSP-30-8', 'PMP-OSP-30-11', 'PMP-OSP-30-13',
+                           'PMP-OSP-30-15', 'PMP-OSP-30-16', 'PMP-OSP-30-17',
+                           'PMP-OSP-30-20', 'PMP-OSP-30-21', 'PMP-OSP-30-25',
+                           'PMP-OSP-30-26', 'PMP-OSP-30-35')},
 }
 
 
@@ -314,6 +386,73 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
+        # ── Variateurs VEICHI (prix réels : vente publique + achat revendeur) ──
+        for nom, sku, sell_ttc, buy_ttc, kw, tension in VEICHI:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie('Pompage'),
+                prix_achat=ht(buy_ttc),
+                prix_vente=ht(sell_ttc),
+                quantite_stock=20, seuil_alerte=2,
+                tva=Decimal('20.00'),
+                pompe_kw=Decimal(kw) if kw else None,
+                tension_v=tension,
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=20, quantite_avant=0, quantite_apres=20,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (variateurs VEICHI)',
+            )
+            created.append(nom)
+
+        # ── Pompes OSP série 30 : courbes constructeur, PRIX VIDES (0) ──
+        # Tant que prix_vente vaut 0, le produit est exclu du chiffrage
+        # automatique ("prix à renseigner" dans le générateur).
+        for nom, sku, cv, kw, hmt_curve in OSP:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie('Pompage'),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=20, seuil_alerte=2,
+                tva=Decimal('20.00'),
+                pompe_cv=Decimal(cv),
+                pompe_kw=Decimal(kw),
+                tension_v=380,
+                hmt_m=Decimal(str(hmt_curve[0])),
+                courbe_pompe={'debits_m3h': OSP_DEBITS_M3H, 'hmt_m': hmt_curve},
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=20, quantite_avant=0, quantite_apres=20,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (pompes OSP — prix à renseigner)',
+            )
+            created.append(nom)
+
+        # ── Archivage des coffrets variateurs PLACEHOLDER (prix estimés) ──
+        # Exception ponctuelle à la règle "additif uniquement", explicitement
+        # autorisée par le fondateur (2026-06-12) : ces articles n'ont jamais
+        # porté de vrais prix. Archivés (jamais supprimés), prix intacts.
+        archived_count = Produit.objects.filter(
+            company=company, sku__in=PLACEHOLDER_VFD_SKUS,
+            is_archived=False).update(is_archived=True)
+
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs
         #    descriptifs (marque/description/garantie) — jamais prix/quantités ──
         fiches_updated = 0
@@ -331,7 +470,8 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"\nCatalogue seed for '{company.nom}': "
             f"{len(created)} created, {len(skipped)} already present (untouched), "
-            f"{fiches_updated} fiches commerciales mises à jour."
+            f"{fiches_updated} fiches commerciales mises à jour, "
+            f"{archived_count} placeholders archivés."
         ))
         for nom in created:
             self.stdout.write(f"  + {nom}")

@@ -1510,13 +1510,40 @@ def page_onepage(items):
 
     # ── Bloc résumé système (style devis concurrent) ──
     if ETUDE.get("pompe_cv"):
-        _sum_cells = [
-            ("Puissance pompe",
-             f"{ETUDE.get('pompe_cv')} CV ({ETUDE.get('pompe_kw', '—')} kW)"),
-            ("D&#233;bit estim&#233;", f"{ETUDE.get('debit_m3j', '—')} m&#179;/jour"),
-            ("HMT", f"{ETUDE.get('hmt_m', '—')} m"),
-            ("Champ PV", f"{KWC} kWc" if KWC > 0 else "—"),
-        ]
+        # Chiffres CANONIQUES calculés à la création du devis (courbe
+        # constructeur) — rendus tels quels. Une carte sans valeur est
+        # OMISE : jamais de tiret ni de m³/jour inventé sans courbe.
+        _sum_cells = []
+        _pkw = ETUDE.get("pompe_kw")
+        _sum_cells.append((
+            "Puissance pompe",
+            f"{ETUDE.get('pompe_cv')} CV ({_pkw} kW)" if _pkw
+            else f"{ETUDE.get('pompe_cv')} CV"))
+        if ETUDE.get("hmt_m"):
+            _sum_cells.append(("HMT", f"{ETUDE.get('hmt_m')} m"))
+        def _fdec(v):
+            # entier sans décimale, sinon une décimale à la française (30,5)
+            try:
+                f = float(v)
+                return fnum(f) if f == int(f) else f"{f:.1f}".replace(".", ",")
+            except Exception:
+                return str(v)
+        _dq = ETUDE.get("debit_hmt_m3h")
+        if _dq and ETUDE.get("hmt_m"):
+            _sum_cells.append(
+                (f"D&#233;bit &#224; {ETUDE.get('hmt_m')} m",
+                 f"{_fdec(_dq)} m&#179;/h"))
+        elif ETUDE.get("debit_m3j"):  # anciens devis (saisie manuelle)
+            _sum_cells.append(
+                ("D&#233;bit estim&#233;", f"{ETUDE.get('debit_m3j')} m&#179;/jour"))
+        _m3j = ETUDE.get("m3_jour")
+        _hrs = ETUDE.get("heures_pompage")
+        if _m3j and _hrs:
+            _sum_cells.append(
+                (f"Eau / jour (sur {_fdec(_hrs)} h de pompage)",
+                 f"&#8776; {fnum(_m3j)} m&#179;"))
+        if KWC > 0:
+            _sum_cells.append(("Champ PV", f"{KWC} kWc"))
     elif KWC > 0:
         _sum_cells = [
             ("Puissance cr&#234;te", f"{KWC} kWc"),

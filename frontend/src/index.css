@@ -461,13 +461,78 @@ body {
 }
 .modal-close:hover { background: #f1f5f9; color: #1e293b; }
 
+/* Le <form> s'intercale entre .modal et .modal-body : sans contrainte de
+   hauteur il grandit avec son contenu et .modal-body ne défile jamais
+   (seul Tab « scrollait » en forçant le focus). On le borne en colonne flex. */
+.modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .modal-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Barre de défilement visible (le contenu long doit se voir) */
+.modal-body::-webkit-scrollbar { width: 10px; }
+.modal-body::-webkit-scrollbar-track { background: #f1f5f9; }
+.modal-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+.modal-body::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Navigateur de sections (formulaire lead) ─────────── */
+.lead-form-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.lead-nav {
+  width: 152px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 8px;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+  overflow-y: auto;
+}
+.lead-nav button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #475569;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lead-nav button:hover { background: #eef2f7; }
+.lead-nav button.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+@media (max-width: 720px) {
+  .lead-form-layout { flex-direction: column; }
+  .lead-nav {
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
 }
 
 .modal-footer {

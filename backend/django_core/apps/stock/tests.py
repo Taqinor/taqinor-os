@@ -34,7 +34,8 @@ class TestSeedCatalogue(TestCase):
     def test_seeds_full_catalogue(self):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
-        self.assertEqual(qs.count(), 46)  # 31 solaire + 15 pompage
+        # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP
+        self.assertEqual(qs.count(), 67)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -50,7 +51,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 46,
+                company=self.company, reference='SEED-CATALOGUE').count(), 67,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -68,10 +69,52 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(str(pompe.pompe_cv), '5.50')
         self.assertEqual(pompe.prix_achat, 0)
         self.assertEqual(pompe.categorie.nom, 'Pompage')
-        vfd = qs.get(sku='VFD-PMP-5.5T')
-        self.assertEqual(str(vfd.pompe_cv), '5.50')
         # Prix existants jamais modifiés par la passe fiches
         self.assertEqual(huawei.prix_vente, Decimal('16666.67'))
+
+    def test_veichi_seeded_with_real_buy_and_sell_prices(self):
+        seed(self.company)
+        qs = Produit.objects.filter(company=self.company)
+        v75 = qs.get(sku='VEI-SI23-7.5-380')
+        self.assertEqual(v75.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
+        self.assertEqual(v75.prix_vente, Decimal('3333.33'))   # 4 000 TTC public
+        self.assertEqual(v75.prix_achat, Decimal('2875.00'))   # 3 450 TTC revendeur
+        self.assertEqual(str(v75.pompe_kw), '7.50')
+        self.assertEqual(v75.tension_v, 380)
+        self.assertEqual(v75.marque, 'VEICHI')
+        self.assertEqual(v75.categorie.nom, 'Pompage')
+        # L'afficheur n'a pas de kW : il ne peut jamais être pris pour le variateur
+        aff = qs.get(sku='VEI-SI22-AFF')
+        self.assertIsNone(aff.pompe_kw)
+        self.assertEqual(aff.prix_vente, Decimal('350.00'))    # 420 TTC
+        self.assertEqual(aff.prix_achat, Decimal('300.00'))    # 360 TTC
+
+    def test_osp_pumps_seeded_with_curves_and_empty_price(self):
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='PMP-OSP-30-8')
+        self.assertEqual(p.prix_vente, Decimal('0'))   # à renseigner par le fondateur
+        self.assertEqual(p.prix_achat, Decimal('0'))
+        self.assertEqual(str(p.pompe_cv), '10.00')
+        self.assertEqual(str(p.pompe_kw), '7.50')
+        self.assertEqual(p.tension_v, 380)
+        self.assertEqual(p.courbe_pompe['debits_m3h'], [0, 12, 24, 30, 36, 39])
+        self.assertEqual(p.courbe_pompe['hmt_m'], [91, 85, 70, 60, 43, 34])
+
+    def test_placeholder_coffrets_archived_prices_intact(self):
+        # Un ancien coffret placeholder existant est archivé par le seeder
+        # (autorisation fondateur) — jamais supprimé, prix jamais modifié.
+        old = Produit.objects.create(
+            company=self.company, nom='Variateur pompage solaire 5.5 CV Triphasé (coffret complet)',
+            sku='VFD-PMP-5.5T', prix_vente=Decimal('5416.67'), quantite_stock=20,
+        )
+        seed(self.company)
+        old.refresh_from_db()
+        self.assertTrue(old.is_archived)
+        self.assertEqual(old.prix_vente, Decimal('5416.67'))
+        # Et le seeder ne les recrée jamais
+        self.assertEqual(
+            Produit.objects.filter(
+                company=self.company, sku__startswith='VFD-PMP').count(), 1)
 
     def test_fiches_update_is_idempotent_and_price_safe(self):
         seed(self.company)
@@ -88,7 +131,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 46 already present', out)
+        self.assertIn('0 created, 67 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price

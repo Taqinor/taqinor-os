@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { createLead, updateLead } from '../../features/crm/store/crmSlice'
@@ -48,14 +48,24 @@ const enumOptions = (labels) => [
 
 // Helpers hors composant : identité stable entre rendus (sinon les champs
 // seraient démontés à chaque frappe et perdraient le focus).
-const Sec = ({ title, children }) => (
-  <div className="form-section">
+const Sec = ({ title, children, id }) => (
+  <div className="form-section" data-nav-id={id}>
     <div className="form-section-header">
       <span className="form-section-title">{title}</span>
     </div>
     {children}
   </div>
 )
+
+// Navigateur de sections (rail gauche) : libellé court → section du formulaire
+const NAV_SECTIONS = [
+  ['contact', 'Contact'],
+  ['pipeline', 'Pipeline'],
+  ['energie', 'Énergie'],
+  ['toiture', 'Toiture & site'],
+  ['visite', 'Visite'],
+]
+const NAV_SECTIONS_EDIT = [...NAV_SECTIONS, ['devis', 'Devis'], ['historique', 'Historique']]
 
 const Txt = ({ fields, set, k, label, type = 'text', ...rest }) => (
   <div className="form-group">
@@ -126,6 +136,28 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
   const [noteBody, setNoteBody] = useState('')
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [activeSec, setActiveSec] = useState('contact')
+  const bodyRef = useRef(null)
+
+  // Scroll-spy : la section dont le haut est le plus proche du haut du
+  // panneau (avec une marge) devient active dans le rail de navigation.
+  const onBodyScroll = () => {
+    const box = bodyRef.current
+    if (!box) return
+    const top = box.getBoundingClientRect().top
+    let current = 'contact'
+    for (const sec of box.querySelectorAll('[data-nav-id]')) {
+      if (sec.getBoundingClientRect().top - top <= 90) {
+        current = sec.dataset.navId
+      }
+    }
+    setActiveSec(current)
+  }
+
+  const jumpTo = (id) => {
+    const sec = bodyRef.current?.querySelector(`[data-nav-id="${id}"]`)
+    sec?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     api.get('/users/').then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
@@ -182,8 +214,18 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
-          <div className="modal-body">
-            <Sec title="👤 Contact">
+          <div className="lead-form-layout">
+            <nav className="lead-nav" aria-label="Sections du lead">
+              {(isEdit ? NAV_SECTIONS_EDIT : NAV_SECTIONS).map(([id, label]) => (
+                <button key={id} type="button"
+                        className={activeSec === id ? 'active' : ''}
+                        onClick={() => jumpTo(id)}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+          <div className="modal-body" ref={bodyRef} onScroll={onBodyScroll}>
+            <Sec id="contact" title="👤 Contact">
               <div className="form-row">
                 <div className="form-group fg-grow">
                   <label className="form-label">Nom <span className="req">*</span></label>
@@ -207,7 +249,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
               </div>
             </Sec>
 
-            <Sec title="📈 Pipeline">
+            <Sec id="pipeline" title="📈 Pipeline">
               <div className="form-row">
                 <Sel fields={fields} set={set} k="stage" label="Étape" labels={STAGE_LABELS} />
                 <div className="form-group">
@@ -232,7 +274,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
               </div>
             </Sec>
 
-            <Sec title="💡 Énergie">
+            <Sec id="energie" title="💡 Énergie">
               <div className="form-row">
                 <Txt fields={fields} set={set} k="facture_hiver"
                      label={fields.ete_differente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
@@ -262,7 +304,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
               </div>
             </Sec>
 
-            <Sec title="🏠 Toiture & site">
+            <Sec id="toiture" title="🏠 Toiture & site">
               <div className="form-row">
                 <Sel fields={fields} set={set} k="type_toiture" label="Type de toiture" labels={TYPES_TOITURE} />
                 <Txt fields={fields} set={set} k="surface_toiture_m2" label="Surface (m²)" type="number" />
@@ -283,7 +325,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
               </div>
             </Sec>
 
-            <Sec title="📋 Visite technique">
+            <Sec id="visite" title="📋 Visite technique">
               <div className="form-row">
                 <Txt fields={fields} set={set} k="visite_prevue_le" label="Visite prévue le" type="date" />
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
@@ -307,7 +349,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
 
             {/* ── Devis empilés ── */}
             {isEdit && (
-              <Sec title={`📄 Devis de ce lead${lead.client_nom ? ` — client : ${lead.client_nom}` : ''}`}>
+              <Sec id="devis" title={`📄 Devis de ce lead${lead.client_nom ? ` — client : ${lead.client_nom}` : ''}`}>
                 {(lead.devis ?? []).length === 0 ? (
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
@@ -335,7 +377,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
 
             {/* ── Historique (chatter) ── */}
             {isEdit && (
-              <Sec title="🕐 Historique">
+              <Sec id="historique" title="🕐 Historique">
                 <div className="chatter-note-box">
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}
@@ -370,6 +412,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
             )}
 
             {errors.submit && <div className="form-error-box">{errors.submit}</div>}
+          </div>
           </div>
 
           <div className="modal-footer">
