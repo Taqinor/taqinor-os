@@ -409,3 +409,160 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
     row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendent 2 ans', 0),
   ]
 }
+
+// ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
+
+// ── Étude industrielle / commerciale (autoconsommation) ──────────────────────
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc }) {
+  if (!kwp || kwp <= 0) return null
+  const prodM = GHI.map(g => g * kwp * EFFICIENCY)
+  const prodA = prodM.reduce((a, b) => a + b, 0)
+  const consoMois = parseFloat(consoMensuelleKwh) || 0
+  const consoA = consoMois > 0 ? consoMois * 12 : 0
+  const dayPct = ((parseFloat(dayUsagePct) || 80)) / 100
+  let autoconsomme, tauxAuto, tauxCouv = null
+  if (consoA > 0) {
+    // énergie solaire réellement consommée sur site (part diurne de la conso)
+    autoconsomme = Math.min(prodA, consoA * dayPct)
+    tauxAuto = prodA > 0 ? (autoconsomme / prodA) * 100 : 0
+    tauxCouv = (autoconsomme / consoA) * 100
+  } else {
+    autoconsomme = prodA * dayPct
+    tauxAuto = dayPct * 100
+  }
+  const economies = autoconsomme * KWH_PRICE
+  const payback = (economies > 0 && totalTtc > 0)
+    ? Math.round(totalTtc / economies * 10) / 10 : null
+  return {
+    kwc: Math.round(kwp * 100) / 100,
+    production_annuelle: Math.round(prodA),
+    conso_annuelle: consoA ? Math.round(consoA) : null,
+    taux_autoconso: Math.round(tauxAuto * 10) / 10,
+    taux_couverture: tauxCouv != null ? Math.round(tauxCouv * 10) / 10 : null,
+    economies_annuelles: Math.round(economies),
+    payback,
+    prix_kwc: (kwp > 0 && totalTtc > 0) ? Math.round(totalTtc / kwp) : null,
+    prod_mensuelle: prodM.map(v => Math.round(v)),
+    conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
+  }
+}
+
+// ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
+export const CV_TO_KW = 0.7355
+
+// Champ PV ≈ 1.4 × puissance pompe (approche marché 1.3–1.5×), panneaux 710 W
+export function computePompage(cv) {
+  const kw = (parseFloat(cv) || 0) * CV_TO_KW
+  const champKw = Math.round(kw * 1.4 * 100) / 100
+  const nbPanneaux = Math.max(2, Math.ceil(champKw * 1000 / 710))
+  return {
+    kw: Math.round(kw * 100) / 100,
+    champKw,
+    nbPanneaux,
+    champKwc: Math.round(nbPanneaux * 710 / 10) / 100,
+  }
+}
+
+const _isPompe = (n) => n.includes('pompe ') || n.startsWith('pompe')
+const _isVfdPompage = (n) =>
+  (n.includes('variateur') || n.includes('coffret')) && n.includes('pompage')
+const _isCableMetre = (n) => n.includes('cable') && n.includes('metre')
+
+// Équipement pompage : pompe + variateur assorti + champ PV + structures/socles
+// + câble à la distance — PAS de batterie ni d'onduleur réseau/hybride.
+export function autoFillPompage(produits, { cv, alim, typePompe, distance, structureType }) {
+  const cvNum = parseFloat(cv) || 0
+  if (cvNum <= 0) return []
+  const wantTri = alim === 'tri'
+  const wantSurface = typePompe === 'surface'
+
+  const pumps = produits
+    .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
+    .filter(x => _isPompe(x.n) && !_isVfdPompage(x.n) && x.cv != null)
+    .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
+    .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
+  // pompe : CV exact et phase voulue, sinon plus petite pompe >= CV
+  let pump = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
+    ?? pumps.find(x => x.cv === cvNum)
+    ?? pumps.find(x => x.cv >= cvNum)
+    ?? pumps[pumps.length - 1] ?? null
+
+  const vfds = produits
+    .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
+    .filter(x => _isVfdPompage(x.n) && x.cv != null)
+    .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
+  let vfd = vfds.find(x => x.cv >= cvNum && x.tri === wantTri)
+    ?? vfds.find(x => x.cv >= cvNum)
+    ?? vfds[vfds.length - 1] ?? null
+
+  const dims = computePompage(cvNum)
+  const byType = {}
+  for (const p of produits) {
+    const t = classifyProduct(p.nom)
+    if (!t) continue
+    if (!byType[t]) byType[t] = []
+    byType[t].push(p)
+  }
+  const panels = (byType.panneau ?? [])
+    .map(p => ({ p, w: parseWatt(p.nom) }))
+    .filter(x => x.w === 710)
+  const panel = panels[0]?.p ?? (byType.panneau ?? [])[0] ?? null
+
+  const structures = byType.structure ?? []
+  const wanted = structureType === 'aluminium' ? 'alu' : 'acier'
+  const struct = structures.find(p => _norm(p.nom).includes(wanted)) ?? structures[0] ?? null
+
+  const cable = produits.find(p => _isCableMetre(_norm(p.nom))) ?? null
+  const distM = parseFloat(distance) || 0
+
+  const line = (p, designation, quantite) => ({
+    produit: p ? String(p.id) : '',
+    designation: p ? p.nom : designation,
+    quantite,
+    prix_unit_ttc: p ? ttcFromHt(p.prix_vente) : 0,
+  })
+
+  const rows = [
+    line(pump?.p ?? null, 'Pompe solaire', 1),
+    line(vfd?.p ?? null, 'Variateur pompage solaire (coffret)', 1),
+    line(panel, 'Panneaux', dims.nbPanneaux),
+    line(struct, 'Structures', dims.nbPanneaux),
+  ]
+  if ((byType.socle ?? []).length) rows.push(line(byType.socle[0], 'Socles', dims.nbPanneaux * 2))
+  if (cable && distM > 0) rows.push(line(cable, 'Câble solaire (m)', distM))
+  if ((byType.installation ?? []).length) rows.push(line(byType.installation[0], 'Installation', 1))
+  if ((byType.transport ?? []).length) rows.push(line(byType.transport[0], 'Transport', 1))
+  return rows
+}
+
+// ── Prix par kWc, prix cible et marge ─────────────────────────────────────────
+export function prixParKwc(totalTtc, kwp) {
+  if (!(kwp > 0) || !(totalTtc > 0)) return null
+  return Math.round(totalTtc / kwp)
+}
+
+// Remise (%) impliquée par un prix cible /kWc — appliquée via la remise
+// globale existante, jamais en réécrivant les prix des lignes.
+export function discountForTarget(cibleKwc, kwp, totalBrutTtc) {
+  const implied = (parseFloat(cibleKwc) || 0) * kwp
+  if (!(implied > 0) || !(totalBrutTtc > 0)) return null
+  const pct = (1 - implied / totalBrutTtc) * 100
+  return Math.round(pct * 100) / 100
+}
+
+// Coût d'achat TTC des lignes dont le produit a un prix d'achat renseigné.
+// Retourne null si AUCUN prix d'achat n'existe (alors on n'affiche rien).
+export function computeBuyCost(lines, produits) {
+  const byId = new Map(produits.map(p => [String(p.id), p]))
+  let cost = 0
+  let any = false
+  for (const l of lines) {
+    const p = byId.get(String(l.produit))
+    const achat = p ? (parseFloat(p.prix_achat) || 0) : 0
+    if (achat > 0) {
+      any = true
+      cost += (parseFloat(l.quantite) || 0) * achat * 1.2
+    }
+  }
+  return any ? Math.round(cost) : null
+}

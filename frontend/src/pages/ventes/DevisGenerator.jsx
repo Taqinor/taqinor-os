@@ -12,8 +12,20 @@ import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
-  groupProduitsByCategory,
+  groupProduitsByCategory, computeEtudeIndustrielle, computePompage,
+  autoFillPompage, isBattery, isHybridInverter, prixParKwc, discountForTarget,
+  computeBuyCost,
 } from '../../features/ventes/solar'
+
+const MODES = [
+  ['residentiel', '🏠 Résidentiel'],
+  ['industriel', '🏭 Industriel / Commercial'],
+  ['agricole', '🌾 Agricole (pompage)'],
+]
+const LEAD_TYPE_TO_MODE = {
+  residentiel: 'residentiel', commercial: 'industriel',
+  industriel: 'industriel', agricole: 'agricole',
+}
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -88,6 +100,19 @@ export default function DevisGenerator() {
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
 
+  // ── Multi-marchés ──
+  const [modeInstallation, setModeInstallation] = useState('residentiel')
+  const [consoMensuelle, setConsoMensuelle] = useState('')
+  const [prixCible, setPrixCible] = useState('')
+  // Pompage (agricole)
+  const [pompeCv, setPompeCv] = useState('5.5')
+  const [pompeType, setPompeType] = useState('immergee')
+  const [pompeAlim, setPompeAlim] = useState('tri')
+  const [pompeHmt, setPompeHmt] = useState('')
+  const [pompeDebit, setPompeDebit] = useState('')
+  const [pompeProfondeur, setPompeProfondeur] = useState('')
+  const [pompeDistance, setPompeDistance] = useState('20')
+
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
     crmApi.getLeads().then(r => setLeads(r.data.results ?? r.data)).catch(() => {})
@@ -145,6 +170,20 @@ export default function DevisGenerator() {
     setDayUsage(DAY_USAGE_DEFAULTS[type] ?? 50)
   }
 
+  // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
+  const onModeChange = (m) => {
+    setModeInstallation(m)
+    if (m === 'industriel') {
+      onInstTypeChange('Industrielle')
+      setScenario('Sans batterie') // défaut industriel : sans batterie, réseau
+    } else if (m === 'agricole') {
+      onInstTypeChange('Agricole')
+    } else {
+      onInstTypeChange('Résidentielle')
+      setScenario('Les deux (Sans + Avec)')
+    }
+  }
+
   // ── Scénario / recommandation : réinitialisation si incompatible ──
   const onScenarioChange = (v) => {
     setScenario(v)
@@ -174,6 +213,11 @@ export default function DevisGenerator() {
     setClientId('') // le client est résolu côté serveur depuis le lead
     const lead = leads.find(l => String(l.id) === String(id))
     if (!lead) return
+    // Mode présélectionné depuis le type d'installation du lead
+    if (lead.type_installation && LEAD_TYPE_TO_MODE[lead.type_installation]) {
+      onModeChange(LEAD_TYPE_TO_MODE[lead.type_installation])
+    }
+    if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
     const hiver = parseFloat(lead.facture_hiver) || 0
     if (hiver > 0) {
       // bascule OFF → la valeur unique vaut hiver ET été
@@ -287,15 +331,36 @@ export default function DevisGenerator() {
   const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
 
   const handleAutoFill = () => {
+    // Mode agricole : équipement pompage (pompe + variateur + champ PV)
+    if (modeInstallation === 'agricole') {
+      const generated = autoFillPompage(produits, {
+        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
+        distance: pompeDistance, structureType,
+      })
+      if (!generated.length) {
+        setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV).' }))
+        return
+      }
+      setErrors(e => ({ ...e, autofill: null }))
+      setLines(withKeys(generated))
+      setNbPanneaux(String(computePompage(pompeCv).nbPanneaux))
+      return
+    }
     if (kwp <= 0) {
       setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
       return
     }
-    const generated = autoFillLines(produits, {
+    let generated = autoFillLines(produits, {
       kwp,
       panelW: parseFloat(panelW) || 710,
       structureType,
     })
+    // Mode industriel : sans batterie par défaut (réseau seul, triphasé)
+    if (modeInstallation === 'industriel') {
+      generated = generated.map(r =>
+        (isBattery(r.designation) || isHybridInverter(r.designation))
+          ? { ...r, quantite: 0 } : r)
+    }
     if (!generated.length) {
       setErrors(e => ({ ...e, autofill: 'Aucun produit solaire reconnu dans le stock.' }))
       return
@@ -329,12 +394,33 @@ export default function DevisGenerator() {
     if (!validate()) return
     setSaving(true)
     try {
+      // Paramètres d'étude stockés avec le devis (alimentent la page Étude
+      // du PDF et le bloc résumé pompage)
+      let etudeParams = null
+      if (modeInstallation === 'industriel' && etudeIndustrielle) {
+        etudeParams = etudeIndustrielle
+      } else if (modeInstallation === 'agricole' && pompageDims) {
+        etudeParams = {
+          pompe_cv: pompeCv,
+          pompe_kw: pompageDims.kw,
+          type_pompe: pompeType,
+          alim: pompeAlim,
+          hmt_m: pompeHmt || null,
+          debit_m3j: pompeDebit || null,
+          profondeur_m: pompeProfondeur || null,
+          distance_m: pompeDistance || null,
+          champ_kwc: pompageDims.champKwc,
+        }
+      }
       const payload = {
         statut: 'brouillon',
         date_validite: dateValidite || null,
         taux_tva: tauxTva,
         remise_globale: discountPct || '0',
         note: note || null,
+        mode_installation: modeInstallation,
+        etude_params: etudeParams,
+        prix_cible_kwc: prixCible !== '' ? prixCible : null,
       }
       // Lead prioritaire : le client est résolu côté serveur depuis le lead.
       if (leadId) payload.lead = parseInt(leadId)
@@ -365,6 +451,30 @@ export default function DevisGenerator() {
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
   const produitGroups = useMemo(() => groupProduitsByCategory(produits), [produits])
 
+  // ── KPI multi-marchés : étude industrielle, pompage, prix/kWc, marge ──
+  const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
+  const kpiTotalBrut = avecRec && showAvec ? totals.totalAvecBrut : totals.totalSansBrut
+
+  const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0)
+    ? computeEtudeIndustrielle({
+        kwp, consoMensuelleKwh: consoMensuelle,
+        dayUsagePct: dayUsage, totalTtc: kpiTotal,
+      })
+    : null
+
+  const pompageDims = modeInstallation === 'agricole'
+    ? computePompage(pompeCv) : null
+
+  const pkwc = prixParKwc(kpiTotal, kwp)
+  const buyCost = useMemo(() => computeBuyCost(lines, produits), [lines, produits])
+  const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
+
+  const applyPrixCible = () => {
+    const pct = discountForTarget(prixCible, kwp, kpiTotalBrut)
+    if (pct == null) return
+    setDiscountPct(String(Math.max(0, pct)))
+  }
+
   // Réinitialiser : recharge la page, comme le bouton du simulateur
   const handleReset = () => {
     if (window.confirm('Réinitialiser le formulaire ?')) window.location.reload()
@@ -382,6 +492,24 @@ export default function DevisGenerator() {
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form onSubmit={handleSubmit} noValidate>
+        {/* ── Mode d'installation (marché) ── */}
+        <div className="gen-card">
+          <div className="gen-card-header">🎯 Marché / Mode d'installation</div>
+          <div className="gen-card-body">
+            <div className="gen-radio-group">
+              {MODES.map(([value, label]) => (
+                <label key={value}
+                       className={`gen-radio${modeInstallation === value ? ' selected' : ''}`}>
+                  <input type="radio" name="mode-installation" value={value}
+                         checked={modeInstallation === value}
+                         onChange={() => onModeChange(value)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* ── Informations du document ── */}
         <div className="gen-card">
           <div className="gen-card-header">📋 Informations du Document</div>
@@ -491,7 +619,8 @@ export default function DevisGenerator() {
           </div>
         </div>
 
-        {/* ── Factures électriques ── */}
+        {/* ── Factures électriques (masquées en mode pompage) ── */}
+        {modeInstallation !== 'agricole' && (
         <div className="gen-card">
           <div className="gen-card-header">💡 Factures Électriques</div>
           <div className="gen-card-body">
@@ -529,8 +658,101 @@ export default function DevisGenerator() {
                 </div>
               ))}
             </div>
+            {modeInstallation === 'industriel' && (
+              <div className="gen-grid" style={{ marginTop: '0.85rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Consommation mensuelle (kWh) — pour l'étude</label>
+                  <input type="number" min="0" step="any" className="form-control"
+                         placeholder="ex: 12000" value={consoMensuelle}
+                         onChange={e => setConsoMensuelle(e.target.value)} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
+        )}
+
+        {/* ── Pompage solaire (mode Agricole) ── */}
+        {modeInstallation === 'agricole' && (
+        <div className="gen-card">
+          <div className="gen-card-header">🌾 Pompage solaire</div>
+          <div className="gen-card-body">
+            <div className="gen-grid">
+              <div className="form-group">
+                <label className="form-label">Puissance pompe (CV)</label>
+                <input type="number" min="0" step="any" className="form-control"
+                       value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
+                {pompageDims && (
+                  <div className="gen-hint" style={{ marginTop: 4 }}>
+                    ≈ {pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
+                    ({pompageDims.nbPanneaux} panneaux 710 W)
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Type de pompe</label>
+                <div className="gen-radio-group">
+                  <label className={`gen-radio${pompeType === 'immergee' ? ' selected' : ''}`}>
+                    <input type="radio" name="pompe-type" value="immergee"
+                           checked={pompeType === 'immergee'}
+                           onChange={() => setPompeType('immergee')} />
+                    Immergée
+                  </label>
+                  <label className={`gen-radio${pompeType === 'surface' ? ' selected' : ''}`}>
+                    <input type="radio" name="pompe-type" value="surface"
+                           checked={pompeType === 'surface'}
+                           onChange={() => setPompeType('surface')} />
+                    Surface
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Alimentation</label>
+                <div className="gen-radio-group">
+                  <label className={`gen-radio${pompeAlim === 'mono' ? ' selected' : ''}`}>
+                    <input type="radio" name="pompe-alim" value="mono"
+                           checked={pompeAlim === 'mono'}
+                           onChange={() => setPompeAlim('mono')} />
+                    Mono 220V
+                  </label>
+                  <label className={`gen-radio${pompeAlim === 'tri' ? ' selected' : ''}`}>
+                    <input type="radio" name="pompe-alim" value="tri"
+                           checked={pompeAlim === 'tri'}
+                           onChange={() => setPompeAlim('tri')} />
+                    Tri 380V
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="gen-grid" style={{ marginTop: '0.75rem' }}>
+              <div className="form-group">
+                <label className="form-label">HMT (m)</label>
+                <input type="number" min="0" step="any" className="form-control"
+                       placeholder="ex: 120" value={pompeHmt}
+                       onChange={e => setPompeHmt(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Débit souhaité (m³/jour)</label>
+                <input type="number" min="0" step="any" className="form-control"
+                       placeholder="ex: 40" value={pompeDebit}
+                       onChange={e => setPompeDebit(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Profondeur forage (m) — optionnel</label>
+                <input type="number" min="0" step="any" className="form-control"
+                       value={pompeProfondeur}
+                       onChange={e => setPompeProfondeur(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Distance panneaux → coffret (m)</label>
+                <input type="number" min="0" step="any" className="form-control"
+                       value={pompeDistance}
+                       onChange={e => setPompeDistance(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
+        )}
 
         {/* ── Paramètres techniques ── */}
         <div className="gen-card">
@@ -585,10 +807,31 @@ export default function DevisGenerator() {
           </div>
         </div>
 
-        {/* ── Aperçu de la simulation ── */}
+        {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}
+        {modeInstallation !== 'agricole' && (
         <div className="gen-card">
           <div className="gen-card-header">📊 Aperçu de la Simulation</div>
           <div className="gen-card-body">
+            {etudeIndustrielle && (
+              <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
+                <MetricCard label="Taux d'autoconsommation"
+                            value={`${etudeIndustrielle.taux_autoconso} %`}
+                            unit="part de la production consommée" accent />
+                {etudeIndustrielle.taux_couverture != null && (
+                  <MetricCard label="Taux de couverture"
+                              value={`${etudeIndustrielle.taux_couverture} %`}
+                              unit="part de la conso couverte" accent />
+                )}
+                <MetricCard label="Économies annuelles (étude)"
+                            value={fmtNum(etudeIndustrielle.economies_annuelles)}
+                            unit="MAD / an" />
+                {etudeIndustrielle.payback != null && (
+                  <MetricCard label="Payback (étude)"
+                              value={`${etudeIndustrielle.payback} ans`}
+                              unit="retour sur invest." />
+                )}
+              </div>
+            )}
             {!roi ? (
               <p className="gen-hint" style={{ textAlign: 'center' }}>
                 Renseignez le nombre de panneaux et les factures, puis la simulation
@@ -661,6 +904,7 @@ export default function DevisGenerator() {
             )}
           </div>
         </div>
+        )}
 
         {/* ── Lignes de produits ── */}
         <div className="gen-card">
@@ -770,6 +1014,46 @@ export default function DevisGenerator() {
                 </div>
               )}
             </div>
+
+            {/* ── Prix par kWc, prix cible et marge (écran uniquement) ── */}
+            <div className="gen-totals-row gen-discount-row">
+              {pkwc != null && (
+                <div className="gen-total-item">
+                  <span className="gen-total-label">Prix / kWc</span>
+                  <span className="gen-total-value">{formatMoney(pkwc)}/kWc</span>
+                </div>
+              )}
+              <div className="gen-total-item gen-total-inline">
+                <span className="gen-total-label">Prix cible / kWc</span>
+                <input type="number" min="0" step="any" className="gen-discount-input"
+                       style={{ width: 100 }} placeholder="ex: 9000"
+                       value={prixCible} onChange={e => setPrixCible(e.target.value)} />
+                <button type="button" className="btn btn-sm btn-outline"
+                        onClick={applyPrixCible}
+                        disabled={!(kwp > 0) || prixCible === ''}>
+                  Appliquer via remise
+                </button>
+              </div>
+              {marge != null && (
+                <div className="gen-total-item">
+                  <span className={`gen-total-label${marge < 0 ? '' : ' green'}`}
+                        style={marge < 0 ? { color: '#b91c1c' } : undefined}>
+                    Marge indicative (interne)
+                  </span>
+                  <span className="gen-total-value"
+                        style={{ color: marge < 0 ? '#b91c1c' : '#16a34a' }}>
+                    {formatMoney(marge)}
+                    {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+            {marge != null && marge < 0 && (
+              <div className="form-error-box" style={{ margin: '0 1.25rem 1rem' }}>
+                ⚠ Le total après remise est INFÉRIEUR au coût d'achat estimé — vous
+                vendez à perte. Réduisez la remise ou le prix cible.
+              </div>
+            )}
           </div>
         </div>
 

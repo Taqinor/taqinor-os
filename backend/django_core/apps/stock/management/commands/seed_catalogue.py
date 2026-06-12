@@ -69,6 +69,160 @@ def ht(ttc):
     return (Decimal(ttc) / Decimal('1.2')).quantize(Decimal('0.01'))
 
 
+# ── Catalogue POMPAGE solaire (mode Agricole) ────────────────────────────────
+# Prix TTC reconstitués du marché marocain (cptechmaroc.ma, mrelec.ma,
+# energymarket.ma, ecovolt.ma, magitec.ma — juin 2026) — À CONFIRMER PAR REDA.
+# prix_achat laissé à 0 (vide) volontairement : à remplir par le fondateur.
+# (nom, sku, ttc, qte, seuil, pompe_cv, hmt_m, debit_m3j)
+POMPAGE = [
+    ('Pompe immergée solaire 1.5 CV Monophasé', 'PMP-IMM-1.5M', 4500, 20, 2, '1.5', '80', '15'),
+    ('Pompe immergée solaire 3 CV Monophasé',   'PMP-IMM-3M',   6500, 20, 2, '3', '120', '25'),
+    ('Pompe immergée solaire 4 CV Triphasé',    'PMP-IMM-4T',   8500, 20, 2, '4', '150', '35'),
+    ('Pompe immergée solaire 5.5 CV Triphasé',  'PMP-IMM-5.5T', 11000, 20, 2, '5.5', '180', '45'),
+    ('Pompe immergée solaire 7.5 CV Triphasé',  'PMP-IMM-7.5T', 14500, 20, 2, '7.5', '220', '60'),
+    ('Pompe immergée solaire 10 CV Triphasé',   'PMP-IMM-10T',  19000, 20, 2, '10', '250', '80'),
+    ('Pompe de surface solaire 1.5 CV Monophasé', 'PMP-SUR-1.5M', 3000, 20, 2, '1.5', '40', '20'),
+    ('Pompe de surface solaire 3 CV Triphasé',    'PMP-SUR-3T',   5500, 20, 2, '3', '60', '40'),
+    ('Variateur pompage solaire 1.5 CV Monophasé (coffret complet)', 'VFD-PMP-1.5M', 4000, 20, 2, '1.5', None, None),
+    ('Variateur pompage solaire 3 CV Triphasé (coffret complet)',   'VFD-PMP-3T',   4800, 20, 2, '3', None, None),
+    ('Variateur pompage solaire 4 CV Triphasé (coffret complet)',   'VFD-PMP-4T',   5500, 20, 2, '4', None, None),
+    ('Variateur pompage solaire 5.5 CV Triphasé (coffret complet)', 'VFD-PMP-5.5T', 6500, 20, 2, '5.5', None, None),
+    ('Variateur pompage solaire 7.5 CV Triphasé (coffret complet)', 'VFD-PMP-7.5T', 8000, 20, 2, '7.5', None, None),
+    ('Variateur pompage solaire 10 CV Triphasé (coffret complet)',  'VFD-PMP-10T',  10500, 20, 2, '10', None, None),
+    ('Câble solaire 6mm² (au mètre)', 'CAB-6MM-M', 13, 5000, 200, None, None, None),
+]
+
+_DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
+                   'Pilotée par variateur solaire (AC, compatible champ PV)\n'
+                   'Adaptée à l\'irrigation et l\'alimentation en eau agricole')
+_DESC_POMPE_SUR = ('Pompe de surface pour puits/bassin, amorçage facilité\n'
+                   'Pilotée par variateur solaire (AC, compatible champ PV)')
+_DESC_VFD = ('Coffret pompage complet pré-câblé : variateur MPPT dédié pompe\n'
+             'Sectionneur + disjoncteurs DC/AC + parafoudre DC\n'
+             'Relais de niveau (protection marche à sec / cuve pleine)')
+
+# ── Fiches commerciales (marque / description / garantie) ───────────────────
+# Garanties issues des termes constructeurs publiés (recherche 2026-06) ;
+# descriptions FR factuelles. Mise à jour ADDITIVE de ces 3 champs uniquement.
+FICHES = {
+    # Onduleurs réseau Huawei (résidentiel ≤ 25 kW : 10 ans ; C&I : 5 ans ext.)
+    **{sku: {
+        'marque': 'Huawei',
+        'garantie': ('Garantie constructeur 10 ans'
+                     if sku in ('OND-R-HUA-5M', 'OND-R-HUA-10M', 'OND-R-HUA-10T',
+                                'OND-R-HUA-12M', 'OND-R-HUA-15T', 'OND-R-HUA-20T',
+                                'OND-R-HUA-25T')
+                     else 'Garantie constructeur 5 ans (extensible jusqu\'à 20 ans)'),
+        'description': ('Onduleur string on-grid Huawei SUN2000, rendement max ≈ 98,6 %\n'
+                        'Protection d\'arc intelligente AFCI, parafoudres DC/AC intégrés\n'
+                        'Supervision temps réel via l\'application FusionSolar\n'
+                        'Conforme IEC 62109, indice IP65 (pose intérieure/extérieure)'),
+    } for sku in ('OND-R-HUA-5M', 'OND-R-HUA-10M', 'OND-R-HUA-10T', 'OND-R-HUA-12M',
+                  'OND-R-HUA-15T', 'OND-R-HUA-20T', 'OND-R-HUA-25T', 'OND-R-HUA-50T',
+                  'OND-R-HUA-100T', 'OND-R-HUA-150T')},
+    # Onduleurs hybrides Deye
+    **{sku: {
+        'marque': 'Deye',
+        'garantie': 'Garantie constructeur 10 ans',
+        'description': ('Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %\n'
+                        'Compatible batteries lithium 48 V (BMS CAN/RS485)\n'
+                        'Bascule secours (EPS/UPS) < 4 ms en cas de coupure réseau\n'
+                        'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
+    } for sku in ('OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
+                  'OND-H-DEY-15T', 'OND-H-DEY-20T')},
+    'PAN-CS-710': {
+        'marque': 'Canadien Solar',
+        'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
+        'description': ('Module Canadian Solar TOPHiKu7 710 Wc, cellules N-type TOPCon\n'
+                        'Rendement module jusqu\'à ≈ 22,9 %, dégradation ≤ 0,4 %/an\n'
+                        'Excellent comportement à haute température (≈ −0,29 %/°C)\n'
+                        'Certifié IEC 61215 / IEC 61730, fabricant Tier 1'),
+    },
+    'PAN-JK-710': {
+        'marque': 'Jinko',
+        'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
+        'description': ('Module JinkoSolar Tiger Neo 710 Wc, N-type TOPCon\n'
+                        'Rendement jusqu\'à ≈ 22,9 %, dégradation ≤ 0,4 %/an\n'
+                        'Version bifaciale double verre disponible\n'
+                        'Certifié IEC 61215 / IEC 61730'),
+    },
+    **{sku: {
+        'marque': 'Deyness',
+        'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
+        'description': ('Batterie lithium LiFePO4 basse tension 51,2 V\n'
+                        'Chimie fer-phosphate sûre et durable\n'
+                        'BMS intégré CAN/RS485, compatible onduleurs hybrides Deye\n'
+                        'Extensible en parallèle'),
+    } for sku in ('BAT-DEY-5', 'BAT-DEY-10')},
+    'BAT-LIT-5': {
+        'marque': 'Lithium',
+        'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
+        'description': ('Batterie lithium LiFePO4 basse tension 51,2 V, 5 kWh\n'
+                        'BMS intégré, communication CAN/RS485'),
+    },
+    'BAT-GEL-22': {
+        'marque': 'Gel',
+        'garantie': 'Garantie 2 ans',
+        'description': 'Batterie gel plomb étanche sans entretien, usage solaire',
+    },
+    'STR-ACIER': {
+        'garantie': 'Garantie 20 ans (structure)',
+        'description': ('Structure en acier galvanisé à chaud\n'
+                        'Visserie inox, mise à la terre incluse'),
+    },
+    'STR-ALU': {
+        'garantie': 'Garantie 20 ans (structure)',
+        'description': ('Structure aluminium anodisé anticorrosion\n'
+                        'Visserie inox, mise à la terre incluse'),
+    },
+    'SOC-BET': {
+        'description': 'Plot béton préfabriqué — lestage sans percement de l\'étanchéité',
+    },
+    'SMART-MET': {
+        'marque': 'Huawei',
+        'description': ('Compteur intelligent triphasé/monophasé\n'
+                        'Mesure production/consommation pour zéro injection et suivi'),
+    },
+    'WIFI-DON': {
+        'marque': 'Huawei',
+        'description': 'Passerelle Wi-Fi pour supervision en ligne de l\'onduleur',
+    },
+    'ACC-CAT': {
+        'description': ('Connecteurs MC4, presse-étoupes, visserie inox\n'
+                        'Goulottes et chemins de câbles, petites fournitures'),
+    },
+    'TAB-PROT': {
+        'description': ('Coffret IP65 : disjoncteurs DC et AC calibrés\n'
+                        'Parafoudres type 2 DC/AC, sectionneur DC\n'
+                        'Câblage repéré, schéma fourni'),
+    },
+    'INST-CAT': {
+        'description': ('Pose structures et modules, câblage DC/AC\n'
+                        'Raccordement au tableau, mise en service et tests\n'
+                        'Formation à l\'application de suivi'),
+    },
+    'TRANS-CAT': {
+        'description': 'Livraison du matériel sur site (Maroc)',
+    },
+    'SUIVI-2A': {
+        'description': ('Suivi de production à distance\n'
+                        'Visite de maintenance préventive tous les 12 mois pendant 2 ans'),
+    },
+    # Pompage
+    **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_POMPE_IMM,
+             } for sku in ('PMP-IMM-1.5M', 'PMP-IMM-3M', 'PMP-IMM-4T',
+                           'PMP-IMM-5.5T', 'PMP-IMM-7.5T', 'PMP-IMM-10T')},
+    **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_POMPE_SUR,
+             } for sku in ('PMP-SUR-1.5M', 'PMP-SUR-3T')},
+    **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_VFD,
+             } for sku in ('VFD-PMP-1.5M', 'VFD-PMP-3T', 'VFD-PMP-4T',
+                           'VFD-PMP-5.5T', 'VFD-PMP-7.5T', 'VFD-PMP-10T')},
+    'CAB-6MM-M': {
+        'description': 'Câble solaire 6 mm² double isolation, résistant UV (prix au mètre)',
+    },
+}
+
+
 class Command(BaseCommand):
     help = "Seed the stock with the devis-simulator catalogue (idempotent, additive only)."
 
@@ -128,9 +282,50 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
+        # ── Catalogue POMPAGE (additif, prix d'achat laissés vides) ──
+        for nom, sku, ttc, qte, seuil, cv, hmt, debit in POMPAGE:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(company=company, nom__iexact=nom).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie('Pompage'),
+                prix_achat=Decimal('0'),  # à remplir par le fondateur
+                prix_vente=ht(ttc),
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+                pompe_cv=Decimal(cv) if cv else None,
+                hmt_m=Decimal(hmt) if hmt else None,
+                debit_m3j=Decimal(debit) if debit else None,
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (catalogue pompage)',
+            )
+            created.append(nom)
+
+        # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs
+        #    descriptifs (marque/description/garantie) — jamais prix/quantités ──
+        fiches_updated = 0
+        for sku, fiche in FICHES.items():
+            produit = Produit.objects.filter(company=company, sku=sku).first()
+            if not produit:
+                continue
+            for field in ('marque', 'description', 'garantie'):
+                if field in fiche:
+                    setattr(produit, field, fiche[field])
+            produit.save(update_fields=[f for f in ('marque', 'description', 'garantie')
+                                        if f in fiche])
+            fiches_updated += 1
+
         self.stdout.write(self.style.SUCCESS(
             f"\nCatalogue seed for '{company.nom}': "
-            f"{len(created)} created, {len(skipped)} already present (untouched)."
+            f"{len(created)} created, {len(skipped)} already present (untouched), "
+            f"{fiches_updated} fiches commerciales mises à jour."
         ))
         for nom in created:
             self.stdout.write(f"  + {nom}")

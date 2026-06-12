@@ -76,6 +76,26 @@ class Produit(models.Model):
     )
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+
+    # ── Fiche commerciale (devis PDF riches, 2026-06) — tout optionnel ──
+    marque = models.CharField(max_length=100, blank=True, null=True)
+    description = models.TextField(
+        blank=True, null=True,
+        help_text='Lignes descriptives affichées sous la désignation dans les PDF (une par ligne).')
+    garantie = models.CharField(
+        max_length=255, blank=True, null=True,
+        help_text='Texte garantie constructeur / performance.')
+
+    # ── Spécifications pompage solaire (mode Agricole) ──
+    pompe_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance pompe en chevaux (CV).')
+    hmt_m = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Hauteur manométrique totale max (m).')
+    debit_m3j = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Débit max indicatif (m³/jour).')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
 
