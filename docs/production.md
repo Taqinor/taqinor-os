@@ -19,6 +19,22 @@ est une copie de dev qui peut diverger sans conséquence.
 | Secrets serveur | `/opt/taqinor-os/.env` (jamais dans le dépôt) |
 | Sauvegardes | Hetzner Backups (7 instantanés glissants, quotidiens) |
 
+## Mode DEBUG (décision du propriétaire, 2026-06-12)
+
+Le serveur tourne **volontairement en mode DEBUG** (`settings.dev`,
+`DJANGO_DEBUG=True` dans l'.env du serveur) tant que Reda teste — il
+préfère voir les erreurs détaillées. Risque assumé : les pages d'erreur
+exposent des détails techniques à tout visiteur, et l'hôte public est
+découvrable (journaux de certificats). **Avant d'ouvrir aux clients**,
+basculer dans `/opt/taqinor-os/.env` :
+
+```
+DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod
+DJANGO_DEBUG=False
+```
+
+puis `powershell -File scripts\deploy-prod.ps1` (ou redémarrer django_core).
+
 ## Mettre à jour la production
 
 Une commande, depuis le PC :
