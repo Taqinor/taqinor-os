@@ -29,9 +29,11 @@ export const updateDevis = createAsyncThunk('ventes/updateDevis', async ({ id, d
   }
 })
 
-export const genererPdfDevis = createAsyncThunk('ventes/genererPdfDevis', async (id, { rejectWithValue }) => {
+export const genererPdfDevis = createAsyncThunk('ventes/genererPdfDevis', async (arg, { rejectWithValue }) => {
+  // arg : id seul, ou { id, options } avec les options de format PDF
+  const { id, options } = (arg && typeof arg === 'object') ? arg : { id: arg, options: {} }
   try {
-    const res = await ventesApi.genererPdfDevis(id)
+    const res = await ventesApi.genererPdfDevis(id, options)
     return { id, ...res.data }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

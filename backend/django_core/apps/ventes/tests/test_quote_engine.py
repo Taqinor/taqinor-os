@@ -232,6 +232,106 @@ class TestPremiumPdfRender(TestCase):
         )
 
 
+class TestPdfFormats(TestCase):
+    """Per-format page-count guardrails (replaces the old single '3 pages'
+    rule): the premium format renders exactly 3 pages, the one-page format
+    exactly 1, and the modifiers (monthly chart off, devis final) keep the
+    premium at 3 pages."""
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+        ('Structures acier', '14', '375'),
+        ('Socles', '30', '67'),
+        ('Accessoires', '1', '1667'),
+        ('Tableau De Protection AC/DC', '1', '1667'),
+        ('Installation', '1', '4000'),
+        ('Transport', '1', '1000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES)
+
+    def _render(self, pdf_options=None):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_format_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html'], HTML(string=cap['html']).render()
+
+    @staticmethod
+    def _charts_on_page(page):
+        def _walk(box):
+            yield box
+            for child in (getattr(box, 'children', None) or []):
+                yield from _walk(child)
+        return [
+            b for b in _walk(page._page_box)
+            if 'Replaced' in type(b).__name__ and b.height > 100 and b.width > 100
+        ]
+
+    def test_premium_default_renders_three_pages(self):
+        html, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+        # default = no payment/RIB block
+        self.assertNotIn('SGMBMAMCXXX', html)
+
+    def test_onepage_format_renders_exactly_one_page(self):
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(
+            len(doc.pages), 1,
+            f'one-page quote must render exactly 1 page, got {len(doc.pages)}',
+        )
+        # the product list is there (designations from the quote lines)
+        self.assertIn('Panneau mono 550W', html)
+
+    def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
+        html, doc = self._render({
+            'devis_final': True,
+            'payment_mode': 'custom',
+            'custom_acompte': 12000,
+        })
+        self.assertEqual(len(doc.pages), 3)
+        self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
+
+    def test_monthly_chart_toggle_keeps_three_pages(self):
+        _, doc_with = self._render({'show_monthly': True})
+        _, doc_without = self._render({'show_monthly': False})
+        self.assertEqual(len(doc_with.pages), 3)
+        self.assertEqual(len(doc_without.pages), 3)
+        # page 2 loses exactly one chart when the monthly chart is off
+        charts_with = len(self._charts_on_page(doc_with.pages[1]))
+        charts_without = len(self._charts_on_page(doc_without.pages[1]))
+        self.assertEqual(charts_with - charts_without, 1)
+
+    def test_unknown_options_are_whitelisted_away(self):
+        from apps.ventes.quote_engine import clean_pdf_options
+        opts = clean_pdf_options({
+            'pdf_mode': 'evil', 'show_monthly': 1, 'devis_final': 'yes',
+            'payment_mode': 'weird', 'custom_acompte': 'abc', 'junk': True,
+        })
+        self.assertEqual(opts['pdf_mode'], 'full')
+        self.assertTrue(opts['show_monthly'])
+        self.assertTrue(opts['devis_final'])
+        self.assertEqual(opts['payment_mode'], 'standard')
+        self.assertIsNone(opts['custom_acompte'])
+        self.assertNotIn('junk', opts)
+
+
 class TestGeneratorQuoteFlow(TestCase):
     """End-to-end flow of the solar generator screen (/ventes/devis/nouveau):
     the screen creates a plain Devis via the REST API, then posts its lines via
