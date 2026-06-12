@@ -10,16 +10,25 @@ import {
   fetchCategories, createCategorie, updateCategorie, deleteCategorie,
   fetchFournisseurs, createFournisseur, updateFournisseur, deleteFournisseur,
 } from '../../features/stock/store/stockSlice'
+import { originFrom } from '../../api/origin'
 
 const ACCEPTED   = ['image/png', 'image/jpeg', 'image/webp']
 const MAX_MB     = 2
-const MEDIA_BASE = new URL(import.meta.env.VITE_API_URL ?? 'http://localhost').origin
+// Var d'env VIDE = même origine (prod derrière nginx) — surtout ne jamais
+// construire new URL('') : c'est ce qui tuait toute la page en production.
+const MEDIA_BASE = originFrom(import.meta.env.VITE_API_URL)
 const mediaUrl   = (url) => {
   if (!url) return null
-  // MinIO presigned URLs use the internal Docker hostname — replace with localhost
+  if (MEDIA_BASE) {
+    // Dev local : les URLs présignées MinIO utilisent l'hôte Docker interne
+    return url
+      .replace(/^https?:\/\/minio(:\d+)?/, `${MEDIA_BASE.replace(/:\d+$/, '')}:9000`)
+      .replace(/^\//, `${MEDIA_BASE}/`)
+  }
+  // Prod (même origine) : on garde les chemins relatifs tels quels ; les URLs
+  // minio internes ne sont pas joignables du navigateur — pas de réécriture
+  // hasardeuse, l'aperçu dégrade proprement (la page, elle, vit).
   return url
-    .replace(/^https?:\/\/minio(:\d+)?/, `${MEDIA_BASE.replace(/:\d+$/, '')}:9000`)
-    .replace(/^\//, `${MEDIA_BASE}/`)
 }
 
 // ── SVG helper ────────────────────────────────────────────────────────────────

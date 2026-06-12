@@ -230,7 +230,7 @@ export const PRODUCT_CATEGORIES = [
   ['tableau', 'Tableau De Protection AC/DC'],
   ['installation', 'Installation'],
   ['transport', 'Transport'],
-  ['suivi', 'Suivi journalier, maintenance chaque 12 mois pendent 2 ans'],
+  ['suivi', 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans'],
 ]
 
 export function groupProduitsByCategory(produits) {
@@ -307,7 +307,7 @@ export function defaultProductLines(produits) {
     row(first('tableau'), 'Tableau De Protection AC/DC', 1),
     row(first('installation'), 'Installation', 1),
     row(first('transport'), 'Transport', 1),
-    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendent 2 ans', 1),
+    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 1),
   ]
 }
 
@@ -415,7 +415,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
     row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau),
     row(first('installation'), 'Installation', 1, prixInstallation),
     row(first('transport'), 'Transport', 1),
-    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendent 2 ans', 0),
+    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0),
   ]
 }
 

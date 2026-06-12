@@ -2,8 +2,9 @@ import axios from 'axios'
 
 // Même origine que la page par défaut (chemins relatifs via nginx) —
 // fonctionne depuis localhost ET depuis l'adresse privée Tailscale.
-const VITE_URL = import.meta.env.VITE_IA_API_URL || ''
-const ORIGIN = VITE_URL ? new URL(VITE_URL).origin : ''
+import { originFrom } from './origin'
+
+const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
 const iaApi_instance = axios.create({
   baseURL: ORIGIN,

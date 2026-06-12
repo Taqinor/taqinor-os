@@ -29,8 +29,24 @@ class DevisSerializer(serializers.ModelSerializer):
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_ttc = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    # Total d'AFFICHAGE canonique : pour un devis à deux options, le total de
+    # l'option 1 (remise incluse) — jamais la somme des deux options.
+    total_affiche = serializers.SerializerMethodField()
+    nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+
+    def _display(self, obj):
+        if not hasattr(obj, '_display_totals_cache'):
+            from .quote_engine.builder import display_totals
+            obj._display_totals_cache = display_totals(obj)
+        return obj._display_totals_cache
+
+    def get_total_affiche(self, obj):
+        return self._display(obj)['total']
+
+    def get_nb_options(self, obj):
+        return self._display(obj)['nb_options']
 
     def get_lead_nom(self, obj):
         if not obj.lead_id:

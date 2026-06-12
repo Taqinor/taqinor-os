@@ -32,6 +32,19 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAdminRole()]
         return [IsAdminRole()]
 
+    def destroy(self, request, *args, **kwargs):
+        # Un client avec des devis est PROTÉGÉ (pas de cascade) : message
+        # français clair au lieu d'un 500 silencieux.
+        from django.db.models import ProtectedError
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {'detail': "Ce client a des devis liés — supprimez ou "
+                           "réassignez ses devis d'abord."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
 
 class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).

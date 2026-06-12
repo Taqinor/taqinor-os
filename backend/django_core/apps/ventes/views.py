@@ -230,10 +230,11 @@ class LigneDevisViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + ['destroy']:
+            # Retirer une LIGNE fait partie de l'édition normale d'un
+            # brouillon (le générateur remplace les lignes) — même niveau
+            # que les autres écritures. Supprimer le DEVIS entier reste admin.
             return [IsResponsableOrAdmin()]
-        elif self.action == 'destroy':
-            return [IsAdminRole()]
         return [IsAdminRole()]
 
 

@@ -3,8 +3,9 @@ import axios from 'axios'
 // Par défaut : MÊME ORIGINE que la page (chemins relatifs via nginx) — l'app
 // fonctionne ainsi depuis localhost ET depuis une adresse privée Tailscale
 // sans rebuild. VITE_API_URL ne sert qu'à pointer ailleurs explicitement.
-const VITE_URL = import.meta.env.VITE_API_URL || ''
-const ORIGIN = VITE_URL ? new URL(VITE_URL).origin : ''
+import { originFrom } from './origin'
+
+const ORIGIN = originFrom(import.meta.env.VITE_API_URL)
 
 const api = axios.create({
   baseURL: ORIGIN,

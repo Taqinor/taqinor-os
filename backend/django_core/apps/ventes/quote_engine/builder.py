@@ -215,6 +215,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     sans_ok = has_reseau
     avec_ok = has_hybride and has_batterie
+    # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
+    # total d'affichage = option 1, et le une-page ne mélange jamais.
+    deux_options = sans_ok and avec_ok
     if not sans_ok and not avec_ok and pdf_mode == "full":
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
         # sans aucun onduleur ne peut pas produire le document à options.
@@ -291,7 +294,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     totaux_sans = _canonical_totaux(sans_items)
     totaux_avec = _canonical_totaux(avec_items)
-    totaux_all = _canonical_totaux(items)
+    # Une page : option 1 seule quand deux vraies options, sinon tout le devis
+    totaux_all = _canonical_totaux(sans_items if deux_options else items)
+
+    # ── Total d'AFFICHAGE canonique (liste des devis) ────────────────────────
+    # Deux options → total de l'option 1 (remise incluse), jamais la somme
+    # mensongère des deux. Mono-option → le total de cette option ; devis
+    # libre/pompage → le total complet. Identique au PDF au dirham près.
+    if deux_options:
+        display_total = totaux_sans["ttc"]
+        nb_options = 2
+    elif avec_ok:
+        display_total = totaux_avec["ttc"]
+        nb_options = 1
+    elif has_reseau:
+        display_total = totaux_sans["ttc"]
+        nb_options = 1
+    else:
+        display_total = totaux_all["ttc"]
+        nb_options = 1
     total_sans = totaux_sans["ttc"]
     total_avec = totaux_avec["ttc"]
     total_sans_before = totaux_sans["ttc_avant"]
@@ -332,17 +353,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 
-    # Raw unfiltered item list for the one-page layout (qty > 0 rows only),
-    # mirroring the simulator's `all_items`. OS designations already carry
-    # brand/spec (they are the stock product names); the brand badge of the
-    # one-page Marque column is extracted from them.
+    # Liste d'articles du format UNE PAGE. RÈGLE D'INTÉGRITÉ : une facture ne
+    # mélange JAMAIS deux options — un devis à deux vraies options (réseau ET
+    # hybride+batterie) rend l'OPTION 1 (sans batterie) seule, avec une
+    # mention discrète vers la proposition complète. Devis mono-option ou sans
+    # options (pompage, liste libre) : toutes les lignes, comme avant.
+    onepage_source = sans_items if deux_options else items
+    onepage_note_batterie = deux_options
     all_items = [
         {
             **{k: v for k, v in it.items() if k != "_produit_nom"},
             "marque": it["marque"] or _parse_marque(
                 it["designation"], it.get("_produit_nom", "")),
         }
-        for it in items if it["quantite"] > 0
+        for it in onepage_source if it["quantite"] > 0
     ]
 
     # Strip the internal helper key before handing items to the generator.
@@ -442,6 +466,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "scenario": scenario,
         "recommended": recommended,
         "all_items": all_items,
+        "onepage_note_batterie": onepage_note_batterie,
+        "display_total": display_total,
+        "nb_options": nb_options,
         "pdf_mode": pdf_mode,
         "show_monthly": opts['show_monthly'],
         "devis_final": opts['devis_final'],
@@ -455,6 +482,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "etude": etude,
     }
     return data
+
+
+def display_totals(devis) -> dict:
+    """Total d'affichage canonique pour la liste des devis — calculé par le
+    MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
+    au document au dirham près. Repli sûr sur le total stocké."""
+    try:
+        data = build_quote_data(devis, {"pdf_mode": "onepage"})
+        return {"total": data["display_total"], "nb_options": data["nb_options"]}
+    except Exception:  # noqa: BLE001 — une liste ne doit jamais casser
+        logger.exception("display_totals: repli sur total_ttc (devis %s)",
+                         getattr(devis, "reference", "?"))
+        return {"total": float(devis.total_ttc), "nb_options": 1}
 
 
 def _pdf_key(devis) -> str:
