@@ -12,7 +12,7 @@ export const NAP = {
   phone: '+212661850410',
   phoneDisplay: '0661850410', // identique au GBP — ne pas reformater
   whatsapp: '212661850410', // chiffres uniquement (liens wa.me)
-  email: 'reda.kasri@taqinor.ma',
+  email: 'contact@taqinor.com', // adresse GBP confirmée par le propriétaire (2026-06-13)
   // Zone de service (pas d'adresse postale physique — mode service-area)
   serviceArea: ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Maroc'],
   // Liste de services — doit correspondre EXACTEMENT au Google Business Profile

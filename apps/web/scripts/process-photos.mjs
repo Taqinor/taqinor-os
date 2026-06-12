@@ -57,9 +57,10 @@ const PHOTOS = [
     // NOTE preuve : les sites « villa-zellige / pente-zellige » (04-04) et
     // « terrasse terre cuite » (05-08) ne correspondent à AUCUNE des 5
     // installations du dossier — retirés des pages (voir rapport).
-    // Pose du panneau par l'équipe — Ref 236, El Jadida (EXIF 2026-03-28)
+    // Pose du panneau par l'équipe — Ref 134, CASABLANCA (EXIF 2026-03-28 ;
+    // attribution 134/236 corrigée par le propriétaire le 2026-06-13)
     src: 'IMG_1701.HEIC',
-    out: 'pose-236',
+    out: 'pose-134',
     extractRatio: { left: 0.06, top: 0, width: 0.94, height: 1 },
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
