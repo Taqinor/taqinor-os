@@ -1,0 +1,237 @@
+---
+/**
+ * CANDIDAT CRAFT C — « Monument ».
+ * Thèse : les chiffres sont si bons qu'ils n'ont besoin de rien d'autre —
+ * échelle typographique monumentale, blanc extrême, photos pleine largeur
+ * sans cadre. Emprunte l'échelle nue de Tesla Energy et la franchise
+ * d'Enpal ; rejette toute décoration (ombres, rondeurs, motifs).
+ * Page privée (noindex, hors sitemap). Faits et diagnostic STRICTEMENT
+ * identiques à la production.
+ */
+import Layout from '../layouts/Layout.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import DiagnosticForm from '../components/DiagnosticForm.astro';
+import Faq from '../components/Faq.astro';
+import Picture from '../components/Picture.astro';
+import VideoChantier from '../components/VideoChantier.astro';
+import StickyCta from '../components/StickyCta.astro';
+import WhatsAppMock from '../components/WhatsAppMock.astro';
+import { WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+
+const heroTitle = '21 406 kWh par an, produits sur un toit d’El Jadida.';
+const heroSub =
+  'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
+
+const cases = [
+  { kwc: '17,04 kWc', lieu: 'El Jadida · avril 2026', production: '21 406 kWh/an', materiel: '24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness' },
+  { kwc: '11,36 kWc', lieu: 'Casablanca · avril 2026', production: '14 271 kWh/an', materiel: '16 × Canadian Solar 710 Wc · Deye 10 kW · 10 kWh Dyness' },
+  { kwc: '5,68 kWc', lieu: 'El Jadida · mars 2026', production: '7 135 kWh/an', materiel: '8 × Canadian Solar 710 Wc · Deye 5 kW · 5 kWh Dyness' },
+];
+
+const faq = [
+  { q: 'Combien coûte une installation solaire résidentielle ?', a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le diagnostic ci-dessous vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.' },
+  { q: 'Que dit la loi 82-21 pour les particuliers ?', a: 'En basse tension, une installation de moins de 11 kW relève du régime de déclaration : une formalité préalable, pas une autorisation. Taqinor prépare et dépose la déclaration pour vous.' },
+  { q: 'Mon installation existante n’est pas déclarée. Que faire ?', a: 'L’Article 33 de la loi 82-21 ouvre une fenêtre de régularisation pour les installations existantes. La fenêtre est ouverte : déposez maintenant. Voir la page Régularisation pour la procédure en 5 étapes.' },
+  { q: 'Combien de temps durent les panneaux ?', a: 'Les panneaux sont garantis en performance sur 25 ans (généralement ≥ 84 % de la puissance initiale à 25 ans). Les onduleurs se remplacent typiquement une fois sur la durée de vie de l’installation.' },
+  { q: 'Faut-il des batteries ?', a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.' },
+];
+
+const gallery = [
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/an', type: '24 × Canadian Solar 710 Wc · Deye 15 kW' },
+  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/an', type: '16 × Canadian Solar 710 Wc · Deye 10 kW' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: '8 × Canadian Solar 710 Wc · Deye 5 kW' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: null, type: 'Fin de chantier · équipe Taqinor' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '11,36 kWc', prod: null, type: 'Production mesurée — Deye Cloud' },
+  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: 'Pose en cours · 8 × Canadian Solar 710 Wc' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Pose des rails · 6 × JA Solar' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Entretien du champ · 6 × JA Solar' },
+];
+---
+
+<Layout
+  title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
+  description="Conception, installation et déclaration d'installations solaires pour villas, industries et hôtels au Maroc. Étude gratuite, dimensionnement par l'ingénierie, conformité loi 82-21."
+  ogSlug="accueil"
+  preloadHeroPoster
+  noindex
+>
+  <div class="craft-c bg-blanc text-encre">
+    <Article33Ribbon />
+
+    <!-- Chapitre 1 — LE chiffre, à l'échelle du viewport -->
+    <section class="px-4 pb-10 pt-16 sm:pt-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label text-encre-faint">L'étude d'abord, le chantier ensuite</p>
+        <h1 class="display mt-6 text-[clamp(2.6rem,10.5vw,8.5rem)] leading-[0.98] tracking-tight">
+          21 406 <span class="align-top text-[0.32em] font-bold tracking-normal text-azur-600">kWh/an</span>
+        </h1>
+        <p class="display mt-2 max-w-[24ch] text-[clamp(1.3rem,3.4vw,2.6rem)] text-encre-soft">
+          produits sur un toit d’El Jadida.
+        </p>
+        <p class="sr-only">{heroTitle}</p>
+        <p class="mt-6 max-w-xl text-base leading-relaxed text-encre-soft sm:text-lg">{heroSub}</p>
+        <div class="mt-9 flex flex-wrap items-center gap-3">
+          <a href="#simulateur" class="snap-btn bg-azur-950 px-8 py-4 text-base font-bold text-white">
+            Recevez votre étude sur WhatsApp
+          </a>
+          <a href={waDirect} rel="noopener" class="snap-btn border-2 border-azur-950 px-7 py-4 text-base font-semibold text-azur-950">
+            WhatsApp direct
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Photo pleine largeur, sans cadre, surligne minimale -->
+    <figure class="reveal">
+      <div class="mono-img">
+        <picture>
+          <source type="image/avif" sizes="100vw"
+            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
+          <source type="image/webp" sizes="100vw"
+            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
+          <img src="/videos/hero-poster-1600.webp" alt="Champ de panneaux du chantier réf. 468 face à la ville, El Jadida" width="1600" height="900"
+            loading="eager" decoding="async" class="h-[52svh] w-full object-cover sm:h-[72svh]" />
+        </picture>
+      </div>
+      <figcaption class="tech-label mx-auto max-w-6xl px-4 pt-3 text-encre-faint">Réf. 468 — El Jadida · 17,04 kWc · avril 2026</figcaption>
+    </figure>
+
+    <!-- Chapitre 2 — les quatre vérités, gigantesques -->
+    <section class="px-4 py-24 sm:py-32">
+      <dl class="mx-auto max-w-6xl space-y-14">
+        <div class="reveal flex flex-wrap items-baseline justify-between gap-4 border-t-2 border-encre pt-6">
+          <dd class="fig text-[clamp(2.8rem,9vw,7rem)] text-azur-600">5</dd>
+          <dt class="display max-w-[16ch] text-right text-lg text-encre-soft sm:text-2xl">projets livrés en 2026 — visites possibles sur demande</dt>
+        </div>
+        <div class="reveal flex flex-wrap items-baseline justify-between gap-4 border-t-2 border-encre pt-6">
+          <dd class="fig whitespace-nowrap text-[clamp(2.8rem,9vw,7rem)] text-azur-600">43,48 kWc</dd>
+          <dt class="display max-w-[16ch] text-right text-lg text-encre-soft sm:text-2xl">installés — Casablanca, El Jadida, Nouaceur</dt>
+        </div>
+        <div class="reveal flex flex-wrap items-baseline justify-between gap-4 border-t-2 border-encre pt-6">
+          <dd class="fig whitespace-nowrap text-[clamp(2.8rem,9vw,7rem)] text-azur-600">25 ans</dd>
+          <dt class="display max-w-[16ch] text-right text-lg text-encre-soft sm:text-2xl">de garantie de performance des panneaux</dt>
+        </div>
+        <div class="reveal flex flex-wrap items-baseline justify-between gap-4 border-t-2 border-encre pt-6">
+          <dd class="fig whitespace-nowrap text-[clamp(2.8rem,9vw,7rem)] text-brass-600">0 MAD</dd>
+          <dt class="display max-w-[16ch] text-right text-lg text-encre-soft sm:text-2xl">l'étude et le diagnostic — sans engagement</dt>
+        </div>
+      </dl>
+    </section>
+
+    <!-- Chapitre 3 — la preuve, photo après photo, sans cadre -->
+    <section class="pb-10">
+      <h2 class="display mx-auto max-w-6xl px-4 pb-10 text-3xl sm:text-5xl">Nos installations, telles quelles</h2>
+      <p class="mx-auto -mt-6 max-w-6xl px-4 pb-12 text-sm leading-relaxed text-encre-soft">
+        Données issues des dossiers techniques. Clarté et cadrage ajustés —
+        rien d'ajouté, rien d'effacé.
+      </p>
+      <div class="space-y-1">
+        {gallery.slice(0, 4).map((g) => (
+          <figure class="reveal">
+            <div class="mono-img">
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={g.ratio}
+                sizes="100vw" class="max-h-[80svh] w-full object-cover" />
+            </div>
+            <figcaption class="tech-label mx-auto max-w-6xl px-4 py-3 text-encre-faint">
+              {g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''} — <span class="normal-case tracking-normal">{g.type}</span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+      <div class="mx-auto grid max-w-6xl grid-cols-2 gap-1 px-0 sm:grid-cols-4">
+        {gallery.slice(4).map((g) => (
+          <figure class="reveal">
+            <div class="mono-img">
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={g.ratio}
+                sizes="(min-width: 640px) 25vw, 50vw" class="aspect-square w-full object-cover" />
+            </div>
+            <figcaption class="tech-label px-2 py-2 text-[0.6rem] text-encre-faint">{g.ville} · {g.kwc}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+
+    <VideoChantier />
+
+    <!-- WhatsApp, nu -->
+    <section class="px-4 py-24 sm:py-32">
+      <div class="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+        <div>
+          <h2 class="display max-w-md text-3xl sm:text-5xl">La suite se passe sur WhatsApp</h2>
+          <p class="mt-5 max-w-md leading-relaxed text-encre-soft">
+            Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
+            vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
+            jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
+          </p>
+          <ol class="mt-8 space-y-4 text-base text-encre-soft">
+            <li class="flex gap-4"><span class="fig text-2xl text-azur-600">1</span>Diagnostic en 60 secondes — fourchette immédiate</li>
+            <li class="flex gap-4"><span class="fig text-2xl text-azur-600">2</span>Échange WhatsApp avec l'équipe technique</li>
+            <li class="flex gap-4"><span class="fig text-2xl text-azur-600">3</span>Visite technique, étude complète gratuite, devis</li>
+          </ol>
+        </div>
+        <WhatsAppMock />
+      </div>
+    </section>
+
+    <!-- Fiches chantier — tableau nu -->
+    <section class="px-4 pb-24">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="display text-3xl sm:text-5xl">Ils produisent déjà leur électricité</h2>
+        <div class="mt-12 border-t-2 border-encre">
+          {cases.map((c) => (
+            <div class="reveal grid gap-2 border-b border-encre/15 py-7 sm:grid-cols-[1fr_1fr_1.4fr] sm:items-baseline sm:gap-6">
+              <span class="fig text-4xl text-azur-600 sm:text-5xl">{c.kwc}</span>
+              <span>
+                <span class="tech-label block text-encre-faint">{c.lieu}</span>
+                <span class="fig mt-1 block text-xl">{c.production}</span>
+              </span>
+              <span class="text-sm leading-relaxed text-encre-soft">
+                {c.materiel}
+                <span class="mt-1 block text-xs text-encre-faint">Témoignage client à venir — données de production vérifiées sur Deye Cloud.</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <DiagnosticForm>
+    <aside slot="aside" class="border border-azur-900/15 border-t-4 border-t-azur-600 bg-blanc p-6">
+      <p class="tech-label text-encre-faint">Dernière installation livrée</p>
+      <p class="fig mt-3 text-4xl text-azur-600">17,04 kWc</p>
+      <p class="tech-label mt-1 text-encre-faint">El Jadida · avril 2026</p>
+      <p class="mt-4 text-sm leading-relaxed text-encre-soft">
+        Production : <strong class="text-encre">21 406 kWh/an</strong><br />
+        24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
+      </p>
+      <p class="mt-4 border-t border-azur-900/10 pt-3 text-xs text-encre-faint">
+        Production mesurée — Deye Cloud. Visites de site possibles sur demande.
+      </p>
+    </aside>
+  </DiagnosticForm>
+
+  <Faq items={faq} />
+
+  <StickyCta />
+</Layout>
+
+<style>
+  /* Traitement photo « monument » : contraste sec, légère désaturation —
+     l'image documente, le bleu n'existe que dans la typographie */
+  .craft-c .mono-img img {
+    filter: saturate(0.82) contrast(1.08);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .craft-c .snap-btn {
+      transition: transform 0.15s cubic-bezier(0.3, 0, 0.2, 1), background-color 0.15s, color 0.15s;
+    }
+    .craft-c .snap-btn:hover {
+      transform: translate(2px, -2px);
+      box-shadow: -4px 4px 0 0 #e8b54a;
+    }
+  }
+</style>

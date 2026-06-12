@@ -17,7 +17,7 @@ export default defineConfig({
   integrations: [
     sitemap({
       // Pages de travail privées (comparatifs typo/média) — jamais indexées
-      filter: (page) => !/type-test|media-test|variants-test/.test(page)
+      filter: (page) => !/type-test|media-test|variants-test|craft-/.test(page)
     })
   ]
 });
