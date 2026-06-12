@@ -114,7 +114,23 @@ repo yet, the rule still applies to any future integration.
 - **Catalogue seeding**: `manage.py seed_catalogue` (idempotent, additive
   only; never touches existing prices/quantities) seeds the simulator
   catalogue + Pompage items and re-applies product sheets
-  (marque/description/garantie only). Pompage prices are market estimates
-  flagged "à confirmer"; pompage buy prices intentionally left at 0 for the
-  founder. `Produit.prix_achat` powers a GENERATOR-ONLY margin indicator —
+  (marque/description/garantie only). Small-pump prices are market estimates
+  flagged "à confirmer" with buy prices left at 0 for the founder.
+  2026-06-12: 16 VEICHI variateurs carry the founder's REAL prices (sell
+  public TTC + revendeur buy into `prix_achat`); the 6 estimated
+  coffret-variateur placeholders are ARCHIVED by the seeder
+  (founder-authorized exception, never deleted). 11 OSP 30-series pumps ship
+  with manufacturer curves (`Produit.courbe_pompe` debit→HMT + `pompe_kw`,
+  `tension_v`) and DELIBERATELY EMPTY prices: excluded from auto-fill and
+  greyed "prix à renseigner" until the founder prices them.
+  `Produit.prix_achat` powers a GENERATOR-ONLY margin indicator —
   it must never appear in any PDF or client-facing output.
+- **Pompage sizing (2026-06-12)**: HMT + débit souhaité (m³/h) select the
+  smallest curve pump that delivers enough at that HMT (interpolation in
+  `solar.js debitAtHmt`); matching VEICHI variateur (smallest kW ≥ pump kW,
+  tension 220/380 assortie) + one AFFICHEUR SI22 line added by default.
+  m³/jour = débit@HMT × heures de pompage (editable, default 7 h), computed
+  ONCE at quote creation, stored in `etude_params`, rendered identically on
+  screen and the one-page PDF. Never print m³/jour for curve-less pumps —
+  omit the card. Pompage compositions contain NO inverter and NO battery,
+  and auto-fill never quotes a price-less product (all guarded by tests).
