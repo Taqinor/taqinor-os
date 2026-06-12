@@ -12,8 +12,8 @@ from .serializers import (
 )
 from authentication.permissions import (
     IsAnyRole,
-    IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -33,10 +33,15 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['nom']
 
     def get_permissions(self):
+        # Écritures Stock : permission ERP granulaire (rôles fins type
+        # « Commerciale » = lecture seule) avec comportement historique
+        # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
+        elif self.action == 'create':
+            return [HasPermissionOrLegacy('stock_creer')()]
         elif self.action in WRITE_ACTIONS:
-            return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -123,7 +128,7 @@ class CategorieViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
-            return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -140,7 +145,7 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
-            return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -160,7 +165,7 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action == 'create':
-            return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy('stock_mouvement')()]
         else:
             return [IsAdminRole()]
 

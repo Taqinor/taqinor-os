@@ -567,6 +567,69 @@ class TestPdfFormats(TestCase):
         html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
         self.assertEqual(len(doc.pages), 1)
 
+    def test_payment_terms_by_mode_on_all_formats(self):
+        """Conditions de paiement = mapping UNIQUE par mode : résidentiel et
+        agricole 30/60/10, industriel 50/40/10 — cohérent sur tous formats."""
+        # Résidentiel (défaut) — premium
+        html, _ = self._render()
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html)
+        self.assertIn('60&#37; à la réception du matériel', html)
+        self.assertIn('10&#37; après la mise en marche', html)
+        self.assertIn('+ acompte 30&#37;', html)
+        # Résidentiel — one-page
+        html1, _ = self._render({'pdf_mode': 'onepage'})
+        self.assertIn('Acompte&#160;: 30&#37;', html1)
+        self.assertIn('60&#37; &#224; la r&#233;ception du mat&#233;riel', html1)
+        self.assertIn('10&#37; apr&#232;s mise en marche', html1)
+        # Industriel — 50/40/10 partout
+        self.devis.mode_installation = 'industriel'
+        self.devis.save(update_fields=['mode_installation'])
+        html2, _ = self._render()
+        self.assertIn('Acompte à la commande&#160;: 50&#37;', html2)
+        self.assertIn('40&#37; à la réception du matériel', html2)
+        self.assertIn('+ acompte 50&#37;', html2)
+        self.assertNotIn('Acompte à la commande&#160;: 30&#37;', html2)
+        html3, _ = self._render({'pdf_mode': 'onepage'})
+        self.assertIn('Acompte&#160;: 50&#37;', html3)
+        self.assertIn('40&#37; &#224; la r&#233;ception du mat&#233;riel', html3)
+        # Bloc « Modalités de paiement » (devis final) suit aussi le mode
+        html4, _ = self._render({'devis_final': True})
+        self.assertIn('Modalit', html4)
+        self.assertIn('>50%</div>', html4)   # acompte industriel
+        # Agricole — défaut résidentiel 30/60/10 (one-page)
+        self.devis.mode_installation = 'agricole'
+        self.devis.save(update_fields=['mode_installation'])
+        html5, _ = self._render({'pdf_mode': 'onepage'})
+        self.assertIn('Acompte&#160;: 30&#37;', html5)
+
+    def test_panel_performance_warranty_is_30_years(self):
+        """Plus aucune mention « 25 ans » de performance panneau ; l'horizon
+        ROI « sur 25 ans » (graphique) n'est PAS une garantie et reste."""
+        self.devis.mode_installation = ''
+        self.devis.save(update_fields=['mode_installation'])
+        html, _ = self._render()
+        self.assertIn('Garanties jusqu&#8217;à 30 ans', html)
+        self.assertIn('30 ans performance (87,4&#8201;%)', html)
+        self.assertIn('Performance panneau (87,4&#8201;%)', html)
+        self.assertNotIn('25 ans performance', html)
+        self.assertNotIn('jusqu&#8217;à 25 ans', html)
+
+    def test_ice_rendered_when_present_absent_when_empty(self):
+        self.client_obj.ice = '003799642000099'
+        self.client_obj.save(update_fields=['ice'])
+        html, _ = self._render()
+        self.assertIn('003799642000099', html)
+        self.assertIn('ICE', html)
+        html1, _ = self._render({'pdf_mode': 'onepage'})
+        self.assertIn('003799642000099', html1)
+        # Vide → la ligne disparaît entièrement (pas de tiret)
+        self.client_obj.ice = ''
+        self.client_obj.save(update_fields=['ice'])
+        html2, _ = self._render()
+        self.assertNotIn('ICE&#160;:', html2)
+        html3, _ = self._render({'pdf_mode': 'onepage'})
+        self.assertNotIn('ICE&#160;:', html3)
+
     def test_buy_prices_never_in_pdf_html(self):
         """Le prix d'achat (revendeur) n'apparaît dans AUCUN rendu client —
         sweep sur les deux formats avec un prix d'achat très reconnaissable."""

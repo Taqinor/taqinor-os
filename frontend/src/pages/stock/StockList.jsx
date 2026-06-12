@@ -13,7 +13,7 @@ import {
 } from '../../features/stock/catalogue'
 
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, role, onEdit, onDelete }) {
+function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete }) {
   const spec = keySpec(p)
   const ttc = prixTtc(p)
   return (
@@ -45,10 +45,10 @@ function CatalogueRow({ p, role, onEdit, onDelete }) {
         {p.is_low_stock && <span className="cat-badge cat-badge-low">⚠ seuil {p.seuil_alerte}</span>}
       </div>
       <div className="cat-row-actions">
-        {(role === 'responsable' || role === 'admin') && (
+        {canWrite && (
           <button className="btn btn-sm btn-outline" onClick={() => onEdit(p)}>Éditer</button>
         )}
-        {role === 'admin' && (
+        {canDelete && (
           <button className="btn btn-sm btn-outline btn-danger-outline"
                   onClick={() => onDelete(p)}>Supprimer</button>
         )}
@@ -136,6 +136,13 @@ export default function StockList() {
   const dispatch = useDispatch()
   const { produits, produitsArchived, loading, error } = useSelector(s => s.stock)
   const role = useSelector(s => s.auth.role)
+  const permissions = useSelector(s => s.auth.permissions)
+  // Rôle fin (ex. « Commerciale » lecture seule) : les permissions priment ;
+  // comptes hérités sans rôle fin : comportement historique par rôle.
+  const canWrite = permissions.length
+    ? permissions.includes('stock_modifier')
+    : (role === 'responsable' || role === 'admin')
+  const canDelete = role === 'admin'
 
   const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
@@ -256,7 +263,7 @@ export default function StockList() {
               {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
             </button>
           )}
-          {(role === 'responsable' || role === 'admin') && (
+          {canWrite && (
             <button className="btn btn-primary" onClick={openNew}>
               + Nouveau produit
             </button>
@@ -327,7 +334,7 @@ export default function StockList() {
                     <span className="cat-brand-count">{b.items.length} article{b.items.length !== 1 ? 's' : ''}</span>
                   </div>
                   {b.items.map(p => (
-                    <CatalogueRow key={p.id} p={p} role={role}
+                    <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
                                   onEdit={openEdit} onDelete={handleDelete} />
                   ))}
                 </div>

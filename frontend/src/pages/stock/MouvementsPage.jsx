@@ -24,6 +24,12 @@ export default function MouvementsPage() {
   const dispatch = useDispatch()
   const { mouvements, produits, loading, error } = useSelector(s => s.stock)
   const role = useSelector(s => s.auth.role)
+  const permissions = useSelector(s => s.auth.permissions)
+  // Rôle fin : la permission stock_mouvement décide ; comptes hérités :
+  // comportement historique par rôle.
+  const canPostMouvement = permissions.length
+    ? permissions.includes('stock_mouvement')
+    : (role === 'responsable' || role === 'admin')
 
   const [activeTab, setActiveTab] = useState('tous')
   const [search, setSearch]       = useState('')
@@ -76,7 +82,7 @@ export default function MouvementsPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          {(role === 'responsable' || role === 'admin') && (
+          {canPostMouvement && (
             <button className="btn btn-primary" onClick={() => setShowForm(true)}>
               + Saisir mouvement
             </button>

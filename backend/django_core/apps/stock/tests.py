@@ -240,6 +240,59 @@ class TestSeedCatalogue(TestCase):
         perso.refresh_from_db()
         self.assertEqual(perso.categorie.nom, 'Onduleurs hybrides')
 
+    def test_stock_read_only_role_writes_rejected(self):
+        """Rôle fin « Commerciale » (stock_voir uniquement) : lecture OK,
+        toute écriture Stock rejetée côté serveur ; un responsable hérité
+        (sans rôle fin) garde l'écriture — rien ne change pour lui."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from django.contrib.auth import get_user_model
+        from apps.roles.models import Role
+
+        User = get_user_model()
+        role = Role.objects.create(
+            company=self.company, nom='Commerciale', permissions=[
+                'stock_voir', 'crm_voir', 'crm_creer', 'crm_modifier',
+                'ventes_voir', 'ventes_creer', 'ventes_modifier',
+                'ventes_valider', 'ventes_pdf', 'reporting_voir',
+                'parametres_voir', 'users_voir',
+            ])
+        commerciale = User.objects.create_user(
+            username='test_commerciale', password='x',
+            company=self.company, role=role)
+        legacy = User.objects.create_user(
+            username='test_resp_legacy', password='x',
+            company=self.company, role_legacy='responsable')
+        seed(self.company)
+        produit = Produit.objects.filter(company=self.company).first()
+
+        http = APIClient()
+        http.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commerciale)}')
+        # Lecture : autorisée
+        self.assertEqual(http.get('/api/django/stock/produits/').status_code, 200)
+        # Écritures : toutes rejetées
+        r = http.patch(f'/api/django/stock/produits/{produit.id}/',
+                       {'prix_vente': '1.00'}, format='json')
+        self.assertEqual(r.status_code, 403)
+        r = http.post('/api/django/stock/produits/',
+                      {'nom': 'X', 'prix_vente': '1'}, format='json')
+        self.assertEqual(r.status_code, 403)
+        r = http.post('/api/django/stock/mouvements/',
+                      {'produit': produit.id, 'type_mouvement': 'entree',
+                       'quantite': 1}, format='json')
+        self.assertEqual(r.status_code, 403)
+        produit.refresh_from_db()
+        self.assertNotEqual(produit.prix_vente, 0)  # rien n'a bougé
+
+        # Responsable hérité : l'écriture passe toujours
+        http2 = APIClient()
+        http2.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(legacy)}')
+        r = http2.patch(f'/api/django/stock/produits/{produit.id}/',
+                        {'seuil_alerte': 9}, format='json')
+        self.assertEqual(r.status_code, 200)
+
     def test_scoped_to_target_company_only(self):
         other = make_company(slug='test-cat-other')
         seed(self.company)

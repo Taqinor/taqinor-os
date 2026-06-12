@@ -27,6 +27,26 @@ class IsAnyRole(BasePermission):
         return bool(request.user and request.user.is_authenticated)
 
 
+def HasPermissionOrLegacy(code):
+    """Permission ERP granulaire quand l'utilisateur porte un rôle fin ;
+    comportement historique (responsable/admin) pour les comptes hérités
+    sans rôle. C'est ce qui rend possible un rôle « lecture seule Stock »
+    sans rien changer pour demo_admin / demo_resp.
+    """
+    class _HasPermissionOrLegacy(BasePermission):
+        def has_permission(self, request, view):
+            user = request.user
+            if not (user and user.is_authenticated):
+                return False
+            if user.is_superuser:
+                return True
+            if getattr(user, 'role', None):
+                return user.has_erp_permission(code)
+            return user.is_responsable
+    _HasPermissionOrLegacy.__name__ = f'HasPermissionOrLegacy_{code}'
+    return _HasPermissionOrLegacy
+
+
 def HasPermission(code):
     """
     Permission factory. Returns a DRF permission class that checks
