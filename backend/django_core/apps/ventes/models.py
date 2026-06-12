@@ -58,6 +58,22 @@ class Devis(models.Model):
         max_length=500, blank=True, null=True
     )
 
+    # ── Multi-marchés (2026-06) — additif, tout optionnel ──
+    class ModeInstallation(models.TextChoices):
+        RESIDENTIEL = 'residentiel', 'Résidentiel'
+        INDUSTRIEL = 'industriel', 'Industriel / Commercial'
+        AGRICOLE = 'agricole', 'Agricole (pompage)'
+
+    mode_installation = models.CharField(
+        max_length=20, choices=ModeInstallation.choices,
+        blank=True, null=True,
+    )
+    # Paramètres d'étude/simulation stockés avec le devis (kWc, production,
+    # autoconsommation/couverture, économies, payback, pompe CV/HMT/débit…).
+    etude_params = models.JSONField(blank=True, null=True)
+    prix_cible_kwc = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'

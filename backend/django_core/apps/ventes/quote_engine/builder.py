@@ -69,14 +69,23 @@ def _is_panel(designation: str, produit_nom: str = "") -> bool:
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
-    """Convert an OS LigneDevis (HT prices) into a premium TTC item dict."""
+    """Convert an OS LigneDevis (HT prices) into a premium item dict.
+
+    Carries both HT and TTC unit prices (the PDFs show per-line HT with an
+    HT → TVA → TTC totals block) plus the product's commercial sheet
+    (brand, description lines, warranty) for rich rendering.
+    """
     pu_ht = Decimal(ligne.prix_unitaire) * (Decimal(1) - Decimal(ligne.remise) / Decimal(100))
     pu_ttc = pu_ht * (Decimal(1) + Decimal(taux_tva) / Decimal(100))
-    produit_nom = getattr(getattr(ligne, "produit", None), "nom", "") or ""
+    produit = getattr(ligne, "produit", None)
+    produit_nom = getattr(produit, "nom", "") or ""
     return {
         "designation": ligne.designation,
-        "marque": "",
+        "marque": (getattr(produit, "marque", "") or ""),
+        "description": (getattr(produit, "description", "") or ""),
+        "garantie": (getattr(produit, "garantie", "") or ""),
         "quantite": float(ligne.quantite),
+        "prix_unit_ht": float(round(pu_ht, 2)),
         "prix_unit_ttc": float(round(pu_ttc, 2)),
         "_produit_nom": produit_nom,
     }
@@ -90,6 +99,7 @@ DEFAULT_PDF_OPTIONS = {
     'devis_final': False,      # payment terms + RIB block on page 3
     'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
     'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
+    'include_etude': False,    # page Étude (industriel) — 4th premium page
 }
 
 
@@ -103,6 +113,8 @@ def clean_pdf_options(raw) -> dict:
         opts['show_monthly'] = bool(raw['show_monthly'])
     if 'devis_final' in raw:
         opts['devis_final'] = bool(raw['devis_final'])
+    if 'include_etude' in raw:
+        opts['include_etude'] = bool(raw['include_etude'])
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
     try:
@@ -184,7 +196,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     all_items = [
         {
             **{k: v for k, v in it.items() if k != "_produit_nom"},
-            "marque": _parse_marque(it["designation"], it.get("_produit_nom", "")),
+            "marque": it["marque"] or _parse_marque(
+                it["designation"], it.get("_produit_nom", "")),
         }
         for it in items if it["quantite"] > 0
     ]
@@ -233,6 +246,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "devis_final": opts['devis_final'],
         "payment_mode": opts['payment_mode'],
         "custom_acompte": opts['custom_acompte'],
+        "include_etude": opts['include_etude'],
+        # Multi-marchés : taux de TVA du devis (bloc HT → TVA → TTC), mode et
+        # paramètres d'étude/simulation stockés sur le devis.
+        "taux_tva": float(taux_tva),
+        "mode_installation": devis.mode_installation or "",
+        "etude": devis.etude_params or {},
     }
     return data
 

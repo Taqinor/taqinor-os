@@ -34,7 +34,7 @@ class TestSeedCatalogue(TestCase):
     def test_seeds_full_catalogue(self):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
-        self.assertEqual(qs.count(), 31)
+        self.assertEqual(qs.count(), 46)  # 31 solaire + 15 pompage
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -50,8 +50,37 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 31,
+                company=self.company, reference='SEED-CATALOGUE').count(), 46,
         )
+
+    def test_fiches_and_pompage_seeded(self):
+        seed(self.company)
+        qs = Produit.objects.filter(company=self.company)
+        # Fiches commerciales remplies (marque/description/garantie)
+        huawei = qs.get(sku='OND-R-HUA-10T')
+        self.assertEqual(huawei.marque, 'Huawei')
+        self.assertIn('FusionSolar', huawei.description)
+        self.assertIn('10 ans', huawei.garantie)
+        panneau = qs.get(sku='PAN-CS-710')
+        self.assertIn('30 ans performance', panneau.garantie)
+        # Pompage : specs de dimensionnement + prix d'achat laissé vide
+        pompe = qs.get(sku='PMP-IMM-5.5T')
+        self.assertEqual(str(pompe.pompe_cv), '5.50')
+        self.assertEqual(pompe.prix_achat, 0)
+        self.assertEqual(pompe.categorie.nom, 'Pompage')
+        vfd = qs.get(sku='VFD-PMP-5.5T')
+        self.assertEqual(str(vfd.pompe_cv), '5.50')
+        # Prix existants jamais modifiés par la passe fiches
+        self.assertEqual(huawei.prix_vente, Decimal('16666.67'))
+
+    def test_fiches_update_is_idempotent_and_price_safe(self):
+        seed(self.company)
+        before = dict(Produit.objects.filter(company=self.company)
+                      .values_list('sku', 'prix_vente'))
+        seed(self.company)
+        after = dict(Produit.objects.filter(company=self.company)
+                     .values_list('sku', 'prix_vente'))
+        self.assertEqual(before, after)
 
     def test_idempotent_second_run_creates_nothing(self):
         seed(self.company)
@@ -59,7 +88,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 31 already present', out)
+        self.assertIn('0 created, 46 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price

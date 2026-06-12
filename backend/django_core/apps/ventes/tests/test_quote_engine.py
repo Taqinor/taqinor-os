@@ -59,8 +59,10 @@ def make_devis(company, user, client, lignes, remise_globale='0', reference='DEV
         remise_globale=Decimal(remise_globale), created_by=user,
     )
     for desig, qty, pu in lignes:
+        # SKU unique par devis pour éviter les collisions (company, sku)
+        sku = f"{reference[-6:]}-{desig[:13]}"
         LigneDevis.objects.create(
-            devis=devis, produit=make_produit(company, desig, desig[:20], pu),
+            devis=devis, produit=make_produit(company, desig, sku, pu),
             designation=desig, quantite=Decimal(qty),
             prix_unitaire=Decimal(pu), remise=Decimal('0'),
         )
@@ -258,12 +260,12 @@ class TestPdfFormats(TestCase):
         self.devis = make_devis(
             self.company, self.user, self.client_obj, self.FULL_LINES)
 
-    def _render(self, pdf_options=None):
+    def _render(self, pdf_options=None, devis=None):
         from weasyprint import HTML
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine import generate_devis_premium as G
 
-        data = build_quote_data(self.devis, pdf_options)
+        data = build_quote_data(devis or self.devis, pdf_options)
         cap = {}
         orig = G._render_pdf_weasyprint
         G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
@@ -335,6 +337,63 @@ class TestPdfFormats(TestCase):
         self.assertEqual(marques['Batterie Deyness 10 kWh'], 'Deyness')
         self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
         self.assertEqual(marques['Socles béton'], '')
+
+    def test_ht_lines_and_visible_discount(self):
+        """Per-line HT consistent with stored TTC; explicit Remise line with
+        percentage and negative amount; HT → TVA → TTC chain rendered."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           self.FULL_LINES, remise_globale='8',
+                           reference='DEV-QE-HT')
+        data = build_quote_data(devis)
+        for it in data['sans_items'] + data['avec_items']:
+            self.assertAlmostEqual(
+                it['prix_unit_ht'] * 1.2, it['prix_unit_ttc'], places=1)
+        html, doc = self._render(devis=devis)
+        self.assertEqual(len(doc.pages), 3)
+        self.assertIn('Sous-total HT', html)
+        self.assertIn('Remise (8', html)      # ligne remise explicite
+        self.assertIn('TVA (20', html)
+        self.assertIn('P.U. HT', html)
+        # one-page : même chaîne de totaux
+        html1, doc1 = self._render({'pdf_mode': 'onepage'}, devis=devis)
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertIn('Sous-total HT', html1)
+        self.assertIn('Remise (8', html1)
+
+    def test_etude_page_renders_four_pages_with_data_three_without(self):
+        """include_etude adds the étude page (4 pages) only when the quote
+        carries étude data; degrades gracefully to 3 pages otherwise."""
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+            'taux_autoconso': 100, 'taux_couverture': 10.4,
+            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.save()
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('autoconsommation', html)
+        self.assertIn('Taux de couverture', html)
+        # Sans données d'étude → 3 pages, pas d'erreur
+        self.devis.etude_params = None
+        self.devis.save(update_fields=['etude_params'])
+        _, doc2 = self._render({'include_etude': True})
+        self.assertEqual(len(doc2.pages), 3)
+
+    def test_pompage_summary_on_onepage(self):
+        """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
+        self.devis.mode_installation = 'agricole'
+        self.devis.etude_params = {
+            'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+            'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
+        }
+        self.devis.save()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertIn('Puissance pompe', html)
+        self.assertIn('HMT', html)
 
     def test_unknown_options_are_whitelisted_away(self):
         from apps.ventes.quote_engine import clean_pdf_options

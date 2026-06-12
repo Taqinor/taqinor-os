@@ -259,3 +259,92 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
   assert.equal(by('Deyness 5').quantite, 1)
   assert.equal(by('Deyness 10').quantite, 0)
 })
+
+// ══ Multi-marchés ═════════════════════════════════════════════════════════════
+import {
+  computeEtudeIndustrielle, computePompage, autoFillPompage,
+  prixParKwc, discountForTarget, computeBuyCost, CV_TO_KW,
+} from './solar.js'
+
+const POMPAGE_FIXTURE = [
+  P('Pompe immergée solaire 3 CV Monophasé', 6500),
+  P('Pompe immergée solaire 5.5 CV Triphasé', 11000),
+  P('Pompe immergée solaire 7.5 CV Triphasé', 14500),
+  P('Pompe de surface solaire 1.5 CV Monophasé', 3000),
+  P('Variateur pompage solaire 3 CV Triphasé (coffret complet)', 4800),
+  P('Variateur pompage solaire 5.5 CV Triphasé (coffret complet)', 6500),
+  P('Variateur pompage solaire 7.5 CV Triphasé (coffret complet)', 8000),
+  P('Câble solaire 6mm² (au mètre)', 13),
+].map((p, i) => ({
+  ...p,
+  pompe_cv: ['3', '5.5', '7.5', '1.5', '3', '5.5', '7.5', null][i],
+}))
+
+test('étude industrielle : taux autoconsommation / couverture cohérents', () => {
+  // 50 kWc, conso 10 000 kWh/mois, 80 % diurne
+  const e = computeEtudeIndustrielle({
+    kwp: 50, consoMensuelleKwh: 10000, dayUsagePct: 80, totalTtc: 450000,
+  })
+  const prodA = GHI.reduce((a, b) => a + b, 0) * 50 * 0.8
+  assert.ok(Math.abs(e.production_annuelle - Math.round(prodA)) <= 1)
+  assert.equal(e.conso_annuelle, 120000)
+  // autoconsommé = min(prod, conso×0.8) ; ici conso diurne 96 000 > prod (~62 811)
+  // → tout est autoconsommé : taux autoconso 100 %, couverture = prod/conso
+  assert.equal(e.taux_autoconso, 100)
+  assert.ok(Math.abs(e.taux_couverture - (prodA / 120000 * 100)) < 0.2)
+  assert.ok(Math.abs(e.economies_annuelles - Math.round(prodA * 1.75)) <= 2)
+  assert.equal(e.prix_kwc, 9000)
+  assert.equal(e.prod_mensuelle.length, 12)
+  assert.equal(e.conso_mensuelle.length, 12)
+})
+
+test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans batterie/onduleur', () => {
+  const dims = computePompage(5.5)
+  assert.ok(Math.abs(dims.kw - 5.5 * CV_TO_KW) < 0.01)
+  // champ 1.4× pompe ∈ [1.3, 1.5] × kW
+  assert.ok(dims.champKw >= dims.kw * 1.3 && dims.champKw <= dims.kw * 1.5)
+  assert.equal(dims.nbPanneaux, Math.ceil(dims.champKw * 1000 / 710))
+
+  const rows = autoFillPompage(POMPAGE_FIXTURE.concat(SEEDED), {
+    cv: '5.5', alim: 'tri', typePompe: 'immergee',
+    distance: '35', structureType: 'acier',
+  })
+  const names = rows.map(r => r.designation)
+  assert.ok(names.includes('Pompe immergée solaire 5.5 CV Triphasé'))
+  assert.ok(names.includes('Variateur pompage solaire 5.5 CV Triphasé (coffret complet)'))
+  // câble à la distance
+  const cable = rows.find(r => r.designation.includes('Câble'))
+  assert.equal(Number(cable.quantite), 35)
+  // ni batterie, ni onduleur réseau/hybride
+  assert.ok(!names.some(n => /batterie/i.test(n)))
+  assert.ok(!names.some(n => /onduleur/i.test(n)))
+  // panneaux 710 du catalogue
+  const pan = rows.find(r => /panneau/i.test(r.designation))
+  assert.equal(Number(pan.quantite), dims.nbPanneaux)
+})
+
+test('prix/kWc + prix cible appliqué via remise transparente', () => {
+  assert.equal(prixParKwc(99400, 9.94), 10000)
+  // cible 9 000 MAD/kWc sur un brut de 99 400 → remise ≈ 9.96 %
+  const pct = discountForTarget(9000, 9.94, 99400)
+  assert.ok(Math.abs(pct - (1 - 9000 * 9.94 / 99400) * 100) < 0.01)
+  // le total remisé atteint la cible (à l'arrondi près)
+  const totalApres = 99400 * (1 - pct / 100)
+  assert.ok(Math.abs(totalApres - 9000 * 9.94) < 1)
+})
+
+test('marge : affichée seulement quand des prix d\'achat existent', () => {
+  const produits = [
+    { id: 1, nom: 'Panneau X', prix_vente: '1166.67', prix_achat: '0' },
+    { id: 2, nom: 'Onduleur Y', prix_vente: '16666.67', prix_achat: '0' },
+  ]
+  const lines = [
+    { produit: '1', designation: 'Panneau X', quantite: '10', prix_unit_ttc: '1400' },
+    { produit: '2', designation: 'Onduleur Y', quantite: '1', prix_unit_ttc: '20000' },
+  ]
+  // aucun prix d'achat → null (rien à afficher)
+  assert.equal(computeBuyCost(lines, produits), null)
+  // un prix d'achat renseigné → coût TTC de cette ligne
+  produits[0].prix_achat = '1000'
+  assert.equal(computeBuyCost(lines, produits), Math.round(10 * 1000 * 1.2))
+})

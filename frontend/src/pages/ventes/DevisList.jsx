@@ -48,6 +48,7 @@ export default function DevisList() {
   const [devisFinal, setDevisFinal] = useState(false)
   const [paymentMode, setPaymentMode] = useState('standard')
   const [customAcompte, setCustomAcompte] = useState('')
+  const [includeEtude, setIncludeEtude] = useState(false)
 
   const openPdfModal = (d) => {
     setPdfTarget(d)
@@ -56,6 +57,7 @@ export default function DevisList() {
     setDevisFinal(false)
     setPaymentMode('standard')
     setCustomAcompte('')
+    setIncludeEtude(false)
   }
 
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
@@ -88,6 +90,7 @@ export default function DevisList() {
       payment_mode: paymentMode,
       custom_acompte: (devisFinal && paymentMode === 'custom' && customAcompte !== '')
         ? parseFloat(customAcompte) : null,
+      include_etude: pdfMode === 'full' && includeEtude,
     }
     setPdfTarget(null)
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
@@ -175,6 +178,14 @@ export default function DevisList() {
                   <input type="checkbox" checked={showMonthly}
                          onChange={e => setShowMonthly(e.target.checked)} />
                   <span>Économies mensuelles <small>(graphique mensuel page 2)</small></span>
+                </label>
+              )}
+
+              {pdfMode === 'full' && (
+                <label className="pdf-toggle">
+                  <input type="checkbox" checked={includeEtude}
+                         onChange={e => setIncludeEtude(e.target.checked)} />
+                  <span>Inclure l'étude <small>(page autoconsommation — devis industriel)</small></span>
                 </label>
               )}
 
