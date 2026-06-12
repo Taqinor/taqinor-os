@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
 from apps.crm import stages
 
 User = get_user_model()
@@ -92,6 +92,47 @@ class TestLeadAPI(TestCase):
         data = resp.data['results'] if 'results' in resp.data else resp.data
         names = [row['nom'] for row in data]
         self.assertEqual(names, ['Imported'])
+
+
+class TestClientAPI(TestCase):
+    """Création de client par l'API : la société vient du serveur (jamais du
+    corps de la requête) — le validateur d'unicité (company, email) n'exige
+    plus `company` du client HTTP. Champ ICE optionnel accepté."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from authentication.models import Company
+        self.company, _ = Company.objects.get_or_create(
+            slug='test-clientapi', defaults={'nom': 'Test ClientAPI'})
+        self.user = User.objects.create_user(
+            username='test_clientapi', password='x',
+            role_legacy='responsable', company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_create_client_without_company_in_body(self):
+        r = self.api.post('/api/django/crm/clients/', {
+            'nom': 'Bennani', 'email': 'bennani@example.com',
+            'ice': '001122334455667',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['ice'], '001122334455667')
+        c = Client.objects.get(email='bennani@example.com')
+        self.assertEqual(c.company_id, self.company.id)  # forcée serveur
+
+    def test_company_from_body_is_ignored(self):
+        from authentication.models import Company
+        other, _ = Company.objects.get_or_create(
+            slug='test-clientapi-other', defaults={'nom': 'Autre'})
+        r = self.api.post('/api/django/crm/clients/', {
+            'nom': 'Intrus', 'email': 'intrus@example.com',
+            'company': other.id,
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        c = Client.objects.get(email='intrus@example.com')
+        self.assertEqual(c.company_id, self.company.id)  # pas `other`
 
 
 class TestLeadBills(TestCase):
