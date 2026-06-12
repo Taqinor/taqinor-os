@@ -59,11 +59,32 @@ class DevisViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        from apps.crm.services import resolve_client_for_lead
+
         company = self.request.user.company
+        lead = serializer.validated_data.get('lead')
+        client = serializer.validated_data.get('client')
+
+        # Tenant safety: lead and client must belong to the user's company.
+        if lead is not None and lead.company_id != company.id:
+            raise ValidationError({'lead': 'Lead inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+
+        # Lead-primary: when no client is given, resolve it from the lead
+        # (reuses the linked/matching client, else creates one — no duplicates).
+        if client is None:
+            if lead is None:
+                raise ValidationError(
+                    {'client': 'Un client ou un lead est requis.'})
+            client = resolve_client_for_lead(lead)
+
         create_with_reference(
             Devis, 'DEV', company,
             lambda ref: serializer.save(
                 reference=ref,
+                client=client,
                 created_by=self.request.user,
                 company=company,
             ),

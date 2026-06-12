@@ -25,6 +25,15 @@ class Devis(models.Model):
         on_delete=models.PROTECT,
         related_name='devis',
     )
+    # Lead d'origine quand le devis part d'un lead (le client est alors résolu
+    # automatiquement depuis le lead). Toujours par société, jamais obligatoire.
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='devis',
+    )
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,

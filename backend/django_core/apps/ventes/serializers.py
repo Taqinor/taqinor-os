@@ -17,6 +17,12 @@ class DevisSerializer(serializers.ModelSerializer):
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_ttc = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    lead_nom = serializers.SerializerMethodField()
+
+    def get_lead_nom(self, obj):
+        if not obj.lead_id:
+            return None
+        return f"{obj.lead.nom} {obj.lead.prenom or ''}".strip()
 
     class Meta:
         model = Devis
@@ -25,12 +31,19 @@ class DevisSerializer(serializers.ModelSerializer):
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
-    """Création/modification sans lignes imbriquées."""
+    """Création/modification sans lignes imbriquées.
+
+    Le client devient optionnel À LA CRÉATION quand un lead est fourni : il est
+    alors résolu côté serveur depuis le lead (apps.crm.services), jamais déduit
+    côté navigateur. La vue garantit qu'au moins l'un des deux est présent et
+    que lead/client appartiennent à la société de l'utilisateur.
+    """
     class Meta:
         model = Devis
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
         read_only_fields = ['created_by', 'date_creation', 'company']
+        extra_kwargs = {'client': {'required': False}}
 
 
 class BonCommandeSerializer(serializers.ModelSerializer):

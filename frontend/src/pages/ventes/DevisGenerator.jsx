@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -55,11 +55,15 @@ export default function DevisGenerator() {
   const navigate = useNavigate()
 
   const [clients, setClients] = useState([])
+  const [leads, setLeads] = useState([])
   const [produits, setProduits] = useState([])
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [searchParams] = useSearchParams()
+  const autoRan = useRef(false)
 
   // ── Document ──
+  const [leadId, setLeadId] = useState('')
   const [clientId, setClientId] = useState('')
   const [dateValidite, setDateValidite] = useState('')
   const [instType, setInstType] = useState('Résidentielle')
@@ -86,6 +90,7 @@ export default function DevisGenerator() {
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+    crmApi.getLeads().then(r => setLeads(r.data.results ?? r.data)).catch(() => {})
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
   }, [])
 
@@ -148,6 +153,93 @@ export default function DevisGenerator() {
       setRecommendedChoice('Auto')
     }
   }
+
+  // ── Lead prioritaire : factures remplies + client résolu depuis le lead ──
+  const selectedLead = leads.find(l => String(l.id) === String(leadId))
+
+  const resolvedClientLabel = useMemo(() => {
+    if (!selectedLead) return null
+    if (selectedLead.client_nom) return `${selectedLead.client_nom} (client existant lié)`
+    if (selectedLead.email) {
+      const match = clients.find(c =>
+        (c.email || '').toLowerCase() === selectedLead.email.toLowerCase())
+      if (match) return `${match.nom} ${match.prenom || ''} (client existant — même email)`.trim()
+    }
+    return `${selectedLead.nom} ${selectedLead.prenom || ''} (sera créé automatiquement depuis le lead)`.trim()
+  }, [selectedLead, clients])
+
+  const applyLead = (id) => {
+    setLeadId(id)
+    if (!id) return
+    setClientId('') // le client est résolu côté serveur depuis le lead
+    const lead = leads.find(l => String(l.id) === String(id))
+    if (!lead) return
+    const hiver = parseFloat(lead.facture_hiver) || 0
+    if (hiver > 0) {
+      // bascule OFF → la valeur unique vaut hiver ET été
+      const ete = (lead.ete_differente && lead.facture_ete)
+        ? parseFloat(lead.facture_ete) : hiver
+      setFHiver(String(lead.facture_hiver))
+      setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
+      const suggested = estimerPanneaux(hiver)
+      if (suggested > 0) setNbPanneaux(String(suggested))
+      setMonthly(estimerMois(hiver, ete))
+    }
+  }
+
+  // ── Devis automatique (bouton « ⚡ Devis auto » du lead) ──
+  const runAutoQuote = async (lead, discountStr) => {
+    setSaving(true)
+    try {
+      const hiver = parseFloat(lead.facture_hiver) || 0
+      // dimensionnement du générateur : 8 panneaux / 900 MAD, minimum 1 bloc
+      const panels = estimerPanneaux(hiver) || 8
+      const kwpAuto = panels * 710 / 1000
+      const rows = autoFillLines(produits, {
+        kwp: kwpAuto, panelW: 710, structureType: 'acier',
+      })
+      const devis = await dispatch(createDevis({
+        lead: lead.id,
+        statut: 'brouillon',
+        taux_tva: '20.00',
+        remise_globale: discountStr || '0',
+        note: null,
+      })).unwrap()
+      await Promise.all(rows
+        .filter(r => r.produit && parseFloat(r.quantite) > 0)
+        .map(r => dispatch(addLigneDevis({
+          devis: devis.id,
+          produit: parseInt(r.produit),
+          designation: r.designation,
+          quantite: String(r.quantite),
+          prix_unitaire: htFromTtc(r.prix_unit_ttc, '20.00'),
+          remise: '0',
+        })).unwrap()))
+      navigate('/ventes/devis')
+    } catch (err) {
+      const msg = err?.detail ?? JSON.stringify(err)
+      setErrors(prev => ({ ...prev, submit: msg }))
+      setSaving(false)
+    }
+  }
+
+  // Arrivée depuis le lead (?lead=…&auto=1&discount=…)
+  useEffect(() => {
+    const leadParam = searchParams.get('lead')
+    if (!leadParam || autoRan.current) return
+    if (!leads.length || !produits.length) return
+    autoRan.current = true
+    const lead = leads.find(l => String(l.id) === leadParam)
+    if (!lead) return
+    // Initialisation unique depuis l'URL (garde autoRan) — pas de cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    applyLead(leadParam)
+    if (searchParams.get('auto') === '1') {
+      runAutoQuote(lead, searchParams.get('discount') || '0')
+      const d = searchParams.get('discount')
+      if (d) setDiscountPct(d)
+    }
+  }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Factures : estimation hiver/été + suggestion panneaux ──
   const syncBillEstimator = (hiverVal, eteVal) => {
@@ -220,7 +312,7 @@ export default function DevisGenerator() {
 
   const validate = () => {
     const e = {}
-    if (!clientId) e.client = 'Client requis'
+    if (!clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
     const orphan = lines.find(l =>
       !l.produit && parseFloat(l.quantite) > 0 && parseFloat(l.prix_unit_ttc) > 0)
     if (orphan) {
@@ -237,14 +329,17 @@ export default function DevisGenerator() {
     if (!validate()) return
     setSaving(true)
     try {
-      const devis = await dispatch(createDevis({
-        client: parseInt(clientId),
+      const payload = {
         statut: 'brouillon',
         date_validite: dateValidite || null,
         taux_tva: tauxTva,
         remise_globale: discountPct || '0',
         note: note || null,
-      })).unwrap()
+      }
+      // Lead prioritaire : le client est résolu côté serveur depuis le lead.
+      if (leadId) payload.lead = parseInt(leadId)
+      else payload.client = parseInt(clientId)
+      const devis = await dispatch(createDevis(payload)).unwrap()
 
       await Promise.all(usableLines().map(l =>
         dispatch(addLigneDevis({
@@ -331,38 +426,68 @@ export default function DevisGenerator() {
           </div>
         </div>
 
-        {/* ── Client ── */}
+        {/* ── Lead / Client (lead prioritaire) ── */}
         <div className="gen-card">
-          <div className="gen-card-header">👤 Informations Client</div>
+          <div className="gen-card-header">👤 Lead & Client</div>
           <div className="gen-card-body">
             <div className="gen-grid">
-              <div className="form-group">
-                <label className="form-label">Client <span className="req">*</span></label>
+              <div className="form-group fg-grow">
+                <label className="form-label">
+                  Lead (point de départ) <span className="req">*</span>
+                </label>
                 <select
                   className={`form-select${errors.client ? ' is-invalid' : ''}`}
-                  value={clientId}
-                  onChange={e => setClientId(e.target.value)}
+                  value={leadId}
+                  onChange={e => applyLead(e.target.value)}
                 >
-                  <option value="">— Sélectionner un client —</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                  <option value="">— Sélectionner un lead —</option>
+                  {leads.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.nom}{l.prenom ? ` ${l.prenom}` : ''}
+                      {l.societe ? ` (${l.societe})` : ''}
+                      {l.facture_hiver ? ` — ${Math.round(parseFloat(l.facture_hiver))} MAD/mois` : ''}
                     </option>
                   ))}
                 </select>
                 {errors.client && <div className="form-feedback">{errors.client}</div>}
               </div>
-              <div className="form-group">
-                <label className="form-label">Téléphone</label>
-                <input className="form-control" value={selectedClient?.telephone ?? ''} disabled
-                       placeholder="—" />
-              </div>
               <div className="form-group fg-grow">
-                <label className="form-label">Adresse</label>
-                <input className="form-control" value={selectedClient?.adresse ?? ''} disabled
-                       placeholder="—" />
+                <label className="form-label">Téléphone</label>
+                <input className="form-control" disabled placeholder="—"
+                       value={selectedLead?.telephone ?? selectedClient?.telephone ?? ''} />
               </div>
             </div>
+
+            {selectedLead && (
+              <div className="gen-resolved-client">
+                ✓ Client du devis : <strong>{resolvedClientLabel}</strong>
+                {selectedLead.facture_hiver
+                  ? ` · factures remplies depuis le lead (${selectedLead.facture_hiver}${selectedLead.ete_differente && selectedLead.facture_ete ? ` hiver / ${selectedLead.facture_ete} été` : ' MAD/mois'})`
+                  : ' · aucune facture enregistrée sur ce lead'}
+              </div>
+            )}
+
+            {!leadId && (
+              <div className="gen-grid" style={{ marginTop: '0.75rem' }}>
+                <div className="form-group fg-grow">
+                  <label className="form-label">…ou choisir un client directement (sans lead)</label>
+                  <select className="form-select" value={clientId}
+                          onChange={e => setClientId(e.target.value)}>
+                    <option value="">— Sélectionner un client —</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group fg-grow">
+                  <label className="form-label">Adresse</label>
+                  <input className="form-control" value={selectedClient?.adresse ?? ''} disabled
+                         placeholder="—" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

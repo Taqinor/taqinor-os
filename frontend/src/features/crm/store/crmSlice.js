@@ -46,6 +46,24 @@ export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { re
   }
 })
 
+export const createLead = createAsyncThunk('crm/createLead', async (data, { rejectWithValue }) => {
+  try {
+    const res = await crmApi.createLead(data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data ?? err.message)
+  }
+})
+
+export const updateLead = createAsyncThunk('crm/updateLead', async ({ id, data }, { rejectWithValue }) => {
+  try {
+    const res = await crmApi.updateLead(id, data)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data ?? err.message)
+  }
+})
+
 const crmSlice = createSlice({
   name: 'crm',
   initialState: {
@@ -87,6 +105,13 @@ const crmSlice = createSlice({
       .addCase(fetchLeads.rejected, (state, action) => {
         state.leadsLoading = false
         state.error = action.payload
+      })
+      .addCase(createLead.fulfilled, (state, action) => {
+        state.leads.unshift(action.payload)
+      })
+      .addCase(updateLead.fulfilled, (state, action) => {
+        const idx = state.leads.findIndex(l => l.id === action.payload.id)
+        if (idx !== -1) state.leads[idx] = action.payload
       })
   },
 })

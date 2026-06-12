@@ -13,7 +13,9 @@ class Client(models.Model):
     )
     nom = models.CharField(max_length=255)
     prenom = models.CharField(max_length=255, blank=True, null=True)
-    email = models.EmailField()
+    # Optionnel depuis 2026-06 : un client peut être créé depuis un lead sans
+    # email (l'unicité (company, email) reste garantie quand l'email existe).
+    email = models.EmailField(blank=True, null=True)
     telephone = models.CharField(max_length=20, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
@@ -54,6 +56,24 @@ class Lead(models.Model):
     telephone = models.CharField(max_length=50, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     ville = models.CharField(max_length=120, blank=True, null=True)
+
+    # Client (fiche structurée) résolu depuis ce lead — rempli au premier devis
+    # ou manuellement ; la résolution évite les doublons (voir services.py).
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leads',
+    )
+
+    # Facture électrique du lead (MAD/mois). Si l'été ne diffère pas de
+    # l'hiver, facture_hiver vaut pour les deux (ete_differente = False).
+    facture_hiver = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    facture_ete = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    ete_differente = models.BooleanField(default=False)
 
     # Pipeline stage — canonical keys from STAGES.py (default Nouveau / NEW).
     stage = models.CharField(
