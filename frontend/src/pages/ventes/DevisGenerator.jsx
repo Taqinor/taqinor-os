@@ -10,7 +10,7 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt,
+  formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
 } from '../../features/ventes/solar'
 
@@ -245,7 +245,6 @@ export default function DevisGenerator() {
         note: note || null,
       })).unwrap()
 
-      const tvaFactor = 1 + (parseFloat(tauxTva) || 20) / 100
       await Promise.all(usableLines().map(l =>
         dispatch(addLigneDevis({
           devis: devis.id,
@@ -253,7 +252,7 @@ export default function DevisGenerator() {
           designation: l.designation,
           quantite: l.quantite,
           // le modèle stocke des prix HT ; l'écran travaille en TTC comme le simulateur
-          prix_unitaire: ((parseFloat(l.prix_unit_ttc) || 0) / tvaFactor).toFixed(2),
+          prix_unitaire: htFromTtc(l.prix_unit_ttc, tauxTva),
           remise: '0',
         })).unwrap()
       ))
@@ -278,7 +277,9 @@ export default function DevisGenerator() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
+          acceptée telle quelle (les steps ne servent qu'aux flèches). */}
+      <form onSubmit={handleSubmit} noValidate>
         {/* ── Informations du document ── */}
         <div className="gen-card">
           <div className="gen-card-header">📋 Informations du Document</div>
@@ -369,13 +370,13 @@ export default function DevisGenerator() {
             <div className="gen-grid">
               <div className="form-group">
                 <label className="form-label">Facture Hiver moy. (MAD/mois)</label>
-                <input type="number" min="0" step="10" className="form-control"
+                <input type="number" min="0" step="any" className="form-control"
                        placeholder="ex: 600" value={fHiver}
                        onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Facture Été moy. (MAD/mois)</label>
-                <input type="number" min="0" step="10" className="form-control"
+                <input type="number" min="0" step="any" className="form-control"
                        placeholder="ex: 400" value={fEte}
                        onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }} />
               </div>
@@ -390,7 +391,7 @@ export default function DevisGenerator() {
               {MONTHS_FR.map((m, i) => (
                 <div key={m} className="gen-month">
                   <span className="gen-month-label">{m}</span>
-                  <input type="number" min="0" step="10" className="form-control form-control-sm"
+                  <input type="number" min="0" step="any" className="form-control form-control-sm"
                          value={monthly[i]}
                          onChange={e => setMonth(i, e.target.value)} />
                 </div>
@@ -406,13 +407,13 @@ export default function DevisGenerator() {
             <div className="gen-grid">
               <div className="form-group">
                 <label className="form-label">Nombre de panneaux <span className="req">*</span></label>
-                <input type="number" min="1" max="500" step="1" className="form-control"
+                <input type="number" min="1" max="500" step="any" className="form-control"
                        placeholder="ex: 14" value={nbPanneaux}
                        onChange={e => setNbPanneaux(e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Puissance Panneau (W)</label>
-                <input type="number" min="100" max="1000" step="10" className="form-control"
+                <input type="number" min="100" max="1000" step="any" className="form-control"
                        value={panelW} onChange={e => setPanelW(e.target.value)} />
               </div>
               <div className="form-group">
@@ -572,12 +573,12 @@ export default function DevisGenerator() {
                           </select>
                         </td>
                         <td>
-                          <input type="number" min="0" step="1"
+                          <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
                         <td>
-                          <input type="number" min="0" step="100"
+                          <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.prix_unit_ttc}
                                  onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
                         </td>
@@ -610,13 +611,13 @@ export default function DevisGenerator() {
             <div className="gen-totals-row gen-discount-row">
               <div className="gen-total-item gen-total-inline">
                 <span className="gen-total-label">Réduction</span>
-                <input type="number" min="0" max="100" step="5" className="gen-discount-input"
+                <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
               </div>
               <div className="gen-total-item gen-total-inline">
                 <span className="gen-total-label">TVA</span>
-                <input type="number" min="0" max="100" step="0.01" className="gen-discount-input"
+                <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
               </div>

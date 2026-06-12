@@ -171,6 +171,14 @@ export function ttcFromHt(prixVenteHt) {
   return Math.round((parseFloat(prixVenteHt) || 0) * 1.2)
 }
 
+// Conversion inverse au moment de l'enregistrement : le modèle stocke des
+// prix HT à 2 décimales. Pour tout TTC saisi à la dirham près, l'aller-retour
+// TTC → HT(2 déc.) → TTC réaffiché redonne exactement la valeur tapée.
+export function htFromTtc(ttc, tauxTva = 20) {
+  const factor = 1 + (parseFloat(tauxTva) || 20) / 100
+  return ((parseFloat(ttc) || 0) / factor).toFixed(2)
+}
+
 // Capacité batterie totale depuis les lignes (port de app.js — défaut 5 kWh/ligne)
 export function batteryKwhFromLines(lines) {
   return lines.reduce((sum, l) => {
