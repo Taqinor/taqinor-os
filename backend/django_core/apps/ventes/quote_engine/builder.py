@@ -148,40 +148,126 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ── Split into the two options ───────────────────────────────────────────
     # Option 1 "Sans batterie": réseau/injection inverter, NO hybrid, NO battery.
     # Option 2 "Avec batterie": hybrid inverter + battery, NO réseau inverter.
-    # Shared equipment (panels, structures, socles, etc.) appears in both.
+    # HARD RULE: an option NEVER renders without an inverter — an option whose
+    # equipment lacks one is dropped (single-option document); a quote with no
+    # inverter at all cannot produce an option-based PDF at all.
+    # Classification sur désignation ET nom du produit lié : une désignation
+    # éditée à la main ne peut pas casser silencieusement le découpage.
+    def _blob(it):
+        return f"{it['designation']} {it.get('_produit_nom', '')}"
+
     sans_items = [
         it for it in items
-        if not _is_battery(it["designation"]) and not _is_hybrid_inverter(it["designation"])
+        if not _is_battery(_blob(it)) and not _is_hybrid_inverter(_blob(it))
     ]
     avec_items = [
         it for it in items
-        if not _is_reseau_inverter(it["designation"])
+        if not _is_reseau_inverter(_blob(it))
     ]
-    if not any(_is_battery(it["designation"]) for it in avec_items):
-        # Avec option has no battery → synthesize one from the catalog.
-        avec_items = avec_items + [pick_default_battery()]
 
-    def _sum(rows):
-        return float(sum(r["quantite"] * r["prix_unit_ttc"] for r in rows))
+    def _has_qty(rows, pred):
+        return any(pred(_blob(r)) and r["quantite"] > 0 for r in rows)
 
-    total_sans_before = _sum(sans_items)
-    total_avec_before = _sum(avec_items)
+    has_reseau = _has_qty(sans_items, _is_reseau_inverter)
+    has_hybride = _has_qty(avec_items, _is_hybrid_inverter)
+    has_batterie = _has_qty(avec_items, _is_battery)
 
-    discount_pct = float(devis.remise_globale or 0)
-    factor = 1 - discount_pct / 100
-    total_sans = round(total_sans_before * factor)
-    total_avec = round(total_avec_before * factor)
-
-    # Power: prefer real panels; otherwise estimate from the (sans) total so ROI
-    # stays sane even for quotes without an explicit panel line.
+    # Power: prefer real panels; otherwise estimate from the equipment total.
     if nb_panneaux > 0:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
     else:
-        puissance_kwc = max(3.0, round(total_sans / 12000, 2))
+        _approx = float(sum(r["quantite"] * r["prix_unit_ttc"] for r in sans_items))
+        puissance_kwc = max(3.0, round(_approx / 12000, 2))
         nb_panneaux = max(1, round(puissance_kwc * 1000 / watt))
 
-    # ── ROI on the fly ───────────────────────────────────────────────────────
+    # Battery synthesis only at residential scale (≤ 15 kWc) where a single
+    # default module is sensible — never a token battery on a large plant.
+    if has_hybride and not has_batterie and puissance_kwc <= 15:
+        synth = dict(pick_default_battery())
+        synth.setdefault(
+            "prix_unit_ht",
+            round(synth.get("prix_unit_ttc", 0) / (1 + float(taux_tva) / 100), 2))
+        avec_items = avec_items + [synth]
+        has_batterie = True
+
+    opts = clean_pdf_options(pdf_options)
+    mode = devis.mode_installation or ""
+    # Mode agricole : le format à options n'a pas de sens (pas d'onduleur) —
+    # la demande « premium » dégrade proprement vers le format une page.
+    pdf_mode = opts['pdf_mode']
+    if mode == "agricole" and pdf_mode == "full":
+        pdf_mode = "onepage"
+
+    sans_ok = has_reseau
+    avec_ok = has_hybride and has_batterie
+    if not sans_ok and not avec_ok and pdf_mode == "full":
+        # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
+        # sans aucun onduleur ne peut pas produire le document à options.
+        raise ValueError(
+            f"Devis {devis.reference} : aucune option ne contient d'onduleur — "
+            "génération du PDF à options refusée (règle de sécurité).")
+    if not sans_ok and not avec_ok:
+        # Format une page (liste simple) : pas d'options — valeurs neutres.
+        sans_ok = True
+    if sans_ok and avec_ok:
+        scenario = "Les deux (Sans + Avec)"
+        recommended = "Avec batterie"
+    elif sans_ok:
+        scenario = "Sans batterie"
+        recommended = "Sans batterie"
+    else:
+        scenario = "Avec batterie"
+        recommended = "Avec batterie"
+
+    # ── Canonical totals: ONE computation from the stored HT lines ───────────
+    # Every page must display these exact values — never re-derive.
+    discount_pct = float(devis.remise_globale or 0)
+    tva_pct = float(taux_tva)
+
+    def _canonical_totaux(rows):
+        ht_brut = round(sum(r["quantite"] * r["prix_unit_ht"] for r in rows), 2)
+        remise = round(ht_brut * discount_pct / 100, 2) if discount_pct > 0 else 0.0
+        ht_net = round(ht_brut - remise, 2)
+        tva_amt = round(ht_net * tva_pct / 100, 2)
+        ttc = round(ht_net + tva_amt)
+        return {"ht_brut": ht_brut, "remise": remise, "ht_net": ht_net,
+                "tva": tva_amt, "ttc": ttc}
+
+    totaux_sans = _canonical_totaux(sans_items)
+    totaux_avec = _canonical_totaux(avec_items)
+    total_sans = totaux_sans["ttc"]
+    total_avec = totaux_avec["ttc"]
+    total_sans_before = round(totaux_sans["ht_brut"] * (1 + tva_pct / 100))
+    total_avec_before = round(totaux_avec["ht_brut"] * (1 + tva_pct / 100))
+
+    # ── Canonical performance figures: ONE source of truth ───────────────────
+    # When the quote carries a stored étude (industrial), its consumption-driven
+    # production/savings are canonical; payback and prix/kWc are recomputed from
+    # the canonical totals so edited lines can never desynchronize the document.
+    etude = dict(devis.etude_params or {})
     roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec)
+    if etude.get("production_annuelle"):
+        roi["prod_kwh"] = int(etude["production_annuelle"])
+        if etude.get("economies_annuelles"):
+            eco = int(etude["economies_annuelles"])
+            roi["eco_s_ann"] = eco
+            roi["eco_a_ann"] = eco
+            roi["eco_a_cumul"] = eco
+            _ref_total = total_sans if sans_ok else total_avec
+            roi["roi_s"] = round(_ref_total / eco, 1) if eco > 0 else 0.0
+            roi["roi_a"] = roi["roi_s"]
+            _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
+                   0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+            roi["eco_s_monthly"] = [round(eco * f) for f in _sf]
+            roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
+        # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
+        etude["production_annuelle"] = roi["prod_kwh"]
+        _ref_total = total_sans if sans_ok else total_avec
+        if etude.get("economies_annuelles"):
+            etude["economies_annuelles"] = roi["eco_s_ann"]
+            etude["payback"] = roi["roi_s"]
+        if puissance_kwc > 0:
+            etude["prix_kwc"] = round(_ref_total / puissance_kwc)
 
     # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
     # ≈ Option-2 monthly savings / 0.85 autoconsumption.
@@ -207,8 +293,41 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         for r in rows:
             r.pop("_produit_nom", None)
 
-    opts = clean_pdf_options(pdf_options)
+    inst_type = {
+        "residentiel": "Résidentielle",
+        "industriel": "Industrielle / Commerciale",
+        "agricole": "Agricole",
+    }.get(mode, "Résidentielle")
 
+    # Mode industriel : l'étude fait partie du document (page dédiée incluse
+    # d'office quand des données d'étude existent).
+    include_etude = opts['include_etude'] or (mode == "industriel" and bool(etude))
+
+    # Puces des cartes d'option de la page 1 — générées depuis l'équipement
+    # RÉEL de chaque option, jamais du texte boilerplate.
+    def _bullets(rows):
+        out = []
+        panels = [r for r in rows if _is_panel(r["designation"]) and r["quantite"] > 0]
+        if panels:
+            n = int(sum(r["quantite"] for r in panels))
+            out.append(f"{n} panneaux {watt} W")
+        for r in rows:
+            if r["quantite"] <= 0:
+                continue
+            d = r["designation"]
+            if _is_reseau_inverter(d) or _is_hybrid_inverter(d):
+                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
+                out.append(f"{q} × {d}" if q > 1 else d)
+        for r in rows:
+            if _is_battery(r["designation"]) and r["quantite"] > 0:
+                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
+                out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
+        if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
+            out.append("Smart Meter + monitoring")
+        out.append("Structures + installation complète")
+        return out[:6]
+
+    tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     data = {
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),
@@ -216,7 +335,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": "",
-        "inst_type": "Résidentielle",
+        "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
         "watt_par_panneau": watt,
@@ -225,6 +344,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "total_avec": total_avec,
         "total_sans_before": total_sans_before,
         "total_avec_before": total_avec_before,
+        # Totaux canoniques (chaîne HT → remise → TVA → TTC calculée UNE fois)
+        "totaux_sans": totaux_sans,
+        "totaux_avec": totaux_avec,
         "discount_pct": discount_pct,
         "eco_s_ann": roi["eco_s_ann"],
         "eco_a_ann": roi["eco_a_ann"],
@@ -236,22 +358,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,
-        "scenario": "Les deux (Sans + Avec)",
-        "recommended": "Avec batterie",
-        # Format options (simulator parity) — defaults reproduce the premium
-        # 3-page output unchanged.
+        "sans_bullets": _bullets(sans_items),
+        "avec_bullets": _bullets(avec_items),
+        "scenario": scenario,
+        "recommended": recommended,
         "all_items": all_items,
-        "pdf_mode": opts['pdf_mode'],
+        "pdf_mode": pdf_mode,
         "show_monthly": opts['show_monthly'],
         "devis_final": opts['devis_final'],
         "payment_mode": opts['payment_mode'],
         "custom_acompte": opts['custom_acompte'],
-        "include_etude": opts['include_etude'],
-        # Multi-marchés : taux de TVA du devis (bloc HT → TVA → TTC), mode et
-        # paramètres d'étude/simulation stockés sur le devis.
-        "taux_tva": float(taux_tva),
-        "mode_installation": devis.mode_installation or "",
-        "etude": devis.etude_params or {},
+        "include_etude": include_etude,
+        "taux_tva": tva_pct,
+        # Texte TVA UNIQUE : doit toujours décrire le taux réellement appliqué
+        # (pas de TVA par ligne tant que la décision comptable est en attente).
+        "tva_note": f"TVA {tva_label} % appliquée sur l'ensemble des équipements et travaux.",
+        "mode_installation": mode,
+        "etude": etude,
     }
     return data
 

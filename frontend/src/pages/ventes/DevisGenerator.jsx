@@ -14,7 +14,7 @@ import {
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
   groupProduitsByCategory, computeEtudeIndustrielle, computePompage,
   autoFillPompage, isBattery, isHybridInverter, prixParKwc, discountForTarget,
-  computeBuyCost,
+  computeBuyCost, avecBatterieAvailability, KWH_PRICE,
 } from '../../features/ventes/solar'
 
 const MODES = [
@@ -378,6 +378,11 @@ export default function DevisGenerator() {
   const validate = () => {
     const e = {}
     if (!clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
+    // L'étude industrielle exige la consommation réelle du client
+    if (modeInstallation === 'industriel' && !(consoKwhDerivee > 0)) {
+      e.conso = 'Mode industriel : renseignez la consommation mensuelle (kWh) '
+        + 'ou les factures électriques — l\'étude en dépend.'
+    }
     const orphan = lines.find(l =>
       !l.produit && parseFloat(l.quantite) > 0 && parseFloat(l.prix_unit_ttc) > 0)
     if (orphan) {
@@ -455,12 +460,23 @@ export default function DevisGenerator() {
   const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
   const kpiTotalBrut = avecRec && showAvec ? totals.totalAvecBrut : totals.totalSansBrut
 
-  const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0)
+  // Consommation industrielle : saisie directe, sinon dérivée des factures
+  // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
+  const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+  const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
+    || (avgBill > 0 ? Math.round(avgBill / KWH_PRICE) : 0)
+
+  const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0
+      && consoKwhDerivee > 0)
     ? computeEtudeIndustrielle({
-        kwp, consoMensuelleKwh: consoMensuelle,
+        kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
       })
     : null
+
+  // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
+  const avecDispo = avecBatterieAvailability(lines, produits, kwp)
+  const showAvecWarning = showAvec && lines.length > 0 && !avecDispo.available
 
   const pompageDims = modeInstallation === 'agricole'
     ? computePompage(pompeCv) : null
@@ -507,6 +523,23 @@ export default function DevisGenerator() {
                 </label>
               ))}
             </div>
+            {modeInstallation === 'residentiel' && kwp > 36 && (
+              <div className="gen-resolved-client" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e40af' }}>
+                💡 Ce système fait {kwp.toFixed(2)} kWc — au-delà de l'échelle résidentielle.
+                Le mode Industriel / Commercial produira un document plus adapté
+                (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
+              </div>
+            )}
+            {showAvecWarning && (
+              <div className="form-error-box" style={{ marginTop: '0.75rem' }}>
+                ⚠ Option « avec batterie » indisponible pour ce système : {avecDispo.reason}.
+                Le PDF sera un document à option unique (sans batterie) — jamais une
+                option partielle silencieuse.
+              </div>
+            )}
+            {errors.conso && (
+              <div className="form-error-box" style={{ marginTop: '0.75rem' }}>{errors.conso}</div>
+            )}
           </div>
         </div>
 
