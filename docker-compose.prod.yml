@@ -28,10 +28,14 @@ services:
     ports: !reset []
 
   django_core:
+    # --threads : les requêtes légères (listes, clics) ne font plus la queue
+    #   derrière un rendu PDF WeasyPrint (3-4,5 s mesurés) qui occupe un worker.
+    # --preload : imports lourds (matplotlib, WeasyPrint) chargés UNE fois
+    #   dans le maître avant le fork — démarrage et mémoire partagés.
     command: >
       sh -c "python manage.py collectstatic --noinput
       && gunicorn erp_agentique.wsgi:application
-      --bind 0.0.0.0:8000 --workers 3 --timeout 120"
+      --bind 0.0.0.0:8000 --workers 3 --threads 4 --preload --timeout 120"
 
   db:
     ports: !reset []

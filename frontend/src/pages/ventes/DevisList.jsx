@@ -74,13 +74,17 @@ export default function DevisList() {
   const closeForm = () => { setShowForm(false); setEditDevis(null) }
   const onSaved  = () => dispatch(fetchDevis())
 
+  const [deletingId, setDeletingId] = useState(null)
   const handleDelete = async (d) => {
     if (!window.confirm(`Supprimer définitivement le devis ${d.reference} ?`)) return
+    setDeletingId(d.id)
     try {
       await ventesApi.deleteDevis(d.id)
       dispatch(fetchDevis())
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Suppression impossible.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -307,9 +311,10 @@ export default function DevisList() {
                       <button
                         className="btn btn-sm btn-outline btn-danger-outline"
                         onClick={() => handleDelete(d)}
+                        disabled={deletingId === d.id}
                         title="Supprimer ce devis"
                       >
-                        Supprimer
+                        {deletingId === d.id ? '...' : 'Supprimer'}
                       </button>
                     )}
 

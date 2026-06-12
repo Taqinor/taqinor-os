@@ -1264,6 +1264,23 @@ textarea.form-control {
 .pp-clear { color: #64748b; font-style: italic; }
 .pp-empty { padding: 12px; font-size: 0.78rem; color: #94a3b8; }
 
+/* ── Barre de progression de navigation (feedback instantané) ── */
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2000;
+  background: linear-gradient(90deg, var(--cat-gold), var(--cat-navy));
+  animation: route-progress-slide 1s ease-in-out infinite;
+  background-size: 200% 100%;
+}
+@keyframes route-progress-slide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ── Utility ──────────────────────────────────────────── */
 .mb-8  { margin-bottom: 8px; }
 .mt-16 { margin-top: 16px; }

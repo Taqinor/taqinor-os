@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -157,17 +157,26 @@ export default function DevisGenerator() {
     [lines, discountPct],
   )
 
+  // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
+  // restent instantanées (les champs gardent leurs valeurs exactes — rien
+  // n'est perdu ni arrondi), le recalcul lourd + recharts suit d'un souffle.
+  const dMonthly = useDeferredValue(monthly)
+  const dLines = useDeferredValue(lines)
+  const dTotals = useDeferredValue(totals)
+  const dKwp = useDeferredValue(kwp)
+  const dDayUsage = useDeferredValue(dayUsage)
+
   const roi = useMemo(() => {
-    if (kwp <= 0 || !monthly.some(v => v > 0)) return null
+    if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
-      kwp,
-      factures: monthly.map(v => parseFloat(v) || 0),
-      dayUsagePct: parseInt(dayUsage) || 50,
-      totalSans: totals.totalSans,
-      totalAvec: totals.totalAvec,
-      batteryKwh: batteryKwhFromLines(lines),
+      kwp: dKwp,
+      factures: dMonthly.map(v => parseFloat(v) || 0),
+      dayUsagePct: parseInt(dDayUsage) || 50,
+      totalSans: dTotals.totalSans,
+      totalAvec: dTotals.totalAvec,
+      batteryKwh: batteryKwhFromLines(dLines),
     })
-  }, [kwp, monthly, dayUsage, totals, lines])
+  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines])
 
   const chartData = useMemo(() => {
     if (!roi) return []
