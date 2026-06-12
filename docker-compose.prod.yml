@@ -1,0 +1,47 @@
+# Production (serveur Hetzner) — superposé au compose de base :
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Principes :
+#   - SEUL Caddy publie des ports (80/443, HTTPS Let's Encrypt automatique).
+#     nginx, Postgres, Redis et MinIO redeviennent internes (!reset).
+#   - Django tourne sous gunicorn (déjà dans requirements), DEBUG off vient
+#     de l'.env du serveur, jamais de ce fichier.
+#   - PUBLIC_HOSTNAME (.env serveur) = l'hôte public ; pour migrer vers
+#     api.taqinor.ma plus tard : changer cette seule variable et relancer.
+services:
+  caddy:
+    image: caddy:2
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?PUBLIC_HOSTNAME requis en production}
+    volumes:
+      - ./backend/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - nginx
+
+  nginx:
+    ports: !reset []
+
+  django_core:
+    command: >
+      sh -c "python manage.py collectstatic --noinput
+      && gunicorn erp_agentique.wsgi:application
+      --bind 0.0.0.0:8000 --workers 3 --timeout 120"
+
+  db:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

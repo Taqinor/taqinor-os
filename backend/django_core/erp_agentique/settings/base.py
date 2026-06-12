@@ -33,6 +33,14 @@ DEBUG = _DEBUG_FLAG
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Origines de confiance CSRF (obligatoire derrière HTTPS : Django vérifie
+# l'Origin des POST). Liste séparée par des virgules, schéma inclus,
+# ex. CSRF_TRUSTED_ORIGINS=https://taqinor-os.example.com
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if o.strip()
+]
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
