@@ -16,7 +16,7 @@ import {
   type LeadEnv,
 } from '../../lib/lead';
 import { leadWhatsappText, whatsappLink } from '../../lib/whatsapp';
-import { NAP } from '../../lib/nap';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -58,7 +58,7 @@ export const POST: APIRoute = async ({ request }) => {
   if (typeof waitUntil === 'function') waitUntil(background);
   else await background;
 
-  const waNumber = env.WHATSAPP_NUMBER?.trim() || NAP.whatsapp;
+  const waNumber = env.WHATSAPP_NUMBER?.trim() || WHATSAPP_LEADS;
   const whatsappUrl = whatsappLink(
     waNumber,
     leadWhatsappText({

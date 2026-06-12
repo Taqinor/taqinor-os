@@ -54,31 +54,37 @@ const PHOTOS = [
     treat: { slope: 2, exposure: 1.0, sat: 1.14 },
   },
   {
-    // Villa pavillon zellige turquoise — galerie + illustration /résidentiel.
-    // Contre-jour : débrumage appuyé.
-    src: 'IMG_1841.HEIC',
-    out: 'villa-zellige',
+    // NOTE preuve : les sites « villa-zellige / pente-zellige » (04-04) et
+    // « terrasse terre cuite » (05-08) ne correspondent à AUCUNE des 5
+    // installations du dossier — retirés des pages (voir rapport).
+    // Pose du panneau par l'équipe — Ref 134, CASABLANCA (EXIF 2026-03-28 ;
+    // attribution 134/236 corrigée par le propriétaire le 2026-06-13)
+    src: 'IMG_1701.HEIC',
+    out: 'pose-134',
+    extractRatio: { left: 0.06, top: 0, width: 0.94, height: 1 },
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    treat: { slope: 3, exposure: 1.08, sat: 1.12 },
+    treat: { slope: 2, exposure: 1.04, sat: 1.08 },
   },
   {
-    // Longue pente + pyramide zellige + palmiers — galerie (diagonale).
-    src: 'IMG_1838.HEIC',
-    out: 'pente-zellige',
-    extractRatio: { left: 0, top: 0.12, width: 1, height: 0.84 },
-    widths: [1024, 640],
-    ratio: 4 / 5,
-    treat: { slope: 3, exposure: 1.06, sat: 1.12 },
-  },
-  {
-    // Rangée de 7 sur terre cuite — galerie. Clim sortie à droite.
-    src: 'IMG_2288.HEIC',
-    out: 'terrasse-terre-cuite',
-    extractRatio: { left: 0, top: 0.04, width: 0.93, height: 0.96 },
+    // Reflet du soleil sur la rangée + ouvrier — Ref 468, El Jadida
+    // (EXIF 2026-04-29). Tuyau rouge sorti du bord bas droit.
+    src: 'IMG_2187.HEIC',
+    out: 'reflet-468',
+    extractRatio: { left: 0, top: 0.04, width: 0.96, height: 0.9 },
     widths: [1600, 1024, 640],
     ratio: 3 / 2,
-    treat: { slope: 2, exposure: 1.0, sat: 1.12 },
+    treat: { slope: 2, exposure: 1.06, sat: 1.08 },
+  },
+  {
+    // L'ingénieur devant le champ, skyline + minaret — Ref 400, Casablanca
+    // (EXIF 2026-04-17, même site que hero-skyline)
+    src: 'IMG_1981.HEIC',
+    out: 'portrait-400',
+    extractRatio: { left: 0.08, top: 0.1, width: 0.84, height: 0.9 },
+    widths: [1600, 1024, 640],
+    ratio: 4 / 3,
+    treat: { slope: 2, exposure: 1.06, sat: 1.08 },
   },
   {
     // Panneau + chauffe-eau sur acrotère — /équipement + galerie (graphique)

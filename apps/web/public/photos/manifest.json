@@ -24,28 +24,21 @@
     ],
     "ratio": 1.5
   },
-  "villa-zellige": {
-    "widths": [
-      1600,
-      1024,
-      640
-    ],
-    "ratio": 1.3333333333333333
-  },
-  "pente-zellige": {
-    "widths": [
-      1024,
-      640
-    ],
-    "ratio": 0.8
-  },
-  "terrasse-terre-cuite": {
+  "reflet-468": {
     "widths": [
       1600,
       1024,
       640
     ],
     "ratio": 1.5
+  },
+  "portrait-400": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
   },
   "silhouette-acrotere": {
     "widths": [
@@ -127,5 +120,13 @@
       640
     ],
     "ratio": 1
+  },
+  "pose-134": {
+    "widths": [
+      1600,
+      1024,
+      640
+    ],
+    "ratio": 1.3333333333333333
   }
 }

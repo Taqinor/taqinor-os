@@ -9,10 +9,9 @@
 export const NAP = {
   name: 'Taqinor', // pas de suffixe SARL — aligné GBP
   url: 'https://taqinor.ma',
-  phone: '+212661850410',
+  phone: '+212661850410', // NAP_PHONE : affichage, JSON-LD, liens tel: — PERMANENT (GBP)
   phoneDisplay: '0661850410', // identique au GBP — ne pas reformater
-  whatsapp: '212661850410', // chiffres uniquement (liens wa.me)
-  email: 'reda.kasri@taqinor.ma',
+  email: 'contact@taqinor.com', // adresse GBP confirmée par le propriétaire (2026-06-13)
   // Zone de service (pas d'adresse postale physique — mode service-area)
   serviceArea: ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Maroc'],
   // Liste de services — doit correspondre EXACTEMENT au Google Business Profile
@@ -25,3 +24,11 @@ export const NAP = {
     'Régularisation Loi 82-21 — Article 33',
   ],
 } as const;
+
+/**
+ * Cible des deeplinks wa.me et de la remise d'étude du diagnostic —
+ * DISTINCTE du téléphone NAP : aujourd'hui le même numéro, demain la
+ * ligne de Meryem. Chiffres uniquement, avec indicatif pays.
+ * (Surchargable au déploiement via l'env WHATSAPP_NUMBER du Worker.)
+ */
+export const WHATSAPP_LEADS = '212661850410';

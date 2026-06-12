@@ -2,11 +2,11 @@
 import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import DiagnosticForm from '../components/DiagnosticForm.astro';
-import { NAP } from '../lib/nap';
+import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
-const waGeneral = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite une étude pour une installation solaire.');
-const waRegul = whatsappLink(NAP.whatsapp, regularizationWhatsappText());
+const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
 ---
 
 <Layout

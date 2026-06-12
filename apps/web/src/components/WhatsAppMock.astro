@@ -6,10 +6,10 @@
  * PLACEHOLDER(MERYEM): les messages sont représentatifs — à ajuster si
  * Meryem préfère un échange type différent.
  */
-import { NAP } from '../lib/nap';
+import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
-const wa = whatsappLink(NAP.whatsapp, 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.');
+const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.');
 
 const exchange = [
   { from: 'client', text: 'Bonjour, je viens de faire le diagnostic sur taqinor.ma — facture ~1 800 MAD, villa à Casablanca.', time: '09:42' },
