@@ -15,6 +15,7 @@ export default function ClientForm({ client = null, onClose }) {
     email:     client?.email     ?? '',
     telephone: client?.telephone ?? '',
     adresse:   client?.adresse   ?? '',
+    ice:       client?.ice       ?? '',
   })
 
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
@@ -42,6 +43,7 @@ export default function ClientForm({ client = null, onClose }) {
         email:     fields.email.trim(),
         telephone: fields.telephone.trim() || null,
         adresse:   fields.adresse.trim()   || null,
+        ice:       fields.ice.trim()       || null,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -119,6 +121,16 @@ export default function ClientForm({ client = null, onClose }) {
                 value={fields.telephone}
                 onChange={e => setField('telephone', e.target.value)}
                 placeholder="+33 6 00 00 00 00"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">ICE (entreprises) — optionnel</label>
+              <input
+                className="form-control"
+                value={fields.ice}
+                onChange={e => setField('ice', e.target.value)}
+                placeholder="ex : 003799642000067"
               />
             </div>
 

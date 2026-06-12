@@ -260,6 +260,9 @@ CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 PAGES_TOTAL = 3                # nombre réel de pages (4 avec l'étude)
 PAGE3_NUM = 3                  # numéro de la page de signature
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
+# Conditions de paiement par mode — TOUJOURS fournies par le builder ;
+# défaut résidentiel pour le chemin autonome.
+PAY_A, PAY_M, PAY_S = 30, 60, 10
 
 # ── SVG equipment icons ──────────────────────────────────────────────────────
 _SVG = {
@@ -1140,8 +1143,8 @@ def page3():
         if PAYMENT_MODE == "custom" and CUSTOM_ACOMPTE is not None:
             _acompte = int(CUSTOM_ACOMPTE)
         else:
-            _acompte = round(_pay_total * 0.30 / 1000) * 1000
-        _solde = round(_pay_total * 0.10 / 1000) * 1000
+            _acompte = round(_pay_total * PAY_A / 100 / 1000) * 1000
+        _solde = round(_pay_total * PAY_S / 100 / 1000) * 1000
         _materiel = int(_pay_total - _acompte - _solde)
 
         _pct_a = round(_acompte / _pay_total * 100) if _pay_total else 0
@@ -1237,8 +1240,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Garanties jusqu&#8217;\u00e0 25 ans</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Structure 20 ans, panneaux 12 ans produit + 25 ans performance, onduleur 10 ans. S\u00e9r\u00e9nit\u00e9 totale.</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Garanties jusqu&#8217;\u00e0 30 ans</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">Structure 20 ans, panneaux 12 ans produit + 30 ans performance (87,4&#8201;%), onduleur 10 ans. S\u00e9r\u00e9nit\u00e9 totale.</div>
         </div>
       </div>
 
@@ -1277,9 +1280,9 @@ def page3():
         <div style="font-size:8pt;color:{CG4};margin-top:2px;">Structure de montage</div>
       </div>
       <div style="flex:1;border:2px solid {CA};border-top:4px solid {CN};border-radius:8px;padding:6px 5px;text-align:center;background:{CAL};">
-        <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">25</div>
+        <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">30</div>
         <div style="font-size:12px;font-weight:700;color:{CN};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Performance panneau</div>
+        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Performance panneau (87,4&#8201;%)</div>
       </div>
     </div>
   </div>
@@ -1290,9 +1293,9 @@ def page3():
       <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Conditions g\u00e9n\u00e9rales du devis</div>
       <ul style="list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Validit\u00e9 de l&#8217;offre&#160;: 30 jours</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Acompte \u00e0 la commande&#160;: 30&#37;</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>60&#37; \u00e0 la r\u00e9ception du mat\u00e9riel</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>10&#37; apr\u00e8s la mise en marche</li>
+        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Acompte \u00e0 la commande&#160;: {PAY_A}&#37;</li>
+        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{PAY_M}&#37; \u00e0 la r\u00e9ception du mat\u00e9riel</li>
+        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{PAY_S}&#37; apr\u00e8s la mise en marche</li>
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>D\u00e9lai d&#8217;installation&#160;: 7\u201314 jours ouvr\u00e9s</li>
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{TVA_NOTE}</li>
         <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Tarifs de r\u00e9f\u00e9rence&#160;: bar\u00e8me ONEE/SRM</li>
@@ -1319,7 +1322,7 @@ def page3():
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">1</div>
           <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Signature du devis</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">+ acompte 30&#37;</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">+ acompte {PAY_A}&#37;</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">2</div>
@@ -1733,8 +1736,9 @@ def page_onepage(items):
   <div style="padding:8px 24px;">
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">&#183; Validit&#233;&#160;: 30 jours</span>
-      <span style="margin-right:20px;">&#183; Acompte&#160;: 50&#37;</span>
-      <span style="margin-right:20px;">&#183; Solde &#224; la livraison&#160;: 50&#37;</span>
+      <span style="margin-right:20px;">&#183; Acompte&#160;: {PAY_A}&#37;</span>
+      <span style="margin-right:20px;">&#183; {PAY_M}&#37; &#224; la r&#233;ception du mat&#233;riel</span>
+      <span style="margin-right:20px;">&#183; {PAY_S}&#37; apr&#232;s mise en marche</span>
       <span>&#183; {TVA_NOTE}</span>
     </div>
   </div>
@@ -1831,6 +1835,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
+    global PAY_A, PAY_M, PAY_S
 
     CLIENT_NAME  = data["client_name"]
     CLIENT_ADDR  = data["client_addr"]
@@ -1878,6 +1883,10 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     TOTAUX_SANS = data.get("totaux_sans") or _fallback_totaux(data["sans_items"])
     TOTAUX_AVEC = data.get("totaux_avec") or _fallback_totaux(data["avec_items"])
     TOTAUX_ALL = data.get("totaux_all") or None
+    _terms = data.get("payment_terms") or {}
+    PAY_A = int(_terms.get("acompte", 30))
+    PAY_M = int(_terms.get("materiel", 60))
+    PAY_S = int(_terms.get("solde", 10))
     SANS_BULLETS = data.get("sans_bullets") or []
     AVEC_BULLETS = data.get("avec_bullets") or []
 

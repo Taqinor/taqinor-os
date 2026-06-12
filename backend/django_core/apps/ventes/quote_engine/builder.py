@@ -384,6 +384,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         out.append("Structures + installation complète")
         return out[:6]
 
+    # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
+    # Décision propriétaire 2026-06-12. Tous les formats rendent CE mapping ;
+    # plus aucun pourcentage en dur dans les gabarits. Agricole = défaut
+    # résidentiel (30/60/10) en attente d'un éventuel veto du fondateur.
+    PAYMENT_TERMS_BY_MODE = {
+        "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
+        "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
+        "agricole": {"acompte": 30, "materiel": 60, "solde": 10},
+    }
+    payment_terms = PAYMENT_TERMS_BY_MODE.get(
+        mode or "residentiel", PAYMENT_TERMS_BY_MODE["residentiel"])
+
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
     # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
@@ -399,7 +411,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_name": client_name or "Client",
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
-        "client_ice": "",
+        "client_ice": (getattr(client, "ice", "") or ""),
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
@@ -438,6 +450,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "include_etude": include_etude,
         "taux_tva": tva_pct,
         "tva_note": tva_note,
+        "payment_terms": payment_terms,
         "mode_installation": mode,
         "etude": etude,
     }

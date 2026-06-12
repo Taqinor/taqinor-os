@@ -19,6 +19,9 @@ class Client(models.Model):
     email = models.EmailField(blank=True, null=True)
     telephone = models.CharField(max_length=20, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
+    # Identifiant Commun de l'Entreprise (clients professionnels marocains).
+    # Optionnel : affiché sur les PDF uniquement quand renseigné.
+    ice = models.CharField(max_length=30, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
