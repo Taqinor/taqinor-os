@@ -8,12 +8,13 @@ import {
 import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import ProduitPicker from '../../components/ProduitPicker'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf,
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
-  groupProduitsByCategory, computeEtudeIndustrielle,
+  computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   isBattery, isHybridInverter, prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE,
@@ -471,7 +472,6 @@ export default function DevisGenerator() {
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
-  const produitGroups = useMemo(() => groupProduitsByCategory(produits), [produits])
 
   // ── KPI multi-marchés : étude industrielle, pompage, prix/kWc, marge ──
   const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
@@ -1031,21 +1031,11 @@ export default function DevisGenerator() {
                                  placeholder="Désignation" />
                         </td>
                         <td>
-                          <select className="form-select form-select-sm" value={l.produit}
-                                  onChange={e => onProduitChange(l._key, e.target.value)}>
-                            <option value="">— Produit —</option>
-                            {produitGroups.map(g => (
-                              <optgroup key={g.label} label={g.label}>
-                                {g.items.map(p => (
-                                  <option key={p.id} value={p.id}
-                                          disabled={!(parseFloat(p.prix_vente) > 0)}>
-                                    {p.nom}
-                                    {!(parseFloat(p.prix_vente) > 0) && ' — prix à renseigner'}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
+                          <ProduitPicker
+                            produits={produits}
+                            value={l.produit}
+                            onChange={id => onProduitChange(l._key, id)}
+                          />
                         </td>
                         <td>
                           <input type="number" min="0" step="any"
