@@ -1509,13 +1509,24 @@ def page_onepage(items):
             f'<div style="display:flex;background:{CAL};border-bottom:2px solid {CA};'
             f'padding:8px 24px;">{cells}</div>')
 
-    # Build table rows (per-line HT, with description + warranty detail lines)
+    # Build table rows (per-line HT, with description + warranty detail lines).
+    # Densité ADAPTATIVE pour tenir sur UNE page quoi qu'il arrive :
+    #   ≤ 8 lignes  → descriptions complètes (4 lignes) + garantie
+    #   9–12 lignes → descriptions courtes (2 lignes) + garantie
+    #   > 12 lignes → table compacte (désignation + marque seulement)
+    visible = [it for it in items if float(it.get("quantite", 0)) > 0]
+    n_items = len(visible)
+    if n_items <= 8:
+        max_desc, desc_pt, pad_px, show_gar = 4, 6.5, 6, True
+    elif n_items <= 12:
+        max_desc, desc_pt, pad_px, show_gar = 2, 6, 4, True
+    else:
+        max_desc, desc_pt, pad_px, show_gar = 0, 6, 3, False
+
     rows_html = ""
     row_idx = 0
-    for it in items:
+    for it in visible:
         qty = float(it.get("quantite", 0))
-        if qty == 0:
-            continue
         bg = "white" if row_idx % 2 == 0 else CG1
         pu_ht = _item_pu_ht(it)
         line_total = qty * pu_ht
@@ -1523,20 +1534,20 @@ def page_onepage(items):
         des = it.get("designation", "")
         qty_str = str(int(qty)) if qty == int(qty) else fnum(qty)
         marque_html = badge(marque) if marque else ""
-        detail_html = _desc_lines_html(it, max_lines=4, font_pt=6.5)
+        detail_html = _desc_lines_html(it, max_lines=max_desc, font_pt=desc_pt) if max_desc else ""
         gar = (it.get("garantie") or "").strip()
-        if gar:
+        if gar and show_gar:
             detail_html += (
-                f'<div style="font-size:6.5pt;color:{CGR};font-weight:600;'
+                f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
                 f'padding-left:6px;">&#10003; {gar}</div>')
         rows_html += (
             f'<tr style="background:{bg};">'
-            f'<td style="padding:6px 10px;word-break:break-word;">'
+            f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
             f'<div style="font-weight:700;color:{CN};">{des}</div>{detail_html}</td>'
-            f'<td style="padding:6px 10px;">{marque_html}</td>'
-            f'<td style="padding:6px 10px;text-align:center;color:{CG7};">{qty_str}</td>'
-            f'<td style="padding:6px 10px;text-align:right;color:{CG7};">{_fmt2(pu_ht)}</td>'
-            f'<td style="padding:6px 10px;text-align:right;font-weight:500;color:{CN};">{_fmt2(line_total)}</td>'
+            f'<td style="padding:{pad_px}px 10px;">{marque_html}</td>'
+            f'<td style="padding:{pad_px}px 10px;text-align:center;color:{CG7};">{qty_str}</td>'
+            f'<td style="padding:{pad_px}px 10px;text-align:right;color:{CG7};">{_fmt2(pu_ht)}</td>'
+            f'<td style="padding:{pad_px}px 10px;text-align:right;font-weight:500;color:{CN};">{_fmt2(line_total)}</td>'
             f'</tr>'
         )
         row_idx += 1
