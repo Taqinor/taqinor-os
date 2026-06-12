@@ -6,6 +6,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # Écouteur minimal du webhook leads site web — lié à localhost
+      # uniquement : seul le tunnel sortant (cloudflared) y accède.
+      - "127.0.0.1:8090:8090"
     volumes:
       - ./backend/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
