@@ -3,10 +3,10 @@ import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
-import { NAP } from '../lib/nap';
+import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
-const wa = whatsappLink(NAP.whatsapp, regularizationWhatsappText());
+const wa = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
 
 const steps = [
   {

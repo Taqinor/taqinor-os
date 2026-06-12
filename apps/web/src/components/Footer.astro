@@ -1,9 +1,9 @@
 ---
 import Logo from './Logo.astro';
-import { NAP } from '../lib/nap';
+import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
-const wa = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite des informations sur une installation solaire.');
+const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
 ---
 
 <footer class="bg-azur-950 text-white/85">

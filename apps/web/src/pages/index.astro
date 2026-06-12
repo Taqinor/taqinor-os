@@ -8,10 +8,10 @@ import VideoChantier from '../components/VideoChantier.astro';
 import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
-import { NAP } from '../lib/nap';
+import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
-const waDirect = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite une étude pour une installation solaire.');
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
 // Copie VALIDÉE par le propriétaire (variante H-A, 2026-06-13) — bâtie sur
 // la production réelle de la réf. 468 du dossier entreprise.

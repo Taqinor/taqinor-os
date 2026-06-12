@@ -5,10 +5,10 @@
  * Masqué tant que le héros est à l'écran et quand le formulaire
  * (#simulateur) est visible — pour ne jamais doubler le CTA principal.
  */
-import { NAP } from '../lib/nap';
+import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
-const wa = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite une étude pour une installation solaire.');
+const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 ---
 
 <div
