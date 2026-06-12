@@ -1,101 +1,85 @@
 @import "tailwindcss";
 
 /*
- * TAQINOR — « Lumière marocaine, précision d'ingénieur »
- * Base blanc cassé chaud, encre charbon, accent ambre solaire.
- * Typo : Bricolage Grotesque (display) · Instrument Sans (texte) ·
- * IBM Plex Mono (micro-étiquettes techniques). Tout auto-hébergé.
+ * TAQINOR — « Ville Blanche »
+ * Blanc architectural de Casablanca, bleu Majorelle profond dominant,
+ * un seul accent laiton/soleil réservé aux CTA et aux chiffres clés.
+ * Motif signature : étoile à huit pointes du zellige, abstraite en filets
+ * (jamais de carreaux photographiques, jamais folklorique).
+ * Typo : Syne (display géométrique) · Hanken Grotesk (texte). Auto-hébergées.
  */
 
 @font-face {
-  font-family: 'Bricolage Grotesque';
+  font-family: 'Syne';
   font-style: normal;
-  font-weight: 200 800;
+  font-weight: 600 800;
   font-display: swap;
-  src: url('/fonts/bricolage-latin-ext.woff2') format('woff2');
+  src: url('/fonts/syne-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: 'Bricolage Grotesque';
+  font-family: 'Syne';
   font-style: normal;
-  font-weight: 200 800;
+  font-weight: 600 800;
   font-display: swap;
-  src: url('/fonts/bricolage-latin.woff2') format('woff2');
+  src: url('/fonts/syne-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'Instrument Sans';
+  font-family: 'Hanken Grotesk';
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;
-  src: url('/fonts/instrument-latin-ext.woff2') format('woff2');
+  src: url('/fonts/hanken-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: 'Instrument Sans';
+  font-family: 'Hanken Grotesk';
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;
-  src: url('/fonts/instrument-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
-    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/plex-mono-latin-ext.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/plex-mono-latin.woff2') format('woff2');
+  src: url('/fonts/hanken-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @theme {
-  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Bricolage Grotesque', 'Instrument Sans', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Syne', 'Hanken Grotesk', sans-serif;
 
-  /* Papier — blanc cassé chaud, lumière de fin d'après-midi */
-  --color-paper: #faf6ef;
-  --color-sand: #f1ebdd;
-  --color-sand-deep: #e7dfcc;
+  /* Blanc architectural */
+  --color-blanc: #ffffff;
+  --color-blanc-azur: #f3f6fc;
 
-  /* Encre — charbon chaud, jamais de noir pur */
-  --color-ink: #211d17;
-  --color-ink-soft: #5d564a;
-  --color-ink-faint: #6f6a59;
+  /* Bleu Majorelle — la couleur de marque dominante */
+  --color-azur-100: #dde5f8;
+  --color-azur-200: #b9c8f0;
+  --color-azur-600: #2342b5;
+  --color-azur-700: #1c3494;
+  --color-azur-800: #152870;
+  --color-azur-900: #0f1c54;
+  --color-azur-950: #0a1238;
 
-  /* Nuit — sections sombres chaudes (héros, pied de page) */
-  --color-night: #181410;
-  --color-night-soft: #2a241c;
+  /* Encres sur blanc (déclinaisons bleutées du texte) */
+  --color-encre: #0c1335;
+  --color-encre-soft: #3f4a6e;
+  --color-encre-faint: #5a6488;
 
-  /* Ambre solaire — l'accent unique (jaune du logo en pivot) */
-  --color-amber-300: #ffd633;
-  --color-amber-400: #f5c100;
-  --color-amber-500: #e0a800;
-  --color-amber-700: #756000;
+  /* Laiton / soleil — UNIQUEMENT CTA et chiffres clés */
+  --color-brass-300: #f3cc66;
+  --color-brass-400: #e8b54a;
+  --color-brass-600: #8f6a0e;
 
   /* États fonctionnels (formulaires) */
-  --color-ok-600: #3a7d44;
-  --color-ok-50: #eef5ec;
+  --color-ok-600: #2f7a3f;
+  --color-ok-50: #edf6ee;
   --color-alert-600: #b3402a;
   --color-alert-50: #faeeea;
 }
@@ -106,70 +90,76 @@ html {
 
 body {
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'ss01' on;
 }
 
-/* ---- Signature « fiche technique » ---------------------------------- */
+/* ---- Signature typographique ---------------------------------------- */
 
-/* Micro-étiquette mono : TRACÉ · MESURÉ · DÉCLARÉ */
+/* Micro-étiquette : DIMENSIONNÉ · MESURÉ · DÉCLARÉ */
 .tech-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.18em;
+  font-weight: 700;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
-/* Grand chiffre-objet : kWc, ROI, MAD */
+/* Grand chiffre-objet : kWc, ROI, MAD — toujours laiton ou blanc */
 .fig {
   font-family: var(--font-display);
-  font-weight: 750;
-  font-variation-settings: 'opsz' 96;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   line-height: 0.95;
+  font-variant-numeric: lining-nums;
 }
 
 /* Titres display */
 .display {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-variation-settings: 'opsz' 60;
-  letter-spacing: -0.015em;
-  line-height: 1.04;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
   text-wrap: balance;
 }
 
-/* Quadrillage papier millimétré — sections techniques */
-.grid-paper {
-  background-image:
-    linear-gradient(to right, rgb(33 29 23 / 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(33 29 23 / 0.05) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-.grid-paper-dark {
-  background-image:
-    linear-gradient(to right, rgb(250 246 239 / 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(250 246 239 / 0.06) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-/* Filet technique : trait + pastille ambre, ancre les titres de section */
-.rule-amber {
+/* Filet d'ancrage des titres de section : trait + losange zellige */
+.rule-brass {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
-.rule-amber::before {
+.rule-brass::before {
   content: '';
-  width: 2.25rem;
+  width: 2.5rem;
   height: 2px;
-  background: var(--color-amber-400);
+  background: currentColor;
   flex: none;
+}
+.rule-brass::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  order: -1;
+  transform: rotate(45deg);
+  border: 1.5px solid currentColor;
+}
+
+/* ---- Motif zellige abstrait (étoile à 8 pointes en filets) ----------- */
+/* Unité 96×96 : deux carrés superposés à 45° + connecteurs — jamais rempli,
+   uniquement des lignes. Décliné clair (sur bleu) et bleu (sur blanc). */
+
+.zellige-bg {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%232342b5' stroke-opacity='0.07' stroke-width='1'%3E%3Crect x='21' y='21' width='54' height='54'/%3E%3Crect x='21' y='21' width='54' height='54' transform='rotate(45 48 48)'/%3E%3Cpath d='M48 0v21M48 75v21M0 48h21M75 48h96'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 96px 96px;
+}
+.zellige-bg-dark {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.08' stroke-width='1'%3E%3Crect x='21' y='21' width='54' height='54'/%3E%3Crect x='21' y='21' width='54' height='54' transform='rotate(45 48 48)'/%3E%3Cpath d='M48 0v21M48 75v21M0 48h21M75 48h96'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 96px 96px;
 }
 
 /* Révélation douce à l'entrée dans le viewport (sans JS, repli sage).
-   Transform uniquement — jamais l'opacité, pour ne pas fausser le
-   contraste mesuré (axe) ni masquer du contenu si l'animation échoue. */
+   Transform uniquement — jamais l'opacité (contraste mesurable, pas de
+   contenu masqué si l'animation échoue). */
 @media (prefers-reduced-motion: no-preference) {
   .reveal {
     transform: translateY(18px);

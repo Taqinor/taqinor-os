@@ -3,6 +3,8 @@ import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
+import StickyCta from '../components/StickyCta.astro';
+import ZelligeDivider from '../components/ZelligeDivider.astro';
 
 // Honnêteté de marque : uniquement ce qui est réellement stocké et posé.
 // PLACEHOLDER(REDA): marques et gammes de panneaux à confirmer par l'équipe —
@@ -42,11 +44,11 @@ const categories = [
 >
   <Article33Ribbon />
 
-  <section class="grid-paper-dark bg-night px-4 py-16 text-paper sm:py-20">
+  <section class="zellige-bg-dark bg-azur-900 px-4 py-16 text-white sm:py-20">
     <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-amber text-amber-400">Stock réel · références courtes</p>
+      <p class="tech-label rule-brass text-brass-300">Stock réel · références courtes</p>
       <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Ce que nous stockons, ce que nous posons</h1>
-      <p class="mt-5 max-w-xl leading-relaxed text-paper/85">
+      <p class="mt-5 max-w-xl leading-relaxed text-white/85">
         Pas de catalogue infini : une sélection courte de matériel que nous connaissons,
         stockons et garantissons. Chaque référence est choisie pour sa fiabilité mesurée et la
         disponibilité de ses pièces au Maroc.
@@ -57,7 +59,7 @@ const categories = [
   <!-- Photos matériel -->
   <section class="mx-auto max-w-6xl px-4 pt-12">
     <div class="grid gap-4 sm:grid-cols-[1.4fr_1fr]">
-      <figure class="reveal overflow-hidden border border-ink/15">
+      <figure class="reveal overflow-hidden border border-azur-900/15">
         <Picture
           name="mur-technique-dyness"
           alt="Mur technique d'une installation Taqinor : onduleur hybride, deux batteries Dyness et borne de recharge"
@@ -67,9 +69,9 @@ const categories = [
           loading="eager"
           class="w-full object-cover"
         />
-        <figcaption class="tech-label bg-paper px-3 py-2.5 text-ink-faint">Onduleur hybride · 2 batteries Dyness · borne de recharge</figcaption>
+        <figcaption class="tech-label bg-blanc px-3 py-2.5 text-encre-faint">Onduleur hybride · 2 batteries Dyness · borne de recharge</figcaption>
       </figure>
-      <figure class="reveal overflow-hidden border border-ink/15">
+      <figure class="reveal overflow-hidden border border-azur-900/15">
         <Picture
           name="silhouette-acrotere"
           alt="Panneau photovoltaïque et chauffe-eau solaire sur acrotère blanc contre un ciel bleu profond"
@@ -79,7 +81,7 @@ const categories = [
           loading="eager"
           class="h-full w-full object-cover"
         />
-        <figcaption class="tech-label bg-paper px-3 py-2.5 text-ink-faint">Modules + chauffe-eau · installation réelle</figcaption>
+        <figcaption class="tech-label bg-blanc px-3 py-2.5 text-encre-faint">Modules + chauffe-eau · installation réelle</figcaption>
       </figure>
     </div>
   </section>
@@ -88,28 +90,32 @@ const categories = [
   <section class="mx-auto max-w-6xl px-4 py-12">
     <div class="grid gap-6 md:grid-cols-2">
       {categories.map((c) => (
-        <div class="reveal border border-ink/15 bg-paper">
-          <div class="flex items-center justify-between border-b border-ink/15 px-6 py-3">
-            <span class="tech-label text-ink-faint">Réf. {c.ref}</span>
-            <span class="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true"></span>
+        <div class="reveal border border-azur-900/15 bg-blanc">
+          <div class="flex items-center justify-between border-b-2 border-azur-600 px-6 py-3">
+            <span class="tech-label text-azur-600">Réf. {c.ref}</span>
+            <span class="h-1.5 w-1.5 rotate-45 border border-azur-600" aria-hidden="true"></span>
           </div>
           <div class="p-6">
             <h2 class="display text-xl">{c.title}</h2>
-            <p class="mt-3 text-sm leading-relaxed text-ink-soft">{c.body}</p>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">{c.body}</p>
             <ul class="mt-4 space-y-2 text-sm">
               {c.points.map((p) => (
-                <li class="flex gap-2.5"><span class="font-mono font-medium text-amber-700" aria-hidden="true">+</span><span>{p}</span></li>
+                <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span><span>{p}</span></li>
               ))}
             </ul>
           </div>
         </div>
       ))}
     </div>
-    <p class="mx-auto mt-8 max-w-xl border-l-2 border-amber-400 pl-4 text-sm leading-relaxed text-ink-soft">
+    <p class="mx-auto mt-8 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
       Le choix final du matériel dépend du dimensionnement : c'est l'étude qui détermine
       l'équipement, jamais l'inverse.
     </p>
   </section>
 
+  <ZelligeDivider />
+
   <CtaBand title="Le bon matériel, c'est celui que l'étude justifie." />
+
+  <StickyCta />
 </Layout>

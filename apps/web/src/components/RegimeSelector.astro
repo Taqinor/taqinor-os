@@ -6,13 +6,13 @@
 import { REGIMES } from '../lib/regime';
 
 const inputClass =
-  'w-full border border-ink/20 bg-paper px-3 py-2.5 text-sm outline-none transition-colors focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30';
+  'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
 ---
 
-<div class="border border-ink/15 bg-sand/60 p-6 sm:p-8">
-  <p class="tech-label text-ink-soft">Diagnostic immédiat</p>
+<div class="border border-azur-900/15 bg-blanc-azur p-6 sm:p-8">
+  <p class="tech-label text-azur-600">Diagnostic immédiat</p>
   <h2 class="display mt-2 text-2xl">Quel régime s'applique à votre installation ?</h2>
-  <p class="mt-1 text-sm text-ink-soft">Trois questions, réponse immédiate.</p>
+  <p class="mt-1 text-sm text-encre-soft">Trois questions, réponse immédiate.</p>
 
   <form id="regime-form" class="mt-7 grid gap-4 sm:grid-cols-3">
     <div>
@@ -36,12 +36,12 @@ const inputClass =
     </div>
   </form>
 
-  <div id="regime-result" class="mt-7 border border-ink/15 bg-paper p-6 shadow-[6px_6px_0_0_rgb(245_193_0)]">
-    <p class="tech-label text-amber-700">Régime applicable</p>
+  <div id="regime-result" class="mt-7 border-l-4 border-azur-600 bg-blanc p-6 shadow-[0_12px_36px_-16px_rgb(15_28_84/0.3)]">
+    <p class="tech-label text-azur-600">Régime applicable</p>
     <h3 id="rg-title" class="display mt-2 text-xl"></h3>
-    <p id="rg-summary" class="mt-2 text-sm leading-relaxed text-ink-soft"></p>
+    <p id="rg-summary" class="mt-2 text-sm leading-relaxed text-encre-soft"></p>
     <ul id="rg-obligations" class="mt-4 space-y-2 text-sm"></ul>
-    <a href="/contact" class="mt-5 inline-block bg-ink px-5 py-2.5 text-sm font-bold text-paper transition-colors hover:bg-night-soft">
+    <a href="/contact" class="mt-5 inline-block bg-brass-400 px-5 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
       Faire vérifier mon dossier
     </a>
   </div>
@@ -67,7 +67,7 @@ const inputClass =
     document.getElementById('rg-title').textContent = info.title;
     document.getElementById('rg-summary').textContent = info.summary;
     document.getElementById('rg-obligations').innerHTML = info.obligations
-      .map((o) => `<li class="flex gap-2.5"><span class="font-mono font-medium text-amber-700" aria-hidden="true">+</span><span>${o}</span></li>`)
+      .map((o) => `<li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span><span>${o}</span></li>`)
       .join('');
   }
 

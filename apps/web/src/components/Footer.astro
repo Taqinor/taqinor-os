@@ -6,42 +6,42 @@ import { whatsappLink } from '../lib/whatsapp';
 const wa = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite des informations sur une installation solaire.');
 ---
 
-<footer class="grid-paper-dark bg-night text-paper/80">
+<footer class="zellige-bg-dark bg-azur-950 text-white/85">
   <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-4">
     <div>
       <Logo size={22} theme="dark" />
-      <p class="mt-4 text-sm leading-relaxed text-paper/70">
+      <p class="mt-4 text-sm leading-relaxed text-white/70">
         Installations solaires dimensionnées par l'ingénierie, conformes à la loi 82-21.
       </p>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-amber-400">Services</h2>
+      <h2 class="tech-label mb-4 text-azur-200">Services</h2>
       <ul class="space-y-2 text-sm">
         {NAP.services.map((s) => <li>{s}</li>)}
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-amber-400">Pages</h2>
+      <h2 class="tech-label mb-4 text-azur-200">Pages</h2>
       <ul class="space-y-2 text-sm">
-        <li><a href="/résidentiel" class="transition-colors hover:text-amber-300">Résidentiel</a></li>
-        <li><a href="/professionnel" class="transition-colors hover:text-amber-300">Professionnel</a></li>
-        <li><a href="/équipement" class="transition-colors hover:text-amber-300">Équipement</a></li>
-        <li><a href="/loi-82-21" class="transition-colors hover:text-amber-300">Loi 82-21</a></li>
-        <li><a href="/regularization-article-33" class="transition-colors hover:text-amber-300">Régularisation Article 33</a></li>
-        <li><a href="/contact" class="transition-colors hover:text-amber-300">Contact</a></li>
+        <li><a href="/résidentiel" class="transition-colors hover:text-white">Résidentiel</a></li>
+        <li><a href="/professionnel" class="transition-colors hover:text-white">Professionnel</a></li>
+        <li><a href="/équipement" class="transition-colors hover:text-white">Équipement</a></li>
+        <li><a href="/loi-82-21" class="transition-colors hover:text-white">Loi 82-21</a></li>
+        <li><a href="/regularization-article-33" class="transition-colors hover:text-white">Régularisation Article 33</a></li>
+        <li><a href="/contact" class="transition-colors hover:text-white">Contact</a></li>
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-amber-400">Contact</h2>
+      <h2 class="tech-label mb-4 text-azur-200">Contact</h2>
       <ul class="space-y-2 text-sm">
-        <li><a href={`tel:${NAP.phone}`} class="transition-colors hover:text-amber-300">{NAP.phoneDisplay}</a></li>
-        <li><a href={`mailto:${NAP.email}`} class="transition-colors hover:text-amber-300">{NAP.email}</a></li>
-        <li><a href={wa} rel="noopener" class="transition-colors hover:text-amber-300">WhatsApp</a></li>
-        <li class="text-paper/60">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
+        <li><a href={`tel:${NAP.phone}`} class="transition-colors hover:text-white">{NAP.phoneDisplay}</a></li>
+        <li><a href={`mailto:${NAP.email}`} class="transition-colors hover:text-white">{NAP.email}</a></li>
+        <li><a href={wa} rel="noopener" class="transition-colors hover:text-white">WhatsApp</a></li>
+        <li class="text-white/60">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
       </ul>
     </div>
   </div>
-  <div class="border-t border-paper/10 py-4 text-center text-xs text-paper/50">
+  <div class="border-t border-white/10 py-4 text-center text-xs text-white/50">
     © 2026 {NAP.name}. Tous droits réservés.
   </div>
 </footer>

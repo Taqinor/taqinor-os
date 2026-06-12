@@ -1,0 +1,28 @@
+---
+/**
+ * Séparateur de section — le motif signature (étoile à huit pointes du
+ * zellige, abstraite en filets) décliné en frise : losanges reliés par
+ * des traits. Purement décoratif.
+ */
+interface Props {
+  /** 'blue' = filets bleus sur fond clair ; 'white' = filets blancs sur fond bleu */
+  tone?: 'blue' | 'white';
+}
+const { tone = 'blue' } = Astro.props;
+const stroke = tone === 'white' ? '#ffffff' : '#2342b5';
+const opacity = tone === 'white' ? 0.45 : 0.35;
+---
+
+<div class="flex justify-center py-1" aria-hidden="true">
+  <svg width="288" height="20" viewBox="0 0 288 20" fill="none" opacity={opacity}>
+    <g stroke={stroke} stroke-width="1.25">
+      <path d="M0 10h108" />
+      <path d="M180 10h108" />
+      <rect x="137" y="3" width="14" height="14" transform="rotate(45 144 10)" />
+      <rect x="140.5" y="6.5" width="7" height="7" transform="rotate(45 144 10)" />
+      <path d="M118 10l8 0M162 10l8 0" />
+      <rect x="121" y="7" width="6" height="6" transform="rotate(45 124 10)" />
+      <rect x="161" y="7" width="6" height="6" transform="rotate(45 164 10)" />
+    </g>
+  </svg>
+</div>

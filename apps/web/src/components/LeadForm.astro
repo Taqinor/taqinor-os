@@ -13,15 +13,15 @@ interface Props {
 const { heading = 'Estimez votre installation en 30 secondes' } = Astro.props;
 
 const inputClass =
-  'w-full border border-ink/20 bg-paper px-3 py-2.5 text-sm outline-none transition-colors focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30';
+  'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
 ---
 
-<section id="simulateur" class="grid-paper scroll-mt-20 px-4 py-16">
-  <div class="mx-auto max-w-2xl border border-ink/15 bg-paper shadow-[8px_8px_0_0_rgb(245_193_0)]">
-    <div class="border-b border-ink/15 px-6 py-5 sm:px-8">
-      <p class="tech-label text-ink-soft">Simulation · sans engagement</p>
+<section id="simulateur" class="zellige-bg scroll-mt-20 px-4 py-16">
+  <div class="mx-auto max-w-2xl border-t-4 border-azur-600 bg-blanc shadow-[0_18px_50px_-18px_rgb(15_28_84/0.35)]">
+    <div class="border-b border-azur-900/10 px-6 py-5 sm:px-8">
+      <p class="tech-label text-azur-600">Simulation · sans engagement</p>
       <h2 class="display mt-2 text-2xl sm:text-3xl">{heading}</h2>
-      <p class="mt-2 text-sm text-ink-soft">
+      <p class="mt-2 text-sm text-encre-soft">
         Fourchette de puissance et de retour sur investissement, sans engagement.
         Le devis détaillé est établi après visite technique.
       </p>
@@ -64,12 +64,12 @@ const inputClass =
       </div>
 
       <label class="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-amber-500" checked />
+        <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-azur-600" checked />
         <span>Je préfère être contacté(e) par WhatsApp</span>
       </label>
 
       <label class="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="consent" required class="mt-0.5 accent-amber-500" />
+        <input type="checkbox" name="consent" required class="mt-0.5 accent-azur-600" />
         <span>
           J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
           demande d'étude solaire. *
@@ -87,7 +87,7 @@ const inputClass =
       <p id="lf-err" class="hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
 
       <button type="submit" id="lf-submit"
-        class="bg-ink px-6 py-3.5 text-base font-bold text-paper transition-colors hover:bg-night-soft disabled:opacity-60">
+        class="bg-brass-400 px-6 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
         Obtenir mon estimation
       </button>
     </form>
@@ -95,7 +95,7 @@ const inputClass =
     <div id="lf-success" class="hidden p-8 text-center">
       <p class="tech-label text-ok-600">Demande enregistrée</p>
       <p class="display mt-2 text-2xl">Merci, votre demande est bien enregistrée.</p>
-      <p id="lf-band" class="mx-auto mt-3 max-w-md text-sm leading-relaxed text-ink-soft"></p>
+      <p id="lf-band" class="mx-auto mt-3 max-w-md text-sm leading-relaxed text-encre-soft"></p>
       <a id="lf-wa" href="#" rel="noopener"
         class="mt-6 inline-block bg-ok-600 px-6 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
         Continuer sur WhatsApp

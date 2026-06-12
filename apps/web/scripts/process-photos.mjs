@@ -23,7 +23,7 @@ const outDir = path.join(root, 'public', 'photos');
  * widths : tailles responsives générées (toutes en AVIF + WebP).
  * ratio  : cadrage final (w/h) appliqué en "cover".
  * extractRatio : pré-recadrage proportionnel pour sortir le hors-sujet.
- * tune   : { exposure: gain linéaire (1 = neutre), saturation }.
+ * (L'exposition/saturation est désormais standardisée par le débrumage.)
  */
 const PHOTOS = [
   {
@@ -32,7 +32,6 @@ const PHOTOS = [
     out: 'hero-skyline',
     widths: [2000, 1280, 768, 480],
     ratio: 16 / 9,
-    tune: { exposure: 1.04, saturation: 1.06 },
   },
   {
     // Crépuscule, penthouse blanc + chauffe-eau solaire — sac de chantier
@@ -42,7 +41,6 @@ const PHOTOS = [
     extractRatio: { left: 0.1, top: 0.04, width: 0.9, height: 0.92 },
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    tune: { exposure: 1.06, saturation: 1.05 },
   },
   {
     // Champ noir sur toit plat, ciel bleu, verdure — bord bas droit (bâche)
@@ -52,7 +50,6 @@ const PHOTOS = [
     extractRatio: { left: 0, top: 0, width: 1, height: 0.9 },
     widths: [1600, 1024, 640],
     ratio: 3 / 2,
-    tune: { exposure: 1.02, saturation: 1.04 },
   },
   {
     // Villa marocaine, toiture pyramidale en zellige turquoise + panneaux
@@ -60,7 +57,6 @@ const PHOTOS = [
     out: 'villa-zellige',
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    tune: { exposure: 1.08, saturation: 1.05 },
   },
   {
     // Rangée de 7 panneaux, toit-terrasse en terre cuite — clim recadrée à droite
@@ -69,7 +65,6 @@ const PHOTOS = [
     extractRatio: { left: 0, top: 0.04, width: 0.93, height: 0.96 },
     widths: [1600, 1024, 640],
     ratio: 3 / 2,
-    tune: { exposure: 1.0, saturation: 1.04 },
   },
   {
     // Graphique : panneau + chauffe-eau en silhouette sur acrotère blanc
@@ -77,7 +72,6 @@ const PHOTOS = [
     out: 'silhouette-acrotere',
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    tune: { exposure: 1.0, saturation: 1.05 },
   },
   {
     // Nettoyage au jet d'un champ — geste d'entretien, palmiers
@@ -85,7 +79,6 @@ const PHOTOS = [
     out: 'entretien-jet',
     widths: [1600, 1024, 640],
     ratio: 1,
-    tune: { exposure: 1.0, saturation: 1.03 },
   },
   {
     // Gilet TAQINOR au premier plan, pose de rails — la marque au travail
@@ -93,7 +86,6 @@ const PHOTOS = [
     out: 'equipe-gilet-taqinor',
     widths: [1600, 1024, 640],
     ratio: 1,
-    tune: { exposure: 1.02, saturation: 1.02 },
   },
   {
     // Traçage et mesure des rails au mètre — la précision du geste
@@ -101,7 +93,6 @@ const PHOTOS = [
     out: 'mesure-rails',
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    tune: { exposure: 1.02, saturation: 1.02 },
   },
   {
     // Chantier industriel au couchant, double rangée, ciel dramatique
@@ -109,7 +100,6 @@ const PHOTOS = [
     out: 'industriel-couchant',
     widths: [2000, 1280, 768, 480],
     ratio: 16 / 9,
-    tune: { exposure: 1.14, saturation: 1.04 },
   },
   {
     // Équipe de trois devant la longue rangée — fierté de chantier
@@ -118,7 +108,6 @@ const PHOTOS = [
     extractRatio: { left: 0, top: 0, width: 0.88, height: 1 },
     widths: [1600, 1024, 640],
     ratio: 3 / 2,
-    tune: { exposure: 1.06, saturation: 1.03 },
   },
   {
     // Mur technique : onduleur hybride, 2 batteries Dyness, borne de recharge
@@ -127,7 +116,6 @@ const PHOTOS = [
     extractRatio: { left: 0.05, top: 0.02, width: 0.92, height: 0.93 },
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    tune: { exposure: 1.1, saturation: 1.0 },
   },
   {
     // Installation au crépuscule, palmiers — recadrée (seau hors champ)
@@ -136,7 +124,6 @@ const PHOTOS = [
     extractRatio: { left: 0, top: 0.18, width: 0.72, height: 0.66 },
     widths: [1600, 1024, 640],
     ratio: 4 / 3,
-    tune: { exposure: 1.04, saturation: 1.05 },
   },
   {
     // Équipe posant la structure sur toiture plate (gilet logoté)
@@ -144,7 +131,6 @@ const PHOTOS = [
     out: 'equipe-pose-structure',
     widths: [1600, 1024, 640],
     ratio: 1,
-    tune: { exposure: 1.02, saturation: 1.02 },
   },
 ];
 
@@ -160,12 +146,28 @@ async function loadImage(file) {
   }
 }
 
+/**
+ * Débrumage modéré, AVANT recadrage/compression : égalisation adaptative
+ * limitée en contraste (CLAHE, pente plafonnée), correction du point noir
+ * (percentiles doux) et récupération de saturation. Jamais de retouche
+ * générative ; réglages volontairement retenus (pas d'ombres bouchées,
+ * pas de ciels fluo).
+ */
+async function dehaze(img, meta) {
+  const tile = Math.max(64, Math.round(Math.min(meta.width, meta.height) / 8));
+  return img
+    .clahe({ width: tile, height: tile, maxSlope: 2 })
+    .normalise({ lower: 0.6, upper: 99.6 })
+    .modulate({ saturation: 1.12 });
+}
+
 await mkdir(outDir, { recursive: true });
 const manifest = {};
 
 for (const p of PHOTOS) {
   let img = await loadImage(path.join(rawDir, p.src));
   const meta = await img.metadata();
+  img = await dehaze(img, meta);
   if (p.extractRatio) {
     const r = p.extractRatio;
     img = img.extract({
@@ -175,11 +177,6 @@ for (const p of PHOTOS) {
       height: Math.round(meta.height * r.height),
     });
   }
-  // Correction non destructive : gain d'exposition linéaire + saturation douce
-  const t = p.tune ?? {};
-  if (t.exposure && t.exposure !== 1) img = img.linear(t.exposure, 0);
-  if (t.saturation && t.saturation !== 1) img = img.modulate({ saturation: t.saturation });
-  img = img.normalise({ lower: 0.3, upper: 99.7 });
 
   const base = await img.png().toBuffer();
   manifest[p.out] = { widths: p.widths, ratio: p.ratio };

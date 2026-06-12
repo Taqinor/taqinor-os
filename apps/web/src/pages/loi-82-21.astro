@@ -3,6 +3,8 @@ import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import RegimeSelector from '../components/RegimeSelector.astro';
 import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+import ZelligeDivider from '../components/ZelligeDivider.astro';
 import { REGIMES } from '../lib/regime';
 ---
 
@@ -13,11 +15,11 @@ import { REGIMES } from '../lib/regime';
 >
   <Article33Ribbon />
 
-  <section class="grid-paper-dark bg-night px-4 py-16 text-paper sm:py-20">
+  <section class="zellige-bg-dark bg-azur-900 px-4 py-16 text-white sm:py-20">
     <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-amber text-amber-400">Loi 82-21 · décret 2-25-100</p>
+      <p class="tech-label rule-brass text-brass-300">Loi 82-21 · décret 2-25-100</p>
       <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Trois régimes, un seul qui vous concerne</h1>
-      <p class="mt-5 max-w-xl leading-relaxed text-paper/85">
+      <p class="mt-5 max-w-xl leading-relaxed text-white/85">
         La loi 82-21 sur l'autoproduction d'énergie électrique et son décret d'application
         2-25-100 sont en vigueur depuis le 9 juin 2026. Toute installation d'autoproduction —
         nouvelle ou existante — relève désormais de l'un des trois régimes ci-dessous, selon sa
@@ -30,38 +32,42 @@ import { REGIMES } from '../lib/regime';
     <RegimeSelector />
   </section>
 
-  <section class="mx-auto max-w-4xl px-4 pb-14">
-    <p class="tech-label rule-amber text-ink-soft">Référence</p>
+  <ZelligeDivider />
+
+  <section class="mx-auto max-w-4xl px-4 py-14">
+    <p class="tech-label rule-brass text-azur-600">Référence</p>
     <h2 class="display mt-3 text-3xl">Les trois régimes en détail</h2>
     <div class="mt-8 grid gap-6">
       {Object.values(REGIMES).map((r, i) => (
-        <div class="reveal grid gap-4 border border-ink/15 bg-paper p-6 sm:grid-cols-[auto_1fr] sm:p-7">
-          <span class="fig text-4xl text-amber-700" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+        <div class="reveal grid gap-4 border border-azur-900/15 bg-blanc p-6 sm:grid-cols-[auto_1fr] sm:p-7">
+          <span class="fig text-4xl text-azur-200" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
           <div>
             <h3 class="display text-xl">{r.title}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-ink-soft">{r.summary}</p>
+            <p class="mt-2 text-sm leading-relaxed text-encre-soft">{r.summary}</p>
             <ul class="mt-4 space-y-2 text-sm">
               {r.obligations.map((o) => (
-                <li class="flex gap-2.5"><span class="font-mono font-medium text-amber-700" aria-hidden="true">+</span><span>{o}</span></li>
+                <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span><span>{o}</span></li>
               ))}
             </ul>
           </div>
         </div>
       ))}
     </div>
-    <div class="mt-10 border-2 border-amber-400 bg-amber-400/10 p-7">
-      <p class="tech-label text-amber-700">Installations existantes</p>
+    <div class="mt-10 border-2 border-azur-600 bg-blanc-azur p-7">
+      <p class="tech-label text-azur-600">Installations existantes</p>
       <h2 class="display mt-2 text-2xl">Vous avez déjà une installation non déclarée ?</h2>
-      <p class="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
+      <p class="mt-3 max-w-xl text-sm leading-relaxed text-encre-soft">
         L'Article 33 de la loi ouvre une fenêtre de régularisation pour les installations
         existantes. La fenêtre est ouverte — la procédure et les sanctions en cas d'inaction
         sont détaillées sur la page dédiée.
       </p>
-      <a href="/regularization-article-33" class="mt-5 inline-block bg-ink px-6 py-3 text-sm font-bold text-paper transition-colors hover:bg-night-soft">
+      <a href="/regularization-article-33" class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
         Régulariser mon installation
       </a>
     </div>
   </section>
 
   <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" />
+
+  <StickyCta />
 </Layout>

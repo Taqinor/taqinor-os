@@ -5,11 +5,18 @@ import LeadForm from '../components/LeadForm.astro';
 import Faq from '../components/Faq.astro';
 import Picture from '../components/Picture.astro';
 import VideoChantier from '../components/VideoChantier.astro';
+import StickyCta from '../components/StickyCta.astro';
+import ZelligeDivider from '../components/ZelligeDivider.astro';
+import { NAP } from '../lib/nap';
 
 // PLACEHOLDER(MERYEM): headline + sous-titre du hero — copie provisoire.
 const heroTitle = 'Votre électricité, produite sur votre toit.';
 const heroSub =
   'Taqinor conçoit, installe et déclare des installations solaires dimensionnées par l’ingénierie — pour villas, industries et hôtels, partout au Maroc.';
+
+// PLACEHOLDER(REDA): nombre réel d'installations à fournir — la tuile centrale
+// de la bande de confiance affichera « +N installations » dès qu'il est connu.
+const installCount: number | null = null;
 
 // PLACEHOLDER(MERYEM): témoignages provisoires — à remplacer par de vrais
 // clients (nom, ville, citation) avant mise en avant publicitaire.
@@ -58,7 +65,7 @@ const faq = [
   },
 ];
 
-// Galerie de chantiers — photos réelles, traitées sans retouche générative.
+// Galerie de chantiers — photos réelles, débrumées, jamais de retouche générative.
 const gallery = [
   { name: 'champ-villa', alt: 'Champ de panneaux solaires Taqinor sur toit plat de villa, ciel bleu', widths: [1600, 1024, 640], ratio: 3 / 2, label: 'Champ résidentiel · toit plat' },
   { name: 'villa-zellige', alt: 'Installation solaire Taqinor sur villa marocaine à toiture en zellige turquoise', widths: [1600, 1024, 640], ratio: 4 / 3, label: 'Villa · toiture traditionnelle' },
@@ -78,79 +85,87 @@ const gallery = [
 >
   <Article33Ribbon />
 
-  <!-- Hero — photo pleine page, voile nuit chaud -->
-  <section class="relative isolate overflow-hidden bg-night text-paper">
+  <!-- Hero — vidéo de chantier en lecture auto muette (affiche en repli,
+       respect de prefers-reduced-motion, chargement après le reste) -->
+  <section class="relative isolate overflow-hidden bg-azur-950 text-white">
     <div class="absolute inset-0 -z-10">
-      <Picture
-        name="hero-skyline"
-        alt=""
-        widths={[2000, 1280, 768, 480]}
-        ratio={16 / 9}
-        sizes="100vw"
-        loading="eager"
-        fetchpriority="high"
-        class="h-full w-full object-cover"
-      />
-      <div class="absolute inset-0 bg-gradient-to-t from-night via-night/60 to-night/30"></div>
+      <picture>
+        <source type="image/avif" srcset="/videos/hero-poster.avif" />
+        <img src="/videos/hero-poster.webp" alt="" width="1600" height="900"
+          loading="eager" decoding="async" fetchpriority="high"
+          class="h-full w-full object-cover" />
+      </picture>
+      <video
+        id="hero-video"
+        muted
+        loop
+        playsinline
+        preload="none"
+        aria-hidden="true"
+        tabindex="-1"
+        class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+      ></video>
+      <div class="absolute inset-0 bg-gradient-to-t from-azur-950 via-azur-950/65 to-azur-900/35"></div>
     </div>
-    <div class="mx-auto max-w-6xl px-4 pb-12 pt-20 sm:pb-16 sm:pt-32">
-      <p class="tech-label rule-amber text-amber-400">Casablanca · Rabat · Marrakech · tout le Maroc</p>
+    <div class="mx-auto max-w-6xl px-4 pb-12 pt-20 sm:pb-16 sm:pt-28">
+      <p class="tech-label rule-brass text-brass-300">Casablanca · Rabat · Marrakech · tout le Maroc</p>
       <h1 class="display mt-5 max-w-3xl text-4xl sm:text-6xl">{heroTitle}</h1>
-      <p class="mt-5 max-w-2xl text-base leading-relaxed text-paper/85 sm:text-lg">{heroSub}</p>
+      <p class="mt-5 max-w-2xl text-base leading-relaxed text-white/85 sm:text-lg">{heroSub}</p>
       <div class="mt-9 flex flex-wrap items-center gap-4">
-        <a href="#simulateur" class="bg-amber-400 px-7 py-3.5 text-base font-bold text-ink transition-colors hover:bg-amber-300">
+        <a href="#simulateur" class="bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
           Estimer mon installation
         </a>
-        <a href="/regularization-article-33" class="border border-paper/40 px-7 py-3.5 text-base font-semibold text-paper transition-colors hover:border-paper hover:bg-paper/10">
+        <a href="/regularization-article-33" class="border border-white/40 px-7 py-3.5 text-base font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
           Régulariser une installation existante
         </a>
       </div>
 
-      <!-- Rail de chiffres — la fiche technique du métier -->
-      <dl class="mt-14 grid max-w-3xl grid-cols-3 gap-3 border-t border-paper/20 pt-6 sm:gap-6">
+      <!-- Chiffres clés — laiton, réservé aux nombres -->
+      <dl class="mt-14 grid max-w-3xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
         <div>
-          <dd class="fig text-lg text-amber-400 sm:text-5xl">25 ans</dd>
-          <dt class="tech-label mt-2 text-paper/70">Garantie panneaux</dt>
+          <dd class="fig text-base text-brass-300 sm:text-4xl">25 ans</dd>
+          <dt class="tech-label mt-2 text-white/70">Garantie panneaux</dt>
         </div>
         <div>
-          <dd class="fig text-lg text-amber-400 sm:text-5xl">3–7 ans</dd>
-          <dt class="tech-label mt-2 text-paper/70">Retour typique</dt>
+          <dd class="fig text-base text-brass-300 sm:text-4xl">3–7 ans</dd>
+          <dt class="tech-label mt-2 text-white/70">Retour typique</dt>
         </div>
         <div>
-          <dd class="fig text-lg text-amber-400 sm:text-5xl">60–90 %</dd>
-          <dt class="tech-label mt-2 text-paper/70">Facture couverte</dt>
+          <dd class="fig text-base text-brass-300 sm:text-4xl">60–90 %</dd>
+          <dt class="tech-label mt-2 text-white/70">Facture couverte</dt>
         </div>
       </dl>
     </div>
   </section>
 
-  <!-- Bande de confiance — trois engagements numérotés -->
-  <section class="border-b border-ink/10 px-4 py-12">
-    <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-3">
-      <div class="reveal border-l-2 border-amber-400 pl-5">
-        <p class="tech-label text-ink-faint">01 · Méthode</p>
-        <p class="mt-2 font-display text-lg font-bold">Fondée par un docteur-ingénieur</p>
-        <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Chaque installation est dimensionnée par calcul, pas par catalogue.</p>
+  <!-- Bande de confiance — immédiatement sous le héros -->
+  <section class="border-b border-azur-900/10 bg-blanc-azur px-4 py-8">
+    <div class="mx-auto grid max-w-6xl gap-6 text-center sm:grid-cols-3 sm:gap-8">
+      <div class="flex flex-col items-center gap-1.5">
+        <p class="font-display text-lg font-bold text-azur-700">Docteur-ingénieur</p>
+        <p class="text-sm text-encre-soft">Chaque installation dimensionnée par calcul, pas par catalogue</p>
       </div>
-      <div class="reveal border-l-2 border-amber-400 pl-5">
-        <p class="tech-label text-ink-faint">02 · Preuve</p>
-        <p class="mt-2 font-display text-lg font-bold">Des installations réelles, mesurées</p>
-        <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Production suivie par monitoring — nous publions ce que nous mesurons.</p>
+      <div class="flex flex-col items-center gap-1.5 border-azur-900/10 max-sm:border-t max-sm:pt-5 sm:border-x">
+        {installCount ? (
+          <p class="font-display text-lg font-bold text-azur-700">+{installCount} installations</p>
+        ) : (
+          <p class="font-display text-lg font-bold text-azur-700">Production mesurée</p>
+        )}
+        <p class="text-sm text-encre-soft">Chaque chantier suivi par monitoring — nous publions ce que nous mesurons</p>
       </div>
-      <div class="reveal border-l-2 border-amber-400 pl-5">
-        <p class="tech-label text-ink-faint">03 · Horizon</p>
-        <p class="mt-2 font-display text-lg font-bold">Un investissement sur 25 ans</p>
-        <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">Retour typique en 3 à 7 ans, puis 18 à 22 ans d'électricité quasi gratuite.</p>
+      <div class="flex flex-col items-center gap-1.5 max-sm:border-t max-sm:border-azur-900/10 max-sm:pt-5">
+        <p class="font-display text-lg font-bold text-azur-700">{NAP.serviceArea.slice(0, -1).join(' · ')}</p>
+        <p class="text-sm text-encre-soft">Interventions dans tout le Maroc</p>
       </div>
     </div>
   </section>
 
   <!-- Segments — deux métiers -->
   <section class="mx-auto max-w-6xl px-4 py-16">
-    <p class="tech-label rule-amber text-ink-soft">Deux métiers</p>
+    <p class="tech-label rule-brass text-azur-600">Deux métiers</p>
     <h2 class="display mt-3 max-w-xl text-3xl sm:text-4xl">Une exigence d'ingénierie, du pavillon à l'usine</h2>
     <div class="mt-10 grid gap-6 md:grid-cols-2">
-      <a href="/résidentiel" class="reveal group block border border-ink/15 bg-paper transition-all hover:-translate-y-1 hover:shadow-[8px_8px_0_0_rgb(245_193_0)]">
+      <a href="/résidentiel" class="reveal group block border border-azur-900/15 bg-blanc transition-all hover:-translate-y-1 hover:border-azur-600 hover:shadow-[0_18px_50px_-18px_rgb(15_28_84/0.4)]">
         <div class="overflow-hidden">
           <Picture
             name="crepuscule-penthouse"
@@ -162,16 +177,16 @@ const gallery = [
           />
         </div>
         <div class="p-7">
-          <p class="tech-label text-ink-faint">Villas · appartements</p>
+          <p class="tech-label text-azur-600">Villas · appartements</p>
           <h3 class="display mt-2 text-2xl">Résidentiel</h3>
-          <p class="mt-3 text-sm leading-relaxed text-ink-soft">
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
             À partir d'une facture de 1 000 MAD par mois, le solaire devient un placement
             mesurable. Dimensionnement, pose, déclaration loi 82-21.
           </p>
-          <span class="mt-5 inline-block border-b-2 border-amber-400 pb-0.5 text-sm font-bold">Voir le résidentiel →</span>
+          <span class="mt-5 inline-block border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700">Voir le résidentiel →</span>
         </div>
       </a>
-      <a href="/professionnel" class="reveal group block border border-ink/15 bg-paper transition-all hover:-translate-y-1 hover:shadow-[8px_8px_0_0_rgb(245_193_0)]">
+      <a href="/professionnel" class="reveal group block border border-azur-900/15 bg-blanc transition-all hover:-translate-y-1 hover:border-azur-600 hover:shadow-[0_18px_50px_-18px_rgb(15_28_84/0.4)]">
         <div class="overflow-hidden">
           <Picture
             name="industriel-couchant"
@@ -183,34 +198,36 @@ const gallery = [
           />
         </div>
         <div class="p-7">
-          <p class="tech-label text-ink-faint">Industriels · hôtels · cliniques</p>
+          <p class="tech-label text-azur-600">Industriels · hôtels · cliniques</p>
           <h3 class="display mt-2 text-2xl">Professionnel</h3>
-          <p class="mt-3 text-sm leading-relaxed text-ink-soft">
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
             Réduction du poste électricité, valorisation du surplus et conformité au régime
             moyenne tension de la loi 82-21.
           </p>
-          <span class="mt-5 inline-block border-b-2 border-amber-400 pb-0.5 text-sm font-bold">Voir le professionnel →</span>
+          <span class="mt-5 inline-block border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700">Voir le professionnel →</span>
         </div>
       </a>
     </div>
   </section>
 
+  <ZelligeDivider />
+
   <!-- Galerie de chantiers réels -->
-  <section class="grid-paper border-y border-ink/10 px-4 py-16">
+  <section class="zellige-bg px-4 py-16">
     <div class="mx-auto max-w-6xl">
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p class="tech-label rule-amber text-ink-soft">Photos de chantier réelles, non retouchées</p>
+          <p class="tech-label rule-brass text-azur-600">Photos de chantier réelles</p>
           <h2 class="display mt-3 text-3xl sm:text-4xl">Nos installations, telles quelles</h2>
         </div>
-        <p class="max-w-sm text-sm leading-relaxed text-ink-soft">
-          Chaque image vient d'un chantier Taqinor au Maroc — recadrage et exposition
-          ajustés, rien d'ajouté, rien d'effacé.
+        <p class="max-w-sm text-sm leading-relaxed text-encre-soft">
+          Chaque image vient d'un chantier Taqinor au Maroc — recadrage, exposition et
+          clarté ajustés, rien d'ajouté, rien d'effacé.
         </p>
       </div>
       <div class="mt-10 columns-2 gap-4 md:columns-3 [&>figure]:mb-4 [&>figure]:break-inside-avoid">
         {gallery.map((g) => (
-          <figure class="reveal group overflow-hidden border border-ink/15 bg-paper">
+          <figure class="reveal group overflow-hidden border border-azur-900/15 bg-blanc">
             <Picture
               name={g.name}
               alt={g.alt}
@@ -219,9 +236,9 @@ const gallery = [
               sizes="(min-width: 768px) 33vw, 50vw"
               class="w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             />
-            <figcaption class="tech-label flex items-center justify-between gap-2 px-3 py-2.5 text-ink-faint">
+            <figcaption class="tech-label flex items-center justify-between gap-2 px-3 py-2.5 text-encre-faint">
               {g.label}
-              <span class="h-1.5 w-1.5 flex-none rounded-full bg-amber-400" aria-hidden="true"></span>
+              <span class="h-1.5 w-1.5 flex-none rotate-45 border border-azur-600" aria-hidden="true"></span>
             </figcaption>
           </figure>
         ))}
@@ -233,23 +250,44 @@ const gallery = [
 
   <!-- Témoignages -->
   <section class="mx-auto max-w-6xl px-4 py-16">
-    <p class="tech-label rule-amber text-ink-soft">Retours clients</p>
+    <p class="tech-label rule-brass text-azur-600">Retours clients</p>
     <h2 class="display mt-3 text-3xl sm:text-4xl">Ils produisent déjà leur électricité</h2>
     <div class="mt-10 grid gap-6 md:grid-cols-3">
       {testimonials.map((t) => (
-        <figure class="reveal flex flex-col border border-ink/15 bg-sand/60 p-7">
-          <span class="fig text-5xl leading-none text-amber-400" aria-hidden="true">«</span>
-          <blockquote class="mt-3 flex-1 text-sm leading-relaxed">{t.quote}</blockquote>
-          <figcaption class="mt-5 border-t border-ink/10 pt-4 text-sm">
+        <figure class="reveal flex flex-col border border-azur-900/15 border-t-4 border-t-azur-600 bg-blanc-azur p-7">
+          <blockquote class="flex-1 text-sm leading-relaxed">« {t.quote} »</blockquote>
+          <figcaption class="mt-5 border-t border-azur-900/10 pt-4 text-sm">
             <span class="font-display font-bold">{t.name}</span>
-            <span class="text-ink-soft"> — {t.detail}</span>
+            <span class="text-encre-soft"> — {t.detail}</span>
           </figcaption>
         </figure>
       ))}
     </div>
   </section>
 
+  <ZelligeDivider />
+
   <LeadForm />
 
   <Faq items={faq} />
+
+  <StickyCta />
 </Layout>
+
+<script>
+  // Vidéo héro : chargée seulement après le chargement complet de la page,
+  // jamais si l'utilisateur préfère réduire les animations ou économiser
+  // les données — l'affiche reste alors le visuel du héros.
+  const video = document.getElementById('hero-video') as HTMLVideoElement | null;
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  // @ts-expect-error saveData non typé partout
+  const saveData = navigator.connection?.saveData === true;
+  if (video && motionOk && !saveData) {
+    const start = () => {
+      video.src = '/videos/hero.mp4';
+      video.play().then(() => video.classList.add('opacity-100')).catch(() => {});
+    };
+    if (document.readyState === 'complete') start();
+    else addEventListener('load', start, { once: true });
+  }
+</script>
