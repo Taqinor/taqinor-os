@@ -24,4 +24,21 @@ describe('messages pré-remplis', () => {
   it('le message régularisation mentionne l’Article 33', () => {
     expect(regularizationWhatsappText()).toContain('Article 33');
   });
+
+  it('ne contient JAMAIS de blancs « ___ » à éditer par le client', () => {
+    expect(regularizationWhatsappText()).not.toContain('___');
+    expect(regularizationWhatsappText({ kwc: '', ville: '' })).not.toContain('___');
+  });
+
+  it('intègre la puissance et la ville du mini-formulaire', () => {
+    const msg = regularizationWhatsappText({ kwc: '5.5', ville: 'El Jadida' });
+    expect(msg).toContain('Puissance approximative : 5.5 kWc');
+    expect(msg).toContain('Ville : El Jadida.');
+  });
+
+  it('reste naturel quand la puissance est inconnue', () => {
+    const msg = regularizationWhatsappText({ kwc: '', ville: 'Rabat' });
+    expect(msg).toContain('Puissance : à déterminer ensemble.');
+    expect(msg).toContain('Ville : Rabat.');
+  });
 });

@@ -20,32 +20,29 @@ const heroSub =
   'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
 
 // Fiches chantier — données RÉELLES du dossier entreprise 2026 (réfs 468,
-// 400, 236), clients en initiales uniquement.
-// PLACEHOLDER(MERYEM): seules les citations sont provisoires.
+// 400, 236). INTÉGRITÉ : aucune citation inventée — chaque fiche repose
+// uniquement sur ses données vérifiables.
+// PLACEHOLDER(MERYEM): quand de vraies citations clients AUTORISÉES
+// arrivent, ajouter `quote` + `name` (initiales) par fiche et rétablir un
+// <blockquote> dans le rendu de la section « Fiches chantier ».
 const cases = [
   {
     kwc: '17,04 kWc',
     lieu: 'El Jadida · avril 2026',
     production: '21 406 kWh/an',
     materiel: '24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness',
-    quote: 'Une installation dimensionnée au millimètre, un dossier technique complet remis à la fin du chantier.',
-    name: 'Mme E.A.S.',
   },
   {
     kwc: '11,36 kWc',
     lieu: 'Casablanca · avril 2026',
     production: '14 271 kWh/an',
     materiel: '16 × Canadian Solar 710 Wc · Deye 10 kW · 10 kWh Dyness',
-    quote: 'Le suivi Deye Cloud permet de vérifier la production annoncée, jour après jour.',
-    name: 'M. M.',
   },
   {
     kwc: '5,68 kWc',
     lieu: 'El Jadida · mars 2026',
     production: '7 135 kWh/an',
     materiel: '8 × Canadian Solar 710 Wc · Deye 5 kW · 5 kWh Dyness',
-    quote: 'Chantier propre, équipe ponctuelle, mise en service expliquée pas à pas.',
-    name: 'M. T.B.',
   },
 ];
 
@@ -239,8 +236,8 @@ const gallery = [
         <h2 class="display mt-4 text-3xl sm:text-4xl">Nos installations, telles quelles</h2>
       </div>
       <p class="max-w-sm text-sm leading-relaxed text-encre-soft">
-        Photos de chantiers Taqinor au Maroc — clarté et cadrage ajustés, rien d'ajouté,
-        rien d'effacé. Puissances estimées d'après les modules visibles.
+        Données issues des dossiers techniques. Clarté et cadrage ajustés —
+        rien d'ajouté, rien d'effacé.
       </p>
     </div>
     <div class="mt-10 columns-2 gap-4 md:columns-3 [&>figure]:mb-4 [&>figure]:break-inside-avoid">
@@ -301,8 +298,9 @@ const gallery = [
             Production : <span class="fig text-base text-azur-600">{c.production}</span>
             <span class="mt-1 block text-xs text-encre-faint">{c.materiel}</span>
           </p>
-          <blockquote class="mt-4 flex-1 text-sm leading-relaxed">« {c.quote} »</blockquote>
-          <figcaption class="mt-4 text-sm font-bold">{c.name}</figcaption>
+          <figcaption class="mt-4 flex-1 text-xs leading-relaxed text-encre-faint">
+            Témoignage client à venir — données de production vérifiées sur Deye Cloud.
+          </figcaption>
         </figure>
       ))}
     </div>

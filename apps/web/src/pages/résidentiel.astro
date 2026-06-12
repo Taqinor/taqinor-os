@@ -14,6 +14,16 @@ import { formatMAD } from '../lib/format';
 // devis : le chiffrage exact suit la visite technique.
 const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
 const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
+
+// Ancrage preuve : pour chaque tranche, l'installation RÉELLE du dossier
+// dont la puissance tombe dans la bande kWc correspondante.
+const EXEMPLES_REELS: Record<string, string> = {
+  '1000-1500': 'Exemple réel : réf. NC-10/25 — 3,72 kWc, Nouaceur, octobre 2025',
+  '1500-3000': 'Exemple réel : réf. 236 — 5,68 kWc, El Jadida, mars 2026',
+  '3000-5000': 'Exemple réel : réf. 400 — 11,36 kWc, Casablanca, avril 2026',
+  '5000-10000': 'Exemple réel : réf. 468 — 17,04 kWc, El Jadida, avril 2026',
+};
+
 const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').map((r) => {
   const band = localEstimateBand(r.id);
   return {
@@ -21,6 +31,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     kwc: band.kwcLabel,
     payback: band.paybackLabel,
     invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+    exemple: EXEMPLES_REELS[r.id] ?? null,
   };
 });
 ---
@@ -85,11 +96,14 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         <span>Facture mensuelle</span><span>Puissance</span><span>Investissement (ordre de grandeur)</span><span>Retour</span>
       </div>
       {brackets.map((b) => (
-        <div class="grid gap-1.5 border-b border-azur-900/15 py-5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
-          <span class="font-display text-base font-bold">{b.bill}</span>
-          <span class="fig text-xl text-azur-600 sm:text-2xl">{b.kwc}</span>
-          <span class="fig text-lg text-encre sm:text-xl">{b.invest}</span>
-          <span class="fig text-xl text-brass-600 sm:text-2xl">{b.payback}</span>
+        <div class="border-b border-azur-900/15 py-5">
+          <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
+            <span class="font-display text-base font-bold">{b.bill}</span>
+            <span class="fig text-xl text-azur-600 sm:text-2xl">{b.kwc}</span>
+            <span class="fig text-lg text-encre sm:text-xl">{b.invest}</span>
+            <span class="fig text-xl text-brass-600 sm:text-2xl">{b.payback}</span>
+          </div>
+          {b.exemple && <p class="tech-label mt-2.5 text-encre-faint">{b.exemple}</p>}
         </div>
       ))}
     </div>
@@ -166,7 +180,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 
   <DiagnosticForm heading="Votre diagnostic en 60 secondes" />
 
-  <CtaBand />
+  <CtaBand href="#simulateur" />
 
   <StickyCta />
 </Layout>
