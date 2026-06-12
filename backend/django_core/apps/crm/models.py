@@ -41,6 +41,18 @@ class Lead(models.Model):
     class Source(models.TextChoices):
         OS_NATIVE = 'os_native', 'Créé dans TAQINOR'
         ODOO_IMPORT_TEST = 'odoo_import_test', 'Import test Odoo'
+        SITE_WEB = 'site_web', 'Site web'
+
+    # Tranches de facture du diagnostic du site public — les CLÉS sont
+    # strictement identiques aux ids émis par taqinor.ma (billRange.ts).
+    class BillRangeBucket(models.TextChoices):
+        LT800 = 'lt800', 'Moins de 800 MAD'
+        B800_1000 = '800-1000', '800 – 1 000 MAD'
+        B1000_1500 = '1000-1500', '1 000 – 1 500 MAD'
+        B1500_3000 = '1500-3000', '1 500 – 3 000 MAD'
+        B3000_5000 = '3000-5000', '3 000 – 5 000 MAD'
+        B5000_10000 = '5000-10000', '5 000 – 10 000 MAD'
+        GT10000 = 'gt10000', 'Plus de 10 000 MAD'
 
     # Canal marketing d'origine (différent de `source`, qui marque la
     # provenance technique de la donnée : natif vs import).
@@ -205,6 +217,26 @@ class Lead(models.Model):
     external_system = models.CharField(max_length=50, blank=True, null=True)
     external_id = models.CharField(max_length=100, blank=True, null=True)
 
+    # ── Intake site web (taqinor.ma) — tous additifs et optionnels ──
+    # Tranche du diagnostic (clés identiques au site) ; distinct de
+    # facture_hiver (montant exact saisi au CRM).
+    bill_range_bucket = models.CharField(
+        max_length=20, choices=BillRangeBucket.choices, blank=True, null=True)
+    # Type de toiture TEL QU'ÉMIS par le site (villa/hangar/toit_plat/autre) —
+    # volontairement distinct de type_toiture (taxonomie technique CRM).
+    roof_type = models.CharField(max_length=30, blank=True, null=True)
+    # Bande ROI préliminaire affichée au prospect (ex. « 5 à 9 kWc · 4 à 6 ans »)
+    roi_band = models.CharField(max_length=200, blank=True, null=True)
+    whatsapp_opt_in = models.BooleanField(null=True, blank=True)
+    consent_timestamp = models.DateTimeField(null=True, blank=True)
+    # Attribution publicitaire (capture first-touch du site)
+    fbclid = models.CharField(max_length=500, blank=True, null=True)
+    utm_source = models.CharField(max_length=300, blank=True, null=True)
+    utm_medium = models.CharField(max_length=300, blank=True, null=True)
+    utm_campaign = models.CharField(max_length=300, blank=True, null=True)
+    utm_content = models.CharField(max_length=300, blank=True, null=True)
+    utm_term = models.CharField(max_length=300, blank=True, null=True)
+
     note = models.TextField(blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
@@ -229,6 +261,39 @@ class Lead(models.Model):
 
     def __str__(self):
         return f"{self.nom} {self.prenom or ''} [{self.stage}]".strip()
+
+
+class WebsiteLeadPayload(models.Model):
+    """Charge utile BRUTE reçue du site web — stockée AVANT tout mapping.
+
+    Garantie « jamais perdre un lead » : même si le mapping vers Lead échoue
+    (payload inattendu, bug), la donnée d'origine est conservée telle quelle
+    et rejouable. Aucune logique métier ici.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='website_lead_payloads',
+    )
+    payload = models.JSONField()
+    remote_addr = models.CharField(max_length=64, blank=True, null=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    processed = models.BooleanField(default=False)
+    error = models.TextField(blank=True, null=True)
+    lead = models.ForeignKey(
+        Lead, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='website_payloads')
+
+    class Meta:
+        verbose_name = 'Payload lead site web'
+        verbose_name_plural = 'Payloads leads site web'
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f"payload #{self.pk} ({'ok' if self.processed else 'brut'})"
 
 
 class LeadActivity(models.Model):
