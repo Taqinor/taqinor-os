@@ -1,0 +1,55 @@
+---
+/**
+ * Maquette HTML/CSS d'un échange WhatsApp réel anonymisé — élément de
+ * confiance « la suite se passe sur WhatsApp ». Aucune capture d'écran ;
+ * tout est construit en HTML/CSS pour rester net et léger.
+ * PLACEHOLDER(MERYEM): les messages sont représentatifs — à ajuster si
+ * Meryem préfère un échange type différent.
+ */
+import { NAP } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+const wa = whatsappLink(NAP.whatsapp, 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.');
+
+const exchange = [
+  { from: 'client', text: 'Bonjour, je viens de faire le diagnostic sur taqinor.ma — facture ~1 800 MAD, villa à Casablanca.', time: '09:42' },
+  { from: 'taqinor', text: 'Bonjour ! Merci pour votre diagnostic. Avec ce profil, on part sur 5 à 9 kWc. Quelques photos de votre toiture et je peux affiner avant la visite technique.', time: '09:45' },
+  { from: 'client', text: '📷 Photo de la toiture', photo: true, time: '09:51' },
+  { from: 'taqinor', text: 'Parfait, belle exposition sud. Je vous propose un passage jeudi pour la visite — l’étude complète est gratuite et sans engagement.', time: '09:54' },
+];
+---
+
+<div class="mx-auto w-full max-w-[340px]">
+  <div class="overflow-hidden rounded-[2rem] border-[6px] border-azur-950 bg-[#e7ddd3] shadow-[0_30px_70px_-30px_rgb(10_18_56/0.55)]">
+    <!-- Barre du contact -->
+    <div class="flex items-center gap-3 bg-azur-950 px-4 pb-3 pt-5">
+      <span class="flex h-9 w-9 items-center justify-center rounded-full bg-brass-400 font-display text-sm font-extrabold text-azur-950" aria-hidden="true">T</span>
+      <div class="leading-tight">
+        <p class="text-sm font-bold text-white">Taqinor</p>
+        <p class="text-[11px] text-azur-200">répond généralement en quelques minutes</p>
+      </div>
+    </div>
+    <!-- Fil -->
+    <div class="flex flex-col gap-2 px-3 py-4">
+      {exchange.map((m) => (
+        <div
+          class:list={[
+            'max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-snug shadow-sm',
+            m.from === 'client' ? 'self-end rounded-br-none bg-[#d7f7c8] text-encre' : 'self-start rounded-bl-none bg-blanc text-encre',
+          ]}
+        >
+          {m.photo ? (
+            <span class="flex items-center gap-2 text-encre-soft"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-4 4-2-2-5 5"/></svg>{m.text}</span>
+          ) : (
+            m.text
+          )}
+          <span class="mt-0.5 block text-right text-[10px] text-encre-faint">{m.time}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+  <a href={wa} rel="noopener" class="mt-5 flex items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+    WhatsApp direct
+  </a>
+</div>

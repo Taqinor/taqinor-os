@@ -1,4 +1,11 @@
 ---
+/**
+ * Bande d'appel finale — version « respiration » : section blanche avec
+ * carte bordée de bleu, pour ne plus empiler deux blocs marine au-dessus
+ * du pied de page. L'empreinte zellige sert de marqueur.
+ */
+import ZelligeDivider from './ZelligeDivider.astro';
+
 interface Props {
   title?: string;
   buttonLabel?: string;
@@ -6,15 +13,19 @@ interface Props {
 }
 const {
   title = 'Une étude technique gratuite, sans engagement.',
-  buttonLabel = 'Demander mon étude',
+  buttonLabel = 'Diagnostic gratuit',
   href = '/contact#simulateur',
 } = Astro.props;
 ---
 
-<section class="bg-navy-900 px-4 py-12 text-center">
-  <h2 class="text-2xl font-bold text-white">{title}</h2>
-  <a
-    href={href}
-    class="mt-5 inline-block rounded-lg bg-sun-500 px-7 py-3 text-base font-bold text-navy-900 hover:bg-sun-400"
-  >{buttonLabel}</a>
+<section class="bg-blanc px-4 py-16 sm:py-20">
+  <ZelligeDivider />
+  <div class="mx-auto mt-6 max-w-3xl border-2 border-azur-600 bg-blanc px-6 py-10 text-center sm:px-10">
+    <p class="tech-label text-azur-600">Étude gratuite</p>
+    <h2 class="display mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">{title}</h2>
+    <a
+      href={href}
+      class="mt-8 inline-block bg-brass-400 px-8 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+    >{buttonLabel}</a>
+  </div>
 </section>

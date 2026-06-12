@@ -34,3 +34,7 @@ photos-raw/
 
 # jetbrains setting folder
 .idea/
+
+.curation/
+scripts/assets/fonts.conf
+scripts/assets/.fc-cache/

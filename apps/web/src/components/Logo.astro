@@ -1,23 +1,24 @@
 ---
 // Logotype TAQINOR — le O est un soleil porteur d'éclair (repris du logo
-// existant). Le O reste une vraie lettre dans le DOM (texte visible =
-// « TAQINOR », nom accessible cohérent) ; il est rendu invisible et le
-// soleil/éclair est dessiné en arrière-plan.
+// existant, soleil accordé au laiton de la nouvelle identité). Le O reste
+// une vraie lettre dans le DOM (texte visible = « TAQINOR », nom accessible
+// cohérent) ; il est rendu invisible et le soleil/éclair est dessiné en
+// arrière-plan.
 interface Props {
   size?: number;
   theme?: 'light' | 'dark';
 }
 const { size = 26, theme = 'light' } = Astro.props;
-const textColor = theme === 'dark' ? '#ffffff' : '#0d1b3e';
+const textColor = theme === 'dark' ? '#ffffff' : '#0a1238';
 const sunDiam = Math.round(size * 0.92);
 const bolt = encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#0d1b3e"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#0a1238"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
 );
 ---
 
-<span class="inline-flex items-center" style={`font-family:'Arial Black','Arial Bold',Impact,sans-serif;font-weight:900;font-size:${size}px;color:${textColor};line-height:1;letter-spacing:0.03em;`}>
+<span class="inline-flex items-center font-display" style={`font-weight:800;font-size:${size}px;color:${textColor};line-height:1;letter-spacing:0.05em;`}>
   <span>TAQIN<span
     class="mx-px inline-block overflow-hidden rounded-full align-baseline"
-    style={`width:${sunDiam}px;height:${sunDiam}px;background-color:#F5C100;background-image:url("data:image/svg+xml,${bolt}");background-repeat:no-repeat;background-position:center;background-size:54%;color:transparent;`}
+    style={`width:${sunDiam}px;height:${sunDiam}px;background-color:#E8B54A;background-image:url("data:image/svg+xml,${bolt}");background-repeat:no-repeat;background-position:center;background-size:54%;color:transparent;`}
   >O</span>R</span>
 </span>

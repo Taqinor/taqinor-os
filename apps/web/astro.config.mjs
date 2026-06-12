@@ -14,5 +14,10 @@ export default defineConfig({
     plugins: [tailwindcss()]
   },
 
-  integrations: [sitemap()]
+  integrations: [
+    sitemap({
+      // /type-test : page de travail privée (comparatif typo) — jamais indexée
+      filter: (page) => !page.includes('type-test')
+    })
+  ]
 });

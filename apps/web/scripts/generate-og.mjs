@@ -1,8 +1,8 @@
 /**
- * Génère les images Open Graph 1200×630 dans public/og/.
- * Template de marque composité sur de vraies photos d'installation
- * (public/photos/, produites par process-photos.mjs) quand la page en a une ;
- * fond navy uni sinon. Utilise sharp (déjà fourni par Astro).
+ * Génère les images Open Graph 1200×630 dans public/og/ — identité
+ * « Ville Blanche » : voile bleu Majorelle, motif zellige abstrait en
+ * filets, accent laiton, titres en Syne (TTF locale via l'option fontfile
+ * du rendu texte de sharp), photos réelles de public/photos/.
  *
  *   node scripts/generate-og.mjs
  */
@@ -12,51 +12,78 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const fontfile = path.join(root, 'scripts', 'assets', 'archivo-800.ttf');
 const outDir = path.join(root, 'public', 'og');
 const photosDir = path.join(root, 'public', 'photos');
 
 const PAGES = [
-  { slug: 'accueil', title: 'Installations solaires au Maroc', subtitle: 'Dimensionnées par l’ingénierie — conformes loi 82-21', photo: 'toit-terrasse-panneaux.webp' },
-  { slug: 'residentiel', title: 'Solaire résidentiel', subtitle: 'Villas et appartements — retour en 3 à 7 ans', photo: 'installation-crepuscule.webp' },
-  { slug: 'professionnel', title: 'Solaire professionnel', subtitle: 'Industriels, hôtels, cliniques — moyenne tension', photo: 'equipe-pose-structure.webp' },
-  { slug: 'equipement', title: 'Équipement en stock', subtitle: 'Deye · Solis · Dyness — garanties constructeur', photo: 'batteries-onduleur.webp' },
-  { slug: 'loi-82-21', title: 'Loi 82-21 : quel régime ?', subtitle: 'Déclaration, accord de raccordement, autorisation', photo: null },
-  { slug: 'article-33', title: 'Régularisation Article 33', subtitle: 'Installations existantes — la fenêtre est ouverte', photo: null },
-  { slug: 'contact', title: 'Étude gratuite', subtitle: 'Estimation immédiate — réponse sous 24 h ouvrées', photo: 'equipe-pose-structure.webp' },
+  { slug: 'accueil', title: 'Installations solaires\nau Maroc', subtitle: 'Dimensionnées par l’ingénierie — conformes loi 82-21', photo: 'hero-skyline-1280.webp' },
+  { slug: 'residentiel', title: 'Solaire résidentiel', subtitle: 'Villas et appartements — retour en 3 à 7 ans', photo: 'crepuscule-penthouse-1024.webp' },
+  { slug: 'professionnel', title: 'Solaire professionnel', subtitle: 'Industriels, hôtels, cliniques — moyenne tension', photo: 'industriel-couchant-1280.webp' },
+  { slug: 'equipement', title: 'Équipement en stock', subtitle: 'Deye · Solis · Dyness — garanties constructeur', photo: 'mur-technique-dyness-1024.webp' },
+  { slug: 'loi-82-21', title: 'Loi 82-21 :\nquel régime ?', subtitle: 'Déclaration, accord de raccordement, autorisation', photo: 'champ-villa-1024.webp' },
+  { slug: 'article-33', title: 'Régularisation\nArticle 33', subtitle: 'Installations existantes — la fenêtre est ouverte', photo: 'terrasse-terre-cuite-1024.webp' },
+  { slug: 'contact', title: 'Étude gratuite', subtitle: 'Estimation immédiate — réponse sous 24 h ouvrées', photo: 'equipe-trois-1024.webp' },
 ];
 
-function escapeXml(s) {
+function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function overlay({ title, subtitle }, withPhoto) {
-  const scrim = withPhoto
-    ? `<rect width="1200" height="630" fill="#0d1b3e" fill-opacity="0.78"/>`
-    : `<rect width="1200" height="630" fill="#0d1b3e"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
-  ${scrim}
-  <rect x="0" y="610" width="1200" height="20" fill="#F5C100"/>
-  <circle cx="1040" cy="140" r="90" fill="#F5C100"/>
-  <polygon points="1047 85 990 162 1040 162 1033 195 1090 118 1040 118 1047 85" fill="#0d1b3e"/>
-  <text x="80" y="130" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="56" fill="#ffffff" letter-spacing="2">TAQINOR</text>
-  <text x="80" y="340" font-family="Arial, sans-serif" font-weight="bold" font-size="64" fill="#ffffff">${escapeXml(title)}</text>
-  <text x="80" y="420" font-family="Arial, sans-serif" font-size="34" fill="#c6d0e8">${escapeXml(subtitle)}</text>
-  <text x="80" y="560" font-family="Arial, sans-serif" font-size="28" fill="#F5C100">taqinor.ma</text>
-</svg>`;
+/** Bloc de texte rendu en Archivo via Pango (fontfile locale). */
+function text(str, sizePx, color, { spacing = 0 } = {}) {
+  return {
+    input: {
+      text: {
+        text: `<span foreground="${color}" letter_spacing="${spacing}">${esc(str)}</span>`,
+        font: `Archivo ExtraBold ${Math.round(sizePx * 0.75)}`,
+        fontfile,
+        rgba: true,
+        align: 'left',
+        spacing: 8,
+      },
+    },
+  };
 }
+
+// Fond « L'Étude » : voile Majorelle calme, barre laiton, soleil-éclair du
+// logo, et UNE empreinte zellige à échelle de signature (jamais de maillage).
+const backdrop = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
+  <rect width="1200" height="630" fill="#152870" fill-opacity="0.9"/>
+  <rect x="0" y="614" width="1200" height="16" fill="#E8B54A"/>
+  <rect x="80" y="92" width="36" height="4" fill="#E8B54A"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.4">
+    <rect x="84" y="572" width="20" height="20"/>
+    <rect x="84" y="572" width="20" height="20" transform="rotate(45 94 582)"/>
+  </g>
+  <circle cx="1056" cy="140" r="56" fill="#E8B54A"/>
+  <polygon points="1061 105 1024 155 1056 155 1051 176 1088 126 1056 126 1061 105" fill="#0a1238"/>
+</svg>`);
 
 await mkdir(outDir, { recursive: true });
 for (const page of PAGES) {
   const file = path.join(outDir, `${page.slug}.png`);
-  const svg = Buffer.from(overlay(page, Boolean(page.photo)));
-  if (page.photo) {
-    await sharp(path.join(photosDir, page.photo))
-      .resize(1200, 630, { fit: 'cover' })
-      .composite([{ input: svg }])
-      .png()
-      .toFile(file);
-  } else {
-    await sharp(svg).png().toFile(file);
-  }
-  console.log(`og: ${file}`);
+  const twoLines = page.title.includes('\n');
+  await sharp(path.join(photosDir, page.photo))
+    .resize(1200, 630, { fit: 'cover' })
+    .composite([
+      { input: backdrop },
+      { ...text('TAQINOR', 42, '#ffffff', { spacing: 3000 }), left: 80, top: 112 },
+      { ...text(page.title, 58, '#ffffff'), left: 80, top: twoLines ? 264 : 302 },
+      {
+        input: {
+          text: {
+            text: `<span foreground="#c9d4f2">${esc(page.subtitle)}</span>`,
+            font: 'sans 24',
+            rgba: true,
+          },
+        },
+        left: 80,
+        top: twoLines ? 460 : 396,
+      },
+      { ...text('TAQINOR.MA', 24, '#E8B54A', { spacing: 4000 }), left: 80, top: 540 },
+    ])
+    .png({ compressionLevel: 9, palette: true })
+    .toFile(file);
+  console.log(`og: ${page.slug}.png`);
 }

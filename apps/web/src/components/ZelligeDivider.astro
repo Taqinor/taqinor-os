@@ -1,0 +1,24 @@
+---
+/**
+ * Empreinte zellige — LE marqueur de section de « L'Étude ». Une seule
+ * étoile à huit pointes en filets (deux carrés superposés à 45°), à
+ * l'échelle d'une empreinte digitale. Jamais de fond maillé.
+ */
+interface Props {
+  /** 'blue' = filets bleus sur fond clair ; 'white' = filets blancs sur fond bleu */
+  tone?: 'blue' | 'white';
+}
+const { tone = 'blue' } = Astro.props;
+const stroke = tone === 'white' ? '#ffffff' : '#2342b5';
+---
+
+<div class="flex items-center justify-center gap-4 py-2" aria-hidden="true">
+  <span class="h-px w-10" style={`background:${stroke};opacity:0.3;`}></span>
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" opacity="0.55">
+    <g stroke={stroke} stroke-width="1.1">
+      <rect x="3.5" y="3.5" width="11" height="11" />
+      <rect x="3.5" y="3.5" width="11" height="11" transform="rotate(45 9 9)" />
+    </g>
+  </svg>
+  <span class="h-px w-10" style={`background:${stroke};opacity:0.3;`}></span>
+</div>

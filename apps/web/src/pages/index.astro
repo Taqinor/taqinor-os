@@ -1,34 +1,53 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
-import LeadForm from '../components/LeadForm.astro';
+import DiagnosticForm from '../components/DiagnosticForm.astro';
 import Faq from '../components/Faq.astro';
+import Picture from '../components/Picture.astro';
+import VideoChantier from '../components/VideoChantier.astro';
+import StickyCta from '../components/StickyCta.astro';
+import WhatsAppMock from '../components/WhatsAppMock.astro';
+import ZelligeDivider from '../components/ZelligeDivider.astro';
+import { NAP } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+const waDirect = whatsappLink(NAP.whatsapp, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
 // PLACEHOLDER(MERYEM): headline + sous-titre du hero — copie provisoire.
 const heroTitle = 'Votre électricité, produite sur votre toit.';
 const heroSub =
   'Taqinor conçoit, installe et déclare des installations solaires dimensionnées par l’ingénierie — pour villas, industries et hôtels, partout au Maroc.';
 
-// PLACEHOLDER(MERYEM): témoignages provisoires — à remplacer par de vrais
-// clients (nom, ville, citation) avant mise en avant publicitaire.
-const testimonials = [
+// PLACEHOLDER(REDA): nombre réel d'installations à fournir — la tuile
+// affichera « +N installations » dès qu'il est connu.
+const installCount: number | null = null;
+
+// PLACEHOLDER(MERYEM): témoignages provisoires — restitués en « fiches
+// chantier » (ville, kWc, facture avant/après quand disponible).
+const cases = [
   {
-    quote:
-      'Installation de 9 kWc posée en deux jours, dossier de raccordement géré de bout en bout. La facture est passée de 2 400 MAD à moins de 400 MAD.',
+    kwc: '9 kWc',
+    lieu: 'Villa, Casablanca',
+    avant: '2 400 MAD',
+    apres: '< 400 MAD',
+    quote: 'Installation posée en deux jours, dossier de raccordement géré de bout en bout.',
     name: 'H. B.',
-    detail: 'Villa, Casablanca',
   },
   {
-    quote:
-      'Le dimensionnement annoncé correspond exactement à la production mesurée. Suivi en ligne clair, équipe joignable.',
+    kwc: null,
+    lieu: 'Hangar industriel, Tanger',
+    avant: null,
+    apres: null,
+    quote: 'Le dimensionnement annoncé correspond exactement à la production mesurée. Suivi en ligne clair, équipe joignable.',
     name: 'S. R.',
-    detail: 'Hangar industriel, Tanger',
   },
   {
-    quote:
-      'Ils ont régularisé notre installation existante dans le cadre de l’Article 33 sans interruption d’activité.',
+    kwc: null,
+    lieu: 'Hôtel, Marrakech',
+    avant: null,
+    apres: null,
+    quote: 'Ils ont régularisé notre installation existante dans le cadre de l’Article 33 sans interruption d’activité.',
     name: 'K. M.',
-    detail: 'Hôtel, Marrakech',
   },
 ];
 
@@ -36,7 +55,7 @@ const testimonials = [
 const faq = [
   {
     q: 'Combien coûte une installation solaire résidentielle ?',
-    a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le formulaire ci-dessous vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.',
+    a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le diagnostic ci-dessous vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.',
   },
   {
     q: 'Que dit la loi 82-21 pour les particuliers ?',
@@ -55,102 +74,279 @@ const faq = [
     a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.',
   },
 ];
+
+// Galerie-preuve : chaque photo est légendée (≈ kWc estimé du nombre de
+// panneaux visibles, type de système). PLACEHOLDER(REDA): villes exactes et
+// kWc réels par chantier à confirmer — `ville: null` affiche « Maroc ».
+const gallery = [
+  { name: 'champ-villa', alt: 'Champ de panneaux solaires Taqinor sur toit plat de villa, ciel bleu', widths: [1600, 1024, 640], ratio: 3 / 2, ville: null, kwc: '≈ 4,4 kWc', type: 'Autoconsommation résidentielle' },
+  { name: 'villa-zellige', alt: 'Installation solaire Taqinor sur villa marocaine à toiture en zellige turquoise', widths: [1600, 1024, 640], ratio: 4 / 3, ville: null, kwc: '≈ 5 kWc', type: 'Résidentiel · toiture traditionnelle' },
+  { name: 'terrasse-terre-cuite', alt: 'Rangée de panneaux solaires sur toit-terrasse en terre cuite', widths: [1600, 1024, 640], ratio: 3 / 2, ville: null, kwc: '≈ 4 kWc', type: 'Autoconsommation résidentielle' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure", widths: [1600, 1024, 640], ratio: 1, ville: null, kwc: null, type: 'Pose des rails · structure aluminium' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau d'un champ de panneaux par l'équipe", widths: [1600, 1024, 640], ratio: 1, ville: null, kwc: null, type: 'Entretien · nettoyage du champ' },
+  { name: 'silhouette-acrotere', alt: 'Panneau solaire et chauffe-eau solaire sur acrotère blanc, ciel bleu profond', widths: [1600, 1024, 640], ratio: 4 / 3, ville: null, kwc: null, type: 'PV + chauffe-eau solaire' },
+  { name: 'mesure-rails', alt: 'Traçage et mesure des rails de fixation au mètre sur toiture', widths: [1600, 1024, 640], ratio: 4 / 3, ville: null, kwc: null, type: 'Implantation · traçage au mètre' },
+  { name: 'pente-zellige', alt: 'Longue rangée de panneaux en pente devant une pyramide de zellige turquoise et des palmiers', widths: [1024, 640], ratio: 4 / 5, ville: null, kwc: '≈ 6 kWc', type: 'Résidentiel · toiture en pente' },
+  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: null, kwc: '≈ 4 kWc', type: 'Toit-terrasse · cœur de ville' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor de trois installateurs devant une longue rangée de panneaux', widths: [1600, 1024, 640], ratio: 3 / 2, ville: null, kwc: '≈ 8 kWc', type: 'Fin de chantier · équipe Taqinor' },
+];
+const villeLabel = (v: string | null) => v ?? 'Maroc';
 ---
 
 <Layout
   title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
   description="Conception, installation et déclaration d'installations solaires pour villas, industries et hôtels au Maroc. Étude gratuite, dimensionnement par l'ingénierie, conformité loi 82-21."
   ogSlug="accueil"
+  preloadHeroPoster
 >
   <Article33Ribbon />
 
-  <!-- Hero -->
-  <section class="bg-navy-950 px-4 py-16 text-white sm:py-24">
-    <div class="mx-auto max-w-4xl text-center">
-      <h1 class="text-3xl font-bold leading-tight sm:text-5xl">{heroTitle}</h1>
-      <p class="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg">{heroSub}</p>
-      <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
-        <a href="#simulateur" class="rounded-lg bg-sun-500 px-7 py-3 text-base font-bold text-navy-900 hover:bg-sun-400">
-          Estimer mon installation
+  <!-- Hero — vidéo de chantier muette (affiche responsive, repli
+       reduced-motion/save-data, chargement différé après interaction) -->
+  <section class="relative isolate overflow-hidden bg-azur-950 text-white">
+    <div class="absolute inset-0 -z-10">
+      <picture>
+        <source type="image/avif" sizes="100vw"
+          srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
+        <source type="image/webp" sizes="100vw"
+          srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
+        <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
+          loading="eager" decoding="async" fetchpriority="high"
+          class="h-full w-full object-cover" />
+      </picture>
+      <video
+        id="hero-video"
+        muted
+        loop
+        playsinline
+        preload="none"
+        aria-hidden="true"
+        tabindex="-1"
+        class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+      ></video>
+      <div class="absolute inset-0 bg-gradient-to-r from-azur-950/95 via-azur-950/60 to-azur-950/15 sm:to-azur-950/5"></div>
+    </div>
+    <div class="mx-auto max-w-6xl px-4 pb-24 pt-14 sm:pb-32 sm:pt-24">
+      <p class="tech-label rule-brass text-brass-300">L'étude d'abord, le chantier ensuite</p>
+      <h1 class="display mt-4 max-w-[16ch] text-[clamp(2.1rem,7.5vw,4.2rem)]">{heroTitle}</h1>
+      <p class="mt-5 max-w-xl text-base leading-relaxed text-white/85 sm:text-lg">{heroSub}</p>
+      <div class="mt-8 flex flex-wrap items-center gap-3">
+        <a href="#simulateur" class="bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          Diagnostic gratuit
         </a>
-        <a href="/regularization-article-33" class="rounded-lg border border-white/30 px-7 py-3 text-base font-semibold text-white hover:bg-white/10">
-          Régulariser une installation existante
+        <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+          WhatsApp direct
         </a>
       </div>
     </div>
   </section>
 
-  <!-- Bande de confiance -->
-  <section class="border-b border-navy-100 bg-navy-50 px-4 py-6">
-    <div class="mx-auto grid max-w-5xl gap-6 text-center sm:grid-cols-3">
+  <!-- Bande de confiance — carte blanche à cheval sur le héros -->
+  <section class="px-4">
+    <div class="mx-auto -mt-12 grid max-w-6xl gap-x-6 gap-y-5 border border-azur-900/15 bg-blanc px-6 py-6 shadow-[0_24px_60px_-30px_rgb(10_18_56/0.4)] sm:-mt-14 sm:grid-cols-4 sm:px-8">
       <div>
-        <p class="font-bold">Fondée par un docteur-ingénieur</p>
-        <p class="mt-1 text-sm text-navy-800/70">Chaque installation est dimensionnée par calcul, pas par catalogue.</p>
+        <p class="font-display text-base font-bold text-azur-700">Docteur-ingénieur</p>
+        <p class="mt-1 text-sm leading-snug text-encre-soft">Dimensionnement par calcul, pas par catalogue</p>
       </div>
       <div>
-        <p class="font-bold">Des installations réelles, mesurées</p>
-        <p class="mt-1 text-sm text-navy-800/70">Production suivie par monitoring — nous publions ce que nous mesurons.</p>
+        {installCount ? (
+          <p class="fig text-2xl text-azur-600">+{installCount}</p>
+        ) : (
+          <p class="font-display text-base font-bold text-azur-700">Production mesurée</p>
+        )}
+        <p class="mt-1 text-sm leading-snug text-encre-soft">{installCount ? 'installations réalisées' : 'Chaque chantier suivi par monitoring'}</p>
       </div>
       <div>
-        <p class="font-bold">Un investissement sur 25 ans</p>
-        <p class="mt-1 text-sm text-navy-800/70">Retour typique en 3 à 7 ans, puis 18 à 22 ans d'électricité quasi gratuite.</p>
+        <p class="font-display text-base font-bold text-azur-700">Conforme loi 82-21</p>
+        <p class="mt-1 text-sm leading-snug text-encre-soft">Déclaration et raccordement gérés par nos soins</p>
+      </div>
+      <div>
+        <p class="font-display text-base font-bold text-azur-700">{NAP.serviceArea.slice(0, 3).join(' · ')}</p>
+        <p class="mt-1 text-sm leading-snug text-encre-soft">{NAP.serviceArea.slice(3, 5).join(' · ')} — tout le Maroc</p>
       </div>
     </div>
   </section>
 
-  <!-- Segments -->
-  <section class="mx-auto max-w-6xl px-4 py-14">
-    <h2 class="text-center text-2xl font-bold">Deux métiers, une exigence d'ingénierie</h2>
-    <div class="mt-8 grid gap-6 md:grid-cols-2">
-      <a href="/résidentiel" class="overflow-hidden rounded-2xl border border-navy-100 transition hover:border-navy-700 hover:shadow-md">
-        <img src="/photos/installation-crepuscule.webp" alt="Installation solaire Taqinor sur toit-terrasse au crépuscule" width="1000" height="760" loading="lazy" decoding="async" class="aspect-[4/3] w-full object-cover" />
-        <div class="p-7 pt-5">
-        <h3 class="text-lg font-bold">Résidentiel</h3>
-        <p class="mt-2 text-sm leading-relaxed text-navy-800/80">
-          Villas et appartements. À partir d'une facture de 1 000 MAD par mois, le solaire
-          devient un placement mesurable. Dimensionnement, pose, déclaration loi 82-21.
-        </p>
-        <span class="mt-4 inline-block text-sm font-bold text-navy-700">Voir le résidentiel →</span>
-        </div>
-      </a>
-      <a href="/professionnel" class="overflow-hidden rounded-2xl border border-navy-100 transition hover:border-navy-700 hover:shadow-md">
-        <img src="/photos/equipe-pose-structure.webp" alt="Équipe Taqinor posant une structure de panneaux sur toiture plate" width="1000" height="1000" loading="lazy" decoding="async" class="aspect-[4/3] w-full object-cover object-top" />
-        <div class="p-7 pt-5">
-        <h3 class="text-lg font-bold">Professionnel</h3>
-        <p class="mt-2 text-sm leading-relaxed text-navy-800/80">
-          Industriels, hôtels, cliniques. Réduction du poste électricité, valorisation du surplus
-          et conformité au régime moyenne tension de la loi 82-21.
-        </p>
-        <span class="mt-4 inline-block text-sm font-bold text-navy-700">Voir le professionnel →</span>
-        </div>
-      </a>
+  <!-- L'argument en chiffres — composition asymétrique éditoriale -->
+  <section class="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:py-24 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+    <div>
+      <p class="tech-label rule-brass text-azur-600">L'argument, en chiffres</p>
+      <h2 class="display mt-4 max-w-md text-3xl sm:text-4xl">Un placement qui se mesure, pas une promesse</h2>
+      <p class="mt-4 max-w-md leading-relaxed text-encre-soft">
+        Une installation bien dimensionnée couvre l'essentiel de votre facture pendant
+        vingt-cinq ans. Le calcul part de votre consommation réelle — c'est lui qui décide
+        du matériel, jamais l'inverse.
+      </p>
     </div>
+    <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-azur-600 pl-6 sm:pl-10">
+      <div>
+        <dd class="fig whitespace-nowrap text-3xl text-azur-600 sm:text-5xl xl:text-6xl">60–90 %</dd>
+        <dt class="tech-label mt-2 text-encre-faint">De la facture couverte</dt>
+      </div>
+      <div>
+        <dd class="fig whitespace-nowrap text-3xl text-azur-600 sm:text-5xl xl:text-6xl">3–7 ans</dd>
+        <dt class="tech-label mt-2 text-encre-faint">Retour sur investissement</dt>
+      </div>
+      <div>
+        <dd class="fig whitespace-nowrap text-3xl text-azur-600 sm:text-5xl xl:text-6xl">25 ans</dd>
+        <dt class="tech-label mt-2 text-encre-faint">Garantie de performance</dt>
+      </div>
+      <div>
+        <dd class="fig whitespace-nowrap text-3xl text-brass-600 sm:text-5xl xl:text-6xl">0 MAD</dd>
+        <dt class="tech-label mt-2 text-encre-faint">L'étude et le diagnostic</dt>
+      </div>
+    </dl>
   </section>
 
-  <!-- Installation réelle -->
-  <section class="mx-auto max-w-6xl px-4 pb-14">
-    <figure class="overflow-hidden rounded-2xl">
-      <img src="/photos/toit-terrasse-panneaux.webp" alt="Rangée de panneaux solaires installée par Taqinor sur un toit-terrasse au Maroc" width="1600" height="900" loading="lazy" decoding="async" class="w-full object-cover" />
-      <figcaption class="mt-2 text-center text-xs text-navy-800/75">Installation Taqinor sur toit-terrasse — photo de chantier réelle, non retouchée.</figcaption>
-    </figure>
-  </section>
-
-  <!-- Témoignages -->
-  <section class="bg-navy-50 px-4 py-14">
+  <!-- Segments — cartes photo plein cadre, légende en pied -->
+  <section class="bg-blanc-azur px-4 py-20 sm:py-24">
     <div class="mx-auto max-w-6xl">
-      <h2 class="text-center text-2xl font-bold">Ils produisent déjà leur électricité</h2>
-      <div class="mt-8 grid gap-6 md:grid-cols-3">
-        {testimonials.map((t) => (
-          <figure class="rounded-2xl border border-navy-100 bg-white p-6">
-            <blockquote class="text-sm leading-relaxed text-navy-800/90">« {t.quote} »</blockquote>
-            <figcaption class="mt-4 text-sm font-bold">{t.name} <span class="font-normal text-navy-800/75">— {t.detail}</span></figcaption>
-          </figure>
-        ))}
+      <p class="tech-label rule-brass text-azur-600">Deux métiers</p>
+      <h2 class="display mt-4 max-w-xl text-3xl sm:text-4xl">Une exigence d'ingénierie, du pavillon à l'usine</h2>
+      <div class="mt-10 grid gap-6 md:grid-cols-2">
+        <a href="/résidentiel" class="reveal group relative block overflow-hidden border border-azur-900/15">
+          <Picture
+            name="crepuscule-penthouse"
+            alt="Installation solaire résidentielle Taqinor au crépuscule, penthouse blanc et chauffe-eau solaire"
+            widths={[1600, 1024, 640]}
+            ratio={4 / 3}
+            sizes="(min-width: 768px) 50vw, 100vw"
+            class="aspect-[4/3] w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+          />
+          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-azur-950/95 to-azur-950/0 px-6 pb-5 pt-16 text-white">
+            <p class="tech-label text-brass-300">Villas · appartements</p>
+            <h3 class="display mt-1 text-2xl">Résidentiel</h3>
+            <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">Voir le résidentiel →</span>
+          </div>
+        </a>
+        <a href="/professionnel" class="reveal group relative block overflow-hidden border border-azur-900/15">
+          <Picture
+            name="industriel-couchant"
+            alt="Chantier solaire industriel Taqinor au couchant, double rangée de panneaux"
+            widths={[2000, 1280, 768, 480]}
+            ratio={16 / 9}
+            sizes="(min-width: 768px) 50vw, 100vw"
+            class="aspect-[4/3] w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+          />
+          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-azur-950/95 to-azur-950/0 px-6 pb-5 pt-16 text-white">
+            <p class="tech-label text-brass-300">Industriels · hôtels · cliniques</p>
+            <h3 class="display mt-1 text-2xl">Professionnel</h3>
+            <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">Voir le professionnel →</span>
+          </div>
+        </a>
       </div>
     </div>
   </section>
 
-  <LeadForm />
+  <!-- Galerie-preuve : photos légendées comme des pièces du dossier -->
+  <section class="mx-auto max-w-6xl px-4 py-20 sm:py-24">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="tech-label rule-brass text-azur-600">Pièces du dossier</p>
+        <h2 class="display mt-4 text-3xl sm:text-4xl">Nos installations, telles quelles</h2>
+      </div>
+      <p class="max-w-sm text-sm leading-relaxed text-encre-soft">
+        Photos de chantiers Taqinor au Maroc — clarté et cadrage ajustés, rien d'ajouté,
+        rien d'effacé. Puissances estimées d'après les modules visibles.
+      </p>
+    </div>
+    <div class="mt-10 columns-2 gap-4 md:columns-3 [&>figure]:mb-4 [&>figure]:break-inside-avoid">
+      {gallery.map((g) => (
+        <figure class="reveal group overflow-hidden border border-azur-900/15 bg-blanc">
+          <Picture
+            name={g.name}
+            alt={g.alt}
+            widths={g.widths}
+            ratio={g.ratio}
+            sizes="(min-width: 768px) 33vw, 50vw"
+            class="w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+          />
+          <figcaption class="px-3 py-2.5">
+            <span class="tech-label block text-azur-700">{villeLabel(g.ville)}{g.kwc ? ` · ${g.kwc}` : ''}</span>
+            <span class="mt-0.5 block text-xs text-encre-soft">{g.type}</span>
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  </section>
+
+  <!-- La suite se passe sur WhatsApp — maquette d'échange réel anonymisé -->
+  <section class="bg-blanc-azur px-4 py-20 sm:py-24">
+    <div class="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+      <div>
+        <p class="tech-label rule-brass text-azur-600">Comment ça se passe</p>
+        <h2 class="display mt-4 max-w-md text-3xl sm:text-4xl">La suite se passe sur WhatsApp</h2>
+        <p class="mt-4 max-w-md leading-relaxed text-encre-soft">
+          Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
+          vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
+          jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
+        </p>
+        <ol class="mt-7 space-y-3 text-sm text-encre-soft">
+          <li class="flex gap-3"><span class="fig text-lg text-azur-600">1.</span>Diagnostic en 60 secondes — fourchette immédiate</li>
+          <li class="flex gap-3"><span class="fig text-lg text-azur-600">2.</span>Échange WhatsApp avec l'équipe technique</li>
+          <li class="flex gap-3"><span class="fig text-lg text-azur-600">3.</span>Visite technique, étude complète gratuite, devis</li>
+        </ol>
+      </div>
+      <WhatsAppMock />
+    </div>
+  </section>
+
+  <VideoChantier />
+
+  <!-- Fiches chantier (témoignages) — seul élément à liseré bleu -->
+  <section class="mx-auto max-w-6xl px-4 py-20 sm:py-24">
+    <p class="tech-label rule-brass text-azur-600">Fiches chantier</p>
+    <h2 class="display mt-4 text-3xl sm:text-4xl">Ils produisent déjà leur électricité</h2>
+    <div class="mt-10 grid gap-6 md:grid-cols-3">
+      {cases.map((c) => (
+        <figure class="reveal flex flex-col border border-azur-900/15 border-t-4 border-t-azur-600 bg-blanc p-7">
+          <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            {c.kwc && <span class="fig text-3xl text-azur-600">{c.kwc}</span>}
+            <span class="tech-label text-encre-faint">{c.lieu}</span>
+          </div>
+          {c.avant && (
+            <p class="mt-3 border-b border-azur-900/10 pb-3 text-sm text-encre-soft">
+              Facture : <span class="fig text-base text-encre">{c.avant}</span> →
+              <span class="fig text-base text-azur-600"> {c.apres}</span> / mois
+            </p>
+          )}
+          <blockquote class="mt-4 flex-1 text-sm leading-relaxed">« {c.quote} »</blockquote>
+          <figcaption class="mt-4 text-sm font-bold">{c.name}</figcaption>
+        </figure>
+      ))}
+    </div>
+  </section>
+
+  <ZelligeDivider />
+
+  <DiagnosticForm />
 
   <Faq items={faq} />
+
+  <StickyCta />
 </Layout>
+
+<script>
+  // Vidéo héro : différée — première interaction ou 2,8 s après chargement ;
+  // jamais si reduced-motion ou économie de données (l'affiche reste le héros).
+  const video = document.getElementById('hero-video') as HTMLVideoElement | null;
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  // @ts-expect-error saveData non typé partout
+  const saveData = navigator.connection?.saveData === true;
+  if (video && motionOk && !saveData) {
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      video.src = '/videos/hero.mp4';
+      video.play().then(() => video.classList.add('opacity-100')).catch(() => {});
+    };
+    for (const ev of ['scroll', 'pointerdown', 'touchstart', 'keydown']) {
+      addEventListener(ev, start, { once: true, passive: true });
+    }
+    const arm = () => setTimeout(start, 2800);
+    if (document.readyState === 'complete') arm();
+    else addEventListener('load', arm, { once: true });
+  }
+</script>

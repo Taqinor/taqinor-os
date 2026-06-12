@@ -1,40 +1,167 @@
 @import "tailwindcss";
 
-/* Sora — auto-hébergé, pas de dépendance Google Fonts */
+/*
+ * TAQINOR — « L'Étude » : l'étude d'ingénierie publiée.
+ * Palette « Ville Blanche » conservée : blanc architectural, bleu Majorelle
+ * dominant, laiton réservé aux CTA et chiffres clés. Exécution éditoriale :
+ * grille magazine, blancs généreux, compositions asymétriques, chiffres
+ * protagonistes (Archivo tabulaire). Zellige réduit à une empreinte —
+ * un seul marqueur géométrique en filets, jamais de fond maillé.
+ * Typo : Archivo variable (display, élargi) · Hanken Grotesk (texte).
+ * Auto-hébergées, sous-ensemble latin/latin-ext (couvre le français).
+ */
+
 @font-face {
-  font-family: 'Sora';
+  font-family: 'Archivo';
   font-style: normal;
-  font-weight: 100 800;
+  font-weight: 400 900;
+  font-stretch: 62% 125%;
   font-display: swap;
-  src: url('/fonts/sora-latin-ext.woff2') format('woff2');
+  src: url('/fonts/archivo-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: 'Sora';
+  font-family: 'Archivo';
   font-style: normal;
-  font-weight: 100 800;
+  font-weight: 400 900;
+  font-stretch: 62% 125%;
   font-display: swap;
-  src: url('/fonts/sora-latin.woff2') format('woff2');
+  src: url('/fonts/archivo-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/hanken-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/hanken-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @theme {
-  --font-sans: 'Sora', ui-sans-serif, system-ui, sans-serif;
-  --color-navy-50: #f0f3fa;
-  --color-navy-100: #dbe2f1;
-  --color-navy-700: #1d2f5e;
-  --color-navy-800: #14224a;
-  --color-navy-900: #0d1b3e;
-  --color-navy-950: #081129;
-  --color-sun-400: #ffd633;
-  --color-sun-500: #f5c100;
-  --color-sun-600: #d4a700;
+  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', 'Hanken Grotesk', sans-serif;
+
+  /* Blanc architectural */
+  --color-blanc: #ffffff;
+  --color-blanc-azur: #f3f6fc;
+
+  /* Bleu Majorelle — la couleur de marque dominante */
+  --color-azur-100: #dde5f8;
+  --color-azur-200: #b9c8f0;
+  --color-azur-600: #2342b5;
+  --color-azur-700: #1c3494;
+  --color-azur-800: #152870;
+  --color-azur-900: #0f1c54;
+  --color-azur-950: #0a1238;
+
+  /* Encres sur blanc (déclinaisons bleutées du texte) */
+  --color-encre: #0c1335;
+  --color-encre-soft: #3f4a6e;
+  --color-encre-faint: #5a6488;
+
+  /* Laiton / soleil — UNIQUEMENT CTA et chiffres clés */
+  --color-brass-300: #f3cc66;
+  --color-brass-400: #e8b54a;
+  --color-brass-600: #8f6a0e;
+
+  /* États fonctionnels (formulaires) */
+  --color-ok-600: #2f7a3f;
+  --color-ok-50: #edf6ee;
+  --color-alert-600: #b3402a;
+  --color-alert-50: #faeeea;
 }
 
 html {
   scroll-behavior: smooth;
+}
+
+body {
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- Signature typographique : les chiffres sont le protagoniste ------ */
+
+/* Titres display — Archivo élargi, autorité d'imprimé technique */
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-stretch: 112%;
+  letter-spacing: -0.012em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+/* Grand chiffre-objet : MAD, kWc, années — tabulaire, réglé à l'équerre */
+.fig {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-stretch: 106%;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Micro-étiquette : DIMENSIONNÉ · MESURÉ · DÉCLARÉ */
+.tech-label {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Filet d'ancrage des titres de section : trait + empreinte zellige */
+.rule-brass {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.rule-brass::before {
+  content: '';
+  width: 2.5rem;
+  height: 2px;
+  background: currentColor;
+  flex: none;
+}
+.rule-brass::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  order: -1;
+  transform: rotate(45deg);
+  border: 1.5px solid currentColor;
+}
+
+/* Révélation au défilement — translation seule, 350 ms, jamais d'opacité
+   (contraste mesurable, aucun contenu masqué si l'animation échoue). */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    transform: translateY(16px);
+    animation: reveal 0.35s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+    animation-timeline: view();
+    animation-range: entry 0% entry 30%;
+  }
+  @keyframes reveal {
+    to {
+      transform: none;
+    }
+  }
 }

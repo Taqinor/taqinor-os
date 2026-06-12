@@ -10,29 +10,32 @@ const links = [
 ];
 ---
 
-<header class="sticky top-0 z-50 border-b border-navy-100 bg-white/95 backdrop-blur">
+<header class="sticky top-0 z-50 border-b border-azur-900/10 bg-blanc/95 backdrop-blur">
   <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
     <a href="/" aria-label="TAQINOR — accueil">
       <Logo size={24} />
     </a>
-    <nav class="hidden items-center gap-6 lg:flex" aria-label="Navigation principale">
+    <nav class="hidden items-center gap-7 lg:flex" aria-label="Navigation principale">
       {links.map((l) => (
-        <a href={l.href} class="text-sm font-medium text-navy-800 hover:text-navy-900 hover:underline">{l.label}</a>
+        <a
+          href={l.href}
+          class="group relative text-sm font-medium text-encre-soft transition-colors hover:text-azur-600"
+        >{l.label}<span class="absolute -bottom-1 left-0 h-0.5 w-0 bg-azur-600 transition-all duration-200 group-hover:w-full"></span></a>
       ))}
     </nav>
     <div class="flex items-center gap-3">
       <a
         href="/contact"
-        class="rounded-lg bg-sun-500 px-4 py-2 text-sm font-bold text-navy-900 hover:bg-sun-400"
-      >Étude gratuite</a>
+        class="bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+      >Diagnostic gratuit</a>
       <button
         id="menu-toggle"
-        class="rounded-lg border border-navy-100 p-2 lg:hidden"
+        class="border border-azur-900/15 p-2 lg:hidden"
         aria-expanded="false"
         aria-controls="mobile-menu"
         aria-label="Ouvrir le menu"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0d1b3e" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a1238" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <line x1="3" y1="6" x2="21" y2="6"></line>
           <line x1="3" y1="12" x2="21" y2="12"></line>
           <line x1="3" y1="18" x2="21" y2="18"></line>
@@ -40,12 +43,12 @@ const links = [
       </button>
     </div>
   </div>
-  <nav id="mobile-menu" class="hidden border-t border-navy-100 bg-white px-4 py-3 lg:hidden" aria-label="Navigation mobile">
-    <ul class="flex flex-col gap-3">
+  <nav id="mobile-menu" class="hidden border-t border-azur-900/10 bg-blanc px-4 py-4 lg:hidden" aria-label="Navigation mobile">
+    <ul class="flex flex-col gap-4">
       {links.map((l) => (
-        <li><a href={l.href} class="block text-sm font-medium text-navy-800">{l.label}</a></li>
+        <li><a href={l.href} class="block font-display text-base font-bold text-encre">{l.label}</a></li>
       ))}
-      <li><a href="/contact" class="block text-sm font-bold text-navy-900">Contact & étude gratuite</a></li>
+      <li><a href="/contact" class="mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">Contact & étude gratuite</a></li>
     </ul>
   </nav>
 </header>
