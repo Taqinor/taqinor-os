@@ -160,6 +160,35 @@ class TestDevisCreateApiNoCollision(TestCase):
         ref = Devis.objects.get(pk=resp.data['id']).reference
         self.assertEqual(ref, f'DEV-{MONTH}-0003')
 
+    def test_arbitrary_line_values_persist_exactly(self):
+        """A freely-typed price/quantity/discount must be stored and returned
+        exactly — no snapping, no drift. 1453 MAD TTC typed on the screen is
+        saved as 1210.83 HT and re-displays as exactly 1453 (x1.2, rounded)."""
+        from apps.stock.models import Produit
+        resp = self._create()
+        self.assertEqual(resp.status_code, 201, resp.data)
+        produit = Produit.objects.create(
+            company=self.company, nom='Module test', sku='MOD-T',
+            prix_vente=Decimal('1'), quantite_stock=10,
+        )
+        line_resp = self.api.post('/api/django/ventes/devis-lignes/', {
+            'devis': resp.data['id'],
+            'produit': produit.id,
+            'designation': 'Module test',
+            'quantite': '3.5',
+            'prix_unitaire': '1210.83',   # = htFromTtc(1453) côté écran
+            'remise': '12.5',
+        }, format='json')
+        self.assertEqual(line_resp.status_code, 201, line_resp.data)
+
+        detail = self.api.get(f"/api/django/ventes/devis/{resp.data['id']}/")
+        ligne = detail.data['lignes'][0]
+        self.assertEqual(str(ligne['prix_unitaire']), '1210.83')
+        self.assertEqual(str(ligne['quantite']), '3.50')
+        self.assertEqual(str(ligne['remise']), '12.50')
+        # Re-displayed TTC = exactly the typed 1453, no dirham of drift
+        self.assertEqual(round(float(ligne['prix_unitaire']) * 1.2), 1453)
+
     def test_several_creates_in_a_row_after_a_deletion(self):
         first = self._create()
         second = self._create()

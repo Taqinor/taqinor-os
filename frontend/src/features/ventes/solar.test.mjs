@@ -2,9 +2,12 @@
 // (source of truth). Run with: node --test src/features/ventes/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
-  computeROI, ttcFromHt, optionTotalsTTC, autoFillLines, GHI,
+  computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -86,6 +89,51 @@ test('prix TTC depuis le HT du stock : retombe sur le TTC catalogue exact', () =
   for (const ttc of [1400, 14000, 20000, 17000, 500, 80, 1000, 4800, 5000]) {
     assert.equal(ttcFromHt(ht(ttc)), ttc)
   }
+})
+
+test('prix saisi librement : aller-retour TTC → HT stocké → TTC sans dérive', () => {
+  // Un prix arbitraire tapé par l'utilisateur (pas un multiple de 10/100)
+  // doit revenir exactement après enregistrement HT et réaffichage TTC.
+  for (const typed of [1453, 999, 1, 7, 123457, 2849, 18351]) {
+    const stockedHt = htFromTtc(typed)            // ce que la base enregistre
+    assert.match(stockedHt, /^\d+\.\d{2}$/)        // 2 décimales (modèle)
+    assert.equal(ttcFromHt(stockedHt), typed,
+      `TTC ${typed} a dérivé via HT ${stockedHt}`)
+  }
+  // TVA non standard : même garantie
+  assert.equal(Math.round(parseFloat(htFromTtc(1453, 10)) * 1.10), 1453)
+})
+
+test('factures saisies librement : utilisées telles quelles dans la simulation', () => {
+  const typed = [517, 433.5, 601, 380, 360, 502, 707, 681, 580, 480, 430, 480]
+  const roi = computeROI({
+    kwp: 5, factures: typed, dayUsagePct: 60,
+    totalSans: 50000, totalAvec: 80000, batteryKwh: 5,
+  })
+  // Aucune retouche : le graphique reçoit exactement les montants saisis
+  assert.deepEqual(roi.monthly_detail.map(d => d.facture), typed)
+})
+
+test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
+  const lines = [{ designation: 'Transport', quantite: '1', prix_unit_ttc: '1000' }]
+  const { totalSans } = optionTotalsTTC(lines, '12.5')
+  assert.equal(totalSans, 875) // 1000 × (1 − 0.125), arrondi simulateur
+})
+
+test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
+  const jsx = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
+    'utf-8',
+  )
+  assert.ok(jsx.includes('noValidate'),
+    'le formulaire doit être noValidate (aucun rejet navigateur)')
+  for (const bad of ['step="100"', 'step="10"', 'step="1"', 'step="0.01"']) {
+    assert.ok(!jsx.includes(bad), `contrainte de saisie restrictive trouvée : ${bad}`)
+  }
+  // Seul le curseur (type="range") garde un pas ; aucun champ nombre n'en a.
+  const numberSteps = jsx.split('type="number"').slice(1)
+    .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
+  numberSteps.forEach(s => assert.equal(s, 'any'))
 })
 
 test('ROI : production GHI × kWc × 0.8', () => {
