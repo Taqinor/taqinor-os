@@ -34,10 +34,18 @@ console.log(`video: hero.mp4 ${(statSync(out).size / 1e6).toFixed(1)} MB`);
 
 const tmp = path.join(outDir, 'hero-tmp.jpg');
 execFileSync(ffmpegPath, ['-ss', '2', '-i', input, '-frames:v', '1', '-q:v', '3', '-y', tmp], { stdio: 'pipe' });
-const img = sharp(tmp).resize(1600, 900, { fit: 'cover' });
-const meta = await img.metadata();
-const treated = img.clahe({ width: 200, height: 200, maxSlope: 2 }).normalise({ lower: 0.6, upper: 99.6 }).modulate({ saturation: 1.12 });
-await treated.clone().webp({ quality: 75 }).toFile(path.join(outDir, 'hero-poster.webp'));
-await treated.clone().avif({ quality: 52 }).toFile(path.join(outDir, 'hero-poster.avif'));
+// Affiche débrumée comme les photos, en 3 largeurs responsives (LCP mobile)
+const treated = await sharp(tmp)
+  .resize(1600, 900, { fit: 'cover' })
+  .clahe({ width: 200, height: 200, maxSlope: 2 })
+  .normalise({ lower: 0.6, upper: 99.6 })
+  .modulate({ saturation: 1.12 })
+  .png()
+  .toBuffer();
+for (const w of [1600, 960, 640]) {
+  const r = sharp(treated).resize(w, Math.round((w * 9) / 16));
+  await r.clone().webp({ quality: 75 }).toFile(path.join(outDir, `hero-poster-${w}.webp`));
+  await r.clone().avif({ quality: 52 }).toFile(path.join(outDir, `hero-poster-${w}.avif`));
+}
 unlinkSync(tmp);
-console.log('poster: hero-poster.webp/avif');
+console.log('poster: hero-poster-{1600,960,640}.webp/avif');

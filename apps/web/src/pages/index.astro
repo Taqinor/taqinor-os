@@ -90,8 +90,11 @@ const gallery = [
   <section class="relative isolate overflow-hidden bg-azur-950 text-white">
     <div class="absolute inset-0 -z-10">
       <picture>
-        <source type="image/avif" srcset="/videos/hero-poster.avif" />
-        <img src="/videos/hero-poster.webp" alt="" width="1600" height="900"
+        <source type="image/avif" sizes="100vw"
+          srcset="/videos/hero-poster-640.avif 640w, /videos/hero-poster-960.avif 960w, /videos/hero-poster-1600.avif 1600w" />
+        <source type="image/webp" sizes="100vw"
+          srcset="/videos/hero-poster-640.webp 640w, /videos/hero-poster-960.webp 960w, /videos/hero-poster-1600.webp 1600w" />
+        <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
           loading="eager" decoding="async" fetchpriority="high"
           class="h-full w-full object-cover" />
       </picture>
@@ -283,11 +286,20 @@ const gallery = [
   // @ts-expect-error saveData non typé partout
   const saveData = navigator.connection?.saveData === true;
   if (video && motionOk && !saveData) {
+    let started = false;
     const start = () => {
+      if (started) return;
+      started = true;
       video.src = '/videos/hero.mp4';
       video.play().then(() => video.classList.add('opacity-100')).catch(() => {});
     };
-    if (document.readyState === 'complete') start();
-    else addEventListener('load', start, { once: true });
+    // Première interaction, ou 2,8 s après le chargement complet — la vidéo
+    // (2,2 Mo) ne concurrence jamais le rendu initial.
+    for (const ev of ['scroll', 'pointerdown', 'touchstart', 'keydown']) {
+      addEventListener(ev, start, { once: true, passive: true });
+    }
+    const arm = () => setTimeout(start, 2800);
+    if (document.readyState === 'complete') arm();
+    else addEventListener('load', arm, { once: true });
   }
 </script>
