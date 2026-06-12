@@ -44,7 +44,7 @@ const categories = [
 >
   <Article33Ribbon />
 
-  <section class="zellige-bg-dark bg-azur-900 px-4 py-16 text-white sm:py-20">
+  <section class="bg-azur-900 px-4 py-16 text-white sm:py-20">
     <div class="mx-auto max-w-6xl">
       <p class="tech-label rule-brass text-brass-300">Stock réel · références courtes</p>
       <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Ce que nous stockons, ce que nous posons</h1>
@@ -56,9 +56,9 @@ const categories = [
     </div>
   </section>
 
-  <!-- Photos matériel -->
+  <!-- Photos matériel — le geste autant que le matériel -->
   <section class="mx-auto max-w-6xl px-4 pt-12">
-    <div class="grid gap-4 sm:grid-cols-[1.4fr_1fr]">
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]">
       <figure class="reveal overflow-hidden border border-azur-900/15">
         <Picture
           name="mur-technique-dyness"
@@ -69,7 +69,10 @@ const categories = [
           loading="eager"
           class="w-full object-cover"
         />
-        <figcaption class="tech-label bg-blanc px-3 py-2.5 text-encre-faint">Onduleur hybride · 2 batteries Dyness · borne de recharge</figcaption>
+        <figcaption class="bg-blanc px-3 py-2.5">
+          <span class="tech-label block text-azur-700">Maroc · stockage résidentiel</span>
+          <span class="mt-0.5 block text-xs text-encre-soft">Onduleur hybride · 2 batteries Dyness · borne de recharge</span>
+        </figcaption>
       </figure>
       <figure class="reveal overflow-hidden border border-azur-900/15">
         <Picture
@@ -81,7 +84,25 @@ const categories = [
           loading="eager"
           class="h-full w-full object-cover"
         />
-        <figcaption class="tech-label bg-blanc px-3 py-2.5 text-encre-faint">Modules + chauffe-eau · installation réelle</figcaption>
+        <figcaption class="bg-blanc px-3 py-2.5">
+          <span class="tech-label block text-azur-700">Maroc · détail de toiture</span>
+          <span class="mt-0.5 block text-xs text-encre-soft">Modules PV + chauffe-eau solaire · installation réelle</span>
+        </figcaption>
+      </figure>
+      <figure class="reveal overflow-hidden border border-azur-900/15">
+        <Picture
+          name="detail-cablage"
+          alt="Gros plan sur les bornes de batteries Dyness et le coffret de protections, câblage soigné"
+          widths={[1600, 1024, 640]}
+          ratio={4 / 3}
+          sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw"
+          loading="eager"
+          class="h-full w-full object-cover"
+        />
+        <figcaption class="bg-blanc px-3 py-2.5">
+          <span class="tech-label block text-azur-700">Maroc · câblage</span>
+          <span class="mt-0.5 block text-xs text-encre-soft">Bornes batteries + coffret de protections · le soin du détail</span>
+        </figcaption>
       </figure>
     </div>
   </section>

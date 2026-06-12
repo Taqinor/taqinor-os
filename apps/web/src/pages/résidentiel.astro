@@ -1,30 +1,38 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
-import LeadForm from '../components/LeadForm.astro';
+import DiagnosticForm from '../components/DiagnosticForm.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
+import { BILL_RANGES, localEstimateBand } from '../lib/billRange';
+import { formatMAD } from '../lib/format';
 
-// Exemples de dimensionnement par tranche de facture — fourchettes
-// indicatives (≈1,4 MAD/kWh, ≈1 600 kWh/kWc/an), jamais un devis.
-const sizingExamples = [
-  { bill: '1 000 – 1 500 MAD', kwc: '3 à 5 kWc', payback: '5 à 7 ans' },
-  { bill: '1 500 – 3 000 MAD', kwc: '5 à 9 kWc', payback: '4 à 6 ans' },
-  { bill: '3 000 – 5 000 MAD', kwc: '9 à 15 kWc', payback: '4 à 6 ans' },
-  { bill: '5 000 MAD et plus', kwc: '15 kWc et plus', payback: '3 à 5 ans' },
-];
+// Transparence des prix — ordres de grandeur dérivés des bandes kWc du
+// simulateur (≈ 10 000 à 12 500 MAD/kWc installé, résidentiel). Jamais un
+// devis : le chiffrage exact suit la visite technique.
+const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
+const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
+const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').map((r) => {
+  const band = localEstimateBand(r.id);
+  return {
+    bill: r.label,
+    kwc: band.kwcLabel,
+    payback: band.paybackLabel,
+    invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+  };
+});
 ---
 
 <Layout
   title="Solaire résidentiel au Maroc — villas et appartements | Taqinor"
-  description="Installation solaire pour villa ou appartement au Maroc : dimensionnement à partir de votre facture, retour sur investissement en 3 à 7 ans, déclaration loi 82-21 incluse."
+  description="Installation solaire pour villa ou appartement au Maroc : dimensionnement à partir de votre facture, ordres de grandeur transparents, retour sur investissement en 3 à 7 ans, déclaration loi 82-21 incluse."
   ogSlug="residentiel"
 >
   <Article33Ribbon />
 
-  <!-- Hero — photo crépuscule pleine largeur, voile bleu nuit -->
+  <!-- Hero — photo crépuscule, composition éditoriale -->
   <section class="relative isolate overflow-hidden bg-azur-950 text-white">
     <div class="absolute inset-0 -z-10">
       <Picture
@@ -39,9 +47,9 @@ const sizingExamples = [
       />
       <div class="absolute inset-0 bg-gradient-to-r from-azur-950/95 via-azur-950/45 to-azur-950/5"></div>
     </div>
-    <div class="mx-auto max-w-6xl px-4 py-20 sm:py-28">
+    <div class="mx-auto max-w-6xl px-4 py-16 sm:py-24">
       <p class="tech-label rule-brass text-brass-300">Villas · appartements</p>
-      <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Solaire résidentiel : un placement qui se calcule</h1>
+      <h1 class="display mt-4 max-w-[18ch] text-[clamp(1.9rem,6vw,3.4rem)]">Solaire résidentiel : un placement qui se calcule</h1>
       <p class="mt-5 max-w-xl leading-relaxed text-white/85">
         Une installation bien dimensionnée couvre 60 à 90 % de la consommation d'une villa.
         Le calcul part de votre facture réelle, du profil de consommation et de l'orientation
@@ -50,40 +58,43 @@ const sizingExamples = [
     </div>
   </section>
 
-  <!-- Fiche de dimensionnement -->
-  <section class="mx-auto max-w-4xl px-4 py-16">
-    <p class="tech-label rule-brass text-azur-600">Fourchettes constatées</p>
-    <h2 class="display mt-3 text-3xl">Quelle puissance pour quelle facture ?</h2>
-    <p class="mt-3 text-sm text-encre-soft">
-      Fourchettes typiques constatées sur nos installations. Le chiffrage exact est établi
-      après visite technique.
+  <!-- Transparence des prix — la fiche de l'étude -->
+  <section class="mx-auto max-w-4xl px-4 py-20 sm:py-24">
+    <p class="tech-label rule-brass text-azur-600">Transparence des prix</p>
+    <h2 class="display mt-4 text-3xl">Quelle facture, quelle puissance, quel budget ?</h2>
+    <p class="mt-3 max-w-2xl text-sm leading-relaxed text-encre-soft">
+      Ordres de grandeur constatés sur nos installations résidentielles — <strong class="text-encre">jamais un
+      devis</strong> : le chiffrage exact est établi après visite technique, et nous vous dirons
+      honnêtement si le solaire n'est pas le bon placement pour votre profil.
     </p>
     <div class="mt-8 border-t-2 border-azur-900">
-      <div class="tech-label hidden grid-cols-[1.2fr_1fr_1fr] gap-4 border-b border-azur-900/15 py-3 text-encre-faint sm:grid">
-        <span>Facture mensuelle</span><span>Puissance typique</span><span>Retour sur investissement</span>
+      <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] gap-4 border-b border-azur-900/15 py-3 text-encre-faint sm:grid">
+        <span>Facture mensuelle</span><span>Puissance</span><span>Investissement (ordre de grandeur)</span><span>Retour</span>
       </div>
-      {sizingExamples.map((r) => (
-        <div class="grid gap-1 border-b border-azur-900/15 py-5 sm:grid-cols-[1.2fr_1fr_1fr] sm:items-baseline sm:gap-4">
-          <span class="font-display text-lg font-bold">{r.bill}</span>
-          <span class="fig text-2xl text-brass-600 sm:text-3xl">{r.kwc}</span>
-          <span class="text-sm text-encre-soft"><span class="fig text-2xl text-azur-700 sm:text-3xl">{r.payback}</span></span>
+      {brackets.map((b) => (
+        <div class="grid gap-1.5 border-b border-azur-900/15 py-5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
+          <span class="font-display text-base font-bold">{b.bill}</span>
+          <span class="fig text-xl text-azur-600 sm:text-2xl">{b.kwc}</span>
+          <span class="fig text-lg text-encre sm:text-xl">{b.invest}</span>
+          <span class="fig text-xl text-brass-600 sm:text-2xl">{b.payback}</span>
         </div>
       ))}
     </div>
-    <p class="mt-4 text-xs text-encre-faint">
+    <p class="mt-4 max-w-2xl text-xs leading-relaxed text-encre-faint">
       En dessous de 1 000 MAD par mois, le retour sur investissement dépasse généralement
-      7 ans — nous vous le dirons honnêtement.
+      7 ans — nous vous le dirons honnêtement. Au-delà de 10 000 MAD par mois, votre profil
+      relève d'une étude dédiée (voir Professionnel).
     </p>
   </section>
 
   <ZelligeDivider />
 
   <!-- Illustration 25 ans -->
-  <section class="zellige-bg border-y border-azur-900/10 bg-blanc-azur px-4 py-16">
+  <section class="bg-blanc-azur px-4 py-20 sm:py-24">
     <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
       <div>
         <p class="tech-label rule-brass text-azur-600">L'horizon d'investissement</p>
-        <h2 class="display mt-3 text-3xl">L'illustration sur 25 ans</h2>
+        <h2 class="display mt-4 text-3xl">L'illustration sur 25 ans</h2>
         <p class="mt-4 leading-relaxed text-encre-soft">
           Les panneaux sont garantis en performance sur 25 ans. Pour une villa avec une facture
           de 2 000 MAD par mois, une installation de 6 kWc représente un investissement de
@@ -92,23 +103,23 @@ const sizingExamples = [
           l'électricité produite est quasi gratuite — seul un remplacement d'onduleur est à
           prévoir sur la période.
         </p>
-        <ul class="mt-7 grid gap-4 sm:grid-cols-3">
-          <li class="border border-azur-900/15 border-t-4 border-t-azur-600 bg-blanc p-5">
-            <p class="fig text-3xl text-brass-600">25 ans</p>
-            <p class="mt-2 text-xs leading-relaxed text-encre-soft">de garantie de performance des panneaux</p>
-          </li>
-          <li class="border border-azur-900/15 border-t-4 border-t-azur-600 bg-blanc p-5">
-            <p class="fig text-3xl text-brass-600">3–7 ans</p>
-            <p class="mt-2 text-xs leading-relaxed text-encre-soft">de retour sur investissement typique</p>
-          </li>
-          <li class="border border-azur-900/15 border-t-4 border-t-azur-600 bg-blanc p-5">
-            <p class="fig text-3xl text-brass-600">&lt; 11 kW</p>
-            <p class="mt-2 text-xs leading-relaxed text-encre-soft">en basse tension : simple déclaration loi 82-21, gérée par Taqinor</p>
-          </li>
-        </ul>
+        <dl class="mt-8 grid grid-cols-3 gap-4 border-l-2 border-azur-600 pl-6">
+          <div>
+            <dd class="fig text-2xl text-azur-600 sm:text-4xl">25 ans</dd>
+            <dt class="tech-label mt-1.5 text-encre-faint">Garantie panneaux</dt>
+          </div>
+          <div>
+            <dd class="fig text-2xl text-azur-600 sm:text-4xl">3–7 ans</dd>
+            <dt class="tech-label mt-1.5 text-encre-faint">Retour typique</dt>
+          </div>
+          <div>
+            <dd class="fig text-2xl text-azur-600 sm:text-4xl">&lt; 11 kW</dd>
+            <dt class="tech-label mt-1.5 text-encre-faint">Simple déclaration</dt>
+          </div>
+        </dl>
       </div>
       <div class="grid gap-4">
-        <figure class="reveal overflow-hidden border border-azur-900/15">
+        <figure class="reveal overflow-hidden border border-azur-900/15 bg-blanc">
           <Picture
             name="villa-zellige"
             alt="Installation solaire Taqinor sur villa marocaine à toiture pyramidale en zellige turquoise"
@@ -117,9 +128,12 @@ const sizingExamples = [
             sizes="(min-width: 1024px) 40vw, 100vw"
             class="w-full object-cover"
           />
-          <figcaption class="tech-label bg-blanc px-3 py-2.5 text-encre-faint">Villa · toiture traditionnelle préservée</figcaption>
+          <figcaption class="px-3 py-2.5">
+            <span class="tech-label block text-azur-700">Maroc · ≈ 5 kWc</span>
+            <span class="mt-0.5 block text-xs text-encre-soft">Résidentiel · toiture traditionnelle préservée</span>
+          </figcaption>
         </figure>
-        <figure class="reveal overflow-hidden border border-azur-900/15">
+        <figure class="reveal overflow-hidden border border-azur-900/15 bg-blanc">
           <Picture
             name="champ-villa"
             alt="Champ de panneaux noirs sur toit plat de villa, ciel bleu"
@@ -128,13 +142,16 @@ const sizingExamples = [
             sizes="(min-width: 1024px) 40vw, 100vw"
             class="w-full object-cover"
           />
-          <figcaption class="tech-label bg-blanc px-3 py-2.5 text-encre-faint">Champ résidentiel · photo de chantier réelle</figcaption>
+          <figcaption class="px-3 py-2.5">
+            <span class="tech-label block text-azur-700">Maroc · ≈ 4,4 kWc</span>
+            <span class="mt-0.5 block text-xs text-encre-soft">Autoconsommation résidentielle · toit plat</span>
+          </figcaption>
         </figure>
       </div>
     </div>
   </section>
 
-  <LeadForm heading="Votre fourchette en 30 secondes" />
+  <DiagnosticForm heading="Votre diagnostic en 60 secondes" />
 
   <CtaBand />
 

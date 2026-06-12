@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
-import LeadForm from '../components/LeadForm.astro';
+import DiagnosticForm from '../components/DiagnosticForm.astro';
 import { NAP } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
@@ -16,7 +16,7 @@ const waRegul = whatsappLink(NAP.whatsapp, regularizationWhatsappText());
 >
   <Article33Ribbon />
 
-  <section class="zellige-bg-dark bg-azur-900 px-4 py-14 text-white">
+  <section class="bg-azur-900 px-4 py-14 text-white">
     <div class="mx-auto max-w-6xl">
       <p class="tech-label rule-brass text-brass-300">Réponse sous 24 h ouvrées</p>
       <h1 class="display mt-4 max-w-2xl text-4xl sm:text-5xl">Parlons de votre installation</h1>
@@ -27,7 +27,7 @@ const waRegul = whatsappLink(NAP.whatsapp, regularizationWhatsappText());
     </div>
   </section>
 
-  <LeadForm heading="Demande d'étude — estimation immédiate" />
+  <DiagnosticForm heading="Diagnostic solaire — estimation immédiate" />
 
   <section class="mx-auto max-w-2xl px-4 pb-16">
     <div class="grid gap-4 sm:grid-cols-2">

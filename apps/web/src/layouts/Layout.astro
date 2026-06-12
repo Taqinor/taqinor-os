@@ -9,8 +9,10 @@ interface Props {
   description: string;
   /** Nom de fichier OG sans extension, ex. "accueil" → /og/accueil.png */
   ogSlug?: string;
+  /** Précharge l'affiche du héros vidéo (élément LCP de l'accueil) */
+  preloadHeroPoster?: boolean;
 }
-const { title, description, ogSlug = 'accueil' } = Astro.props;
+const { title, description, ogSlug = 'accueil', preloadHeroPoster = false } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL(`/og/${ogSlug}.png`, Astro.site);
@@ -49,8 +51,17 @@ const jsonLd = {
     <link rel="canonical" href={canonical.href} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
-    <link rel="preload" href="/fonts/syne-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/hanken-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Pas de preload des fontes : font-display swap suffit, et la bande
+         passante critique (4G lent) doit aller à l'image LCP du héros. -->
+    {preloadHeroPoster && (
+      <link
+        rel="preload"
+        as="image"
+        type="image/avif"
+        imagesrcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w"
+        imagesizes="100vw"
+      />
+    )}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={NAP.name} />
     <meta property="og:title" content={title} />

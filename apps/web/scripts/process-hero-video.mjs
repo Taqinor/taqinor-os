@@ -18,19 +18,22 @@ const input = path.join(root, 'photos-raw', 'IMG_2198.MOV');
 const outDir = path.join(root, 'public', 'videos');
 const out = path.join(outDir, 'hero.mp4');
 
+// Étalonnure accordée au montage et aux photos ; budget dur ≤ 2,5 Mo.
 execFileSync(
   ffmpegPath,
   [
     '-ss', '2', '-t', '11', '-i', input,
-    '-vf', 'scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24,format=yuv420p,eq=saturation=1.1:contrast=1.05',
+    '-vf', 'scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24,format=yuv420p,eq=contrast=1.04:saturation=1.1',
     '-an',
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '28', '-maxrate', '1.6M', '-bufsize', '3M',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '28', '-maxrate', '1.5M', '-bufsize', '3M',
     '-movflags', '+faststart',
     '-y', out,
   ],
   { stdio: 'pipe' },
 );
-console.log(`video: hero.mp4 ${(statSync(out).size / 1e6).toFixed(1)} MB`);
+const mb = statSync(out).size / 1e6;
+if (mb > 2.5) throw new Error(`hero.mp4 ${mb.toFixed(1)} MB > budget 2,5 MB`);
+console.log(`video: hero.mp4 ${mb.toFixed(1)} MB (budget ≤ 2,5 MB)`);
 
 const tmp = path.join(outDir, 'hero-tmp.jpg');
 execFileSync(ffmpegPath, ['-ss', '2', '-i', input, '-frames:v', '1', '-q:v', '3', '-y', tmp], { stdio: 'pipe' });
@@ -42,7 +45,7 @@ const treated = await sharp(tmp)
   .modulate({ saturation: 1.12 })
   .png()
   .toBuffer();
-for (const w of [1600, 960, 640]) {
+for (const w of [1600, 1080, 720, 540]) {
   const r = sharp(treated).resize(w, Math.round((w * 9) / 16));
   await r.clone().webp({ quality: 75 }).toFile(path.join(outDir, `hero-poster-${w}.webp`));
   await r.clone().avif({ quality: 52 }).toFile(path.join(outDir, `hero-poster-${w}.avif`));

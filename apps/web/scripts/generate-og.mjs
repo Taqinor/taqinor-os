@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const fontfile = path.join(root, 'scripts', 'assets', 'syne-800.ttf');
+const fontfile = path.join(root, 'scripts', 'assets', 'archivo-800.ttf');
 const outDir = path.join(root, 'public', 'og');
 const photosDir = path.join(root, 'public', 'photos');
 
@@ -30,13 +30,13 @@ function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Bloc de texte rendu en Syne via Pango (fontfile locale). */
+/** Bloc de texte rendu en Archivo via Pango (fontfile locale). */
 function text(str, sizePx, color, { spacing = 0 } = {}) {
   return {
     input: {
       text: {
         text: `<span foreground="${color}" letter_spacing="${spacing}">${esc(str)}</span>`,
-        font: `Syne ExtraBold ${Math.round(sizePx * 0.75)}`,
+        font: `Archivo ExtraBold ${Math.round(sizePx * 0.75)}`,
         fontfile,
         rgba: true,
         align: 'left',
@@ -46,20 +46,16 @@ function text(str, sizePx, color, { spacing = 0 } = {}) {
   };
 }
 
-// Fond : voile Majorelle + motif zellige (étoiles à 8 pointes en filets) +
-// barre laiton + soleil-éclair du logo (sans texte)
-function star(cx, cy, r, opacity) {
-  const s = r * 2;
-  return `<g fill="none" stroke="#ffffff" stroke-opacity="${opacity}" stroke-width="1.2">
-    <rect x="${cx - r}" y="${cy - r}" width="${s}" height="${s}"/>
-    <rect x="${cx - r}" y="${cy - r}" width="${s}" height="${s}" transform="rotate(45 ${cx} ${cy})"/>
-  </g>`;
-}
+// Fond « L'Étude » : voile Majorelle calme, barre laiton, soleil-éclair du
+// logo, et UNE empreinte zellige à échelle de signature (jamais de maillage).
 const backdrop = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
-  <rect width="1200" height="630" fill="#152870" fill-opacity="0.88"/>
-  ${star(1020, 180, 130, 0.12)}${star(1020, 180, 86, 0.10)}${star(1160, 470, 100, 0.10)}${star(120, 560, 80, 0.08)}
+  <rect width="1200" height="630" fill="#152870" fill-opacity="0.9"/>
   <rect x="0" y="614" width="1200" height="16" fill="#E8B54A"/>
   <rect x="80" y="92" width="36" height="4" fill="#E8B54A"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.4">
+    <rect x="84" y="572" width="20" height="20"/>
+    <rect x="84" y="572" width="20" height="20" transform="rotate(45 94 582)"/>
+  </g>
   <circle cx="1056" cy="140" r="56" fill="#E8B54A"/>
   <polygon points="1061 105 1024 155 1056 155 1051 176 1088 126 1056 126 1061 105" fill="#0a1238"/>
 </svg>`);
