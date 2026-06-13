@@ -65,9 +65,9 @@ export default defineConfig({
 
   integrations: [
     sitemap({
-      // Pages de travail privées (comparatifs typo/média, prévisualisation v2)
-      // — jamais indexées
-      filter: (page) => !/type-test|media-test|variants-test|craft-|\/v2(\/|$)/.test(page)
+      // Pages de travail privées (comparatifs typo/média, prévisualisations
+      // v2 et v3) — jamais indexées
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/v2(\/|$)|\/v3(\/|$)/.test(page)
     }),
     workersDevRedirect()
   ]

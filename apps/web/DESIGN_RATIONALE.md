@@ -103,3 +103,70 @@ une session future recopiera le contenu des pages `/v2/*` sur les pages
 publiques, intégrera `v2.css` + `V2Enhance` au gabarit principal, et supprimera
 `/v2`. À l'inverse, **jeter la v2 = supprimer le dossier `/v2` et `v2.css`** :
 aussi simple, et le live n'a jamais bougé.
+
+---
+
+## Probe /v3 — mouvement photo ajouté (2026-06-13)
+
+Reda a trouvé la /v2 trop **immobile**, surtout sur **mobile** où la parallaxe
+d'en-tête v2 est coupée. La `/v3` est une **probe comparative additive** : une
+**copie fidèle de l'accueil /v2** (même contenu, même mise en page, même typo,
+même mouvement v2 — count-up, révélations, parallaxe), à laquelle on ajoute
+**uniquement deux mouvements photo**, pour comparer côte à côte /v3, /v2 et le
+live et choisir à l'œil. Ce n'est **ni** une refonte **ni** une modification de
+l'existant : seule la route `/v3` apparaît (noindex, hors sitemap, non liée).
+
+**Les deux seuls ajouts :**
+
+1. **Ken Burns sur le héros.** L'affiche dérive-zoome lentement et en continu
+   (`scale(1)`→`scale(1.06)` sur 25 s, ease doux, alternance = respiration sans
+   saut). Pur CSS `transform`, GPU-friendly. **Appliqué à l'IMAGE** (et à la
+   vidéo qui la recouvre), **pas au conteneur** : sur desktop la parallaxe v2
+   agit sur le conteneur `.v2-hero-media`, le Ken Burns sur l'image imbriquée →
+   les deux `transform` se composent sans se battre. Sur **mobile** le conteneur
+   n'a aucune transform → le Ken Burns est la **seule** motion, et elle est
+   **visible sur le téléphone** (tout l'objet de la probe). Premier cadre =
+   `scale(1)` et **pas de `will-change`** sur l'affiche (élément LCP) → LCP non
+   régressé ; conteneur `overflow-hidden` + image qui grandit → **zéro CLS**,
+   aucun bord découvert.
+2. **Montée d'échelle des photos au défilement.** Chaque photo d'installation
+   (cartes « deux métiers », galerie-preuve) monte **une seule fois** en entrant
+   dans le viewport : `opacity 0→1` + `scale(0.96)→1`, 600 ms ease-out, sans
+   rebond. Pilotée par la **même IntersectionObserver que v2** : l'enveloppe
+   `.v3-photo` est imbriquée dans un `.v2-rise`, donc quand le parent reçoit
+   `.v2-in`, section et photo montent **ensemble** (un seul mouvement, pas deux
+   empilés ; le délai reprend le stagger `--v2-i`). `transform`/`opacity`
+   seulement → **zéro CLS**. Le hover-zoom de l'image reste sur l'`<img>` →
+   transforms composées, aucun conflit.
+
+**Garde-fous (identiques à v2, non négociables) :** mouvement en CSS
+`transform`/`opacity` **uniquement**, **aucune** librairie, **aucune** nouvelle
+dépendance ; le seul JS est l'IntersectionObserver v2 **réutilisé** (`/v3`
+importe `V2Enhance` tel quel). **`prefers-reduced-motion: reduce`** coupe
+**tout** (Ken Burns, montée d'échelle, count-up, révélations, parallaxe) —
+vérifié au navigateur : héros figé, photos opaques à l'échelle 1, chiffres à
+leur valeur finale. **Zéro-JS** préservé (tout gated `.v2-js`).
+
+**Lighthouse /v3** — Desktop **99–100 / 100 / 100** (Perf / A11y / Best-pract.,
+CLS 0) ; Mobile **94 / 100 / 100** (CLS 0, LCP 2,7 s). Le 94 et le LCP mobile
+sont **identiques au baseline /v2** (l'image LCP du héros sous bridage mobile
+Lighthouse) : le mouvement ajouté **ne coûte rien**. La note SEO « 69 » sur les
+deux est le **seul** audit en échec — `is-crawlable`, c.-à-d. le `noindex`
+volontaire de la page privée.
+
+### Architecture /v3 (et réversibilité)
+
+- `src/pages/v3/index.astro` — copie de `/v2/index.astro` ; importe `V2Enhance`
+  (moteur de mouvement v2 réutilisé) **+** `v3-photo-motion.css` ; seuls écarts
+  de markup = enveloppes invisibles `.v3-photo` autour des photos d'installation.
+- `src/styles/v3-photo-motion.css` — couche **DELTA** (les deux mouvements
+  photo seulement), importée **uniquement** par `/v3`. Tout est gated `.v2-js`
+  + `@media (prefers-reduced-motion: no-preference)`.
+- Filtre sitemap (`astro.config.mjs`) étendu pour exclure `/v3` ; garde-fou
+  `tests/v3-preview.test.ts` (noindex + exclusion + isolation du mouvement).
+
+**Promotion v3** : recopier le Ken Burns + la montée d'échelle photo sur toutes
+les pages et replier l'élévation v2 dans le live. **Promotion v2** : l'instruction
+d'origine tient (sans le mouvement photo). **Jeter v3** : supprimer le dossier
+`/v3` + `v3-photo-motion.css` ; `/v2` reste tel quel. Tous les chemins sont à
+risque nul — le live n'a jamais bougé.
