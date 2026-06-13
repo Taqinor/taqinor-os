@@ -19,6 +19,10 @@ git fetch origin main
 git reset --hard origin/main
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py migrate --noinput
+# Synchronise les permissions des roles systeme (Admin/Responsable/Utilisateur)
+# avec roles/models.py : indispensable quand un deploiement ajoute de nouveaux
+# codes de permission (ex. equipement_*/sav_*). Idempotent, sans effet sinon.
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py init_roles
 # nginx garde l'ancienne adresse de django apres recreation -> 502 sinon
 docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
 # La Caddyfile est un bind mount : un changement de config ne recree pas le
