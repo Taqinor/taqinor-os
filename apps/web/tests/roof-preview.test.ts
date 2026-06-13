@@ -107,6 +107,39 @@ describe('estimateur — capture du lead RÉUTILISÉE, plomberie intacte', () =>
   });
 });
 
+describe('estimateur — cycle de vie carte : init unique, repli seulement sur échec réel', () => {
+  it('/api/roof-config lit la clé RUNTIME ET la clé de BUILD (corrige le bug variable de build)', () => {
+    const ep = read('../src/pages/api/roof-config.ts');
+    expect(ep).toContain('resolveMaptilerKey');
+    expect(ep).toContain('cf.env'); // source runtime
+    expect(ep).toContain('import.meta.env.PUBLIC_MAPTILER_KEY'); // source build (inlinée par Vite)
+    // Pas de cache : un available:false périmé ne doit pas masquer la carte.
+    expect(ep).toContain("'cache-control': 'no-store'");
+  });
+
+  it('la carte s’initialise UNE seule fois (garde-fou booted)', () => {
+    const tool = read('../src/scripts/roof-tool.ts');
+    expect(tool).toMatch(/let booted = false/);
+    expect(tool).toMatch(/if \(booted\) return/);
+  });
+
+  it('les erreurs MapLibre non fatales sont journalisées, jamais bloquantes', () => {
+    const tool = read('../src/scripts/roof-tool.ts');
+    expect(tool).toContain("map.on('error'");
+    // L’erreur ne déclenche aucun repli ni teardown.
+    expect(tool).not.toMatch(/map\.on\('error'[\s\S]{0,400}showFallback/);
+    expect(tool).not.toMatch(/map\.on\('error'[\s\S]{0,400}\.remove\(\)/);
+  });
+
+  it('une carte créée n’est jamais masquée : le repli n’arrive que si onReady n’a pas signalé', () => {
+    const tool = read('../src/scripts/roof-tool.ts');
+    expect(tool).toContain('opts.onReady?.()'); // signale dès la création
+    const page = read('../src/pages/preview/toiture.astro');
+    expect(page).toContain('mapCreated');
+    expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
+  });
+});
+
 describe('estimateur — la route d’estimation ne touche aucune donnée de lead', () => {
   it('/api/roof-estimate n’importe ni ne référence la plomberie de lead', () => {
     const ep = read('../src/pages/api/roof-estimate.ts');
