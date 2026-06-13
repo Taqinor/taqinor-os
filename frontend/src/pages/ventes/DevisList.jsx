@@ -387,25 +387,36 @@ export default function DevisList() {
                       </button>
                     )}
 
-                    {d.statut === 'accepte' && (
-                      d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
-                        <button
-                          className="btn btn-sm btn-outline"
-                          disabled
-                          title="Toutes les tranches ont été facturées"
-                        >
-                          Échéancier complet
+                    {/* « Générer facture » TOUJOURS visible, pour montrer que
+                        c'est ici qu'un devis devient des factures. Désactivé
+                        tant que le devis n'est pas « Accepté », avec un indice
+                        VISIBLE (pas seulement au survol → lisible sur mobile). */}
+                    {d.statut !== 'accepte' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <button className="btn btn-sm btn-outline" disabled>
+                          Générer facture
                         </button>
-                      ) : (
-                        <button
-                          className="btn btn-sm btn-primary"
-                          onClick={() => handleGenererFacture(d)}
-                          disabled={factureGenId === d.id}
-                          title="Générer la prochaine tranche de facture"
-                        >
-                          {factureGenId === d.id ? '...' : 'Générer facture'}
-                        </button>
-                      )
+                        <span style={{ fontSize: '0.68rem', color: '#64748b', maxWidth: 190, lineHeight: 1.2 }}>
+                          Passez le devis en « Accepté » pour générer les factures.
+                        </span>
+                      </div>
+                    ) : d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        disabled
+                        title="Toutes les tranches ont été facturées"
+                      >
+                        Échéancier complet
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleGenererFacture(d)}
+                        disabled={factureGenId === d.id}
+                        title="Générer la prochaine tranche de facture"
+                      >
+                        {factureGenId === d.id ? '...' : 'Générer facture'}
+                      </button>
                     )}
                   </div>
                 </td>
