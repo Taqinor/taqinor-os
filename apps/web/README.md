@@ -3,6 +3,8 @@
 Site vitrine + génération de leads de Taqinor. Astro 6 (SSR Cloudflare Workers),
 Tailwind CSS 4, déployé sur Cloudflare Workers avec assets statiques.
 
+Auto-deploys: connected via Cloudflare Workers Builds, June 2026.
+
 ## Pages
 
 | Route | Contenu |
