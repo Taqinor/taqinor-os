@@ -58,15 +58,19 @@ const Sec = ({ title, children, id }) => (
   </div>
 )
 
-// Navigateur de sections (rail gauche) : libellé court → section du formulaire
-const NAV_SECTIONS = [
-  ['contact', 'Contact'],
-  ['pipeline', 'Pipeline'],
-  ['energie', 'Énergie'],
-  ['toiture', 'Toiture & site'],
-  ['visite', 'Visite'],
-]
-const NAV_SECTIONS_EDIT = [...NAV_SECTIONS, ['devis', 'Devis'], ['historique', 'Historique']]
+// Navigateur de sections (rail gauche) : libellé court → section du formulaire.
+// La liste est calculée dans le composant car Pompage n'apparaît qu'en agricole.
+const buildNavSections = ({ agricole, isEdit }) => {
+  const secs = [
+    ['contact', 'Contact'],
+    ['pipeline', 'Suivi commercial'],
+    ['energie', 'Profil énergétique'],
+  ]
+  if (agricole) secs.push(['pompage', 'Pompage'])
+  secs.push(['toiture', 'Toiture & site'], ['visite', 'Visite'])
+  if (isEdit) secs.push(['devis', 'Devis'], ['historique', 'Historique'])
+  return secs
+}
 
 const Txt = ({ fields, set, k, label, type = 'text', ...rest }) => (
   <div className="form-group">
@@ -298,7 +302,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
         <form onSubmit={handleSubmit} noValidate>
           <div className="lead-form-layout">
             <nav className="lead-nav" aria-label="Sections du lead">
-              {(isEdit ? NAV_SECTIONS_EDIT : NAV_SECTIONS).map(([id, label]) => (
+              {buildNavSections({ agricole, isEdit }).map(([id, label]) => (
                 <button key={id} type="button"
                         className={activeSec === id ? 'active' : ''}
                         onClick={() => jumpTo(id)}>
@@ -316,23 +320,24 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                   {errors.nom && <div className="form-feedback">{errors.nom}</div>}
                 </div>
                 <Txt fields={fields} set={set} k="prenom" label="Prénom" />
-                <Txt fields={fields} set={set} k="societe" label="Société" />
+                <Txt fields={fields} set={set} k="telephone" label="Téléphone" />
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="telephone" label="Téléphone" />
                 <Txt fields={fields} set={set} k="whatsapp" label="WhatsApp" />
+                <Txt fields={fields} set={set} k="ville" label="Ville / quartier" />
                 <Txt fields={fields} set={set} k="email" label="Email" type="email" />
               </div>
               <div className="form-row">
+                <Txt fields={fields} set={set} k="societe" label="Société" />
                 <div className="form-group fg-grow"><Txt fields={fields} set={set} k="adresse" label="Adresse" /></div>
-                <Txt fields={fields} set={set} k="ville" label="Ville / quartier" />
                 <Txt fields={fields} set={set} k="gps_lat" label="GPS lat." type="number" />
                 <Txt fields={fields} set={set} k="gps_lng" label="GPS long." type="number" />
               </div>
             </Sec>
 
-            <Sec id="pipeline" title="📈 Pipeline">
+            <Sec id="pipeline" title="📈 Suivi commercial">
               <div className="form-row">
+                <Sel fields={fields} set={set} k="type_installation" label="Type d'installation" labels={TYPES_INSTALLATION} />
                 <Sel fields={fields} set={set} k="stage" label="Étape" labels={STAGE_LABELS} />
                 <div className="form-group">
                   <label className="form-label">Responsable</label>
@@ -342,21 +347,23 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                     {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
                   </select>
                 </div>
-                <Sel fields={fields} set={set} k="canal" label="Canal" labels={CANAUX} />
-                <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
+                <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="type_installation" label="Type d'installation" labels={TYPES_INSTALLATION} />
-                <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
+                <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
+                <Sel fields={fields} set={set} k="canal" label="Canal" labels={CANAUX} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
                        placeholder="ex: Régularisation 82-21, VIP" />
                 </div>
-                <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" />
+                {/* Motif de perte : visible seulement si le lead est « Froid » (perdu). */}
+                {fields.stage === 'COLD' && (
+                  <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" />
+                )}
               </div>
             </Sec>
 
-            <Sec id="energie" title="💡 Énergie">
+            <Sec id="energie" title="💡 Profil énergétique">
               <div className="form-row">
                 <Txt fields={fields} set={set} k="facture_hiver"
                      label={fields.ete_differente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
@@ -384,43 +391,47 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                   </label>
                 </div>
               </div>
-              {/* Pompage — toujours visibles, requis pour le devis auto en agricole */}
-              <div className="form-row">
-                <Txt fields={fields} set={set} k="pompe_cv" type="number"
-                     label={<>Pompe (CV){agricole && <span className="req-auto"> *</span>}</>}
-                     placeholder="ex: 10" />
-                <Txt fields={fields} set={set} k="pompe_hmt_m" type="number"
-                     label={<>HMT (m){agricole && <span className="req-auto"> *</span>}</>}
-                     placeholder="ex: 80" />
-                <Txt fields={fields} set={set} k="pompe_debit_m3h" type="number"
-                     label={<>Débit souhaité (m³/h){agricole && <span className="req-auto"> *</span>}</>}
-                     placeholder="ex: 12" />
-              </div>
-              {agricole && (
+            </Sec>
+
+            {/* Pompage — section dédiée, visible uniquement en mode agricole ;
+                ces champs alimentent le devis automatique. */}
+            {agricole && (
+              <Sec id="pompage" title="💧 Pompage">
+                <div className="form-row">
+                  <Txt fields={fields} set={set} k="pompe_cv" type="number"
+                       label={<>Pompe (CV)<span className="req-auto"> *</span></>}
+                       placeholder="ex: 10" />
+                  <Txt fields={fields} set={set} k="pompe_hmt_m" type="number"
+                       label={<>HMT (m)<span className="req-auto"> *</span></>}
+                       placeholder="ex: 80" />
+                  <Txt fields={fields} set={set} k="pompe_debit_m3h" type="number"
+                       label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>}
+                       placeholder="ex: 12" />
+                </div>
                 <p className="gen-hint">
                   <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole.
                 </p>
-              )}
-            </Sec>
+              </Sec>
+            )}
 
             <Sec id="toiture" title="🏠 Toiture & site">
               <div className="form-row">
                 <Sel fields={fields} set={set} k="type_toiture" label="Type de toiture" labels={TYPES_TOITURE} />
                 <Txt fields={fields} set={set} k="surface_toiture_m2" label="Surface (m²)" type="number" />
-                <Sel fields={fields} set={set} k="orientation" label="Orientation" labels={ORIENTATIONS} />
-                <Txt fields={fields} set={set} k="inclinaison_deg" label="Inclinaison (°)" type="number" />
+                <Txt fields={fields} set={set} k="taille_souhaitee_kwc" label="Taille souhaitée (kWc)" type="number" />
+                <Sel fields={fields} set={set} k="batterie_souhaitee" label="Batterie" labels={BATTERIES} />
               </div>
               <div className="form-row">
+                <Sel fields={fields} set={set} k="orientation" label="Orientation" labels={ORIENTATIONS} />
+                <Txt fields={fields} set={set} k="inclinaison_deg" label="Inclinaison / pente (°)" type="number" />
                 <Sel fields={fields} set={set} k="ombrage" label="Ombrage" labels={OMBRAGES} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="ombrage_notes" label="Notes ombrage" />
                 </div>
-                <Txt fields={fields} set={set} k="nb_etages" label="Étages / hauteur" type="number" />
               </div>
               <div className="form-row">
                 <Sel fields={fields} set={set} k="structure_pref" label="Structure" labels={STRUCTURES} />
-                <Txt fields={fields} set={set} k="taille_souhaitee_kwc" label="Taille souhaitée (kWc)" type="number" />
-                <Sel fields={fields} set={set} k="batterie_souhaitee" label="Batterie" labels={BATTERIES} />
+                <Txt fields={fields} set={set} k="nb_etages" label="Étages / hauteur" type="number" />
               </div>
             </Sec>
 
