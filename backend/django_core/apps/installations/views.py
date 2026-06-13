@@ -1,0 +1,224 @@
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from authentication.mixins import TenantMixin
+from authentication.permissions import (
+    IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+)
+from . import activity
+from .models import Installation, Intervention
+from .serializers import (
+    InstallationSerializer, InterventionSerializer,
+    InstallationActivitySerializer,
+)
+from .services import create_installation_from_devis
+
+READ_ACTIONS = ['list', 'retrieve']
+WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Chantiers + historique « chatter ». Tout est scopé à la société du
+    user ; l'acteur et la société sont posés côté serveur, jamais lus du corps.
+    """
+    queryset = Installation.objects.select_related(
+        'client', 'devis', 'lead', 'technicien_responsable',
+    ).prefetch_related('interventions').all()
+    serializer_class = InstallationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'reference', 'client__nom', 'client__prenom', 'site_ville',
+    ]
+    ordering_fields = ['reference', 'date_creation', 'date_pose_prevue', 'statut']
+    ordering = ['-date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        technicien = params.get('technicien')
+        type_inst = params.get('type_installation')
+        if statut:
+            qs = qs.filter(statut=statut)
+        if technicien:
+            qs = qs.filter(technicien_responsable_id=technicien)
+        if type_inst:
+            qs = qs.filter(type_installation=type_inst)
+        # Annulé = drapeau, pas une étape (comme « Perdu »). Par défaut on
+        # montre tout ; ?annule=only / ?annule=sans pour filtrer côté UI.
+        annule = params.get('annule')
+        if self.action == 'list':
+            if annule == 'only':
+                qs = qs.filter(annule=True)
+            elif annule == 'sans':
+                qs = qs.filter(annule=False)
+        return qs
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['historique']:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS + [
+            'creer_depuis_devis', 'noter', 'mise_en_service',
+            'annuler', 'reactiver',
+        ]:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        serializer.instance.created_by = self.request.user
+        serializer.instance.save(update_fields=['created_by'])
+        activity.log_creation(serializer.instance, self.request.user)
+
+    def perform_update(self, serializer):
+        old = Installation.objects.get(pk=serializer.instance.pk)
+        super().perform_update(serializer)
+        activity.log_changes(old, serializer.instance, self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def creer_depuis_devis(self, request):
+        """Crée un chantier pré-rempli depuis un devis accepté. Si un chantier
+        existe déjà pour ce devis, le RETOURNE (jamais de doublon)."""
+        from apps.ventes.models import Devis
+        company = request.user.company
+        devis_id = request.data.get('devis')
+        devis = Devis.objects.filter(pk=devis_id).first()
+        if devis is None or devis.company_id != company.id:
+            return Response({'detail': 'Devis inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if devis.statut != Devis.Statut.ACCEPTE:
+            return Response(
+                {'detail': 'Le devis doit être « Accepté » pour créer le chantier.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        inst, created = create_installation_from_devis(
+            devis, request.user, company)
+        if created:
+            activity.log_creation(inst, request.user)
+        data = InstallationSerializer(inst, context={'request': request}).data
+        data['created'] = created
+        return Response(
+            data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
+    def historique(self, request, pk=None):
+        inst = self.get_object()
+        return Response(
+            InstallationActivitySerializer(inst.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def noter(self, request, pk=None):
+        inst = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = activity.log_note(inst, request.user, body)
+        return Response(InstallationActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='mise-en-service',
+            permission_classes=[IsResponsableOrAdmin])
+    def mise_en_service(self, request, pk=None):
+        """Enregistre la mise en service : date, PV/notes, valeurs mesurées
+        optionnelles, et passe le statut à « Mise en service ».
+
+        NOTE — point d'accroche FUTUR : c'est ici que démarrera la garantie
+        une fois qu'un registre d'équipements (n° de série) existera. Aucune
+        logique de garantie n'est construite maintenant (modèle absent).
+        """
+        inst = self.get_object()
+        old = Installation.objects.get(pk=inst.pk)
+        data = request.data
+        if data.get('date_mise_en_service'):
+            inst.date_mise_en_service = data['date_mise_en_service']
+        if 'mes_pv_notes' in data:
+            inst.mes_pv_notes = data.get('mes_pv_notes')
+        if data.get('mes_production_test') not in (None, ''):
+            inst.mes_production_test = data['mes_production_test']
+        if data.get('mes_tension') not in (None, ''):
+            inst.mes_tension = data['mes_tension']
+        inst.statut = Installation.Statut.MISE_EN_SERVICE
+        inst.save()
+        activity.log_changes(old, inst, request.user)
+        activity.log_note(
+            inst, request.user,
+            "Mise en service enregistrée"
+            + (f" le {inst.date_mise_en_service}" if inst.date_mise_en_service else ""))
+        return Response(
+            InstallationSerializer(inst, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='annuler',
+            permission_classes=[IsResponsableOrAdmin])
+    def annuler(self, request, pk=None):
+        """Annule le chantier (DRAPEAU avec motif — pas une étape)."""
+        inst = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not inst.annule:
+            inst.annule = True
+            inst.motif_annulation = motif or None
+            inst.save(update_fields=['annule', 'motif_annulation'])
+            activity.log_note(
+                inst, request.user,
+                f"Chantier annulé{(' : ' + motif) if motif else ''}")
+        return Response(
+            InstallationSerializer(inst, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reactiver',
+            permission_classes=[IsResponsableOrAdmin])
+    def reactiver(self, request, pk=None):
+        inst = self.get_object()
+        if inst.annule:
+            inst.annule = False
+            inst.motif_annulation = None
+            inst.save(update_fields=['annule', 'motif_annulation'])
+            activity.log_note(inst, request.user, "Chantier réactivé")
+        return Response(
+            InstallationSerializer(inst, context={'request': request}).data)
+
+
+class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Ordres de travail rattachés à un chantier. Scopés à la société."""
+    queryset = Intervention.objects.select_related(
+        'installation', 'technicien').all()
+    serializer_class = InterventionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation']
+    ordering = ['-date_prevue']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        installation = self.request.query_params.get('installation')
+        if installation:
+            qs = qs.filter(installation_id=installation)
+        return qs
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'destroy':
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        # Tenant safety : le chantier ciblé doit appartenir à la société.
+        from rest_framework.exceptions import ValidationError
+        installation = serializer.validated_data.get('installation')
+        company = self.request.user.company
+        if installation is not None and installation.company_id != company.id:
+            raise ValidationError({'installation': 'Chantier inconnu.'})
+        serializer.save(company=company, created_by=self.request.user)
+        # Trace l'ajout d'intervention dans le chatter du chantier.
+        if installation is not None:
+            activity.log_note(
+                installation, self.request.user,
+                f"Intervention ajoutée : "
+                f"{serializer.instance.get_type_intervention_display()}")

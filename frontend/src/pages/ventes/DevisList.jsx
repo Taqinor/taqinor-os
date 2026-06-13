@@ -7,6 +7,7 @@ import {
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import installationsApi from '../../api/installationsApi'
 import DevisForm from './DevisForm'
 
 const STATUT_META = {
@@ -86,6 +87,23 @@ export default function DevisList() {
       alert(err?.response?.data?.detail ?? 'Suppression impossible.')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const [chantierBusy, setChantierBusy] = useState(null)
+  // « Créer le chantier » sur un devis accepté : crée (ou ouvre s'il existe
+  // déjà) le chantier pré-rempli, puis navigue vers la page Chantiers.
+  const handleChantier = async (d) => {
+    if (d.chantier) { navigate('/chantiers'); return }
+    setChantierBusy(d.id)
+    try {
+      await installationsApi.createFromDevis(d.id)
+      dispatch(fetchDevis())
+      navigate('/chantiers')
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Création du chantier impossible.')
+    } finally {
+      setChantierBusy(null)
     }
   }
 
@@ -384,6 +402,21 @@ export default function DevisList() {
                         title="Convertir en bon de commande"
                       >
                         {convertingId === d.id ? '...' : '→ BC'}
+                      </button>
+                    )}
+
+                    {d.statut === 'accepte' && (
+                      <button
+                        className={`btn btn-sm ${d.chantier ? 'btn-outline' : 'btn-primary'}`}
+                        onClick={() => handleChantier(d)}
+                        disabled={chantierBusy === d.id}
+                        title={d.chantier
+                          ? `Ouvrir le chantier ${d.chantier.reference}`
+                          : 'Créer le chantier à partir de ce devis'}
+                      >
+                        {chantierBusy === d.id
+                          ? '...'
+                          : (d.chantier ? '🏗️ Voir le chantier' : '🏗️ Créer le chantier')}
                       </button>
                     )}
 

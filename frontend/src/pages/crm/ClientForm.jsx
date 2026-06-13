@@ -10,13 +10,20 @@ export default function ClientForm({ client = null, onClose }) {
   const [errors, setErrors] = useState({})
 
   const [fields, setFields] = useState({
-    nom:       client?.nom       ?? '',
-    prenom:    client?.prenom    ?? '',
-    email:     client?.email     ?? '',
-    telephone: client?.telephone ?? '',
-    adresse:   client?.adresse   ?? '',
-    ice:       client?.ice       ?? '',
+    nom:         client?.nom         ?? '',
+    prenom:      client?.prenom      ?? '',
+    email:       client?.email       ?? '',
+    telephone:   client?.telephone   ?? '',
+    adresse:     client?.adresse     ?? '',
+    // Type + identifiants marocains. Par défaut « Entreprise » si un ICE est
+    // déjà présent, sinon « Particulier ».
+    type_client: client?.type_client ?? (client?.ice ? 'entreprise' : 'particulier'),
+    cin:         client?.cin         ?? '',
+    ice:         client?.ice         ?? '',
+    if_fiscal:   client?.if_fiscal   ?? '',
+    rc:          client?.rc          ?? '',
   })
+  const isEntreprise = fields.type_client === 'entreprise'
 
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
 
@@ -38,12 +45,17 @@ export default function ClientForm({ client = null, onClose }) {
     setSaving(true)
     try {
       const payload = {
-        nom:       fields.nom.trim(),
-        prenom:    fields.prenom.trim()    || null,
-        email:     fields.email.trim(),
-        telephone: fields.telephone.trim() || null,
-        adresse:   fields.adresse.trim()   || null,
-        ice:       fields.ice.trim()       || null,
+        nom:         fields.nom.trim(),
+        prenom:      fields.prenom.trim()    || null,
+        email:       fields.email.trim(),
+        telephone:   fields.telephone.trim() || null,
+        adresse:     fields.adresse.trim()   || null,
+        type_client: fields.type_client,
+        // On envoie le jeu pertinent ; l'autre est vidé pour rester cohérent.
+        cin:       isEntreprise ? null : (fields.cin.trim() || null),
+        ice:       isEntreprise ? (fields.ice.trim() || null) : null,
+        if_fiscal: isEntreprise ? (fields.if_fiscal.trim() || null) : null,
+        rc:        isEntreprise ? (fields.rc.trim() || null) : null,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -125,14 +137,62 @@ export default function ClientForm({ client = null, onClose }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">ICE (entreprises) — optionnel</label>
-              <input
+              <label className="form-label">Type de client</label>
+              <select
                 className="form-control"
-                value={fields.ice}
-                onChange={e => setField('ice', e.target.value)}
-                placeholder="ex : 003799642000067"
-              />
+                value={fields.type_client}
+                onChange={e => setField('type_client', e.target.value)}
+              >
+                <option value="particulier">Particulier</option>
+                <option value="entreprise">Entreprise</option>
+              </select>
             </div>
+
+            {/* Identifiants selon le type : CIN pour un particulier,
+                ICE / IF / RC pour une entreprise. */}
+            {isEntreprise ? (
+              <>
+                <div className="form-group">
+                  <label className="form-label">ICE — optionnel</label>
+                  <input
+                    className="form-control"
+                    value={fields.ice}
+                    onChange={e => setField('ice', e.target.value)}
+                    placeholder="ex : 003799642000067"
+                  />
+                </div>
+                <div className="form-row">
+                  <div className="form-group fg-grow">
+                    <label className="form-label">IF (Identifiant Fiscal) — optionnel</label>
+                    <input
+                      className="form-control"
+                      value={fields.if_fiscal}
+                      onChange={e => setField('if_fiscal', e.target.value)}
+                      placeholder="ex : 12345678"
+                    />
+                  </div>
+                  <div className="form-group fg-grow">
+                    <label className="form-label">RC (Registre de Commerce) — optionnel</label>
+                    <input
+                      className="form-control"
+                      value={fields.rc}
+                      onChange={e => setField('rc', e.target.value)}
+                      placeholder="N° RC"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="form-group">
+                <label className="form-label">CIN — optionnel</label>
+                <input
+                  className="form-control"
+                  value={fields.cin}
+                  onChange={e => setField('cin', e.target.value)}
+                  placeholder="ex : BK123456"
+                />
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Adresse</label>
