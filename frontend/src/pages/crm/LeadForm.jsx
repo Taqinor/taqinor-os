@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { createLead, updateLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
+import crmApi from '../../api/crmApi'
 
 const STAGE_LABELS = {
   NEW: 'Nouveau',
@@ -118,6 +119,9 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
     conso_mensuelle_kwh: F('conso_mensuelle_kwh'), tranche_onee: F('tranche_onee'),
     raccordement: F('raccordement', '') ?? '',
     regularisation_8221: lead?.regularisation_8221 ?? false,
+    // Pompage (requis pour le devis auto en mode agricole)
+    pompe_cv: F('pompe_cv'), pompe_hmt_m: F('pompe_hmt_m'),
+    pompe_debit_m3h: F('pompe_debit_m3h'),
     // Toiture & site
     type_toiture: F('type_toiture', '') ?? '', surface_toiture_m2: F('surface_toiture_m2'),
     orientation: F('orientation', '') ?? '', inclinaison_deg: F('inclinaison_deg'),
@@ -136,6 +140,8 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
   const [noteBody, setNoteBody] = useState('')
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [autoError, setAutoError] = useState(null)
+  const [autoBusy, setAutoBusy] = useState(false)
   const [activeSec, setActiveSec] = useState('contact')
   const bodyRef = useRef(null)
 
@@ -168,6 +174,26 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
   }, [isEdit, lead?.id])
 
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  const agricole = fields.type_installation === 'agricole'
+
+  // ⚡ Devis auto depuis la fiche : la garde vient du SERVEUR (valeur du lead
+  // enregistré, pas des champs en cours de saisie — la règle s'active à la
+  // sauvegarde), puis double vérification via POST /devis-auto/ avant de partir.
+  const launchDevisAuto = async () => {
+    setAutoBusy(true)
+    setAutoError(null)
+    try {
+      await crmApi.checkDevisAuto(lead.id)
+    } catch (err) {
+      setAutoError(err?.response?.data?.detail
+        ?? "Le devis automatique n'est pas disponible pour ce lead.")
+      setAutoBusy(false)
+      return
+    }
+    setAutoBusy(false)
+    onClose()
+    navigate(`/ventes/devis/nouveau?lead=${lead.id}&discount=0&auto=1`)
+  }
 
   const postNote = async () => {
     const body = noteBody.trim()
@@ -210,8 +236,36 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
           <h3 className="modal-title">
             {isEdit ? `Lead — ${lead.nom} ${lead.prenom || ''}` : 'Nouveau lead'}
           </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+          <div className="lead-head-actions">
+            {isEdit && (
+              <button
+                type="button"
+                className={`lead-devis-badge${(lead.devis ?? []).length ? '' : ' is-zero'}`}
+                title="Voir les devis de ce lead"
+                onClick={() => jumpTo('devis')}
+              >
+                {(lead.devis ?? []).length} devis
+              </button>
+            )}
+            {isEdit && (
+              <button
+                type="button"
+                className="btn btn-sm gen-btn-orange"
+                disabled={!lead.devis_auto?.pret || autoBusy}
+                title={lead.devis_auto?.pret
+                  ? 'Créer un devis automatique depuis ce lead'
+                  : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
+                onClick={launchDevisAuto}
+              >
+                ⚡ Devis auto
+              </button>
+            )}
+            <button type="button" className="modal-close" onClick={onClose}>✕</button>
+          </div>
         </div>
+        {autoError && (
+          <div className="form-error-box lead-head-error" role="alert">{autoError}</div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="lead-form-layout">
@@ -302,6 +356,23 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                   </label>
                 </div>
               </div>
+              {/* Pompage — toujours visibles, requis pour le devis auto en agricole */}
+              <div className="form-row">
+                <Txt fields={fields} set={set} k="pompe_cv" type="number"
+                     label={<>Pompe (CV){agricole && <span className="req-auto"> *</span>}</>}
+                     placeholder="ex: 10" />
+                <Txt fields={fields} set={set} k="pompe_hmt_m" type="number"
+                     label={<>HMT (m){agricole && <span className="req-auto"> *</span>}</>}
+                     placeholder="ex: 80" />
+                <Txt fields={fields} set={set} k="pompe_debit_m3h" type="number"
+                     label={<>Débit souhaité (m³/h){agricole && <span className="req-auto"> *</span>}</>}
+                     placeholder="ex: 12" />
+              </div>
+              {agricole && (
+                <p className="gen-hint">
+                  <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole.
+                </p>
+              )}
             </Sec>
 
             <Sec id="toiture" title="🏠 Toiture & site">

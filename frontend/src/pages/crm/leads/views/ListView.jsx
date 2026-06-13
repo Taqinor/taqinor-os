@@ -217,6 +217,10 @@ export default function ListView({ leads, onOpenLead, onAutoQuote }) {
                     <button
                       type="button"
                       className="btn btn-sm gen-btn-orange"
+                      disabled={!lead.devis_auto?.pret}
+                      title={lead.devis_auto?.pret
+                        ? 'Devis auto'
+                        : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
                       onClick={(e) => {
                         e.stopPropagation()
                         onAutoQuote(lead)

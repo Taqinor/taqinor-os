@@ -272,7 +272,26 @@ export default function DevisList() {
             return (
               <tr key={d.id}>
                 <td><strong>{d.reference}</strong></td>
-                <td data-label="Client">{d.client_nom ?? '—'}</td>
+                <td data-label="Client">
+                  {d.client_nom ?? '—'}
+                  {d.lead && (
+                    <div>
+                      <button
+                        type="button"
+                        title="Ouvrir le lead lié"
+                        onClick={() => navigate(`/crm/leads?lead=${d.lead}`)}
+                        style={{
+                          background: '#fdf3e0', color: '#92400e',
+                          border: '1px solid #f5d9a8', borderRadius: 10,
+                          padding: '1px 8px', fontSize: '0.68rem',
+                          fontWeight: 600, cursor: 'pointer', marginTop: 3,
+                        }}
+                      >
+                        ↗ {d.lead_nom ?? 'Lead'}
+                      </button>
+                    </div>
+                  )}
+                </td>
                 <td data-label="Créé le">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
                 <td className="m-hide">
                   {d.date_validite

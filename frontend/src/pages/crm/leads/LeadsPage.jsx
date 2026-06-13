@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
+import crmApi from '../../../api/crmApi'
 import { filterLeads, EMPTY_FILTERS } from '../../../features/crm/stages'
 import LeadForm from '../LeadForm'
 import FilterBar from './FilterBar'
@@ -18,6 +19,7 @@ const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
 export default function LeadsPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { leads, leadsLoading, error } = useSelector(s => s.crm)
 
   // Vue active, persistée (kanban par défaut, façon Odoo).
@@ -44,12 +46,23 @@ export default function LeadsPage() {
   // « Devis auto » — remise puis lancement du générateur.
   const [autoLead, setAutoLead] = useState(null)
   const [autoDiscount, setAutoDiscount] = useState('0')
+  const [autoError, setAutoError] = useState(null)
+  const [autoChecking, setAutoChecking] = useState(false)
 
   // Changement d'étape optimiste avec retour-arrière.
   const [busyLeadId, setBusyLeadId] = useState(null)
   const [stageError, setStageError] = useState(null)
 
   useEffect(() => { dispatch(fetchLeads()) }, [dispatch])
+
+  // Lien profond depuis les ventes : /crm/leads?lead=<id> ouvre la fiche du
+  // lead (état dérivé, aucun effet) ; fermer retire le paramètre de l'URL
+  // pour que la fiche ne se ré-ouvre pas.
+  const wantedLeadId = searchParams.get('lead')
+  const deepLead = useMemo(() => {
+    if (!wantedLeadId) return null
+    return leads.find(l => String(l.id) === String(wantedLeadId)) ?? null
+  }, [wantedLeadId, leads])
 
   useEffect(() => {
     if (!stageError) return undefined
@@ -59,13 +72,36 @@ export default function LeadsPage() {
 
   const openNew = () => { setEditLead(null); setShowForm(true) }
   const onOpenLead = (lead) => { setEditLead(lead); setShowForm(true) }
-  const closeForm = () => { setShowForm(false); setEditLead(null) }
+  const closeForm = () => {
+    setShowForm(false)
+    setEditLead(null)
+    // Nettoie le lien profond ?lead=<id> pour ne pas ré-ouvrir la fiche.
+    if (searchParams.has('lead')) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('lead')
+        return next
+      }, { replace: true })
+    }
+  }
   const onSaved = () => dispatch(fetchLeads())
 
-  const onAutoQuote = (lead) => { setAutoLead(lead); setAutoDiscount('0') }
-  const launchAutoQuote = () => {
+  const onAutoQuote = (lead) => { setAutoLead(lead); setAutoDiscount('0'); setAutoError(null) }
+  const launchAutoQuote = async () => {
     const id = autoLead.id
     const d = autoDiscount !== '' ? autoDiscount : '0'
+    // Garde serveur : la règle « lead prêt » est aussi une règle backend.
+    setAutoChecking(true)
+    setAutoError(null)
+    try {
+      await crmApi.checkDevisAuto(id)
+    } catch (err) {
+      setAutoError(err?.response?.data?.detail
+        ?? "Le devis automatique n'est pas disponible pour ce lead.")
+      return
+    } finally {
+      setAutoChecking(false)
+    }
     setAutoLead(null)
     navigate(`/ventes/devis/nouveau?lead=${id}&discount=${encodeURIComponent(d)}&auto=1`)
   }
@@ -132,8 +168,8 @@ export default function LeadsPage() {
         {view === 'graphique' && <ChartsView {...viewProps} />}
       </div>
 
-      {showForm && (
-        <LeadForm lead={editLead} onClose={closeForm} onSaved={onSaved} />
+      {(showForm || deepLead) && (
+        <LeadForm lead={showForm ? editLead : deepLead} onClose={closeForm} onSaved={onSaved} />
       )}
 
       {/* ── Devis automatique : remise puis lancement ── */}
@@ -148,12 +184,11 @@ export default function LeadsPage() {
             </div>
             <div className="modal-body">
               <p className="gen-hint">
-                Le devis sera dimensionné automatiquement depuis la facture du lead
-                ({autoLead.facture_hiver
-                  ? `${autoLead.facture_hiver} MAD${autoLead.ete_differente && autoLead.facture_ete ? ` hiver / ${autoLead.facture_ete} MAD été` : '/mois'}`
-                  : 'aucune facture enregistrée — saisissez-la d\'abord via Éditer'}),
-                avec l'équipement auto-rempli depuis le stock, puis créé en brouillon
-                lié à ce lead.
+                {autoLead.devis_auto?.pret
+                  ? `Le devis sera dimensionné automatiquement depuis les données du lead
+                     selon son mode d'installation, avec l'équipement auto-rempli depuis
+                     le stock, puis créé en brouillon lié à ce lead.`
+                  : `${autoLead.devis_auto?.message ?? 'Données insuffisantes pour le devis auto'} — complétez la fiche via Éditer.`}
               </p>
               <div className="form-group">
                 <label className="form-label">Réduction (%) — optionnelle</label>
@@ -161,15 +196,19 @@ export default function LeadsPage() {
                        value={autoDiscount}
                        onChange={e => setAutoDiscount(e.target.value)} />
               </div>
+              {autoError && (
+                <div className="form-error-box" role="alert">{autoError}</div>
+              )}
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-outline" onClick={() => setAutoLead(null)}>
                 Annuler
               </button>
               <button type="button" className="btn btn-primary"
-                      disabled={!autoLead.facture_hiver}
+                      disabled={!autoLead.devis_auto?.pret || autoChecking}
+                      title={autoLead.devis_auto?.pret ? undefined : autoLead.devis_auto?.message ?? undefined}
                       onClick={launchAutoQuote}>
-                ⚡ Créer le devis automatique
+                {autoChecking ? 'Vérification…' : '⚡ Créer le devis automatique'}
               </button>
             </div>
           </div>

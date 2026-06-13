@@ -208,10 +208,16 @@
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.kb-flash:hover {
+.kb-flash:hover:not(:disabled) {
   background: var(--cat-gold);
   border-color: var(--cat-gold);
   color: #fff;
+}
+
+/* Lead pas prêt pour le devis auto (champs manquants côté serveur) */
+.kb-flash:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .kb-card-sub {

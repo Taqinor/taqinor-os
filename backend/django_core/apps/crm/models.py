@@ -178,6 +178,14 @@ class Lead(models.Model):
     # Installation existante à régulariser ? (Loi 82-21)
     regularisation_8221 = models.BooleanField(default=False)
 
+    # ── Pompage solaire (leads Agricole) — mêmes entrées que le générateur ──
+    pompe_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True)
+    pompe_hmt_m = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    pompe_debit_m3h = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+
     # ── Toiture & site ──
     type_toiture = models.CharField(
         max_length=20, choices=TypeToiture.choices, blank=True, null=True)

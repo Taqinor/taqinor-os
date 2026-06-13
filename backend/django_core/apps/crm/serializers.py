@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Client, Lead, LeadActivity
+from .devis_auto import champs_manquants, message_manquants
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
@@ -44,6 +45,17 @@ class LeadSerializer(serializers.ModelSerializer):
     client_nom = serializers.SerializerMethodField()
     devis = serializers.SerializerMethodField()
     owner_nom = serializers.SerializerMethodField()
+    devis_auto = serializers.SerializerMethodField()
+
+    def get_devis_auto(self, obj):
+        """Prêt pour le devis automatique ? Même règle que l'endpoint
+        POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""
+        manquants = champs_manquants(obj)
+        return {
+            'pret': not manquants,
+            'manquants': manquants,
+            'message': message_manquants(manquants) if manquants else None,
+        }
 
     def get_owner_nom(self, obj):
         return getattr(obj.owner, 'username', None)

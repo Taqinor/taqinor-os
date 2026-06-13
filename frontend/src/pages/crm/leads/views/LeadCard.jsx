@@ -49,7 +49,10 @@ export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote }) {
         <button
           type="button"
           className="kb-flash"
-          title="Devis auto"
+          disabled={!lead.devis_auto?.pret}
+          title={lead.devis_auto?.pret
+            ? 'Devis auto'
+            : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
           aria-label="Devis auto"
           onPointerDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
