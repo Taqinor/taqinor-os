@@ -81,7 +81,7 @@ jobs:
         run: npm run lint
       - name: Frontend unit tests (solar math parity + catalogue)
         working-directory: frontend
-        run: node --test "src/features/ventes/solar.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs"
+        run: node --test "src/features/ventes/solar.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs"
 
   stage-names:
     runs-on: ubuntu-latest

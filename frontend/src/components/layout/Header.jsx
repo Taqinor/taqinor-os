@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom'
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
   '/stock': 'Gestion du Stock',
+  '/crm/leads': 'CRM — Pipeline',
   '/crm': 'CRM — Clients',
   '/ventes/devis/nouveau': 'Nouveau Devis Solaire',
   '/ventes/devis': 'Devis',

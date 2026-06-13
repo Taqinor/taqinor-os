@@ -1,0 +1,234 @@
+/* ── Vue CALENDRIER des leads CRM ──
+   Grille mensuelle façon Odoo : fond clair, cellules blanches, filets
+   #e2e8f0, numéros de jour navy, accent or sur aujourd'hui.
+   Toutes les classes sont préfixées cal- (aucune fuite globale). */
+
+.cal-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 100%;
+}
+
+/* ── Barre d'en-tête ── */
+.cal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cal-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.cal-nav-btn {
+  min-width: 40px;
+  min-height: 40px;
+  line-height: 1;
+}
+
+.cal-today-btn {
+  min-height: 40px;
+  margin-left: auto;
+}
+
+.cal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--cat-navy, #0b1f3a);
+}
+
+/* ── Grille mensuelle ── */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: #e2e8f0; /* les gaps de 1px dessinent les filets */
+  gap: 1px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cal-weekday {
+  background: #f8fafc;
+  color: var(--cat-navy, #0b1f3a);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.cal-cell {
+  position: relative;
+  background: #fff;
+  min-height: 96px;
+  padding: 6px;
+  padding-top: 26px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cal-cell-out {
+  background: #f8fafc;
+}
+
+.cal-cell-out .cal-day-number {
+  color: #94a3b8;
+}
+
+.cal-cell-today {
+  box-shadow: inset 0 0 0 2px var(--cat-gold, #f5a623);
+  background: var(--cat-gold-soft, #fdf3e0);
+}
+
+.cal-cell-today .cal-day-number {
+  background: var(--cat-gold, #f5a623);
+  color: var(--cat-navy, #0b1f3a);
+  border-radius: 999px;
+}
+
+.cal-day-number {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cat-navy, #0b1f3a);
+}
+
+/* ── Pastilles lead ── */
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.76rem;
+  color: var(--cat-navy, #0b1f3a);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cal-chip:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgba(11, 31, 58, 0.12);
+}
+
+.cal-chip-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cal-chip-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-chip-perdu {
+  color: #dc2626;
+}
+
+.cal-more {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.cal-more:hover {
+  color: var(--cat-navy, #0b1f3a);
+  text-decoration: underline;
+}
+
+.cal-more-static {
+  cursor: default;
+  text-decoration: none;
+}
+
+/* ── Leads sans date de relance ── */
+.cal-undated {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.cal-undated-label {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.cal-undated-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-undated-chips .cal-chip {
+  width: auto;
+  max-width: 220px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  .cal-cell {
+    min-height: 64px;
+    padding: 3px;
+    padding-top: 20px;
+  }
+
+  .cal-day-number {
+    top: 2px;
+    right: 2px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.72rem;
+  }
+
+  .cal-chip {
+    padding: 2px 4px;
+    font-size: 0.68rem;
+    gap: 4px;
+  }
+
+  .cal-title {
+    font-size: 1rem;
+  }
+
+  .cal-undated-chips .cal-chip {
+    max-width: 150px;
+  }
+}
