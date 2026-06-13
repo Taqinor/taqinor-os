@@ -21,6 +21,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py migrate --noinput
 # nginx garde l'ancienne adresse de django apres recreation -> 502 sinon
 docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+# La Caddyfile est un bind mount : un changement de config ne recree pas le
+# conteneur -> reload explicite (zero coupure), sans effet si rien n'a change.
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 # PRECHAUFFAGE : le premier rendu PDF apres deploiement construit les caches
 # de polices (fontconfig) et importe matplotlib — 30 s et plus a froid.
 # On paie ce cout ICI, pas chez le premier commercial qui clique.
