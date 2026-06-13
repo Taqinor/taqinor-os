@@ -1,0 +1,171 @@
+/* Vue LISTE des leads CRM — style dense façon Odoo, identité navy/or.
+   Préfixe lv- ; s'appuie sur .data-table (index.css) sans le modifier. */
+
+.lv-wrap {
+  --cat-navy: #0b1f3a;
+  --cat-gold: #f5a623;
+  --cat-gold-soft: #fdf3e0;
+  overflow-x: auto;
+}
+
+/* Densité : un cran plus serré que la table globale. */
+.lv-table td {
+  padding: 8px 12px;
+}
+.lv-table th {
+  padding: 7px 12px;
+}
+
+.lv-table tbody tr.lv-row {
+  cursor: pointer;
+}
+
+/* Lignes « Perdu » : teinte rouge claire mais lisible (prime sur le hover global). */
+.lv-table tbody tr.lv-row-perdu,
+.lv-table tbody tr.lv-row-perdu:hover {
+  background: #fef2f2;
+}
+.lv-table tbody tr.lv-row-perdu:hover {
+  background: #fde8e8;
+}
+
+/* ── En-têtes triables ── */
+.lv-th-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.lv-th-btn:hover {
+  color: var(--cat-navy, #0b1f3a);
+}
+.lv-th-btn:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.lv-sort-ind {
+  font-size: 0.6rem;
+  min-width: 0.7em;
+  color: var(--cat-gold, #f5a623);
+}
+
+/* ── Colonne Lead ── */
+.lv-lead-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.lv-lead-name {
+  font-weight: 600;
+  color: var(--cat-navy, #0b1f3a);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lv-lead-societe {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+.lv-badge-perdu {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* ── Pastille d'étape (couleurs inline depuis STAGE_COLORS) ── */
+.lv-stage-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ── Responsable ── */
+.lv-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.lv-avatar {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--cat-navy, #0b1f3a);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+}
+
+/* ── Priorité (2 étoiles) ── */
+.lv-stars {
+  font-size: 0.95rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.lv-star {
+  color: #d1d5db;
+}
+.lv-star-on {
+  color: var(--cat-gold, #f5a623);
+}
+
+/* ── Relance en retard ── */
+.lv-relance-late {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* ── Tags ── */
+.lv-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lv-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── État vide ── */
+.lv-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px 14px;
+}
+
+/* ── Mobile (≤768px) : la table globale passe en cartes ; on garde la
+      colonne Lead alignée à gauche malgré son data-label. ── */
+@media (max-width: 768px) {
+  .lv-lead-cell {
+    align-items: flex-end;
+  }
+  .lv-table .actions-cell {
+    justify-content: flex-end;
+  }
+}

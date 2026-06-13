@@ -39,8 +39,20 @@ export const deleteClient = createAsyncThunk('crm/deleteClient', async (id, { re
 
 export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { rejectWithValue }) => {
   try {
-    const res = await crmApi.getLeads(params)
-    return res.data
+    // Le kanban doit voir TOUS les leads : on suit la pagination DRF
+    // (PAGE_SIZE 100) jusqu'au bout au lieu de s'arrêter à la première page.
+    const first = await crmApi.getLeads(params)
+    let data = first.data
+    if (!data || !Array.isArray(data.results)) return data
+    const all = [...data.results]
+    let page = 2
+    while (data.next && page <= 50) {
+      const res = await crmApi.getLeads({ ...(params ?? {}), page })
+      data = res.data
+      all.push(...(data.results ?? []))
+      page += 1
+    }
+    return all
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }
@@ -77,6 +89,14 @@ const crmSlice = createSlice({
   reducers: {
     setSelectedClient(state, action) { state.selectedClient = action.payload },
     clearError(state) { state.error = null },
+    // Changement d'étape optimiste (drag-and-drop kanban) : l'UI bouge tout de
+    // suite, le conteneur redéclenche cette action avec l'ancienne étape si le
+    // PATCH échoue (retour-arrière).
+    leadStagePatched(state, action) {
+      const { id, stage } = action.payload
+      const lead = state.leads.find(l => l.id === id)
+      if (lead) lead.stage = stage
+    },
   },
   extraReducers: (builder) => {
     const pending = (state) => { state.loading = true; state.error = null }
@@ -116,5 +136,5 @@ const crmSlice = createSlice({
   },
 })
 
-export const { setSelectedClient, clearError } = crmSlice.actions
+export const { setSelectedClient, clearError, leadStagePatched } = crmSlice.actions
 export default crmSlice.reducer

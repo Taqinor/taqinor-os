@@ -350,3 +350,127 @@ class TestLeadActivity(TestCase):
             'nom': 'X', 'owner': foreign_user.id,
         }, format='json')
         self.assertEqual(resp.status_code, 400)
+
+
+class TestStageChangeViaAPI(TestCase):
+    """Kanban CRM : le glisser-déposer d'une carte persiste via
+    PATCH /leads/<id>/ {'stage': ...} — même endpoint, mêmes garanties :
+    journal Historique automatique (libellés français), scoping société,
+    rejet des étapes inconnues. Les clés d'étape viennent de `stages`
+    (STAGES.py canonique) — jamais de liste codée en dur ici.
+    """
+
+    def setUp(self):
+        from apps.crm.models import LeadActivity
+        self.LeadActivity = LeadActivity
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='kanban_user', password='x',
+            role_legacy='responsable', company=self.company,
+        )
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        # Lead créé directement en base (pas via l'API) pour que le
+        # journal ne contienne QUE les entrées produites par le PATCH.
+        self.lead = Lead.objects.create(company=self.company, nom='Kanban')
+        self.assertEqual(self.lead.stage, stages.NEW)
+
+    def _patch_stage(self, stage_key, lead_id=None, api=None):
+        api = api or self.api
+        lead_id = lead_id or self.lead.id
+        return api.patch(f'/api/django/crm/leads/{lead_id}/',
+                         {'stage': stage_key}, format='json')
+
+    def test_patch_stage_changes_stage_and_logs_historique(self):
+        resp = self._patch_stage('CONTACTED')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, 'CONTACTED')
+        acts = self.LeadActivity.objects.filter(
+            lead=self.lead, kind='modification', field='stage')
+        self.assertEqual(acts.count(), 1)
+        act = acts.first()
+        self.assertEqual(act.field_label, 'Étape')
+        # Libellés français lus depuis STAGES.py — pas codés en dur.
+        self.assertEqual(act.old_value, stages.STAGE_LABELS[stages.NEW])
+        self.assertEqual(act.old_value, 'Nouveau')
+        self.assertEqual(act.new_value, stages.STAGE_LABELS['CONTACTED'])
+        self.assertEqual(act.new_value, 'Contacté')
+        self.assertEqual(act.user_id, self.user.id)
+        self.assertEqual(act.company_id, self.company.id)
+
+    def test_historique_endpoint_returns_stage_entry(self):
+        self._patch_stage('CONTACTED')
+        hist = self.api.get(
+            f'/api/django/crm/leads/{self.lead.id}/historique/')
+        self.assertEqual(hist.status_code, 200)
+        stage_entries = [a for a in hist.data if a['field'] == 'stage']
+        self.assertEqual(len(stage_entries), 1)
+        entry = stage_entries[0]
+        self.assertEqual(entry['field_label'], 'Étape')
+        self.assertEqual(entry['old_value'], stages.STAGE_LABELS[stages.NEW])
+        self.assertEqual(entry['new_value'],
+                         stages.STAGE_LABELS['CONTACTED'])
+        self.assertEqual(entry['user_nom'], 'kanban_user')
+
+    def test_patch_invalid_stage_rejected(self):
+        resp = self._patch_stage('PAS_UNE_ETAPE')
+        self.assertEqual(resp.status_code, 400)
+        self.lead.refresh_from_db()
+        # Étape inchangée, rien de journalisé.
+        self.assertEqual(self.lead.stage, stages.NEW)
+        self.assertEqual(
+            self.LeadActivity.objects.filter(lead=self.lead).count(), 0)
+
+    def test_patch_stage_scoped_to_company(self):
+        other = make_company(slug='kanban-other', nom='Kanban Other')
+        intruder = User.objects.create_user(
+            username='kanban_intruder', password='x',
+            role_legacy='responsable', company=other,
+        )
+        foreign_api = APIClient()
+        token = str(AccessToken.for_user(intruder))
+        foreign_api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        resp = self._patch_stage('CONTACTED', api=foreign_api)
+        # Scoping multi-tenant : le lead d'une autre société est invisible.
+        self.assertEqual(resp.status_code, 404)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.NEW)
+        self.assertEqual(
+            self.LeadActivity.objects.filter(lead=self.lead).count(), 0)
+
+    def test_granular_role_user_can_change_stage(self):
+        # Rôle fin façon « Commerciale » : permissions CRM seulement.
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom='Commerciale Kanban',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'],
+        )
+        commerciale = User.objects.create_user(
+            username='kanban_commerciale', password='x',
+            role=role, company=self.company,
+        )
+        api = APIClient()
+        token = str(AccessToken.for_user(commerciale))
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        resp = self._patch_stage('CONTACTED', api=api)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, 'CONTACTED')
+        acts = self.LeadActivity.objects.filter(
+            lead=self.lead, kind='modification', field='stage')
+        self.assertEqual(acts.count(), 1)
+        self.assertEqual(acts.first().user_id, commerciale.id)
+
+    def test_drag_to_signed_logs_label(self):
+        # Glissé directement en conversion : seul le journal est attendu,
+        # aucun autre effet de bord aujourd'hui.
+        resp = self._patch_stage('SIGNED')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, 'SIGNED')
+        act = self.LeadActivity.objects.get(
+            lead=self.lead, kind='modification', field='stage')
+        self.assertEqual(act.new_value, stages.STAGE_LABELS['SIGNED'])
+        self.assertEqual(act.new_value, 'Signé')
