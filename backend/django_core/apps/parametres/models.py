@@ -20,6 +20,24 @@ class CompanyProfile(models.Model):
     telephone = models.CharField(max_length=30, blank=True, default='')
     siret = models.CharField(max_length=20, blank=True, default='')
     tva_intra = models.CharField(max_length=20, blank=True, default='')
+    # ── Identifiants légaux marocains (2026-06) — additif, tout optionnel ──
+    # L'ICE du vendeur est légalement obligatoire sur une facture marocaine.
+    # siret/tva_intra (style français) restent en place mais inutilisés ici.
+    ice = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text='Identifiant Commun de l\'Entreprise (obligatoire sur facture).')
+    identifiant_fiscal = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text='IF — Identifiant Fiscal.')
+    rc = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text='RC — Registre de Commerce.')
+    patente = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text='Patente / Taxe Professionnelle.')
+    cnss = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
     couleur_principale = models.CharField(

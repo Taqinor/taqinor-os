@@ -108,6 +108,19 @@ class LigneFactureSerializer(serializers.ModelSerializer):
         model = LigneFacture
         fields = '__all__'
 
+    def create(self, validated_data):
+        # Réforme TVA 2024–2026 : toute NOUVELLE ligne porte son propre taux,
+        # copié du produit (10 % panneaux PV, 20 % le reste) quand il n'est pas
+        # fourni — exactement comme LigneDevis. Les lignes historiques (taux
+        # NULL) restent rendues au taux global de leur facture.
+        if validated_data.get('taux_tva') is None:
+            from decimal import Decimal
+            produit = validated_data.get('produit')
+            produit_tva = getattr(produit, 'tva', None)
+            validated_data['taux_tva'] = (
+                produit_tva if produit_tva is not None else Decimal('20.00'))
+        return super().create(validated_data)
+
 
 class PaiementSerializer(serializers.ModelSerializer):
     mode_display = serializers.CharField(source='get_mode_display', read_only=True)
@@ -131,7 +144,16 @@ class FactureSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
+    # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
+    tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+
+    def get_tva_par_taux(self, obj):
+        return [
+            {'taux': str(b['taux']), 'base_ht': str(b['base_ht']),
+             'montant': str(b['montant'])}
+            for b in obj.tva_par_taux
+        ]
 
     class Meta:
         model = Facture

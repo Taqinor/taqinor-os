@@ -185,10 +185,14 @@
       <span>−{{ "%.2f"|format(facture.total_ht * facture.remise_globale / 100) }} MAD</span>
     </div>
     {% endif %}
+    {# TVA ventilée par taux (10 %/20 %). Mono-taux (factures historiques) →
+       une seule ligne, identique à avant. #}
+    {% for b in facture.tva_par_taux %}
     <div class="totaux-row">
-      <span>TVA ({{ facture.taux_tva }}%)</span>
-      <span>{{ "%.2f"|format(facture.total_tva) }} MAD</span>
+      <span>TVA ({{ b.taux }}%)</span>
+      <span>{{ "%.2f"|format(b.montant) }} MAD</span>
     </div>
+    {% endfor %}
     <div class="totaux-row total-ttc">
       <span>Total TTC</span>
       <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
@@ -221,7 +225,13 @@
     {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
     {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
     <div class="footer-legal">
-      {% if entreprise_siret %}SIRET : {{ entreprise_siret }}{% endif %}
+      {# Identifiants légaux marocains (ICE obligatoire sur facture). #}
+      {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
+      {% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}
+      {% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}
+      {% if entreprise_patente %} | Patente : {{ entreprise_patente }}{% endif %}
+      {% if entreprise_cnss %} | CNSS : {{ entreprise_cnss }}{% endif %}
+      {% if entreprise_siret %} | SIRET : {{ entreprise_siret }}{% endif %}
       {% if entreprise_tva_intra %} | TVA : {{ entreprise_tva_intra }}{% endif %}
       {% if rib %} | RIB : {{ rib }}{% if banque %} ({{ banque }}){% endif %}{% endif %}
       <br />Facture générée automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }}
