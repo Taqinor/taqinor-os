@@ -1,0 +1,53 @@
+from pydantic import BaseModel
+from typing import Optional, List
+
+
+class ProductLine(BaseModel):
+    designation: str
+    marque: str = ""
+    quantite: float = 0
+    prix_achat_ttc: float = 0
+    prix_unit_ttc: float = 0
+    tva: float = 20
+    photo: str = ""
+    spec_power: Optional[float] = None  # per-row onduleur kW (from catalog dropdown)
+    spec_phase: str = ""                # per-row onduleur phase
+
+
+class RoiData(BaseModel):
+    factures_mensuelles: List[float]  # 12 values
+    day_usage_percent: int = 50
+
+
+class DevisRequest(BaseModel):
+    doc_number: int
+    installation_type: str = "Résidentielle"
+    client_name: str
+    client_address: str = ""
+    client_phone: str = ""
+    scenario_choice: str = "Les deux (Sans + Avec)"
+    recommended_option: str = "Aucune recommandation"
+    puissance_kwp: float
+    puissance_panneau_w: int = 710
+    roi_data: RoiData
+    product_lines: List[ProductLine]
+    custom_lines_sans: List[ProductLine] = []
+    custom_lines_avec: List[ProductLine] = []
+    notes_sans: List[str] = []
+    notes_avec: List[str] = []
+    structure_type: str = "acier"
+    # Per-type onduleur fallback (used when row has no spec_power from catalog)
+    onduleur_reseau_kw: Optional[float] = None
+    onduleur_reseau_phase: str = "Monophasé"
+    onduleur_hybride_kw: Optional[float] = None
+    onduleur_hybride_phase: str = "Monophasé"
+    # Legacy single-field fallback (backward compat with old history entries)
+    onduleur_kw: Optional[float] = None
+    onduleur_phase: str = "Monophasé"
+    client_ice: str = ""
+    discount_percent: float = 0.0
+    pdf_mode: str = "full"   # "full" = 3-page premium | "onepage" = 1-page product list
+    show_monthly: bool = True  # include monthly economies chart on page 2
+    devis_final: bool = False  # add payment terms + RIB to BON POUR ACCORD
+    payment_mode: str = "standard"  # "standard" (30/60/10) or "custom"
+    custom_acompte: Optional[float] = None  # user-defined acompte amount (MAD)
