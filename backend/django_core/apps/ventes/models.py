@@ -333,6 +333,7 @@ class Facture(models.Model):
             base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
             return [{'taux': rate, 'base_ht': base,
                      'montant': base * rate / Decimal('100')}]
+
         def q(x):
             return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         return [
