@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
-import { filterLeads, EMPTY_FILTERS } from '../../../features/crm/stages'
+import { filterLeads, EMPTY_FILTERS, archivedParam } from '../../../features/crm/stages'
 import LeadForm from '../LeadForm'
 import FilterBar from './FilterBar'
 import ViewSwitcher from './ViewSwitcher'
@@ -53,7 +53,12 @@ export default function LeadsPage() {
   const [busyLeadId, setBusyLeadId] = useState(null)
   const [stageError, setStageError] = useState(null)
 
-  useEffect(() => { dispatch(fetchLeads()) }, [dispatch])
+  // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
+  // le bon paramètre quand il change (les autres filtres restent côté client).
+  const refetch = () => dispatch(fetchLeads(archivedParam(filters.archived)))
+  useEffect(() => {
+    dispatch(fetchLeads(archivedParam(filters.archived)))
+  }, [dispatch, filters.archived])
 
   // Lien profond depuis les ventes : /crm/leads?lead=<id> ouvre la fiche du
   // lead (état dérivé, aucun effet) ; fermer retire le paramètre de l'URL
@@ -84,7 +89,7 @@ export default function LeadsPage() {
       }, { replace: true })
     }
   }
-  const onSaved = () => dispatch(fetchLeads())
+  const onSaved = () => refetch()
 
   const onAutoQuote = (lead) => { setAutoLead(lead); setAutoDiscount('0'); setAutoError(null) }
   const launchAutoQuote = async () => {
@@ -129,6 +134,7 @@ export default function LeadsPage() {
     onOpenLead,
     onChangeStage: changeStage,
     onAutoQuote,
+    onRefetch: refetch,
     busyLeadId,
   }
 

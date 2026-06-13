@@ -2,6 +2,8 @@
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
 import { useMemo, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import {
   PIPELINE_STAGES,
   STAGE_LABELS,
@@ -72,10 +74,42 @@ function SortableTh({ col, label, sort, onSort, className }) {
   )
 }
 
-export default function ListView({ leads, onOpenLead, onAutoQuote }) {
+export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch }) {
+  const dispatch = useDispatch()
+  const role = useSelector((s) => s.auth.role)
+  const canDelete = role === 'admin' // règle existante : destroy = admin
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
+  const [busyId, setBusyId] = useState(null)
   const today = todayISO()
+
+  const onArchive = async (lead) => {
+    setBusyId(lead.id)
+    try {
+      await dispatch(archiveLead(lead.id)).unwrap()
+      onRefetch?.()
+    } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
+  }
+
+  const onRestore = async (lead) => {
+    setBusyId(lead.id)
+    try {
+      await dispatch(restoreLead(lead.id)).unwrap()
+      onRefetch?.()
+    } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
+  }
+
+  const onDelete = async (lead) => {
+    if (!window.confirm('Supprimer définitivement ce lead ? Cette action est irréversible.')) return
+    setBusyId(lead.id)
+    try {
+      await dispatch(deleteLead(lead.id)).unwrap()
+      onRefetch?.()
+    } catch (err) {
+      // 409 : lead lié à un devis → on archive plutôt que de supprimer.
+      window.alert(err?.detail ?? 'Suppression impossible.')
+    } finally { setBusyId(null) }
+  }
 
   const onSort = (key) =>
     setSort((s) =>
@@ -126,7 +160,7 @@ export default function ListView({ leads, onOpenLead, onAutoQuote }) {
             return (
               <tr
                 key={lead.id}
-                className={perdu ? 'lv-row lv-row-perdu' : 'lv-row'}
+                className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}`}
                 onClick={() => onOpenLead(lead)}
               >
                 <td data-label="Lead">
@@ -228,6 +262,44 @@ export default function ListView({ leads, onOpenLead, onAutoQuote }) {
                     >
                       ⚡ Devis auto
                     </button>
+                    {lead.is_archived ? (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        disabled={busyId === lead.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onRestore(lead)
+                        }}
+                      >
+                        Restaurer
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        disabled={busyId === lead.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onArchive(lead)
+                        }}
+                      >
+                        Archiver
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        disabled={busyId === lead.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDelete(lead)
+                        }}
+                      >
+                        Supprimer
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

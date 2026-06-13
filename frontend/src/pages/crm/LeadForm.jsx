@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { createLead, updateLead } from '../../features/crm/store/crmSlice'
+import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
 
@@ -195,6 +195,21 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
     navigate(`/ventes/devis/nouveau?lead=${lead.id}&discount=0&auto=1`)
   }
 
+  // Archiver / restaurer depuis la fiche : on rafraîchit puis on ferme.
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const toggleArchive = async () => {
+    setArchiveBusy(true)
+    try {
+      if (lead.is_archived) {
+        await dispatch(restoreLead(lead.id)).unwrap()
+      } else {
+        await dispatch(archiveLead(lead.id)).unwrap()
+      }
+      onSaved?.()
+      onClose()
+    } catch { /* erreur silencieuse */ } finally { setArchiveBusy(false) }
+  }
+
   const postNote = async () => {
     const body = noteBody.trim()
     if (!body) return
@@ -235,8 +250,21 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
         <div className="modal-header">
           <h3 className="modal-title">
             {isEdit ? `Lead — ${lead.nom} ${lead.prenom || ''}` : 'Nouveau lead'}
+            {isEdit && lead.is_archived && (
+              <span className="lead-archived-badge">Archivé</span>
+            )}
           </h3>
           <div className="lead-head-actions">
+            {isEdit && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                disabled={archiveBusy}
+                onClick={toggleArchive}
+              >
+                {lead.is_archived ? 'Restaurer' : 'Archiver'}
+              </button>
+            )}
             {isEdit && (
               <button
                 type="button"

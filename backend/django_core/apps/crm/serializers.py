@@ -73,7 +73,12 @@ class LeadSerializer(serializers.ModelSerializer):
         # company/source/external refs are set server-side, never trusted from
         # input. The lead→client link is resolved server-side too (no-duplicate
         # rules in services.py), never accepted from the browser.
-        read_only_fields = ['company', 'external_system', 'external_id', 'client']
+        # L'archivage se pilote par les actions archiver/restaurer, jamais par
+        # un PATCH direct du corps.
+        read_only_fields = [
+            'company', 'external_system', 'external_id', 'client',
+            'is_archived', 'archived_by', 'archived_at',
+        ]
 
     def get_client_nom(self, obj):
         if not obj.client_id:

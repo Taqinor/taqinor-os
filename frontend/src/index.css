@@ -568,6 +568,17 @@ body {
   color: #64748b;
 }
 .lead-head-error { margin: 10px 24px 0; flex-shrink: 0; }
+/* Pastille « Archivé » dans l'en-tête de la fiche lead */
+.lead-archived-badge {
+  margin-left: 10px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #475569;
+  vertical-align: middle;
+}
 /* Astérisque doré : champ requis pour le devis automatique */
 .req-auto { color: var(--cat-gold); font-weight: 700; }
 

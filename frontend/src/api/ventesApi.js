@@ -11,6 +11,8 @@ const ventesApi = {
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
   telechargerPdfDevis: (id) => api.get(`/ventes/devis/${id}/telecharger-pdf/`, { responseType: 'blob' }),
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
+  // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
+  genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
 
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),
@@ -41,6 +43,9 @@ const ventesApi = {
   emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
   marquerPayeeFacture: (id) => api.post(`/ventes/factures/${id}/marquer-payee/`),
   annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),
+  // Paiements : enregistrement manuel + liste par facture.
+  enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
+  getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
 
   // Lignes de facture
   getLignesFacture: (params) => api.get('/ventes/factures-lignes/', { params }),

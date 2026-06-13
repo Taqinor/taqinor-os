@@ -269,6 +269,45 @@ class UserViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    def _role_grants_admin(self, target, role_id):
+        """L'utilisateur serait-il admin avec ce nouveau rôle ?"""
+        if target.is_superuser:
+            return True
+        if role_id in (None, '', 'null'):
+            # Rôle vidé → on retombe sur le legacy.
+            return target.role_legacy == CustomUser.ROLE_ADMIN
+        from apps.roles.models import Role
+        role = Role.objects.filter(pk=role_id).first()
+        return bool(role and 'roles_gerer' in (role.permissions or []))
+
+    def update(self, request, *args, **kwargs):
+        target = self.get_object()
+        data = request.data
+        # Détecte une rétrogradation (perte du rôle admin) ou une
+        # désactivation du compte.
+        retro = False
+        if 'role' in data and target.is_admin_role \
+                and not self._role_grants_admin(target, data.get('role')):
+            retro = True
+        if 'is_active' in data and \
+                str(data.get('is_active')).lower() in ('false', '0', ''):
+            retro = True
+        if retro:
+            if target.is_protected:
+                return Response(
+                    {'detail': 'Ce compte propriétaire est protégé : il ne '
+                               'peut pas être rétrogradé ni désactivé.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if target.est_dernier_proprietaire():
+                return Response(
+                    {'detail': 'Impossible de rétrograder le dernier '
+                               'propriétaire : le système doit toujours '
+                               'garder un administrateur.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        return super().update(request, *args, **kwargs)
+
     def destroy(self, request, *args, **kwargs):
         target = self.get_object()
         if target == request.user:
@@ -276,9 +315,21 @@ class UserViewSet(viewsets.ModelViewSet):
                 {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},  # noqa: E501
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if target.is_protected:
+            return Response(
+                {'detail': 'Ce compte propriétaire est protégé : il ne peut '
+                           'pas être supprimé.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if target.is_superuser:
             return Response(
                 {'detail': 'Ce compte ne peut pas être supprimé via l\'ERP.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if target.est_dernier_proprietaire():
+            return Response(
+                {'detail': 'Impossible de supprimer le dernier propriétaire : '
+                           'le système doit toujours garder un administrateur.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().destroy(request, *args, **kwargs)

@@ -97,3 +97,21 @@ def log_note(lead: Lead, user, body: str) -> LeadActivity:
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE, body=body,
     )
+
+
+def log_archive(lead: Lead, user) -> LeadActivity:
+    """Trace l'archivage dans le chatter (geste réversible)."""
+    return LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Lead archivé par {getattr(user, 'username', '?')}",
+    )
+
+
+def log_restore(lead: Lead, user) -> LeadActivity:
+    """Trace la restauration dans le chatter."""
+    return LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Lead restauré par {getattr(user, 'username', '?')}",
+    )

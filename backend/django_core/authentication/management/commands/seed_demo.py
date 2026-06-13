@@ -71,6 +71,11 @@ class Command(BaseCommand):
         if was_created:
             admin.set_password('Demo@2026!')
             admin.save()
+        # Le propriétaire est PROTÉGÉ : ni supprimable ni rétrogradable (même
+        # pour les bases déjà semées). Idempotent.
+        if not admin.is_protected:
+            admin.is_protected = True
+            admin.save(update_fields=['is_protected'])
 
         resp, was_created = CustomUser.objects.get_or_create(
             username='demo_resp',

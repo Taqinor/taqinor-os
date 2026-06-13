@@ -56,6 +56,12 @@ class CustomUser(AbstractUser):
         blank=True,
         related_name='users',
     )
+    # Compte propriétaire protégé : ne peut être ni supprimé ni rétrogradé,
+    # par personne (y compris lui-même). Garantit, avec la garde « dernier
+    # propriétaire », qu'on ne peut jamais se verrouiller dehors. La
+    # récupération passe par l'accès SSH au serveur (management command), pas
+    # par un secret en dur. Additif, défaut False.
+    is_protected = models.BooleanField(default=False)
 
     @property
     def is_admin_role(self):
@@ -64,6 +70,31 @@ class CustomUser(AbstractUser):
         if self.role:
             return 'roles_gerer' in (self.role.permissions or [])
         return self.role_legacy == self.ROLE_ADMIN
+
+    @staticmethod
+    def admins_actifs_qs(company):
+        """Utilisateurs actifs ayant le rôle propriétaire/admin d'une société.
+
+        Couvre les deux modèles de rôle : FK Role avec 'roles_gerer', et le
+        legacy role_legacy='admin'. Sert à empêcher la suppression/rétrogradation
+        du DERNIER propriétaire.
+        """
+        from django.db.models import Q
+        qs = CustomUser.objects.filter(is_active=True)
+        if company is not None:
+            qs = qs.filter(company=company)
+        return qs.filter(
+            Q(role__permissions__contains=['roles_gerer'])
+            | Q(role__isnull=True, role_legacy=CustomUser.ROLE_ADMIN)
+            | Q(is_superuser=True)
+        )
+
+    def est_dernier_proprietaire(self):
+        """True si retirer ce compte laisserait sa société sans aucun admin."""
+        if not self.is_admin_role:
+            return False
+        autres = self.admins_actifs_qs(self.company).exclude(pk=self.pk)
+        return not autres.exists()
 
     @property
     def is_responsable(self):

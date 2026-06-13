@@ -40,6 +40,7 @@ export default function DevisList() {
   const [showForm, setShowForm]       = useState(false)
   const [editDevis, setEditDevis]     = useState(null)
   const [convertingId, setConvertingId] = useState(null)
+  const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
 
@@ -98,6 +99,20 @@ export default function DevisList() {
       alert(err?.detail ?? JSON.stringify(err))
     } finally {
       setConvertingId(null)
+    }
+  }
+
+  const handleGenererFacture = async (d) => {
+    setFactureGenId(d.id)
+    try {
+      const res = await ventesApi.genererFacture(d.id)
+      const f = res.data
+      alert(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
+      dispatch(fetchDevis())
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Génération de facture impossible.')
+    } finally {
+      setFactureGenId(null)
     }
   }
 
@@ -308,6 +323,11 @@ export default function DevisList() {
                       2 options
                     </span>
                   )}
+                  {d.solde && (
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 3 }}>
+                      Facturé {d.solde.facture} / Payé {d.solde.paye} / Restant {d.solde.restant} MAD
+                    </div>
+                  )}
                 </td>
                 <td data-label="Statut">
                   <span className="badge" style={{ background: meta.bg, color: meta.color }}>
@@ -365,6 +385,27 @@ export default function DevisList() {
                       >
                         {convertingId === d.id ? '...' : '→ BC'}
                       </button>
+                    )}
+
+                    {d.statut === 'accepte' && (
+                      d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
+                        <button
+                          className="btn btn-sm btn-outline"
+                          disabled
+                          title="Toutes les tranches ont été facturées"
+                        >
+                          Échéancier complet
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={() => handleGenererFacture(d)}
+                          disabled={factureGenId === d.id}
+                          title="Générer la prochaine tranche de facture"
+                        >
+                          {factureGenId === d.id ? '...' : 'Générer facture'}
+                        </button>
+                      )
                     )}
                   </div>
                 </td>

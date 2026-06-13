@@ -69,6 +69,16 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(stage=stage)
         if source:
             qs = qs.filter(source=source)
+        # Archivage : par défaut on CACHE les leads archivés. ?archived=all
+        # montre tout ; ?archived=only ne montre que les archivés (filtre UI
+        # « Archivés »). Les actions detail (retrieve/archiver/restaurer/
+        # destroy) doivent atteindre un lead archivé → pas de filtre alors.
+        archived = self.request.query_params.get('archived')
+        if self.action == 'list':
+            if archived == 'only':
+                qs = qs.filter(is_archived=True)
+            elif archived != 'all':
+                qs = qs.filter(is_archived=False)
         return qs
 
     def perform_create(self, serializer):
@@ -84,11 +94,61 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['noter', 'devis_auto']:
+        elif self.action in WRITE_ACTIONS + [
+            'noter', 'devis_auto', 'archiver', 'restaurer',
+        ]:
+            # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
+            # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire.
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    @action(detail=True, methods=['post'], url_path='archiver',
+            permission_classes=[IsResponsableOrAdmin])
+    def archiver(self, request, pk=None):
+        """Archive un lead (réversible). Le retire des vues par défaut."""
+        from django.utils import timezone
+        lead = self.get_object()
+        if not lead.is_archived:
+            lead.is_archived = True
+            lead.archived_by = request.user
+            lead.archived_at = timezone.now()
+            lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+            activity.log_archive(lead, request.user)
+        return Response(LeadSerializer(lead, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='restaurer',
+            permission_classes=[IsResponsableOrAdmin])
+    def restaurer(self, request, pk=None):
+        """Restaure un lead archivé (le ramène dans les vues par défaut)."""
+        lead = self.get_object()
+        if lead.is_archived:
+            lead.is_archived = False
+            lead.archived_by = None
+            lead.archived_at = None
+            lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+            activity.log_restore(lead, request.user)
+        return Response(LeadSerializer(lead, context={'request': request}).data)
+
+    def destroy(self, request, *args, **kwargs):
+        """Suppression DÉFINITIVE (admin). Bloquée si des devis sont liés —
+        on n'orpheline jamais de pièces financières : message clair, archiver
+        à la place. L'événement est journalisé (qui/quand) côté serveur."""
+        import logging
+        lead = self.get_object()
+        if lead.devis.exists():
+            return Response(
+                {'detail': "Ce lead a des devis liés. Supprimer le lead "
+                           "détacherait ces pièces — archivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        logging.getLogger('crm.audit').warning(
+            'HARD DELETE lead id=%s "%s" par user=%s (company=%s)',
+            lead.id, lead, getattr(request.user, 'username', '?'),
+            getattr(lead, 'company_id', None),
+        )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])

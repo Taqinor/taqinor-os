@@ -27,6 +27,15 @@ const TABS = [
   { key: 'annulee',   label: 'Annulées' },
 ]
 
+const MODES_PAIEMENT = [
+  { value: 'especes',     label: 'Espèces' },
+  { value: 'virement',    label: 'Virement' },
+  { value: 'cheque',      label: 'Chèque' },
+  { value: 'carte',       label: 'Carte' },
+  { value: 'prelevement', label: 'Prélèvement' },
+  { value: 'autre',       label: 'Autre' },
+]
+
 const today = new Date().toISOString().slice(0, 10)
 const isOverdue = f =>
   f.is_overdue ||
@@ -56,6 +65,43 @@ export default function FactureList() {
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
+
+  // ── Enregistrement de paiement ──
+  const [payTarget, setPayTarget] = useState(null) // facture ciblée
+  const [paySaving, setPaySaving] = useState(false)
+  const [payMontant, setPayMontant] = useState('')
+  const [payDate, setPayDate] = useState(today)
+  const [payMode, setPayMode] = useState('virement')
+  const [payReference, setPayReference] = useState('')
+
+  const openPayModal = (f) => {
+    setPayTarget(f)
+    setPayMontant(f.montant_du ?? '')
+    setPayDate(today)
+    setPayMode('virement')
+    setPayReference('')
+  }
+
+  const handleEnregistrerPaiement = async (e) => {
+    e.preventDefault()
+    if (!payTarget) return
+    setPaySaving(true)
+    try {
+      await ventesApi.enregistrerPaiement(payTarget.id, {
+        montant: parseFloat(payMontant),
+        date_paiement: payDate,
+        mode: payMode,
+        reference: payReference || undefined,
+      })
+      setPayTarget(null)
+      dispatch(fetchFactures())
+      alert('Paiement enregistré.')
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Enregistrement du paiement impossible.')
+    } finally {
+      setPaySaving(false)
+    }
+  }
 
   useEffect(() => { dispatch(fetchFactures()) }, [dispatch])
 
@@ -173,6 +219,56 @@ export default function FactureList() {
         <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
       )}
 
+      {/* ── Modale d'enregistrement de paiement ── */}
+      {payTarget && (
+        <div className="modal-overlay" onClick={() => setPayTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleEnregistrerPaiement}>
+              <div className="modal-header">
+                <h3 className="modal-title">Enregistrer un paiement — {payTarget.reference}</h3>
+                <button type="button" className="modal-close" onClick={() => setPayTarget(null)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 0 }}>
+                  Payé {payTarget.montant_paye} / Dû {payTarget.montant_du} MAD
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Montant (MAD)</label>
+                  <input type="number" min="0" step="any" className="form-control" required
+                         value={payMontant} onChange={e => setPayMontant(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Date de paiement</label>
+                  <input type="date" className="form-control" required
+                         value={payDate} onChange={e => setPayDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mode</label>
+                  <select className="form-control" value={payMode} onChange={e => setPayMode(e.target.value)}>
+                    {MODES_PAIEMENT.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Référence (optionnel)</label>
+                  <input type="text" className="form-control"
+                         value={payReference} onChange={e => setPayReference(e.target.value)} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setPayTarget(null)}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={paySaving}>
+                  {paySaving ? '...' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── Tabs ── */}
       <div className="status-tabs">
         {TABS.map(t => (
@@ -213,7 +309,14 @@ export default function FactureList() {
 
             return (
               <tr key={f.id} className={overdue ? 'row-overdue' : ''}>
-                <td><strong>{f.reference}</strong></td>
+                <td>
+                  <strong>{f.reference}</strong>
+                  {f.type_facture_display && (
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>
+                      {f.type_facture_display}
+                    </div>
+                  )}
+                </td>
                 <td>{f.client_nom ?? '—'}</td>
                 <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
                 <td>
@@ -227,6 +330,11 @@ export default function FactureList() {
                   {f.total_ttc != null
                     ? `${parseFloat(f.total_ttc).toFixed(2)} DH`
                     : '—'}
+                  {(f.montant_paye != null || f.montant_du != null) && (
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>
+                      Payé {f.montant_paye} / Dû {f.montant_du} MAD
+                    </div>
+                  )}
                 </td>
                 <td>
                   <span className="badge" style={{ background: meta.bg, color: meta.color }}>
@@ -256,6 +364,15 @@ export default function FactureList() {
                         onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}
                       >
                         {busy ? '...' : '✓ Payée'}
+                      </button>
+                    )}
+                    {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => openPayModal(f)}
+                        title="Enregistrer un paiement"
+                      >
+                        Enregistrer paiement
                       </button>
                     )}
                     {f.statut !== 'payee' && f.statut !== 'annulee' && (

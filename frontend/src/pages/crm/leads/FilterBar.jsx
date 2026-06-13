@@ -27,6 +27,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
 
   const set = (key) => (e) => setFilters({ ...filters, [key]: e.target.value })
   const setPerdus = (value) => setFilters({ ...filters, perdus: value })
+  const setArchived = (value) => setFilters({ ...filters, archived: value })
 
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
@@ -93,6 +94,30 @@ export default function FilterBar({ filters, setFilters, leads }) {
           onClick={() => setPerdus('seuls')}
         >
           Perdus seuls
+        </button>
+      </div>
+
+      <div className="fb-pills" role="group" aria-label="Filtre leads archivés">
+        <button
+          type="button"
+          className={`fb-pill${(filters.archived ?? 'actifs') === 'actifs' ? ' fb-pill-active' : ''}`}
+          onClick={() => setArchived('actifs')}
+        >
+          Actifs
+        </button>
+        <button
+          type="button"
+          className={`fb-pill${filters.archived === 'tous' ? ' fb-pill-active' : ''}`}
+          onClick={() => setArchived('tous')}
+        >
+          Tous
+        </button>
+        <button
+          type="button"
+          className={`fb-pill${filters.archived === 'seuls' ? ' fb-pill-active' : ''}`}
+          onClick={() => setArchived('seuls')}
+        >
+          Archivés
         </button>
       </div>
 

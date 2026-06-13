@@ -16,6 +16,11 @@ const crmApi = {
   // Garde serveur du « Devis auto » : 200 {ok:true} si le lead est prêt,
   // 400 {detail:'Manque : …'} sinon — la règle vit côté backend.
   checkDevisAuto: (id) => api.post(`/crm/leads/${id}/devis-auto/`),
+  // Archivage réversible (Commerciale) + suppression définitive (admin).
+  archiverLead: (id) => api.post(`/crm/leads/${id}/archiver/`),
+  restaurerLead: (id) => api.post(`/crm/leads/${id}/restaurer/`),
+  deleteLead: (id) => api.delete(`/crm/leads/${id}/`),
+  getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
 }
 
 export default crmApi

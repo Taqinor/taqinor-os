@@ -249,6 +249,20 @@ class Lead(models.Model):
     utm_term = models.CharField(max_length=300, blank=True, null=True)
 
     note = models.TextField(blank=True, null=True)
+
+    # ── Archivage réversible (2026-06-13) — additif ──
+    # Un lead archivé disparaît des vues par défaut (kanban/liste/calendrier/
+    # graphique) mais reste filtrable (« Archivés ») et restaurable. La
+    # suppression définitive reste un geste admin distinct (destroy).
+    is_archived = models.BooleanField(default=False)
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='leads_archives',
+    )
+    archived_at = models.DateTimeField(null=True, blank=True)
+
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
