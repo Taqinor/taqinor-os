@@ -42,7 +42,7 @@ def _rang_funnel(stage_key: str) -> int:
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     """Avance l'étape du lead quand le STATUT d'un devis change.
 
-    Ne recule jamais, ignore les leads perdus (motif_perte), n'agit que sur
+    Ne recule jamais, ignore les leads perdus (drapeau `perdu`), n'agit que sur
     les transitions envoye/accepte. Écrit UNE entrée d'historique marquée
     automatique (« auto — devis … »).
     """
@@ -54,8 +54,8 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     lead = devis.lead
     if lead is None:
         return
-    if (lead.motif_perte or '').strip():
-        return  # lead perdu — le funnel ne bouge plus automatiquement.
+    if lead.perdu:
+        return  # lead perdu (drapeau) — le funnel ne bouge plus automatiquement.
 
     stage_cible, suffixe = cible
     if _rang_funnel(lead.stage) >= _rang_funnel(stage_cible):

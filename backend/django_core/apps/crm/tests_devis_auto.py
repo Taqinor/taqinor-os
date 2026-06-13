@@ -302,13 +302,26 @@ class TestAvancerStagePourDevis(TestCase):
         self.assertEqual(acts.first().old_value, stages.STAGE_LABELS['COLD'])
 
     def test_lost_lead_untouched(self):
-        self.lead.motif_perte = 'Trop cher'
-        self.lead.save(update_fields=['motif_perte'])
+        # Marqué Perdu via le DRAPEAU (sans motif) — le funnel l'ignore.
+        self.lead.perdu = True
+        self.lead.save(update_fields=['perdu'])
         devis_id, _ = self._create_devis(self.lead)
         self._patch_statut(devis_id, 'accepte')
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.NEW)
         self.assertEqual(self._stage_acts().count(), 0)
+
+    def test_stale_motif_but_not_perdu_still_advances(self):
+        # Texte de motif résiduel mais perdu=False : ce n'est PAS perdu, le
+        # funnel doit avancer normalement (le texte seul ne signale plus rien).
+        self.lead.motif_perte = 'Trop cher'
+        self.lead.perdu = False
+        self.lead.save(update_fields=['motif_perte', 'perdu'])
+        devis_id, _ = self._create_devis(self.lead)
+        self._patch_statut(devis_id, 'envoye')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, 'QUOTE_SENT')
+        self.assertEqual(self._stage_acts().count(), 1)
 
     def test_devis_without_lead_no_crash(self):
         from apps.crm.models import Client
