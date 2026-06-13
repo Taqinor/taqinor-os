@@ -160,6 +160,10 @@ const inputClass =
       <input type="hidden" name="utm_campaign" />
       <input type="hidden" name="utm_content" />
       <input type="hidden" name="utm_term" />
+      <!-- Puissance crête estimée — pré-remplie par l'estimateur de toiture
+           quand le diagnostic est ouvert depuis lui. Vide partout ailleurs :
+           le payload reste alors identique au formulaire live. -->
+      <input type="hidden" name="estimatedKwc" id="lf-kwc-est" />
 
       <p id="lf-err" role="alert" class="mt-4 hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
 
@@ -339,6 +343,8 @@ const inputClass =
     if (roofArea) payload.roofArea = roofArea;
     const orientation = String(fd.get('orientation') ?? '');
     if (orientation) payload.orientation = orientation;
+    const estimatedKwc = String(fd.get('estimatedKwc') ?? '').trim();
+    if (estimatedKwc) payload.estimatedKwc = estimatedKwc;
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Calcul en cours…';

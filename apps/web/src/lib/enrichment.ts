@@ -34,10 +34,19 @@ export interface Enrichment {
   supplyType?: SupplyTypeId;
   roofAreaM2?: number;
   orientation?: OrientationId;
+  /**
+   * Puissance crête estimée (kWc) — pré-remplie par l'estimateur de toiture
+   * (preview privé). Purement additive : comme les autres champs facultatifs,
+   * elle « ride along » vers le CRM et ne touche JAMAIS le seuil, la bande ROI
+   * ni l'événement CAPI.
+   */
+  estimatedKwc?: number;
 }
 
 /** Surface de toiture plausible (m²) : > 0 et sous un plafond raisonnable. */
 const ROOF_AREA_MAX = 100000;
+/** Puissance crête plausible (kWc) : > 0 et sous un plafond raisonnable. */
+const KWC_MAX = 100000;
 
 /**
  * Normalise les champs facultatifs : ne retient que des valeurs canoniques
@@ -58,10 +67,19 @@ export function cleanEnrichment(body: unknown): Enrichment {
   const area = typeof rawArea === 'number' ? rawArea : parseFloat(String(rawArea ?? '').replace(',', '.'));
   if (Number.isFinite(area) && area > 0 && area <= ROOF_AREA_MAX) out.roofAreaM2 = area;
 
+  const rawKwc = b.estimatedKwc;
+  const kwc = typeof rawKwc === 'number' ? rawKwc : parseFloat(String(rawKwc ?? '').replace(',', '.'));
+  if (Number.isFinite(kwc) && kwc > 0 && kwc <= KWC_MAX) out.estimatedKwc = kwc;
+
   return out;
 }
 
 /** Vrai si au moins un champ facultatif a été rempli. */
 export function hasEnrichment(e: Enrichment): boolean {
-  return e.supplyType !== undefined || e.roofAreaM2 !== undefined || e.orientation !== undefined;
+  return (
+    e.supplyType !== undefined ||
+    e.roofAreaM2 !== undefined ||
+    e.orientation !== undefined ||
+    e.estimatedKwc !== undefined
+  );
 }
