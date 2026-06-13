@@ -61,13 +61,15 @@ test('groupLeadsByStage répartit, compte et totalise les devis par colonne', ()
   assert.equal(byKey.CONTACTED.count, 0)
 })
 
-test('perdu = motif de perte renseigné — un drapeau, jamais une colonne', () => {
-  assert.equal(isPerdu({ motif_perte: 'Trop cher' }), true)
-  assert.equal(isPerdu({ motif_perte: '   ' }), false)
-  assert.equal(isPerdu({ motif_perte: null }), false)
+test('perdu = drapeau booléen `perdu`, jamais le texte du motif ni une colonne', () => {
+  assert.equal(isPerdu({ perdu: true }), true)
+  assert.equal(isPerdu({ perdu: true, motif_perte: '' }), true) // perdu sans motif tapé
+  assert.equal(isPerdu({ perdu: false, motif_perte: 'Trop cher' }), false) // motif résiduel ≠ perdu
+  assert.equal(isPerdu({ motif_perte: 'Trop cher' }), false)
+  assert.equal(isPerdu({ perdu: false }), false)
   assert.equal(isPerdu({}), false)
   // Un lead perdu garde son étape dans le regroupement.
-  const cols = groupLeadsByStage([{ id: 9, stage: 'FOLLOW_UP', motif_perte: 'Parti ailleurs' }])
+  const cols = groupLeadsByStage([{ id: 9, stage: 'FOLLOW_UP', perdu: true }])
   assert.equal(cols.find((c) => c.key === 'FOLLOW_UP').count, 1)
 })
 
@@ -87,8 +89,9 @@ test('filterLeads : texte libre, canal, responsable, priorité, tag', () => {
 
 test('filterLeads : inclure / exclure / seulement les perdus', () => {
   const leads = [
-    { id: 1, stage: 'NEW', nom: 'A', motif_perte: 'Trop cher' },
-    { id: 2, stage: 'NEW', nom: 'B' },
+    { id: 1, stage: 'NEW', nom: 'A', perdu: true },
+    // motif résiduel mais perdu=false → compte comme NON perdu désormais.
+    { id: 2, stage: 'NEW', nom: 'B', motif_perte: 'Ancien motif' },
   ]
   assert.equal(filterLeads(leads, { perdus: 'avec' }).length, 2)
   assert.deepEqual(filterLeads(leads, { perdus: 'sans' }).map((l) => l.id), [2])

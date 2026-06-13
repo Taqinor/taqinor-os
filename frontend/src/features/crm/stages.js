@@ -51,10 +51,11 @@ export const PRIORITE_LABELS = {
 // Nombre d'étoiles pleines affichées sur la carte (sur 2).
 export const PRIORITE_STARS = { basse: 0, normale: 1, haute: 2 }
 
-// « Perdu » est un DRAPEAU (motif de perte renseigné), jamais une colonne :
-// le lead reste dans son étape avec le style perdu.
-export const isPerdu = (lead) =>
-  Boolean(lead && lead.motif_perte && String(lead.motif_perte).trim())
+// « Perdu » est un DRAPEAU booléen (champ `perdu`), jamais une colonne ni le
+// texte du motif : un lead est perdu SSI perdu === true, à n'importe quelle
+// étape. Le motif_perte n'est que l'explication, plus jamais le signal.
+// Le lead reste dans son étape avec le style perdu.
+export const isPerdu = (lead) => Boolean(lead && lead.perdu)
 
 // Tags libres, séparés par des virgules → liste propre.
 export const tagList = (lead) =>
