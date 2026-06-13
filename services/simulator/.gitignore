@@ -1,3 +1,7 @@
+# Secrets — SERVER-ONLY, NEVER commit (JWT signing key etc.)
+secret.env
+*.env
+
 # Client / personal data (loi 09-08) and runtime state — SERVER-ONLY, NEVER commit.
 users.db
 *.db

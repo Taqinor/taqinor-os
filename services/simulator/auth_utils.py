@@ -1,8 +1,17 @@
+import os
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import bcrypt
 
-SECRET_KEY = "taqinor-secret-key-2025-solar-simulator"
+# The JWT signing secret is provided ONLY at runtime, server-side (the systemd
+# unit loads it from /opt/taqinor-simulator/secret.env via EnvironmentFile).
+# It is never hardcoded or committed. Fail closed if it is missing.
+SECRET_KEY = os.environ.get("SIMULATOR_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SIMULATOR_SECRET_KEY is not set. Configure it server-side "
+        "(EnvironmentFile in the systemd unit) — never hardcode it."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
