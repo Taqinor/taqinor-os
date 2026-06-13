@@ -35,6 +35,7 @@ const I = {
   roles_icon:   <Ic><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></Ic>,
   briefcase:    <Ic size={13}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></Ic>,
   user_single:  <Ic size={13}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Ic>,
+  chantiers:    <Ic><path d="M2 20h20"/><path d="M4 20V8l8-5 8 5v12"/><path d="M9 20v-6h6v6"/></Ic>,
 }
 
 const ROLE_META = {
@@ -71,6 +72,12 @@ const NAV_SECTIONS = [
       { to: '/ventes/devis',         label: 'Devis',            icon: I.devis,        roles: ['normal','responsable','admin'] },
       { to: '/ventes/bons-commande', label: 'Bons de commande', icon: I.bons_cmd,     roles: ['normal','responsable','admin'] },
       { to: '/ventes/factures',      label: 'Factures',         icon: I.factures,     roles: ['normal','responsable','admin'] },
+    ],
+  },
+  {
+    label: 'CHANTIERS',
+    items: [
+      { to: '/chantiers',            label: 'Chantiers',        icon: I.chantiers,    roles: ['normal','responsable','admin'] },
     ],
   },
   {

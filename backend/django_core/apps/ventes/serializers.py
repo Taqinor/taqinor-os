@@ -64,6 +64,17 @@ class DevisSerializer(serializers.ModelSerializer):
         s = solde_devis(obj)
         return {k: str(v) for k, v in s.items()}
 
+    # Chantier lié (s'il existe) — pour le lien devis ↔ chantier dans l'UI.
+    chantier = serializers.SerializerMethodField()
+
+    def get_chantier(self, obj):
+        from apps.installations.models import Installation
+        inst = Installation.objects.filter(devis=obj).first()
+        if inst is None:
+            return None
+        return {'id': inst.id, 'reference': inst.reference,
+                'statut': inst.statut}
+
     class Meta:
         model = Devis
         fields = '__all__'

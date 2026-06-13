@@ -12,6 +12,11 @@ class Client(models.Model):
         blank=True,
         related_name='clients',
     )
+
+    class TypeClient(models.TextChoices):
+        PARTICULIER = 'particulier', 'Particulier'
+        ENTREPRISE = 'entreprise', 'Entreprise'
+
     nom = models.CharField(max_length=255)
     prenom = models.CharField(max_length=255, blank=True, null=True)
     # Optionnel depuis 2026-06 : un client peut être créé depuis un lead sans
@@ -19,9 +24,19 @@ class Client(models.Model):
     email = models.EmailField(blank=True, null=True)
     telephone = models.CharField(max_length=20, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
+    # ── Type + identifiants légaux marocains (2026-06) — additif ──
+    # Particulier → CIN ; Entreprise → ICE / IF / RC. Le formulaire montre le
+    # bon jeu de champs selon le type. Migration de données : un client qui
+    # porte déjà un ICE devient « Entreprise », sinon « Particulier ».
+    type_client = models.CharField(
+        max_length=12, choices=TypeClient.choices,
+        default=TypeClient.PARTICULIER)
+    cin = models.CharField(max_length=30, blank=True, null=True)
     # Identifiant Commun de l'Entreprise (clients professionnels marocains).
     # Optionnel : affiché sur les PDF uniquement quand renseigné.
     ice = models.CharField(max_length=30, blank=True, null=True)
+    if_fiscal = models.CharField(max_length=30, blank=True, null=True)
+    rc = models.CharField(max_length=30, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -20,6 +20,7 @@ const DevisList = lazy(() => import('../pages/ventes/DevisList'))
 const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
+const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
 const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
@@ -68,6 +69,9 @@ const router = createBrowserRouter([
   { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
   { path: '/ventes/bons-commande', loader: authLoader, element: <WithLayout><VentesKanban /></WithLayout> },
   { path: '/ventes/factures', loader: authLoader, element: <WithLayout><FactureList /></WithLayout> },
+
+  // Chantiers / Installations
+  { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
