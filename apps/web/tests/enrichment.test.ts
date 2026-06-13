@@ -53,3 +53,32 @@ describe('cleanEnrichment — champs facultatifs, jamais bloquants', () => {
     expect(hasEnrichment(e)).toBe(true);
   });
 });
+
+describe('cleanEnrichment — puissance estimée (estimateur de toiture)', () => {
+  it('estimatedKwc : nombre positif accepté, borné, jamais négatif', () => {
+    expect(cleanEnrichment({ estimatedKwc: '5.5' })).toEqual({ estimatedKwc: 5.5 });
+    expect(cleanEnrichment({ estimatedKwc: 12 })).toEqual({ estimatedKwc: 12 });
+    // Valeurs absurdes ignorées sans bloquer la capture
+    expect(cleanEnrichment({ estimatedKwc: '-3' })).toEqual({});
+    expect(cleanEnrichment({ estimatedKwc: '0' })).toEqual({});
+    expect(cleanEnrichment({ estimatedKwc: 'abc' })).toEqual({});
+    expect(cleanEnrichment({ estimatedKwc: 999999 })).toEqual({});
+  });
+
+  it('estimatedKwc seul → hasEnrichment vrai (ride-along, jamais bloquant)', () => {
+    const e = cleanEnrichment({ estimatedKwc: '8.25' });
+    expect(e).toEqual({ estimatedKwc: 8.25 });
+    expect(hasEnrichment(e)).toBe(true);
+  });
+
+  it('estimatedKwc cohabite avec surface + orientation (pré-remplissage outil)', () => {
+    const e = cleanEnrichment({ roofArea: '64', orientation: 'sud', estimatedKwc: '11' });
+    expect(e).toEqual({ roofAreaM2: 64, orientation: 'sud', estimatedKwc: 11 });
+    expect(hasEnrichment(e)).toBe(true);
+  });
+
+  it('absent → toujours {} (lead identique octet pour octet au formulaire live)', () => {
+    expect(cleanEnrichment({ supplyType: 'mono' })).toEqual({ supplyType: 'mono' });
+    expect(hasEnrichment(cleanEnrichment({}))).toBe(false);
+  });
+});
