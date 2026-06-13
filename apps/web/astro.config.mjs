@@ -38,6 +38,7 @@ const workersDevRedirect = () => ({
       if (!cfg) throw new Error('workers-dev-redirect: dist/server/wrangler.json introuvable après le build');
 
       await copyFile(new URL('./worker/canonical.mjs', import.meta.url), new URL('canonical.mjs', serverDir));
+      await copyFile(new URL('./worker/redirects.mjs', import.meta.url), new URL('redirects.mjs', serverDir));
       await copyFile(new URL('./worker/redirect-entry.mjs', import.meta.url), new URL('redirect-entry.mjs', serverDir));
 
       cfg.main = 'redirect-entry.mjs';
