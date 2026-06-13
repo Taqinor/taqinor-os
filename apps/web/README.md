@@ -44,8 +44,18 @@ npm test             # vitest — logique métier (téléphone, seuil, régimes,
 npm run build        # build production
 npm run preview      # sert le build via wrangler
 npm run generate-og  # régénère les images OG (public/og/)
-npx wrangler deploy  # déploiement (CLOUDFLARE_API_TOKEN requis)
 ```
+
+## Déploiement
+
+**Pousser/merger sur `main`** — Cloudflare Workers Builds construit et déploie
+automatiquement. Ne jamais lancer `wrangler deploy` à la main et ne jamais
+demander de token Cloudflare (l'ancien est mort et supprimé).
+
+`taqinor-web.taqinor.workers.dev` répond en **301 vers https://taqinor.ma**
+(chemin préservé) : wrapper committé dans `worker/`, installé dans
+`dist/server/` au build par le hook `workersDevRedirect` d'`astro.config.mjs`
+(qui active aussi `run_worker_first` sur les routes HTML).
 
 ## Conventions
 

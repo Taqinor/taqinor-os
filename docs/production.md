@@ -11,7 +11,7 @@ est une copie de dev qui peut diverger sans conséquence.
 | Quoi | Valeur |
 |---|---|
 | Serveur | Hetzner cx23 (2 vCPU / 4 Go / 40 Go), Falkenstein |
-| Adresse publique | https://178-105-192-116.sslip.io |
+| Adresse publique | **https://api.taqinor.ma** (canonique) — l'ancienne https://178-105-192-116.sslip.io répond toujours |
 | Code déployé | branche `main` uniquement, clonée dans `/opt/taqinor-os` |
 | Reverse proxy | Caddy (HTTPS Let's Encrypt automatique) — seul service exposé |
 | Pare-feu cloud | entrées 22 / 80 / 443 uniquement (Postgres/Redis/MinIO internes) |
@@ -45,14 +45,18 @@ powershell -File scripts\deploy-prod.ps1
 
 (pull de `main` sur le serveur → rebuild → migrations → redémarrage.)
 
-## Migrer vers api.taqinor.ma plus tard
+## api.taqinor.ma (fait le 2026-06-13)
 
-1. Pointer le DNS `api.taqinor.ma` (A) vers l'IP du serveur.
-2. Sur le serveur, dans `/opt/taqinor-os/.env` : changer `PUBLIC_HOSTNAME`,
-   `DJANGO_ALLOWED_HOSTS` et `CSRF_TRUSTED_ORIGINS` vers le nouveau nom.
-3. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` —
-   Caddy obtient le nouveau certificat tout seul.
-4. Mettre à jour `LEAD_WEBHOOK_URL` du Worker (`npx wrangler secret put`).
+La Caddyfile sert les DEUX hôtes (`{$PUBLIC_HOSTNAME}, api.taqinor.ma`) —
+un certificat Let's Encrypt chacun, l'ancienne adresse sslip.io reste
+vivante. `DJANGO_ALLOWED_HOSTS` et `CSRF_TRUSTED_ORIGINS` du `.env` serveur
+listent les deux. Le script de déploiement recharge Caddy à chaque passage.
+
+`LEAD_WEBHOOK_URL` du Worker est un **secret dashboard-only** (plus de token
+CLI sur le PC) : pour le basculer, dash.cloudflare.com → Workers & Pages →
+`taqinor-web` → Settings → Variables and Secrets → `LEAD_WEBHOOK_URL` →
+valeur `https://api.taqinor.ma/api/django/crm/webhooks/website-leads/` →
+Deploy. Une minute, à faire par Reda.
 
 ## Restaurer une sauvegarde
 
@@ -64,7 +68,9 @@ sauvegarde sur un serveur séparé sans toucher à la prod.
 ## Récepteur de leads du site
 
 Le Worker Cloudflare du site POSTe les leads qualifiés sur
-`https://178-105-192-116.sslip.io/api/django/crm/webhooks/website-leads/`
-avec l'en-tête `X-Webhook-Secret`. Le secret n'existe **que** dans l'.env
-du serveur et dans la config du Worker (`wrangler secret`) — jamais dans le
-dépôt ni dans une conversation.
+`/api/django/crm/webhooks/website-leads/` avec l'en-tête `X-Webhook-Secret`
+(URL configurée par le secret Worker `LEAD_WEBHOOK_URL` — encore l'hôte
+sslip.io tant que la bascule dashboard vers api.taqinor.ma, décrite plus
+haut, n'est pas faite ; les deux hôtes acceptent le webhook). Le secret
+n'existe **que** dans l'.env du serveur et dans les secrets du Worker —
+jamais dans le dépôt ni dans une conversation.

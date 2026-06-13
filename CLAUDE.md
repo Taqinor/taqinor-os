@@ -66,11 +66,17 @@ repo yet, the rule still applies to any future integration.
 - Key-gated features (work only with API keys in `.env`): OCR (`ZHIPU_API_KEY`),
   chatbot/SQL agent (`GROQ_API_KEY` or alternative), outbound email/contact
   form delivery (`SENDGRID_API_KEY`; defaults to console backend locally).
-- Deploys (apps/web): `CLOUDFLARE_API_TOKEN` is set machine-wide (user-level
-  env var) on Reda's PC — never ask for it, never paste it. Note: shells
-  spawned by an already-running session may need
-  `$env:CLOUDFLARE_API_TOKEN = [Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN','User')`
-  to pick it up without a restart.
+- Deploys (apps/web): the public site auto-deploys via **Cloudflare Workers
+  Builds** on every push/merge to `main` — that IS the deploy mechanism.
+  NEVER ask for a Cloudflare API token (the old one is dead and deleted from
+  this PC) and NEVER run `wrangler deploy` manually. Worker secrets
+  (LEAD_WEBHOOK_URL, LEAD_WEBHOOK_SECRET…) are dashboard-only — changing one
+  is a manual step for the founder.
+- Backend production URL: `https://api.taqinor.ma` (canonical since 2026-06);
+  the old `https://178-105-192-116.sslip.io` still answers (same server, same
+  Caddy block). `taqinor-web.taqinor.workers.dev` 301-redirects to
+  `https://taqinor.ma` (wrapper in `apps/web/worker/`, installed at build by
+  the `workersDevRedirect` hook in `apps/web/astro.config.mjs`).
 - **Public contact form is PARKED (off by default).** The landing-page contact
   form is disabled: the `apps/contact` endpoint (`/api/django/contact/`) returns
   404 and sends no email when off, and the landing CTAs route to `/login`
