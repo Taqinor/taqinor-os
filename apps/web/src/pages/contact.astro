@@ -1,5 +1,14 @@
 ---
+/**
+ * Page publique — élévation « élégance retenue » : typographie éditoriale,
+ * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
+ * + mouvement photo (Ken Burns d'en-tête, montée d'échelle au défilement).
+ * Tout le mouvement est désactivé sous prefers-reduced-motion. Le diagnostic
+ * et son flux de données restent inchangés (composant partagé DiagnosticForm).
+ * Voir apps/web/DESIGN_RATIONALE.md.
+ */
 import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import DiagnosticForm from '../components/DiagnosticForm.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
@@ -14,51 +23,54 @@ const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
   description="Demandez votre étude solaire gratuite : formulaire d'estimation immédiate, WhatsApp direct, intervention dans tout le Maroc. Réponse sous 24 h ouvrées."
   ogSlug="contact"
 >
-  <Article33Ribbon />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
 
-  <section class="px-4 py-14 text-white">
-    <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-brass cine-in text-brass-300">Réponse sous 24 h ouvrées</p>
-      <h1 class="display cine-in mt-4 max-w-2xl text-4xl sm:text-5xl [animation-delay:120ms]">Parlons de votre installation</h1>
-      <p class="cine-in mt-4 max-w-xl leading-relaxed text-white/85 [animation-delay:240ms]">
-        Le formulaire vous donne une fourchette immédiate. Pour aller plus vite,
-        écrivez-nous directement sur WhatsApp.
-      </p>
-    </div>
-  </section>
+    <section class="px-4 py-20 text-white">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Réponse sous 24 h ouvrées</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Parlons de votre installation</h1>
+        <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
+          Le formulaire vous donne une fourchette immédiate. Pour aller plus vite,
+          écrivez-nous directement sur WhatsApp.
+        </p>
+      </div>
+    </section>
 
-  <DiagnosticForm heading="Diagnostic solaire — estimation immédiate" />
+    <DiagnosticForm heading="Diagnostic solaire — estimation immédiate" />
 
-  <!-- Toujours dans l'acte éclairé : les raccourcis WhatsApp et la fiche NAP -->
-  <section class="bg-blanc-azur px-4 pb-16 text-encre">
-    <div class="mx-auto max-w-2xl">
-    <div class="grid gap-4 sm:grid-cols-2">
-      <a href={waGeneral} rel="noopener"
-        class="group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]">
-        <p class="tech-label text-azur-600">Nouveau projet</p>
-        <p class="mt-2 font-display font-bold">WhatsApp — nouvelle installation</p>
-        <p class="mt-1 text-sm text-encre-soft">Étude et devis pour un nouveau projet</p>
-      </a>
-      <a href={waRegul} rel="noopener"
-        class="group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]">
-        <p class="tech-label text-azur-600">Article 33</p>
-        <p class="mt-2 font-display font-bold">WhatsApp — régularisation</p>
-        <p class="mt-1 text-sm text-encre-soft">Installation existante à mettre en conformité</p>
-      </a>
-    </div>
+    <!-- Toujours dans l'acte éclairé : les raccourcis WhatsApp et la fiche NAP -->
+    <section class="bg-blanc-azur px-4 pb-16 text-encre">
+      <div class="mx-auto max-w-2xl">
+        <div class="grid gap-4 sm:grid-cols-2" data-stagger>
+          <a href={waGeneral} rel="noopener"
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
+            <p class="tech-label text-azur-600">Nouveau projet</p>
+            <p class="mt-2 font-display font-bold">WhatsApp — nouvelle installation</p>
+            <p class="mt-1 text-sm text-encre-soft">Étude et devis pour un nouveau projet</p>
+          </a>
+          <a href={waRegul} rel="noopener"
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:1">
+            <p class="tech-label text-azur-600">Article 33</p>
+            <p class="mt-2 font-display font-bold">WhatsApp — régularisation</p>
+            <p class="mt-1 text-sm text-encre-soft">Installation existante à mettre en conformité</p>
+          </a>
+        </div>
 
-    <div class="mt-8 border border-azur-900/15 bg-blanc-azur p-7 text-center text-sm">
-      <p class="font-display text-lg font-bold">{NAP.name}</p>
-      <p class="mt-2">
-        <a href={`tel:${NAP.phone}`} class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplay}</a>
-        &nbsp;·&nbsp;
-        <a href={`mailto:${NAP.email}`} class="underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.email}</a>
-      </p>
-      <p class="mt-3 text-encre-soft">
-        Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — déplacements dans tout le Maroc.
-      </p>
-      <p class="mt-1 text-xs text-encre-faint">Interventions sur site uniquement — pas d'accueil du public en agence.</p>
-    </div>
-    </div>
-  </section>
+        <div class="v2-rise mt-8 border border-azur-900/15 bg-blanc-azur p-7 text-center text-sm">
+          <p class="font-display text-lg font-bold">{NAP.name}</p>
+          <p class="mt-2">
+            <a href={`tel:${NAP.phone}`} class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplay}</a>
+            &nbsp;·&nbsp;
+            <a href={`mailto:${NAP.email}`} class="underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.email}</a>
+          </p>
+          <p class="mt-3 text-encre-soft">
+            Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — déplacements dans tout le Maroc.
+          </p>
+          <p class="mt-1 text-xs text-encre-faint">Interventions sur site uniquement — pas d'accueil du public en agence.</p>
+        </div>
+      </div>
+    </section>
+  </div>
 </Layout>

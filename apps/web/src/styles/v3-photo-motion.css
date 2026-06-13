@@ -1,28 +1,32 @@
 /*
- * v3 — couche DELTA pour la prévisualisation privée /v3, importée UNIQUEMENT
- * par src/pages/v3/index.astro (donc jamais par /v2 ni par les pages
- * publiques). Elle s'ajoute PAR-DESSUS v2.css (chargée via <V2Enhance/>) :
- * /v3 réutilise tel quel le mouvement v2 (révélations de section, count-up,
- * parallaxe d'en-tête) et n'ajoute QUE les deux mouvements photo ci-dessous.
+ * Mouvement photo « v3 » — couche additive importée par <V2Enhance/>, donc
+ * active sur TOUTES les pages élevées du site (l'élévation « élégance retenue »
+ * promue en production le 2026-06-13). Elle s'ajoute par-dessus v2.css et
+ * ajoute les DEUX mouvements photo retenus : un zoom d'en-tête lent (Ken Burns)
+ * et une montée d'échelle douce des photos au défilement. Le nom « v3 » garde
+ * la traçabilité de la probe d'origine ; les routes de prévisualisation /v2 et
+ * /v3 ont été supprimées une fois l'élévation promue.
  *
  * Aucune dépendance, aucune librairie : transform/opacity seulement.
  *
- * Garde-fous (identiques à v2) :
+ * Garde-fous (identiques au reste de l'élévation) :
  *  - tout est gated `.v2-js` (posé par le script inline de V2Enhance avant le
  *    rendu) ET sous `prefers-reduced-motion: no-preference` → sans JS ou en
- *    reduced-motion, rien ne bouge : le héros est figé et les photos sont à
+ *    reduced-motion, rien ne bouge : les héros sont figés et les photos sont à
  *    leur état final (opaques, échelle 1). Base accessible, zéro-JS préservée.
  *  - mouvement par transform/opacity uniquement → zéro CLS, GPU-friendly.
  */
 
 @media (prefers-reduced-motion: no-preference) {
-  /* ===== Mouvement photo 1/2 — Ken Burns sur le héros ====================
-     L'IMAGE (et la vidéo qui la recouvre) du héros dérive-zoome très lentement
-     et en continu : scale(1) → scale(1.06) sur 25 s, ease doux, alternance
-     (respiration, jamais de saut de réinitialisation). Volontairement
-     presque subliminal.
+  /* ===== Mouvement photo 1/2 — Ken Burns sur les héros ===================
+     L'IMAGE (et la vidéo qui la recouvre, sur l'accueil) des héros pleine page
+     dérive-zoome très lentement et en continu : scale(1) → scale(1.06) sur
+     25 s, ease doux, alternance (respiration, jamais de saut). Volontairement
+     presque subliminal. S'applique automatiquement à tout en-tête `.v2-hero-
+     media` (accueil, résidentiel, professionnel) ; les pages à en-tête textuel
+     n'ont pas de `.v2-hero-media` et ne sont donc pas concernées.
 
-     Composition avec la parallaxe v2 : la parallaxe agit sur le CONTENEUR
+     Composition avec la parallaxe : la parallaxe agit sur le CONTENEUR
      `.v2-hero-media` (scale 1.1 + translate, desktop, posée par le JS v2) ;
      le Ken Burns agit sur l'IMAGE imbriquée. Conteneur = parallaxe, image =
      zoom → les deux transforms se composent (éléments distincts), aucune
@@ -30,7 +34,7 @@
 
      Mobile : le conteneur ne reçoit AUCUNE transform (parallaxe coupée < 1024
      px) → le Ken Burns est la seule motion, et elle est VISIBLE sur le
-     téléphone — tout l'objet de cette comparaison.
+     téléphone.
 
      Performance : premier cadre = scale(1) → l'élément LCP (l'affiche) est
      peint à l'identique, LCP non régressé. Conteneur overflow-hidden + image
@@ -46,22 +50,26 @@
   }
 
   /* ===== Mouvement photo 2/2 — montée d'échelle des photos au défilement ==
-     Chaque photo d'installation (cartes « deux métiers », galerie-preuve)
-     monte UNE seule fois en entrant dans le viewport : opacity 0 → 1 +
-     scale(0.96) → 1, 600 ms ease-out, sans rebond.
+     Chaque photo de contenu monte UNE seule fois en entrant dans le viewport :
+     opacity 0 → 1 + scale(0.96) → 1, 600 ms ease-out, sans rebond.
 
-     Pilotée par la MÊME IntersectionObserver que les révélations v2 : la photo
-     (enveloppe `.v3-photo`) est imbriquée dans un `.v2-rise`. Quand l'observer
-     ajoute `.v2-in` au parent (une fois, puis `unobserve`), la section monte
-     ET la photo monte ensemble → lecture comme UN seul mouvement, pas deux
-     empilés. Le délai reprend le même stagger que le parent (var --v2-i
+     Cible AUTOMATIQUE : tout `<picture>` enfant direct d'un `.v2-rise` (les
+     photos d'installation sont toutes rendues ainsi par le composant Picture,
+     enfant direct du <figure>/<a> `.v2-rise`). Aucun marquage par page n'est
+     nécessaire. Les en-têtes (`.v2-hero-media`, jamais `.v2-rise`) ne sont
+     donc PAS concernés → ils ne sont jamais masqués (LCP protégé) et gardent
+     le seul Ken Burns.
+
+     Pilotée par la MÊME IntersectionObserver que les révélations : quand
+     l'observer ajoute `.v2-in` au parent `.v2-rise` (une fois, puis
+     `unobserve`), la section monte ET la photo monte ensemble → lecture comme
+     UN seul mouvement. Le délai reprend le stagger du parent (var --v2-i
      héritée) pour rester synchrone dans une grille `data-stagger`.
 
-     Zéro CLS : transform/opacity ne touchent pas la mise en page ; l'enveloppe
-     réserve la taille finale (l'image porte width/height). Le hover-zoom de
-     l'image (scale 1.04) reste sur l'<img> imbriqué → transforms composées,
-     aucun conflit. */
-  .v2-js .v3-photo {
+     Zéro CLS : transform/opacity ne touchent pas la mise en page ; l'image
+     porte width/height (taille réservée). Le hover-zoom (scale 1.04) reste sur
+     l'<img> imbriqué dans le <picture> → transforms composées, aucun conflit. */
+  .v2-js .v2-rise > picture {
     opacity: 0;
     transform: scale(0.96);
     transition:
@@ -70,7 +78,7 @@
     transition-delay: calc(var(--v2-i, 0) * 80ms);
     will-change: opacity, transform;
   }
-  .v2-js .v2-rise.v2-in .v3-photo {
+  .v2-js .v2-rise.v2-in > picture {
     opacity: 1;
     transform: none;
   }

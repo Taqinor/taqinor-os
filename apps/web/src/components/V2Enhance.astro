@@ -11,8 +11,13 @@
  *
  * Tout mouvement est désactivé sous prefers-reduced-motion: reduce.
  * Aucune dépendance, aucune librairie d'animation.
+ *
+ * La couche photo (Ken Burns d'en-tête + montée d'échelle au défilement) est
+ * importée ci-dessous : elle s'applique donc automatiquement à toute page qui
+ * monte <V2Enhance/>, sans marquage par page.
  */
 import '../styles/v2.css';
+import '../styles/v3-photo-motion.css';
 ---
 
 <script is:inline>
