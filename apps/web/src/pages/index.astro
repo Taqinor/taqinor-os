@@ -139,8 +139,8 @@ const gallery = [
   <section class="border-y border-white/10 px-4 py-14 sm:py-16">
     <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
       <div class="reveal">
-        <dd class="fig lum whitespace-nowrap text-4xl">5 projets</dd>
-        <dt class="mt-2 text-sm leading-snug text-lune-soft">livrés depuis 2025 — visites de sites possibles sur demande</dt>
+        <dd class="font-display text-xl font-bold text-white">Chantiers visitables</dd>
+        <dt class="mt-2 text-sm leading-snug text-lune-soft">Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur</dt>
       </div>
       <div class="reveal">
         <dd class="fig lum whitespace-nowrap text-4xl">43,48 kWc</dd>
@@ -298,13 +298,10 @@ const gallery = [
               <span class="fig lum text-3xl">{c.kwc}</span>
               <span class="tech-label text-lune-faint">{c.lieu}</span>
             </div>
-            <p class="mt-3 border-b border-white/10 pb-3 text-sm text-lune">
+            <p class="mt-3 border-t border-white/10 pt-3 text-sm text-lune">
               Production : <span class="fig text-base text-brass-300">{c.production}</span>
               <span class="mt-1 block text-xs text-lune-faint">{c.materiel}</span>
             </p>
-            <figcaption class="mt-4 flex-1 text-xs leading-relaxed text-lune-faint">
-              Témoignage client à venir — données de production vérifiées sur Deye Cloud.
-            </figcaption>
           </figure>
         ))}
       </div>

@@ -9,7 +9,7 @@ Auto-deploys: connected via Cloudflare Workers Builds, June 2026.
 
 | Route | Contenu |
 |---|---|
-| `/` | Hero + ruban Article 33, bande de confiance, segments, témoignages, formulaire, FAQ |
+| `/` | Hero + ruban Article 33, bande de confiance, segments, fiches chantier, formulaire, FAQ |
 | `/résidentiel` | Villas/appartements, dimensionnement par tranche de facture, ROI 25 ans |
 | `/professionnel` | Industriels, hôtels, cliniques — surplus, régime moyenne tension |
 | `/équipement` | Matériel réellement stocké : Deye, Solis, Dyness, panneaux Tier 1 |
