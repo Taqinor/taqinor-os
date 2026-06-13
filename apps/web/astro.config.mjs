@@ -65,10 +65,11 @@ export default defineConfig({
 
   integrations: [
     sitemap({
-      // Pages de travail privées éventuelles (comparatifs typo/média) — jamais
-      // indexées. Les prévisualisations /v2 et /v3 ont été promues en
-      // production puis supprimées : plus rien à exclure de ce côté.
-      filter: (page) => !/type-test|media-test|variants-test|craft-/.test(page)
+      // Pages de travail privées (comparatifs typo/média, prévisualisations) —
+      // jamais indexées. Les prévisualisations /v2 et /v3 ont été promues en
+      // production puis supprimées ; /preview/* est la zone de revue privée
+      // actuelle (diagnostic enrichi + schéma), exclue tant qu'elle n'est pas promue.
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\//.test(page)
     }),
     workersDevRedirect()
   ]

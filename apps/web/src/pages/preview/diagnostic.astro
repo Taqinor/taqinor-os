@@ -1,0 +1,57 @@
+---
+/**
+ * PAGE PRIVÉE DE PRÉVISUALISATION — /preview/diagnostic (noindex, hors nav,
+ * exclue du sitemap, non liée). Réservée à la revue mobile du fondateur AVANT
+ * toute promotion. Réunit les deux nouveautés additives :
+ *   1. le diagnostic ENRICHI (champs facultatifs « Ajouter des détails ») ;
+ *   2. le schéma « Comment ça marche sur votre toit ».
+ *
+ * Aucune page publique ni le formulaire live ne sont touchés : cette route
+ * et ses composants n'existent que pour la preview. Construite sur le design
+ * de production (élévation « élégance retenue » : .v2 + V2Enhance).
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import SchemaInstallation from '../../components/SchemaInstallation.astro';
+import DiagnosticFormEnriched from '../../components/DiagnosticFormEnriched.astro';
+---
+
+<Layout
+  title="Prévisualisation privée — diagnostic enrichi + schéma | Taqinor"
+  description="Page de travail privée, non indexée."
+  noindex={true}
+>
+  <div class="v2">
+    <V2Enhance />
+
+    <!-- Bandeau de revue — rappelle que rien n'est en ligne -->
+    <section class="border-b border-white/10 bg-nuit-800 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label rule-brass text-brass-300">Prévisualisation privée · non publiée</p>
+        <h1 class="display v2-page-title mt-5 max-w-[20ch] text-white">Diagnostic enrichi &amp; schéma d'installation</h1>
+        <p class="v2-lead mt-6 max-w-2xl text-lune-soft">
+          Deux ajouts à valider avant toute mise en ligne. Rien ici n'est public : le site et le
+          formulaire en production sont inchangés. Faites défiler pour voir le schéma, puis le
+          diagnostic avec sa nouvelle section <strong class="text-lune">facultative</strong>
+          « Ajouter des détails ».
+        </p>
+        <ul class="mt-8 grid gap-3 text-sm text-lune-soft sm:grid-cols-2">
+          <li class="border-l-2 border-brass-400/60 pl-4">
+            <strong class="block text-white">1 · Le schéma</strong>
+            Soleil → panneaux → onduleur → votre maison + réseau. Réutilisable sur toutes les pages.
+          </li>
+          <li class="border-l-2 border-brass-400/60 pl-4">
+            <strong class="block text-white">2 · Les champs facultatifs</strong>
+            Alimentation, surface, orientation. Toujours sautables — la capture reste identique à aujourd'hui.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Le schéma, présenté seul (tel qu'il apparaîtrait sur résidentiel/pro) -->
+    <SchemaInstallation />
+
+    <!-- Le diagnostic enrichi, dans le même « acte final éclairé » que le live -->
+    <DiagnosticFormEnriched heading="Votre diagnostic en 60 secondes" />
+  </div>
+</Layout>
