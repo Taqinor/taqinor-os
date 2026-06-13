@@ -29,6 +29,16 @@
   background: #fde8e8;
 }
 
+/* Lead archivé : ligne grisée/atténuée (visible via Tous / Archivés). */
+.lv-table tbody tr.lv-row-archived {
+  opacity: 0.55;
+  background: #f1f5f9;
+}
+.lv-table tbody tr.lv-row-archived:hover {
+  opacity: 0.75;
+  background: #e2e8f0;
+}
+
 /* ── En-têtes triables ── */
 .lv-th-btn {
   display: inline-flex;

@@ -130,7 +130,14 @@ export const EMPTY_FILTERS = {
   priorite: '',
   tag: '',
   perdus: 'avec', // 'avec' | 'sans' | 'seuls'
+  archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
 }
+
+// Paramètre serveur ?archived=… déduit du filtre (vide = actifs uniquement).
+export const archivedParam = (value) =>
+  value === 'tous' ? { archived: 'all' }
+    : value === 'seuls' ? { archived: 'only' }
+      : {}
 
 // Filtre partagé par les quatre vues (kanban, liste, calendrier, graphique).
 export function filterLeads(leads, filters) {

@@ -6,6 +6,7 @@ from .views import (
     BonCommandeViewSet,
     FactureViewSet,
     LigneFactureViewSet,
+    PaiementViewSet,
 )
 
 router = DefaultRouter()
@@ -14,6 +15,7 @@ router.register(r'devis-lignes', LigneDevisViewSet)
 router.register(r'bons-commande', BonCommandeViewSet)
 router.register(r'factures', FactureViewSet)
 router.register(r'factures-lignes', LigneFactureViewSet)
+router.register(r'paiements', PaiementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -76,6 +76,33 @@ export const updateLead = createAsyncThunk('crm/updateLead', async ({ id, data }
   }
 })
 
+export const archiveLead = createAsyncThunk('crm/archiveLead', async (id, { rejectWithValue }) => {
+  try {
+    const res = await crmApi.archiverLead(id)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data ?? err.message)
+  }
+})
+
+export const restoreLead = createAsyncThunk('crm/restoreLead', async (id, { rejectWithValue }) => {
+  try {
+    const res = await crmApi.restaurerLead(id)
+    return res.data
+  } catch (err) {
+    return rejectWithValue(err.response?.data ?? err.message)
+  }
+})
+
+export const deleteLead = createAsyncThunk('crm/deleteLead', async (id, { rejectWithValue }) => {
+  try {
+    await crmApi.deleteLead(id)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data ?? err.message)
+  }
+})
+
 const crmSlice = createSlice({
   name: 'crm',
   initialState: {
@@ -132,6 +159,17 @@ const crmSlice = createSlice({
       .addCase(updateLead.fulfilled, (state, action) => {
         const idx = state.leads.findIndex(l => l.id === action.payload.id)
         if (idx !== -1) state.leads[idx] = action.payload
+      })
+      .addCase(archiveLead.fulfilled, (state, action) => {
+        const idx = state.leads.findIndex(l => l.id === action.payload.id)
+        if (idx !== -1) state.leads[idx] = action.payload
+      })
+      .addCase(restoreLead.fulfilled, (state, action) => {
+        const idx = state.leads.findIndex(l => l.id === action.payload.id)
+        if (idx !== -1) state.leads[idx] = action.payload
+      })
+      .addCase(deleteLead.fulfilled, (state, action) => {
+        state.leads = state.leads.filter(l => l.id !== action.payload)
       })
   },
 })

@@ -57,6 +57,18 @@ export default function UsersManagement() {
     await load()
   }
 
+  // Un utilisateur est "admin" si superuser, role_legacy admin, ou s'il dispose
+  // de la permission roles_gerer (selon les champs déjà fournis par /users/).
+  const isAdminUser = (u) => {
+    if (u.is_superuser === true) return true
+    if (u.role_legacy === 'admin') return true
+    const perms = u.permissions || u.role?.permissions || []
+    if (Array.isArray(perms) && perms.includes('roles_gerer')) return true
+    return false
+  }
+
+  const adminCount = users.filter(isAdminUser).length
+
   const roleColor = (nom) => {
     if (!nom) return { bg: '#f1f5f9', text: '#475569' }
     const n = nom.toLowerCase()
@@ -128,9 +140,21 @@ export default function UsersManagement() {
             <tbody>
               {users.map((u, i) => {
                 const c = roleColor(u.role_nom)
+                const isLastAdmin = isAdminUser(u) && adminCount <= 1
+                const deleteLocked = u.is_protected || isLastAdmin
+                const lockTooltip = u.is_protected
+                  ? 'Compte propriétaire protégé'
+                  : 'Au moins un administrateur doit rester'
                 return (
                   <tr key={u.id} style={{ borderBottom: i < users.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500 }}>{u.username}</td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                      {u.username}
+                      {u.is_protected && (
+                        <span style={{ marginLeft: '0.5rem', background: '#fef3c7', color: '#92400e', padding: '0.15rem 0.5rem', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 600 }}>
+                          Propriétaire protégé
+                        </span>
+                      )}
+                    </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#64748b' }}>{u.email || '—'}</td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>
                       <span style={{ background: c.bg, color: c.text, padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 500 }}>
@@ -140,10 +164,17 @@ export default function UsersManagement() {
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>{u.is_active ? '✅' : '❌'}</td>
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                       {u.username !== currentUsername && (
-                        <button onClick={() => handleDelete(u.id)}
-                          style={{ background: 'transparent', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' }}>
-                          Supprimer
-                        </button>
+                        deleteLocked ? (
+                          <button disabled title={lockTooltip}
+                            style={{ background: 'transparent', border: '1px solid #e2e8f0', color: '#cbd5e1', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'not-allowed', fontSize: '0.8rem' }}>
+                            Supprimer
+                          </button>
+                        ) : (
+                          <button onClick={() => handleDelete(u.id)}
+                            style={{ background: 'transparent', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            Supprimer
+                          </button>
+                        )
                       )}
                     </td>
                   </tr>

@@ -4,7 +4,9 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.stock.models import MouvementStock
-from .models import Devis, LigneDevis, BonCommande, Facture, LigneFacture
+from .models import (
+    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
+)
 from .serializers import (
     DevisSerializer,
     DevisWriteSerializer,
@@ -13,6 +15,7 @@ from .serializers import (
     FactureSerializer,
     FactureWriteSerializer,
     LigneFactureSerializer,
+    PaiementSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -51,7 +54,8 @@ class DevisViewSet(viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal'
+            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
+            'generer_facture',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -232,6 +236,35 @@ class DevisViewSet(viewsets.ModelViewSet):
         )
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='generer-facture',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def generer_facture(self, request, pk=None):
+        """Génère la PROCHAINE facture de tranche de l'échéancier du devis.
+
+        1er appel → facture d'acompte (30 % ou 50 % selon le mode) ; appels
+        suivants → tranche matériel puis solde. Chaque facture est numérotée
+        sans collision et créée « Émise » (postée). L'échéancier vient de
+        l'unique mapping PAYMENT_TERMS_BY_MODE.
+        """
+        devis = self.get_object()
+        from .utils.echeancier import creer_facture_tranche
+        try:
+            facture = creer_facture_tranche(
+                devis, request.user, request.user.company,
+                create_with_reference,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
+        )
 
 
 class LigneDevisViewSet(viewsets.ModelViewSet):
@@ -431,14 +464,15 @@ class FactureViewSet(viewsets.ModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['paiements']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'emettre', 'marquer_payee', 'annuler',
+            'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
         ]:
             return [IsResponsableOrAdmin()]
-        elif self.action == 'destroy':
+        # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
+        elif self.action in ['destroy', 'annuler']:
             return [IsAdminRole()]
         return [IsAdminRole()]
 
@@ -492,7 +526,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def annuler(self, request, pk=None):
         facture = self.get_object()
         if facture.statut == Facture.Statut.PAYEE:
@@ -503,6 +537,57 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture.statut = Facture.Statut.ANNULEE
         facture.save()
         return Response(FactureSerializer(facture).data)
+
+    @action(detail=True, methods=['get'], url_path='paiements',
+            permission_classes=[IsAnyRole])
+    def paiements(self, request, pk=None):
+        """Liste les paiements enregistrés sur cette facture."""
+        facture = self.get_object()
+        return Response(
+            PaiementSerializer(
+                facture.paiements.all(), many=True
+            ).data
+        )
+
+    @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
+            permission_classes=[IsResponsableOrAdmin])
+    def enregistrer_paiement(self, request, pk=None):
+        """Enregistre MANUELLEMENT un paiement (montant + date + mode).
+
+        Réduit le reste à payer de la facture et le solde du devis. Quand la
+        facture est intégralement réglée, elle passe automatiquement « Payée ».
+        Disponible à la Commerciale (création) ; l'annulation reste admin.
+        """
+        from decimal import Decimal
+        facture = self.get_object()
+        if facture.statut == Facture.Statut.ANNULEE:
+            return Response(
+                {'detail': 'Impossible d\'encaisser sur une facture annulée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = PaiementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        montant = serializer.validated_data.get('montant')
+        if montant is None or montant <= 0:
+            return Response(
+                {'detail': 'Le montant du paiement doit être positif.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            serializer.save(
+                facture=facture,
+                company=facture.company,
+                created_by=request.user,
+            )
+            # Statut auto : intégralement réglée → « Payée ».
+            facture.refresh_from_db()
+            if facture.montant_du <= Decimal('0') and \
+                    facture.statut != Facture.Statut.ANNULEE:
+                facture.statut = Facture.Statut.PAYEE
+                facture.save(update_fields=['statut'])
+        return Response(
+            FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=['post'], url_path='generer-pdf',
             permission_classes=[IsResponsableOrAdmin])
@@ -549,6 +634,26 @@ class FactureViewSet(viewsets.ModelViewSet):
             {'detail': 'Envoi email (TODO Sem. 4)'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lecture seule des paiements (l'enregistrement passe par la facture).
+
+    Visible par tout rôle authentifié ; tenant-scopé par société.
+    """
+    queryset = Paiement.objects.select_related(
+        'facture', 'created_by'
+    ).all()
+    serializer_class = PaiementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_paiement', 'montant', 'date_creation']
+    ordering = ['-date_paiement']
+
+    def get_queryset(self):
+        return _company_qs(super().get_queryset(), self.request.user)
+
+    def get_permissions(self):
+        return [IsAnyRole()]
 
 
 class LigneFactureViewSet(viewsets.ModelViewSet):

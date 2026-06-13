@@ -85,7 +85,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'role_nom', 'role_legacy', 'permissions',
-            'is_active', 'is_superuser',
+            'is_active', 'is_superuser', 'is_protected',
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
         )
@@ -93,7 +93,10 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'role_nom', 'role_legacy', 'permissions',
-            'is_superuser',
+            # is_protected ne se pilote PAS via l'API (pas de privilège qui
+            # se donne tout seul) : seulement par le seed et la commande de
+            # récupération serveur.
+            'is_superuser', 'is_protected',
         )
 
     def get_permissions(self, obj):

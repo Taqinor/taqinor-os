@@ -65,6 +65,38 @@ instantané → **Restore** (écrase le serveur avec l'état de ce jour-là).
 Pour un besoin ponctuel, « Convert to snapshot » permet de monter la
 sauvegarde sur un serveur séparé sans toucher à la prod.
 
+## Récupération du compte propriétaire
+
+Le système garantit qu'il existe **toujours** au moins un compte propriétaire
+(administrateur) actif : le serveur ET l'interface refusent de supprimer ou de
+rétrograder le dernier propriétaire, et le compte propriétaire `demo_admin` est
+marqué **protégé** (ni supprimable ni rétrogradable, par personne — même
+lui-même). On ne peut donc pas se verrouiller dehors depuis l'application.
+
+Si malgré tout l'accès propriétaire est perdu (mot de passe oublié, compte
+désactivé à la main en base, compte effacé), la récupération passe par
+**l'accès SSH au serveur** (que vous seul possédez) — **il n'existe aucun mot
+de passe par défaut, aucun compte caché, aucun secret dans le code**. La racine
+de confiance, c'est « j'ai le SSH du serveur ».
+
+Sur le serveur :
+
+```bash
+cd /opt/taqinor-os               # dossier du dépôt sur le serveur
+docker compose exec django_core python manage.py recover_owner
+```
+
+- Sans argument : réinitialise `demo_admin`, le réactive, lui rend le rôle
+  propriétaire, le marque protégé, et **génère un mot de passe fort affiché
+  une seule fois** (à noter immédiatement).
+- Choisir le compte / le mot de passe :
+  `recover_owner --username reda --password 'MonNouveauMdp!2026'`
+- Recréer le propriétaire s'il a disparu :
+  `recover_owner --username reda --company taqinor-demo` (le `--company` n'est
+  nécessaire que s'il y a plusieurs sociétés en base).
+
+La commande est idempotente : on peut la relancer sans risque.
+
 ## Récepteur de leads du site
 
 Le Worker Cloudflare du site POSTe les leads qualifiés sur

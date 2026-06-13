@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 _DEFAULT_WATT = 450
 
+# ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
+# Décision propriétaire 2026-06-12. Tous les formats PDF ET l'échéancier
+# devis → factures (acompte/tranches) lisent CE mapping ; plus aucun
+# pourcentage de paiement en dur ailleurs. Agricole = défaut résidentiel
+# (30/60/10) en attente d'un éventuel veto du fondateur.
+PAYMENT_TERMS_BY_MODE = {
+    "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
+    "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
+    "agricole": {"acompte": 30, "materiel": 60, "solde": 10},
+}
+
 # Brand tokens from the simulator catalogue — longest/most specific first so
 # 'Deyness' wins over its substring 'Deye'.
 _BRAND_TOKENS = [
@@ -408,15 +419,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         out.append("Structures + installation complète")
         return out[:6]
 
-    # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
-    # Décision propriétaire 2026-06-12. Tous les formats rendent CE mapping ;
-    # plus aucun pourcentage en dur dans les gabarits. Agricole = défaut
-    # résidentiel (30/60/10) en attente d'un éventuel veto du fondateur.
-    PAYMENT_TERMS_BY_MODE = {
-        "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
-        "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
-        "agricole": {"acompte": 30, "materiel": 60, "solde": 10},
-    }
+    # Conditions de paiement par mode — source unique au niveau module.
     payment_terms = PAYMENT_TERMS_BY_MODE.get(
         mode or "residentiel", PAYMENT_TERMS_BY_MODE["residentiel"])
 

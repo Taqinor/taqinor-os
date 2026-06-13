@@ -152,6 +152,19 @@
         <td class="text-right"><strong>{{ "%.2f"|format(ligne.total_ht) }} MAD</strong></td>
       </tr>
       {% endfor %}
+      {# Facture de tranche (acompte/solde) : aucune ligne produit, une seule
+         ligne de libellé avec le montant HT figé. Additif — n'affecte pas les
+         factures classiques qui ont leurs lignes. #}
+      {% if not facture.lignes.all() and facture.libelle %}
+      <tr>
+        <td>1</td>
+        <td>{{ facture.libelle }}</td>
+        <td class="text-right">1</td>
+        <td class="text-right">{{ "%.2f"|format(facture.total_ht) }} MAD</td>
+        <td class="text-right">—</td>
+        <td class="text-right"><strong>{{ "%.2f"|format(facture.total_ht) }} MAD</strong></td>
+      </tr>
+      {% endif %}
     </tbody>
   </table>
 

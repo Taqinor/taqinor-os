@@ -1,6 +1,8 @@
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Devis, LigneDevis, BonCommande, Facture, LigneFacture
+from .models import (
+    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
+)
 
 
 class LigneDevisSerializer(serializers.ModelSerializer):
@@ -48,10 +50,19 @@ class DevisSerializer(serializers.ModelSerializer):
     def get_nb_options(self, obj):
         return self._display(obj)['nb_options']
 
+    # Solde du devis : total TTC, montant facturé, payé, restant + avancement
+    # de l'échéancier. Calculé par l'unique helper apps.ventes.utils.echeancier.
+    solde = serializers.SerializerMethodField()
+
     def get_lead_nom(self, obj):
         if not obj.lead_id:
             return None
         return f"{obj.lead.nom} {obj.lead.prenom or ''}".strip()
+
+    def get_solde(self, obj):
+        from .utils.echeancier import solde_devis
+        s = solde_devis(obj)
+        return {k: str(v) for k, v in s.items()}
 
     class Meta:
         model = Devis
@@ -98,13 +109,28 @@ class LigneFactureSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class PaiementSerializer(serializers.ModelSerializer):
+    mode_display = serializers.CharField(source='get_mode_display', read_only=True)
+
+    class Meta:
+        model = Paiement
+        fields = '__all__'
+        # company/created_by forcés côté serveur — jamais depuis le corps.
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture']
+
+
 class FactureSerializer(serializers.ModelSerializer):
     lignes = LigneFactureSerializer(many=True, read_only=True)
-    total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    total_ttc = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    paiements = PaiementSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    montant_paye = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    montant_du = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
+    devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     is_overdue = serializers.SerializerMethodField()
 
     class Meta:
