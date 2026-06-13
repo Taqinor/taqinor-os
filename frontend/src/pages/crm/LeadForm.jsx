@@ -116,6 +116,7 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
     stage: F('stage', 'NEW'), owner: F('owner', '') ?? '',
     canal: F('canal', '') ?? '', priorite: F('priorite', 'normale'),
     tags: F('tags'), motif_perte: F('motif_perte'),
+    perdu: lead?.perdu ?? false,
     relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
     // Énergie
     facture_hiver: F('facture_hiver'), facture_ete: F('facture_ete'),
@@ -356,9 +357,23 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
                        placeholder="ex: Régularisation 82-21, VIP" />
                 </div>
-                {/* Motif de perte : visible seulement si le lead est « Froid » (perdu). */}
-                {fields.stage === 'COLD' && (
-                  <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" />
+              </div>
+              <div className="form-row">
+                {/* « Perdu ? » est un drapeau indépendant de l'étape : un lead
+                    peut être perdu à n'importe quelle étape. */}
+                <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+                  <label className="pdf-toggle">
+                    <input type="checkbox" checked={fields.perdu}
+                           onChange={e => set('perdu', e.target.checked)} />
+                    <span>Perdu ?</span>
+                  </label>
+                </div>
+                {/* Motif de perte : visible dès que le lead est marqué Perdu,
+                    quelle que soit l'étape. */}
+                {fields.perdu && (
+                  <div className="form-group fg-grow">
+                    <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" />
+                  </div>
                 )}
               </div>
             </Sec>

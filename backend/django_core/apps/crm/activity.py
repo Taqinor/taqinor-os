@@ -23,6 +23,7 @@ TRACKED_FIELDS = {
     'canal': 'Canal',
     'priorite': 'Priorité',
     'tags': 'Tags',
+    'perdu': 'Perdu',
     'motif_perte': 'Motif de perte',
     'relance_date': 'Relance',
     'type_installation': "Type d'installation",
