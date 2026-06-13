@@ -29,12 +29,10 @@ const EXACT = {
  * Cible de redirection { target, status } pour une requête, sinon null
  * (la requête continue vers l'app Astro).
  *
- * TEMPORAIRE : l'ancien outil de devis /simulator est réhébergé sur
- * https://simulateur.taqinor.ma, mais ce sous-domaine n'a pas encore de
- * certificat HTTPS valide — on replie donc /simulator* vers /contact en 302.
- * Bascule prévue (one-liner) une fois le certificat en place :
- *   if (path === '/simulator' || path.startsWith('/simulator/'))
- *     return { target: 'https://simulateur.taqinor.ma/' + url.search, status: 301 };
+ * /simulator : l'ancien outil de devis est réhébergé sur
+ * https://simulateur.taqinor.ma (HTTPS valide depuis 2026-06-13, app servie
+ * sous /simulator/). On redirige en 301 permanent en PRÉSERVANT le chemin —
+ * /simulator/login → https://simulateur.taqinor.ma/simulator/login.
  */
 export function pathRedirect(requestUrl) {
   const url = new URL(requestUrl);
@@ -42,7 +40,8 @@ export function pathRedirect(requestUrl) {
   if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1); // tolère la barre finale
 
   if (path === '/simulator' || path.startsWith('/simulator/')) {
-    return { target: url.origin + '/contact' + url.search, status: 302 };
+    // chemin original conservé (url.pathname, pas la version sans barre finale)
+    return { target: 'https://simulateur.taqinor.ma' + url.pathname + url.search, status: 301 };
   }
 
   const hit = EXACT[path];

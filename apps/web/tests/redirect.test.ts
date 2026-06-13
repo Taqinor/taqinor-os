@@ -53,15 +53,22 @@ describe('pathRedirect', () => {
     });
   });
 
-  it('replie /simulator et ses sous-chemins vers /contact en 302 (repli temporaire)', () => {
+  it('redirige /simulator et ses sous-chemins vers le sous-domaine (301, chemin préservé)', () => {
     expect(pathRedirect('https://taqinor.ma/simulator')).toEqual({
-      target: 'https://taqinor.ma/contact',
-      status: 302,
+      target: 'https://simulateur.taqinor.ma/simulator',
+      status: 301,
     });
-    expect(pathRedirect('https://taqinor.ma/simulator/').status).toBe(302);
-    expect(pathRedirect('https://taqinor.ma/simulator/v2/etape')).toEqual({
-      target: 'https://taqinor.ma/contact',
-      status: 302,
+    expect(pathRedirect('https://taqinor.ma/simulator/')).toEqual({
+      target: 'https://simulateur.taqinor.ma/simulator/',
+      status: 301,
+    });
+    expect(pathRedirect('https://taqinor.ma/simulator/login')).toEqual({
+      target: 'https://simulateur.taqinor.ma/simulator/login',
+      status: 301,
+    });
+    expect(pathRedirect('https://taqinor.ma/simulator?utm_source=g')).toEqual({
+      target: 'https://simulateur.taqinor.ma/simulator?utm_source=g',
+      status: 301,
     });
   });
 
