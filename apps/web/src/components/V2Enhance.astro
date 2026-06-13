@@ -1,0 +1,127 @@
+---
+/**
+ * Enrichissement v2 — additif et privé. À placer EN TÊTE du contenu de chaque
+ * page /v2*. Rôles :
+ *  1. pose le gate `.v2-js` (inline, synchrone) avant le rendu du contenu qui
+ *     suit — sans JS, le gate n'est jamais posé et tout reste visible ;
+ *  2. importe la couche v2.css (portée .v2) ;
+ *  3. exécute l'UNIQUE script de mouvement : IntersectionObserver pour les
+ *     révélations + le count-up (sans CLS), et une parallaxe d'en-tête
+ *     desktop (transform seulement).
+ *
+ * Tout mouvement est désactivé sous prefers-reduced-motion: reduce.
+ * Aucune dépendance, aucune librairie d'animation.
+ */
+import '../styles/v2.css';
+---
+
+<script is:inline>
+  document.documentElement.classList.add('v2-js');
+</script>
+
+<script>
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Espaces admis DANS un nombre : normal (0x20), insécable (0xA0), fine (0x202F).
+  // Construit via fromCharCode pour garder la source en ASCII pur.
+  const SP = ' ' + String.fromCharCode(0xa0, 0x202f);
+  const NUM_RE = new RegExp('\\d[\\d' + SP + ']*(?:,\\d+)?', 'g');
+  const GROUP_RE = new RegExp('\\d[' + SP + ']\\d');
+  const SP_RE = new RegExp('[' + SP + ']', 'g');
+
+  // Formatage français : virgule décimale, espace milliers (comme le site).
+  function frFormat(value: number, decimals: number, group: boolean): string {
+    let s = value.toFixed(decimals).replace('.', ',');
+    if (group) {
+      const [intPart, dec] = s.split(',');
+      s = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (dec ? ',' + dec : '');
+    }
+    return s;
+  }
+
+  // Anime chaque nombre du texte de 0 → sa valeur, en préservant tout le reste
+  // de la chaîne (unités, plages « X–Y », ponctuation). Largeur verrouillée.
+  function countUp(el: HTMLElement) {
+    const finalText = el.dataset.v2final ?? (el.dataset.v2final = el.textContent ?? '');
+    const tokens = [...finalText.matchAll(NUM_RE)].map((m) => {
+      const raw = m[0];
+      const decimals = (raw.split(',')[1] || '').length;
+      const group = GROUP_RE.test(raw);
+      const val = parseFloat(raw.replace(SP_RE, '').replace(',', '.'));
+      return { raw, idx: m.index ?? 0, decimals, group, val };
+    });
+    if (!tokens.length) return;
+
+    // Verrouille la largeur UNIQUEMENT pour les éléments inline (dans un flux de
+    // texte) : un élément de bloc a déjà une largeur stable, et changer son
+    // display provoquerait un décalage (CLS). Anti-CLS dans les deux cas.
+    if (getComputedStyle(el).display.startsWith('inline')) {
+      const w = el.getBoundingClientRect().width;
+      el.style.display = 'inline-block';
+      el.style.minWidth = w + 'px';
+    }
+
+    const dur = 1100;
+    let start: number | null = null;
+    function frame(t: number) {
+      if (start === null) start = t;
+      const p = Math.min(1, (t - start) / dur);
+      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      let out = '';
+      let last = 0;
+      for (const tk of tokens) {
+        out += finalText.slice(last, tk.idx);
+        out += frFormat(tk.val * e, tk.decimals, tk.group);
+        last = tk.idx + tk.raw.length;
+      }
+      out += finalText.slice(last);
+      el.textContent = out;
+      if (p < 1) requestAnimationFrame(frame);
+      else el.textContent = finalText; // valeur finale exacte
+    }
+    requestAnimationFrame(frame);
+  }
+
+  if (!reduce && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const el = entry.target as HTMLElement;
+          el.classList.add('v2-in');
+          if (el.hasAttribute('data-tally')) countUp(el);
+          obs.unobserve(el);
+        }
+      },
+      { rootMargin: '0px 0px -10% 0px', threshold: 0.2 },
+    );
+    document.querySelectorAll<HTMLElement>('.v2-rise, [data-tally]').forEach((el) => io.observe(el));
+
+    // Parallaxe d'en-tête — desktop uniquement, transform seulement, sur-cadrage
+    // léger (scale 1.1) pour ne jamais découvrir de bord. Désactivée < 1024 px.
+    const media = document.querySelector<HTMLElement>('.v2-hero-media');
+    if (media && window.innerWidth >= 1024) {
+      // Le scale(1.1) est déjà posé en CSS statique — on N'applique RIEN au
+      // chargement (pas de mutation de l'élément LCP) ; on n'ajoute la
+      // translation qu'au premier défilement.
+      const over = media.offsetHeight * 0.045; // marge < sur-cadrage (5 %)
+      const apply = () => {
+        const y = Math.min(window.scrollY * 0.12, over);
+        media.style.transform = `scale(1.1) translate3d(0, ${y}px, 0)`;
+      };
+      let ticking = false;
+      window.addEventListener(
+        'scroll',
+        () => {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(() => {
+            apply();
+            ticking = false;
+          });
+        },
+        { passive: true },
+      );
+    }
+  }
+</script>

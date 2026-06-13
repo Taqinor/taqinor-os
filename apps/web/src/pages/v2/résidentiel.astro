@@ -1,0 +1,173 @@
+---
+/**
+ * PRÉVISUALISATION PRIVÉE v2 — /v2/résidentiel (noindex, hors sitemap).
+ * Copie autonome de /résidentiel enrichie (typo éditoriale, révélations,
+ * count-up, parallaxe d'en-tête). Pages publiques non touchées.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import Picture from '../../components/Picture.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
+import { formatMAD } from '../../lib/format';
+
+const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
+const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
+
+const EXEMPLES_REELS: Record<string, string> = {
+  '1000-1500': 'Exemple réel : réf. NC-10/25 — 3,72 kWc, Nouaceur, octobre 2025',
+  '1500-3000': 'Exemple réel : réf. 236 — 5,68 kWc, El Jadida, mars 2026',
+  '3000-5000': 'Exemple réel : réf. 400 — 11,36 kWc, Casablanca, avril 2026',
+  '5000-10000': 'Exemple réel : réf. 468 — 17,04 kWc, El Jadida, avril 2026',
+};
+
+const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').map((r) => {
+  const band = localEstimateBand(r.id);
+  return {
+    bill: r.label,
+    kwc: band.kwcLabel,
+    payback: band.paybackLabel,
+    invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+    exemple: EXEMPLES_REELS[r.id] ?? null,
+  };
+});
+---
+
+<Layout
+  title="Solaire résidentiel au Maroc — villas et appartements | Taqinor"
+  description="Installation solaire pour villa ou appartement au Maroc : dimensionnement à partir de votre facture, ordres de grandeur transparents, retour sur investissement en 3 à 7 ans, déclaration loi 82-21 incluse."
+  ogSlug="residentiel"
+  noindex
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <!-- ACTE I — le crépuscule plein cadre : la photo est la lumière -->
+    <section class="relative isolate overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/45 to-transparent"></div>
+      </div>
+      <div class="mx-auto grid max-w-6xl gap-10 px-4 pb-20 pt-28 sm:pb-24 sm:pt-36 lg:grid-cols-[1.1fr_1fr] lg:items-end">
+        <div>
+          <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Villas · appartements</p>
+          <h1 class="display v2-page-title cine-in mt-5 max-w-[18ch] [animation-delay:120ms]">Solaire résidentiel : un placement qui se calcule</h1>
+          <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+            Une installation bien dimensionnée couvre 60 à 90 % de la consommation d'une villa.
+            Le calcul part de votre facture réelle, du profil de consommation et de l'orientation
+            de la toiture — pas d'un kit standard.
+          </p>
+        </div>
+        <aside class="cine-in border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)] [animation-delay:360ms]">
+          <p class="tech-label text-brass-600">Extrait d'étude — réf. 400 · Casablanca · avril 2026</p>
+          <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6">
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Puissance installée</p></div>
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Production mesurée</p></div>
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panneaux</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Stockage Dyness LFP</p></div>
+          </div>
+          <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production suivie sur Deye Cloud — accès client inclus.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Transparence des prix — le grand livre, chiffres qui s'égrènent -->
+    <section class="mx-auto max-w-4xl px-4 py-24 sm:py-32">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Transparence des prix</p>
+      <h2 class="display v2-section-title mt-5 text-white">Quelle facture, quelle puissance, quel budget ?</h2>
+      <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+        Ordres de grandeur constatés sur nos installations résidentielles — <strong class="text-lune">jamais un
+        devis</strong> : le chiffrage exact est établi après visite technique, et nous vous dirons
+        honnêtement si le solaire n'est pas le bon placement pour votre profil.
+      </p>
+      <div class="mt-10 border-t-2 border-brass-400/60" data-stagger>
+        <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
+          <span>Facture mensuelle</span><span>Puissance</span><span>Investissement (ordre de grandeur)</span><span>Retour</span>
+        </div>
+        {brackets.map((b, i) => (
+          <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
+            <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
+              <span class="font-display text-base font-bold text-white">{b.bill}</span>
+              <span class="fig lum text-xl sm:text-2xl" data-tally>{b.kwc}</span>
+              <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
+              <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
+            </div>
+            {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+          </div>
+        ))}
+      </div>
+      <p class="mt-5 max-w-2xl text-xs leading-relaxed text-lune-soft">
+        En dessous de 1 000 MAD par mois, le retour sur investissement dépasse généralement
+        7 ans — nous vous le dirons honnêtement. Au-delà de 10 000 MAD par mois, votre profil
+        relève d'une étude dédiée (voir Professionnel).
+      </p>
+    </section>
+
+    <ZelligeDivider tone="white" />
+
+    <!-- Illustration 25 ans -->
+    <section class="border-t border-white/10 px-4 py-24 sm:py-32">
+      <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">L'horizon d'investissement</p>
+          <h2 class="display v2-section-title mt-5 text-white">L'illustration sur 25 ans</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            Les panneaux sont garantis en performance sur 25 ans. Pour une villa avec une facture
+            de 2 000 MAD par mois, une installation de 6 kWc représente un investissement de
+            l'ordre de 60 000 à 75 000 MAD et évite environ 18 000 MAD d'électricité par an.
+            L'investissement est remboursé en 4 à 6 ans ; les 19 à 21 années suivantes,
+            l'électricité produite est quasi gratuite — seul un remplacement d'onduleur est à
+            prévoir sur la période.
+          </p>
+          <dl class="mt-10 grid grid-cols-3 gap-4 border-l-2 border-brass-400/60 pl-6" data-stagger>
+            <div class="v2-rise" style="--v2-i:0">
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 ans</dd>
+              <dt class="tech-label mt-1.5 text-lune-faint">Garantie panneaux</dt>
+            </div>
+            <div class="v2-rise" style="--v2-i:1">
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>3–7 ans</dd>
+              <dt class="tech-label mt-1.5 text-lune-faint">Retour typique</dt>
+            </div>
+            <div class="v2-rise" style="--v2-i:2">
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+              <dt class="tech-label mt-1.5 text-lune-faint">Simple déclaration</dt>
+            </div>
+          </dl>
+        </div>
+        <div class="grid gap-4">
+          <figure class="v2-rise cine-card group relative overflow-hidden">
+            <Picture name="pose-134" alt="L'équipe Taqinor incline un panneau pendant la pose sur une villa de Casablanca"
+              widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
+              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc · 7 135 kWh/an</span>
+              <span class="mt-0.5 block text-xs text-lune">Pose en cours · 8 × Canadian Solar 710 Wc · mars 2026</span>
+            </figcaption>
+          </figure>
+          <figure class="v2-rise cine-card group relative overflow-hidden">
+            <Picture name="champ-villa" alt="Champ de huit panneaux sur toit plat de villa à El Jadida, ciel bleu"
+              widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
+              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc · 7 135 kWh/an</span>
+              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · production mesurée Deye Cloud</span>
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ACTE FINAL — la salle blanche -->
+    <DiagnosticForm heading="Votre diagnostic en 60 secondes" />
+
+    <CtaBand href="#simulateur" seam={false} />
+
+    <StickyCta />
+  </div>
+</Layout>
