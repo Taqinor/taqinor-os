@@ -20,6 +20,10 @@ ALL_PERMISSIONS = [
     'installation_voir',
     'installation_gerer',
     'intervention_gerer',
+    'equipement_voir',
+    'equipement_gerer',
+    'sav_voir',
+    'sav_gerer',
     'parametres_voir',
     'parametres_modifier',
     'users_voir',
@@ -46,6 +50,11 @@ RESPONSABLE_PERMISSIONS = [
     'installation_voir',
     'installation_gerer',
     'intervention_gerer',
+    # SAV : la Commerciale consulte le parc d'équipements et ouvre/traite les
+    # tickets après-vente. La GESTION du parc (ajout d'équipements) reste admin.
+    'equipement_voir',
+    'sav_voir',
+    'sav_gerer',
     'parametres_voir',
     'users_voir',
     'reporting_voir',
@@ -56,6 +65,8 @@ UTILISATEUR_PERMISSIONS = [
     'crm_voir',
     'ventes_voir',
     'installation_voir',
+    'equipement_voir',
+    'sav_voir',
     'parametres_voir',
     'reporting_voir',
 ]

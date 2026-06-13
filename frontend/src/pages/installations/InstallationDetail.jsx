@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
+import { fetchProduits } from '../../features/stock/store/stockSlice'
 import installationsApi from '../../api/installationsApi'
+import savApi from '../../api/savApi'
 import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
   INTERVENTION_TYPES,
 } from '../../features/installations/statuses'
+import { garantieLabel, garantieColor } from '../../features/sav/equipement'
+import {
+  TICKET_TYPES,
+  TICKET_STATUS_LABELS,
+  SOUS_GARANTIE_LABELS,
+  statusColor as ticketStatusColor,
+} from '../../features/sav/ticketStatuses'
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -63,15 +72,67 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   })
   const [mesBusy, setMesBusy] = useState(false)
 
+  // Parc d'équipements & tickets SAV du chantier
+  const produits = useSelector(s => s.stock.produits) ?? []
+  const [equipements, setEquipements] = useState([])
+  const [equip, setEquip] = useState({ produit: '', numero_serie: '', date_pose: '' })
+  const [equipBusy, setEquipBusy] = useState(false)
+  const [tickets, setTickets] = useState([])
+  const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
+  const [ticketBusy, setTicketBusy] = useState(false)
+
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
       .then(r => setHistorique(r.data)).catch(() => {})
   }
+  const loadEquipements = () => {
+    savApi.getEquipements({ installation: id })
+      .then(r => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }
+  const loadTickets = () => {
+    savApi.getTickets({ installation: id, ouvert: 'tous' })
+      .then(r => setTickets(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }
 
   useEffect(() => {
     loadHistorique()
+    loadEquipements()
+    loadTickets()
+    if (produits.length === 0) dispatch(fetchProduits())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  const addEquipement = async () => {
+    if (!equip.produit) return
+    setEquipBusy(true)
+    try {
+      const nullable = (v) => (v === '' || v === undefined) ? null : v
+      await savApi.createEquipement({
+        produit: equip.produit,
+        installation: id,
+        numero_serie: nullable(equip.numero_serie),
+        date_pose: nullable(equip.date_pose),
+      })
+      setEquip({ produit: '', numero_serie: '', date_pose: '' })
+      loadEquipements()
+    } catch { /* erreur silencieuse */ } finally { setEquipBusy(false) }
+  }
+
+  const openTicket = async () => {
+    setTicketBusy(true)
+    try {
+      const nullable = (v) => (v === '' || v === undefined) ? null : v
+      await savApi.createTicket({
+        client: current.client,
+        installation: id,
+        type: newTicket.type,
+        description: nullable(newTicket.description),
+        equipement: newTicket.equipement === '' ? null : newTicket.equipement,
+      })
+      setNewTicket({ type: 'correctif', description: '', equipement: '' })
+      loadTickets()
+    } catch { /* erreur silencieuse */ } finally { setTicketBusy(false) }
+  }
 
   const refreshInstallation = async () => {
     try {
@@ -335,6 +396,128 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         disabled={intervBusy || !interv.type_intervention}
                         onClick={addIntervention}>
                   Ajouter une intervention
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Équipements (parc) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">📦 Équipements</span>
+            </div>
+            {equipements.length === 0 ? (
+              <p className="gen-hint">Aucun équipement enregistré sur ce chantier.</p>
+            ) : (
+              <table className="lines-table">
+                <thead>
+                  <tr><th>Produit</th><th>N° série</th><th>Posé le</th><th>Garantie</th></tr>
+                </thead>
+                <tbody>
+                  {equipements.map(eq => (
+                    <tr key={eq.id}>
+                      <td>{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
+                      <td>{eq.numero_serie ?? '—'}</td>
+                      <td>{formatDateFR(eq.date_pose)}</td>
+                      <td><span style={{ color: garantieColor(eq), fontSize: 12, fontWeight: 600 }}>
+                        {garantieLabel(eq)}
+                      </span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="form-row" style={{ marginTop: 10 }}>
+              <div className="form-group fg-grow">
+                <label className="form-label">Produit</label>
+                <select className="form-select" value={equip.produit}
+                        onChange={e => setEquip(s => ({ ...s, produit: e.target.value }))}>
+                  <option value="">— Choisir un produit —</option>
+                  {produits.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.nom}{p.marque ? ` (${p.marque})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">N° de série</label>
+                <input className="form-control" value={equip.numero_serie}
+                       onChange={e => setEquip(s => ({ ...s, numero_serie: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Date de pose</label>
+                <input type="date" className="form-control" value={equip.date_pose}
+                       onChange={e => setEquip(s => ({ ...s, date_pose: e.target.value }))} />
+              </div>
+              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+                <button type="button" className="btn btn-outline"
+                        disabled={equipBusy || !equip.produit} onClick={addEquipement}>
+                  Ajouter l'équipement
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Tickets SAV ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">🎫 Tickets SAV</span>
+            </div>
+            {tickets.length === 0 ? (
+              <p className="gen-hint">Aucun ticket SAV sur ce chantier.</p>
+            ) : (
+              <table className="lines-table">
+                <thead>
+                  <tr><th>Référence</th><th>Statut</th><th>Type</th><th>Garantie</th></tr>
+                </thead>
+                <tbody>
+                  {tickets.map(t => (
+                    <tr key={t.id}>
+                      <td>{t.reference}{t.annule ? ' (annulé)' : ''}</td>
+                      <td><span style={{ color: ticketStatusColor(t.statut), fontWeight: 600 }}>
+                        {TICKET_STATUS_LABELS[t.statut] ?? t.statut}
+                      </span></td>
+                      <td>{t.type_display ?? t.type}</td>
+                      <td>{SOUS_GARANTIE_LABELS[t.sous_garantie_effectif] ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="gen-hint" style={{ marginTop: 6 }}>
+              Le suivi détaillé (interventions, historique) se fait dans l'écran « Tickets SAV ».
+            </p>
+            <div className="form-row" style={{ marginTop: 10 }}>
+              <div className="form-group">
+                <label className="form-label">Type</label>
+                <select className="form-select" value={newTicket.type}
+                        onChange={e => setNewTicket(s => ({ ...s, type: e.target.value }))}>
+                  {TICKET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Équipement concerné</label>
+                <select className="form-select" value={newTicket.equipement}
+                        onChange={e => setNewTicket(s => ({ ...s, equipement: e.target.value }))}>
+                  <option value="">— Aucun —</option>
+                  {equipements.map(eq => (
+                    <option key={eq.id} value={eq.id}>
+                      {(eq.produit_nom ?? 'Produit')} — {eq.numero_serie ?? 'sans n° série'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group fg-grow">
+                <label className="form-label">Description</label>
+                <input className="form-control" value={newTicket.description}
+                       onChange={e => setNewTicket(s => ({ ...s, description: e.target.value }))}
+                       placeholder="Symptôme / demande" />
+              </div>
+              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+                <button type="button" className="btn btn-outline"
+                        disabled={ticketBusy} onClick={openTicket}>
+                  Ouvrir un ticket
                 </button>
               </div>
             </div>

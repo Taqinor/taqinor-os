@@ -195,8 +195,11 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         installation = self.request.query_params.get('installation')
+        ticket = self.request.query_params.get('ticket')
         if installation:
             qs = qs.filter(installation_id=installation)
+        if ticket:
+            qs = qs.filter(ticket_id=ticket)
         return qs
 
     def get_permissions(self):
@@ -212,9 +215,13 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         # Tenant safety : le chantier ciblé doit appartenir à la société.
         from rest_framework.exceptions import ValidationError
         installation = serializer.validated_data.get('installation')
+        ticket = serializer.validated_data.get('ticket')
         company = self.request.user.company
         if installation is not None and installation.company_id != company.id:
             raise ValidationError({'installation': 'Chantier inconnu.'})
+        # Tenant safety : le ticket SAV lié doit aussi appartenir à la société.
+        if ticket is not None and ticket.company_id != company.id:
+            raise ValidationError({'ticket': 'Ticket inconnu.'})
         serializer.save(company=company, created_by=self.request.user)
         # Trace l'ajout d'intervention dans le chatter du chantier.
         if installation is not None:

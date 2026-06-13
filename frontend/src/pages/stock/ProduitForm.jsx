@@ -40,6 +40,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     seuil_alerte:   String(produit?.seuil_alerte  ?? '0'),
     categorie_id:   produit?.categorie?.id  ? String(produit.categorie.id) : '',
     fournisseur_id: produit?.fournisseur?.id ? String(produit.fournisseur.id) : '',
+    garantie_mois:            produit?.garantie_mois != null ? String(produit.garantie_mois) : '',
+    garantie_production_mois: produit?.garantie_production_mois != null ? String(produit.garantie_production_mois) : '',
   })
 
   useEffect(() => {
@@ -116,6 +118,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
         categorie_id:   fields.categorie_id   ? parseInt(fields.categorie_id)   : null,
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,
+        garantie_mois:            fields.garantie_mois            !== '' ? parseInt(fields.garantie_mois)            : null,
+        garantie_production_mois: fields.garantie_production_mois !== '' ? parseInt(fields.garantie_production_mois) : null,
       }
       if (isEdit) {
         await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
@@ -340,6 +344,34 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                   value={fields.seuil_alerte}
                   onChange={e => setField('seuil_alerte', e.target.value)}
                 />
+              </div>
+            </div>
+
+            {/* ── Garantie structurée (alimente les horloges de garantie du
+                  parc d'équipements). Optionnel : laisser vide → « garantie
+                  non renseignée » sur l'équipement. ── */}
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Garantie équipement (mois)</label>
+                <input
+                  type="number" min="0" step="1"
+                  className="form-control"
+                  value={fields.garantie_mois}
+                  onChange={e => setField('garantie_mois', e.target.value)}
+                  placeholder="ex : 120 (10 ans)"
+                />
+                <div className="form-hint">Laisser vide si non renseignée.</div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Garantie production (mois)</label>
+                <input
+                  type="number" min="0" step="1"
+                  className="form-control"
+                  value={fields.garantie_production_mois}
+                  onChange={e => setField('garantie_production_mois', e.target.value)}
+                  placeholder="ex : 300 (panneaux, 25 ans)"
+                />
+                <div className="form-hint">Pour les panneaux. Optionnel.</div>
               </div>
             </div>
 

@@ -156,6 +156,14 @@ class Intervention(models.Model):
     installation = models.ForeignKey(
         Installation, on_delete=models.CASCADE, related_name='interventions',
     )
+    # Lien OPTIONNEL vers un ticket SAV : résoudre un ticket peut enregistrer
+    # une ou plusieurs interventions (visites terrain) contre lui, sans créer
+    # de concept « visite » parallèle. Additif, nullable — le comportement
+    # chantier→intervention existant reste intact.
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='interventions',
+    )
     type_intervention = models.CharField(max_length=20, choices=Type.choices)
     date_prevue = models.DateField(null=True, blank=True)
     date_realisee = models.DateField(null=True, blank=True)
