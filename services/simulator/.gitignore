@@ -1,0 +1,14 @@
+# Client / personal data (loi 09-08) and runtime state — SERVER-ONLY, NEVER commit.
+users.db
+*.db
+devis_history.json
+config.json
+devis_client/
+factures_client/
+*.pdf
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/

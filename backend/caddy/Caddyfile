@@ -9,3 +9,20 @@
 		header_up X-Forwarded-Proto {scheme}
 	}
 }
+
+# Simulateur de devis (rescapé du vieux serveur cPanel taqinor.ma/simulator).
+# App FastAPI servie par uvicorn en systemd sur l'hôte, écoutant sur la
+# passerelle du réseau docker (172.18.0.1:8090) — donc jamais exposée
+# publiquement, Caddy seul y accède et termine le TLS.
+# L'app est CÂBLÉE sur le préfixe /simulator (son JS appelle /simulator/api/…,
+# son HTML charge /simulator/static/…, root_path="/simulator"). On le préserve
+# TEL QUEL : on relaie le chemin SANS retirer le préfixe (l'app attend le
+# chemin complet /simulator/…), et la racine nue redirige vers /simulator/.
+simulateur.taqinor.ma {
+	encode gzip
+	redir / /simulator/ 308
+	reverse_proxy 172.18.0.1:8090 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
