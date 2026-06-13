@@ -1,0 +1,92 @@
+---
+/**
+ * PRÉVISUALISATION PRIVÉE v2 — /v2/loi-82-21 (noindex, hors sitemap).
+ * Copie autonome de /loi-82-21 enrichie. Pages publiques non touchées.
+ * Le sélecteur de régime reste le composant partagé inchangé (non modifié) ;
+ * il est simplement révélé au défilement.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import RegimeSelector from '../../components/RegimeSelector.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import { REGIMES } from '../../lib/regime';
+---
+
+<Layout
+  title="Loi 82-21 : les 3 régimes de l'autoproduction au Maroc | Taqinor"
+  description="Déclaration, accord de raccordement ou autorisation ? Identifiez en 3 questions le régime de la loi 82-21 (décret 2-25-100) applicable à votre installation solaire, en vigueur depuis le 9 juin 2026."
+  ogSlug="loi-82-21"
+  noindex
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Loi 82-21 · décret 2-25-100</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Trois régimes, un seul qui vous concerne</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          La loi 82-21 sur l'autoproduction d'énergie électrique et son décret d'application
+          2-25-100 sont en vigueur depuis le 9 juin 2026. Toute installation d'autoproduction —
+          nouvelle ou existante — relève désormais de l'un des trois régimes ci-dessous, selon sa
+          puissance et son raccordement.
+        </p>
+      </div>
+    </section>
+
+    <!-- L'instrument éclairé : le sélecteur, document blanc sur la nuit -->
+    <section class="mx-auto max-w-4xl px-4 py-14">
+      <div class="v2-rise [&>div]:shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)]">
+        <RegimeSelector />
+      </div>
+    </section>
+
+    <ZelligeDivider tone="white" />
+
+    <section class="mx-auto max-w-4xl px-4 py-16">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Référence</p>
+      <h2 class="display v2-section-title mt-4 text-white">Les trois régimes en détail</h2>
+      <div class="mt-10 grid gap-6" data-stagger>
+        {Object.values(REGIMES).map((r, i) => (
+          <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
+            <span class="fig lum text-4xl" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+            <div>
+              <h3 class="display text-xl text-white">{r.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.summary}</p>
+              <ul class="mt-4 space-y-2 text-sm text-lune">
+                {r.obligations.map((o) => (
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{o}</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- ACTE FINAL — la régularisation se traite en pleine lumière -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-4 pt-2 text-encre">
+      <div class="mx-auto max-w-4xl border-2 border-azur-600 bg-blanc p-7">
+        <p class="tech-label text-azur-600">Installations existantes</p>
+        <h2 class="display v2-section-title mt-2">Vous avez déjà une installation non déclarée ?</h2>
+        <p class="mt-4 max-w-xl text-sm leading-relaxed text-encre-soft">
+          L'Article 33 de la loi ouvre une fenêtre de régularisation pour les installations
+          existantes. La fenêtre est ouverte — la procédure et les sanctions en cas d'inaction
+          sont détaillées sur la page dédiée.
+        </p>
+        <a href="/regularization-article-33" class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          Régulariser mon installation
+        </a>
+      </div>
+    </section>
+
+    <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" seam={false} />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -1,0 +1,86 @@
+/*
+ * v2 « élégance retenue » — couche ADDITIVE, importée uniquement par
+ * src/components/V2Enhance.astro (donc par les pages /v2*). Portée .v2 :
+ * n'affecte AUCUNE page publique. Mouvement opacity/transform seulement.
+ *
+ * Garde-fous :
+ *  - l'état « caché » des révélations n'existe que sous .v2-js (posé par JS)
+ *    ET hors prefers-reduced-motion → sans JS ou en reduced-motion, tout est
+ *    visible immédiatement (base accessible, zéro-JS).
+ *  - les chiffres count-up portent leur valeur finale dans le DOM : sans JS /
+ *    en reduced-motion ils s'affichent tels quels.
+ */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Révélation au défilement — fondu + translation douce, une seule fois */
+  .v2-js .v2-rise {
+    opacity: 0;
+    transform: translateY(26px);
+    transition:
+      opacity 0.7s cubic-bezier(0.2, 0.65, 0.25, 1),
+      transform 0.7s cubic-bezier(0.2, 0.65, 0.25, 1);
+    will-change: opacity, transform;
+  }
+  .v2-js .v2-rise.v2-in {
+    opacity: 1;
+    transform: none;
+  }
+  /* Décalage doux dans une grille marquée data-stagger (enfants .v2-rise) */
+  .v2-js [data-stagger] > .v2-rise {
+    transition-delay: calc(var(--v2-i, 0) * 80ms);
+  }
+}
+
+/* Parallaxe d'en-tête : le SUR-CADRAGE (scale) est posé en CSS statique pour
+   ne PAS muter la transform de l'élément LCP au chargement (le JS ne fait
+   qu'ajouter la translation au défilement). Desktop + motion uniquement ;
+   mobile / reduced-motion → image normale, LCP inchangé. */
+@media (prefers-reduced-motion: no-preference) {
+  @media (min-width: 1024px) {
+    .v2 .v2-hero-media {
+      transform: scale(1.1);
+      will-change: transform;
+    }
+  }
+}
+
+/* Count-up : chiffres tabulaires (largeur de glyphe stable, anti-CLS) */
+.v2 [data-tally] {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* ===== Typographie éditoriale — plus grande, plus aérée ================= */
+/* Mêmes fontes (Archivo/Hanken) et mêmes tokens : on agrandit et on aère.
+   Classes additionnelles posées à côté de .display/.tech-label dans le markup
+   v2, scopées .v2 pour ne jamais toucher le public. */
+.v2 .v2-kicker {
+  letter-spacing: 0.24em;
+}
+.v2 .v2-hero-title {
+  font-size: clamp(2.6rem, 8.6vw, 6.25rem);
+  line-height: 0.98;
+  letter-spacing: -0.018em;
+}
+/* Titre d'en-tête de page intérieure (héros à deux colonnes) — bump modéré */
+.v2 .v2-page-title {
+  font-size: clamp(2.2rem, 5.4vw, 4.3rem);
+  line-height: 1;
+  letter-spacing: -0.016em;
+}
+.v2 .v2-section-title {
+  font-size: clamp(2rem, 4.6vw, 3.5rem);
+  line-height: 1.03;
+  letter-spacing: -0.015em;
+}
+.v2 .v2-lead {
+  font-size: clamp(1.05rem, 1.5vw, 1.3rem);
+  line-height: 1.7;
+}
+
+/* Couture de lumière plus longue et plus douce (transitions de sections) */
+.v2 .v2-seam {
+  height: 9rem;
+  background:
+    radial-gradient(70% 140% at 50% 100%, rgb(232 181 74 / 0.14), transparent 72%),
+    linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+}
