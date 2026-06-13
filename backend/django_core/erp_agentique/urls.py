@@ -34,6 +34,7 @@ urlpatterns = [
     path('api/django/reporting/', include('apps.reporting.urls')),
     path('api/django/contact/', include('apps.contact.urls')),
     path('api/django/installations/', include('apps.installations.urls')),
+    path('api/django/sav/', include('apps.sav.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

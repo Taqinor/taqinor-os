@@ -7,6 +7,8 @@ import iaReducer from '../features/ia/store/iaSlice'
 import parametresReducer from '../features/parametres/store/parametresSlice'
 import reportingReducer from '../features/reporting/store/reportingSlice'
 import installationsReducer from '../features/installations/store/installationsSlice'
+import equipementsReducer from '../features/sav/store/equipementsSlice'
+import ticketsReducer from '../features/sav/store/ticketsSlice'
 
 const appReducer = combineReducers({
   auth: authReducer,
@@ -17,6 +19,8 @@ const appReducer = combineReducers({
   parametres: parametresReducer,
   reporting: reportingReducer,
   installations: installationsReducer,
+  equipements: equipementsReducer,
+  tickets: ticketsReducer,
 })
 
 // Reset all slices to their initial state on logout so no data leaks between users

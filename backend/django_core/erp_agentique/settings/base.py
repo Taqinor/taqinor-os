@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'apps.parametres',
     'apps.roles',
     'apps.installations',
+    'apps.sav',
 ]
 
 MIDDLEWARE = [

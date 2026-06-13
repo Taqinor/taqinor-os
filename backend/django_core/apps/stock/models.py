@@ -90,6 +90,18 @@ class Produit(models.Model):
         max_length=255, blank=True, null=True,
         help_text='Texte garantie constructeur / performance.')
 
+    # ── Durée de garantie structurée (alimente les horloges de garantie du
+    #    parc d'équipements). Numérique, en MOIS, optionnelle : un produit sans
+    #    durée renseignée donne « garantie non renseignée » sur son équipement
+    #    (même logique que les pompes sans prix). Le texte `garantie` ci-dessus
+    #    reste en place et inchangé. Aucune durée n'est inventée par le code. ──
+    garantie_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Garantie équipement en mois (laisser vide si non renseignée).')
+    garantie_production_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Garantie production (panneaux) en mois — souvent 300 à 360.')
+
     # ── Spécifications pompage solaire (mode Agricole) ──
     pompe_cv = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
