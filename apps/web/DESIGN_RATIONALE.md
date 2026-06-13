@@ -170,3 +170,45 @@ les pages et replier l'élévation v2 dans le live. **Promotion v2** : l'instruc
 d'origine tient (sans le mouvement photo). **Jeter v3** : supprimer le dossier
 `/v3` + `v3-photo-motion.css` ; `/v2` reste tel quel. Tous les chemins sont à
 risque nul — le live n'a jamais bougé.
+
+---
+
+## Promotion v3 → PRODUCTION (2026-06-13)
+
+Reda a choisi **« Promote v3 »**. L'élévation « élégance retenue » + les deux
+mouvements photo sont désormais **le site public lui-même**. Sur les **7 pages
+principales** (accueil, résidentiel, professionnel, équipement, loi-82-21,
+régularisation Article 33, contact) :
+
+- la typographie éditoriale, les révélations au défilement, les chiffres
+  count-up et la parallaxe d'en-tête desktop (le moteur `<V2Enhance/>` + `v2.css`)
+  remplacent l'ancienne couche `.reveal`/`.emerge` ;
+- le **Ken Burns d'en-tête** et la **montée d'échelle des photos au défilement**
+  s'appliquent désormais partout, **automatiquement** : `V2Enhance` importe
+  `v3-photo-motion.css`, dont les sélecteurs ciblent tout `.v2-hero-media`
+  (zoom) et tout `<picture>` enfant direct d'un `.v2-rise` (montée d'échelle) —
+  aucun marquage par page.
+
+**Ce qui n'a PAS bougé.** Le flux de données du diagnostic est **identique au
+bit près** : `DiagnosticForm` est un composant partagé, invoqué exactement comme
+avant (même prop `heading`), avec la même logique de soumission, la même bande
+de ROI, le même filtre de seuil de facture, le même deeplink WhatsApp et le même
+webhook. La promotion n'a touché que l'habillage et le mouvement. Les **2 pages
+légales** (mentions-légales, politique-de-confidentialité) restent volontairement
+sobres (ancienne couche `.reveal`/`.emerge` de `global.css`, conservée).
+
+**Nettoyage.** Les routes de prévisualisation `/v2` et `/v3` et leurs garde-fous
+de test ont été supprimées (le traitement vit sur les vraies pages), et le filtre
+sitemap ne les exclut plus. Garde-fou de non-régression : `tests/elevation.test.ts`
+(les 7 pages montent le moteur et restent **indexables** — pas de `noindex` —,
+le mouvement reste gated JS + prefers-reduced-motion, et les previews ont disparu).
+
+**Conservation des noms.** Le moteur garde ses noms de lignée (`v2.css`,
+`V2Enhance`, classes `.v2`/`.v2-rise`/`.v2-js`, `v3-photo-motion.css`) :
+éprouvés et testés, les renommer sur un site en production n'apporterait qu'un
+gain cosmétique pour un risque de régression réel. Détail d'implémentation
+invisible côté visiteur.
+
+**Réversibilité.** Toute la promotion est un seul commit de merge : `git revert`
+de ce merge rétablit l'état précédent (ancienne couche `.reveal`/`.emerge`)
+sans autre manipulation.

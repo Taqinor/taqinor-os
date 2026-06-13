@@ -1,58 +1,36 @@
 ---
+/**
+ * Page publique — élévation « élégance retenue » : typographie éditoriale,
+ * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
+ * + mouvement photo (Ken Burns d'en-tête, montée d'échelle au défilement).
+ * Tout le mouvement est désactivé sous prefers-reduced-motion. Le diagnostic
+ * et son flux de données restent inchangés (composant partagé DiagnosticForm).
+ * Voir apps/web/DESIGN_RATIONALE.md.
+ */
 import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
-// Repli sans JavaScript : message complet, jamais de blancs à remplir
 const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
 
 const steps = [
-  {
-    title: 'Inventaire technique',
-    body: 'Relevé de l’installation existante : puissance installée, mode de raccordement, niveau de tension, équipements de protection et de comptage.',
-  },
-  {
-    title: 'Détermination du régime',
-    body: 'Selon la puissance et le raccordement, l’installation relève de la déclaration, de l’accord de raccordement ou de l’autorisation (décret 2-25-100).',
-  },
-  {
-    title: 'Constitution du dossier',
-    body: 'Fiches techniques, schéma unifilaire, attestations de conformité et formulaires du régime applicable — préparés par nos soins.',
-  },
-  {
-    title: 'Dépôt de la demande de régularisation',
-    body: 'Dépôt auprès du gestionnaire de réseau ou de l’autorité compétente, dans le cadre de la fenêtre ouverte par l’Article 33.',
-  },
-  {
-    title: 'Suivi jusqu’à la mise en conformité',
-    body: 'Suivi de l’instruction, réponses aux compléments demandés, et le cas échéant mise à niveau technique de l’installation.',
-  },
+  { title: 'Inventaire technique', body: 'Relevé de l’installation existante : puissance installée, mode de raccordement, niveau de tension, équipements de protection et de comptage.' },
+  { title: 'Détermination du régime', body: 'Selon la puissance et le raccordement, l’installation relève de la déclaration, de l’accord de raccordement ou de l’autorisation (décret 2-25-100).' },
+  { title: 'Constitution du dossier', body: 'Fiches techniques, schéma unifilaire, attestations de conformité et formulaires du régime applicable — préparés par nos soins.' },
+  { title: 'Dépôt de la demande de régularisation', body: 'Dépôt auprès du gestionnaire de réseau ou de l’autorité compétente, dans le cadre de la fenêtre ouverte par l’Article 33.' },
+  { title: 'Suivi jusqu’à la mise en conformité', body: 'Suivi de l’instruction, réponses aux compléments demandés, et le cas échéant mise à niveau technique de l’installation.' },
 ];
 
 const sanctions = [
-  {
-    title: 'Situation irrégulière',
-    body: 'Une installation existante non régularisée est en situation irrégulière au regard de la loi 82-21, désormais en vigueur.',
-  },
-  {
-    title: 'Amendes — article 28',
-    body: 'De 2 000 à 5 000 MAD pour exploitation sans la déclaration requise.',
-  },
-  {
-    title: 'Amendes — article 29',
-    body: 'De 100 000 à 1 000 000 MAD pour exploitation sans accord de raccordement ou sans autorisation.',
-  },
-  {
-    title: 'Mise en demeure et arrêt — articles 25 et 27',
-    body: 'Risque de mise en demeure puis d’arrêt ordonné de l’installation.',
-  },
-  {
-    title: 'Déconnexion du réseau — article 32',
-    body: 'Le gestionnaire de réseau peut déconnecter une installation non conforme.',
-  },
+  { title: 'Situation irrégulière', body: 'Une installation existante non régularisée est en situation irrégulière au regard de la loi 82-21, désormais en vigueur.' },
+  { title: 'Amendes — article 28', body: 'De 2 000 à 5 000 MAD pour exploitation sans la déclaration requise.' },
+  { title: 'Amendes — article 29', body: 'De 100 000 à 1 000 000 MAD pour exploitation sans accord de raccordement ou sans autorisation.' },
+  { title: 'Mise en demeure et arrêt — articles 25 et 27', body: 'Risque de mise en demeure puis d’arrêt ordonné de l’installation.' },
+  { title: 'Déconnexion du réseau — article 32', body: 'Le gestionnaire de réseau peut déconnecter une installation non conforme.' },
 ];
 ---
 
@@ -61,103 +39,102 @@ const sanctions = [
   description="La loi 82-21 est en vigueur depuis le 9 juin 2026. L'Article 33 ouvre une fenêtre de 18 mois pour régulariser les installations solaires existantes : procédure en 5 étapes, sanctions encourues, prise en charge complète du dossier."
   ogSlug="article-33"
 >
-  <Article33Ribbon />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
 
-  <section class="px-4 py-16 text-white sm:py-20">
-    <div class="mx-auto max-w-6xl">
-      <p class="tech-label rule-brass cine-in text-brass-300">Loi 82-21 — Article 33</p>
-      <h1 class="display cine-in mt-4 max-w-2xl text-4xl sm:text-5xl [animation-delay:120ms]">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
-      <p class="cine-in mt-5 max-w-xl leading-relaxed text-white/85 [animation-delay:240ms]">
-        Le décret 2-25-100 et la décision ANRE 04/26 sont entrés en vigueur le 9 juin 2026.
-        Depuis cette date, le régime de la loi 82-21 s'applique à toutes les installations
-        d'autoproduction — y compris celles posées avant la loi.
-      </p>
-    </div>
-  </section>
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Loi 82-21 — Article 33</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Le décret 2-25-100 et la décision ANRE 04/26 sont entrés en vigueur le 9 juin 2026.
+          Depuis cette date, le régime de la loi 82-21 s'applique à toutes les installations
+          d'autoproduction — y compris celles posées avant la loi.
+        </p>
+      </div>
+    </section>
 
-  <section class="mx-auto max-w-3xl px-4 py-14">
-    <p class="tech-label rule-brass text-brass-300">Le texte</p>
-    <h2 class="display mt-3 text-3xl text-white">Ce que dit l'Article 33</h2>
-    <p class="mt-4 leading-relaxed text-lune-soft">
-      L'Article 33 de la loi 82-21 accorde aux exploitants d'installations existantes une
-      fenêtre de <strong class="fig lum text-xl">18 mois</strong> pour déposer une demande de régularisation.
-      Cette fenêtre est ouverte depuis le 9 juin 2026 : déposez maintenant. Une installation
-      régularisée est sécurisée juridiquement ; une installation non régularisée est en
-      situation irrégulière.
-    </p>
+    <section class="mx-auto max-w-3xl px-4 py-16">
+      <div class="v2-rise">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Le texte</p>
+        <h2 class="display v2-section-title mt-4 text-white">Ce que dit l'Article 33</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          L'Article 33 de la loi 82-21 accorde aux exploitants d'installations existantes une
+          fenêtre de <strong class="fig lum text-xl">18 mois</strong> pour déposer une demande de régularisation.
+          Cette fenêtre est ouverte depuis le 9 juin 2026 : déposez maintenant. Une installation
+          régularisée est sécurisée juridiquement ; une installation non régularisée est en
+          situation irrégulière.
+        </p>
+      </div>
 
-    <h2 class="display mt-12 text-3xl text-white">Qui est concerné ?</h2>
-    <ul class="mt-4 space-y-2.5 text-sm leading-relaxed text-lune-soft">
-      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
-      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
-      <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
-    </ul>
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">Qui est concerné ?</h2>
+      <ul class="v2-rise mt-5 space-y-2.5 text-sm leading-relaxed text-lune-soft">
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
+      </ul>
 
-    <h2 class="display mt-12 text-3xl text-white">La régularisation en 5 étapes</h2>
-    <ol class="mt-7 border-l-2 border-brass-400/60">
-      {steps.map((s, i) => (
-        <li class="reveal relative pb-8 pl-8 last:pb-0">
-          <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
-          <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-        </li>
-      ))}
-    </ol>
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">La régularisation en 5 étapes</h2>
+      <ol class="mt-8 border-l-2 border-brass-400/60" data-stagger>
+        {steps.map((s, i) => (
+          <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
+            <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+            <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </li>
+        ))}
+      </ol>
 
-    <h2 class="display mt-12 text-3xl text-white">Ce que vous risquez en ne faisant rien</h2>
-    <p class="mt-2 text-sm text-lune-soft">Sanctions prévues par la loi 82-21 :</p>
-    <div class="mt-5 grid gap-4 sm:grid-cols-2">
-      {sanctions.map((s) => (
-        <div class="reveal cine-card border-alert-300/30 p-5">
-          <h3 class="font-display text-sm font-bold text-alert-300">{s.title}</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-        </div>
-      ))}
-    </div>
-  </section>
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">Ce que vous risquez en ne faisant rien</h2>
+      <p class="v2-rise mt-2 text-sm text-lune-soft">Sanctions prévues par la loi 82-21 :</p>
+      <div class="mt-5 grid gap-4 sm:grid-cols-2" data-stagger>
+        {sanctions.map((s, i) => (
+          <div class="v2-rise cine-card border-alert-300/30 p-5" style={`--v2-i:${i}`}>
+            <h3 class="font-display text-sm font-bold text-alert-300">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
 
-  <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
-  <div class="seam-lumiere" aria-hidden="true"></div>
-  <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
-    <div class="mx-auto max-w-3xl">
-    <ZelligeDivider />
-
-    <!-- Mini-formulaire Article 33 : 2 champs → message WhatsApp COMPLET.
-         Rien n'est envoyé ailleurs que dans le message lui-même. -->
-    <div class="mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
-      <p class="tech-label text-azur-600">Prise en charge complète</p>
-      <h2 class="display mt-2 text-2xl">Confiez-nous le dossier</h2>
-      <p class="mt-3 max-w-md text-sm leading-relaxed text-encre-soft">
-        Deux questions, et votre message WhatsApp part déjà complet — nous identifions
-        le régime applicable et constituons le dossier.
-      </p>
-      <div class="mt-6 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">Puissance approximative (kWc)</label>
-          <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="ex. 5"
-            class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-          <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
-            <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
-            Je ne connais pas la puissance
-          </label>
-        </div>
-        <div>
-          <label for="rg33-ville" class="mb-1 block text-sm font-semibold">Ville de l'installation</label>
-          <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="ex. Casablanca"
-            class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+    <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <ZelligeDivider />
+        <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
+          <p class="tech-label text-azur-600">Prise en charge complète</p>
+          <h2 class="display v2-section-title mt-2">Confiez-nous le dossier</h2>
+          <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">
+            Deux questions, et votre message WhatsApp part déjà complet — nous identifions
+            le régime applicable et constituons le dossier.
+          </p>
+          <div class="mt-6 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">Puissance approximative (kWc)</label>
+              <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="ex. 5"
+                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+              <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
+                <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
+                Je ne connais pas la puissance
+              </label>
+            </div>
+            <div>
+              <label for="rg33-ville" class="mb-1 block text-sm font-semibold">Ville de l'installation</label>
+              <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="ex. Casablanca"
+                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+            </div>
+          </div>
+          <a id="rg33-go" href={waFallback} rel="noopener"
+            class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >Démarrer sur WhatsApp</a>
         </div>
       </div>
-      <a
-        id="rg33-go"
-        href={waFallback}
-        rel="noopener"
-        class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
-      >Démarrer sur WhatsApp</a>
-    </div>
-    </div>
-  </section>
+    </section>
 
-  <StickyCta />
+    <StickyCta />
+  </div>
 </Layout>
 
 <script>
