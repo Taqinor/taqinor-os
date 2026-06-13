@@ -326,6 +326,7 @@ export default function ParametresEntreprise() {
   const [form, setForm] = useState({
     nom: '', adresse: '', email: '', telephone: '',
     siret: '', tva_intra: '', rib: '', banque: '',
+    ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
   })
   const [saved, setSaved] = useState(false)
@@ -348,6 +349,11 @@ export default function ParametresEntreprise() {
       tva_intra:         profile.tva_intra         ?? '',
       rib:               profile.rib               ?? '',
       banque:            profile.banque            ?? '',
+      ice:               profile.ice               ?? '',
+      identifiant_fiscal: profile.identifiant_fiscal ?? '',
+      rc:                profile.rc                ?? '',
+      patente:           profile.patente           ?? '',
+      cnss:              profile.cnss              ?? '',
       couleur_principale: profile.couleur_principale ?? '#1d4ed8',
     })
   }, [profile])
@@ -505,6 +511,31 @@ export default function ParametresEntreprise() {
               </Field>
               <Field label="Banque">
                 <input style={inputBase} name="banque" value={form.banque} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="CIH, Attijariwafa…"/>
+              </Field>
+            </div>
+          </div>
+
+          {/* Identifiants légaux (Maroc) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0d9488" label="Identifiants légaux (Maroc)" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              L'ICE, l'IF et le RC apparaissent en pied de page de vos factures (l'ICE est obligatoire au Maroc).
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+              <Field label="ICE">
+                <input style={inputBase} name="ice" value={form.ice} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="000000000000000"/>
+              </Field>
+              <Field label="IF (Identifiant Fiscal)">
+                <input style={inputBase} name="identifiant_fiscal" value={form.identifiant_fiscal} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="00000000"/>
+              </Field>
+              <Field label="RC (Registre de Commerce)">
+                <input style={inputBase} name="rc" value={form.rc} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="N° RC"/>
+              </Field>
+              <Field label="Patente / Taxe professionnelle">
+                <input style={inputBase} name="patente" value={form.patente} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="N° patente"/>
+              </Field>
+              <Field label="CNSS">
+                <input style={inputBase} name="cnss" value={form.cnss} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="N° affiliation CNSS"/>
               </Field>
             </div>
           </div>

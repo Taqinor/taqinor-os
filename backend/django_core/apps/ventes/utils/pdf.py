@@ -85,6 +85,12 @@ def _company_context(company=None):
         ),
         'entreprise_siret':     profile.siret,
         'entreprise_tva_intra': profile.tva_intra,
+        # Identifiants légaux marocains (l'ICE est obligatoire sur facture).
+        'entreprise_ice':       getattr(profile, 'ice', ''),
+        'entreprise_if':        getattr(profile, 'identifiant_fiscal', ''),
+        'entreprise_rc':        getattr(profile, 'rc', ''),
+        'entreprise_patente':   getattr(profile, 'patente', ''),
+        'entreprise_cnss':      getattr(profile, 'cnss', ''),
         'couleur_principale': (
             profile.couleur_principale or settings.ENTREPRISE_COULEUR
         ),

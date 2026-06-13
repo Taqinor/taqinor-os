@@ -303,7 +303,44 @@ class Facture(models.Model):
     def total_tva(self):
         if self.montant_tva is not None:
             return self.montant_tva
-        return self.total_ht * (self.taux_tva / 100)
+        from decimal import Decimal
+        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+
+    @property
+    def tva_par_taux(self):
+        """Ventilation de la TVA par taux (10 % / 20 %), réconciliée au centime.
+
+        Miroir exact de la logique devis : on regroupe les lignes par taux
+        effectif. Mono-taux (toutes les factures historiques ou de tranche) →
+        un seul panier, calculé par la formule d'origine, rendu strictement
+        inchangé. Taux mixtes (10/20) → un panier par taux, chaque TVA
+        arrondie au centime, dont la somme est le total TVA.
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        # Facture de tranche (acompte) : montant figé, un seul panier.
+        if self.montant_tva is not None:
+            return [{'taux': self.taux_tva, 'base_ht': self.total_ht,
+                     'montant': self.montant_tva}]
+        lignes = list(self.lignes.all())
+        buckets = {}
+        for ligne in lignes:
+            rate = ligne.taux_tva_effectif
+            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
+        if len(buckets) <= 1:
+            # Mono-taux : formule d'origine (HT × taux), aucun arrondi par
+            # panier → figures historiques strictement identiques.
+            rate = next(iter(buckets), self.taux_tva)
+            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+            return [{'taux': rate, 'base_ht': base,
+                     'montant': base * rate / Decimal('100')}]
+
+        def q(x):
+            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return [
+            {'taux': rate, 'base_ht': q(buckets[rate]),
+             'montant': q(buckets[rate] * rate / Decimal('100'))}
+            for rate in sorted(buckets)
+        ]
 
     @property
     def total_ttc(self):
@@ -342,6 +379,13 @@ class LigneFacture(models.Model):
     remise = models.DecimalField(
         max_digits=5, decimal_places=2, default=0
     )
+    # TVA par ligne (réforme marocaine 2024–2026 : 10 % panneaux PV, 20 %
+    # le reste) — exactement comme LigneDevis. NULL = ligne historique → le
+    # taux global de la facture s'applique, rendu strictement inchangé pour
+    # les factures déjà émises.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Taux TVA de la ligne (%). Vide = taux global de la facture.')
 
     class Meta:
         verbose_name = 'Ligne de Facture'
@@ -352,6 +396,11 @@ class LigneFacture(models.Model):
         return (
             self.quantite * self.prix_unitaire * (1 - self.remise / 100)
         )
+
+    @property
+    def taux_tva_effectif(self):
+        """Taux réellement appliqué : celui de la ligne, sinon celui de la facture."""
+        return self.taux_tva if self.taux_tva is not None else self.facture.taux_tva
 
 
 class Paiement(models.Model):

@@ -430,6 +430,9 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                         quantite=ligne.quantite,
                         prix_unitaire=ligne.prix_unitaire,
                         remise=ligne.remise,
+                        # Reporte le taux TVA de la ligne de devis (10/20),
+                        # pour que la facture reproduise fidèlement la TVA.
+                        taux_tva=ligne.taux_tva,
                     )
             return facture
 
