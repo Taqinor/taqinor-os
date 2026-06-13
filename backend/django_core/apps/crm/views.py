@@ -5,6 +5,7 @@ from authentication.mixins import TenantMixin
 from .models import Client, Lead
 from .serializers import ClientSerializer, LeadSerializer, LeadActivitySerializer
 from . import activity
+from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -83,7 +84,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['noter']:
+        elif self.action in WRITE_ACTIONS + ['noter', 'devis_auto']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -96,6 +97,21 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         lead = self.get_object()
         return Response(
             LeadActivitySerializer(lead.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='devis-auto',
+            permission_classes=[IsResponsableOrAdmin])
+    def devis_auto(self, request, pk=None):
+        """Garde serveur du devis automatique : le lead a-t-il les champs
+        requis pour son mode ? Aucun effet de bord — la création du devis
+        reste le flux générateur existant. Toute entrée UI appelle cette
+        règle AVANT de lancer le générateur."""
+        lead = self.get_object()
+        manquants = champs_manquants(lead)
+        if manquants:
+            return Response({'detail': message_manquants(manquants)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])

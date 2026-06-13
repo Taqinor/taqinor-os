@@ -535,6 +535,42 @@ body {
   }
 }
 
+/* ── En-tête de la fiche lead : badge « N devis » + ⚡ Devis auto ── */
+.lead-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.lead-devis-badge {
+  border: 1px solid var(--cat-navy);
+  background: #fff;
+  color: var(--cat-navy);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.lead-devis-badge:hover {
+  background: var(--cat-navy);
+  color: #fff;
+}
+.lead-devis-badge.is-zero {
+  border-color: #cbd5e1;
+  color: #94a3b8;
+  font-weight: 600;
+}
+.lead-devis-badge.is-zero:hover {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.lead-head-error { margin: 10px 24px 0; flex-shrink: 0; }
+/* Astérisque doré : champ requis pour le devis automatique */
+.req-auto { color: var(--cat-gold); font-weight: 700; }
+
 .modal-footer {
   display: flex;
   align-items: center;

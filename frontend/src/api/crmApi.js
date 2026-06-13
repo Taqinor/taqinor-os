@@ -13,6 +13,9 @@ const crmApi = {
   getLead: (id) => api.get(`/crm/leads/${id}/`),
   createLead: (data) => api.post('/crm/leads/', data),
   updateLead: (id, data) => api.patch(`/crm/leads/${id}/`, data),
+  // Garde serveur du « Devis auto » : 200 {ok:true} si le lead est prêt,
+  // 400 {detail:'Manque : …'} sinon — la règle vit côté backend.
+  checkDevisAuto: (id) => api.post(`/crm/leads/${id}/devis-auto/`),
 }
 
 export default crmApi

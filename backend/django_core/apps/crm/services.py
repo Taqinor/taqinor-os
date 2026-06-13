@@ -13,7 +13,71 @@ resolved automatically, without ever creating duplicates:
 The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
-from .models import Client, Lead
+from . import stages
+from .models import Client, Lead, LeadActivity
+
+# Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
+# (couche séparée et permanente — CLAUDE.md règles #2/#4) :
+#   devis « envoye »  → étape QUOTE_SENT (Devis envoyé)
+#   devis « accepte » → étape SIGNED (Signé)
+# Clés scalaires uniquement — jamais de nouvelle liste d'étapes (STAGES.py).
+_STATUT_VERS_STAGE = {
+    'envoye': ('QUOTE_SENT', 'envoyé'),
+    'accepte': ('SIGNED', 'accepté'),
+}
+
+
+def _rang_funnel(stage_key: str) -> int:
+    """Rang d'avancement dans le funnel, depuis l'ordre canonique de STAGES.
+
+    COLD est un état de PARKING, pas « plus avancé » : il est classé sous
+    QUOTE_SENT pour qu'un lead froid soit RÉACTIVÉ par les deux mouvements
+    automatiques (devis envoyé / accepté).
+    """
+    if stage_key == 'COLD':
+        return stages.STAGES.index('QUOTE_SENT') - 1
+    return stages.STAGES.index(stage_key)
+
+
+def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
+    """Avance l'étape du lead quand le STATUT d'un devis change.
+
+    Ne recule jamais, ignore les leads perdus (motif_perte), n'agit que sur
+    les transitions envoye/accepte. Écrit UNE entrée d'historique marquée
+    automatique (« auto — devis … »).
+    """
+    if nouveau_statut == ancien_statut:
+        return
+    cible = _STATUT_VERS_STAGE.get(nouveau_statut)
+    if cible is None:
+        return
+    lead = devis.lead
+    if lead is None:
+        return
+    if (lead.motif_perte or '').strip():
+        return  # lead perdu — le funnel ne bouge plus automatiquement.
+
+    stage_cible, suffixe = cible
+    if _rang_funnel(lead.stage) >= _rang_funnel(stage_cible):
+        return  # jamais en arrière (ni sur-place).
+
+    ancien_stage = lead.stage
+    lead.stage = stage_cible
+    lead.save(update_fields=['stage'])
+
+    if stage_cible == 'SIGNED':
+        # SIGNED_QUOTE_CAPI_HOOK: fire on transition INTO SIGNED — entering Signé here
+        # (auto via devis accepté) est équivalent à une entrée manuelle.
+        pass
+
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[ancien_stage],
+        new_value=stages.STAGE_LABELS[stage_cible],
+        body=f"auto — devis {devis.reference} {suffixe}",
+    )
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:

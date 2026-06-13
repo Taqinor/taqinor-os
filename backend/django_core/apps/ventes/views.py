@@ -90,6 +90,26 @@ class DevisViewSet(viewsets.ModelViewSet):
             ),
         )
 
+        # Mouvement automatique du funnel CRM : un devis créé directement en
+        # « envoyé »/« accepté » avance le lead (ancien statut ≡ brouillon).
+        from apps.crm.services import avancer_stage_pour_devis
+        avancer_stage_pour_devis(
+            serializer.instance, Devis.Statut.BROUILLON,
+            serializer.instance.statut, self.request.user,
+        )
+
+    def perform_update(self, serializer):
+        # Snapshot du statut AVANT écriture, puis mouvement automatique du
+        # funnel CRM (envoye → QUOTE_SENT, accepte → SIGNED). Import local
+        # pour éviter les cycles, comme dans perform_create.
+        ancien_statut = serializer.instance.statut
+        super().perform_update(serializer)
+        from apps.crm.services import avancer_stage_pour_devis
+        avancer_stage_pour_devis(
+            serializer.instance, ancien_statut,
+            serializer.instance.statut, self.request.user,
+        )
+
     @action(
         detail=True,
         methods=['post'],
