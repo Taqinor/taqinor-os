@@ -179,6 +179,11 @@ class Lead(models.Model):
         max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     # Tags libres, séparés par des virgules (ex. "Régularisation 82-21, VIP")
     tags = models.CharField(max_length=500, blank=True, null=True)
+    # Drapeau « Perdu » — indépendant de l'étape (voir STAGES.py : « Perdu »
+    # n'est PAS une étape, c'est un lost-flag qui se pose depuis N'IMPORTE
+    # quelle étape, avec sa raison dans motif_perte). Un lead Froid n'est pas
+    # forcément perdu ; un lead à « Devis envoyé » peut l'être.
+    perdu = models.BooleanField(default=False)
     motif_perte = models.CharField(max_length=255, blank=True, null=True)
     relance_date = models.DateField(null=True, blank=True)
     type_installation = models.CharField(
