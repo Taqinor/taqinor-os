@@ -23,6 +23,9 @@ interface InitOptions {
   maptilerKey: string;
   reducedMotion: boolean;
   initialQuery?: string;
+  /** Appelé dès que la carte EXISTE — la page sait alors ne plus jamais
+   *  rebasculer sur le repli (une carte vivante ne disparaît pas). */
+  onReady?: () => void;
 }
 
 const GOLD = '#f3cc66';
@@ -68,6 +71,20 @@ export function initRoofTool(opts: InitOptions): void {
     // Le mouvement de caméra animé est neutralisé sous prefers-reduced-motion.
     fadeDuration: opts.reducedMotion ? 0 : 300,
   });
+
+  // La carte EXISTE : on le signale immédiatement. Toute erreur de
+  // configuration ultérieure ne doit jamais la faire disparaître ni rebasculer
+  // sur le repli (le repli est réservé aux échecs réels : clé absente, style
+  // injoignable).
+  opts.onReady?.();
+
+  // Erreurs MapLibre non fatales (une tuile/un sprite qui 4xx, etc.) :
+  // journalisées, JAMAIS bloquantes — elles ne vident pas la carte.
+  map.on('error', (e: unknown) => {
+    const msg = (e as { error?: { message?: string } } | undefined)?.error?.message ?? e;
+    console.warn('[roof-tool] erreur carte (non bloquante) :', msg);
+  });
+
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   map.doubleClickZoom.disable(); // le double-clic ferme le tracé
 

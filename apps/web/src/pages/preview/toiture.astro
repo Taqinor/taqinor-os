@@ -234,13 +234,26 @@ const inputClass =
   async function boot(initialQuery?: string) {
     if (started || !key) return;
     started = true;
-    placeholder?.remove();
+    // Le repli ne s'affiche QUE si la carte n'a jamais pu être créée (échec de
+    // chargement du module, ou création MapLibre impossible). Une fois la carte
+    // créée (onReady), une erreur ultérieure ne la fait jamais disparaître.
+    let mapCreated = false;
     try {
       const mod = await import('../../scripts/roof-tool.ts');
-      mod.initRoofTool({ maptilerKey: key, reducedMotion, initialQuery });
+      placeholder?.remove();
+      mod.initRoofTool({
+        maptilerKey: key,
+        reducedMotion,
+        initialQuery,
+        onReady: () => {
+          mapCreated = true;
+        },
+      });
     } catch {
-      started = false;
-      showFallback();
+      if (!mapCreated) {
+        started = false;
+        showFallback();
+      }
     }
   }
 
