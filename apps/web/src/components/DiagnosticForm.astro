@@ -90,8 +90,8 @@ const inputClass =
           <div>
             <label for="lf-phone" class="mb-1 block text-sm font-semibold">Téléphone *</label>
             <input id="lf-phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel"
-              placeholder="06 XX XX XX XX" class={inputClass} />
-            <p id="lf-phone-err" class="mt-1 hidden text-xs text-alert-600"></p>
+              aria-describedby="lf-phone-err" placeholder="06 XX XX XX XX" class={inputClass} />
+            <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-600"></p>
           </div>
         </div>
         <label class="flex items-start gap-2 text-sm">
@@ -115,7 +115,7 @@ const inputClass =
       <input type="hidden" name="utm_content" />
       <input type="hidden" name="utm_term" />
 
-      <p id="lf-err" class="mt-4 hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
+      <p id="lf-err" role="alert" class="mt-4 hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
 
       <div class="mt-6 flex items-center justify-between gap-3">
         <button type="button" id="diag-back"
@@ -208,7 +208,10 @@ const inputClass =
     };
   }
 
-  function renderStep() {
+  // focusActive : déplace le focus vers le 1er champ de l'étape visible —
+  // uniquement lors d'un changement d'étape voulu par l'utilisateur, jamais
+  // au chargement (sinon on volerait le focus à l'arrivée sur la page).
+  function renderStep(focusActive = false) {
     for (const fs of form!.querySelectorAll<HTMLFieldSetElement>('fieldset[data-step]')) {
       const visible = Number(fs.dataset.step) === step;
       fs.classList.toggle('hidden', !visible);
@@ -224,6 +227,11 @@ const inputClass =
     nextBtn.classList.toggle('hidden', step === 3);
     submitBtn.classList.toggle('hidden', step !== 3);
     errEl.classList.add('hidden');
+    if (focusActive) {
+      form!
+        .querySelector<HTMLElement>(`fieldset[data-step="${step}"] select, fieldset[data-step="${step}"] input`)
+        ?.focus();
+    }
   }
 
   nextBtn.addEventListener('click', () => {
@@ -235,12 +243,12 @@ const inputClass =
       return;
     }
     step = nextStep(step, s);
-    renderStep();
+    renderStep(true);
   });
 
   backBtn.addEventListener('click', () => {
     if (step > 1) step = (step - 1) as 1 | 2;
-    renderStep();
+    renderStep(true);
   });
 
   // Signal préliminaire en direct à l'étape 2

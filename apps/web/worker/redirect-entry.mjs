@@ -9,14 +9,28 @@
  */
 import astro from './entry.mjs';
 import { canonicalTarget } from './canonical.mjs';
+import { pathRedirect } from './redirects.mjs';
 
 export default {
   async fetch(request, env, ctx) {
+    // 1) Hôte canonique : *.workers.dev → taqinor.ma (chemin + query préservés).
     const target = canonicalTarget(request.url);
     if (target) {
       return new Response(null, {
         status: 301,
         headers: { location: target, 'cache-control': 'public, max-age=3600' },
+      });
+    }
+    // 2) Redirections de chemin (anciennes URL / variantes sans accent).
+    const redirect = pathRedirect(request.url);
+    if (redirect) {
+      return new Response(null, {
+        status: redirect.status,
+        headers: {
+          location: redirect.target,
+          // 301 mis en cache 1 h ; 302 (repli temporaire) caché 5 min seulement.
+          'cache-control': redirect.status === 301 ? 'public, max-age=3600' : 'public, max-age=300',
+        },
       });
     }
     return astro.fetch(request, env, ctx);

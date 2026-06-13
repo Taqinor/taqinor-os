@@ -41,4 +41,12 @@ describe('messages pré-remplis', () => {
     expect(msg).toContain('Puissance : à déterminer ensemble.');
     expect(msg).toContain('Ville : Rabat.');
   });
+
+  it('rogne les espaces et omet la ville vide, sans « undefined » ni blanc', () => {
+    const msg = regularizationWhatsappText({ kwc: '  5  ', ville: '   ' });
+    expect(msg).toContain('Puissance approximative : 5 kWc');
+    expect(msg).not.toContain('Ville :');
+    expect(msg).not.toContain('undefined');
+    expect(msg).not.toContain('___');
+  });
 });
