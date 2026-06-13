@@ -36,6 +36,16 @@ Git-ignored (`.gitignore`); they exist only at `/opt/taqinor-simulator/`:
 `users.db`, `devis_history.json`, `config.json`, `devis_client/` (PDFs whose
 filenames contain real client names), `factures_client/`.
 
+## Secrets
+
+The JWT signing key is **not** in the source. The app reads
+`SIMULATOR_SECRET_KEY` from the environment at startup (and refuses to start if
+it is missing). On the server it lives only in `/opt/taqinor-simulator/secret.env`
+(chmod 600, owned by `simulator`, git-ignored), loaded by the systemd unit's
+`EnvironmentFile=`. To rotate: write a new random value there and
+`systemctl restart taqinor-simulator` (this logs everyone out once; same
+credentials). Generate one with `openssl rand -hex 48`.
+
 ## Server layout
 
 - App + venv + data: `/opt/taqinor-simulator/` owned by the unprivileged
@@ -58,7 +68,8 @@ independent deployed copy (decoupled from the OS docker deploy). To update code:
 ```bash
 # on the server, as root
 rsync -a --delete --exclude users.db --exclude devis_history.json \
-  --exclude config.json --exclude devis_client/ --exclude venv/ \
+  --exclude config.json --exclude devis_client/ --exclude factures_client/ \
+  --exclude secret.env --exclude venv/ \
   /path/to/repo/services/simulator/ /opt/taqinor-simulator/
 chown -R simulator:simulator /opt/taqinor-simulator
 systemctl restart taqinor-simulator
@@ -67,10 +78,10 @@ systemctl restart taqinor-simulator
 Caddyfile changes flow through the OS git checkout
 (`/opt/taqinor-os/backend/caddy/Caddyfile`) + `caddy reload`.
 
-## Known security notes (flagged, not changed — rescue, not redesign)
+## Security notes
 
-- `auth_utils.py` has a **hardcoded JWT `SECRET_KEY`**. Preserved byte-for-byte
-  so existing logins keep working. Rotating it to an env var (which would log
-  everyone out once) is a recommended follow-up — ask before changing.
+- JWT signing key: moved out of the source into a server-only secret (see
+  **Secrets** above) and rotated. No secret is committed.
+- Public API docs (`/docs`, `/redoc`, `/openapi.json`) are disabled in `main.py`.
 - `main.py` seeds default users/passwords only if `users.db` is empty; with the
   restored DB this never fires.

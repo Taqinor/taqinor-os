@@ -22,7 +22,16 @@ async def lifespan(app: FastAPI):
 
 
 
-app = FastAPI(title="TAQINOR Solar Quote Simulator", lifespan=lifespan, root_path="/simulator")
+# docs_url/redoc_url/openapi_url=None disable the public API docs
+# (/docs, /redoc, /openapi.json) — they exposed the full internal API surface.
+app = FastAPI(
+    title="TAQINOR Solar Quote Simulator",
+    lifespan=lifespan,
+    root_path="/simulator",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 # Mount static files
 static_dir = Path("static")
 static_dir.mkdir(exist_ok=True)
