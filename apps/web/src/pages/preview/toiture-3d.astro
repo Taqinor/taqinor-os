@@ -1,0 +1,304 @@
+---
+/**
+ * PAGE PRIVÉE DE PRÉVISUALISATION — /preview/toiture-3d (noindex, hors nav,
+ * exclue du sitemap, non liée). VARIANTE 3D de /preview/toiture, à comparer
+ * côte à côte avec la version 2D : le fondateur garde celle qu'il préfère.
+ *
+ * Même parcours que la 2D — adresse → tracé satellite → MÊME estimation (kWc,
+ * production PVGIS, économies) → MÊME diagnostic/lead pré-rempli
+ * (DiagnosticFormEnriched → /api/preview-lead). SEULE différence : une fois le
+ * toit fermé, la carte bascule en 3D et extrude le bâtiment + le toit + les
+ * panneaux avec les couches `fill-extrusion` NATIVES de MapLibre (aucune
+ * dépendance ajoutée, pas de Three.js) ; le visiteur peut faire pivoter/incliner.
+ *
+ * La carte (MapLibre) est LOURDE : chargée PARESSEUSEMENT (import() dynamique de
+ * src/scripts/roof-tool-3d.ts) — aucune autre page ne la télécharge. Sans clé
+ * MapTiler, sans WebGL ou sans JS : repli gracieux vers la 2D / le diagnostic,
+ * jamais de carte cassée. Construite sur le design de production (.v2 + V2Enhance).
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import DiagnosticFormEnriched from '../../components/DiagnosticFormEnriched.astro';
+
+const inputClass =
+  'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+---
+
+<Layout
+  title="Prévisualisation privée — estimateur de toiture 3D | Taqinor"
+  description="Page de travail privée, non indexée."
+  noindex={true}
+>
+  <div class="v2">
+    <V2Enhance />
+
+    <!-- Bandeau de revue — rappelle que rien n'est en ligne -->
+    <section class="border-b border-white/10 bg-nuit-800 px-4 py-14 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label rule-brass text-brass-300">Prévisualisation privée · version 3D · non publiée</p>
+        <h1 class="display v2-page-title mt-5 max-w-[20ch] text-white">
+          Dessinez votre toit, voyez votre maison en 3D
+        </h1>
+        <p class="v2-lead mt-6 max-w-2xl text-lune-soft">
+          Cherchez votre adresse, tracez le contour de votre toiture sur la vue satellite : l'outil
+          relève alors votre bâtiment en 3D et y pose vos panneaux — vous le faites pivoter et
+          l'inclinez du doigt. Puissance, production annuelle et économies estimées, comme la version
+          classique. Le site et le formulaire en production restent inchangés.
+        </p>
+        <p class="mt-4 text-sm text-lune-faint">
+          Estimation indicative, jamais un devis. <a href="/preview/toiture" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">Comparer avec la version 2D</a> ·
+          <a href="#simulateur" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">le diagnostic classique</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- L'OUTIL -->
+    <section class="bg-nuit px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <!-- Mode d'emploi en 3 temps -->
+        <ol class="mb-10 grid gap-4 sm:grid-cols-3">
+          <li class="border-l-2 border-brass-400/60 pl-4 text-sm text-lune-soft">
+            <span class="tech-label block text-brass-300">Étape 1</span>
+            <strong class="mt-1 block text-white">Votre adresse</strong>
+            La carte zoome sur votre maison en vue satellite.
+          </li>
+          <li class="border-l-2 border-brass-400/60 pl-4 text-sm text-lune-soft">
+            <span class="tech-label block text-brass-300">Étape 2</span>
+            <strong class="mt-1 block text-white">Tracez le toit</strong>
+            Cliquez les coins ; double-cliquez (ou « Terminer ») pour passer en 3D.
+          </li>
+          <li class="border-l-2 border-brass-400/60 pl-4 text-sm text-lune-soft">
+            <span class="tech-label block text-brass-300">Étape 3</span>
+            <strong class="mt-1 block text-white">Faites-la pivoter</strong>
+            Glissez pour tourner et incliner, voyez les panneaux sur votre toit.
+          </li>
+        </ol>
+
+        <!-- Repli gracieux : clé MapTiler absente, WebGL indisponible, ou JS off -->
+        <div id="r3-fallback" hidden class="cine-card mb-8 border-l-4 border-alert-300 p-6">
+          <p class="font-semibold text-white">Vue 3D momentanément indisponible</p>
+          <p class="mt-2 text-sm text-lune-soft">
+            La carte 3D n'est pas accessible sur cet appareil (carte graphique, clé ou JavaScript).
+            Vous pouvez utiliser <a href="/preview/toiture" class="text-brass-300 underline underline-offset-2">la version 2D</a>,
+            ou obtenir votre étude directement — <a href="#simulateur" class="text-brass-300 underline underline-offset-2">le diagnostic en 60 secondes</a>.
+          </p>
+        </div>
+
+        <div id="r3-stage" class="grid gap-6 lg:grid-cols-[1.5fr_1fr] lg:items-start">
+          <!-- Colonne carte -->
+          <div class="cine-card overflow-hidden">
+            <form id="r3-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
+              <label for="r3-address" class="sr-only">Votre adresse</label>
+              <input id="r3-address" name="address" type="text" autocomplete="street-address"
+                placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+              <button type="submit"
+                class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+                Localiser mon toit
+              </button>
+            </form>
+
+            <!-- Conteneur carte — hauteur réservée (zéro saut de page) -->
+            <div id="r3-map" class="r3-map" role="application" aria-label="Carte satellite 3D pour tracer votre toiture">
+              <div id="r3-map-placeholder" class="r3-map-placeholder">
+                <p class="text-sm text-lune-soft">
+                  Saisissez votre adresse ci-dessus pour afficher la vue satellite, ou
+                </p>
+                <button type="button" id="r3-open"
+                  class="mt-3 border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10">
+                  ouvrir la carte sans adresse
+                </button>
+                <noscript>
+                  <p class="mt-3 text-sm text-lune-faint">
+                    Cet outil nécessite JavaScript. <a href="/preview/toiture" class="text-brass-300 underline">Version 2D</a> ·
+                    <a href="#simulateur" class="text-brass-300 underline">diagnostic classique →</a>
+                  </p>
+                </noscript>
+              </div>
+            </div>
+
+            <!-- Barre de contrôle du tracé -->
+            <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
+              <button type="button" id="r3-finish" disabled
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                Terminer le tracé
+              </button>
+              <button type="button" id="r3-clear"
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
+                Effacer
+              </button>
+              <div class="ml-auto flex items-center gap-2">
+                <label for="r3-orient" class="text-sm text-lune-soft">Orientation</label>
+                <select id="r3-orient" class="border border-white/15 bg-nuit-700 px-3 py-2 text-sm text-white outline-none focus:border-brass-400">
+                  <option value="sud" selected>Sud</option>
+                  <option value="sud-est">Sud-Est</option>
+                  <option value="sud-ouest">Sud-Ouest</option>
+                  <option value="est">Est</option>
+                  <option value="ouest">Ouest</option>
+                  <option value="nord">Nord</option>
+                  <option value="inconnu">Je ne sais pas</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Réglages du bâtiment (apparaissent une fois le toit fermé en 3D) -->
+            <div id="r3-build-controls" hidden class="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-white/10 bg-nuit-800 p-4">
+              <div class="flex items-center gap-2">
+                <label for="r3-floors" class="text-sm text-lune-soft">Étages</label>
+                <select id="r3-floors" class="border border-white/15 bg-nuit-700 px-3 py-2 text-sm text-white outline-none focus:border-brass-400">
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="3">3 et +</option>
+                </select>
+              </div>
+              <label class="flex items-center gap-2 text-sm text-lune-soft">
+                <input type="checkbox" id="r3-pitch" class="accent-brass-400" />
+                Toit en pente (villa)
+              </label>
+              <span class="ml-auto text-xs text-lune-faint">Glissez pour pivoter · molette/pincez pour zoomer</span>
+            </div>
+
+            <p id="r3-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
+              Cherchez votre adresse pour commencer.
+            </p>
+          </div>
+
+          <!-- Colonne résultats — espace réservé (aucun CLS à l'apparition) -->
+          <div id="r3-results" class="r3-results cine-card p-6">
+            <p class="tech-label rule-brass text-brass-300">Votre potentiel solaire</p>
+            <dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-7">
+              <div>
+                <dd id="r3-res-kwc" class="fig text-3xl text-brass-300 sm:text-4xl">—</dd>
+                <dt class="tech-label mt-2 text-lune-faint">Puissance</dt>
+              </div>
+              <div>
+                <dd id="r3-res-panels" class="fig text-3xl text-white sm:text-4xl">—</dd>
+                <dt class="tech-label mt-2 text-lune-faint">Panneaux</dt>
+              </div>
+              <div>
+                <dd id="r3-res-area" class="fig text-3xl text-white sm:text-4xl">—</dd>
+                <dt class="tech-label mt-2 text-lune-faint">Surface tracée</dt>
+              </div>
+              <div>
+                <dd id="r3-res-prod" class="fig text-2xl text-white sm:text-3xl">—</dd>
+                <dt class="tech-label mt-2 text-lune-faint">Production estimée</dt>
+              </div>
+            </dl>
+            <div class="mt-7 border-t border-white/10 pt-6">
+              <dd id="r3-res-savings" class="fig text-2xl text-brass-300 sm:text-3xl">—</dd>
+              <dt class="tech-label mt-2 text-lune-faint">Économies estimées</dt>
+            </div>
+            <p id="r3-res-note" class="mt-6 text-xs leading-relaxed text-lune-faint">
+              Tracez votre toit pour découvrir votre potentiel solaire.
+            </p>
+            <p class="mt-3 text-xs leading-relaxed text-lune-faint/80">
+              Vue 3D : volume approximatif (contour tracé + nombre d'étages + type de toit), pas un
+              relevé exact de la maison. Les chiffres sont identiques à la version 2D.
+            </p>
+            <button type="button" id="r3-cta" hidden
+              class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+              Recevoir mon étude sur WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Le MÊME diagnostic/lead que la production (pré-rempli par l'outil) -->
+    <DiagnosticFormEnriched heading="Recevez votre étude détaillée" />
+  </div>
+</Layout>
+
+<style>
+  .r3-map {
+    position: relative;
+    width: 100%;
+    height: 60vh;
+    min-height: 360px;
+    background: var(--color-nuit-700);
+  }
+  @media (min-width: 1024px) {
+    .r3-map { height: 560px; }
+  }
+  .r3-map-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+  }
+  /* Réserve la hauteur du panneau de résultats → aucun saut de page (CLS=0). */
+  .r3-results { min-height: 360px; }
+  .r3-results--ready { border-color: rgb(243 204 102 / 0.25); }
+  /* La carte MapLibre doit remplir son conteneur. */
+  .r3-map :global(.maplibregl-map) { position: absolute; inset: 0; }
+</style>
+
+<script>
+  // Activation paresseuse : MapLibre n'est téléchargé qu'au premier geste réel
+  // (recherche d'adresse ou « ouvrir la carte »). La clé publique MapTiler est
+  // lue à l'exécution via /api/roof-config — absente → repli gracieux.
+  const fallback = document.getElementById('r3-fallback');
+  const stage = document.getElementById('r3-stage');
+  const searchForm = document.getElementById('r3-search') as HTMLFormElement | null;
+  const addressEl = document.getElementById('r3-address') as HTMLInputElement | null;
+  const openBtn = document.getElementById('r3-open');
+  const placeholder = document.getElementById('r3-map-placeholder');
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let started = false;
+  let key = '';
+
+  function showFallback() {
+    if (fallback) fallback.hidden = false;
+    if (stage) stage.hidden = true;
+  }
+
+  async function boot(initialQuery?: string) {
+    if (started || !key) return;
+    started = true;
+    // Le repli ne s'affiche QUE si la carte n'a jamais pu être créée (module qui
+    // échoue, WebGL absent, ou création MapLibre impossible). Une fois la carte
+    // créée (onReady), une erreur ultérieure ne la fait jamais disparaître.
+    let mapCreated = false;
+    try {
+      const mod = await import('../../scripts/roof-tool-3d.ts');
+      placeholder?.remove();
+      mod.initRoofTool3D({
+        maptilerKey: key,
+        reducedMotion,
+        initialQuery,
+        onReady: () => {
+          mapCreated = true;
+        },
+      });
+    } catch {
+      if (!mapCreated) {
+        started = false;
+        showFallback();
+      }
+    }
+  }
+
+  (async () => {
+    try {
+      const res = await fetch('/api/roof-config');
+      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string };
+      if (!cfg.available || !cfg.maptilerKey) {
+        showFallback();
+        return;
+      }
+      key = cfg.maptilerKey;
+      searchForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        boot(addressEl?.value.trim() || undefined);
+      });
+      openBtn?.addEventListener('click', () => boot());
+    } catch {
+      showFallback();
+    }
+  })();
+</script>

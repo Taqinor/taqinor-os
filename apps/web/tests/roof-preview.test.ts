@@ -52,8 +52,11 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
     const offenders = walk(srcDir)
       .filter((f) => /\.(ts|tsx|js|astro)$/.test(f))
       .filter((f) => importsMaplibre(readFileSync(f, 'utf-8')))
-      .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'));
-    expect(offenders).toEqual(['src/scripts/roof-tool.ts']);
+      .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
+      .sort();
+    // Les DEUX outils (2D + variante 3D), et eux seuls, importent MapLibre —
+    // tous deux chargés à la demande, jamais dans le bundle d'une autre page.
+    expect(offenders).toEqual(['src/scripts/roof-tool-3d.ts', 'src/scripts/roof-tool.ts']);
   });
 
   it('la page charge l’outil par import() dynamique, pas en statique', () => {
@@ -137,6 +140,82 @@ describe('estimateur — cycle de vie carte : init unique, repli seulement sur �
     const page = read('../src/pages/preview/toiture.astro');
     expect(page).toContain('mapCreated');
     expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
+  });
+});
+
+describe('estimateur 3D — variante privée, parallèle, sans toucher la 2D', () => {
+  const page3d = '../src/pages/preview/toiture-3d.astro';
+  const tool3d = '../src/scripts/roof-tool-3d.ts';
+
+  it('la page /preview/toiture-3d est noindex et vit dans /preview/ (sous-dossier)', () => {
+    expect(read(page3d)).toContain('noindex={true}');
+    expect(existsSync(fileURLToPath(new URL(page3d, import.meta.url)))).toBe(true);
+    expect(existsSync(fileURLToPath(new URL('../src/pages/toiture-3d.astro', import.meta.url)))).toBe(false);
+  });
+
+  it('la 2D /preview/toiture reste strictement inchangée (ne mentionne jamais la 3D)', () => {
+    const page2d = read('../src/pages/preview/toiture.astro');
+    expect(page2d).not.toContain('toiture-3d');
+    expect(page2d).not.toContain('roof-tool-3d');
+    // L'outil 2D ne référence pas la variante 3D non plus.
+    expect(read('../src/scripts/roof-tool.ts')).not.toContain('roof-tool-3d');
+  });
+
+  it('la page 3D charge l’outil par import() dynamique, pas en statique', () => {
+    const page = read(page3d);
+    expect(page).toContain("import('../../scripts/roof-tool-3d");
+    expect(page).not.toMatch(/import\s+\w+\s+from\s+['"]maplibre/);
+  });
+
+  it('le module 3D fait la 3D en MapLibre NATIF — aucune dépendance ajoutée (pas de Three.js)', () => {
+    const tool = read(tool3d);
+    expect(tool).toContain("from 'maplibre-gl'");
+    expect(tool).toContain('fill-extrusion'); // massing natif MapLibre
+    expect(tool).not.toMatch(/from\s+['"]three/); // aucun import Three.js
+  });
+
+  it('la 3D RÉUTILISE le même calcul et le même lead (jamais de fork)', () => {
+    const tool = read(tool3d);
+    // Calcul partagé : importe la géométrie testée, n'en réimplémente pas.
+    expect(tool).toContain("from '../lib/roof'");
+    expect(tool).toContain('layoutPanels');
+    // Production : MÊME proxy serveur, jamais PVGIS direct.
+    expect(tool).toContain("'/api/roof-estimate'");
+    expect(tool).not.toContain('re.jrc.ec.europa.eu');
+    // Lead : pré-remplit les MÊMES champs, ne poste aucun lead lui-même.
+    expect(tool).toContain("'lf-area'");
+    expect(tool).toContain("'lf-orient'");
+    expect(tool).toContain("'lf-kwc-est'");
+    expect(tool).not.toContain('/api/preview-lead');
+    expect(tool).not.toContain('/api/simulate');
+    // La page réutilise le formulaire de production, sans poster de lead.
+    const page = read(page3d);
+    expect(page).toContain('DiagnosticFormEnriched');
+    expect(page).not.toContain("fetch('/api/preview-lead'");
+  });
+
+  it('prefers-reduced-motion : bascule 3D instantanée, aucune animation auto', () => {
+    const tool = read(tool3d);
+    expect(tool).toContain('opts.reducedMotion'); // chemin sans animation
+    expect(tool).toContain('map.jumpTo'); // bascule instantanée si réduit
+    // Aucune rotation automatique continue.
+    expect(tool).not.toContain('rotateTo');
+    expect(tool).not.toMatch(/setInterval|requestAnimationFrame/);
+  });
+
+  it('repli gracieux : WebGL absent → l’outil lève (la page bascule sur le repli)', () => {
+    const tool = read(tool3d);
+    expect(tool).toContain('webgl');
+    expect(tool).toMatch(/throw new Error/);
+    const page = read(page3d);
+    expect(page).toContain('mapCreated');
+    expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
+  });
+
+  it('aucune page publique ne monte l’estimateur 3D', () => {
+    for (const p of ['index', 'résidentiel', 'professionnel', 'contact', 'équipement', 'loi-82-21', 'regularization-article-33']) {
+      expect(read(`../src/pages/${p}.astro`)).not.toContain('roof-tool-3d');
+    }
   });
 });
 
