@@ -14,6 +14,16 @@ import { originFrom } from '../../api/origin'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 
+// Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
+// quand le profil n'a encore rien d'enregistré ; sauver = valeurs identiques.
+const DEFAULT_PAYMENT_TERMS = {
+  residentiel: { acompte: 30, materiel: 60, solde: 10 },
+  agricole: { acompte: 30, materiel: 60, solde: 10 },
+  industriel: { acompte: 50, materiel: 40, solde: 10 },
+}
+const DEFAULT_PREFIXES = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', bon_commande: 'BC' }
+const MODE_LABELS = { residentiel: 'Résidentiel', agricole: 'Agricole', industriel: 'Industriel / Commercial' }
+
 const ACCEPTED   = ['image/png', 'image/jpeg', 'image/webp']
 const MAX_MB     = 2
 // Var d'env VIDE = même origine (prod derrière nginx) — surtout ne jamais
@@ -331,16 +341,30 @@ export default function ParametresEntreprise() {
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
     responsable_defaut_leads: '',
+    payment_terms: DEFAULT_PAYMENT_TERMS,
+    quote_validity_days: 30,
+    agricole_pump_hours: 7,
+    doc_prefixes: DEFAULT_PREFIXES,
+    tva_standard: 20,
+    tva_panneaux: 10,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
   const [niveaux, setNiveaux] = useState([])
   const [niveauxSaved, setNiveauxSaved] = useState(false)
+  const [tags, setTags] = useState([])
+  const [motifs, setMotifs] = useState([])
+  const [newTag, setNewTag] = useState('')
+  const [newMotif, setNewMotif] = useState('')
 
   const loadNiveaux = () => {
     ventesApi.getNiveauxRelance()
       .then(r => setNiveaux(r.data.results ?? r.data)).catch(() => {})
   }
+  const loadTags = () => crmApi.getTags()
+    .then(r => setTags(r.data.results ?? r.data)).catch(() => {})
+  const loadMotifs = () => crmApi.getMotifsPerte()
+    .then(r => setMotifs(r.data.results ?? r.data)).catch(() => {})
 
   useEffect(() => {
     dispatch(fetchProfile())
@@ -349,7 +373,34 @@ export default function ParametresEntreprise() {
     crmApi.getAssignableUsers()
       .then(r => setAssignables(r.data.results ?? r.data)).catch(() => {})
     loadNiveaux()
+    loadTags()
+    loadMotifs()
   }, [dispatch])
+
+  const addTag = async () => {
+    const nom = newTag.trim()
+    if (!nom) return
+    try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch { /* */ }
+  }
+  const renameTag = async (t, nom) => {
+    try { await crmApi.saveTag(t.id, { nom }) } catch { /* */ }
+  }
+  const delTag = async (t) => {
+    if (!window.confirm(`Supprimer l'étiquette « ${t.nom} » ?`)) return
+    try { await crmApi.deleteTag(t.id); loadTags() } catch { /* */ }
+  }
+  const addMotif = async () => {
+    const nom = newMotif.trim()
+    if (!nom) return
+    try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch { /* */ }
+  }
+  const renameMotif = async (m, nom) => {
+    try { await crmApi.saveMotifPerte(m.id, { nom }) } catch { /* */ }
+  }
+  const delMotif = async (m) => {
+    if (!window.confirm(`Supprimer le motif « ${m.nom} » ?`)) return
+    try { await crmApi.deleteMotifPerte(m.id); loadMotifs() } catch { /* */ }
+  }
 
   const setNiveau = (id, key, val) =>
     setNiveaux(ns => ns.map(n => (n.id === id ? { ...n, [key]: val } : n)))
@@ -385,6 +436,12 @@ export default function ParametresEntreprise() {
       cnss:              profile.cnss              ?? '',
       couleur_principale: profile.couleur_principale ?? '#1d4ed8',
       responsable_defaut_leads: profile.responsable_defaut_leads ?? '',
+      payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}) },
+      quote_validity_days: profile.quote_validity_days ?? 30,
+      agricole_pump_hours: profile.agricole_pump_hours ?? 7,
+      doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
+      tva_standard: profile.tva_standard ?? 20,
+      tva_panneaux: profile.tva_panneaux ?? 10,
     })
   }, [profile])
 
@@ -398,13 +455,33 @@ export default function ParametresEntreprise() {
   }, [saveSuccess, dispatch])
 
   const set = (e) => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
+  const setPT = (mode, key, val) => setForm(p => ({
+    ...p, payment_terms: { ...p.payment_terms,
+      [mode]: { ...p.payment_terms[mode], [key]: val } } }))
+  const setPrefix = (key, val) => setForm(p => ({
+    ...p, doc_prefixes: { ...p.doc_prefixes, [key]: val } }))
+
   const handleSave = (e) => {
     e.preventDefault()
-    // FK : '' doit devenir null (sinon le sérialiseur rejette la valeur vide).
+    // Coercition douce : pourcentages en nombres ; FK '' → null.
+    const pt = {}
+    for (const mode of Object.keys(form.payment_terms || {})) {
+      const t = form.payment_terms[mode]
+      pt[mode] = {
+        acompte: Number(t.acompte) || 0,
+        materiel: Number(t.materiel) || 0,
+        solde: Number(t.solde) || 0,
+      }
+    }
     const payload = {
       ...form,
       responsable_defaut_leads: form.responsable_defaut_leads === ''
         ? null : form.responsable_defaut_leads,
+      payment_terms: pt,
+      quote_validity_days: Number(form.quote_validity_days) || 30,
+      agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
+      tva_standard: Number(form.tva_standard) || 20,
+      tva_panneaux: Number(form.tva_panneaux) || 10,
     }
     dispatch(saveProfile(payload))
   }
@@ -598,6 +675,116 @@ export default function ParametresEntreprise() {
                 ))}
               </select>
             </Field>
+          </div>
+
+          {/* Devis — échéancier, validité, pompage, numérotation */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#1d4ed8" label="Devis" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Conditions de paiement par marché (acompte / matériel / solde, en %).
+              Les factures d'acompte suivent ces valeurs.
+            </p>
+            {Object.keys(MODE_LABELS).map(mode => (
+              <div key={mode} style={{ marginBottom: '0.6rem' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{MODE_LABELS[mode]}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
+                  {['acompte', 'materiel', 'solde'].map(k => (
+                    <div key={k}>
+                      <label style={{ fontSize: 10.5, color: '#64748b', textTransform: 'capitalize' }}>{k} %</label>
+                      <input style={inputBase} type="number" min="0" max="100"
+                             value={form.payment_terms?.[mode]?.[k] ?? ''}
+                             onChange={e => setPT(mode, k, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginTop: '0.6rem' }}>
+              <Field label="Validité du devis (jours)">
+                <input style={inputBase} type="number" min="1" name="quote_validity_days"
+                       value={form.quote_validity_days} onChange={set} />
+              </Field>
+              <Field label="Heures de pompage / jour (agricole, défaut)">
+                <input style={inputBase} type="number" min="0" step="0.5" name="agricole_pump_hours"
+                       value={form.agricole_pump_hours} onChange={set} />
+              </Field>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0.8rem 0 0.4rem' }}>
+              Préfixes de numérotation
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.6rem' }}>
+              {[['devis', 'Devis'], ['facture', 'Facture'], ['avoir', 'Avoir'], ['bon_commande', 'Bon cmd']].map(([k, lbl]) => (
+                <div key={k}>
+                  <label style={{ fontSize: 10.5, color: '#64748b' }}>{lbl}</label>
+                  <input style={inputBase} value={form.doc_prefixes?.[k] ?? ''}
+                         onChange={e => setPrefix(k, e.target.value)} />
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: '0.6rem 0 0', fontSize: 11, color: '#94a3b8' }}>
+              Les numéros déjà émis ne changent pas ; seuls les nouveaux suivent ces préfixes.
+            </p>
+          </div>
+
+          {/* TVA / Taxes (réglage légal/comptable) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #fde68a', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#b45309" label="TVA / Taxes" icon={<><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#b45309' }}>
+              ⚠ Réglage légal/comptable. Les valeurs par défaut (10 % panneaux,
+              20 % standard) correspondent à la réforme marocaine. À vérifier
+              avec votre comptable avant toute modification.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+              <Field label="Taux standard (%)">
+                <input style={inputBase} type="number" min="0" max="100" step="0.01"
+                       name="tva_standard" value={form.tva_standard} onChange={set} />
+              </Field>
+              <Field label="Taux panneaux PV (%)">
+                <input style={inputBase} type="number" min="0" max="100" step="0.01"
+                       name="tva_panneaux" value={form.tva_panneaux} onChange={set} />
+              </Field>
+            </div>
+          </div>
+
+          {/* CRM — Étiquettes & motifs de perte (listes gérées) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#7c3aed" label="CRM — Étiquettes & motifs" icon={<><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Étiquettes et motifs de perte proposés sur les leads. Le texte
+              libre reste possible ; les leads existants ne changent pas.
+            </p>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Étiquettes</div>
+            {tags.map(t => (
+              <div key={t.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1 }} defaultValue={t.nom}
+                       onBlur={e => renameTag(t, e.target.value)} />
+                <button type="button" onClick={() => delTag(t)}
+                        style={{ border: '1px solid #fca5a5', color: '#ef4444', background: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouvelle étiquette" value={newTag}
+                     onChange={e => setNewTag(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} />
+              <button type="button" onClick={addTag}
+                      style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Motifs de perte</div>
+            {motifs.map(m => (
+              <div key={m.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1 }} defaultValue={m.nom}
+                       onBlur={e => renameMotif(m, e.target.value)} />
+                <button type="button" onClick={() => delMotif(m)}
+                        style={{ border: '1px solid #fca5a5', color: '#ef4444', background: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouveau motif" value={newMotif}
+                     onChange={e => setNewMotif(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMotif() } }} />
+              <button type="button" onClick={addMotif}
+                      style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
           </div>
 
           {/* Niveaux de relance */}

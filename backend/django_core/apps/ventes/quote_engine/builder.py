@@ -419,9 +419,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         out.append("Structures + installation complète")
         return out[:6]
 
-    # Conditions de paiement par mode — source unique au niveau module.
-    payment_terms = PAYMENT_TERMS_BY_MODE.get(
-        mode or "residentiel", PAYMENT_TERMS_BY_MODE["residentiel"])
+    # Conditions de paiement par mode — réglage éditable de la société, repli
+    # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
+    from apps.ventes.utils.company_settings import payment_terms_for
+    payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
 
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.

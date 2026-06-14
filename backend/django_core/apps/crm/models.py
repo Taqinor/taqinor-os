@@ -384,3 +384,40 @@ class LeadActivity(models.Model):
 
     def __str__(self):
         return f"{self.lead_id} {self.kind} {self.field or ''}".strip()
+
+
+class LeadTag(models.Model):
+    """Étiquette de lead gérée (Paramètres → CRM). Le champ Lead.tags reste un
+    texte libre ; cette liste sert de suggestions + couleurs. Additif."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='lead_tags')
+    nom = models.CharField(max_length=80)
+    couleur = models.CharField(max_length=7, blank=True, default='')
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Étiquette de lead'
+
+    def __str__(self):
+        return self.nom
+
+
+class MotifPerte(models.Model):
+    """Motif de perte géré (Paramètres → CRM). Le champ Lead.motif_perte reste
+    un texte libre ; cette liste sert de choix proposés. Additif."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='motifs_perte')
+    nom = models.CharField(max_length=150)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Motif de perte'
+
+    def __str__(self):
+        return self.nom
