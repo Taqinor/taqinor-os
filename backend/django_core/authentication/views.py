@@ -201,6 +201,21 @@ class RegisterCompanyView(generics.GenericAPIView):
         roles = _create_system_roles(company)
         admin_role = roles['Administrateur']
 
+        # Types d'activité par défaut (style Odoo) pour la nouvelle société.
+        try:
+            from apps.records.models import ActivityType
+            for nom, icone, ordre, delai in [
+                ('Appel', '📞', 10, 0), ('Email', '✉️', 20, 0),
+                ('Réunion', '👥', 30, 0), ('Relance', '📅', 40, 3),
+                ('À faire', '✔️', 50, 0),
+            ]:
+                ActivityType.objects.get_or_create(
+                    company=company, nom=nom,
+                    defaults={'icone': icone, 'ordre': ordre,
+                              'delai_defaut_jours': delai, 'est_systeme': True})
+        except Exception:
+            pass
+
         user = CustomUser.objects.create_user(
             username=username,
             email=email,

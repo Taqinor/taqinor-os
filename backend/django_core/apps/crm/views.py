@@ -124,12 +124,16 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                 extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
+        from .services import sync_relance_activity
+        sync_relance_activity(serializer.instance, user)
 
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
         activity.log_changes(old, serializer.instance, self.request.user)
+        from .services import sync_relance_activity
+        sync_relance_activity(serializer.instance, self.request.user)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:

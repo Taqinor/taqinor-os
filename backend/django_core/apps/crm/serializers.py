@@ -48,6 +48,7 @@ class LeadSerializer(serializers.ModelSerializer):
     owner_poste = serializers.SerializerMethodField()
     owner_avatar = serializers.SerializerMethodField()
     devis_auto = serializers.SerializerMethodField()
+    next_activity = serializers.SerializerMethodField()
 
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
@@ -58,6 +59,28 @@ class LeadSerializer(serializers.ModelSerializer):
             'manquants': manquants,
             'message': message_manquants(manquants) if manquants else None,
         }
+
+    def get_next_activity(self, obj):
+        """Activité ouverte la plus proche (pour la pastille horloge de la
+        carte kanban) : {state: overdue/today/upcoming, due_date, summary}."""
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.records.models import Activity
+            from apps.records.serializers import activity_state
+            ct = ContentType.objects.get_for_model(obj.__class__)
+            act = (Activity.objects
+                   .filter(content_type=ct, object_id=obj.id, done=False,
+                           due_date__isnull=False)
+                   .order_by('due_date').first())
+            if act is None:
+                return None
+            return {
+                'state': activity_state(act.due_date, False),
+                'due_date': act.due_date.isoformat(),
+                'summary': act.summary or act.activity_type.nom,
+            }
+        except Exception:
+            return None
 
     def get_owner_nom(self, obj):
         return getattr(obj.owner, 'username', None)

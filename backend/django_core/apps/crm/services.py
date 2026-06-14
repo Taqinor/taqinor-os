@@ -13,6 +13,8 @@ resolved automatically, without ever creating duplicates:
 The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
+from django.utils import timezone
+
 from . import stages
 from .models import Client, Lead, LeadActivity
 
@@ -78,6 +80,52 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
         new_value=stages.STAGE_LABELS[stage_cible],
         body=f"auto — devis {devis.reference} {suffixe}",
     )
+
+
+def sync_relance_activity(lead, user):
+    """Garde UN seul système de rappel : la `relance_date` du lead pilote une
+    activité « Relance » auto-gérée (records.Activity). On ne crée jamais deux
+    rappels concurrents — le Calendrier continue d'afficher relance_date, qui
+    EST l'échéance de cette activité.
+
+    relance_date posée  → crée/maj l'activité Relance ouverte (échéance + owner).
+    relance_date vidée  → clôt l'activité Relance ouverte s'il y en a une.
+    Best-effort : n'échoue jamais l'enregistrement du lead.
+    """
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity, ActivityType
+        ct = ContentType.objects.get_for_model(lead.__class__)
+        open_qs = Activity.objects.filter(
+            content_type=ct, object_id=lead.id,
+            auto_relance=True, done=False)
+        if lead.relance_date:
+            atype = (ActivityType.objects
+                     .filter(company=lead.company, nom='Relance').first())
+            if atype is None:
+                atype = ActivityType.objects.create(
+                    company=lead.company, nom='Relance', icone='📅',
+                    ordre=40, est_systeme=True)
+            act = open_qs.first()
+            if act is None:
+                Activity.objects.create(
+                    company=lead.company, content_type=ct, object_id=lead.id,
+                    activity_type=atype, auto_relance=True,
+                    summary='Relance commerciale',
+                    due_date=lead.relance_date,
+                    assigned_to=lead.owner, created_by=user)
+            else:
+                act.due_date = lead.relance_date
+                act.assigned_to = lead.owner
+                act.save(update_fields=['due_date', 'assigned_to'])
+        else:
+            for act in open_qs:
+                act.done = True
+                act.done_at = timezone.now()
+                act.done_by = user
+                act.save(update_fields=['done', 'done_at', 'done_by'])
+    except Exception:
+        pass
 
 
 def default_responsable_for(company):
