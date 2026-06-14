@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchClients, deleteClient } from '../../features/crm/store/crmSlice'
+import ventesApi from '../../api/ventesApi'
+import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
 
 export default function ClientList() {
@@ -29,6 +31,13 @@ export default function ClientList() {
   const openNew   = () => { setEditClient(null); setShowForm(true) }
   const openEdit  = c  => { setEditClient(c);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);  setEditClient(null) }
+
+  const openReleve = async (c) => {
+    try {
+      const res = await ventesApi.getClientRelevePdf(c.id)
+      openPdfBlob(res.data, `Releve_${c.nom}.pdf`)
+    } catch { alert('Relevé indisponible.') }
+  }
 
   const handleDelete = async (c) => {
     const fullName = [c.nom, c.prenom].filter(Boolean).join(' ')
@@ -111,6 +120,9 @@ export default function ClientList() {
                 <div className="actions-cell">
                   <button className="btn btn-sm btn-outline" onClick={() => openEdit(c)}>
                     Éditer
+                  </button>
+                  <button className="btn btn-sm btn-outline" onClick={() => openReleve(c)}>
+                    Relevé
                   </button>
                   {role === 'admin' && (
                     <button

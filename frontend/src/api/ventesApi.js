@@ -52,6 +52,27 @@ const ventesApi = {
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
 
+  // Avoirs (notes de crédit)
+  creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),
+  getAvoirs: (params) => api.get('/ventes/avoirs/', { params }),
+  annulerAvoir: (id) => api.post(`/ventes/avoirs/${id}/annuler/`),
+  telechargerAvoirPdf: (id) => api.get(`/ventes/avoirs/${id}/telecharger-pdf/`, { responseType: 'blob' }),
+
+  // Recouvrement (vue/consigne/impression — jamais d'envoi)
+  getRelances: () => api.get('/ventes/relances/'),
+  relancerFacture: (id, data) => api.post(`/ventes/factures/${id}/relancer/`, data),
+  exclureRelance: (id, exclu) => api.post(`/ventes/factures/${id}/exclure-relance/`, { exclu }),
+  getRelancesFacture: (id) => api.get(`/ventes/factures/${id}/relances/`),
+  getBalanceAgee: () => api.get('/ventes/balance-agee/'),
+  getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
+  getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
+  getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),
+  getNiveauxRelance: () => api.get('/ventes/niveaux-relance/'),
+  saveNiveauRelance: (id, data) => id
+    ? api.patch(`/ventes/niveaux-relance/${id}/`, data)
+    : api.post('/ventes/niveaux-relance/', data),
+  deleteNiveauRelance: (id) => api.delete(`/ventes/niveaux-relance/${id}/`),
+
   // Lignes de facture
   getLignesFacture: (params) => api.get('/ventes/factures-lignes/', { params }),
   createLigneFacture: (data) => api.post('/ventes/factures-lignes/', data),

@@ -45,6 +45,14 @@ export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote, user
       <div className="kb-card-head">
         <span className="kb-card-name">{nomComplet}</span>
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
+        {lead.next_activity && (
+          <span
+            className={`kb-act-clock ${lead.next_activity.state}`}
+            title={`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`}
+          >
+            ⏰
+          </span>
+        )}
         <button
           type="button"
           className="kb-flash"

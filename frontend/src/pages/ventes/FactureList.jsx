@@ -57,6 +57,21 @@ function openPdfBlob(blob, filename) {
 export default function FactureList() {
   const dispatch = useDispatch()
   const { factures, loading, error } = useSelector(s => s.ventes)
+  const isAdmin = useSelector(s => s.auth.role) === 'admin'
+
+  const creerAvoir = async (f) => {
+    const motif = window.prompt(
+      `Créer un avoir TOTAL pour la facture ${f.reference} ?\n`
+      + 'Motif (optionnel) :', '')
+    if (motif === null) return
+    try {
+      await ventesApi.creerAvoir(f.id, { motif })
+      dispatch(fetchFactures())
+      alert('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? "Création de l'avoir impossible.")
+    }
+  }
 
   const [showForm, setShowForm]       = useState(false)
   const [editFacture, setEditFacture] = useState(null)
@@ -382,6 +397,15 @@ export default function FactureList() {
                         onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}
                       >
                         Annuler
+                      </button>
+                    )}
+                    {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => creerAvoir(f)}
+                        title="Créer un avoir (note de crédit)"
+                      >
+                        Avoir
                       </button>
                     )}
 
