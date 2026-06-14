@@ -18,7 +18,7 @@ import './kanban.css'
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
-function DraggableCard({ lead, busy, onOpen, onAutoQuote }) {
+function DraggableCard({ lead, busy, onOpen, onAutoQuote, users, onReassign }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     data: { lead },
@@ -31,7 +31,8 @@ function DraggableCard({ lead, busy, onOpen, onAutoQuote }) {
       {...listeners}
       {...attributes}
     >
-      <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote} />
+      <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
+                users={users} onReassign={onReassign} />
     </div>
   )
 }
@@ -71,6 +72,8 @@ export default function KanbanView({
   onChangeStage,
   onAutoQuote,
   busyLeadId,
+  users,
+  onReassign,
 }) {
   // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
   // sur mobile, appui long 150 ms pour glisser, le scroll reste naturel.
@@ -114,6 +117,8 @@ export default function KanbanView({
                 busy={lead.id === busyLeadId}
                 onOpen={onOpenLead}
                 onAutoQuote={onAutoQuote}
+                users={users}
+                onReassign={onReassign}
               />
             ))}
           </StageColumn>

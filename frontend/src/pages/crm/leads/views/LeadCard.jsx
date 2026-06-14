@@ -4,11 +4,11 @@ import {
   CANAL_LABELS,
   PRIORITE_LABELS,
   PRIORITE_STARS,
-  initials,
   isPerdu,
   tagColor,
   tagList,
 } from '../../../../features/crm/stages'
+import AssigneePicker from '../../../../components/AssigneePicker'
 
 const formatDateFr = (iso) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR')
@@ -20,7 +20,7 @@ const isEnRetard = (iso) => {
   return iso < aujourdhui
 }
 
-export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote }) {
+export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote, users = [], onReassign }) {
   const perdu = isPerdu(lead)
   const tags = tagList(lead)
   const etoiles = PRIORITE_STARS[lead.priorite] ?? PRIORITE_STARS.normale
@@ -28,7 +28,6 @@ export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote }) {
     [lead.nom, lead.prenom].filter(Boolean).join(' ') || lead.societe || '—'
   const sousTitre = lead.ville || lead.telephone || ''
   const canal = CANAL_LABELS[lead.canal]
-  const avatar = initials(lead.owner_nom)
 
   const classes = [
     'kb-card',
@@ -111,11 +110,21 @@ export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote }) {
             📅 {formatDateFr(lead.relance_date)}
           </span>
         )}
-        {avatar && (
-          <span className="kb-avatar" title={lead.owner_nom}>
-            {avatar}
-          </span>
-        )}
+        <span
+          className="kb-card-assignee"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <AssigneePicker
+            users={users}
+            value={lead.owner ?? ''}
+            onChange={(id) => onReassign?.(lead, id)}
+            size={24}
+            compact
+            disabled={!onReassign}
+          />
+        </span>
       </div>
     </article>
   )

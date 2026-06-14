@@ -52,7 +52,10 @@ function WithLayout({ children }) {
 }
 
 const router = createBrowserRouter([
-  { path: '/',      element: <Suspense fallback={<Fallback />}><Landing /></Suspense> },
+  // Entrée de l'OS : un visiteur non connecté arrive DIRECTEMENT sur le login.
+  // La landing reste dans le code (route /landing) mais n'est plus l'entrée.
+  { path: '/',      element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
+  { path: '/landing', element: <Suspense fallback={<Fallback />}><Landing /></Suspense> },
   { path: '/login',  element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },

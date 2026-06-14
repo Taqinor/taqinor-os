@@ -47,6 +47,16 @@ class CompanyProfile(models.Model):
     signature_key = models.CharField(
         max_length=500, blank=True, default=''
     )
+    # Responsable assigné par défaut aux NOUVEAUX leads (site + manuel) quand
+    # aucun responsable n'est choisi à la création. Initialisé sur le compte
+    # « Meryem » par migration de données ; modifiable dans Paramètres.
+    responsable_defaut_leads = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
 
     class Meta:
         verbose_name = 'Profil entreprise'

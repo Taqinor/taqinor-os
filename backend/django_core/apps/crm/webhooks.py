@@ -136,6 +136,9 @@ def website_lead_webhook(request):
             existing.save()
             lead, created = existing, False
         else:
+            # Responsable par défaut de la société (Paramètres) si configuré.
+            from .services import default_responsable_for
+            fields.setdefault('owner', default_responsable_for(company))
             lead = Lead.objects.create(company=company, **fields)
             created = True
             LeadActivity.objects.create(

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import Avatar from '../../components/Avatar'
 
 export default function UsersManagement() {
   const currentUsername = useSelector(s => s.auth.user?.username)
@@ -12,6 +13,73 @@ export default function UsersManagement() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ username: '', email: '', password: '', role: '' })
   const [saving, setSaving] = useState(false)
+
+  // ── Édition d'un employé (rôle, poste, mot de passe, photo, actif) ──
+  const [editUser, setEditUser] = useState(null)
+  const [editForm, setEditForm] = useState(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const fileRef = useRef(null)
+
+  const openEdit = (u) => {
+    setEditError(null)
+    setEditUser(u)
+    setEditForm({
+      email: u.email || '',
+      role: u.role || '',
+      poste: u.poste || '',
+      is_active: u.is_active,
+      password: '',
+      password2: '',
+    })
+  }
+  const closeEdit = () => { setEditUser(null); setEditForm(null); setEditError(null) }
+
+  const saveEdit = async (e) => {
+    e.preventDefault()
+    if (editForm.password && editForm.password !== editForm.password2) {
+      setEditError('Les deux mots de passe ne correspondent pas.')
+      return
+    }
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const payload = {
+        email: editForm.email,
+        role: editForm.role || null,
+        poste: editForm.poste,
+        is_active: editForm.is_active,
+      }
+      if (editForm.password) payload.password = editForm.password
+      await api.patch(`/users/${editUser.id}/`, payload)
+      closeEdit()
+      await load()
+    } catch (err) {
+      setEditError(err.response?.data?.detail
+        ?? "Échec de l'enregistrement. Vérifiez les champs.")
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const uploadAvatar = async (file) => {
+    if (!file) return
+    setAvatarBusy(true)
+    setEditError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await api.post(`/users/${editUser.id}/avatar/`, fd)
+      // Met à jour l'aperçu immédiat + la ligne dans la liste.
+      setEditUser(u => ({ ...u, avatar_url: r.data.avatar_url, avatar_key: r.data.avatar_key }))
+      setUsers(list => list.map(u => (u.id === editUser.id ? { ...u, avatar_url: r.data.avatar_url } : u)))
+    } catch (err) {
+      setEditError(err.response?.data?.detail ?? "Échec de l'envoi de la photo.")
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -130,7 +198,9 @@ export default function UsersManagement() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600, width: 48 }}></th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Utilisateur</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Poste</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Email</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Rôle</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Actif</th>
@@ -147,6 +217,9 @@ export default function UsersManagement() {
                   : 'Au moins un administrateur doit rester'
                 return (
                   <tr key={u.id} style={{ borderBottom: i < users.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                    <td style={{ padding: '0.5rem 1rem' }}>
+                      <Avatar name={u.username} src={u.avatar_url} size={32} />
+                    </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500 }}>
                       {u.username}
                       {u.is_protected && (
@@ -155,6 +228,7 @@ export default function UsersManagement() {
                         </span>
                       )}
                     </td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#64748b' }}>{u.poste || '—'}</td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#64748b' }}>{u.email || '—'}</td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>
                       <span style={{ background: c.bg, color: c.text, padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 500 }}>
@@ -163,6 +237,10 @@ export default function UsersManagement() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>{u.is_active ? '✅' : '❌'}</td>
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                      <button onClick={() => openEdit(u)}
+                        style={{ background: 'transparent', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem', marginRight: '0.4rem' }}>
+                        Modifier
+                      </button>
                       {u.username !== currentUsername && (
                         deleteLocked ? (
                           <button disabled title={lockTooltip}
@@ -181,10 +259,98 @@ export default function UsersManagement() {
                 )
               })}
               {users.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Aucun utilisateur</td></tr>
+                <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Aucun utilisateur</td></tr>
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Modale d'édition employé ── */}
+      {editUser && editForm && (
+        <div className="modal-overlay" onClick={closeEdit}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Employé — {editUser.username}</h3>
+              <button type="button" className="modal-close" onClick={closeEdit}>✕</button>
+            </div>
+            <form onSubmit={saveEdit}>
+              <div className="modal-body">
+                {/* Photo */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                  <Avatar name={editUser.username} src={editUser.avatar_url} size={64} />
+                  <div>
+                    <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
+                           style={{ display: 'none' }}
+                           onChange={e => { uploadAvatar(e.target.files?.[0]); e.target.value = '' }} />
+                    <button type="button" className="btn btn-sm btn-outline"
+                            disabled={avatarBusy}
+                            onClick={() => fileRef.current?.click()}>
+                      {avatarBusy ? 'Envoi…' : (editUser.avatar_url ? 'Remplacer la photo' : 'Ajouter une photo')}
+                    </button>
+                    <div className="gen-hint" style={{ marginTop: 4 }}>PNG, JPEG ou WebP — max 2 Mo</div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Nom d'utilisateur</label>
+                  <input className="form-control" value={editUser.username} disabled />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email</label>
+                  <input type="email" className="form-control" value={editForm.email}
+                         onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Poste (intitulé du métier)</label>
+                  <input className="form-control" value={editForm.poste}
+                         placeholder="ex: Commerciale, Technicien…"
+                         onChange={e => setEditForm(f => ({ ...f, poste: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Rôle (permissions)</label>
+                  <select className="form-select" value={editForm.role ?? ''}
+                          onChange={e => setEditForm(f => ({ ...f, role: e.target.value ? Number(e.target.value) : '' }))}>
+                    <option value="">—</option>
+                    {roles.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="pdf-toggle">
+                    <input type="checkbox" checked={editForm.is_active}
+                           onChange={e => setEditForm(f => ({ ...f, is_active: e.target.checked }))} />
+                    <span>Compte actif</span>
+                  </label>
+                </div>
+                <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '1rem 0' }} />
+                <p className="gen-hint">
+                  Mot de passe : on ne peut pas afficher l'ancien (il est chiffré).
+                  Laissez vide pour ne pas le changer, sinon saisissez un nouveau mot de passe.
+                </p>
+                <div className="form-row">
+                  <div className="form-group fg-grow">
+                    <label className="form-label">Nouveau mot de passe</label>
+                    <input type="password" className="form-control" value={editForm.password}
+                           autoComplete="new-password"
+                           onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} />
+                  </div>
+                  <div className="form-group fg-grow">
+                    <label className="form-label">Confirmer</label>
+                    <input type="password" className="form-control" value={editForm.password2}
+                           autoComplete="new-password"
+                           onChange={e => setEditForm(f => ({ ...f, password2: e.target.value }))} />
+                  </div>
+                </div>
+                {editError && <div className="form-error-box" role="alert">{editError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={closeEdit}>Annuler</button>
+                <button type="submit" className="btn btn-primary" disabled={editSaving}>
+                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

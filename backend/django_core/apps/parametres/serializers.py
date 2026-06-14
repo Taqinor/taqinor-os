@@ -5,11 +5,21 @@ from .models import CompanyProfile
 class CompanyProfileSerializer(serializers.ModelSerializer):
     logo_url = serializers.SerializerMethodField()
     signature_url = serializers.SerializerMethodField()
+    responsable_defaut_leads_nom = serializers.CharField(
+        source='responsable_defaut_leads.username', read_only=True
+    )
 
     class Meta:
         model = CompanyProfile
         fields = '__all__'
         read_only_fields = ['logo_key', 'signature_key']
+
+    def validate_responsable_defaut_leads(self, value):
+        # Le responsable par défaut doit appartenir à la même société.
+        request = self.context.get('request')
+        if value and request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
     def _presign(self, key):
         if not key:

@@ -49,6 +49,13 @@ class CustomUser(AbstractUser):
     )
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
+    # Poste / intitulé du métier (ex. « Commerciale », « Technicien »).
+    # Purement informatif, affiché dans l'admin et à côté de l'avatar.
+    poste = models.CharField(max_length=120, blank=True, default='')
+    # Clé MinIO (bucket erp-uploads) de la photo de profil. Vide = avatar
+    # à initiales. Même mécanisme de stockage que logo/signature entreprise
+    # (boto3, jamais de FileField/ImageField) — aucune dépendance nouvelle.
+    avatar_key = models.CharField(max_length=500, blank=True, default='')
     company = models.ForeignKey(
         Company,
         on_delete=models.SET_NULL,

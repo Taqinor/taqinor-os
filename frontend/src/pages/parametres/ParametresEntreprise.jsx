@@ -11,6 +11,7 @@ import {
   fetchFournisseurs, createFournisseur, updateFournisseur, deleteFournisseur,
 } from '../../features/stock/store/stockSlice'
 import { originFrom } from '../../api/origin'
+import crmApi from '../../api/crmApi'
 
 const ACCEPTED   = ['image/png', 'image/jpeg', 'image/webp']
 const MAX_MB     = 2
@@ -328,13 +329,17 @@ export default function ParametresEntreprise() {
     siret: '', tva_intra: '', rib: '', banque: '',
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
+    responsable_defaut_leads: '',
   })
   const [saved, setSaved] = useState(false)
+  const [assignables, setAssignables] = useState([])
 
   useEffect(() => {
     dispatch(fetchProfile())
     dispatch(fetchCategories())
     dispatch(fetchFournisseurs())
+    crmApi.getAssignableUsers()
+      .then(r => setAssignables(r.data.results ?? r.data)).catch(() => {})
   }, [dispatch])
 
   useEffect(() => {
@@ -355,6 +360,7 @@ export default function ParametresEntreprise() {
       patente:           profile.patente           ?? '',
       cnss:              profile.cnss              ?? '',
       couleur_principale: profile.couleur_principale ?? '#1d4ed8',
+      responsable_defaut_leads: profile.responsable_defaut_leads ?? '',
     })
   }, [profile])
 
@@ -368,7 +374,16 @@ export default function ParametresEntreprise() {
   }, [saveSuccess, dispatch])
 
   const set = (e) => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
-  const handleSave = (e) => { e.preventDefault(); dispatch(saveProfile(form)) }
+  const handleSave = (e) => {
+    e.preventDefault()
+    // FK : '' doit devenir null (sinon le sérialiseur rejette la valeur vide).
+    const payload = {
+      ...form,
+      responsable_defaut_leads: form.responsable_defaut_leads === ''
+        ? null : form.responsable_defaut_leads,
+    }
+    dispatch(saveProfile(payload))
+  }
 
   const accent = form.couleur_principale || '#1d4ed8'
 
@@ -538,6 +553,27 @@ export default function ParametresEntreprise() {
                 <input style={inputBase} name="cnss" value={form.cnss} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="N° affiliation CNSS"/>
               </Field>
             </div>
+          </div>
+
+          {/* Leads — responsable par défaut */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0369a1" label="Leads" icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Responsable assigné automatiquement aux nouveaux leads (site web et
+              création manuelle) quand aucun responsable n'est choisi.
+            </p>
+            <Field label="Responsable par défaut des nouveaux leads">
+              <select style={inputBase} name="responsable_defaut_leads"
+                      value={form.responsable_defaut_leads ?? ''} onChange={set}
+                      onFocus={onFocus} onBlur={onBlur}>
+                <option value="">— Aucun (laisser non assigné) —</option>
+                {assignables.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.username}{u.poste ? ` — ${u.poste}` : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
 
           {/* Couleur PDF */}

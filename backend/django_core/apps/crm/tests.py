@@ -474,3 +474,114 @@ class TestStageChangeViaAPI(TestCase):
             lead=self.lead, kind='modification', field='stage')
         self.assertEqual(act.new_value, stages.STAGE_LABELS['SIGNED'])
         self.assertEqual(act.new_value, 'Signé')
+
+
+class TestDefaultResponsable(TestCase):
+    """Responsable par défaut des nouveaux leads (Paramètres → profil).
+
+    Couvre l'assignation automatique à la création manuelle et le respect
+    d'un responsable explicitement choisi.
+    """
+
+    def setUp(self):
+        from apps.parametres.models import CompanyProfile
+        self.company = make_company(slug='resp-co', nom='Resp Co')
+        self.meryem = User.objects.create_user(
+            username='meryem', password='x', role_legacy='responsable',
+            company=self.company,
+        )
+        self.autre = User.objects.create_user(
+            username='autre_resp', password='x', role_legacy='responsable',
+            company=self.company,
+        )
+        self.profile = CompanyProfile.get(company=self.company)
+        self.profile.responsable_defaut_leads = self.meryem
+        self.profile.save(update_fields=['responsable_defaut_leads'])
+
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.autre))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def test_new_lead_gets_default_responsable(self):
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Sans resp'})
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(nom='Sans resp')
+        self.assertEqual(lead.owner_id, self.meryem.id)
+
+    def test_explicit_responsable_is_respected(self):
+        resp = self.api.post(
+            '/api/django/crm/leads/',
+            {'nom': 'Avec resp', 'owner': self.autre.id},
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(nom='Avec resp')
+        self.assertEqual(lead.owner_id, self.autre.id)
+
+    def test_webhook_lead_gets_default_responsable(self):
+        from django.test import override_settings
+        from apps.crm.models import Lead as LeadModel
+        with override_settings(
+            WEBSITE_LEAD_WEBHOOK_SECRET='sekret',
+            WEBSITE_LEADS_COMPANY_ID=self.company.id,
+        ):
+            client = APIClient()
+            resp = client.post(
+                '/api/django/crm/webhooks/website-leads/',
+                data={'fullName': 'Web Lead', 'phoneE164': '+212600000000'},
+                format='json',
+                HTTP_X_WEBHOOK_SECRET='sekret',
+            )
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        lead = LeadModel.objects.filter(nom='Web Lead').first()
+        self.assertIsNotNone(lead)
+        self.assertEqual(lead.owner_id, self.meryem.id)
+
+
+class TestAssignableUsers(TestCase):
+    """Endpoint /assignable-users/ — ouvert à la Commerciale, scopé société."""
+
+    def setUp(self):
+        self.company = make_company(slug='assign-co', nom='Assign Co')
+        self.other = make_company(slug='assign-other', nom='Assign Other')
+        self.commerciale = User.objects.create_user(
+            username='assign_commerciale', password='x',
+            role_legacy='responsable', company=self.company,
+        )
+        self.collegue = User.objects.create_user(
+            username='assign_collegue', password='x',
+            role_legacy='responsable', company=self.company, poste='Technicien',
+        )
+        User.objects.create_user(
+            username='assign_etranger', password='x',
+            role_legacy='responsable', company=self.other,
+        )
+        self.api = APIClient()
+        token = str(AccessToken.for_user(self.commerciale))
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    def test_commerciale_can_list_assignable_users(self):
+        resp = self.api.get('/api/django/crm/assignable-users/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        usernames = [u['username'] for u in resp.data]
+        self.assertIn('assign_commerciale', usernames)
+        self.assertIn('assign_collegue', usernames)
+        self.assertNotIn('assign_etranger', usernames)
+        collegue = next(
+            u for u in resp.data if u['username'] == 'assign_collegue')
+        self.assertEqual(collegue['poste'], 'Technicien')
+
+    def test_reassign_owner_is_logged(self):
+        from apps.crm.models import LeadActivity
+        lead = Lead.objects.create(
+            company=self.company, nom='À réassigner', owner=self.commerciale)
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'owner': self.collegue.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.collegue.id)
+        act = LeadActivity.objects.get(
+            lead=lead, kind='modification', field='owner')
+        self.assertEqual(act.old_value, 'assign_commerciale')
+        self.assertEqual(act.new_value, 'assign_collegue')
+        self.assertEqual(act.user_id, self.commerciale.id)

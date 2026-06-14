@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.utils.text import slugify
 from rest_framework import generics, permissions, viewsets, status
+from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -268,6 +270,29 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='avatar',
+            parser_classes=[MultiPartParser])
+    def avatar(self, request, pk=None):
+        """Téléverse/remplace la photo de profil d'un employé (admin).
+
+        Stockée dans MinIO (bucket erp-uploads) via boto3, comme le logo
+        d'entreprise. La photo appartient à l'employé : elle apparaît ensuite
+        sur tous ses leads (responsable)."""
+        from .avatars import store_avatar
+        target = self.get_object()
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        key, err = store_avatar(file, target.avatar_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        target.avatar_key = key
+        target.save(update_fields=['avatar_key'])
+        return Response(
+            UserSerializer(target, context={'request': request}).data)
 
     def _role_grants_admin(self, target, role_id):
         """L'utilisateur serait-il admin avec ce nouveau rôle ?"""

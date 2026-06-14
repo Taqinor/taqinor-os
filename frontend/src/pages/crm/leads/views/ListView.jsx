@@ -14,8 +14,8 @@ import {
   isPerdu,
   tagList,
   tagColor,
-  initials,
 } from '../../../../features/crm/stages'
+import AssigneePicker from '../../../../components/AssigneePicker'
 import './listview.css'
 
 // Fond de pastille d'étape : couleur de l'étape à ~14 % d'opacité.
@@ -74,7 +74,7 @@ function SortableTh({ col, label, sort, onSort, className }) {
   )
 }
 
-export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch }) {
+export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign }) {
   const dispatch = useDispatch()
   const role = useSelector((s) => s.auth.role)
   const canDelete = role === 'admin' // règle existante : destroy = admin
@@ -186,17 +186,14 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch }) 
                   </span>
                 </td>
                 <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
-                <td className="m-hide">
-                  {lead.owner_nom ? (
-                    <span className="lv-owner">
-                      <span className="lv-avatar" aria-hidden="true">
-                        {initials(lead.owner_nom)}
-                      </span>
-                      {lead.owner_nom}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  <AssigneePicker
+                    users={users}
+                    value={lead.owner ?? ''}
+                    onChange={(id) => onReassign?.(lead, id)}
+                    size={22}
+                    disabled={!onReassign}
+                  />
                 </td>
                 <td className="m-hide">
                   <span
