@@ -13,6 +13,8 @@ resolved automatically, without ever creating duplicates:
 The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
+import re as _re
+
 from django.utils import timezone
 
 from . import stages
@@ -139,6 +141,127 @@ def default_responsable_for(company):
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
     return profile.responsable_defaut_leads if profile else None
+
+
+# Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
+# (« on garde la valeur la plus complète », jamais d'écrasement).
+_MERGE_FILL_FIELDS = [
+    'prenom', 'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
+    'gps_lat', 'gps_lng', 'facture_hiver', 'facture_ete', 'ete_differente',
+    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'type_installation',
+    'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
+    'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
+    'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_cv', 'pompe_hmt_m',
+    'pompe_debit_m3h', 'canal', 'motif_perte', 'note', 'whatsapp_opt_in',
+]
+
+
+def normalize_phone(value):
+    """Téléphone normalisé pour comparaison : chiffres seuls, indicatif marocain
+    réduit, zéro initial retiré. '+212 6 12-34' et '0612 34' → même clé."""
+    digits = _re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        return ''
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if digits.startswith('212'):
+        digits = digits[3:]
+    digits = digits.lstrip('0')
+    return digits
+
+
+def normalize_email(value):
+    return str(value or '').strip().lower()
+
+
+def find_duplicate_leads(lead):
+    """Leads probablement en double : même téléphone OU email normalisé, même
+    société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
+    phone = normalize_phone(lead.telephone)
+    email = normalize_email(lead.email)
+    qs = Lead.objects.filter(company=lead.company).exclude(pk=lead.pk)
+    candidates = []
+    for other in qs:
+        if phone and normalize_phone(other.telephone) == phone:
+            candidates.append(other)
+        elif email and normalize_email(other.email) == email:
+            candidates.append(other)
+    return candidates
+
+
+def merge_leads(survivor, others, user):
+    """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
+    activités, pièces jointes, historique et chantiers ; complète les champs
+    vides du survivant ; archive les leads absorbés avec une note. Ne laisse
+    JAMAIS un devis/chantier orphelin. Tout est transactionnel.
+    """
+    from django.contrib.contenttypes.models import ContentType
+    from django.db import transaction
+    from django.utils import timezone
+
+    others = [o for o in others if o.pk != survivor.pk
+              and o.company_id == survivor.company_id]
+    if not others:
+        return survivor
+
+    ct = ContentType.objects.get_for_model(Lead)
+    with transaction.atomic():
+        for absorbed in others:
+            # 1) Devis → survivant (related_name='devis').
+            absorbed.devis.update(lead=survivor)
+            # 2) Chantiers liés au lead → survivant (FK SET_NULL, on réassigne).
+            try:
+                from apps.installations.models import Installation
+                Installation.objects.filter(lead=absorbed).update(lead=survivor)
+            except Exception:
+                pass
+            # 3) Activités + pièces jointes génériques → survivant.
+            try:
+                from apps.records.models import Activity, Attachment
+                Activity.objects.filter(
+                    content_type=ct, object_id=absorbed.id).update(
+                    object_id=survivor.id)
+                Attachment.objects.filter(
+                    content_type=ct, object_id=absorbed.id).update(
+                    object_id=survivor.id)
+            except Exception:
+                pass
+            # 4) Historique chatter → survivant.
+            LeadActivity.objects.filter(lead=absorbed).update(lead=survivor)
+            # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
+            if not survivor.client_id and absorbed.client_id:
+                survivor.client = absorbed.client
+            # 6) Compléter les champs VIDES du survivant.
+            for field in _MERGE_FILL_FIELDS:
+                cur = getattr(survivor, field, None)
+                if cur in (None, '', False):
+                    val = getattr(absorbed, field, None)
+                    if val not in (None, '', False):
+                        setattr(survivor, field, val)
+            # 7) Fusionner les tags (union).
+            tags = set()
+            for src in (survivor, absorbed):
+                for t in (src.tags or '').split(','):
+                    t = t.strip()
+                    if t:
+                        tags.add(t)
+            if tags:
+                survivor.tags = ', '.join(sorted(tags))[:500]
+            # 8) Archiver l'absorbé (jamais supprimé).
+            absorbed.is_archived = True
+            absorbed.archived_by = user
+            absorbed.archived_at = timezone.now()
+            absorbed.note = ((absorbed.note or '') +
+                             f'\n[Fusionné dans le lead #{survivor.id} '
+                             f'par {getattr(user, "username", "?")}]').strip()
+            absorbed.save()
+            LeadActivity.objects.create(
+                company=survivor.company, lead=survivor, user=user,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
+                      f" (#{absorbed.id}) absorbé dans cette fiche."))
+        survivor.save()
+    return survivor
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:
