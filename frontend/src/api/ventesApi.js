@@ -10,6 +10,11 @@ const ventesApi = {
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
   telechargerPdfDevis: (id) => api.get(`/ventes/devis/${id}/telecharger-pdf/`, { responseType: 'blob' }),
+  // Proposition client (chemin canonique /proposal) — rendue à la volée selon
+  // le format (pdf_mode/onepage/full, include_etude…), récupérée en blob pour
+  // l'aperçu inline (iframe) ET le téléchargement, sans quitter la fiche lead.
+  getProposalPdf: (id, params = {}) =>
+    api.get(`/ventes/devis/${id}/proposal/`, { params, responseType: 'blob' }),
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),

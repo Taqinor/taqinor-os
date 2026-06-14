@@ -79,12 +79,14 @@ class UserSerializer(serializers.ModelSerializer):
         source='role.nom', read_only=True
     )
     permissions = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'role_nom', 'role_legacy', 'permissions',
+            'poste', 'avatar_key', 'avatar_url',
             'is_active', 'is_superuser', 'is_protected',
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
@@ -93,6 +95,9 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'role_nom', 'role_legacy', 'permissions',
+            # avatar_key se pilote par l'endpoint d'upload dédié, jamais par
+            # un PATCH direct du corps ; avatar_url est calculé (présigné).
+            'avatar_key', 'avatar_url',
             # is_protected ne se pilote PAS via l'API (pas de privilège qui
             # se donne tout seul) : seulement par le seed et la commande de
             # récupération serveur.
@@ -103,6 +108,10 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role:
             return obj.role.permissions or []
         return []
+
+    def get_avatar_url(self, obj):
+        from .avatars import presign_avatar
+        return presign_avatar(obj.avatar_key)
 
     def create(self, validated_data):
         password = validated_data.pop('password')

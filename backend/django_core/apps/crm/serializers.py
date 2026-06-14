@@ -45,6 +45,8 @@ class LeadSerializer(serializers.ModelSerializer):
     client_nom = serializers.SerializerMethodField()
     devis = serializers.SerializerMethodField()
     owner_nom = serializers.SerializerMethodField()
+    owner_poste = serializers.SerializerMethodField()
+    owner_avatar = serializers.SerializerMethodField()
     devis_auto = serializers.SerializerMethodField()
 
     def get_devis_auto(self, obj):
@@ -59,6 +61,16 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_owner_nom(self, obj):
         return getattr(obj.owner, 'username', None)
+
+    def get_owner_poste(self, obj):
+        return getattr(obj.owner, 'poste', None) or None
+
+    def get_owner_avatar(self, obj):
+        """URL présignée de la photo du responsable (avatar Odoo)."""
+        if not obj.owner_id:
+            return None
+        from authentication.avatars import presign_avatar
+        return presign_avatar(getattr(obj.owner, 'avatar_key', ''))
 
     def validate_owner(self, value):
         # Le responsable assigné doit appartenir à la même société.

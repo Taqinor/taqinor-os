@@ -1,10 +1,11 @@
 from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from .models import Client, Lead
 from .serializers import ClientSerializer, LeadSerializer, LeadActivitySerializer
 from . import activity
+from .services import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import (
     IsAnyRole,
@@ -14,6 +15,36 @@ from authentication.permissions import (
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def assignable_users(request):
+    """Employés assignables comme responsable d'un lead (société courante).
+
+    Léger et accessible à la Commerciale (le sélecteur de responsable doit
+    fonctionner pour elle, pas seulement pour l'admin) — contrairement à
+    /users/ réservé à l'admin. Renvoie de quoi peindre un avatar Odoo
+    (initiales/photo) + nom + poste.
+    """
+    from authentication.models import CustomUser
+    from authentication.avatars import presign_avatar
+    user = request.user
+    qs = CustomUser.objects.filter(is_active=True)
+    if user.company_id:
+        qs = qs.filter(company=user.company)
+    elif not user.is_superuser:
+        qs = qs.none()
+    qs = qs.order_by('username')
+    return Response([
+        {
+            'id': u.id,
+            'username': u.username,
+            'poste': u.poste or None,
+            'avatar_url': presign_avatar(u.avatar_key),
+        }
+        for u in qs
+    ])
 
 
 class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -82,8 +113,17 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
-        activity.log_creation(serializer.instance, self.request.user)
+        # Société toujours côté serveur (TenantMixin). Si aucun responsable
+        # n'est choisi à la création, on applique le responsable par défaut
+        # de la société (Paramètres). Un responsable explicite est respecté.
+        user = self.request.user
+        extra = {'company': user.company}
+        if not serializer.validated_data.get('owner'):
+            default = default_responsable_for(user.company)
+            if default is not None:
+                extra['owner'] = default
+        serializer.save(**extra)
+        activity.log_creation(serializer.instance, user)
 
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.

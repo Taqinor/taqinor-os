@@ -303,7 +303,7 @@ export default function Login() {
 
         {/* Retour accueil */}
         <p style={{ textAlign: 'center', marginTop: 26, fontSize: 13, color: '#9ca3af' }}>
-          <Link to="/" style={{ color: '#1863DC', textDecoration: 'none', fontWeight: 500 }}>
+          <Link to="/landing" style={{ color: '#1863DC', textDecoration: 'none', fontWeight: 500 }}>
             ← Retour à l'accueil
           </Link>
         </p>

@@ -6,6 +6,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
+import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../features/ventes/autoQuote'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -26,10 +27,6 @@ const MODES = [
   ['industriel', '🏭 Industriel / Commercial'],
   ['agricole', '🌾 Agricole (pompage)'],
 ]
-const LEAD_TYPE_TO_MODE = {
-  residentiel: 'residentiel', commercial: 'industriel',
-  industriel: 'industriel', agricole: 'agricole',
-}
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -55,26 +52,6 @@ const emptyLine = () => ({
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
 
-// Paramètres d'étude pompage stockés avec le devis : chiffres canoniques
-// calculés UNE fois ici, le PDF les rend tels quels. Partagé entre la
-// création manuelle (handleSubmit) et le devis auto — mêmes expressions.
-const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
-                                  profondeur, distance }) => ({
-  pompe_cv: String(sel.cv),
-  pompe_kw: sel.kw,
-  pompe_nom: sel.pump?.nom || null,
-  type_pompe: typePompe,
-  alim,
-  hmt_m: hmt || null,
-  debit_souhaite_m3h: debit || null,
-  debit_hmt_m3h: sel.debitHmt,
-  heures_pompage: sel.m3Jour != null ? (parseFloat(heures) || null) : null,
-  m3_jour: sel.m3Jour,
-  profondeur_m: profondeur || null,
-  distance_m: distance || null,
-  champ_kwc: sel.dims.champKwc,
-})
-
 function MetricCard({ label, value, unit, recommended, accent }) {
   return (
     <div className={`gen-metric${accent ? ' gen-metric-accent' : ''}${recommended ? ' gen-metric-rec' : ''}`}>
@@ -88,7 +65,28 @@ function MetricCard({ label, value, unit, recommended, accent }) {
   )
 }
 
-export default function DevisGenerator() {
+/**
+ * Générateur de devis. Utilisable en PLEINE PAGE (route /ventes/devis/nouveau,
+ * lit le contexte depuis l'URL) ou EMBARQUÉ dans la fiche lead (props), auquel
+ * cas il ne navigue jamais : il rappelle onDone(devisId) / onCancel à la place.
+ *
+ * @param {boolean}  embedded    Rendu inline (fiche lead) — pas de navigation
+ * @param {number}   leadId      Lead de départ (embarqué)
+ * @param {boolean}  auto        Lancer le devis auto au montage (embarqué)
+ * @param {string}   discount    Remise initiale (embarqué)
+ * @param {number}   editId      Éditer un brouillon existant (embarqué)
+ * @param {function} onDone      Appelé avec l'id du devis créé/enregistré
+ * @param {function} onCancel    Appelé sur Annuler
+ */
+export default function DevisGenerator({
+  embedded = false,
+  leadId: leadIdProp = null,
+  auto: autoProp = false,
+  discount: discountProp = null,
+  editId: editIdProp = null,
+  onDone = null,
+  onCancel = null,
+} = {}) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
 
@@ -102,9 +100,21 @@ export default function DevisGenerator() {
   // Mode choisi PAR L'UTILISATEUR : un lead sélectionné ensuite ne l'écrase
   // jamais (le pré-réglage depuis le lead ne joue que sur le défaut intact).
   const modeTouched = useRef(false)
+
+  // Fin de parcours : embarqué → callbacks (jamais de navigation) ; pleine
+  // page → retour à la liste des devis (comportement historique).
+  const finish = (devisId) => {
+    if (embedded) { onDone?.(devisId); return }
+    navigate('/ventes/devis')
+  }
+  const cancel = () => {
+    if (embedded) { onCancel?.(); return }
+    navigate('/ventes/devis')
+  }
+
   // Édition d'un brouillon existant (?edit=ID) : chargé une fois, sauvegarde
   // EN PLACE (mêmes référence et statut) au lieu d'une création.
-  const editId = searchParams.get('edit')
+  const editId = embedded ? editIdProp : searchParams.get('edit')
   const [editDevis, setEditDevis] = useState(null)
   const editLoaded = useRef(false)
 
@@ -286,84 +296,12 @@ export default function DevisGenerator() {
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
     try {
-      const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
-      // Champs additionnels du devis, identiques à la création manuelle
-      const extra = {}
-      let rows
-      if (mode === 'agricole') {
-        // Mêmes appels que « Auto-remplir » agricole ; cv / HMT / débit lus
-        // sur le lead, le reste aux défauts du formulaire.
-        const opts = {
-          cv: lead.pompe_cv != null ? String(lead.pompe_cv) : '',
-          alim: 'tri', typePompe: 'immergee', distance: '20',
-          structureType: 'acier',
-          hmt: lead.pompe_hmt_m != null ? String(lead.pompe_hmt_m) : '',
-          debit: lead.pompe_debit_m3h != null ? String(lead.pompe_debit_m3h) : '',
-          heures: String(HEURES_POMPAGE_DEFAUT),
-        }
-        rows = autoFillPompage(produits, opts)
-        if (!rows.some(r => r.produit && parseFloat(r.quantite) > 0)) {
-          setErrors(prev => ({
-            ...prev,
-            submit: 'Devis auto impossible : renseignez sur le lead la '
-              + 'puissance pompe (CV) ou la HMT et le débit souhaité, '
-              + 'puis réessayez.',
-          }))
-          setSaving(false)
-          return
-        }
-        extra.mode_installation = 'agricole'
-        extra.etude_params = buildEtudePompage(
-          pompageSelection(produits, opts), { ...opts, profondeur: '' })
-      } else {
-        const hiver = parseFloat(lead.facture_hiver) || 0
-        // dimensionnement du générateur : 8 panneaux / 900 MAD, minimum 1 bloc
-        const panels = estimerPanneaux(hiver) || 8
-        const kwpAuto = panels * 710 / 1000
-        rows = autoFillLines(produits, {
-          kwp: kwpAuto, panelW: 710, structureType: 'acier',
-        })
-        if (mode === 'industriel') {
-          // Étude d'autoconsommation comme la création manuelle industrielle :
-          // conso saisie sur le lead, sinon dérivée des factures (MAD / kWh).
-          const ete = (lead.ete_differente && lead.facture_ete)
-            ? parseFloat(lead.facture_ete) : hiver
-          const moisAuto = hiver > 0 ? estimerMois(hiver, ete) : []
-          const avgAuto = moisAuto
-            .reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
-          const conso = (parseFloat(lead.conso_mensuelle_kwh) || 0)
-            || (avgAuto > 0 ? Math.round(avgAuto / KWH_PRICE) : 0)
-          extra.mode_installation = 'industriel'
-          extra.etude_params = (kwpAuto > 0 && conso > 0)
-            ? computeEtudeIndustrielle({
-                kwp: kwpAuto, consoMensuelleKwh: conso,
-                dayUsagePct: DAY_USAGE_DEFAULTS['Industrielle'],
-                totalTtc: optionTotalsTTC(rows, discountStr || '0').totalSans,
-              })
-            : null
-        }
-      }
-      const devis = await dispatch(createDevis({
-        lead: lead.id,
-        statut: 'brouillon',
-        taux_tva: '20.00',
-        remise_globale: discountStr || '0',
-        note: null,
-        ...extra,
-      })).unwrap()
-      await Promise.all(rows
-        .filter(r => r.produit && parseFloat(r.quantite) > 0)
-        .map(r => dispatch(addLigneDevis({
-          devis: devis.id,
-          produit: parseInt(r.produit),
-          designation: r.designation,
-          quantite: String(r.quantite),
-          // TTC ancre : HT dérivé au taux de la ligne (10 % panneaux / 20 %)
-          prix_unitaire: htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20),
-          remise: '0',
-          taux_tva: String(r.taux_tva ?? 20),
-        })).unwrap()))
-      navigate('/ventes/devis')
+      // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
+      // dupliqué : un seul endroit dimensionne le devis auto.
+      const devisId = await createAutoQuote({
+        lead, produits, discountStr, dispatch,
+      })
+      finish(devisId)
     } catch (err) {
       const msg = typeof err?.detail === 'string'
         ? err.detail
@@ -380,7 +318,7 @@ export default function DevisGenerator() {
     ventesApi.getDevisById(editId).then(({ data: d }) => {
       if (d.statut !== 'brouillon') {
         window.alert('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
-        navigate('/ventes/devis')
+        cancel()
         return
       }
       setEditDevis({ id: d.id, reference: d.reference,
@@ -422,21 +360,25 @@ export default function DevisGenerator() {
     })
   }, [editId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Arrivée depuis le lead (?lead=…&auto=1&discount=…)
+  // Arrivée depuis le lead. Pleine page : via l'URL (?lead=…&auto=1&discount=…).
+  // Embarqué : via les props (leadId/auto/discount), jamais l'URL.
   useEffect(() => {
-    const leadParam = searchParams.get('lead')
+    const leadParam = embedded
+      ? (leadIdProp != null ? String(leadIdProp) : '')
+      : searchParams.get('lead')
     if (!leadParam || autoRan.current) return
     if (!leads.length || !produits.length) return
     autoRan.current = true
     const lead = leads.find(l => String(l.id) === leadParam)
     if (!lead) return
-    // Initialisation unique depuis l'URL (garde autoRan) — pas de cascade.
+    // Initialisation unique (garde autoRan) — pas de cascade.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     applyLead(leadParam)
-    if (searchParams.get('auto') === '1') {
-      runAutoQuote(lead, searchParams.get('discount') || '0')
-      const d = searchParams.get('discount')
-      if (d) setDiscountPct(d)
+    const wantAuto = embedded ? autoProp : (searchParams.get('auto') === '1')
+    const discount = embedded ? (discountProp || '0') : (searchParams.get('discount') || '0')
+    if (wantAuto) {
+      runAutoQuote(lead, discount)
+      if (discount) setDiscountPct(discount)
     }
   }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -620,7 +562,7 @@ export default function DevisGenerator() {
         })).unwrap()
       ))
 
-      navigate('/ventes/devis')
+      finish(devisId)
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
       const raw = err?.response?.data ?? err
@@ -697,13 +639,15 @@ export default function DevisGenerator() {
   }
 
   return (
-    <div className="page gen-page">
-      <div className="page-header">
-        <h2>☀️ Générateur de Devis Solaire</h2>
-        <button className="btn btn-outline" onClick={() => navigate('/ventes/devis')}>
-          ← Retour aux devis
-        </button>
-      </div>
+    <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
+      {!embedded && (
+        <div className="page-header">
+          <h2>☀️ Générateur de Devis Solaire</h2>
+          <button className="btn btn-outline" onClick={() => navigate('/ventes/devis')}>
+            ← Retour aux devis
+          </button>
+        </div>
+      )}
 
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
@@ -1356,15 +1300,19 @@ export default function DevisGenerator() {
           </div>
           <div className="gen-card-body">
             <p className="gen-hint">
-              Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium
-              3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+              {embedded
+                ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
+                  + 'avec son PDF, sans quitter la fiche du lead.'
+                : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
+                  + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
             </p>
             <div className="gen-actions-right gen-actions-sticky">
-              <button type="button" className="btn btn-outline" onClick={handleReset}>
-                🔄 Réinitialiser
-              </button>
-              <button type="button" className="btn btn-outline"
-                      onClick={() => navigate('/ventes/devis')}>
+              {!embedded && (
+                <button type="button" className="btn btn-outline" onClick={handleReset}>
+                  🔄 Réinitialiser
+                </button>
+              )}
+              <button type="button" className="btn btn-outline" onClick={cancel}>
                 Annuler
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>

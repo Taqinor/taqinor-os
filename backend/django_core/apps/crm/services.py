@@ -80,6 +80,19 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     )
 
 
+def default_responsable_for(company):
+    """Responsable assigné par défaut aux nouveaux leads d'une société.
+
+    Source unique : le profil entreprise (Paramètres → « Responsable par
+    défaut des nouveaux leads »). None si non configuré ou pas de société.
+    """
+    if company is None:
+        return None
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.objects.filter(company=company).first()
+    return profile.responsable_defaut_leads if profile else None
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     if lead.client_id:
         return lead.client

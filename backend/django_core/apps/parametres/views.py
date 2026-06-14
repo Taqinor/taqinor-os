@@ -34,7 +34,8 @@ def update_profile(request):
     profile = _profile(request)
     partial = request.method == 'PATCH'
     serializer = CompanyProfileSerializer(
-        profile, data=request.data, partial=partial
+        profile, data=request.data, partial=partial,
+        context={'request': request},
     )
     serializer.is_valid(raise_exception=True)
     updated = serializer.save()

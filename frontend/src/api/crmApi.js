@@ -21,6 +21,9 @@ const crmApi = {
   restaurerLead: (id) => api.post(`/crm/leads/${id}/restaurer/`),
   deleteLead: (id) => api.delete(`/crm/leads/${id}/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
+  // Employés assignables (id, username, poste, avatar_url) — ouvert à la
+  // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
+  getAssignableUsers: () => api.get('/crm/assignable-users/'),
 }
 
 export default crmApi

@@ -158,6 +158,10 @@ class DevisViewSet(viewsets.ModelViewSet):
                 raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')
             if 'devis_final' in request.query_params:
                 raw['devis_final'] = request.query_params['devis_final'] in ('1', 'true')
+            # Page « Étude » (4e page premium) — dégrade proprement à 3 pages
+            # si le devis n'a pas de données d'étude (géré par le moteur).
+            if 'include_etude' in request.query_params:
+                raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
             key = generate_premium_devis_pdf(devis.id, clean_pdf_options(raw))
             pdf_bytes = download_pdf(key)
         except Exception as exc:

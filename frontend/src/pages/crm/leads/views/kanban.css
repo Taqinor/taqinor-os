@@ -330,3 +330,6 @@
     font-size: 1.05rem;
   }
 }
+
+/* Sélecteur de responsable (avatar) sur la carte — poussé à droite du pied. */
+.kb-card-assignee { margin-left: auto; display: inline-flex; align-items: center; }

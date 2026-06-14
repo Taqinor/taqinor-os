@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
+import Avatar from '../../components/Avatar'
+import AssigneePicker from '../../components/AssigneePicker'
+import '../../components/assigneepicker.css'
+import LeadDevisPanel from './leads/LeadDevisPanel'
+import './leads/leaddevispanel.css'
+import './leadform-extra.css'
 
 const STAGE_LABELS = {
   NEW: 'Nouveau',
@@ -100,10 +105,30 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('fr-FR')
 }
 
-export default function LeadForm({ lead = null, onClose, onSaved }) {
+export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null }) {
   const dispatch = useDispatch()
-  const navigate = useNavigate()
   const isEdit = !!lead
+
+  // Copie « vivante » du lead : reflète les enregistrements ponctuels faits
+  // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au
+  // verrouillage des boutons devis (devis_auto.pret) et à la liste des devis.
+  const [liveLead, setLiveLead] = useState(lead)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLiveLead(lead)
+  }, [lead])
+
+  // Panneau devis inline (mode : auto | remise | onepage | premium | edit | view).
+  const [devisPanel, setDevisPanel] = useState(null)
+  const [panelDevisId, setPanelDevisId] = useState(null)
+  const [devisMenuOpen, setDevisMenuOpen] = useState(false)
+  const devisMenuRef = useRef(null)
+
+  // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
+  const [billEditing, setBillEditing] = useState(false)
+  const [billSaving, setBillSaving] = useState(false)
+  const [billHiver, setBillHiver] = useState('')
+  const [billEte, setBillEte] = useState('')
 
   const F = (k, d = '') => lead?.[k] ?? d
   const [fields, setFields] = useState({
@@ -145,8 +170,6 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
   const [noteBody, setNoteBody] = useState('')
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
-  const [autoError, setAutoError] = useState(null)
-  const [autoBusy, setAutoBusy] = useState(false)
   const [activeSec, setActiveSec] = useState('contact')
   const bodyRef = useRef(null)
 
@@ -171,33 +194,86 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
   }
 
   useEffect(() => {
-    api.get('/users/').then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+    // Liste assignable (ouverte à la Commerciale) : id, username, poste, avatar.
+    crmApi.getAssignableUsers()
+      .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
     if (isEdit) {
       api.get(`/crm/leads/${lead.id}/historique/`)
         .then(r => setHistorique(r.data)).catch(() => {})
     }
   }, [isEdit, lead?.id])
 
+  // Ouverture directe sur un mode devis (depuis le ⚡ d'une carte / liste).
+  const devisIntentRan = useRef(false)
+  useEffect(() => {
+    if (isEdit && initialDevis && !devisIntentRan.current) {
+      devisIntentRan.current = true
+      setDevisPanel(initialDevis)
+    }
+  }, [isEdit, initialDevis])
+
+  // Fermeture du petit menu « Devis modifiable » au clic extérieur.
+  useEffect(() => {
+    if (!devisMenuOpen) return undefined
+    const onDoc = (e) => {
+      if (devisMenuRef.current && !devisMenuRef.current.contains(e.target)) {
+        setDevisMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [devisMenuOpen])
+
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const agricole = fields.type_installation === 'agricole'
 
-  // ⚡ Devis auto depuis la fiche : la garde vient du SERVEUR (valeur du lead
-  // enregistré, pas des champs en cours de saisie — la règle s'active à la
-  // sauvegarde), puis double vérification via POST /devis-auto/ avant de partir.
-  const launchDevisAuto = async () => {
-    setAutoBusy(true)
-    setAutoError(null)
+  // Le devis se crée et s'affiche DANS la fiche (LeadDevisPanel) — on ne quitte
+  // jamais le lead. Le verrouillage « prêt ? » suit la règle serveur exposée
+  // sur le lead (devis_auto.pret), recalculée après une sauvegarde de facture.
+  const devisReady = !!liveLead?.devis_auto?.pret
+  const devisNotReadyMsg = liveLead?.devis_auto?.message
+    ?? 'Renseignez la facture du lead pour activer le devis automatique.'
+
+  const openDevisPanel = (mode) => {
+    setDevisMenuOpen(false)
+    setDevisPanel(mode)
+  }
+
+  // Après création/édition d'un devis dans le panneau : on recharge le lead
+  // (liste des devis à jour) et on prévient le parent (liste/kanban).
+  const refreshLead = () => {
+    if (!isEdit) return
+    crmApi.getLead(lead.id)
+      .then(r => setLiveLead(r.data)).catch(() => {})
+    onSaved?.()
+  }
+
+  // ── Édition inline de la facture (enregistre CE seul champ) ──
+  const startBillEdit = () => {
+    setBillHiver(liveLead?.facture_hiver != null ? String(liveLead.facture_hiver) : '')
+    setBillEte(liveLead?.facture_ete != null ? String(liveLead.facture_ete) : '')
+    setBillEditing(true)
+  }
+  const saveBill = async () => {
+    setBillSaving(true)
     try {
-      await crmApi.checkDevisAuto(lead.id)
-    } catch (err) {
-      setAutoError(err?.response?.data?.detail
-        ?? "Le devis automatique n'est pas disponible pour ce lead.")
-      setAutoBusy(false)
-      return
+      const payload = {
+        facture_hiver: billHiver === '' ? null : billHiver,
+        facture_ete: liveLead?.ete_differente
+          ? (billEte === '' ? null : billEte) : null,
+      }
+      const r = await crmApi.updateLead(lead.id, payload)
+      setLiveLead(r.data)                 // devis_auto.pret recalculé côté serveur
+      // garde le formulaire complet cohérent avec l'enregistrement ponctuel
+      set('facture_hiver', r.data.facture_hiver ?? '')
+      set('facture_ete', r.data.facture_ete ?? '')
+      setBillEditing(false)
+      onSaved?.()
+    } catch {
+      /* erreur silencieuse — la valeur reste éditable */
+    } finally {
+      setBillSaving(false)
     }
-    setAutoBusy(false)
-    onClose()
-    navigate(`/ventes/devis/nouveau?lead=${lead.id}&discount=0&auto=1`)
   }
 
   // Archiver / restaurer depuis la fiche : on rafraîchit puis on ferme.
@@ -261,6 +337,25 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
           </h3>
           <div className="lead-head-actions">
             {isEdit && (
+              <span className="lead-head-owner" title="Responsable du lead">
+                <Avatar
+                  name={users.find(u => String(u.id) === String(fields.owner))?.username || null}
+                  src={users.find(u => String(u.id) === String(fields.owner))?.avatar_url}
+                  size={26}
+                />
+              </span>
+            )}
+            {isEdit && (
+              <button
+                type="button"
+                className={`lead-devis-badge${(liveLead?.devis ?? []).length ? '' : ' is-zero'}`}
+                title="Voir les devis de ce lead"
+                onClick={() => jumpTo('devis')}
+              >
+                {(liveLead?.devis ?? []).length} devis
+              </button>
+            )}
+            {isEdit && (
               <button
                 type="button"
                 className="btn btn-sm btn-outline"
@@ -270,34 +365,86 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                 {lead.is_archived ? 'Restaurer' : 'Archiver'}
               </button>
             )}
-            {isEdit && (
-              <button
-                type="button"
-                className={`lead-devis-badge${(lead.devis ?? []).length ? '' : ' is-zero'}`}
-                title="Voir les devis de ce lead"
-                onClick={() => jumpTo('devis')}
-              >
-                {(lead.devis ?? []).length} devis
-              </button>
-            )}
-            {isEdit && (
-              <button
-                type="button"
-                className="btn btn-sm gen-btn-orange"
-                disabled={!lead.devis_auto?.pret || autoBusy}
-                title={lead.devis_auto?.pret
-                  ? 'Créer un devis automatique depuis ce lead'
-                  : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
-                onClick={launchDevisAuto}
-              >
-                ⚡ Devis auto
-              </button>
-            )}
             <button type="button" className="modal-close" onClick={onClose}>✕</button>
           </div>
         </div>
-        {autoError && (
-          <div className="form-error-box lead-head-error" role="alert">{autoError}</div>
+
+        {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
+        {isEdit && (
+          <div className="lead-subbar">
+            <div className="lead-subbar-bills">
+              <span className="lead-subbar-label">💡 Facture :</span>
+              {billEditing ? (
+                <>
+                  <input type="number" step="any" className="form-control form-control-sm lead-bill-input"
+                         placeholder={liveLead?.ete_differente ? 'Hiver' : 'MAD/mois'}
+                         value={billHiver} autoFocus
+                         onChange={e => setBillHiver(e.target.value)} />
+                  {liveLead?.ete_differente && (
+                    <input type="number" step="any" className="form-control form-control-sm lead-bill-input"
+                           placeholder="Été" value={billEte}
+                           onChange={e => setBillEte(e.target.value)} />
+                  )}
+                  <button type="button" className="btn btn-sm btn-primary"
+                          disabled={billSaving} onClick={saveBill}>
+                    {billSaving ? '…' : 'Enregistrer'}
+                  </button>
+                  <button type="button" className="btn btn-sm btn-outline"
+                          onClick={() => setBillEditing(false)}>Annuler</button>
+                </>
+              ) : (
+                <button type="button" className="lead-bill-view" onClick={startBillEdit}
+                        title="Cliquer pour modifier la facture (enregistre ce champ seul)">
+                  {liveLead?.facture_hiver != null && liveLead.facture_hiver !== ''
+                    ? <>
+                        {Math.round(parseFloat(liveLead.facture_hiver)).toLocaleString('fr-MA')} MAD
+                        {liveLead?.ete_differente && liveLead?.facture_ete != null && liveLead.facture_ete !== ''
+                          ? ` (hiver) · ${Math.round(parseFloat(liveLead.facture_ete)).toLocaleString('fr-MA')} MAD (été)` : ''}
+                        <span className="lead-bill-edit-hint"> ✎</span>
+                      </>
+                    : <span className="lead-bill-empty">+ Renseigner la facture ✎</span>}
+                </button>
+              )}
+            </div>
+
+            <div className="lead-subbar-devis">
+              <button type="button" className="btn btn-sm gen-btn-orange"
+                      disabled={!devisReady}
+                      title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
+                      onClick={() => openDevisPanel('auto')}>
+                ⚡ Devis automatique
+              </button>
+              <div className="lead-devis-menu-wrap" ref={devisMenuRef}>
+                <button type="button" className="btn btn-sm btn-primary"
+                        onClick={() => setDevisMenuOpen(o => !o)}>
+                  📝 Devis modifiable ▾
+                </button>
+                {devisMenuOpen && (
+                  <div className="lead-devis-menu">
+                    <button type="button" className="lead-devis-menu-item"
+                            disabled={!devisReady} title={devisReady ? undefined : devisNotReadyMsg}
+                            onClick={() => openDevisPanel('remise')}>
+                      Remise %…
+                    </button>
+                    <button type="button" className="lead-devis-menu-item"
+                            disabled={!devisReady} title={devisReady ? undefined : devisNotReadyMsg}
+                            onClick={() => openDevisPanel('onepage')}>
+                      Devis 1 page
+                    </button>
+                    <button type="button" className="lead-devis-menu-item"
+                            disabled={!devisReady} title={devisReady ? undefined : devisNotReadyMsg}
+                            onClick={() => openDevisPanel('premium')}>
+                      Devis premium
+                    </button>
+                    <button type="button" className="lead-devis-menu-item"
+                            onClick={() => openDevisPanel('edit')}>
+                      Édition complète…
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         <form onSubmit={handleSubmit} noValidate>
@@ -342,11 +489,11 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
                 <Sel fields={fields} set={set} k="stage" label="Étape" labels={STAGE_LABELS} />
                 <div className="form-group">
                   <label className="form-label">Responsable</label>
-                  <select className="form-select" value={fields.owner ?? ''}
-                          onChange={e => set('owner', e.target.value)}>
-                    <option value="">—</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
-                  </select>
+                  <AssigneePicker
+                    users={users}
+                    value={fields.owner ?? ''}
+                    onChange={(id) => set('owner', id ?? '')}
+                  />
                 </div>
                 <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
               </div>
@@ -474,24 +621,26 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
 
             {/* ── Devis empilés ── */}
             {isEdit && (
-              <Sec id="devis" title={`📄 Devis de ce lead${lead.client_nom ? ` — client : ${lead.client_nom}` : ''}`}>
-                {(lead.devis ?? []).length === 0 ? (
+              <Sec id="devis" title={`📄 Devis de ce lead${liveLead?.client_nom ? ` — client : ${liveLead.client_nom}` : ''}`}>
+                {(liveLead?.devis ?? []).length === 0 ? (
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
                   <table className="lines-table">
                     <thead>
-                      <tr><th>Référence</th><th>Statut</th><th className="col-num">Total TTC</th><th>Créé le</th></tr>
+                      <tr><th>Référence</th><th>Statut</th><th className="col-num">Total TTC</th><th>Créé le</th><th></th></tr>
                     </thead>
                     <tbody>
-                      {lead.devis.map(d => (
+                      {liveLead.devis.map(d => (
                         <tr key={d.id} style={{ cursor: 'pointer' }}
-                            onClick={() => navigate('/ventes/devis')}>
+                            title="Voir / télécharger le PDF dans la fiche"
+                            onClick={() => { setPanelDevisId(d.id); setDevisPanel('view') }}>
                           <td><strong>{d.reference}</strong></td>
                           <td>{STATUT_DEVIS[d.statut] ?? d.statut}</td>
                           <td className="ta-right">
                             {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} DH
                           </td>
                           <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+                          <td className="ta-right">📄 PDF</td>
                         </tr>
                       ))}
                     </tbody>
@@ -550,6 +699,17 @@ export default function LeadForm({ lead = null, onClose, onSaved }) {
           </div>
         </form>
       </div>
+
+      {/* Panneau devis inline : créer / voir / télécharger sans quitter la fiche. */}
+      {isEdit && devisPanel && (
+        <LeadDevisPanel
+          lead={liveLead}
+          mode={devisPanel}
+          existingDevisId={devisPanel === 'view' ? panelDevisId : null}
+          onDevisChanged={refreshLead}
+          onClose={() => { setDevisPanel(null); setPanelDevisId(null); refreshLead() }}
+        />
+      )}
     </div>
   )
 }

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { filterLeads, EMPTY_FILTERS, archivedParam } from '../../../features/crm/stages'
 import LeadForm from '../LeadForm'
+import '../../../components/assigneepicker.css'
 import FilterBar from './FilterBar'
 import ViewSwitcher from './ViewSwitcher'
 import KanbanView from './views/KanbanView'
@@ -18,9 +19,16 @@ const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
 
 export default function LeadsPage() {
   const dispatch = useDispatch()
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { leads, leadsLoading, error } = useSelector(s => s.crm)
+
+  // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
+  // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
+  const [users, setUsers] = useState([])
+  useEffect(() => {
+    crmApi.getAssignableUsers()
+      .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+  }, [])
 
   // Vue active, persistée (kanban par défaut, façon Odoo).
   const [view, setView] = useState(() => {
@@ -42,12 +50,8 @@ export default function LeadsPage() {
   // Formulaire lead (création / édition).
   const [showForm, setShowForm] = useState(false)
   const [editLead, setEditLead] = useState(null)
-
-  // « Devis auto » — remise puis lancement du générateur.
-  const [autoLead, setAutoLead] = useState(null)
-  const [autoDiscount, setAutoDiscount] = useState('0')
-  const [autoError, setAutoError] = useState(null)
-  const [autoChecking, setAutoChecking] = useState(false)
+  // Intention « ouvrir directement le devis » à l'ouverture de la fiche (⚡).
+  const [formDevisIntent, setFormDevisIntent] = useState(null)
 
   // Changement d'étape optimiste avec retour-arrière.
   const [busyLeadId, setBusyLeadId] = useState(null)
@@ -75,11 +79,12 @@ export default function LeadsPage() {
     return () => clearTimeout(t)
   }, [stageError])
 
-  const openNew = () => { setEditLead(null); setShowForm(true) }
-  const onOpenLead = (lead) => { setEditLead(lead); setShowForm(true) }
+  const openNew = () => { setEditLead(null); setFormDevisIntent(null); setShowForm(true) }
+  const onOpenLead = (lead) => { setEditLead(lead); setFormDevisIntent(null); setShowForm(true) }
   const closeForm = () => {
     setShowForm(false)
     setEditLead(null)
+    setFormDevisIntent(null)
     // Nettoie le lien profond ?lead=<id> pour ne pas ré-ouvrir la fiche.
     if (searchParams.has('lead')) {
       setSearchParams(prev => {
@@ -91,24 +96,22 @@ export default function LeadsPage() {
   }
   const onSaved = () => refetch()
 
-  const onAutoQuote = (lead) => { setAutoLead(lead); setAutoDiscount('0'); setAutoError(null) }
-  const launchAutoQuote = async () => {
-    const id = autoLead.id
-    const d = autoDiscount !== '' ? autoDiscount : '0'
-    // Garde serveur : la règle « lead prêt » est aussi une règle backend.
-    setAutoChecking(true)
-    setAutoError(null)
+  // ⚡ depuis une carte / la liste : ouvre la FICHE et y lance le devis auto
+  // (tout reste dans la fiche du lead — aucune navigation ailleurs).
+  const onAutoQuote = (lead) => {
+    setEditLead(lead)
+    setFormDevisIntent('auto')
+    setShowForm(true)
+  }
+
+  // (Ré)assignation rapide du responsable depuis la carte / la liste. Le PATCH
+  // journalise ancien → nouveau côté serveur (Historique) et est ouvert à la
+  // Commerciale comme à l'admin.
+  const reassign = async (lead, ownerId) => {
     try {
-      await crmApi.checkDevisAuto(id)
-    } catch (err) {
-      setAutoError(err?.response?.data?.detail
-        ?? "Le devis automatique n'est pas disponible pour ce lead.")
-      return
-    } finally {
-      setAutoChecking(false)
-    }
-    setAutoLead(null)
-    navigate(`/ventes/devis/nouveau?lead=${id}&discount=${encodeURIComponent(d)}&auto=1`)
+      await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
+      refetch()
+    } catch { /* erreur silencieuse */ }
   }
 
   const changeStage = async (lead, newStage) => {
@@ -136,6 +139,8 @@ export default function LeadsPage() {
     onAutoQuote,
     onRefetch: refetch,
     busyLeadId,
+    users,
+    onReassign: reassign,
   }
 
   return (
@@ -175,50 +180,12 @@ export default function LeadsPage() {
       </div>
 
       {(showForm || deepLead) && (
-        <LeadForm lead={showForm ? editLead : deepLead} onClose={closeForm} onSaved={onSaved} />
-      )}
-
-      {/* ── Devis automatique : remise puis lancement ── */}
-      {autoLead && (
-        <div className="modal-overlay" onClick={() => setAutoLead(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">
-                ⚡ Devis automatique — {autoLead.nom} {autoLead.prenom || ''}
-              </h3>
-              <button type="button" className="modal-close" onClick={() => setAutoLead(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p className="gen-hint">
-                {autoLead.devis_auto?.pret
-                  ? `Le devis sera dimensionné automatiquement depuis les données du lead
-                     selon son mode d'installation, avec l'équipement auto-rempli depuis
-                     le stock, puis créé en brouillon lié à ce lead.`
-                  : `${autoLead.devis_auto?.message ?? 'Données insuffisantes pour le devis auto'} — complétez la fiche via Éditer.`}
-              </p>
-              <div className="form-group">
-                <label className="form-label">Réduction (%) — optionnelle</label>
-                <input type="number" min="0" max="100" step="any" className="form-control"
-                       value={autoDiscount}
-                       onChange={e => setAutoDiscount(e.target.value)} />
-              </div>
-              {autoError && (
-                <div className="form-error-box" role="alert">{autoError}</div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-outline" onClick={() => setAutoLead(null)}>
-                Annuler
-              </button>
-              <button type="button" className="btn btn-primary"
-                      disabled={!autoLead.devis_auto?.pret || autoChecking}
-                      title={autoLead.devis_auto?.pret ? undefined : autoLead.devis_auto?.message ?? undefined}
-                      onClick={launchAutoQuote}>
-                {autoChecking ? 'Vérification…' : '⚡ Créer le devis automatique'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <LeadForm
+          lead={showForm ? editLead : deepLead}
+          onClose={closeForm}
+          onSaved={onSaved}
+          initialDevis={showForm ? formDevisIntent : null}
+        />
       )}
     </div>
   )
