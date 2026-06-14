@@ -54,9 +54,13 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
       .filter((f) => importsMaplibre(readFileSync(f, 'utf-8')))
       .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
       .sort();
-    // Les DEUX outils (2D + variante 3D), et eux seuls, importent MapLibre —
-    // tous deux chargés à la demande, jamais dans le bundle d'une autre page.
-    expect(offenders).toEqual(['src/scripts/roof-tool-3d.ts', 'src/scripts/roof-tool.ts']);
+    // Les TROIS outils (2D + 3D volumes + 3D réaliste), et eux seuls, importent
+    // MapLibre — tous chargés à la demande, jamais dans le bundle d'une autre page.
+    expect(offenders).toEqual([
+      'src/scripts/roof-tool-3d.ts',
+      'src/scripts/roof-tool-pro.ts',
+      'src/scripts/roof-tool.ts',
+    ]);
   });
 
   it('la page charge l’outil par import() dynamique, pas en statique', () => {
@@ -215,6 +219,131 @@ describe('estimateur 3D — variante privée, parallèle, sans toucher la 2D', (
   it('aucune page publique ne monte l’estimateur 3D', () => {
     for (const p of ['index', 'résidentiel', 'professionnel', 'contact', 'équipement', 'loi-82-21', 'regularization-article-33']) {
       expect(read(`../src/pages/${p}.astro`)).not.toContain('roof-tool-3d');
+    }
+  });
+});
+
+describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans toucher le reste', () => {
+  const pagePro = '../src/pages/preview/toiture-3d-pro.astro';
+  const toolPro = '../src/scripts/roof-tool-pro.ts';
+
+  it('la page /preview/toiture-3d-pro est noindex et vit dans /preview/ (sous-dossier)', () => {
+    expect(read(pagePro)).toContain('noindex={true}');
+    expect(existsSync(fileURLToPath(new URL(pagePro, import.meta.url)))).toBe(true);
+    expect(existsSync(fileURLToPath(new URL('../src/pages/toiture-3d-pro.astro', import.meta.url)))).toBe(false);
+  });
+
+  it('le filtre sitemap exclut /preview/ (donc aussi /preview/toiture-3d-pro)', () => {
+    const filterLine = read('../astro.config.mjs')
+      .split('\n')
+      .find((l) => l.includes('filter:')) ?? '';
+    expect(filterLine).toContain('preview');
+  });
+
+  it('la 2D et la 3D « volumes » restent inchangées (n’évoquent jamais la pro)', () => {
+    for (const f of [
+      '../src/pages/preview/toiture.astro',
+      '../src/scripts/roof-tool.ts',
+      '../src/pages/preview/toiture-3d.astro',
+      '../src/scripts/roof-tool-3d.ts',
+    ]) {
+      expect(read(f)).not.toContain('toiture-3d-pro');
+      expect(read(f)).not.toContain('roof-tool-pro');
+      // Aucun de ces fichiers n'importe Three.js.
+      expect(read(f)).not.toMatch(/from\s+['"]three['"]/);
+    }
+  });
+
+  it('Three.js n’est IMPORTÉ que dans le module pro (jamais ailleurs dans src)', () => {
+    const importsThree = (s: string) => /(?:from|import)\s*\(?\s*['"]three['"]/.test(s);
+    const offenders = walk(srcDir)
+      .filter((f) => /\.(ts|tsx|js|astro)$/.test(f))
+      .filter((f) => importsThree(readFileSync(f, 'utf-8')))
+      .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
+      .sort();
+    expect(offenders).toEqual(['src/scripts/roof-tool-pro.ts']);
+  });
+
+  it('Three.js est la SEULE dépendance ajoutée (pas de threebox ni @types/three)', () => {
+    const pkg = JSON.parse(read('../package.json')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    expect(pkg.dependencies?.three).toBeTruthy();
+    const all = { ...pkg.dependencies, ...pkg.devDependencies };
+    expect(all['threebox-plugin']).toBeUndefined();
+    expect(all.threebox).toBeUndefined();
+    expect(all['@types/three']).toBeUndefined();
+  });
+
+  it('la page pro charge l’outil par import() dynamique, pas en statique', () => {
+    const page = read(pagePro);
+    expect(page).toContain("import('../../scripts/roof-tool-pro");
+    expect(page).not.toMatch(/import\s+\w+\s+from\s+['"]maplibre/);
+    expect(page).not.toMatch(/import\s+.*\s+from\s+['"]three/);
+  });
+
+  it('le module pro fait la 3D réaliste via une COUCHE PERSONNALISÉE MapLibre + Three', () => {
+    const tool = read(toolPro);
+    expect(tool).toContain("from 'maplibre-gl'");
+    expect(tool).toContain("import * as THREE from 'three'");
+    expect(tool).toContain("type: 'custom'"); // couche personnalisée
+    expect(tool).toContain('InstancedMesh'); // panneaux/châssis répétés performants
+    expect(tool).toContain('mainMatrix'); // pont projection MapLibre ↔ Three
+  });
+
+  it('la pro RÉUTILISE le calepinage espacé et le même lead (jamais de fork)', () => {
+    const tool = read(toolPro);
+    // Calepinage « pro » testé, réutilise roof.ts (non modifié).
+    expect(tool).toContain("from '../lib/roofPro'");
+    expect(tool).toContain('layoutProRows');
+    // Production : MÊME proxy serveur, jamais PVGIS direct.
+    expect(tool).toContain("'/api/roof-estimate'");
+    expect(tool).not.toContain('re.jrc.ec.europa.eu');
+    // Lead : pré-remplit les MÊMES champs, ne poste aucun lead lui-même.
+    expect(tool).toContain("'lf-area'");
+    expect(tool).toContain("'lf-orient'");
+    expect(tool).toContain("'lf-kwc-est'");
+    expect(tool).not.toContain('/api/preview-lead');
+    expect(tool).not.toContain('/api/simulate');
+    const page = read(pagePro);
+    expect(page).toContain('DiagnosticFormEnriched');
+    expect(page).not.toContain("fetch('/api/preview-lead'");
+  });
+
+  it('roofPro NE modifie PAS roof.ts : il l’importe (aire, point-dans-polygone, kWc)', () => {
+    const lib = read('../src/lib/roofPro.ts');
+    expect(lib).toContain("from './roof'");
+    expect(lib).toContain('geodesicAreaM2');
+    expect(lib).toContain('kwcFromPanelCount');
+  });
+
+  it('prefers-reduced-motion : bascule 3D instantanée, aucune animation/rendu auto', () => {
+    const tool = read(toolPro);
+    expect(tool).toContain('opts.reducedMotion');
+    expect(tool).toContain('map.jumpTo');
+    // Pas de boucle de rendu continue ni de rotation automatique.
+    expect(tool).not.toContain('rotateTo');
+    expect(tool).not.toMatch(/setInterval|requestAnimationFrame/);
+    // triggerRepaint n'est JAMAIS appelé dans la méthode render() de la couche
+    // (sinon boucle continue) — on le commente explicitement.
+    expect(tool).not.toMatch(/render\([^)]*\)\s*\{[\s\S]{0,400}triggerRepaint/);
+  });
+
+  it('repli gracieux : WebGL absent → l’outil lève (la page bascule sur le repli)', () => {
+    const tool = read(toolPro);
+    expect(tool).toContain('webgl');
+    expect(tool).toMatch(/throw new Error/);
+    const page = read(pagePro);
+    expect(page).toContain('mapCreated');
+    expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
+  });
+
+  it('aucune page publique ne monte l’estimateur pro (ni Three.js)', () => {
+    for (const p of ['index', 'résidentiel', 'professionnel', 'contact', 'équipement', 'loi-82-21', 'regularization-article-33']) {
+      const page = read(`../src/pages/${p}.astro`);
+      expect(page).not.toContain('roof-tool-pro');
+      expect(page).not.toMatch(/from\s+['"]three/);
     }
   });
 });
