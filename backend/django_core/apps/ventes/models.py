@@ -355,10 +355,22 @@ class Facture(models.Model):
         return sum((p.montant for p in self.paiements.all()), Decimal('0'))
 
     @property
-    def montant_du(self):
-        """Reste à payer sur cette facture (TTC − payé), jamais négatif."""
+    def avoirs_total(self):
+        """Total TTC des avoirs (notes de crédit) actifs sur cette facture.
+
+        Un avoir réduit ce que le client doit. Aucun avoir → 0 → comportement
+        historique strictement inchangé."""
         from decimal import Decimal
-        reste = self.total_ttc - self.montant_paye
+        return sum(
+            (a.total_ttc for a in self.avoirs.all()
+             if a.statut != 'annulee'),
+            Decimal('0'))
+
+    @property
+    def montant_du(self):
+        """Reste à payer (TTC − payé − avoirs), jamais négatif."""
+        from decimal import Decimal
+        reste = self.total_ttc - self.montant_paye - self.avoirs_total
         return reste if reste > 0 else Decimal('0')
 
 
@@ -452,3 +464,122 @@ class Paiement(models.Model):
 
     def __str__(self):
         return f'{self.montant} MAD — {self.facture.reference}'
+
+
+class Avoir(models.Model):
+    """Note de crédit (Avoir) liée à une facture émise — style Odoo : on garde
+    le lien vers la facture d'origine, jamais une facture négative isolée.
+
+    Totaux et ventilation TVA calculés EXACTEMENT comme la facture (10 %/20 %,
+    réconciliés au centime). Pour une facture de tranche sans lignes, les
+    montants sont figés à la création (comme les tranches de facture)."""
+    class Statut(models.TextChoices):
+        EMISE = 'emise', 'Émis'
+        ANNULEE = 'annulee', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='avoirs')
+    reference = models.CharField(max_length=50)
+    facture = models.ForeignKey(
+        Facture, on_delete=models.PROTECT, related_name='avoirs')
+    client = models.ForeignKey(
+        Client, on_delete=models.PROTECT, related_name='avoirs')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EMISE)
+    motif = models.TextField(blank=True, default='')
+    date_emission = models.DateField(auto_now_add=True)
+    taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
+    remise_globale = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    # Montants figés pour un avoir sur facture sans lignes (tranche).
+    montant_ht = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    montant_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='avoirs_crees')
+    fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Avoir'
+        verbose_name_plural = 'Avoirs'
+        ordering = ['-date_emission', '-id']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def total_ht(self):
+        if self.montant_ht is not None:
+            return self.montant_ht
+        return sum(ligne.total_ht for ligne in self.lignes.all())
+
+    @property
+    def total_tva(self):
+        if self.montant_tva is not None:
+            return self.montant_tva
+        from decimal import Decimal
+        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+
+    @property
+    def tva_par_taux(self):
+        """Ventilation TVA par taux — même logique exacte que Facture."""
+        from decimal import Decimal, ROUND_HALF_UP
+        if self.montant_tva is not None:
+            return [{'taux': self.taux_tva, 'base_ht': self.total_ht,
+                     'montant': self.montant_tva}]
+        lignes = list(self.lignes.all())
+        buckets = {}
+        for ligne in lignes:
+            rate = ligne.taux_tva_effectif
+            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
+        if len(buckets) <= 1:
+            rate = next(iter(buckets), self.taux_tva)
+            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+            return [{'taux': rate, 'base_ht': base,
+                     'montant': base * rate / Decimal('100')}]
+
+        def q(x):
+            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return [
+            {'taux': rate, 'base_ht': q(buckets[rate]),
+             'montant': q(buckets[rate] * rate / Decimal('100'))}
+            for rate in sorted(buckets)
+        ]
+
+    @property
+    def total_ttc(self):
+        if self.montant_ttc is not None:
+            return self.montant_ttc
+        return self.total_ht + self.total_tva
+
+
+class LigneAvoir(models.Model):
+    avoir = models.ForeignKey(
+        Avoir, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_avoir')
+    designation = models.CharField(max_length=255)
+    quantite = models.DecimalField(max_digits=10, decimal_places=2)
+    prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
+    remise = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Ligne d\'avoir'
+        verbose_name_plural = 'Lignes d\'avoir'
+
+    @property
+    def total_ht(self):
+        return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+
+    @property
+    def taux_tva_effectif(self):
+        return self.taux_tva if self.taux_tva is not None else self.avoir.taux_tva

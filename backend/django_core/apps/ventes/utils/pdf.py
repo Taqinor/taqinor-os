@@ -183,3 +183,32 @@ def generate_facture_pdf(facture_id):
 
     logger.info('PDF facture généré : %s', key)
     return key
+
+
+def generate_avoir_pdf(avoir_id):
+    """Generate, upload and persist PDF for an Avoir. Returns MinIO key.
+
+    Réutilise le STYLE facture (templates/pdf/avoir.html en est une copie
+    relabellée « AVOIR »), aucune refonte visuelle."""
+    from apps.ventes.models import Avoir
+    avoir = (
+        Avoir.objects
+        .select_related('client', 'created_by', 'company', 'facture')
+        .prefetch_related('lignes__produit')
+        .get(pk=avoir_id)
+    )
+
+    context = _company_context(company=avoir.company)
+    context['avoir'] = avoir
+
+    html = _render_html('avoir.html', context)
+    pdf_bytes = _html_to_pdf(html)
+
+    key = f'avoirs/{avoir.reference}.pdf'
+    _upload_pdf(pdf_bytes, key)
+
+    avoir.fichier_pdf = key
+    avoir.save(update_fields=['fichier_pdf'])
+
+    logger.info('PDF avoir généré : %s', key)
+    return key

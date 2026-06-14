@@ -152,11 +152,19 @@ def solde_devis(devis):
         (Decimal(str(p.montant)) for f in actives for p in f.paiements.all()),
         Decimal('0'),
     )
-    restant = total - paye
+    # Avoirs (notes de crédit) actifs : réduisent le restant dû. Aucun avoir
+    # → 0 → solde historique strictement inchangé.
+    avoirs = sum(
+        (Decimal(str(a.total_ttc))
+         for f in actives for a in f.avoirs.all() if a.statut != 'annulee'),
+        Decimal('0'),
+    )
+    restant = total - paye - avoirs
     return {
         'total_ttc': _q(total),
         'facture': _q(facture),
         'paye': _q(paye),
+        'avoirs': _q(avoirs),
         'restant': _q(restant),
         'tranches_total': len(schedule_for_devis(devis)),
         'tranches_facturees': actives.count(),
