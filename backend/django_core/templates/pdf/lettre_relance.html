@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12.5px; color: #333; line-height: 1.6; }
+    .page { padding: 48px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+    .logo img { max-height: 64px; max-width: 200px; object-fit: contain; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .client-block { text-align: right; margin-bottom: 32px; }
+    .client-block .nom { font-weight: bold; }
+    .objet { font-weight: bold; margin-bottom: 20px; color: {{ couleur_principale }}; }
+    .corps { margin-bottom: 16px; }
+    .facture-box { background: #fef2f2; border-left: 3px solid #dc2626; padding: 12px 16px; margin: 18px 0; font-size: 12px; }
+    .signature { margin-top: 48px; }
+    .footer { margin-top: 60px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <strong style="font-size:15px;color:{{ couleur_principale }};">{{ entreprise_nom }}</strong>
+    </div>
+    <div class="company-info">
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="client-block">
+    <div class="nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
+    {% if facture.client.adresse %}<div>{{ facture.client.adresse }}</div>{% endif %}
+  </div>
+
+  <div class="objet">
+    Objet : Relance{% if niveau %} — {{ niveau.nom }}{% endif %} — facture {{ facture.reference }}
+  </div>
+
+  <div class="corps">Madame, Monsieur,</div>
+  <div class="corps">{{ message or "Sauf erreur de notre part, la facture ci-dessous reste en attente de règlement. Nous vous remercions de bien vouloir procéder à son paiement." }}</div>
+
+  <div class="facture-box">
+    <strong>Facture {{ facture.reference }}</strong><br />
+    Échéance : {{ facture.date_echeance.strftime('%d/%m/%Y') if facture.date_echeance else 'N/A' }}
+    {% if facture.jours_retard > 0 %} — en retard de {{ facture.jours_retard }} jour(s){% endif %}<br />
+    Montant restant dû : <strong>{{ "%.2f"|format(facture.montant_du) }} MAD</strong>
+  </div>
+
+  <div class="corps">Nous restons à votre disposition pour toute information.</div>
+  <div class="signature">Cordialement,<br /><strong>{{ entreprise_nom }}</strong></div>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_ice %} — ICE : {{ entreprise_ice }}{% endif %}
+    {% if rib %} — RIB : {{ rib }}{% if banque %} ({{ banque }}){% endif %}{% endif %}
+    <br />Courrier généré le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+  </div>
+</div>
+</body>
+</html>

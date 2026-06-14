@@ -161,6 +161,7 @@ class FactureSerializer(serializers.ModelSerializer):
     # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+    jours_retard = serializers.IntegerField(read_only=True)
 
     def get_tva_par_taux(self, obj):
         return [
@@ -239,3 +240,22 @@ class AvoirSerializer(serializers.ModelSerializer):
     def get_client_nom(self, obj):
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+
+class FollowupLevelSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import FollowupLevel
+        model = FollowupLevel
+        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message']
+
+
+class RelanceLogSerializer(serializers.ModelSerializer):
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import RelanceLog
+        model = RelanceLog
+        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'date',
+                  'created_by_nom']
+        read_only_fields = fields

@@ -212,3 +212,21 @@ def generate_avoir_pdf(avoir_id):
 
     logger.info('PDF avoir généré : %s', key)
     return key
+
+
+def generate_releve_pdf(client, releve_data):
+    """Relevé de compte client (style maison) — rendu à la volée, non stocké."""
+    context = _company_context(company=client.company)
+    context['releve'] = releve_data
+    html = _render_html('releve.html', context)
+    return _html_to_pdf(html)
+
+
+def generate_lettre_relance_pdf(facture, niveau, message):
+    """Lettre de relance pour une facture en retard (style maison)."""
+    context = _company_context(company=facture.company)
+    context['facture'] = facture
+    context['niveau'] = niveau
+    context['message'] = message
+    html = _render_html('lettre_relance.html', context)
+    return _html_to_pdf(html)

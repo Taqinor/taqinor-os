@@ -273,6 +273,11 @@ class Facture(models.Model):
         max_digits=5, decimal_places=2, default=0
     )
     note = models.TextField(blank=True, null=True)
+    # ── Relances / recouvrement (workstream E) — additif ──
+    # Date de la prochaine relance prévue (posée à l'enregistrement d'une
+    # relance) ; exclu_relances retire la facture des listes d'impayés.
+    prochaine_relance = models.DateField(null=True, blank=True)
+    exclu_relances = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -372,6 +377,17 @@ class Facture(models.Model):
         from decimal import Decimal
         reste = self.total_ttc - self.montant_paye - self.avoirs_total
         return reste if reste > 0 else Decimal('0')
+
+    @property
+    def jours_retard(self):
+        """Jours de retard (échéance dépassée) si la facture reste due."""
+        from django.utils import timezone
+        if not self.date_echeance or self.statut in ('payee', 'annulee'):
+            return 0
+        if self.montant_du <= 0:
+            return 0
+        delta = (timezone.now().date() - self.date_echeance).days
+        return delta if delta > 0 else 0
 
 
 class LigneFacture(models.Model):
@@ -583,3 +599,48 @@ class LigneAvoir(models.Model):
     @property
     def taux_tva_effectif(self):
         return self.taux_tva if self.taux_tva is not None else self.avoir.taux_tva
+
+
+class FollowupLevel(models.Model):
+    """Niveau de relance configurable (J+7 rappel, J+15 relance, J+30 ferme…).
+
+    `delai_jours` = nombre de jours de retard à partir duquel ce niveau
+    s'applique. Le niveau courant d'une facture est le plus élevé dont le
+    seuil est atteint. Modifiable par l'admin dans Paramètres."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='followup_levels')
+    ordre = models.PositiveIntegerField(default=0)
+    nom = models.CharField(max_length=120)
+    delai_jours = models.PositiveIntegerField(default=7)
+    message = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['delai_jours', 'ordre']
+        verbose_name = 'Niveau de relance'
+
+    def __str__(self):
+        return f'{self.nom} (J+{self.delai_jours})'
+
+
+class RelanceLog(models.Model):
+    """Trace d'une relance effectuée sur une facture (consigne, jamais envoi)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='relance_logs')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='relances')
+    niveau = models.PositiveIntegerField(null=True, blank=True)
+    niveau_nom = models.CharField(max_length=120, blank=True, default='')
+    note = models.TextField(blank=True, default='')
+    date = models.DateField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='relances_effectuees')
+
+    class Meta:
+        ordering = ['-date', '-id']
+        verbose_name = 'Relance'
+
+    def __str__(self):
+        return f'Relance {self.facture.reference} — {self.date}'

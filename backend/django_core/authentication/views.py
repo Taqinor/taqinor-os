@@ -216,6 +216,19 @@ class RegisterCompanyView(generics.GenericAPIView):
         except Exception:
             pass
 
+        # Niveaux de relance par défaut (J+7 / J+15 / J+30).
+        try:
+            from apps.ventes.models import FollowupLevel
+            for ordre, nom, delai in [
+                (1, 'Rappel courtois', 7), (2, 'Relance', 15),
+                (3, 'Relance ferme', 30),
+            ]:
+                FollowupLevel.objects.get_or_create(
+                    company=company, ordre=ordre,
+                    defaults={'nom': nom, 'delai_jours': delai})
+        except Exception:
+            pass
+
         user = CustomUser.objects.create_user(
             username=username,
             email=email,

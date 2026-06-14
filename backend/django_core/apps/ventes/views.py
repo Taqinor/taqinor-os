@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from apps.stock.models import MouvementStock
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir,
+    Avoir, LigneAvoir, FollowupLevel, RelanceLog,
 )
 from .serializers import (
     DevisSerializer,
@@ -18,6 +18,7 @@ from .serializers import (
     LigneFactureSerializer,
     PaiementSerializer,
     AvoirSerializer,
+    RelanceLogSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -473,16 +474,18 @@ class FactureViewSet(viewsets.ModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['paiements']:
+        if self.action in READ_ACTIONS + ['paiements', 'relances']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
+            'relancer', 'exclure_relance',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
         elif self.action in ['destroy', 'annuler']:
             return [IsAdminRole()]
+        # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
@@ -710,6 +713,47 @@ class FactureViewSet(viewsets.ModelViewSet):
             pass
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='relancer',
+            permission_classes=[IsResponsableOrAdmin])
+    def relancer(self, request, pk=None):
+        """Consigne une relance (jamais d'envoi) : journalise + fixe la
+        prochaine date de relance. Ouvert à la Commerciale."""
+        facture = self.get_object()
+        niveau = request.data.get('niveau')
+        note = (request.data.get('note') or '').strip()
+        niveau_nom = ''
+        if niveau:
+            lvl = FollowupLevel.objects.filter(
+                company=facture.company, ordre=niveau).first()
+            niveau_nom = lvl.nom if lvl else ''
+        RelanceLog.objects.create(
+            company=facture.company, facture=facture,
+            niveau=niveau or None, niveau_nom=niveau_nom, note=note,
+            created_by=request.user)
+        # Prochaine relance proposée si fournie, sinon laissée telle quelle.
+        prochaine = request.data.get('prochaine_relance')
+        if prochaine:
+            facture.prochaine_relance = prochaine
+            facture.save(update_fields=['prochaine_relance'])
+        return Response(FactureSerializer(facture).data)
+
+    @action(detail=True, methods=['post'], url_path='exclure-relance',
+            permission_classes=[IsResponsableOrAdmin])
+    def exclure_relance(self, request, pk=None):
+        """Bascule l'exclusion de la facture des listes d'impayés."""
+        facture = self.get_object()
+        facture.exclu_relances = bool(request.data.get('exclu', True))
+        facture.save(update_fields=['exclu_relances'])
+        return Response(FactureSerializer(facture).data)
+
+    @action(detail=True, methods=['get'], url_path='relances',
+            permission_classes=[IsAnyRole])
+    def relances(self, request, pk=None):
+        """Historique des relances consignées sur cette facture."""
+        facture = self.get_object()
+        return Response(
+            RelanceLogSerializer(facture.relances.all(), many=True).data)
 
 
 class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
