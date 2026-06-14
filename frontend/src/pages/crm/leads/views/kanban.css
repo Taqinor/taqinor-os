@@ -333,3 +333,9 @@
 
 /* Sélecteur de responsable (avatar) sur la carte — poussé à droite du pied. */
 .kb-card-assignee { margin-left: auto; display: inline-flex; align-items: center; }
+
+/* Pastille horloge d'activité (activité ouverte la plus proche). */
+.kb-act-clock { font-size: 0.8rem; margin-left: 2px; }
+.kb-act-clock.overdue { filter: none; color: #dc2626; }
+.kb-act-clock.today { color: #d97706; }
+.kb-act-clock.upcoming { color: #16a34a; }

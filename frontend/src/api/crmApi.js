@@ -24,6 +24,9 @@ const crmApi = {
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
+  // Doublons + fusion de leads (sans perte).
+  getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
+  mergeLeads: (id, others) => api.post(`/crm/leads/${id}/merge/`, { others }),
 }
 
 export default crmApi

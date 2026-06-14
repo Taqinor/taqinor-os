@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
+    Avoir, LigneAvoir,
 )
 
 
@@ -151,6 +152,8 @@ class FactureSerializer(serializers.ModelSerializer):
     total_ttc = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     montant_paye = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     montant_du = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    avoirs = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
@@ -158,12 +161,20 @@ class FactureSerializer(serializers.ModelSerializer):
     # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+    jours_retard = serializers.IntegerField(read_only=True)
 
     def get_tva_par_taux(self, obj):
         return [
             {'taux': str(b['taux']), 'base_ht': str(b['base_ht']),
              'montant': str(b['montant'])}
             for b in obj.tva_par_taux
+        ]
+
+    def get_avoirs(self, obj):
+        return [
+            {'id': a.id, 'reference': a.reference, 'statut': a.statut,
+             'total_ttc': str(a.total_ttc), 'motif': a.motif}
+            for a in obj.avoirs.all()
         ]
 
     class Meta:
@@ -186,3 +197,65 @@ class FactureWriteSerializer(serializers.ModelSerializer):
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
         read_only_fields = ['created_by', 'date_emission', 'company']
+
+
+class LigneAvoirSerializer(serializers.ModelSerializer):
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LigneAvoir
+        fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
+                  'remise', 'taux_tva', 'total_ht']
+
+
+class AvoirSerializer(serializers.ModelSerializer):
+    lignes = LigneAvoirSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    tva_par_taux = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    client_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Avoir
+        fields = '__all__'
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_emission', 'company']
+
+    def get_tva_par_taux(self, obj):
+        return [
+            {'taux': str(b['taux']), 'base_ht': str(b['base_ht']),
+             'montant': str(b['montant'])}
+            for b in obj.tva_par_taux
+        ]
+
+    def get_client_nom(self, obj):
+        c = obj.client
+        return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+
+class FollowupLevelSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import FollowupLevel
+        model = FollowupLevel
+        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message']
+
+
+class RelanceLogSerializer(serializers.ModelSerializer):
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import RelanceLog
+        model = RelanceLog
+        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'date',
+                  'created_by_nom']
+        read_only_fields = fields

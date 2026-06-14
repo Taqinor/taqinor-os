@@ -124,18 +124,22 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                 extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
+        from .services import sync_relance_activity
+        sync_relance_activity(serializer.instance, user)
 
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
         activity.log_changes(old, serializer.instance, self.request.user)
+        from .services import sync_relance_activity
+        sync_relance_activity(serializer.instance, self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'duplicates']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'noter', 'devis_auto', 'archiver', 'restaurer',
+            'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -189,6 +193,45 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             getattr(lead, 'company_id', None),
         )
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get'], url_path='duplicates',
+            permission_classes=[IsAnyRole])
+    def duplicates(self, request, pk=None):
+        """Doublons probables (même téléphone/email normalisé, même société)."""
+        from .services import find_duplicate_leads
+        lead = self.get_object()
+        dups = find_duplicate_leads(lead)
+        return Response([
+            {
+                'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+                'societe': d.societe, 'telephone': d.telephone,
+                'email': d.email, 'stage': d.stage,
+                'is_archived': d.is_archived,
+                'nb_devis': d.devis.count(),
+            }
+            for d in dups
+        ])
+
+    @action(detail=True, methods=['post'], url_path='merge',
+            permission_classes=[IsResponsableOrAdmin])
+    def merge(self, request, pk=None):
+        """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
+        devis, chantiers, activités, pièces jointes et historique sont déplacés ;
+        les leads absorbés sont archivés (jamais supprimés)."""
+        from .services import merge_leads
+        survivor = self.get_object()
+        ids = request.data.get('others') or []
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Aucun lead à fusionner.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        others = list(self.get_queryset().filter(pk__in=ids).exclude(pk=survivor.pk))
+        if not others:
+            return Response({'detail': 'Leads à fusionner introuvables.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        merge_leads(survivor, others, request.user)
+        survivor.refresh_from_db()
+        return Response(
+            LeadSerializer(survivor, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])

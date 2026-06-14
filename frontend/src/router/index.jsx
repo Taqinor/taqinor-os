@@ -29,6 +29,10 @@ const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
 const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
+const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
+const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
+const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
+const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client
@@ -68,12 +72,15 @@ const router = createBrowserRouter([
   // CRM
   { path: '/crm', loader: authLoader, element: <WithLayout><ClientList /></WithLayout> },
   { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadsPage /></WithLayout> },
+  { path: '/activites', loader: authLoader, element: <WithLayout><MesActivitesPage /></WithLayout> },
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
   { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
   { path: '/ventes/bons-commande', loader: authLoader, element: <WithLayout><VentesKanban /></WithLayout> },
   { path: '/ventes/factures', loader: authLoader, element: <WithLayout><FactureList /></WithLayout> },
+  { path: '/ventes/avoirs', loader: authLoader, element: <WithLayout><AvoirsPage /></WithLayout> },
+  { path: '/ventes/relances', loader: authLoader, element: <WithLayout><RelancesPage /></WithLayout> },
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
@@ -88,6 +95,7 @@ const router = createBrowserRouter([
 
   // Reporting
   { path: '/reporting', loader: authLoader, element: <WithLayout><Reporting /></WithLayout> },
+  { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
 
   // Administration
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },

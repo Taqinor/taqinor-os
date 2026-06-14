@@ -6,6 +6,9 @@ import crmApi from '../../api/crmApi'
 import Avatar from '../../components/Avatar'
 import AssigneePicker from '../../components/AssigneePicker'
 import '../../components/assigneepicker.css'
+import ActivitiesPanel from '../../components/ActivitiesPanel'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
+import '../../components/records-panels.css'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import './leads/leaddevispanel.css'
 import './leadform-extra.css'
@@ -73,7 +76,10 @@ const buildNavSections = ({ agricole, isEdit }) => {
   ]
   if (agricole) secs.push(['pompage', 'Pompage'])
   secs.push(['toiture', 'Toiture & site'], ['visite', 'Visite'])
-  if (isEdit) secs.push(['devis', 'Devis'], ['historique', 'Historique'])
+  if (isEdit) secs.push(
+    ['devis', 'Devis'], ['activites', 'Activités'],
+    ['pieces', 'Pièces jointes'], ['doublons', 'Doublons'],
+    ['historique', 'Historique'])
   return secs
 }
 
@@ -123,6 +129,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const [panelDevisId, setPanelDevisId] = useState(null)
   const [devisMenuOpen, setDevisMenuOpen] = useState(false)
   const devisMenuRef = useRef(null)
+
+  // Doublons probables (fusion sans perte).
+  const [dups, setDups] = useState([])
 
   // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
   const [billEditing, setBillEditing] = useState(false)
@@ -200,8 +209,23 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     if (isEdit) {
       api.get(`/crm/leads/${lead.id}/historique/`)
         .then(r => setHistorique(r.data)).catch(() => {})
+      crmApi.getLeadDuplicates(lead.id)
+        .then(r => setDups(r.data)).catch(() => {})
     }
   }, [isEdit, lead?.id])
+
+  const doMerge = async (otherId) => {
+    if (!window.confirm('Fusionner ce doublon dans la fiche courante ? '
+      + 'Le doublon sera archivé (jamais supprimé) et ses devis/activités '
+      + 'rattachés à cette fiche.')) return
+    try {
+      await crmApi.mergeLeads(lead.id, [otherId])
+      setDups(d => d.filter(x => x.id !== otherId))
+      refreshLead()
+      api.get(`/crm/leads/${lead.id}/historique/`)
+        .then(r => setHistorique(r.data)).catch(() => {})
+    } catch { /* silencieux */ }
+  }
 
   // Ouverture directe sur un mode devis (depuis le ⚡ d'une carte / liste).
   const devisIntentRan = useRef(false)
@@ -641,6 +665,54 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                           </td>
                           <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
                           <td className="ta-right">📄 PDF</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Sec>
+            )}
+
+            {/* ── Activités planifiées ── */}
+            {isEdit && (
+              <Sec id="activites" title="⏰ Activités">
+                <ActivitiesPanel
+                  model="crm.lead" id={lead.id} users={users}
+                  onChange={() => onSaved?.()}
+                />
+              </Sec>
+            )}
+
+            {/* ── Pièces jointes ── */}
+            {isEdit && (
+              <Sec id="pieces" title="📎 Pièces jointes">
+                <AttachmentsPanel model="crm.lead" id={lead.id} />
+              </Sec>
+            )}
+
+            {/* ── Doublons / Fusion ── */}
+            {isEdit && (
+              <Sec id="doublons" title={`🔀 Doublons${dups.length ? ` (${dups.length})` : ''}`}>
+                {dups.length === 0 ? (
+                  <p className="gen-hint">Aucun doublon détecté (même téléphone ou email).</p>
+                ) : (
+                  <table className="lines-table">
+                    <thead>
+                      <tr><th>Lead</th><th>Téléphone</th><th>Email</th><th>Devis</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {dups.map(d => (
+                        <tr key={d.id}>
+                          <td><strong>{d.nom} {d.prenom || ''}</strong>{d.is_archived ? ' (archivé)' : ''}</td>
+                          <td>{d.telephone || '—'}</td>
+                          <td>{d.email || '—'}</td>
+                          <td>{d.nb_devis}</td>
+                          <td className="ta-right">
+                            <button type="button" className="btn btn-sm btn-primary"
+                                    onClick={() => doMerge(d.id)}>
+                              Fusionner ici
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

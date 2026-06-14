@@ -12,6 +12,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import { originFrom } from '../../api/origin'
 import crmApi from '../../api/crmApi'
+import ventesApi from '../../api/ventesApi'
 
 const ACCEPTED   = ['image/png', 'image/jpeg', 'image/webp']
 const MAX_MB     = 2
@@ -333,6 +334,13 @@ export default function ParametresEntreprise() {
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
+  const [niveaux, setNiveaux] = useState([])
+  const [niveauxSaved, setNiveauxSaved] = useState(false)
+
+  const loadNiveaux = () => {
+    ventesApi.getNiveauxRelance()
+      .then(r => setNiveaux(r.data.results ?? r.data)).catch(() => {})
+  }
 
   useEffect(() => {
     dispatch(fetchProfile())
@@ -340,7 +348,23 @@ export default function ParametresEntreprise() {
     dispatch(fetchFournisseurs())
     crmApi.getAssignableUsers()
       .then(r => setAssignables(r.data.results ?? r.data)).catch(() => {})
+    loadNiveaux()
   }, [dispatch])
+
+  const setNiveau = (id, key, val) =>
+    setNiveaux(ns => ns.map(n => (n.id === id ? { ...n, [key]: val } : n)))
+
+  const saveNiveaux = async () => {
+    try {
+      await Promise.all(niveaux.map(n => ventesApi.saveNiveauRelance(n.id, {
+        nom: n.nom, delai_jours: Number(n.delai_jours) || 0,
+        ordre: n.ordre, message: n.message || '',
+      })))
+      setNiveauxSaved(true)
+      setTimeout(() => setNiveauxSaved(false), 3000)
+      loadNiveaux()
+    } catch { /* silencieux */ }
+  }
 
   useEffect(() => {
     // Synchronisation du formulaire avec le profil chargé depuis le store
@@ -574,6 +598,34 @@ export default function ParametresEntreprise() {
                 ))}
               </select>
             </Field>
+          </div>
+
+          {/* Niveaux de relance */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#dc2626" label="Niveaux de relance" icon={<><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Seuils de retard (en jours) pour relancer les factures impayées.
+              Vue / consigne / impression uniquement — aucun envoi automatique.
+            </p>
+            {niveaux.map(n => (
+              <div key={n.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: '0.6rem', marginBottom: '0.6rem' }}>
+                <Field label={`Niveau ${n.ordre}`}>
+                  <input style={inputBase} value={n.nom}
+                         onChange={e => setNiveau(n.id, 'nom', e.target.value)} />
+                </Field>
+                <Field label="Jours (J+)">
+                  <input style={inputBase} type="number" min="0" value={n.delai_jours}
+                         onChange={e => setNiveau(n.id, 'delai_jours', e.target.value)} />
+                </Field>
+              </div>
+            ))}
+            {niveaux.length === 0 && (
+              <p style={{ fontSize: 12, color: '#94a3b8' }}>Aucun niveau configuré.</p>
+            )}
+            <button type="button" onClick={saveNiveaux}
+                    style={{ marginTop: 4, padding: '8px 18px', borderRadius: 8, border: 'none', background: niveauxSaved ? '#10b981' : '#dc2626', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+              {niveauxSaved ? 'Niveaux enregistrés ✓' : 'Enregistrer les niveaux'}
+            </button>
           </div>
 
           {/* Couleur PDF */}

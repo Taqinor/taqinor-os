@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from apps.stock.models import MouvementStock
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
+    Avoir, LigneAvoir, FollowupLevel, RelanceLog,
 )
 from .serializers import (
     DevisSerializer,
@@ -16,6 +17,8 @@ from .serializers import (
     FactureWriteSerializer,
     LigneFactureSerializer,
     PaiementSerializer,
+    AvoirSerializer,
+    RelanceLogSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -471,16 +474,18 @@ class FactureViewSet(viewsets.ModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['paiements']:
+        if self.action in READ_ACTIONS + ['paiements', 'relances']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
+            'relancer', 'exclure_relance',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
         elif self.action in ['destroy', 'annuler']:
             return [IsAdminRole()]
+        # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
@@ -641,6 +646,165 @@ class FactureViewSet(viewsets.ModelViewSet):
             {'detail': 'Envoi email (TODO Sem. 4)'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @action(detail=True, methods=['post'], url_path='creer-avoir')
+    def creer_avoir(self, request, pk=None):
+        """Crée un Avoir (note de crédit) depuis une facture ÉMISE — admin only
+        (get_permissions par défaut). Total ou partiel : si `lignes` est fourni
+        on crédite ces lignes ; sinon on crédite toute la facture. Lié à la
+        facture d'origine ; le PDF reprend le style facture."""
+        facture = self.get_object()
+        if facture.statut not in ('emise', 'payee', 'en_retard'):
+            return Response(
+                {'detail': 'Un avoir ne peut être créé que depuis une '
+                           'facture émise (ou payée/en retard).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = facture.company
+        motif = (request.data.get('motif') or '').strip()
+        lignes = request.data.get('lignes')
+
+        def _create(ref):
+            avoir = Avoir.objects.create(
+                company=company, reference=ref, facture=facture,
+                client=facture.client, statut=Avoir.Statut.EMISE,
+                motif=motif, taux_tva=facture.taux_tva,
+                created_by=request.user)
+            if isinstance(lignes, list) and lignes:
+                for ligne in lignes:
+                    try:
+                        qte = ligne.get('quantite')
+                        pu = ligne.get('prix_unitaire')
+                        if qte in (None, '') or pu in (None, ''):
+                            continue
+                        LigneAvoir.objects.create(
+                            avoir=avoir,
+                            produit_id=ligne.get('produit') or None,
+                            designation=ligne.get('designation', '')[:255],
+                            quantite=qte, prix_unitaire=pu,
+                            remise=ligne.get('remise') or 0,
+                            taux_tva=ligne.get('taux_tva'))
+                    except Exception:
+                        continue
+            else:
+                f_lignes = list(facture.lignes.all())
+                if f_lignes:
+                    for ligne in f_lignes:
+                        LigneAvoir.objects.create(
+                            avoir=avoir, produit=ligne.produit,
+                            designation=ligne.designation,
+                            quantite=ligne.quantite,
+                            prix_unitaire=ligne.prix_unitaire,
+                            remise=ligne.remise, taux_tva=ligne.taux_tva)
+                else:
+                    # Facture de tranche sans lignes : montants figés.
+                    avoir.montant_ht = facture.total_ht
+                    avoir.montant_tva = facture.total_tva
+                    avoir.montant_ttc = facture.total_ttc
+                    avoir.save(update_fields=[
+                        'montant_ht', 'montant_tva', 'montant_ttc'])
+            return avoir
+
+        avoir = create_with_reference(Avoir, 'AVO', company, _create)
+        try:
+            from .utils.pdf import generate_avoir_pdf
+            generate_avoir_pdf(avoir.id)
+            avoir.refresh_from_db()
+        except Exception:
+            pass
+        return Response(AvoirSerializer(avoir).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='relancer',
+            permission_classes=[IsResponsableOrAdmin])
+    def relancer(self, request, pk=None):
+        """Consigne une relance (jamais d'envoi) : journalise + fixe la
+        prochaine date de relance. Ouvert à la Commerciale."""
+        facture = self.get_object()
+        niveau = request.data.get('niveau')
+        note = (request.data.get('note') or '').strip()
+        niveau_nom = ''
+        if niveau:
+            lvl = FollowupLevel.objects.filter(
+                company=facture.company, ordre=niveau).first()
+            niveau_nom = lvl.nom if lvl else ''
+        RelanceLog.objects.create(
+            company=facture.company, facture=facture,
+            niveau=niveau or None, niveau_nom=niveau_nom, note=note,
+            created_by=request.user)
+        # Prochaine relance proposée si fournie, sinon laissée telle quelle.
+        prochaine = request.data.get('prochaine_relance')
+        if prochaine:
+            facture.prochaine_relance = prochaine
+            facture.save(update_fields=['prochaine_relance'])
+        return Response(FactureSerializer(facture).data)
+
+    @action(detail=True, methods=['post'], url_path='exclure-relance',
+            permission_classes=[IsResponsableOrAdmin])
+    def exclure_relance(self, request, pk=None):
+        """Bascule l'exclusion de la facture des listes d'impayés."""
+        facture = self.get_object()
+        facture.exclu_relances = bool(request.data.get('exclu', True))
+        facture.save(update_fields=['exclu_relances'])
+        return Response(FactureSerializer(facture).data)
+
+    @action(detail=True, methods=['get'], url_path='relances',
+            permission_classes=[IsAnyRole])
+    def relances(self, request, pk=None):
+        """Historique des relances consignées sur cette facture."""
+        facture = self.get_object()
+        return Response(
+            RelanceLogSerializer(facture.relances.all(), many=True).data)
+
+
+class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
+    """Avoirs (notes de crédit) : lecture pour tout rôle ; PDF pour
+    Responsable/Admin ; annulation Admin. Création via la facture
+    (creer-avoir), jamais directement."""
+    queryset = Avoir.objects.select_related(
+        'client', 'facture', 'created_by').prefetch_related('lignes').all()
+    serializer_class = AvoirSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'facture__reference', 'client__nom']
+    ordering_fields = ['date_emission', 'reference']
+    ordering = ['-date_emission']
+
+    def get_queryset(self):
+        qs = _company_qs(super().get_queryset(), self.request.user)
+        facture_id = self.request.query_params.get('facture')
+        if facture_id:
+            qs = qs.filter(facture_id=facture_id)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        if self.action == 'annuler':
+            return [IsAdminRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        avoir = self.get_object()
+        avoir.statut = Avoir.Statut.ANNULEE
+        avoir.save(update_fields=['statut'])
+        return Response(AvoirSerializer(avoir).data)
+
+    @action(detail=True, methods=['get'], url_path='telecharger-pdf')
+    def telecharger_pdf(self, request, pk=None):
+        avoir = self.get_object()
+        from .utils.pdf import download_pdf, generate_avoir_pdf
+        try:
+            if not avoir.fichier_pdf:
+                generate_avoir_pdf(avoir.id)
+                avoir.refresh_from_db()
+            pdf_bytes = download_pdf(avoir.fichier_pdf)
+        except Exception:
+            return Response({'detail': 'PDF indisponible.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="{avoir.reference}.pdf"')
+        return response
 
 
 class PaiementViewSet(viewsets.ReadOnlyModelViewSet):

@@ -585,3 +585,62 @@ class TestAssignableUsers(TestCase):
         self.assertEqual(act.old_value, 'assign_commerciale')
         self.assertEqual(act.new_value, 'assign_collegue')
         self.assertEqual(act.user_id, self.commerciale.id)
+
+
+class TestLeadMerge(TestCase):
+    """Fusion de leads : aucun devis perdu, absorbé archivé, champs complétés."""
+
+    def setUp(self):
+        from apps.ventes.models import Devis
+        from apps.crm.models import Client as CrmClient
+        self.company = make_company(slug='merge-co', nom='Merge Co')
+        self.user = User.objects.create_user(
+            username='merge_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        # Survivant : nom + téléphone, pas d'email.
+        self.survivor = Lead.objects.create(
+            company=self.company, nom='Bennani', telephone='+212 612-345-678')
+        # Doublon : même téléphone (formaté autrement) + email + un devis.
+        self.dup = Lead.objects.create(
+            company=self.company, nom='Bennani', telephone='0612345678',
+            email='b@example.ma', ville='Casablanca')
+        self.client_obj = CrmClient.objects.create(
+            company=self.company, nom='Bennani')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-TEST-0001',
+            client=self.client_obj, lead=self.dup, statut='brouillon')
+
+    def test_duplicates_detected_by_phone(self):
+        resp = self.api.get(
+            f'/api/django/crm/leads/{self.survivor.id}/duplicates/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ids = [d['id'] for d in resp.data]
+        self.assertIn(self.dup.id, ids)
+
+    def test_merge_moves_devis_and_archives_absorbed(self):
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.survivor.id}/merge/',
+            {'others': [self.dup.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.devis.refresh_from_db()
+        self.dup.refresh_from_db()
+        self.survivor.refresh_from_db()
+        # Devis déplacé sur le survivant — jamais orphelin.
+        self.assertEqual(self.devis.lead_id, self.survivor.id)
+        # Absorbé archivé (pas supprimé).
+        self.assertTrue(self.dup.is_archived)
+        self.assertTrue(Lead.objects.filter(pk=self.dup.id).exists())
+        # Champs vides du survivant complétés depuis l'absorbé.
+        self.assertEqual(self.survivor.email, 'b@example.ma')
+        self.assertEqual(self.survivor.ville, 'Casablanca')
+        # Note de fusion dans l'Historique.
+        self.assertTrue(self.LeadActivityExists())
+
+    def LeadActivityExists(self):
+        from apps.crm.models import LeadActivity
+        return LeadActivity.objects.filter(
+            lead=self.survivor, kind='note',
+            body__icontains='Fusion').exists()

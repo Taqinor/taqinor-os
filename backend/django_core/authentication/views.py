@@ -201,6 +201,34 @@ class RegisterCompanyView(generics.GenericAPIView):
         roles = _create_system_roles(company)
         admin_role = roles['Administrateur']
 
+        # Types d'activité par défaut (style Odoo) pour la nouvelle société.
+        try:
+            from apps.records.models import ActivityType
+            for nom, icone, ordre, delai in [
+                ('Appel', '📞', 10, 0), ('Email', '✉️', 20, 0),
+                ('Réunion', '👥', 30, 0), ('Relance', '📅', 40, 3),
+                ('À faire', '✔️', 50, 0),
+            ]:
+                ActivityType.objects.get_or_create(
+                    company=company, nom=nom,
+                    defaults={'icone': icone, 'ordre': ordre,
+                              'delai_defaut_jours': delai, 'est_systeme': True})
+        except Exception:
+            pass
+
+        # Niveaux de relance par défaut (J+7 / J+15 / J+30).
+        try:
+            from apps.ventes.models import FollowupLevel
+            for ordre, nom, delai in [
+                (1, 'Rappel courtois', 7), (2, 'Relance', 15),
+                (3, 'Relance ferme', 30),
+            ]:
+                FollowupLevel.objects.get_or_create(
+                    company=company, ordre=ordre,
+                    defaults={'nom': nom, 'delai_jours': delai})
+        except Exception:
+            pass
+
         user = CustomUser.objects.create_user(
             username=username,
             email=email,
