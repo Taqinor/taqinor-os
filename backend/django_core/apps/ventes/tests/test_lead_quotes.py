@@ -104,3 +104,37 @@ class TestLeadQuoteCreation(TestCase):
         devis = Devis.objects.get(pk=resp.data['id'])
         self.assertEqual(devis.client_id, client.id)
         self.assertIsNone(devis.lead_id)
+
+    def test_lead_retrieve_lists_new_devis(self):
+        # BUG 2 : un devis créé depuis le lead doit apparaître dans le lead
+        # rechargé (source de rafraîchissement de la liste côté fiche).
+        lead = Lead.objects.create(
+            company=self.company, nom='Listé', facture_hiver=700)
+        resp = self._create_from_lead(lead)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis_id = resp.data['id']
+        retr = self.api.get(f'/api/django/crm/leads/{lead.id}/')
+        self.assertEqual(retr.status_code, 200)
+        ids = [d['id'] for d in retr.data.get('devis', [])]
+        self.assertIn(devis_id, ids)
+
+    def test_proposal_serves_inline_pdf(self):
+        # BUG 1 : l'endpoint /proposal sert un PDF inline chargeable par le
+        # navigateur (type application/pdf, pas du JSON ni une URL MinIO).
+        from unittest import mock
+        lead = Lead.objects.create(
+            company=self.company, nom='Pdf', facture_hiver=700)
+        devis_id = self._create_from_lead(lead).data['id']
+        with mock.patch(
+            'apps.ventes.quote_engine.generate_premium_devis_pdf',
+            return_value='devis/fake.pdf',
+        ), mock.patch(
+            'apps.ventes.utils.pdf.download_pdf',
+            return_value=b'%PDF-1.4 fake pdf bytes',
+        ):
+            resp = self.api.get(
+                f'/api/django/ventes/devis/{devis_id}/proposal/?pdf_mode=onepage')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('inline', resp['Content-Disposition'])
+        self.assertTrue(resp.content.startswith(b'%PDF'))
