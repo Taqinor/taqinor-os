@@ -133,3 +133,17 @@ class LeadSerializer(serializers.ModelSerializer):
             }
             for d in obj.devis.order_by('-date_creation')
         ]
+
+
+class LeadTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import LeadTag
+        model = LeadTag
+        fields = ['id', 'nom', 'couleur', 'archived']
+
+
+class MotifPerteSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import MotifPerte
+        model = MotifPerte
+        fields = ['id', 'nom', 'archived']

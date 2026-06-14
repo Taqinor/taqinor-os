@@ -16,14 +16,17 @@ class LigneDevisSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # Réforme TVA 2024–2026 : toute NOUVELLE ligne porte son propre taux,
         # copié du produit (10 % panneaux PV, 20 % le reste) quand il n'est pas
-        # fourni. Les lignes historiques (taux NULL) restent rendues au taux
-        # global de leur devis — jamais réécrites.
+        # fourni. Repli sur le taux STANDARD éditable de la société (défaut 20 %
+        # → comportement identique). Lignes historiques (NULL) inchangées.
         if validated_data.get('taux_tva') is None:
-            from decimal import Decimal
             produit = validated_data.get('produit')
             produit_tva = getattr(produit, 'tva', None)
-            validated_data['taux_tva'] = (
-                produit_tva if produit_tva is not None else Decimal('20.00'))
+            if produit_tva is not None:
+                validated_data['taux_tva'] = produit_tva
+            else:
+                from apps.ventes.utils.company_settings import tva_standard
+                company = getattr(validated_data.get('devis'), 'company', None)
+                validated_data['taux_tva'] = tva_standard(company)
         return super().create(validated_data)
 
 
@@ -121,16 +124,17 @@ class LigneFactureSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def create(self, validated_data):
-        # Réforme TVA 2024–2026 : toute NOUVELLE ligne porte son propre taux,
-        # copié du produit (10 % panneaux PV, 20 % le reste) quand il n'est pas
-        # fourni — exactement comme LigneDevis. Les lignes historiques (taux
-        # NULL) restent rendues au taux global de leur facture.
+        # Réforme TVA : taux par ligne, copié du produit, repli sur le taux
+        # STANDARD éditable de la société (défaut 20 % → identique).
         if validated_data.get('taux_tva') is None:
-            from decimal import Decimal
             produit = validated_data.get('produit')
             produit_tva = getattr(produit, 'tva', None)
-            validated_data['taux_tva'] = (
-                produit_tva if produit_tva is not None else Decimal('20.00'))
+            if produit_tva is not None:
+                validated_data['taux_tva'] = produit_tva
+            else:
+                from apps.ventes.utils.company_settings import tva_standard
+                company = getattr(validated_data.get('facture'), 'company', None)
+                validated_data['taux_tva'] = tva_standard(company)
         return super().create(validated_data)
 
 

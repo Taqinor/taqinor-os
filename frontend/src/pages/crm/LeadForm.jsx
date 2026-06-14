@@ -132,6 +132,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
 
   // Doublons probables (fusion sans perte).
   const [dups, setDups] = useState([])
+  // Listes gérées (suggestions ; le texte libre reste possible).
+  const [tagOptions, setTagOptions] = useState([])
+  const [motifOptions, setMotifOptions] = useState([])
 
   // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
   const [billEditing, setBillEditing] = useState(false)
@@ -206,6 +209,12 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     // Liste assignable (ouverte à la Commerciale) : id, username, poste, avatar.
     crmApi.getAssignableUsers()
       .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+    crmApi.getTags()
+      .then(r => setTagOptions((r.data.results ?? r.data).filter(t => !t.archived)))
+      .catch(() => {})
+    crmApi.getMotifsPerte()
+      .then(r => setMotifOptions((r.data.results ?? r.data).filter(m => !m.archived)))
+      .catch(() => {})
     if (isEdit) {
       api.get(`/crm/leads/${lead.id}/historique/`)
         .then(r => setHistorique(r.data)).catch(() => {})
@@ -526,7 +535,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 <Sel fields={fields} set={set} k="canal" label="Canal" labels={CANAUX} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
-                       placeholder="ex: Régularisation 82-21, VIP" />
+                       placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />
+                  <datalist id="ld-tags">
+                    {tagOptions.map(t => <option key={t.id} value={t.nom} />)}
+                  </datalist>
                 </div>
               </div>
               <div className="form-row">
@@ -543,7 +555,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                     quelle que soit l'étape. */}
                 {fields.perdu && (
                   <div className="form-group fg-grow">
-                    <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" />
+                    <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" list="ld-motifs" />
+                    <datalist id="ld-motifs">
+                      {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
+                    </datalist>
                   </div>
                 )}
               </div>

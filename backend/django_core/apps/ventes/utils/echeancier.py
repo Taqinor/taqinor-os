@@ -19,7 +19,6 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 
 from apps.ventes.models import Facture
-from apps.ventes.quote_engine.builder import PAYMENT_TERMS_BY_MODE
 
 # Ordre canonique des tranches.
 TRANCHE_ORDER = ['acompte', 'materiel', 'solde']
@@ -40,9 +39,13 @@ def _q(amount) -> Decimal:
 
 
 def schedule_for_devis(devis):
-    """Liste ordonnée [(clé, pourcentage)] selon le mode du devis."""
+    """Liste ordonnée [(clé, pourcentage)] selon le mode du devis.
+
+    Lit l'échéancier éditable de la société (Paramètres → Devis) ; repli sur
+    PAYMENT_TERMS_BY_MODE si non configuré (comportement historique)."""
+    from apps.ventes.utils.company_settings import payment_terms_for
     mode = devis.mode_installation or 'residentiel'
-    terms = PAYMENT_TERMS_BY_MODE.get(mode, PAYMENT_TERMS_BY_MODE['residentiel'])
+    terms = payment_terms_for(getattr(devis, 'company', None), mode)
     return [(key, terms[key]) for key in TRANCHE_ORDER]
 
 
@@ -140,7 +143,9 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             company=company,
         )
 
-    return create_with_reference(Facture, 'FAC', company, _create)
+    from apps.ventes.utils.company_settings import doc_prefix
+    return create_with_reference(
+        Facture, doc_prefix(company, 'facture'), company, _create)
 
 
 def solde_devis(devis):

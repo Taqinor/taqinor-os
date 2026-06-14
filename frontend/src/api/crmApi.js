@@ -27,6 +27,14 @@ const crmApi = {
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
   mergeLeads: (id, others) => api.post(`/crm/leads/${id}/merge/`, { others }),
+
+  // Listes gérées (Paramètres → CRM).
+  getTags: () => api.get('/crm/tags/'),
+  saveTag: (id, data) => id ? api.patch(`/crm/tags/${id}/`, data) : api.post('/crm/tags/', data),
+  deleteTag: (id) => api.delete(`/crm/tags/${id}/`),
+  getMotifsPerte: () => api.get('/crm/motifs-perte/'),
+  saveMotifPerte: (id, data) => id ? api.patch(`/crm/motifs-perte/${id}/`, data) : api.post('/crm/motifs-perte/', data),
+  deleteMotifPerte: (id) => api.delete(`/crm/motifs-perte/${id}/`),
 }
 
 export default crmApi

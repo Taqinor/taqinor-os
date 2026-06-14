@@ -58,6 +58,27 @@ class CompanyProfile(models.Model):
         related_name='+',
     )
 
+    # ── Paramètres métier éditables (2026-06) — ADDITIFS ──
+    # Chacun a pour défaut la valeur codée en dur aujourd'hui : tant que le
+    # founder n'édite rien, le comportement est strictement identique.
+    # Échéancier par mode : {mode: {acompte, materiel, solde}} en %. NULL =
+    # repli sur PAYMENT_TERMS_BY_MODE (défaut historique 30/60/10 · 30/60/10 ·
+    # 50/40/10).
+    payment_terms = models.JSONField(null=True, blank=True)
+    # Durée de validité du devis (jours). Défaut historique 30.
+    quote_validity_days = models.PositiveIntegerField(default=30)
+    # Heures de pompage effectives/jour par défaut (mode agricole). Défaut 7.
+    agricole_pump_hours = models.DecimalField(
+        max_digits=4, decimal_places=1, default=7)
+    # Préfixes de numérotation des pièces : {devis,facture,avoir,bon_commande}.
+    # NULL = repli sur les préfixes historiques (DEV/FAC/AVO/BC).
+    doc_prefixes = models.JSONField(null=True, blank=True)
+    # Taux de TVA (réforme marocaine) — éditables, défauts historiques.
+    tva_standard = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20)
+    tva_panneaux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=10)
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

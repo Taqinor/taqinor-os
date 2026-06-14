@@ -2,8 +2,11 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Client, Lead
-from .serializers import ClientSerializer, LeadSerializer, LeadActivitySerializer
+from .models import Client, Lead, LeadTag, MotifPerte
+from .serializers import (
+    ClientSerializer, LeadSerializer, LeadActivitySerializer,
+    LeadTagSerializer, MotifPerteSerializer,
+)
 from . import activity
 from .services import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
@@ -268,3 +271,27 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         act = activity.log_note(lead, request.user, body)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+
+class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
+    écriture admin."""
+    queryset = LeadTag.objects.all()
+    serializer_class = LeadTagSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+
+class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
+    écriture admin."""
+    queryset = MotifPerte.objects.all()
+    serializer_class = MotifPerteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
