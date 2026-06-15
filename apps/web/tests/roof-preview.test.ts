@@ -54,12 +54,13 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
       .filter((f) => importsMaplibre(readFileSync(f, 'utf-8')))
       .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
       .sort();
-    // Les QUATRE outils (2D + 3D volumes + 3D racks + 3D haute fidélité), et eux
-    // seuls, importent MapLibre — tous chargés à la demande, jamais ailleurs.
+    // Les CINQ outils (2D + 3D volumes + 3D racks + 3D haute fidélité + estimateur
+    // facture), et eux seuls, importent MapLibre — tous chargés à la demande.
     expect(offenders).toEqual([
       'src/scripts/roof-tool-3d.ts',
       'src/scripts/roof-tool-pro.ts',
       'src/scripts/roof-tool-pro2.ts',
+      'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool.ts',
     ]);
   });
@@ -262,7 +263,11 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
       .filter((f) => importsThree(readFileSync(f, 'utf-8')))
       .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
       .sort();
-    expect(offenders).toEqual(['src/scripts/roof-tool-pro.ts', 'src/scripts/roof-tool-pro2.ts']);
+    expect(offenders).toEqual([
+      'src/scripts/roof-tool-pro.ts',
+      'src/scripts/roof-tool-pro2.ts',
+      'src/scripts/roof-tool-pro3.ts',
+    ]);
   });
 
   it('Three.js est la SEULE dépendance ajoutée (pas de threebox ni @types/three)', () => {
