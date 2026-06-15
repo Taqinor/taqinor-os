@@ -26,7 +26,21 @@ const crmApi = {
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
+  // Atelier doublons : tous les clusters de la société (survivant suggéré).
+  getDoublons: (params) => api.get('/crm/leads/doublons/', { params }),
   mergeLeads: (id, others) => api.post(`/crm/leads/${id}/merge/`, { others }),
+  // Envoyer par WhatsApp : construit un lien wa.me prêt à envoyer pour un ou
+  // plusieurs devis du lead (le commercial appuie lui-même sur Envoyer).
+  whatsappDevis: (id, payload) =>
+    api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
+
+  // Listes gérées (Paramètres → CRM).
+  getTags: () => api.get('/crm/tags/'),
+  saveTag: (id, data) => id ? api.patch(`/crm/tags/${id}/`, data) : api.post('/crm/tags/', data),
+  deleteTag: (id) => api.delete(`/crm/tags/${id}/`),
+  getMotifsPerte: () => api.get('/crm/motifs-perte/'),
+  saveMotifPerte: (id, data) => id ? api.patch(`/crm/motifs-perte/${id}/`, data) : api.post('/crm/motifs-perte/', data),
+  deleteMotifPerte: (id) => api.delete(`/crm/motifs-perte/${id}/`),
 }
 
 export default crmApi

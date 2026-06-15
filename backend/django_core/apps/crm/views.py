@@ -2,8 +2,11 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Client, Lead
-from .serializers import ClientSerializer, LeadSerializer, LeadActivitySerializer
+from .models import Client, Lead, LeadTag, MotifPerte
+from .serializers import (
+    ClientSerializer, LeadSerializer, LeadActivitySerializer,
+    LeadTagSerializer, MotifPerteSerializer,
+)
 from . import activity
 from .services import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
@@ -136,10 +139,12 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         sync_relance_activity(serializer.instance, self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'duplicates']:
+        if self.action in READ_ACTIONS + ['historique', 'duplicates',
+                                          'doublons']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
+            'whatsapp_devis',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -174,6 +179,50 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
             activity.log_restore(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='whatsapp-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp_devis(self, request, pk=None):
+        """Construit un lien wa.me prêt à envoyer pour un/plusieurs devis du lead.
+
+        N'envoie RIEN : ouvre WhatsApp avec le message pré-rempli (le commercial
+        appuie lui-même sur Envoyer). Chaque {lien} est un lien public tokenisé
+        (30 j) vers le PDF CLIENT — jamais de prix d'achat ni de marge.
+        """
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.phone import normalize_ma_phone
+        from apps.ventes.utils.whatsapp import (
+            build_devis_whatsapp, build_wa_url,
+        )
+
+        lead = self.get_object()
+        ids = request.data.get('devis_ids') or []
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {'detail': 'Sélectionnez au moins un devis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Devis du lead, dans la société courante uniquement.
+        devis_list = list(
+            Devis.objects.filter(id__in=ids, lead=lead, company=lead.company)
+            .order_by('id'))
+        if len(devis_list) != len(set(ids)):
+            return Response(
+                {'detail': 'Un devis sélectionné est introuvable pour ce lead.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        phone = lead.whatsapp or lead.telephone
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        langue = request.data.get('langue', 'fr')
+        message, links = build_devis_whatsapp(request, lead, devis_list, langue)
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'links': links,
+        })
 
     def destroy(self, request, *args, **kwargs):
         """Suppression DÉFINITIVE (admin). Bloquée si des devis sont liés —
@@ -211,6 +260,37 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             }
             for d in dups
         ])
+
+    @action(detail=False, methods=['get'], url_path='doublons',
+            permission_classes=[IsAnyRole])
+    def doublons(self, request):
+        """Atelier doublons : scanne TOUS les leads de la société et renvoie les
+        clusters de doublons probables (téléphone / email / nom normalisé), avec
+        pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
+        from .services import find_duplicate_clusters, _completeness
+        include_archived = request.query_params.get('archived') in ('1', 'true')
+        clusters, _ = find_duplicate_clusters(
+            request.user.company, include_archived=include_archived)
+        out = []
+        for group in clusters:
+            suggested = max(
+                group, key=lambda le: (_completeness(le), le.date_creation))
+            out.append({
+                'suggested_survivor_id': suggested.id,
+                'members': [
+                    {
+                        'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+                        'societe': d.societe, 'telephone': d.telephone,
+                        'email': d.email, 'ville': d.ville, 'stage': d.stage,
+                        'is_archived': d.is_archived,
+                        'nb_devis': d.devis.count(),
+                        'completeness': _completeness(d),
+                        'date_creation': d.date_creation.isoformat(),
+                    }
+                    for d in group
+                ],
+            })
+        return Response(out)
 
     @action(detail=True, methods=['post'], url_path='merge',
             permission_classes=[IsResponsableOrAdmin])
@@ -268,3 +348,27 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         act = activity.log_note(lead, request.user, body)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+
+class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
+    écriture admin."""
+    queryset = LeadTag.objects.all()
+    serializer_class = LeadTagSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+
+class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
+    écriture admin."""
+    queryset = MotifPerte.objects.all()
+    serializer_class = MotifPerteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]

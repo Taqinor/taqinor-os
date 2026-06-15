@@ -644,3 +644,51 @@ class TestLeadMerge(TestCase):
         return LeadActivity.objects.filter(
             lead=self.survivor, kind='note',
             body__icontains='Fusion').exists()
+
+
+class TestManagedLists(TestCase):
+    """Étiquettes + motifs de perte gérés : admin édite, tout rôle lit."""
+
+    def setUp(self):
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        self.company = make_company(slug='lists-co', nom='Lists Co')
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='lists_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.commerciale = User.objects.create_user(
+            username='lists_comm', password='x', role_legacy='responsable',
+            company=self.company)
+
+    def _api(self, u):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(u)}')
+        return api
+
+    def test_admin_creates_tag_visible_to_all(self):
+        admin = self._api(self.admin)
+        resp = admin.post('/api/django/crm/tags/',
+                          {'nom': 'VIP', 'couleur': '#fee2e2'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        # La Commerciale voit le tag (lecture ouverte).
+        seen = self._api(self.commerciale).get('/api/django/crm/tags/')
+        noms = [t['nom'] for t in (seen.data['results'] if 'results' in seen.data else seen.data)]
+        self.assertIn('VIP', noms)
+
+    def test_commerciale_cannot_edit_lists(self):
+        comm = self._api(self.commerciale)
+        resp = comm.post('/api/django/crm/motifs-perte/',
+                         {'nom': 'Trop cher'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_motif_list_company_scoped(self):
+        from apps.crm.models import MotifPerte
+        other = make_company(slug='lists-other', nom='Lists Other')
+        MotifPerte.objects.create(company=other, nom='Autre société')
+        MotifPerte.objects.create(company=self.company, nom='Concurrent')
+        resp = self._api(self.admin).get('/api/django/crm/motifs-perte/')
+        noms = [m['nom'] for m in (resp.data['results'] if 'results' in resp.data else resp.data)]
+        self.assertIn('Concurrent', noms)
+        self.assertNotIn('Autre société', noms)

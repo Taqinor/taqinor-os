@@ -1,0 +1,309 @@
+"""Feature 1 — Envoyer par WhatsApp.
+
+Couvre : normalisation du téléphone marocain, modèles de message éditables
+(FR + Darija) avec placeholders, liens publics tokenisés expirants (30 j) vers
+le PDF CLIENT (jamais de prix d'achat / marge), et les endpoints qui
+construisent le lien wa.me prêt à envoyer (le commercial appuie sur Envoyer).
+"""
+from datetime import timedelta
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from apps.crm.models import Client, Lead
+from apps.parametres.models import MessageTemplate
+from apps.ventes.models import Devis, Facture, ShareLink
+from apps.ventes.utils.phone import normalize_ma_phone
+from apps.ventes.utils.whatsapp import render_message_template
+
+User = get_user_model()
+
+
+def make_company(slug='wa-co', nom='WA Co'):
+    from authentication.models import Company
+    return Company.objects.get_or_create(
+        slug=slug, defaults={'nom': nom})[0]
+
+
+def make_api(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+class TestPhoneNormalization(TestCase):
+    def test_strips_leading_zero_and_adds_morocco_code(self):
+        self.assertEqual(normalize_ma_phone('0612345678'), '212612345678')
+
+    def test_keeps_already_international(self):
+        self.assertEqual(normalize_ma_phone('+212612345678'), '212612345678')
+
+    def test_strips_spaces_dashes_brackets_and_plus(self):
+        self.assertEqual(
+            normalize_ma_phone(' +212 (6) 12-34-56-78 '), '212612345678')
+
+    def test_handles_double_zero_international_prefix(self):
+        self.assertEqual(normalize_ma_phone('00212612345678'), '212612345678')
+
+    def test_local_nine_digits_without_zero(self):
+        self.assertEqual(normalize_ma_phone('612345678'), '212612345678')
+
+    def test_empty_or_none_returns_none(self):
+        self.assertIsNone(normalize_ma_phone(''))
+        self.assertIsNone(normalize_ma_phone(None))
+        self.assertIsNone(normalize_ma_phone('   '))
+
+
+class TestMessageTemplate(TestCase):
+    def setUp(self):
+        self.company = make_company()
+
+    def test_default_returned_when_no_custom_row(self):
+        # Aucune ligne en base → on renvoie le défaut FR du placeholder.
+        corps = MessageTemplate.get_corps(
+            self.company, 'devis_unique', 'fr')
+        self.assertIn('{reference}', corps)
+        self.assertIn('{lien}', corps)
+
+    def test_custom_row_overrides_default(self):
+        MessageTemplate.objects.create(
+            company=self.company, cle='devis_unique',
+            corps_fr='Salam {nom}, ton devis {reference} : {lien}')
+        corps = MessageTemplate.get_corps(
+            self.company, 'devis_unique', 'fr')
+        self.assertTrue(corps.startswith('Salam'))
+
+    def test_darija_falls_back_to_fr_when_empty(self):
+        MessageTemplate.objects.create(
+            company=self.company, cle='facture',
+            corps_fr='FR text {lien}', corps_darija='')
+        corps = MessageTemplate.get_corps(self.company, 'facture', 'darija')
+        self.assertEqual(corps, 'FR text {lien}')
+
+    def test_render_substitutes_placeholders_and_collapses_spaces(self):
+        # {civilite} vide ne doit pas laisser de double espace.
+        out = render_message_template(
+            'Bonjour {civilite} {nom}, devis {reference} : {lien}',
+            {'civilite': '', 'nom': 'Dupont',
+             'reference': 'DEV-1', 'lien': 'http://x/t'})
+        self.assertEqual(
+            out, 'Bonjour Dupont, devis DEV-1 : http://x/t')
+
+
+class TestShareLink(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', telephone='0612345678')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-WA-1',
+            client=self.client_obj)
+
+    def test_token_is_long_and_unguessable(self):
+        link = ShareLink.objects.create(
+            company=self.company, devis=self.devis)
+        self.assertGreaterEqual(len(link.token), 32)
+
+    def test_for_devis_reuses_valid_link(self):
+        a = ShareLink.for_devis(self.devis)
+        b = ShareLink.for_devis(self.devis)
+        self.assertEqual(a.pk, b.pk)
+
+    def test_for_devis_creates_new_when_expired(self):
+        old = ShareLink.for_devis(self.devis)
+        old.expires_at = timezone.now() - timedelta(days=1)
+        old.save(update_fields=['expires_at'])
+        new = ShareLink.for_devis(self.devis)
+        self.assertNotEqual(old.pk, new.pk)
+        self.assertTrue(new.is_valid)
+
+    def test_default_expiry_is_about_30_days(self):
+        link = ShareLink.for_devis(self.devis)
+        delta = link.expires_at - timezone.now()
+        self.assertGreater(delta.days, 28)
+        self.assertLessEqual(delta.days, 30)
+
+
+class TestPublicDocumentEndpoint(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', telephone='0612345678')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-PUB-1',
+            client=self.client_obj)
+
+    @patch('apps.ventes.public_views.download_pdf', return_value=b'%PDF-1.4 x')
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/1/DEV-PUB-1.pdf')
+    def test_valid_token_serves_pdf_without_login(self, m_gen, m_dl):
+        link = ShareLink.for_devis(self.devis)
+        # APIClient anonyme : aucun header d'auth.
+        resp = APIClient().get(f'/api/django/public/document/{link.token}/')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertTrue(resp.content.startswith(b'%PDF'))
+
+    def test_unknown_token_is_404(self):
+        resp = APIClient().get('/api/django/public/document/nope-nope/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_expired_token_is_404(self):
+        link = ShareLink.for_devis(self.devis)
+        link.expires_at = timezone.now() - timedelta(days=1)
+        link.save(update_fields=['expires_at'])
+        resp = APIClient().get(f'/api/django/public/document/{link.token}/')
+        self.assertEqual(resp.status_code, 404)
+
+
+class TestLeadWhatsAppEndpoint(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='wa_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Bennani', prenom='Karim',
+            telephone='0612345678')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Bennani', telephone='0612345678')
+        self.d1 = Devis.objects.create(
+            company=self.company, reference='DEV-L-1',
+            client=self.client_obj, lead=self.lead)
+        self.d2 = Devis.objects.create(
+            company=self.company, reference='DEV-L-2',
+            client=self.client_obj, lead=self.lead)
+
+    def _url(self):
+        return f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/'
+
+    def test_single_devis_builds_wa_url_with_public_link(self):
+        resp = self.api.post(
+            self._url(), {'devis_ids': [self.d1.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['wa_url'].startswith(
+            'https://wa.me/212612345678?text='))
+        # Un lien public a bien été créé pour ce devis.
+        link = ShareLink.objects.filter(devis=self.d1).first()
+        self.assertIsNotNone(link)
+        self.assertIn(link.token, resp.data['message'])
+        self.assertIn('DEV-L-1', resp.data['message'])
+
+    def test_multiple_devis_uses_count_and_one_line_each(self):
+        resp = self.api.post(
+            self._url(), {'devis_ids': [self.d1.id, self.d2.id]},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        msg = resp.data['message']
+        self.assertIn('DEV-L-1', msg)
+        self.assertIn('DEV-L-2', msg)
+        self.assertIn('2', msg)  # {n}
+
+    def test_no_phone_is_400(self):
+        self.lead.telephone = ''
+        self.lead.whatsapp = ''
+        self.lead.save(update_fields=['telephone', 'whatsapp'])
+        resp = self.api.post(
+            self._url(), {'devis_ids': [self.d1.id]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_empty_selection_is_400(self):
+        resp = self.api.post(self._url(), {'devis_ids': []}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_other_company_devis_rejected(self):
+        other = make_company('wa-other', 'Other')
+        oc = Client.objects.create(company=other, nom='X')
+        foreign = Devis.objects.create(
+            company=other, reference='DEV-X-1', client=oc)
+        resp = self.api.post(
+            self._url(), {'devis_ids': [foreign.id]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+
+class TestFactureWhatsAppEndpoint(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='wa_resp2', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Sefrioui', telephone='0655443322')
+        self.facture = Facture.objects.create(
+            company=self.company, reference='FAC-1', client=self.client_obj)
+
+    def _url(self):
+        return f'/api/django/ventes/factures/{self.facture.id}/whatsapp/'
+
+    def test_builds_wa_url_for_facture(self):
+        resp = self.api.post(self._url(), {'modele': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['wa_url'].startswith(
+            'https://wa.me/212655443322?text='))
+        self.assertIn('FAC-1', resp.data['message'])
+        link = ShareLink.objects.filter(facture=self.facture).first()
+        self.assertIsNotNone(link)
+
+    def test_relance_uses_reminder_template(self):
+        MessageTemplate.objects.create(
+            company=self.company, cle='relance',
+            corps_fr='RAPPEL {reference} {lien}')
+        resp = self.api.post(self._url(), {'modele': 'relance'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('RAPPEL', resp.data['message'])
+
+    def test_no_phone_is_400(self):
+        self.client_obj.telephone = ''
+        self.client_obj.save(update_fields=['telephone'])
+        resp = self.api.post(self._url(), {'modele': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+
+class TestMessagesSettingsApi(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.admin = User.objects.create_user(
+            username='wa_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = make_api(self.admin)
+
+    def test_list_returns_all_keys_with_defaults(self):
+        resp = self.api.get('/api/django/parametres/messages/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        cles = {row['cle'] for row in resp.data}
+        self.assertEqual(cles, {
+            'devis_unique', 'devis_multi_entete', 'devis_multi_ligne',
+            'facture', 'relance'})
+        unique = next(r for r in resp.data if r['cle'] == 'devis_unique')
+        self.assertIn('{reference}', unique['corps_fr'])
+        self.assertIn('placeholders', unique)
+
+    def test_save_persists_and_is_reflected(self):
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'facture', 'corps_fr': 'FR perso {lien}',
+            'corps_darija': 'DR perso {lien}'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        again = self.api.get('/api/django/parametres/messages/')
+        fac = next(r for r in again.data if r['cle'] == 'facture')
+        self.assertEqual(fac['corps_fr'], 'FR perso {lien}')
+        self.assertEqual(fac['corps_darija'], 'DR perso {lien}')
+
+    def test_save_requires_admin(self):
+        resp_user = User.objects.create_user(
+            username='wa_user', password='x', role_legacy='responsable',
+            company=self.company)
+        api = make_api(resp_user)
+        resp = api.put('/api/django/parametres/messages/', {
+            'cle': 'facture', 'corps_fr': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_unknown_key_rejected(self):
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'inconnu', 'corps_fr': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 400)

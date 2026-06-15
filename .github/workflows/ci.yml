@@ -47,6 +47,11 @@ jobs:
       DB_PORT: '5432'
       REDIS_HOST: localhost
       REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,6 +65,25 @@ jobs:
       - name: Install Python dependencies
         working-directory: backend/django_core
         run: pip install -r requirements.txt
+      - name: Start MinIO + create buckets
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=erp_admin \
+            -e MINIO_ROOT_PASSWORD=erp_minio_password \
+            minio/minio:latest server /data
+          # Attente de disponibilité (endpoint santé MinIO).
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live; then
+              echo "MinIO prêt"; break
+            fi
+            echo "Attente MinIO ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
+          done
+          # Pré-création des buckets (erp-pdf est aussi auto-créé par l'app).
+          # L'entrypoint de minio/mc est « mc » → on force « sh » pour chaîner.
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
+            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+            mc mb -p local/erp-pdf local/erp-uploads"
       - name: Run Django test suite
         working-directory: backend/django_core
         run: python manage.py test apps authentication -v 2
@@ -81,7 +105,7 @@ jobs:
         run: npm run lint
       - name: Frontend unit tests (solar math parity + catalogue)
         working-directory: frontend
-        run: node --test "src/features/ventes/solar.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs" "src/features/installations/statuses.test.mjs"
+        run: node --test "src/features/ventes/solar.test.mjs" "src/features/ventes/previewPdf.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs" "src/features/installations/statuses.test.mjs"
 
   stage-names:
     runs-on: ubuntu-latest

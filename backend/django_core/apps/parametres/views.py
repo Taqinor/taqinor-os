@@ -10,7 +10,9 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from authentication.permissions import IsAdminRole, IsAnyRole
 from apps.ventes.utils.minio_client import get_minio_client
-from .models import CompanyProfile
+from .models import (
+    CompanyProfile, MessageTemplate, MESSAGE_TEMPLATE_DEFAULTS,
+)
 from .serializers import CompanyProfileSerializer
 
 
@@ -141,6 +143,80 @@ def delete_logo(request):
 @permission_classes([IsAdminRole])
 def delete_signature(request):
     return _delete_image(request, field='signature_key')
+
+
+# ── Modèles de message WhatsApp (Paramètres → Messages) ──────────────────────
+
+# Placeholders proposés par clé (aide à la saisie côté UI).
+_MESSAGE_PLACEHOLDERS = {
+    'devis_unique': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'devis_multi_entete': ['{civilite}', '{nom}', '{n}'],
+    'devis_multi_ligne': ['{reference}', '{lien}'],
+    'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+}
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAnyRole])
+def messages_endpoint(request):
+    """GET : lecture (tout rôle). PUT/PATCH : enregistrement (admin only)."""
+    if request.method == 'GET':
+        return _messages_list(request)
+    if not IsAdminRole().has_permission(request, None):
+        return Response(
+            {'detail': "Réservé à l'administrateur."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return _messages_save(request)
+
+
+def _messages_list(request):
+    """Tous les modèles de message (FR + Darija), défaut si non personnalisé."""
+    company = request.user.company if request.user.company_id else None
+    rows = {
+        r.cle: r for r in MessageTemplate.objects.filter(company=company)
+    } if company else {}
+    out = []
+    for cle, label in MessageTemplate.Cle.choices:
+        row = rows.get(cle)
+        default = MESSAGE_TEMPLATE_DEFAULTS.get(cle, '')
+        out.append({
+            'cle': cle,
+            'label': label,
+            'corps_fr': (row.corps_fr if row and row.corps_fr else default),
+            'corps_darija': (row.corps_darija if row else ''),
+            'default_fr': default,
+            'placeholders': _MESSAGE_PLACEHOLDERS.get(cle, []),
+        })
+    return Response(out)
+
+
+def _messages_save(request):
+    """Enregistre un modèle de message pour la société (upsert par clé)."""
+    company = request.user.company if request.user.company_id else None
+    if company is None:
+        return Response(
+            {'detail': 'Société requise.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    cle = request.data.get('cle')
+    valid = {c for c, _ in MessageTemplate.Cle.choices}
+    if cle not in valid:
+        return Response(
+            {'detail': 'Clé de message inconnue.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    obj, _ = MessageTemplate.objects.get_or_create(company=company, cle=cle)
+    if 'corps_fr' in request.data:
+        obj.corps_fr = request.data.get('corps_fr') or ''
+    if 'corps_darija' in request.data:
+        obj.corps_darija = request.data.get('corps_darija') or ''
+    obj.save()
+    return Response({
+        'cle': obj.cle, 'corps_fr': obj.corps_fr,
+        'corps_darija': obj.corps_darija,
+    })
 
 
 def _delete_image(request, field):

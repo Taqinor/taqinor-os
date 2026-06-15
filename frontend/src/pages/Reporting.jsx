@@ -197,7 +197,7 @@ export function Component() {
       {/* ── Graphiques ligne 1 ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))',
         gap: '1rem', marginBottom: '1rem',
       }}>
 

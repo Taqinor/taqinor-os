@@ -119,19 +119,57 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au
   // verrouillage des boutons devis (devis_auto.pret) et à la liste des devis.
   const [liveLead, setLiveLead] = useState(lead)
+  // On ne resynchronise la copie « vivante » que quand on change DE lead
+  // (id différent). Sinon un simple re-rendu du parent (déclenché par onSaved
+  // après création d'un devis) repasse un objet `lead` issu de la LISTE — dont
+  // la liste `devis` est périmée/absente — et écrasait le devis fraîchement
+  // ajouté tant qu'on ne rechargeait pas la page (FEATURE 0, symptôme 2).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLiveLead(lead)
-  }, [lead])
+  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Panneau devis inline (mode : auto | remise | onepage | premium | edit | view).
   const [devisPanel, setDevisPanel] = useState(null)
   const [panelDevisId, setPanelDevisId] = useState(null)
   const [devisMenuOpen, setDevisMenuOpen] = useState(false)
   const devisMenuRef = useRef(null)
+  // Envoyer par WhatsApp : sélection multiple de devis du lead.
+  const [waSelected, setWaSelected] = useState(() => new Set())
+  const [waBusy, setWaBusy] = useState(false)
+
+  const toggleWaSelect = (id) => setWaSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const leadPhone = (liveLead?.whatsapp || liveLead?.telephone || '').trim()
+
+  const envoyerWhatsApp = async () => {
+    if (!leadPhone) return
+    if (waSelected.size === 0) {
+      alert('Sélectionnez au moins un devis.')
+      return
+    }
+    setWaBusy(true)
+    try {
+      const res = await crmApi.whatsappDevis(lead.id, {
+        devis_ids: Array.from(waSelected),
+      })
+      if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    } finally {
+      setWaBusy(false)
+    }
+  }
 
   // Doublons probables (fusion sans perte).
   const [dups, setDups] = useState([])
+  // Listes gérées (suggestions ; le texte libre reste possible).
+  const [tagOptions, setTagOptions] = useState([])
+  const [motifOptions, setMotifOptions] = useState([])
 
   // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
   const [billEditing, setBillEditing] = useState(false)
@@ -206,6 +244,12 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     // Liste assignable (ouverte à la Commerciale) : id, username, poste, avatar.
     crmApi.getAssignableUsers()
       .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+    crmApi.getTags()
+      .then(r => setTagOptions((r.data.results ?? r.data).filter(t => !t.archived)))
+      .catch(() => {})
+    crmApi.getMotifsPerte()
+      .then(r => setMotifOptions((r.data.results ?? r.data).filter(m => !m.archived)))
+      .catch(() => {})
     if (isEdit) {
       api.get(`/crm/leads/${lead.id}/historique/`)
         .then(r => setHistorique(r.data)).catch(() => {})
@@ -526,7 +570,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 <Sel fields={fields} set={set} k="canal" label="Canal" labels={CANAUX} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
-                       placeholder="ex: Régularisation 82-21, VIP" />
+                       placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />
+                  <datalist id="ld-tags">
+                    {tagOptions.map(t => <option key={t.id} value={t.nom} />)}
+                  </datalist>
                 </div>
               </div>
               <div className="form-row">
@@ -543,7 +590,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                     quelle que soit l'étape. */}
                 {fields.perdu && (
                   <div className="form-group fg-grow">
-                    <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" />
+                    <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" list="ld-motifs" />
+                    <datalist id="ld-motifs">
+                      {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
+                    </datalist>
                   </div>
                 )}
               </div>
@@ -649,26 +699,52 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 {(liveLead?.devis ?? []).length === 0 ? (
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
-                  <table className="lines-table">
-                    <thead>
-                      <tr><th>Référence</th><th>Statut</th><th className="col-num">Total TTC</th><th>Créé le</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                      {liveLead.devis.map(d => (
-                        <tr key={d.id} style={{ cursor: 'pointer' }}
-                            title="Voir / télécharger le PDF dans la fiche"
-                            onClick={() => { setPanelDevisId(d.id); setDevisPanel('view') }}>
-                          <td><strong>{d.reference}</strong></td>
-                          <td>{STATUT_DEVIS[d.statut] ?? d.statut}</td>
-                          <td className="ta-right">
-                            {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} DH
-                          </td>
-                          <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
-                          <td className="ta-right">📄 PDF</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <>
+                    <div style={{ margin: '8px 0', display: 'flex', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={!leadPhone || waBusy || waSelected.size === 0}
+                        title={leadPhone
+                          ? 'Ouvrir WhatsApp avec le(s) devis sélectionné(s)'
+                          : 'Aucun numéro de téléphone'}
+                        onClick={envoyerWhatsApp}>
+                        🟢 Envoyer par WhatsApp{waSelected.size > 0 ? ` (${waSelected.size})` : ''}
+                      </button>
+                      {!leadPhone && (
+                        <span className="gen-hint" style={{ marginLeft: 8 }}>
+                          Aucun numéro de téléphone
+                        </span>
+                      )}
+                    </div>
+                    <table className="lines-table">
+                      <thead>
+                        <tr><th></th><th>Référence</th><th>Statut</th><th className="col-num">Total TTC</th><th>Créé le</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {liveLead.devis.map(d => (
+                          <tr key={d.id} style={{ cursor: 'pointer' }}
+                              title="Voir / télécharger le PDF dans la fiche"
+                              onClick={() => { setPanelDevisId(d.id); setDevisPanel('view') }}>
+                            <td onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={waSelected.has(d.id)}
+                                onChange={() => toggleWaSelect(d.id)}
+                                aria-label={`Sélectionner ${d.reference} pour WhatsApp`} />
+                            </td>
+                            <td><strong>{d.reference}</strong></td>
+                            <td>{STATUT_DEVIS[d.statut] ?? d.statut}</td>
+                            <td className="ta-right">
+                              {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} DH
+                            </td>
+                            <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+                            <td className="ta-right">📄 PDF</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </Sec>
             )}
