@@ -119,10 +119,15 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au
   // verrouillage des boutons devis (devis_auto.pret) et à la liste des devis.
   const [liveLead, setLiveLead] = useState(lead)
+  // On ne resynchronise la copie « vivante » que quand on change DE lead
+  // (id différent). Sinon un simple re-rendu du parent (déclenché par onSaved
+  // après création d'un devis) repasse un objet `lead` issu de la LISTE — dont
+  // la liste `devis` est périmée/absente — et écrasait le devis fraîchement
+  // ajouté tant qu'on ne rechargeait pas la page (FEATURE 0, symptôme 2).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLiveLead(lead)
-  }, [lead])
+  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Panneau devis inline (mode : auto | remise | onepage | premium | edit | view).
   const [devisPanel, setDevisPanel] = useState(null)
