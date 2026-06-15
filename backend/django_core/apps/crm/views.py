@@ -139,7 +139,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         sync_relance_activity(serializer.instance, self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'duplicates']:
+        if self.action in READ_ACTIONS + ['historique', 'duplicates',
+                                          'doublons']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
@@ -214,6 +215,37 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             }
             for d in dups
         ])
+
+    @action(detail=False, methods=['get'], url_path='doublons',
+            permission_classes=[IsAnyRole])
+    def doublons(self, request):
+        """Atelier doublons : scanne TOUS les leads de la société et renvoie les
+        clusters de doublons probables (téléphone / email / nom normalisé), avec
+        pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
+        from .services import find_duplicate_clusters, _completeness
+        include_archived = request.query_params.get('archived') in ('1', 'true')
+        clusters, _ = find_duplicate_clusters(
+            request.user.company, include_archived=include_archived)
+        out = []
+        for group in clusters:
+            suggested = max(
+                group, key=lambda le: (_completeness(le), le.date_creation))
+            out.append({
+                'suggested_survivor_id': suggested.id,
+                'members': [
+                    {
+                        'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+                        'societe': d.societe, 'telephone': d.telephone,
+                        'email': d.email, 'ville': d.ville, 'stage': d.stage,
+                        'is_archived': d.is_archived,
+                        'nb_devis': d.devis.count(),
+                        'completeness': _completeness(d),
+                        'date_creation': d.date_creation.isoformat(),
+                    }
+                    for d in group
+                ],
+            })
+        return Response(out)
 
     @action(detail=True, methods=['post'], url_path='merge',
             permission_classes=[IsResponsableOrAdmin])

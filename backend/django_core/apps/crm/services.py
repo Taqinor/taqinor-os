@@ -174,6 +174,93 @@ def normalize_email(value):
     return str(value or '').strip().lower()
 
 
+def _strip_accents(text):
+    import unicodedata
+    return ''.join(
+        c for c in unicodedata.normalize('NFKD', text)
+        if not unicodedata.combining(c))
+
+
+def normalize_name(nom, prenom=None, societe=None):
+    """Clé de nom pour le rapprochement : accents retirés, minuscules, mots
+    triés, ponctuation/espaces écrasés. « Société Bélkacem » et « belkacem
+    societe » donnent la même clé. Vide si le nom est trop court (évite de
+    rapprocher des leads sur un nom générique d'un seul caractère)."""
+    parts = [p for p in (nom, prenom, societe) if p]
+    raw = _strip_accents(' '.join(str(p) for p in parts)).lower()
+    raw = _re.sub(r'[^a-z0-9 ]', ' ', raw)
+    tokens = sorted(t for t in raw.split() if t)
+    key = ' '.join(tokens)
+    return key if len(key) >= 4 else ''
+
+
+def _completeness(lead):
+    """Score « complétude » d'un lead : nombre de champs de fond renseignés.
+    Sert à proposer par défaut le survivant le plus riche lors d'une fusion."""
+    score = 0
+    for field in _MERGE_FILL_FIELDS:
+        val = getattr(lead, field, None)
+        if val not in (None, '', False):
+            score += 1
+    return score
+
+
+def find_duplicate_clusters(company, include_archived=False):
+    """Scanne TOUS les leads d'une société et regroupe les doublons probables
+    par téléphone OU email OU nom normalisé (union-find). Renvoie une liste de
+    clusters (chacun une liste de Lead, ≥ 2 membres), triés par taille puis par
+    membre le plus récent. Les leads archivés sont inclus seulement si demandé
+    (ils restent visibles pour comprendre une fusion passée)."""
+    qs = Lead.objects.filter(company=company)
+    if not include_archived:
+        qs = qs.filter(is_archived=False)
+    leads = list(qs)
+
+    parent = {lead.pk: lead.pk for lead in leads}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Indexe par chaque clé ; union des leads partageant une clé non vide.
+    for keyer in (
+        lambda lead: ('p', normalize_phone(lead.telephone)),
+        lambda lead: ('e', normalize_email(lead.email)),
+        lambda lead: ('n', normalize_name(lead.nom, lead.prenom, lead.societe)),
+    ):
+        buckets = {}
+        for lead in leads:
+            tag, val = keyer(lead)
+            if not val:
+                continue
+            buckets.setdefault((tag, val), []).append(lead.pk)
+        for members in buckets.values():
+            first = members[0]
+            for other in members[1:]:
+                union(first, other)
+
+    groups = {}
+    by_id = {lead.pk: lead for lead in leads}
+    for lead in leads:
+        groups.setdefault(find(lead.pk), []).append(lead)
+
+    clusters = [g for g in groups.values() if len(g) >= 2]
+    # Chaque cluster : membre le plus récent en tête ; tri global par taille.
+    for g in clusters:
+        g.sort(key=lambda lead_: lead_.date_creation, reverse=True)
+    clusters.sort(
+        key=lambda g: (len(g), max(le.date_creation for le in g)),
+        reverse=True)
+    return clusters, by_id
+
+
 def find_duplicate_leads(lead):
     """Leads probablement en double : même téléphone OU email normalisé, même
     société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""

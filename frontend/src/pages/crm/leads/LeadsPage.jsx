@@ -8,6 +8,7 @@ import LeadForm from '../LeadForm'
 import '../../../components/assigneepicker.css'
 import FilterBar from './FilterBar'
 import ViewSwitcher from './ViewSwitcher'
+import DoublonsPanel from './DoublonsPanel'
 import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
@@ -52,6 +53,8 @@ export default function LeadsPage() {
   const [editLead, setEditLead] = useState(null)
   // Intention « ouvrir directement le devis » à l'ouverture de la fiche (⚡).
   const [formDevisIntent, setFormDevisIntent] = useState(null)
+  // Atelier doublons (modal).
+  const [showDoublons, setShowDoublons] = useState(false)
 
   // Changement d'étape optimiste avec retour-arrière.
   const [busyLeadId, setBusyLeadId] = useState(null)
@@ -152,6 +155,9 @@ export default function LeadsPage() {
         </h2>
         <div className="page-header-actions lp-header-actions">
           <button className="btn btn-primary" onClick={openNew}>+ Nouveau lead</button>
+          <button className="btn btn-outline" onClick={() => setShowDoublons(true)}>
+            🔀 Doublons
+          </button>
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
@@ -185,6 +191,13 @@ export default function LeadsPage() {
           onClose={closeForm}
           onSaved={onSaved}
           initialDevis={showForm ? formDevisIntent : null}
+        />
+      )}
+
+      {showDoublons && (
+        <DoublonsPanel
+          onClose={() => setShowDoublons(false)}
+          onAnyMerge={refetch}
         />
       )}
     </div>

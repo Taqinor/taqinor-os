@@ -8,19 +8,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import { originFrom } from '../../../api/origin'
 import { createAutoQuote } from '../../../features/ventes/autoQuote'
 import DevisGenerator from '../../ventes/DevisGenerator'
 
-// Même origine que l'app (chemins relatifs via nginx/Caddy). Le PDF est servi
-// par le MÊME endpoint Django que les devis PDF qui marchent (/proposal) ;
-// l'iframe pointe DIRECTEMENT dessus (cookie httpOnly envoyé automatiquement),
-// jamais sur une URL MinIO interne ni un blob (que le navigateur refuse de
-// rendre en cadre avec X-Content-Type-Options: nosniff).
-const API_ORIGIN = originFrom(import.meta.env.VITE_API_URL)
-const proposalUrl = (devisId, pdfMode, includeEtude) =>
-  `${API_ORIGIN}/api/django/ventes/devis/${devisId}/proposal/`
-  + `?pdf_mode=${pdfMode}&include_etude=${includeEtude ? 1 : 0}`
+// L'aperçu PDF est récupéré en BLOB via axios (MÊME chemin que le bouton
+// « Télécharger » qui marche), puis affiché dans l'iframe via une URL blob.
+// On NE pointe PLUS l'iframe directement sur /proposal : une requête native
+// d'iframe ne peut pas rejouer le refresh silencieux du token (401 → icône
+// « fichier cassé ») et n'affiche aucune erreur lisible si le moteur PDF
+// refuse le devis. Passer par axios règle les deux : refresh auto + message FR.
 
 const TITLES = {
   auto: 'Devis automatique',
@@ -63,9 +59,39 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const produitsRef = useRef(null)
   const startedRef = useRef(false)
 
-  // URL d'aperçu : endpoint /proposal direct (cadre natif du navigateur).
-  const pdfUrl = (phase === 'preview' && devisId)
-    ? proposalUrl(devisId, pdfMode, includeEtude) : null
+  // Aperçu PDF en blob (URL d'objet), récupéré via axios — voir l'en-tête.
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState(null)
+
+  useEffect(() => {
+    if (phase !== 'preview' || !devisId) return undefined
+    let cancelled = false
+    let objectUrl = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreviewLoading(true)
+    setPreviewError(null)
+    ventesApi.getProposalPdf(devisId, {
+      pdf_mode: pdfMode, include_etude: includeEtude ? 1 : 0,
+    })
+      .then((res) => {
+        if (cancelled) return
+        const blob = new Blob([res.data], { type: 'application/pdf' })
+        objectUrl = URL.createObjectURL(blob)
+        setPreviewUrl(objectUrl)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setPreviewError(
+          "Aperçu du PDF indisponible. Réessayez ou ouvrez l'édition complète.")
+        setPreviewUrl(null)
+      })
+      .finally(() => { if (!cancelled) setPreviewLoading(false) })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [phase, devisId, pdfMode, includeEtude])
 
   // ── Création auto (auto / onepage / premium : pas de saisie préalable) ──
   const doCreateAuto = async (discountStr) => {
@@ -232,11 +258,17 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
               </div>
               <div className="ldp-pdf-area">
                 {errorMsg && <div className="form-error-box ldp-pdf-loading" role="alert">{errorMsg}</div>}
-                {pdfUrl && (
+                {previewError && (
+                  <div className="form-error-box ldp-pdf-loading" role="alert">{previewError}</div>
+                )}
+                {previewLoading && !previewError && (
+                  <p className="gen-hint ldp-pdf-loading">⏳ Chargement de l'aperçu…</p>
+                )}
+                {previewUrl && !previewLoading && !previewError && (
                   <iframe
                     title="Aperçu du devis"
-                    key={pdfUrl}
-                    src={pdfUrl}
+                    key={previewUrl}
+                    src={previewUrl}
                     className="ldp-iframe"
                   />
                 )}
