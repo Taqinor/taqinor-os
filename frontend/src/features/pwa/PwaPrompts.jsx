@@ -26,7 +26,9 @@ function isIos() {
 }
 
 const bannerStyle = {
-  position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 4000,
+  // bottom : au-dessus de l'indicateur d'accueil iOS (safe-area).
+  position: 'fixed', left: 12, right: 12,
+  bottom: 'calc(12px + env(safe-area-inset-bottom))', zIndex: 4000,
   margin: '0 auto', maxWidth: 460,
   background: NAVY, color: '#e2e8f0',
   border: '1px solid #1e293b', borderRadius: 14,
@@ -132,7 +134,7 @@ function UpdateToast() {
   if (!needRefresh) return null
 
   return (
-    <div style={{ ...bannerStyle, bottom: 'auto', top: 12 }} role="alert">
+    <div style={{ ...bannerStyle, bottom: 'auto', top: 'calc(12px + env(safe-area-inset-top))' }} role="alert">
       <div style={{ flex: 1, fontSize: 14 }}>
         Nouvelle version disponible.
       </div>
