@@ -338,6 +338,7 @@ const chipClass =
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let started = false;
   let key = '';
+  let mapboxToken = '';
 
   function showFallback() {
     if (fallback) fallback.hidden = false;
@@ -353,6 +354,7 @@ const chipClass =
       placeholder?.remove();
       mod.initRoofToolPro3({
         maptilerKey: key,
+        mapboxToken: mapboxToken || undefined,
         reducedMotion,
         initialQuery,
         onReady: () => {
@@ -370,12 +372,15 @@ const chipClass =
   (async () => {
     try {
       const res = await fetch('/api/roof-config');
-      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string };
+      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
       if (!cfg.available || !cfg.maptilerKey) {
         showFallback();
         return;
       }
       key = cfg.maptilerKey;
+      // Token Mapbox facultatif : présent → imagerie satellite plus nette ;
+      // absent → repli transparent sur le style hybride MapTiler.
+      mapboxToken = cfg.mapboxToken || '';
       searchForm?.addEventListener('submit', (e) => {
         e.preventDefault();
         boot(addressEl?.value.trim() || undefined);
