@@ -14,6 +14,7 @@ import { originFrom } from '../../api/origin'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+import './parametres.css'
 
 // Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
 // quand le profil n'a encore rien d'enregistré ; sauver = valeurs identiques.
@@ -601,7 +602,7 @@ export default function ParametresEntreprise() {
       </div>
 
       {/* ── Main grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', gap: '1.25rem', alignItems: 'start' }}>
+      <div className="pe-main">
 
         {/* ─── LEFT: Form ─── */}
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
@@ -622,7 +623,7 @@ export default function ParametresEntreprise() {
           {/* Contact */}
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
             <SectionTitle color="#059669" label="Coordonnées" icon={<><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.5 2 2 0 0 1 3.6 1.32h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l1.27-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></>}/>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+            <div className="pe-grid-2">
               <Field label="Email">
                 <input style={inputBase} name="email" type="email" value={form.email} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="contact@entreprise.ma"/>
               </Field>
@@ -635,7 +636,7 @@ export default function ParametresEntreprise() {
           {/* Légal */}
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
             <SectionTitle color="#7c3aed" label="Informations légales" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>}/>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+            <div className="pe-grid-2">
               <Field label="SIRET">
                 <input style={inputBase} name="siret" value={form.siret} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="14 chiffres"/>
               </Field>
@@ -657,7 +658,7 @@ export default function ParametresEntreprise() {
             <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
               L'ICE, l'IF et le RC apparaissent en pied de page de vos factures (l'ICE est obligatoire au Maroc).
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+            <div className="pe-grid-2">
               <Field label="ICE">
                 <input style={inputBase} name="ice" value={form.ice} onChange={set} onFocus={onFocus} onBlur={onBlur} placeholder="000000000000000"/>
               </Field>
@@ -707,7 +708,7 @@ export default function ParametresEntreprise() {
             {Object.keys(MODE_LABELS).map(mode => (
               <div key={mode} style={{ marginBottom: '0.6rem' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{MODE_LABELS[mode]}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
+                <div className="pe-grid-3">
                   {['acompte', 'materiel', 'solde'].map(k => (
                     <div key={k}>
                       <label style={{ fontSize: 10.5, color: '#64748b', textTransform: 'capitalize' }}>{k} %</label>
@@ -719,7 +720,7 @@ export default function ParametresEntreprise() {
                 </div>
               </div>
             ))}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginTop: '0.6rem' }}>
+            <div className="pe-grid-2" style={{ marginTop: '0.6rem' }}>
               <Field label="Validité du devis (jours)">
                 <input style={inputBase} type="number" min="1" name="quote_validity_days"
                        value={form.quote_validity_days} onChange={set} />
@@ -732,7 +733,7 @@ export default function ParametresEntreprise() {
             <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0.8rem 0 0.4rem' }}>
               Préfixes de numérotation
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.6rem' }}>
+            <div className="pe-grid-4">
               {[['devis', 'Devis'], ['facture', 'Facture'], ['avoir', 'Avoir'], ['bon_commande', 'Bon cmd']].map(([k, lbl]) => (
                 <div key={k}>
                   <label style={{ fontSize: 10.5, color: '#64748b' }}>{lbl}</label>
@@ -754,7 +755,7 @@ export default function ParametresEntreprise() {
               20 % standard) correspondent à la réforme marocaine. À vérifier
               avec votre comptable avant toute modification.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+            <div className="pe-grid-2">
               <Field label="Taux standard (%)">
                 <input style={inputBase} type="number" min="0" max="100" step="0.01"
                        name="tva_standard" value={form.tva_standard} onChange={set} />
@@ -815,7 +816,7 @@ export default function ParametresEntreprise() {
               Vue / consigne / impression uniquement — aucun envoi automatique.
             </p>
             {niveaux.map(n => (
-              <div key={n.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: '0.6rem', marginBottom: '0.6rem' }}>
+              <div key={n.id} className="pe-grid-relance" style={{ marginBottom: '0.6rem' }}>
                 <Field label={`Niveau ${n.ordre}`}>
                   <input style={inputBase} value={n.nom}
                          onChange={e => setNiveau(n.id, 'nom', e.target.value)} />
@@ -985,7 +986,7 @@ export default function ParametresEntreprise() {
       </div>
 
       {/* ── Référentiels Stock ── */}
-      <div style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+      <div className="pe-grid-2" style={{ marginTop: '1.5rem' }}>
         <ReferentielBlock
           title="Catégories produit"
           color="#1d4ed8"

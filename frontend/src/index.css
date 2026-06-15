@@ -186,13 +186,19 @@ body {
 
 /* ── Header ───────────────────────────────────────────────── */
 .header {
-  height: 56px;
+  min-height: 56px;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
+  /* iOS PWA plein écran (status-bar translucide) : le contenu passe SOUS la
+     barre d'état / l'encoche. On réserve l'inset haut pour que le bouton menu
+     (hamburger) ne soit plus masqué et reste tappable. env() = 0 hors iOS. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: 0;
+  padding-left: max(1.5rem, env(safe-area-inset-left));
+  padding-right: max(1.5rem, env(safe-area-inset-right));
   flex-shrink: 0;
 }
 
@@ -411,7 +417,9 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 24px;
+  /* Marges sûres : une modale haute ne touche ni l'encoche ni l'indicateur. */
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
 }
 
 .modal {
@@ -1360,6 +1368,12 @@ textarea.form-control {
     transform: translateX(-105%);
     transition: transform 0.25s ease;
     box-shadow: 8px 0 28px rgba(15, 23, 42, 0.35);
+    /* Le tiroir occupe tout l'écran : on dégage l'encoche (haut), l'indicateur
+       d'accueil (bas) et l'inset gauche (paysage) — marque + déconnexion
+       restent visibles et tappables en PWA plein écran iOS. */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
   }
   .layout.drawer-open .sidebar { transform: none; }
   .drawer-overlay {
@@ -1371,7 +1385,13 @@ textarea.form-control {
   }
   .sidebar--collapsed { width: 264px; }
   .sidebar-toggle { display: none; }
-  .layout-content { padding: 0.9rem; }
+  .layout-content {
+    padding: 0.9rem;
+    /* Rien sous l'indicateur d'accueil ni les coins arrondis (PWA iOS). */
+    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+    padding-left: max(0.9rem, env(safe-area-inset-left));
+    padding-right: max(0.9rem, env(safe-area-inset-right));
+  }
   .page-header { flex-wrap: wrap; gap: 0.5rem; }
   .page-header-actions { flex-wrap: wrap; gap: 0.5rem; }
   .search-input { width: 100%; }
@@ -1379,7 +1399,10 @@ textarea.form-control {
   /* ── Tactile : cibles ≥ 44 px, pas de défilement horizontal ── */
   .btn, .btn-sm, .form-select, .form-control, .pp-trigger { min-height: 44px; }
   .actions-cell { flex-wrap: wrap; gap: 6px; }
-  .modal-overlay { padding: 8px; }
+  .modal-overlay {
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+             max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
   .modal { max-height: calc(100dvh - 16px); }
 
   /* ── Listes (leads, devis, clients) : lignes → cartes ── */
@@ -1458,7 +1481,8 @@ textarea.form-control {
     z-index: 60;
     background: #fff;
     border-top: 1px solid #e2e8f0;
-    padding: 10px 0 6px;
+    /* Boutons d'action au-dessus de l'indicateur d'accueil iOS. */
+    padding: 10px 0 max(6px, env(safe-area-inset-bottom));
     flex-wrap: wrap;
   }
   .gen-actions-sticky .btn-primary { flex: 1 1 100%; min-height: 48px; }

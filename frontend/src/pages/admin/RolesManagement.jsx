@@ -275,8 +275,8 @@ export default function RolesManagement() {
       {loading ? (
         <p style={{ color: '#64748b' }}>Chargement...</p>
       ) : (
-        <div style={S.card}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ ...S.card, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                 <th style={S.th}>Nom</th>
