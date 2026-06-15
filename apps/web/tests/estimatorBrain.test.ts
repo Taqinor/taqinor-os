@@ -357,6 +357,108 @@ describe('FIX 1d — pas de perte de la rangée/colonne de rive (bug flottant si
   });
 });
 
+// ——— OBSTACLES marqués par le visiteur (zones d'exclusion + dégagement) ———
+
+describe('Obstacles — effet sur le calepinage et la recommandation', () => {
+  const LAT = 33.59;
+  const CENTER_LNG = -7.62;
+  const COS = Math.cos((LAT * Math.PI) / 180);
+  // Rectangle d'obstacle (lng/lat), dimensions réelles en m, centré à
+  // (eastM, northM) mètres du centre du toit.
+  const obs = (lengthM: number, widthM: number, eastM = 0, northM = 0): LngLat[] => {
+    const lat0 = LAT + northM / 111320;
+    const lng0 = CENTER_LNG + eastM / (111320 * COS);
+    const dLat = lengthM / 2 / 111320;
+    const dLng = widthM / 2 / (111320 * COS);
+    return [
+      [lng0 - dLng, lat0 - dLat],
+      [lng0 + dLng, lat0 - dLat],
+      [lng0 + dLng, lat0 + dLat],
+      [lng0 - dLng, lat0 + dLat],
+    ];
+  };
+
+  it('AUCUN obstacle → résultat strictement identique à aujourd’hui', () => {
+    const ring = squareRing(24);
+    const a = packConfig(ring, LAT, { family: 'south', tiltDeg: 15 });
+    const b = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [] });
+    expect(b.best.count).toBe(a.best.count);
+    expect(b.usableAreaM2).toBe(a.usableAreaM2);
+    const recA = recommend(ring, LAT, 2500);
+    const recB = recommend(ring, LAT, 2500, []);
+    expect(recB.recommended.count).toBe(recA.recommended.count);
+    expect(recB.recommended.annualKwh).toBe(recA.recommended.annualKwh);
+  });
+
+  it('ajouter un obstacle réduit la surface utile, le compte ET la production ; le retirer restaure', () => {
+    const ring = squareRing(24);
+    const base = packConfig(ring, LAT, { family: 'south', tiltDeg: 15 });
+    const withObs = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [obs(6, 6)] });
+    expect(withObs.usableAreaM2).toBeLessThan(base.usableAreaM2);
+    expect(withObs.best.count).toBeLessThan(base.best.count);
+    // production ∝ kWc ∝ compte → strictement plus basse
+    const yld = specificYield(LAT, 15, 0);
+    expect(withObs.best.kwc * yld).toBeLessThan(base.best.kwc * yld);
+    // retirer l'obstacle = revenir à l'état de base (même objet de pavage)
+    const removed = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [] });
+    expect(removed.best.count).toBe(base.best.count);
+  });
+
+  it('la recommandation entière réagit à l’obstacle (compte/kWc/kWh/économies baissent)', () => {
+    const ring = squareRing(14);
+    const recFree = recommend(ring, LAT, 3500);
+    const recObs = recommend(ring, LAT, 3500, [obs(7, 7)]);
+    expect(recObs.recommended.count).toBeLessThanOrEqual(recFree.recommended.count);
+    expect(recObs.recommended.annualKwh).toBeLessThanOrEqual(recFree.recommended.annualKwh);
+    expect(recObs.recommended.savingsHigh).toBeLessThanOrEqual(recFree.recommended.savingsHigh);
+    // la borne physique tient toujours, obstacle inclus
+    for (const c of recObs.comparison) {
+      expect(c.count).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('le DÉGAGEMENT retire plus de panneaux qu’un retrait au ras de l’obstacle', () => {
+    const ring = squareRing(24);
+    const o = [obs(4, 4)];
+    const withClearance = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: o });
+    const noClearance = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: o, clearanceM: 0 });
+    expect(withClearance.best.count).toBeLessThanOrEqual(noClearance.best.count);
+  });
+
+  it('UNION : deux obstacles superposés perdent moins que deux séparés (jamais double-compté)', () => {
+    const ring = squareRing(30);
+    // superposés : centres à ±1 m → l'union ≈ 8×6 m. séparés : centres à ±6 m
+    // (sans chevauchement) → 2 × 6×6 m perdus, tous deux dans le toit.
+    const overlapping = [obs(6, 6, -1, 0), obs(6, 6, 1, 0)];
+    const separated = [obs(6, 6, -6, 0), obs(6, 6, 6, 0)];
+    const u = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: overlapping });
+    const s = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: separated });
+    // L'union (chevauchement) laisse AU MOINS autant de panneaux que deux séparés.
+    expect(u.best.count).toBeGreaterThanOrEqual(s.best.count);
+    expect(u.usableAreaM2).toBeGreaterThan(s.usableAreaM2);
+    // et reste sous le compte d'un seul obstacle (l'union couvre ≥ un obstacle)
+    const one = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [obs(6, 6)] });
+    expect(u.best.count).toBeLessThanOrEqual(one.best.count);
+  });
+
+  it('PARTIEL : un obstacle qui déborde du toit retire moins qu’un obstacle entièrement dedans', () => {
+    const ring = squareRing(20);
+    // au centre (entièrement dedans) vs sur la rive est (la moitié déborde)
+    const inside = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [obs(8, 8, 0, 0)] });
+    const straddling = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [obs(8, 8, 10, 0)] });
+    // seule la part qui chevauche le toit compte → moins de surface perdue
+    expect(straddling.usableAreaM2).toBeGreaterThan(inside.usableAreaM2);
+    expect(straddling.best.count).toBeGreaterThanOrEqual(inside.best.count);
+  });
+
+  it('un obstacle qui couvre TOUT le toit → zéro panneau (le toit dit honnêtement son plafond)', () => {
+    const ring = squareRing(12);
+    const huge = packConfig(ring, LAT, { family: 'south', tiltDeg: 15, obstructions: [obs(30, 30)] });
+    expect(huge.best.count).toBe(0);
+    expect(huge.usableAreaM2).toBeLessThan(huge.areaM2 * 0.05);
+  });
+});
+
 describe('FIX 1/2 — économies = réduction de la facture énergie, jamais > billMAD(conso)', () => {
   it('un système surdimensionné (prod ≫ conso) plafonne au coût énergie évitable', () => {
     const consumption = 8000; // kWh/an

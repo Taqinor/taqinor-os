@@ -41,6 +41,13 @@ const SOLAR_DECLINATION_DEG = -23.44; // déclinaison au solstice d'hiver (hémi
 const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une rangée
 const SHADOW_MARGIN_M = 0.05; // marge en plus de l'ombre calculée
 const EDGE_EPS_M = 1e-3; // tolérance flottante au retrait (anti-bruit sin(180°)≈1e−16)
+/** Dégagement autour d'un obstacle marqué (m) : un panneau dont le centre tombe
+ * à moins de cette distance d'un obstacle (ou dedans) est retiré. Modèle prudent
+ * et honnête (zone d'exclusion + dégagement) : moins de panneaux = moins de
+ * production, jamais l'inverse. Réglable ici. */
+export const OBSTACLE_CLEARANCE_M = 0.3;
+/** Côté de l'échantillonnage du recouvrement obstacle∩toit (surface utile). */
+const OVERLAP_SAMPLES = 110;
 
 // ===== Modèle de facturation ONEE/Lydec — BT « usage domestique » (2026) =====
 // Coût de l'ÉNERGIE uniquement (les tranches au kWh). Les frais fixes (TPPAN,
@@ -289,6 +296,46 @@ export interface PackOptions {
   /** Tracés d'obstructions (cheminée, skylight, bâche) à déduire. */
   obstructions?: LngLat[][];
   setbackM?: number;
+  /** Dégagement autour des obstacles (m). Défaut OBSTACLE_CLEARANCE_M. */
+  clearanceM?: number;
+}
+
+/**
+ * Surface (m²) du recouvrement obstacles ∩ toit, par échantillonnage régulier de
+ * la boîte englobante du toit : la fraction de points DANS le toit ET dans au
+ * moins un obstacle, multipliée par l'aire géodésique exacte du toit. Gère
+ * naturellement l'UNION d'obstacles superposés (« dans au moins un ») et la part
+ * d'un obstacle qui DÉBORDE du toit (« ET dans le toit ») — donc jamais de
+ * double-comptage ni de retrait de surface hors toit. Sans dégagement ici : un
+ * minorant honnête de la zone réellement perdue au calepinage.
+ */
+export function obstructionOverlapM2(ring: LngLat[], obstructions: LngLat[][], roofAreaM2: number): number {
+  if (!obstructions.length || !Array.isArray(ring) || ring.length < 3 || roofAreaM2 <= 0) return 0;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of ring) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  const n = OVERLAP_SAMPLES;
+  let inRoof = 0;
+  let blocked = 0;
+  for (let i = 0; i < n; i++) {
+    const lng = minLng + ((i + 0.5) / n) * (maxLng - minLng);
+    for (let j = 0; j < n; j++) {
+      const lat = minLat + ((j + 0.5) / n) * (maxLat - minLat);
+      const pt: [number, number] = [lng, lat];
+      if (!pointInPolygon(pt, ring)) continue;
+      inRoof++;
+      if (obstructions.some((o) => pointInPolygon(pt, o))) blocked++;
+    }
+  }
+  if (inRoof === 0) return 0;
+  return roofAreaM2 * (blocked / inRoof);
 }
 
 export interface PackedPanel {
@@ -375,6 +422,7 @@ function packCells(
   azimuthDeg: number,
   setbackM: number,
   p: CellParams,
+  clearanceM: number,
 ): PackedPanel[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -400,7 +448,11 @@ function packCells(
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
-  const inObstruction = (c: [number, number]): boolean => obstructionsENU.some((o) => pointInPolygon(c, o));
+  // Un panneau est retiré si son centre tombe DANS un obstacle OU à moins de
+  // `clearanceM` de son bord (zone d'exclusion + dégagement) — une seule règle
+  // qui couvre l'union d'obstacles superposés et la part qui chevauche le toit.
+  const inObstruction = (c: [number, number]): boolean =>
+    obstructionsENU.some((o) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM);
   // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
   // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
   // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
@@ -436,13 +488,15 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const areaM2 = geodesicAreaM2(ring);
   const azimuthDeg = familyAzimuthDeg(opts.family);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
+  const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   const tiltDeg = opts.tiltDeg;
   const beta = tiltDeg * DEG2RAD;
   const eastWest = opts.family === 'eastwest';
 
-  // Surface utile = aire tracée − obstructions (la borne « Σ empreintes ≤ utile »).
-  const obstructionArea = (opts.obstructions ?? []).reduce((sum, o) => sum + geodesicAreaM2(o), 0);
-  const usableAreaM2 = Math.max(0, areaM2 - obstructionArea);
+  // Surface utile = aire tracée − recouvrement RÉEL obstacles ∩ toit (union des
+  // obstacles, part hors toit exclue) — la borne « Σ empreintes ≤ utile ».
+  const obstructions = opts.obstructions ?? [];
+  const usableAreaM2 = Math.max(0, areaM2 - obstructionOverlapM2(ring, obstructions, areaM2));
 
   const buildEmpty = (
     panelOrientation: 'portrait' | 'landscape',
@@ -517,11 +571,11 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const cosLat = Math.cos(olat * DEG2RAD);
   const toENU = ([lng, lat]: LngLat): [number, number] => [(lng - olng) * DEG2M * cosLat, (lat - olat) * DEG2M];
   const ringENU = ring.map(toENU);
-  const obstructionsENU = (opts.obstructions ?? []).map((o) => o.map(toENU));
+  const obstructionsENU = obstructions.map((o) => o.map(toENU));
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
     const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM);
     return {
       panelOrientation,
       count: panels.length,

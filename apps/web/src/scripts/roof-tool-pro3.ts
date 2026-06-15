@@ -31,6 +31,16 @@ import {
   type ConfigFamily,
 } from '../lib/estimatorBrain';
 import { type LngLat } from '../lib/roof';
+import {
+  obstacleRing,
+  obstacleFromDrag,
+  defaultObstacle,
+  scaledObstacle,
+  resizedObstacle,
+  ringDimsM,
+  OBSTACLE_STEP_FACTOR,
+  type Obstacle,
+} from '../lib/obstacles';
 
 interface InitOptions {
   maptilerKey: string;
@@ -45,7 +55,8 @@ const FLOOR_HEIGHT_M = 3;
 const PITCH_VIEW = 58;
 const DECK_THK = 0.06;
 const FLOORS = 2;
-const OBSTACLE_HALF_M = 1.5; // demi-côté d'un obstacle marqué (cheminée/skylight)
+const OBSTACLE_BOX_H_M = 0.8; // hauteur du volume d'obstacle rendu en 3D
+const OBSTACLE_TAP_PX = 8; // en deçà : un clic/tap, au-delà : un glissé
 const DEG2RAD = Math.PI / 180;
 const WGS84_RADIUS = 6378137;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
@@ -141,6 +152,13 @@ export function initRoofToolPro3(opts: InitOptions): void {
   const compassArrow = $('rp3-compass-arrow');
   const obstacleBtn = $<HTMLButtonElement>('rp3-obstacle');
   const obstacleClearBtn = $<HTMLButtonElement>('rp3-obstacle-clear');
+  const obsEditPanel = $('rp3-obs-edit');
+  const obsLengthEl = $<HTMLInputElement>('rp3-obs-length');
+  const obsWidthEl = $<HTMLInputElement>('rp3-obs-width');
+  const obsDimsEl = $('rp3-obs-dims');
+  const obsDeleteBtn = $<HTMLButtonElement>('rp3-obs-delete');
+  const obsPlusBtn = $<HTMLButtonElement>('rp3-obs-plus');
+  const obsMinusBtn = $<HTMLButtonElement>('rp3-obs-minus');
   if (!mapEl) return;
 
   const setStatus = (msg: string) => {
@@ -152,8 +170,20 @@ export function initRoofToolPro3(opts: InitOptions): void {
   let closed = false;
   let clickTimer: ReturnType<typeof setTimeout> | null = null;
   let obstacleMode = false;
-  let obstructions: LngLat[][] = [];
+  let obstacles: Obstacle[] = [];
+  let selectedObsId: string | null = null;
+  let obsCounter = 0;
+  // Glissé en cours pour dessiner un obstacle.
+  let drawStart: { lngLat: LngLat; point: maplibregl.Point } | null = null;
+  let drawing = false;
+  let suppressClick = false; // ignore le « click » de synthèse après un glissé
   let rec: Recommendation | null = null;
+
+  // Les obstacles sont stockés par centre + dimensions ; le cerveau reçoit leurs
+  // rectangles lng/lat comme obstructions (zones d'exclusion).
+  const obstructionRings = (): LngLat[][] => obstacles.map(obstacleRing);
+  const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
   let centroid: LngLat = [0, 0];
   let centroidLat = 33.5;
   let useRecommended = true;
@@ -383,25 +413,21 @@ export function initRoofToolPro3(opts: InitOptions): void {
     ];
     for (const me of meshes) if (me) sceneRoot.add(me);
 
-    // Obstacles marqués (petits volumes sombres sur le toit).
-    if (obstructions.length) {
+    // Obstacles marqués : un volume sombre par obstacle, à sa VRAIE taille
+    // (largeur E-O × longueur N-S), posé sur le toit, qui projette une ombre.
+    if (obstacles.length) {
       const obsMat = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, metalness: 0.2, roughness: 0.8 });
-      const obsMats: THREE.Matrix4[] = [];
       const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
-      for (const o of obstructions) {
-        let ox = 0;
-        let oy = 0;
-        for (const [lng, lat] of o) {
-          ox += (lng - pack.origin[0]) * DEG2M * cosLat;
-          oy += (lat - pack.origin[1]) * DEG2M;
-        }
-        ox /= o.length;
-        oy /= o.length;
-        obsMats.push(compose(ox, oy, wallH + 0.4, 0, 0));
+      for (const o of obstacles) {
+        const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat;
+        const oy = (o.centerLat - pack.origin[1]) * DEG2M;
+        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
+        const mesh = new THREE.Mesh(geo, obsMat);
+        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        sceneRoot.add(mesh);
       }
-      const obsGeo = new THREE.BoxGeometry(OBSTACLE_HALF_M * 2, OBSTACLE_HALF_M * 2, 0.8);
-      const im = makeIM(obsGeo, obsMat, obsMats, true, true);
-      if (im) sceneRoot.add(im);
     }
 
     // — Soleil d'affichage (matin clair, élévation liée à la latitude) —
@@ -441,9 +467,35 @@ export function initRoofToolPro3(opts: InitOptions): void {
     map.addSource('rp3-line', { type: 'geojson', data: empty as never });
     map.addSource('rp3-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp3-obs', { type: 'geojson', data: empty as never });
+    map.addSource('rp3-obs-preview', { type: 'geojson', data: empty as never });
     map.addLayer({ id: 'rp3-line', type: 'line', source: 'rp3-line', paint: { 'line-color': GOLD, 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
     map.addLayer({ id: 'rp3-pts', type: 'circle', source: 'rp3-pts', paint: { 'circle-radius': 5, 'circle-color': GOLD, 'circle-stroke-color': '#070b1d', 'circle-stroke-width': 1.5 } });
-    map.addLayer({ id: 'rp3-obs', type: 'fill', source: 'rp3-obs', paint: { 'fill-color': '#ff6b6b', 'fill-opacity': 0.35 } });
+    // Obstacles : remplissage (plus vif si sélectionné) + contour + étiquette L×l.
+    map.addLayer({
+      id: 'rp3-obs',
+      type: 'fill',
+      source: 'rp3-obs',
+      paint: { 'fill-color': '#ff6b6b', 'fill-opacity': ['case', ['get', 'selected'], 0.5, 0.3] },
+    });
+    map.addLayer({
+      id: 'rp3-obs-outline',
+      type: 'line',
+      source: 'rp3-obs',
+      paint: { 'line-color': ['case', ['get', 'selected'], GOLD, '#ff6b6b'], 'line-width': ['case', ['get', 'selected'], 3, 1.5] },
+    });
+    map.addLayer({
+      id: 'rp3-obs-label',
+      type: 'symbol',
+      source: 'rp3-obs',
+      layout: { 'text-field': ['get', 'dims'], 'text-size': 13, 'text-font': ['Open Sans Bold', 'Noto Sans Bold'], 'text-allow-overlap': true, 'symbol-placement': 'point' },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
+    });
+    map.addLayer({
+      id: 'rp3-obs-preview',
+      type: 'line',
+      source: 'rp3-obs-preview',
+      paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [1.5, 1] },
+    });
     map.addLayer(customLayer);
     updateCompass();
     if (opts.initialQuery) void geocode(opts.initialQuery);
@@ -461,8 +513,23 @@ export function initRoofToolPro3(opts: InitOptions): void {
   function redrawObstacles() {
     srcOf('rp3-obs')?.setData({
       type: 'FeatureCollection',
-      features: obstructions.map((o) => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...o, o[0]]] }, properties: {} })),
+      features: obstacles.map((o) => {
+        const ring = obstacleRing(o);
+        return {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] },
+          properties: { id: o.id, selected: o.id === selectedObsId, dims: dimsLabel(o) },
+        };
+      }),
     } as never);
+  }
+
+  function setPreviewRect(a: LngLat, b: LngLat) {
+    const ring: LngLat[] = [a, [b[0], a[1]], b, [a[0], b[1]], a];
+    srcOf('rp3-obs-preview')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: ring }, properties: {} } as never);
+  }
+  function clearPreview() {
+    srcOf('rp3-obs-preview')?.setData(empty as never);
   }
 
   function addVertex(v: LngLat) {
@@ -473,16 +540,54 @@ export function initRoofToolPro3(opts: InitOptions): void {
     else setStatus(`Coin ${vertices.length} placé — continuez à tracer le contour.`);
   }
 
-  function obstacleRectAt(center: LngLat): LngLat[] {
-    const cosLat = Math.cos(center[1] * DEG2RAD);
-    const dLat = OBSTACLE_HALF_M / DEG2M;
-    const dLng = OBSTACLE_HALF_M / (DEG2M * cosLat);
-    return [
-      [center[0] - dLng, center[1] - dLat],
-      [center[0] + dLng, center[1] - dLat],
-      [center[0] + dLng, center[1] + dLat],
-      [center[0] - dLng, center[1] + dLat],
-    ];
+  // — Sélection + édition d'un obstacle —
+  function syncObsEdit() {
+    const o = obstacles.find((x) => x.id === selectedObsId) ?? null;
+    if (obsEditPanel) obsEditPanel.hidden = !o;
+    if (!o) return;
+    if (obsLengthEl && document.activeElement !== obsLengthEl) obsLengthEl.value = fmt1(o.lengthM);
+    if (obsWidthEl && document.activeElement !== obsWidthEl) obsWidthEl.value = fmt1(o.widthM);
+    if (obsDimsEl) obsDimsEl.textContent = dimsLabel(o);
+  }
+
+  function selectObstacle(id: string | null) {
+    selectedObsId = id;
+    redrawObstacles();
+    syncObsEdit();
+  }
+
+  /** Remplace l'obstacle sélectionné par une version transformée, puis recalcule. */
+  function updateSelected(transform: (o: Obstacle) => Obstacle) {
+    const idx = obstacles.findIndex((x) => x.id === selectedObsId);
+    if (idx < 0) return;
+    obstacles[idx] = transform(obstacles[idx]);
+    redrawObstacles();
+    syncObsEdit();
+    recompute();
+  }
+
+  function deleteSelected() {
+    if (!selectedObsId) return;
+    obstacles = obstacles.filter((x) => x.id !== selectedObsId);
+    selectedObsId = null;
+    redrawObstacles();
+    syncObsEdit();
+    recompute();
+  }
+
+  function addObstacle(o: Obstacle) {
+    obstacles.push(o);
+    selectedObsId = o.id;
+    redrawObstacles();
+    syncObsEdit();
+    recompute();
+  }
+
+  /** Obstacle touché au point écran `pt`, ou null. */
+  function obstacleAtPoint(pt: maplibregl.Point): string | null {
+    const hits = map.queryRenderedFeatures(pt, { layers: ['rp3-obs'] });
+    const id = hits[0]?.properties?.id;
+    return typeof id === 'string' ? id : null;
   }
 
   // — Sélection de config → grille —
@@ -506,7 +611,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
 
     if (useRecommended) {
       const r = rec.recommended;
-      const pack = packConfig(ring, centroidLat, { family: r.family, tiltDeg: r.tiltDeg, obstructions });
+      const pack = packConfig(ring, centroidLat, { family: r.family, tiltDeg: r.tiltDeg, obstructions: obstructionRings() });
       const grid = r.panelOrientation === 'portrait' ? pack.portrait : pack.landscape;
       renderScene(pack, grid, r.tiltDeg, r.family, r.count);
       paintRecoCard();
@@ -516,7 +621,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
 
     const family = sel.family;
     const tiltDeg = tiltOf(family);
-    const pack = packConfig(ring, centroidLat, { family, tiltDeg, obstructions });
+    const pack = packConfig(ring, centroidLat, { family, tiltDeg, obstructions: obstructionRings() });
     const grid = gridFor(pack);
     const annualKwh = productionKwh(centroidLat, family, tiltDeg, grid.kwc);
     const target = billToAnnualKwh(monthlyBill());
@@ -643,7 +748,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
     if (!closed || vertices.length < 3) return;
     const ring: LngLat[] = [...vertices];
     const bill = monthlyBill();
-    rec = recommend(ring, centroidLat, bill, obstructions);
+    rec = recommend(ring, centroidLat, bill, obstructionRings());
     pvgisKwh = null;
     paintComparison();
     renderSelection();
@@ -741,15 +846,20 @@ export function initRoofToolPro3(opts: InitOptions): void {
   function reset() {
     vertices = [];
     closed = false;
-    obstructions = [];
-    obstacleMode = false;
+    obstacles = [];
+    selectedObsId = null;
+    setObstacleMode(false);
+    drawing = false;
+    drawStart = null;
     rec = null;
     pvgisKwh = null;
     useRecommended = true;
     sel = { family: 'south', tilt: 'reco', orient: 'auto' };
     srcOf('rp3-line')?.setData(empty as never);
     srcOf('rp3-pts')?.setData(empty as never);
+    clearPreview();
     redrawObstacles();
+    syncObsEdit();
     disposeScene();
     modelMatrix = null;
     map.triggerRepaint();
@@ -768,19 +878,99 @@ export function initRoofToolPro3(opts: InitOptions): void {
     setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
   }
 
+  // — Mode obstacle : on désactive le pan pour glisser-dessiner le rectangle —
+  function setObstacleMode(on: boolean) {
+    obstacleMode = on;
+    obstacleBtn?.setAttribute('aria-pressed', String(on));
+    if (on) {
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = 'crosshair';
+    } else {
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+      drawing = false;
+      drawStart = null;
+      clearPreview();
+    }
+  }
+
+  let lastDraw: LngLat | null = null;
+  function beginDraw(lngLat: LngLat, point: maplibregl.Point) {
+    if (!obstacleMode || !closed) return;
+    drawStart = { lngLat, point };
+    drawing = true;
+    lastDraw = lngLat;
+  }
+  function moveDraw(lngLat: LngLat) {
+    if (!drawing || !drawStart) return;
+    lastDraw = lngLat;
+    setPreviewRect(drawStart.lngLat, lngLat);
+  }
+  function endDraw(lngLat: LngLat, point: maplibregl.Point) {
+    if (!drawing || !drawStart) return;
+    drawing = false;
+    clearPreview();
+    const start = drawStart;
+    drawStart = null;
+    suppressClick = true;
+    const end = lngLat ?? lastDraw ?? start.lngLat;
+    const dx = Math.abs(point.x - start.point.x);
+    const dy = Math.abs(point.y - start.point.y);
+    const id = `obs-${++obsCounter}`;
+    if (dx < OBSTACLE_TAP_PX && dy < OBSTACLE_TAP_PX) {
+      // simple tap : sélectionne un obstacle existant, sinon en crée un par défaut
+      const hit = obstacleAtPoint(point);
+      if (hit) {
+        setObstacleMode(false);
+        selectObstacle(hit);
+        setStatus('Obstacle sélectionné — ajustez sa taille au doigt ou au clavier.');
+        return;
+      }
+      addObstacle(defaultObstacle(id, end));
+    } else {
+      addObstacle(obstacleFromDrag(id, start.lngLat, end));
+    }
+    setObstacleMode(false);
+    setStatus('Obstacle ajouté — le calepinage l’évite. Touchez-le pour l’ajuster, ou ajoutez-en un autre.');
+  }
+
   // — Interactions carte —
+  map.on('mousedown', (e) => {
+    suppressClick = false;
+    if (obstacleMode) beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on('mousemove', (e) => {
+    if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
+  });
+  map.on('mouseup', (e) => {
+    if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on('touchstart', (e) => {
+    suppressClick = false;
+    if (obstacleMode) beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on('touchmove', (e) => {
+    if (drawing) {
+      e.preventDefault();
+      moveDraw([e.lngLat.lng, e.lngLat.lat]);
+    }
+  });
+  map.on('touchend', (e) => {
+    if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+
   map.on('click', (e) => {
-    const lngLat: LngLat = [e.lngLat.lng, e.lngLat.lat];
-    if (obstacleMode) {
-      obstructions.push(obstacleRectAt(lngLat));
-      obstacleMode = false;
-      obstacleBtn?.setAttribute('aria-pressed', 'false');
-      redrawObstacles();
-      recompute();
-      setStatus('Obstacle ajouté — le calepinage l’évite. Marquez-en d’autres ou continuez.');
+    if (suppressClick) {
+      suppressClick = false;
       return;
     }
-    if (closed) return;
+    if (obstacleMode) return; // le glissé gère le dessin
+    const lngLat: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    if (closed) {
+      // sélection/désélection d'un obstacle existant
+      selectObstacle(obstacleAtPoint(e.point));
+      return;
+    }
     if (clickTimer) return;
     clickTimer = setTimeout(() => {
       clickTimer = null;
@@ -860,16 +1050,48 @@ export function initRoofToolPro3(opts: InitOptions): void {
   });
 
   obstacleBtn?.addEventListener('click', () => {
-    obstacleMode = !obstacleMode;
-    obstacleBtn.setAttribute('aria-pressed', String(obstacleMode));
-    setStatus(obstacleMode ? 'Cliquez sur la carte pour marquer un obstacle (cheminée, lanterneau…).' : 'Marquage d’obstacle annulé.');
+    if (!closed) {
+      setStatus('Fermez d’abord le tracé du toit, puis ajoutez vos obstacles.');
+      return;
+    }
+    setObstacleMode(!obstacleMode);
+    selectObstacle(null);
+    setStatus(
+      obstacleMode
+        ? 'Glissez sur le toit pour dessiner un obstacle (cheminée, climatiseur, lanterneau…).'
+        : 'Ajout d’obstacle annulé.',
+    );
   });
   obstacleClearBtn?.addEventListener('click', () => {
-    if (!obstructions.length) return;
-    obstructions = [];
+    if (!obstacles.length) return;
+    obstacles = [];
+    selectedObsId = null;
+    setObstacleMode(false);
     redrawObstacles();
+    syncObsEdit();
     if (closed) recompute();
+    setStatus('Obstacles effacés — le calepinage reprend tout le toit.');
   });
+
+  // — Édition de l'obstacle sélectionné (saisie exacte + boutons + / − + suppr.) —
+  const parseNum = (s: string): number => parseFloat((s || '').replace(/\s/g, '').replace(',', '.'));
+  obsLengthEl?.addEventListener('input', () => {
+    if (!selectedObsId) return;
+    const L = parseNum(obsLengthEl.value);
+    if (!Number.isFinite(L)) return;
+    updateSelected((o) => resizedObstacle(o, L, o.widthM));
+  });
+  obsWidthEl?.addEventListener('input', () => {
+    if (!selectedObsId) return;
+    const w = parseNum(obsWidthEl.value);
+    if (!Number.isFinite(w)) return;
+    updateSelected((o) => resizedObstacle(o, o.lengthM, w));
+  });
+  obsLengthEl?.addEventListener('blur', syncObsEdit);
+  obsWidthEl?.addEventListener('blur', syncObsEdit);
+  obsPlusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, OBSTACLE_STEP_FACTOR)));
+  obsMinusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, 1 / OBSTACLE_STEP_FACTOR)));
+  obsDeleteBtn?.addEventListener('click', deleteSelected);
 
   searchForm?.addEventListener('submit', (e) => {
     e.preventDefault();
