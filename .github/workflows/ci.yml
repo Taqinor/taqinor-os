@@ -80,7 +80,8 @@ jobs:
             if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
           done
           # Pré-création des buckets (erp-pdf est aussi auto-créé par l'app).
-          docker run --rm --network host minio/mc:latest sh -c "
+          # L'entrypoint de minio/mc est « mc » → on force « sh » pour chaîner.
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
       - name: Run Django test suite
