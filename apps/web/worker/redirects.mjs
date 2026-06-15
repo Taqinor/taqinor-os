@@ -49,3 +49,25 @@ export function pathRedirect(requestUrl) {
 
   return null;
 }
+
+/**
+ * Canonicalisation de la barre finale : forme canonique = AVEC barre finale
+ * (les <link rel="canonical"> et le sitemap émettent déjà cette forme). On 301 la
+ * forme sans barre → avec barre, pour les pages HTML uniquement.
+ *
+ * EXEMPTÉ (jamais de barre ajoutée) : requêtes non-GET/HEAD (POST de formulaire),
+ * la racine `/`, les chemins DÉJÀ terminés par `/`, les routes d'API `/api/*` (le
+ * script et le formulaire live appellent fetch('/api/…') sans barre — y toucher
+ * casserait le lead flow), et tout fichier à extension (sitemap.xml, robots.txt,
+ * favicon.svg, assets). N'altère AUCUN contenu : routage seul.
+ */
+export function trailingSlashRedirect(requestUrl, method = 'GET') {
+  if (method !== 'GET' && method !== 'HEAD') return null;
+  const url = new URL(requestUrl);
+  const p = url.pathname;
+  if (p === '/' || p.endsWith('/')) return null;
+  if (p === '/api' || p.startsWith('/api/')) return null;
+  const lastSegment = p.slice(p.lastIndexOf('/') + 1);
+  if (lastSegment.includes('.')) return null; // fichier à extension → pas de barre
+  return { target: url.origin + p + '/' + url.search, status: 301 };
+}

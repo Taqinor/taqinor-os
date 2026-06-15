@@ -43,8 +43,12 @@ rectangle `(L·cos β) × largeur` pavé dans le tracé (après retrait + obstru
 on compte les panneaux qui tiennent réellement. Borne physique dure (testée sur
 chaque config) : **Σ empreintes au sol ≤ surface utile** — les panneaux ne peuvent
 pas se superposer, donc un compte E-O aberrant est mathématiquement impossible.
-**Cohérence E-O vs Sud à inclinaison égale** : ~1,20× à 10°, ~1,33× à 15° — jamais
-l'ancien +71 %.
+**Cohérence E-O vs Sud à inclinaison égale (correctif 2026-06)** : à inclinaison
+ÉGALE, les chevrons E-O dos à dos récupèrent l'intervalle d'ombre que le Sud
+gaspille → **compte E-O ≥ compte Sud** (vérité physique testée sur toit à aspect
+neutre ; les deux convergent quand l'inclinaison → 0). L'ancien garde-fou « 1,2–1,4× »
+était une heuristique dépendante de la forme du toit — remplacé par « E-O ≥ Sud à
+inclinaison égale » + la borne Σ empreintes ≤ surface utile.
 
 **Correctif de rive (bug flottant).** `sin(180°) ≈ 1e−16` rendait les vecteurs de
 base légèrement imprécis : les cellules pile au retrait calculaient une distance de
@@ -94,37 +98,35 @@ toit plat marocain), mais le compte paysage est toujours montré.
 - Bande de cohérence Casablanca sud-optimal : la table donne ≈1 650 kWh/kWc/an
   (dans la fourchette 1 650–1 900 après pertes ; bas de fourchette, normal).
 
-## 4. Facture → énergie → économies (deux tarifs, économies plafonnées)
+## 4. Facture → énergie → économies (UN modèle ONEE sélectif, correctif 2026-06)
 
-**Correctif 2026-06 — tarif moyen pour la conso, marginal pour les économies, et
-plafond à la facture.** Deux tarifs distincts (constantes dans `estimatorBrain.ts`) :
+**Les deux tarifs plats (1,17 / 1,5958) sont SUPPRIMÉS**, remplacés par UNE fonction
+`billMAD(monthlyKwh)` — coût ÉNERGIE de la grille ONEE/Lydec BT « usage domestique »
+(bloc de config unique dans `estimatorBrain.ts`) :
 
-- `RATE_AVERAGE_MAD_PER_KWH = 1,17` — tarif **moyen mélangé** résidentiel (la facture
-  couvre toutes les tranches). Sert à **facture → consommation** :
-  `conso_annuelle_kWh = facture_mensuelle × 12 / 1,17`.
-- `RATE_MARGINAL_MAD_PER_KWH = 1,5958` — **tranche haute sélective** (> 500 kWh/mois,
-  TTC). Le solaire efface d'abord le kWh le plus cher → valorise l'autoconsommation.
-- `RATE_EXPORT_MAD_PER_KWH = 0` — pas de net-billing BT clair au Maroc → surplus non
-  valorisé (conservateur, honnête).
+- **≤ 150 kWh/mois — progressif** : 0,90 sur les 100 premiers kWh + 1,07 sur 101–150.
+- **> 150 kWh/mois — sélectif** (TOUTE la conso au tarif de sa tranche) :
+  151–200 → 1,07 · 201–300 → 1,18 · 301–500 → 1,45 · > 500 → 1,66 MAD/kWh.
+  Tolérance de tranche 10 kWh ; **garantie de monotonie** (un client à 501 kWh ne paie
+  jamais moins qu'à 500). Frais fixes (TPPAN, redevances) NON modélisés : invariants au
+  solaire, ils s'annulent dans les économies.
 
-**Économies plafonnées (ne peuvent jamais dépasser la facture) :**
+- **Facture → conso annuelle** : on **inverse numériquement** `billMAD` (recherche
+  binaire), ×12. Pour une grosse facture, ceci donne naturellement le tarif effectif
+  de la tranche haute → bien moins de kWh que l'ancien diviseur plat 1,17.
+  *Ex. 1 500 MAD/mois → ~10 850 kWh/an (et non ~15 385).*
+- **Économies/an = [ billMAD(conso) − billMAD(conso − autoconsommé) ] × 12** — la vraie
+  réduction de la facture énergie. Plafond **automatique et plus serré** : ≤
+  billMAD(conso) (le coût énergie évitable), jamais au-delà. Surplus au-delà de la
+  conso = 0 (pas de net-billing BT clair au Maroc — conservateur). Fourchette basse
+  = 75 % (alignement temporel réel de l'autoconsommation).
 
-    économies/an = min(autoconsommé · 1,5958 , facture_annuelle) + surplus · 0
-    autoconsommé = min(production, consommation)
-    surplus      = max(0, production − consommation)
-
-Conséquence : un système qui produit ~2× la conso voit ses économies **plafonner
-vers la facture**, jamais au-delà. Le système recommandé (dimensionné au besoin)
-n'est pas affecté. Borne dure testée : pour CHAQUE config, économies affichées
-≤ facture annuelle du client. Fourchette basse = 75 % (alignement temporel réel).
-
-> ⚠️ **DEUX NOMBRES À CONFIRMER PAR REDA contre une vraie facture Lydec/ONEE.**
-> Tarif moyen ≈ **1,17 MAD/kWh** (BT résidentiel Maroc 2025-26) et tranche haute
-> sélective ≈ **1,5958 MAD/kWh TTC** (> 500 kWh/mois ; facturation sélective au-delà
-> de 150 kWh/mois). Sources : kherba.com/tarifs, globalpetrolprices.com (Maroc).
-> Modifiables en un seul endroit (`estimatorBrain.ts`). Note : ce preview privé
-> diverge **volontairement** de l'ancien 1,4 MAD/kWh du reste du site — c'est le
-> chiffrage corrigé ; à harmoniser plus tard si Reda valide.
+> ⚠️ **À CONFIRMER PAR REDA contre une vraie facture Lydec/ONEE.** La grille
+> (tranches au kWh) et le traitement HT-vs-TTC + frais fixes se calibrent en un seul
+> bloc (`ONEE_PROGRESSIVE` / `ONEE_SELECTIVE` dans `estimatorBrain.ts`). Sources :
+> kherba.com/tarifs, globalpetrolprices.com (Maroc). Ce preview privé chiffre
+> volontairement différemment de l'ancien 1,4 MAD/kWh du reste du site — à harmoniser
+> si Reda valide.
 
 ## 5. Bifacial
 

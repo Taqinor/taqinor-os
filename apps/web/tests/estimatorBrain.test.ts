@@ -13,11 +13,9 @@ import {
   recommend,
   annualSavingsMad,
   productionKwh,
+  billMAD,
   DESIGN_SOLAR_HOUR,
   PANEL2_WATT,
-  RATE_AVERAGE_MAD_PER_KWH,
-  RATE_MARGINAL_MAD_PER_KWH,
-  RATE_EXPORT_MAD_PER_KWH,
 } from '../src/lib/estimatorBrain';
 import { type LngLat } from '../src/lib/roof';
 
@@ -98,17 +96,46 @@ describe('specificYield — productible depuis la table committée', () => {
   });
 });
 
-describe('billToAnnualKwh — facture → conso annuelle au tarif MOYEN mélangé (1,17 MAD/kWh)', () => {
-  it('divise par le tarif moyen mélangé, pas par le marginal', () => {
-    expect(billToAnnualKwh(1500)).toBeCloseTo((1500 * 12) / RATE_AVERAGE_MAD_PER_KWH, 0);
-    expect(RATE_AVERAGE_MAD_PER_KWH).toBeCloseTo(1.17, 2);
+describe('billMAD — modèle ONEE BT domestique (progressif ≤150, sélectif au-delà)', () => {
+  it('progressif sous 150 kWh : 100×0,90 + 50×1,07 = 143,5 MAD à 150 kWh', () => {
+    expect(billMAD(100)).toBeCloseTo(90, 2);
+    expect(billMAD(150)).toBeCloseTo(143.5, 2);
+  });
+
+  it('sélectif au-delà de 150 : TOUTE la conso au tarif de sa tranche', () => {
+    // 250 kWh → tranche 201–300 (1,18) sur tout : 250×1,18 = 295.
+    expect(billMAD(250)).toBeCloseTo(250 * 1.18, 2);
+    // 600 kWh → tranche >500 (1,66) : 600×1,66 = 996.
+    expect(billMAD(600)).toBeCloseTo(600 * 1.66, 2);
+  });
+
+  it('est MONOTONE non-décroissante (y compris aux bornes de tranche)', () => {
+    let prev = -1;
+    for (let k = 0; k <= 1200; k += 1) {
+      const b = billMAD(k);
+      expect(b, `billMAD(${k})=${b} < billMAD(${k - 1})=${prev}`).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = b;
+    }
+  });
+
+  it('un client à 501 kWh ne paie jamais moins qu’à 500 (garantie de bord)', () => {
+    expect(billMAD(501)).toBeGreaterThanOrEqual(billMAD(500));
+  });
+});
+
+describe('billToAnnualKwh — inversion numérique du modèle sélectif', () => {
+  it('1 500 MAD/mois → ~10 000–11 000 kWh/an (PAS ~15 385 de l’ancien diviseur plat)', () => {
+    const kwh = billToAnnualKwh(1500);
+    expect(kwh).toBeGreaterThanOrEqual(10000);
+    expect(kwh).toBeLessThanOrEqual(11000);
+  });
+  it('inverse billMAD pour des factures atteignables (la facturation sélective a des sauts)', () => {
+    // 1 500 et 2 500 tombent dans la tranche haute (continue) → inversion exacte.
+    expect(billMAD(billToAnnualKwh(1500) / 12)).toBeCloseTo(1500, 0);
+    expect(billMAD(billToAnnualKwh(2500) / 12)).toBeCloseTo(2500, 0);
   });
   it('croît avec la facture', () => {
     expect(billToAnnualKwh(3000)).toBeGreaterThan(billToAnnualKwh(1000));
-  });
-  it('le tarif marginal (tranche haute) est > moyen ; export par défaut nul', () => {
-    expect(RATE_MARGINAL_MAD_PER_KWH).toBeGreaterThan(RATE_AVERAGE_MAD_PER_KWH);
-    expect(RATE_EXPORT_MAD_PER_KWH).toBe(0);
   });
 });
 
@@ -173,9 +200,9 @@ describe('recommend — l’algorithme (les 3 branches)', () => {
   });
 
   it('BRANCHE « densifie » : sud optimal ne couvre pas mais une config plus dense oui', () => {
-    // side 11 : sud-opt ≈ 19 020 kWh < cible 2 000 MAD (≈ 20 510) < sud-15 ≈ 24 130.
+    // side 11 : sud-opt ≈ 19 020 kWh < cible 2 800 MAD (≈ 20 240) < sud-15 ≈ 24 130.
     const ring = squareRing(11);
-    const rec = recommend(ring, 33.59, 2000);
+    const rec = recommend(ring, 33.59, 2800);
     expect(rec.recommended.id).not.toBe('south-opt'); // a dû densifier
     expect(rec.recommended.annualKwh).toBeGreaterThanOrEqual(rec.targetAnnualKwh);
     expect(rec.recommended.tiltDeg).toBeLessThanOrEqual(29);
@@ -254,19 +281,32 @@ describe('FIX 1a — Σ empreintes au sol ≤ surface utile (panneaux jamais sup
   });
 });
 
-describe('FIX 1b — Est-Ouest densité = 1,2–1,4× le Sud à inclinaison ÉGALE (jamais +71 %)', () => {
-  // Physique exacte (même fonction d'ombre solstice, composante E-O = sin γ_s) :
-  // ~1,20× à 10°, ~1,33× à 15°. Très loin de l'ancien 1,71× (densité codée en dur).
-  for (const tiltDeg of [10, 15] as const) {
-    it(`à ${tiltDeg}° : 1,2–1,4× le compte Sud (même toit)`, () => {
-      const ring = squareRing(48); // grand carré → bruit d'arrondi minimal
-      const south = packConfig(ring, 33.59, { family: 'south', tiltDeg });
-      const ew = packConfig(ring, 33.59, { family: 'eastwest', tiltDeg });
-      const ratio = ew.best.count / south.best.count;
-      expect(ratio).toBeGreaterThanOrEqual(1.2);
-      expect(ratio).toBeLessThanOrEqual(1.4);
-    });
+describe('FIX 2 — Est-Ouest ≥ Sud à inclinaison ÉGALE (les chevrons récupèrent l’ombre)', () => {
+  // Vérité physique : à inclinaison égale, l'E-O dos à dos récupère l'intervalle
+  // d'ombre que le Sud gaspille → compte E-O ≥ compte Sud (sur toit à aspect neutre).
+  // Et Σ empreintes ≤ surface utile reste vrai pour chaque config.
+  for (const side of [16, 24, 40, 48]) {
+    for (const tiltDeg of [10, 15] as const) {
+      it(`carré ${side} m @${tiltDeg}° : E-O ≥ Sud, et bornes empreinte respectées`, () => {
+        const ring = squareRing(side);
+        const south = packConfig(ring, 33.59, { family: 'south', tiltDeg });
+        const ew = packConfig(ring, 33.59, { family: 'eastwest', tiltDeg });
+        expect(ew.best.count).toBeGreaterThanOrEqual(south.best.count);
+        for (const pack of [south, ew]) {
+          for (const grid of [pack.portrait, pack.landscape]) {
+            expect(grid.count * grid.footprintPerPanelM2).toBeLessThanOrEqual(pack.usableAreaM2 + 1e-6);
+          }
+        }
+      });
+    }
   }
+
+  it('converge (égalité possible) mais ne descend jamais sous le Sud à 10°', () => {
+    const ring = squareRing(30);
+    const s = packConfig(ring, 33.59, { family: 'south', tiltDeg: 10 });
+    const e = packConfig(ring, 33.59, { family: 'eastwest', tiltDeg: 10 });
+    expect(e.best.count).toBeGreaterThanOrEqual(s.best.count);
+  });
 });
 
 describe('FIX 1c — UNE seule règle d’espacement solaire ; E-O n’a pas de densité codée en dur', () => {
@@ -317,41 +357,45 @@ describe('FIX 1d — pas de perte de la rangée/colonne de rive (bug flottant si
   });
 });
 
-describe('FIX 2 — économies plafonnées : jamais > la facture annuelle (export nul)', () => {
-  it('un système surdimensionné (prod ≫ conso) plafonne à la facture', () => {
-    const consumption = 8000;
-    const bill = consumption * RATE_AVERAGE_MAD_PER_KWH; // facture annuelle
+describe('FIX 1/2 — économies = réduction de la facture énergie, jamais > billMAD(conso)', () => {
+  it('un système surdimensionné (prod ≫ conso) plafonne au coût énergie évitable', () => {
+    const consumption = 8000; // kWh/an
+    const energyBill = billMAD(consumption / 12) * 12; // coût énergie annuel
     const s = annualSavingsMad(20000, consumption); // prod = 2,5× conso
-    expect(s.high).toBeLessThanOrEqual(bill + 1e-6);
+    expect(s.high).toBeLessThanOrEqual(energyBill + 1e-6);
     expect(s.high).toBeGreaterThan(0);
     expect(s.low).toBeLessThanOrEqual(s.high);
   });
 
-  it('un système sous-dimensionné valorise au tarif MARGINAL (pas le moyen)', () => {
-    // prod faible, toute autoconsommée, en deçà du plafond facture
-    const s = annualSavingsMad(1000, 8000);
-    expect(s.high).toBeCloseTo(1000 * RATE_MARGINAL_MAD_PER_KWH, 0);
+  it('autoconsommation partielle = vraie réduction de facture (efface le kWh cher d’abord)', () => {
+    // conso 8000/an (≈667/mois), prod 3000/an (≈250/mois) toute autoconsommée.
+    const s = annualSavingsMad(3000, 8000);
+    const expected = (billMAD(8000 / 12) - billMAD(8000 / 12 - 3000 / 12)) * 12;
+    expect(s.high).toBeCloseTo(expected, 0);
+    expect(s.high).toBeGreaterThan(0);
   });
 
-  it('chaque config affichée : économies ≤ facture annuelle du client', () => {
+  it('chaque config affichée : économies ≤ coût énergie de la consommation', () => {
     for (const side of [12, 20, 30]) {
       const rec = recommend(squareRing(side), 33.59, 1500);
-      const annualBill = 1500 * 12;
+      const cap = billMAD(rec.targetAnnualKwh / 12) * 12 + 1e-6;
       for (const c of [...rec.comparison, rec.recommended]) {
-        expect(c.savingsHigh, `${c.label}`).toBeLessThanOrEqual(annualBill + 1e-6);
+        expect(c.savingsHigh, `${c.label}`).toBeLessThanOrEqual(cap);
       }
     }
   });
 });
 
-describe('FIX 3 — tarif moyen pour la conso, marginal pour les économies', () => {
-  it('la conso vient du tarif moyen ; l’économie autoconsommée du marginal', () => {
+describe('FIX 3 — un seul modèle ONEE sélectif (plus de tarif moyen/marginal plat)', () => {
+  it('la conso vient de l’inversion du modèle sélectif ; facture énergie exposée', () => {
     const bill = 1500;
     const rec = recommend(squareRing(40), 33.59, bill);
-    expect(rec.targetAnnualKwh).toBeCloseTo((bill * 12) / RATE_AVERAGE_MAD_PER_KWH, 0);
-    expect(rec.rateAverageMadPerKwh).toBeCloseTo(RATE_AVERAGE_MAD_PER_KWH, 6);
-    expect(rec.rateMarginalMadPerKwh).toBeCloseTo(RATE_MARGINAL_MAD_PER_KWH, 6);
-    expect(rec.rateMarginalMadPerKwh).toBeGreaterThan(rec.rateAverageMadPerKwh);
+    expect(rec.targetAnnualKwh).toBeGreaterThanOrEqual(10000);
+    expect(rec.targetAnnualKwh).toBeLessThanOrEqual(11000);
+    // facture énergie modélisée ≈ facture saisie × 12, tarif effectif cohérent.
+    expect(rec.annualBillMad).toBeCloseTo(bill * 12, -2);
+    expect(rec.effectiveRateMadPerKwh).toBeGreaterThan(1.5); // grosse facture → tranche haute
+    expect(rec.effectiveRateMadPerKwh).toBeLessThanOrEqual(1.67); // ≈ 1,66 (tranche >500)
   });
 });
 

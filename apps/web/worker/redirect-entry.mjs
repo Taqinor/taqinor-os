@@ -9,7 +9,7 @@
  */
 import astro from './entry.mjs';
 import { canonicalTarget } from './canonical.mjs';
-import { pathRedirect } from './redirects.mjs';
+import { pathRedirect, trailingSlashRedirect } from './redirects.mjs';
 
 export default {
   async fetch(request, env, ctx) {
@@ -31,6 +31,15 @@ export default {
           // 301 mis en cache 1 h ; 302 (repli temporaire) caché 5 min seulement.
           'cache-control': redirect.status === 301 ? 'public, max-age=3600' : 'public, max-age=300',
         },
+      });
+    }
+    // 3) Canonicalisation de la barre finale (pages HTML, GET/HEAD ; /api et
+    //    fichiers exemptés) → une seule forme indexable.
+    const slash = trailingSlashRedirect(request.url, request.method);
+    if (slash) {
+      return new Response(null, {
+        status: slash.status,
+        headers: { location: slash.target, 'cache-control': 'public, max-age=3600' },
       });
     }
     return astro.fetch(request, env, ctx);
