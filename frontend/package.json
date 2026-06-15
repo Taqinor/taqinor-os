@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "gen-pwa-icons": "node scripts/gen-pwa-icons.mjs"
+    "gen-pwa-icons": "python scripts/gen_pwa_icons.py"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
