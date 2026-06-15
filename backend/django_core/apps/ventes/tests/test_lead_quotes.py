@@ -138,3 +138,98 @@ class TestLeadQuoteCreation(TestCase):
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertIn('inline', resp['Content-Disposition'])
         self.assertTrue(resp.content.startswith(b'%PDF'))
+
+
+class TestProposalRealRender(TestCase):
+    """RÉGRESSION (aperçu devis cassé) : on rend RÉELLEMENT le PDF via le moteur
+    vendu — moteur NON mocké — pour les trois formats de l'aperçu du panneau
+    lead (Premium, 1 page, Inclure l'étude). L'ancien test mockait le moteur et
+    ne pouvait donc PAS détecter un échec de rendu : il vérifiait juste qu'un
+    endpoint répond 200. Ici on prouve que les octets servis sont un vrai PDF
+    chargeable (signature %PDF, taille réaliste), ce que l'iframe blob affiche.
+    Seul l'aller-retour MinIO est simulé : les octets traversent intacts."""
+
+    def setUp(self):
+        from decimal import Decimal
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneDevis
+        self.company = make_company(slug='proposal-render-co')
+        self.user = User.objects.create_user(
+            username='proposal_render_user', password='x',
+            role_legacy='responsable', company=self.company,
+        )
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        client = Client.objects.create(
+            company=self.company, nom='Bennani', prenom='Salma',
+            email='s@example.com', telephone='+212600000009',
+            adresse='Anfa, Casablanca',
+        )
+        # Devis réaliste avec lignes (mêmes ingrédients que les tests moteur) :
+        # panneaux + onduleur + structure -> rendu premium complet.
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-RENDER-0001', client=client,
+            statut='brouillon', taux_tva=Decimal('20.00'),
+            remise_globale=Decimal('0'), created_by=self.user,
+        )
+        for desig, qty, pu in [
+            ('Panneau mono 550W', '12', '1100'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '1', '14000'),
+            ('Structures acier', '12', '375'),
+            ('Installation', '1', '4000'),
+        ]:
+            produit = Produit.objects.create(
+                company=self.company, nom=desig, sku=f'RND-{desig[:10]}',
+                prix_vente=Decimal(pu), prix_achat=Decimal('1'),
+                quantite_stock=100,
+            )
+            LigneDevis.objects.create(
+                devis=self.devis, produit=produit, designation=desig,
+                quantite=Decimal(qty), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'),
+            )
+
+    def _get_proposal(self, query=''):
+        """Rend réellement le PDF : moteur réel, seul MinIO (upload/download)
+        est simulé via un magasin en mémoire pour faire transiter les octets."""
+        from unittest import mock
+        store = {}
+
+        def fake_upload(pdf_bytes, key):
+            store[key] = bytes(pdf_bytes)
+
+        def fake_download(key):
+            return store[key]
+
+        with mock.patch(
+            'apps.ventes.quote_engine.builder._ensure_pdf_bucket'
+        ), mock.patch(
+            'apps.ventes.utils.pdf._upload_pdf', side_effect=fake_upload
+        ), mock.patch(
+            'apps.ventes.utils.pdf.download_pdf', side_effect=fake_download
+        ):
+            return self.api.get(
+                f'/api/django/ventes/devis/{self.devis.id}/proposal/{query}')
+
+    def _assert_valid_pdf(self, resp):
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('inline', resp['Content-Disposition'])
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'%PDF'),
+                        'le corps servi doit être un vrai PDF (%PDF)')
+        # Un vrai rendu fait des dizaines de Ko ; un PDF quasi vide trahit un
+        # échec silencieux. On exige une taille plancher réaliste.
+        self.assertGreater(len(body), 10000, 'PDF trop petit -> rendu raté')
+
+    def test_premium_full_renders_valid_pdf(self):
+        self._assert_valid_pdf(self._get_proposal('?pdf_mode=full'))
+
+    def test_onepage_renders_valid_pdf(self):
+        self._assert_valid_pdf(self._get_proposal('?pdf_mode=onepage'))
+
+    def test_premium_with_etude_renders_valid_pdf(self):
+        self._assert_valid_pdf(
+            self._get_proposal('?pdf_mode=full&include_etude=1'))

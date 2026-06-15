@@ -1,11 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TAQINOR — ERP Agentique</title>
     <link rel="stylesheet" href="/fonts/sora.css" />
+
+    <!-- PWA : couleur de barre + installation « app » plein écran -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="description" content="L’ERP solaire de Taqinor : devis, CRM, stock et facturation." />
+    <!-- iOS ignore une partie du manifeste : balises dédiées ci-dessous -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Taqinor" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180.png" />
   </head>
   <body>
     <div id="root"></div>
