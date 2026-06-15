@@ -31,9 +31,11 @@ import {
   type ConfigFamily,
 } from '../lib/estimatorBrain';
 import { type LngLat } from '../lib/roof';
+import { buildSatelliteStyle } from '../lib/roofConfig';
 
 interface InitOptions {
   maptilerKey: string;
+  mapboxToken?: string;
   reducedMotion: boolean;
   initialQuery?: string;
   onReady?: () => void;
@@ -168,7 +170,11 @@ export function initRoofToolPro3(opts: InitOptions): void {
   // — Three.js —
   const map = new maplibregl.Map({
     container: mapEl,
-    style: `https://api.maptiler.com/maps/hybrid/style.json?key=${encodeURIComponent(opts.maptilerKey)}`,
+    // Imagerie satellite : Mapbox (Maxar Vivid, plus nette sur le Maroc) si un
+    // token PUBLIC_MAPBOX_TOKEN est posé, sinon REPLI inchangé sur le style
+    // hybride MapTiler. La géolocalisation/recherche reste sur MapTiler (clé
+    // toujours requise) — Mapbox n'apporte QUE l'imagerie.
+    style: buildSatelliteStyle({ maptilerKey: opts.maptilerKey, mapboxToken: opts.mapboxToken }) as maplibregl.StyleSpecification | string,
     center: MOROCCO_CENTER,
     zoom: 5,
     pitch: 0,
