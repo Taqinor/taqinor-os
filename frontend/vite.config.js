@@ -19,7 +19,8 @@ export default defineConfig({
       registerType: 'autoUpdate', // skipWaiting + clientsClaim dans sw.js
       injectRegister: false, // l'enregistrement passe par useRegisterSW (React)
       includeAssets: [
-        'favicon.svg', 'apple-touch-icon-180.png', 'offline.html',
+        'favicon.svg', 'favicon.ico', 'favicon-16.png', 'favicon-32.png',
+        'apple-touch-icon-180.png', 'offline.html',
         'fonts/**/*',
       ],
       manifest: {
