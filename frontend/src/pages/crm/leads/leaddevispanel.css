@@ -133,6 +133,49 @@
   display: block;
 }
 
+/* Repli quand l'aperçu inline ne se rend pas (bloqueur de pub / réseau) ou
+   quand le serveur ne peut pas générer le PDF : centré sur la zone sombre,
+   jamais un cadre d'erreur brut. */
+.ldp-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.ldp-fallback-icon { font-size: 40px; line-height: 1; }
+
+.ldp-fallback-msg {
+  margin: 0;
+  max-width: 420px;
+  line-height: 1.5;
+  color: #f1f5f9;
+  font-size: 0.95rem;
+}
+
+.ldp-fallback-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ldp-fallback-retry {
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 4px;
+}
+.ldp-fallback-retry:hover { color: #fff; }
+
 @media (max-width: 640px) {
   .ldp-panel { width: 100%; }
 }
