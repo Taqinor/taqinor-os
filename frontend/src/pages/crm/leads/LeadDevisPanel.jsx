@@ -9,6 +9,7 @@ import { useDispatch } from 'react-redux'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote } from '../../../features/ventes/autoQuote'
+import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
 
 // L'aperçu PDF est récupéré en BLOB via axios (MÊME chemin que le bouton
@@ -71,13 +72,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewLoading(true)
     setPreviewError(null)
-    ventesApi.getProposalPdf(devisId, {
-      pdf_mode: pdfMode, include_etude: includeEtude ? 1 : 0,
-    })
+    ventesApi.getProposalPdf(devisId, proposalParams(pdfMode, includeEtude))
       .then((res) => {
         if (cancelled) return
-        const blob = new Blob([res.data], { type: 'application/pdf' })
-        objectUrl = URL.createObjectURL(blob)
+        objectUrl = URL.createObjectURL(pdfBlob(res.data))
         setPreviewUrl(objectUrl)
       })
       .catch(() => {
@@ -145,9 +143,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     if (!devisId) return
     setDownloading(true)
     try {
-      const res = await ventesApi.getProposalPdf(devisId, {
-        pdf_mode: pdfMode, include_etude: includeEtude ? 1 : 0,
-      })
+      const res = await ventesApi.getProposalPdf(
+        devisId, proposalParams(pdfMode, includeEtude))
       downloadBlob(res.data, `${devisRef || 'Devis'}.pdf`)
     } catch {
       setErrorMsg('Téléchargement du PDF indisponible. Réessayez.')

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Hors ligne — Taqinor OS</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body {
+        margin: 0; height: 100%;
+        background: #0f172a; color: #e2e8f0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .wrap {
+        min-height: 100%; box-sizing: border-box;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        text-align: center; padding: 2rem; gap: 1rem;
+      }
+      .logo { width: 84px; height: 84px; }
+      h1 { font-size: 1.4rem; margin: 0.4rem 0 0; font-weight: 700; }
+      p { margin: 0; max-width: 28rem; line-height: 1.5; color: #94a3b8; }
+      button {
+        margin-top: 0.8rem; padding: 0.7rem 1.4rem;
+        font-size: 1rem; font-weight: 600; cursor: pointer;
+        color: #0f172a; background: #f5a623; /* gold de marque */
+        border: none; border-radius: 10px;
+      }
+      button:active { transform: translateY(1px); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img class="logo" src="/favicon.svg" alt="Taqinor" />
+      <h1>Vous êtes hors ligne</h1>
+      <p>
+        Taqinor OS a besoin d’une connexion Internet pour afficher vos données.
+        Vérifiez votre réseau (Wi-Fi ou données mobiles), puis réessayez.
+      </p>
+      <button onclick="location.reload()">Réessayer</button>
+    </div>
+  </body>
+</html>

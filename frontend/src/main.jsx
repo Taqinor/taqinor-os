@@ -4,12 +4,14 @@ import { Provider } from 'react-redux'
 import { RouterProvider } from 'react-router-dom'
 import { store } from './store'
 import router from './router'
+import PwaPrompts from './features/pwa/PwaPrompts'
 import './index.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
       <RouterProvider router={router} />
+      <PwaPrompts />
     </Provider>
   </StrictMode>,
 )
