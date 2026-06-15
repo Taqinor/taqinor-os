@@ -55,3 +55,52 @@ export async function fetchPvgisAnnualKwh(
     return null;
   }
 }
+
+/**
+ * Variante PARAMÉTRÉE PAR L'INCLINAISON pour l'estimateur « cerveau »
+ * (/preview/toiture-3d-pro-3) : même API PVGIS, même robustesse (null en silence),
+ * mais l'angle est fourni (la table committée reste le repli instantané). N'altère
+ * PAS fetchPvgisAnnualKwh (route /api/roof-estimate inchangée).
+ *
+ * @param tilt inclinaison en degrés.
+ * @param aspect azimut PVGIS (0=Sud, -90=Est, 90=Ouest, 180=Nord).
+ */
+export async function fetchPvgisAnnualKwhAtTilt(
+  lat: number,
+  lon: number,
+  kwc: number,
+  aspect: number,
+  tilt: number,
+  fetchFn: typeof fetch = fetch,
+): Promise<number | null> {
+  if (!Number.isFinite(kwc) || kwc <= 0) return null;
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return null;
+  if (!Number.isFinite(tilt) || tilt < 0 || tilt > 90) return null;
+
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    peakpower: String(kwc),
+    loss: String(SYSTEM_LOSS_PCT),
+    angle: String(tilt),
+    aspect: String(aspect),
+    pvtechchoice: 'crystSi',
+    mountingplace: 'building',
+    outputformat: 'json',
+  });
+
+  try {
+    const res = await fetchFn(`${PVGIS_ENDPOINT}?${params.toString()}`, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { outputs?: { totals?: { fixed?: { E_y?: unknown } } } };
+    const eY = data?.outputs?.totals?.fixed?.E_y;
+    if (typeof eY !== 'number' || !Number.isFinite(eY) || eY <= 0) return null;
+    return eY;
+  } catch {
+    return null;
+  }
+}
