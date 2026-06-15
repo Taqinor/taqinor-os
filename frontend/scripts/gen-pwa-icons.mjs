@@ -1,8 +1,9 @@
 // Génère les icônes PWA à partir du logo SVG de la marque (public/favicon.svg),
 // centré sur le fond navy de l'app (#0f172a), avec une marge de sécurité.
 // Les PNG produits sont COMMITÉS dans public/ : la build de prod n'a donc besoin
-// que de vite-plugin-pwa (pas de @resvg/resvg-js au build). Pour régénérer :
-//   node scripts/gen-pwa-icons.mjs
+// que de vite-plugin-pwa. @resvg/resvg-js n'est PAS une dépendance du projet
+// (binaire natif lourd, inutile à la build). Pour régénérer les icônes :
+//   npm i -D @resvg/resvg-js && node scripts/gen-pwa-icons.mjs && npm un @resvg/resvg-js
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
