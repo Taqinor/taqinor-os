@@ -26,6 +26,8 @@ const crmApi = {
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
+  // Atelier doublons : tous les clusters de la société (survivant suggéré).
+  getDoublons: (params) => api.get('/crm/leads/doublons/', { params }),
   mergeLeads: (id, others) => api.post(`/crm/leads/${id}/merge/`, { others }),
 
   // Listes gérées (Paramètres → CRM).
