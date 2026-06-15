@@ -8,4 +8,6 @@ urlpatterns = [
     path('upload-signature/', views.upload_signature),
     path('delete-logo/', views.delete_logo),
     path('delete-signature/', views.delete_signature),
+    # Modèles de message WhatsApp (FR + Darija) éditables.
+    path('messages/', views.messages_endpoint),
 ]

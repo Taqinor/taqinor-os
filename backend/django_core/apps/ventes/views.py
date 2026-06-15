@@ -481,7 +481,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
-            'relancer', 'exclure_relance',
+            'relancer', 'exclure_relance', 'whatsapp',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -640,6 +640,32 @@ class FactureViewSet(viewsets.ModelViewSet):
             f'inline; filename="{filename}"'
         )
         return response
+
+    @action(detail=True, methods=['post'], url_path='whatsapp',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp(self, request, pk=None):
+        """Lien wa.me prêt à envoyer pour une facture (ou un rappel).
+
+        N'envoie RIEN : ouvre WhatsApp avec le message pré-rempli. Le {lien} est
+        un lien public tokenisé (30 j) vers le PDF CLIENT de la facture.
+        Body : `modele` ∈ {'facture','relance'}, `langue` ∈ {'fr','darija'}.
+        """
+        from .utils.phone import normalize_ma_phone
+        from .utils.whatsapp import build_facture_whatsapp, build_wa_url
+        facture = self.get_object()
+        phone = facture.client.telephone if facture.client_id else ''
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        modele = request.data.get('modele', 'facture')
+        langue = request.data.get('langue', 'fr')
+        message, link = build_facture_whatsapp(request, facture, modele, langue)
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': link['url'],
+        })
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])

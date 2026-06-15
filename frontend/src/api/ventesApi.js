@@ -45,6 +45,8 @@ const ventesApi = {
   genererPdfFacture: (id) => api.post(`/ventes/factures/${id}/generer-pdf/`),
   telechargerPdfFacture: (id) => api.get(`/ventes/factures/${id}/telecharger-pdf/`, { responseType: 'blob' }),
   envoyerEmailFacture: (id, email) => api.post(`/ventes/factures/${id}/envoyer-email/`, { email }),
+  // Envoyer par WhatsApp : lien wa.me prêt à envoyer (modele 'facture'/'relance').
+  whatsappFacture: (id, payload = {}) => api.post(`/ventes/factures/${id}/whatsapp/`, payload),
   emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
   marquerPayeeFacture: (id) => api.post(`/ventes/factures/${id}/marquer-payee/`),
   annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),

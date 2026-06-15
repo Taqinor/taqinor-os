@@ -29,6 +29,10 @@ const crmApi = {
   // Atelier doublons : tous les clusters de la société (survivant suggéré).
   getDoublons: (params) => api.get('/crm/leads/doublons/', { params }),
   mergeLeads: (id, others) => api.post(`/crm/leads/${id}/merge/`, { others }),
+  // Envoyer par WhatsApp : construit un lien wa.me prêt à envoyer pour un ou
+  // plusieurs devis du lead (le commercial appuie lui-même sur Envoyer).
+  whatsappDevis: (id, payload) =>
+    api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
 
   // Listes gérées (Paramètres → CRM).
   getTags: () => api.get('/crm/tags/'),
