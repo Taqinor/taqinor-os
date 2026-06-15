@@ -10,6 +10,7 @@ import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../fea
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import parametresApi from '../../api/parametresApi'
 import ProduitPicker from '../../components/ProduitPicker'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
@@ -359,6 +360,32 @@ export default function DevisGenerator({
       }))
     })
   }, [editId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Réglages entreprise (Paramètres) → valeurs par défaut du générateur ──
+  // FEATURE 10 : en CRÉATION uniquement, la date de validité par défaut suit
+  // « validité du devis » (jours) et les heures de pompage suivent « heures de
+  // pompage/jour ». Les champs restent librement éditables (rien n'est imposé).
+  // En édition (?edit=ID), c'est le devis lui-même qui prime — on ne touche à
+  // rien ici.
+  const settingsLoaded = useRef(false)
+  useEffect(() => {
+    if (editId || settingsLoaded.current) return
+    settingsLoaded.current = true
+    parametresApi.getProfile().then(({ data }) => {
+      const jours = parseInt(data?.quote_validity_days, 10)
+      if (Number.isFinite(jours) && jours > 0) {
+        const d = new Date()
+        d.setDate(d.getDate() + jours)
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1)
+          .padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        setDateValidite(prev => prev || iso)
+      }
+      const heures = parseFloat(data?.agricole_pump_hours)
+      if (Number.isFinite(heures) && heures > 0) {
+        setPompeHeures(String(heures))
+      }
+    }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
+  }, [editId])
 
   // Arrivée depuis le lead. Pleine page : via l'URL (?lead=…&auto=1&discount=…).
   // Embarqué : via les props (leadId/auto/discount), jamais l'URL.
