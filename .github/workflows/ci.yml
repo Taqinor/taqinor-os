@@ -36,17 +36,6 @@ jobs:
         image: redis:7.4-alpine
         ports:
           - 6379:6379
-      # MinIO (stockage objet) — nécessaire aux tests qui rendent un PDF
-      # (devis premium /proposal, factures…) et le déposent/relisent. L'image
-      # bitnami démarre le serveur par défaut et pré-crée les buckets.
-      minio:
-        image: bitnami/minio:2024
-        env:
-          MINIO_ROOT_USER: erp_admin
-          MINIO_ROOT_PASSWORD: erp_minio_password
-          MINIO_DEFAULT_BUCKETS: erp-pdf,erp-uploads
-        ports:
-          - 9000:9000
     env:
       DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
       DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
@@ -76,15 +65,24 @@ jobs:
       - name: Install Python dependencies
         working-directory: backend/django_core
         run: pip install -r requirements.txt
-      - name: Wait for MinIO to be ready
+      - name: Start MinIO + create buckets
         run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=erp_admin \
+            -e MINIO_ROOT_PASSWORD=erp_minio_password \
+            minio/minio:latest server /data
+          # Attente de disponibilité (endpoint santé MinIO).
           for i in $(seq 1 30); do
             if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO prêt"; exit 0
+              echo "MinIO prêt"; break
             fi
             echo "Attente MinIO ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
           done
-          echo "MinIO indisponible"; exit 1
+          # Pré-création des buckets (erp-pdf est aussi auto-créé par l'app).
+          docker run --rm --network host minio/mc:latest sh -c "
+            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+            mc mb -p local/erp-pdf local/erp-uploads"
       - name: Run Django test suite
         working-directory: backend/django_core
         run: python manage.py test apps authentication -v 2
