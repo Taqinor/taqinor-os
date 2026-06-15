@@ -644,3 +644,68 @@ class RelanceLog(models.Model):
 
     def __str__(self):
         return f'Relance {self.facture.reference} — {self.date}'
+
+
+# ── Liens publics tokenisés (Envoyer par WhatsApp) ───────────────────────────
+import secrets  # noqa: E402
+from datetime import timedelta  # noqa: E402
+from django.utils import timezone  # noqa: E402
+
+SHARE_LINK_TTL_DAYS = 30
+
+
+def _default_share_token():
+    return secrets.token_urlsafe(32)
+
+
+def _default_share_expiry():
+    return timezone.now() + timedelta(days=SHARE_LINK_TTL_DAYS)
+
+
+class ShareLink(models.Model):
+    """Lien public, lecture seule, expirant (30 j) vers le PDF CLIENT d'un devis
+    ou d'une facture. Jeton long et imprévisible. Aucun login pour le client,
+    aucune autre donnée accessible, jamais de prix d'achat ni de marge (le PDF
+    client ne les contient pas)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='share_links')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_share_token,
+        editable=False)
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='share_links')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='share_links')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=_default_share_expiry)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['token'])]
+
+    def __str__(self):
+        cible = self.devis_id and 'devis' or 'facture'
+        return f'ShareLink {self.token[:8]}… ({cible})'
+
+    @property
+    def is_valid(self):
+        return self.expires_at > timezone.now()
+
+    @classmethod
+    def for_devis(cls, devis):
+        """Réutilise un lien encore valide pour ce devis, sinon en crée un."""
+        link = cls.objects.filter(
+            devis=devis, expires_at__gt=timezone.now()
+        ).order_by('-expires_at').first()
+        return link or cls.objects.create(company=devis.company, devis=devis)
+
+    @classmethod
+    def for_facture(cls, facture):
+        link = cls.objects.filter(
+            facture=facture, expires_at__gt=timezone.now()
+        ).order_by('-expires_at').first()
+        return link or cls.objects.create(
+            company=facture.company, facture=facture)

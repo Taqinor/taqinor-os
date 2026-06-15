@@ -38,6 +38,15 @@ export default function RelancesPage() {
       openPdfBlob(res.data, `Relance_${r.reference}.pdf`)
     } catch { alert('PDF indisponible.') }
   }
+  // Rappel de paiement par WhatsApp : message « relance » + lien public.
+  const whatsapp = async (r) => {
+    try {
+      const res = await ventesApi.whatsappFacture(r.id, { modele: 'relance' })
+      if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    }
+  }
 
   return (
     <div className="page">
@@ -73,6 +82,7 @@ export default function RelancesPage() {
                 <td>{r.nb_relances}</td>
                 <td className="ta-right">
                   <button className="btn btn-sm btn-primary" onClick={() => { setTarget(r); setNote('') }}>Relancer</button>
+                  <button className="btn btn-sm btn-outline" style={{ marginLeft: 6 }} onClick={() => whatsapp(r)} title="Rappel de paiement par WhatsApp">🟢 WhatsApp</button>
                   <button className="btn btn-sm btn-outline" style={{ marginLeft: 6 }} onClick={() => lettre(r)}>Lettre</button>
                   <button className="btn btn-sm btn-outline" style={{ marginLeft: 6 }} onClick={() => exclure(r)}>Exclure</button>
                 </td>

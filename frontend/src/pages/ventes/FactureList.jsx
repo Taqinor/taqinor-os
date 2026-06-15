@@ -80,6 +80,7 @@ export default function FactureList() {
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
+  const [waBusyId, setWaBusyId] = useState(null)
 
   // ── Enregistrement de paiement ──
   const [payTarget, setPayTarget] = useState(null) // facture ciblée
@@ -201,6 +202,20 @@ export default function FactureList() {
       alert('Fichier introuvable. Régénérez le PDF.')
     } finally {
       setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
+    }
+  }
+
+  // Envoyer par WhatsApp : ouvre WhatsApp avec le message + lien public (PDF
+  // client) pré-rempli ; le commercial appuie lui-même sur Envoyer.
+  const handleWhatsApp = async (f, modele = 'facture') => {
+    setWaBusyId(f.id)
+    try {
+      const res = await ventesApi.whatsappFacture(f.id, { modele })
+      if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    } finally {
+      setWaBusyId(null)
     }
   }
 
@@ -406,6 +421,17 @@ export default function FactureList() {
                         title="Créer un avoir (note de crédit)"
                       >
                         Avoir
+                      </button>
+                    )}
+
+                    {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => handleWhatsApp(f, 'facture')}
+                        disabled={waBusyId === f.id}
+                        title="Envoyer par WhatsApp (lien vers le PDF client)"
+                      >
+                        {waBusyId === f.id ? '...' : '🟢 WhatsApp'}
                       </button>
                     )}
 
