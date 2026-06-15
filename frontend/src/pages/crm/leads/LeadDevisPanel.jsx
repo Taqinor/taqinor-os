@@ -4,7 +4,7 @@
    existant (DevisGenerator embarqué) et le calcul auto partagé (autoQuote.js) —
    aucune logique de prix ni de PDF dupliquée. Le PDF vient du chemin canonique
    /proposal (CLAUDE.md règle #4). */
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
@@ -14,12 +14,17 @@ import {
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
 
+// Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
+// sur le bundle que quand on ouvre réellement un aperçu.
+const PdfCanvas = lazy(() => import('../../../features/ventes/PdfCanvas'))
+
 // L'aperçu PDF est récupéré en BLOB via axios (MÊME chemin que le bouton
-// « Télécharger » qui marche), puis affiché dans l'iframe via une URL blob.
-// On NE pointe PLUS l'iframe directement sur /proposal : une requête native
-// d'iframe ne peut pas rejouer le refresh silencieux du token (401 → icône
-// « fichier cassé ») et n'affiche aucune erreur lisible si le moteur PDF
-// refuse le devis. Passer par axios règle les deux : refresh auto + message FR.
+// « Télécharger » qui marche), puis DESSINÉ avec PDF.js sur des canvas.
+// On NE pointe PLUS un cadre embarqué (iframe/embed) vers le PDF : un bloqueur
+// de pub ou la politique PDF de Chrome peut le bloquer (cadre « contenu
+// bloqué »). PDF.js rend depuis les octets authentifiés -> rien ne peut le
+// bloquer, et le refresh silencieux du token (axios) reste rejoué + message
+// d'erreur FR lisible.
 
 const TITLES = {
   auto: 'Devis automatique',
@@ -62,43 +67,37 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const produitsRef = useRef(null)
   const startedRef = useRef(false)
 
-  // Aperçu PDF en blob (URL d'objet), récupéré via axios — voir l'en-tête.
-  const [previewUrl, setPreviewUrl] = useState(null)
+  // Octets du PDF (Blob) récupérés via axios — voir l'en-tête. PDF.js les
+  // dessine sur canvas, et c'est la MÊME source que le téléchargement.
+  const [previewBlob, setPreviewBlob] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   // serverError : vrai échec de génération (4xx/5xx) -> message clair distinct.
   const [serverError, setServerError] = useState(null)
-  // networkFailed : le fetch a échoué côté réseau/timeout (pas de réponse).
+  // networkFailed : le fetch des octets a échoué (réseau/timeout, pas de réponse).
   const [networkFailed, setNetworkFailed] = useState(false)
-  // Suivi du rendu de l'iframe : 'pending' tant qu'onLoad n'a pas confirmé.
-  const [renderStatus, setRenderStatus] = useState('pending')
+  // renderFailed : PDF.js n'a pas pu dessiner les octets (cas rare).
+  const [renderFailed, setRenderFailed] = useState(false)
   // Compteur de « Réessayer » : relance le fetch + le rendu.
   const [previewReloadKey, setPreviewReloadKey] = useState(0)
-  // On garde le Blob (pas seulement l'URL) pour « Ouvrir dans un nouvel onglet »
-  // même après révocation de l'URL d'aperçu.
-  const previewBlobRef = useRef(null)
 
-  // Récupération du PDF (blob). Distingue un VRAI échec serveur d'un échec
+  // Récupération des octets du PDF. Distingue un VRAI échec serveur d'un échec
   // réseau : le 1er garde un message d'erreur, le 2nd bascule sur le repli.
   useEffect(() => {
     if (phase !== 'preview' || !devisId) return undefined
     let cancelled = false
-    let objectUrl = null
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewLoading(true)
     setServerError(null)
     setNetworkFailed(false)
-    previewBlobRef.current = null
+    setRenderFailed(false)
+    setPreviewBlob(null)
     ventesApi.getProposalPdf(devisId, proposalParams(pdfMode, includeEtude))
       .then((res) => {
         if (cancelled) return
-        const blob = pdfBlob(res.data)
-        previewBlobRef.current = blob
-        objectUrl = URL.createObjectURL(blob)
-        setPreviewUrl(objectUrl)
+        setPreviewBlob(pdfBlob(res.data))
       })
       .catch((err) => {
         if (cancelled) return
-        setPreviewUrl(null)
         if (classifyFetchError(err) === 'server') {
           setServerError(
             "Le serveur n'a pas pu générer ce PDF. Ouvrez l'édition complète "
@@ -109,43 +108,27 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         }
       })
       .finally(() => { if (!cancelled) setPreviewLoading(false) })
-    return () => {
-      cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
+    return () => { cancelled = true }
   }, [phase, devisId, pdfMode, includeEtude, previewReloadKey])
-
-  // Détection « aperçu non rendu » : un bloqueur de contenu remplace l'embed
-  // SANS déclencher d'erreur classique. Si l'iframe ne signale pas son
-  // chargement (onLoad) dans un court délai, on conclut au blocage -> repli.
-  useEffect(() => {
-    if (!previewUrl) return undefined
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRenderStatus('pending')
-    const timer = setTimeout(() => {
-      setRenderStatus((s) => (s === 'pending' ? 'failed' : s))
-    }, 3500)
-    return () => clearTimeout(timer)
-  }, [previewUrl])
 
   // « Réessayer l'aperçu » : on relance fetch + rendu depuis zéro.
   const reloadPreview = () => {
-    setPreviewUrl(null)
-    setRenderStatus('pending')
+    setPreviewBlob(null)
     setNetworkFailed(false)
+    setRenderFailed(false)
     setServerError(null)
     setErrorMsg(null)
     setPreviewReloadKey((k) => k + 1)
   }
 
-  // blocked (dérivé) : embed non rendu (bloqueur/timeout) OU échec réseau du
-  // fetch -> repli gracieux dans les deux cas.
-  const blocked = networkFailed || renderStatus === 'failed'
+  // blocked (dérivé) : échec réseau du fetch OU échec de rendu PDF.js -> repli
+  // gracieux téléchargeable dans les deux cas.
+  const blocked = networkFailed || renderFailed
   const previewState = previewView({
     loading: previewLoading,
     serverError: !!serverError,
     blocked,
-    hasUrl: !!previewUrl,
+    hasUrl: !!previewBlob,
   })
 
   // ── Création auto (auto / onepage / premium : pas de saisie préalable) ──
@@ -216,12 +199,11 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const handleOpenNewTab = async () => {
     if (!devisId) return
     try {
-      let blob = previewBlobRef.current
+      let blob = previewBlob
       if (!blob) {
         const res = await ventesApi.getProposalPdf(
           devisId, proposalParams(pdfMode, includeEtude))
         blob = pdfBlob(res.data)
-        previewBlobRef.current = blob
       }
       const url = URL.createObjectURL(blob)
       window.open(url, '_blank', 'noopener')
@@ -358,14 +340,14 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   </div>
                 )}
 
-                {/* Repli gracieux : embed bloqué (bloqueur de pub) ou réseau. */}
+                {/* Repli : la récupération des octets a échoué (réseau/timeout).
+                    Le rendu PDF.js lui-même n'est pas blocable. */}
                 {previewState === PREVIEW_VIEW.FALLBACK && (
                   <div className="ldp-fallback">
-                    <div className="ldp-fallback-icon">🛡️</div>
+                    <div className="ldp-fallback-icon">📶</div>
                     <p className="ldp-fallback-msg">
-                      Aperçu indisponible. Si vous utilisez un bloqueur de
-                      publicités, désactivez-le pour ce site, ou téléchargez le
-                      devis directement.
+                      Aperçu indisponible — vérifiez votre connexion. Vous pouvez
+                      réessayer ou télécharger le devis directement.
                     </p>
                     <div className="ldp-fallback-actions">
                       <button type="button" className="btn btn-primary"
@@ -385,14 +367,19 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                 )}
 
                 {previewState === PREVIEW_VIEW.PDF && (
-                  <iframe
-                    title="Aperçu du devis"
-                    key={previewUrl}
-                    src={previewUrl}
-                    className="ldp-iframe"
-                    onLoad={() => setRenderStatus('ok')}
-                    onError={() => setRenderStatus('failed')}
-                  />
+                  <Suspense
+                    fallback={(
+                      <p className="gen-hint ldp-pdf-loading">
+                        ⏳ Chargement de l'aperçu…
+                      </p>
+                    )}
+                  >
+                    <PdfCanvas
+                      key={previewReloadKey}
+                      blob={previewBlob}
+                      onError={() => setRenderFailed(true)}
+                    />
+                  </Suspense>
                 )}
               </div>
             </div>

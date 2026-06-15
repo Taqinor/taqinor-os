@@ -2,11 +2,19 @@
 // Exécutés en CI : node --test src/features/ventes/previewPdf.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
 import {
   proposalParams, pdfBlob, PDF_MIME,
   previewView, classifyFetchError, PREVIEW_VIEW,
 } from './previewPdf.js'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const PANEL = readFileSync(
+  join(HERE, '..', '..', 'pages', 'crm', 'leads', 'LeadDevisPanel.jsx'), 'utf8')
+const PDFCANVAS = readFileSync(join(HERE, 'PdfCanvas.jsx'), 'utf8')
 
 test('proposalParams : Premium = full, étude respectée', () => {
   assert.deepEqual(proposalParams('full', false), {
@@ -89,4 +97,42 @@ test('classifyFetchError : réponse HTTP 4xx/5xx = serveur ; sinon réseau', () 
   assert.equal(classifyFetchError({ code: 'ECONNABORTED' }), 'network')
   assert.equal(classifyFetchError({ request: {} }), 'network')
   assert.equal(classifyFetchError(undefined), 'network')
+})
+
+// ── L'aperçu rend via PDF.js (canvas), JAMAIS un embed blocable ──────────────
+
+test('le panneau ne contient AUCUN embed PDF blocable (iframe/embed/object)', () => {
+  // Un <iframe>/<embed>/<object> pointant le PDF se fait bloquer par un
+  // bloqueur de pub / la politique PDF de Chrome. Le rendu doit passer par
+  // PDF.js (canvas), inblocable.
+  assert.ok(!/<iframe[\s/>]/.test(PANEL), 'aucune <iframe> dans le panneau')
+  assert.ok(!/<embed[\s/>]/.test(PANEL), 'aucun <embed> dans le panneau')
+  assert.ok(!/<object[\s/>]/.test(PANEL), 'aucun <object> dans le panneau')
+})
+
+test('le panneau rend l’aperçu via PDF.js (PdfCanvas)', () => {
+  assert.match(PANEL, /PdfCanvas/, 'le panneau monte le composant PdfCanvas')
+  assert.match(PANEL, /blob=\{previewBlob\}/, 'il passe les octets (blob) à PDF.js')
+})
+
+test('PdfCanvas dessine les octets via pdf.js sur des canvas (worker local)', () => {
+  assert.match(PDFCANVAS, /from 'pdfjs-dist'/)
+  assert.match(PDFCANVAS, /getDocument/, 'charge le PDF depuis les octets')
+  assert.match(PDFCANVAS, /createElement\(['"]canvas['"]\)/, 'dessine sur canvas')
+  assert.match(PDFCANVAS, /\.render\(/, 'rend chaque page')
+  // Worker servi depuis NOTRE origine (Vite ?worker), pas un CDN blocable.
+  assert.match(PDFCANVAS, /pdf\.worker\.min\.mjs\?worker/)
+  assert.match(PDFCANVAS, /workerPort/)
+})
+
+test('échec du fetch des octets -> repli FR avec bouton « Télécharger »', () => {
+  // 1) le réseau qui échoue mène bien au repli (logique pure)
+  assert.equal(
+    previewView({ loading: false, serverError: false, blocked: true, hasUrl: false }),
+    PREVIEW_VIEW.FALLBACK,
+  )
+  // 2) le bloc repli du panneau offre le téléchargement qui marche
+  assert.match(PANEL, /PREVIEW_VIEW\.FALLBACK/)
+  assert.match(PANEL, /Télécharger le PDF/)
+  assert.match(PANEL, /onClick=\{handleDownload\}/)
 })

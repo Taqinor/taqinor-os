@@ -133,6 +133,32 @@
   display: block;
 }
 
+/* Rendu PDF.js : pages canvas empilées, défilables, centrées sur la zone
+   sombre, comme un vrai document. */
+.ldp-pdfjs-wrap {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ldp-pdfjs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 12px 24px;
+  min-height: 100%;
+}
+
+.ldp-pdf-page {
+  display: block;
+  max-width: 100%;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
 /* Repli quand l'aperçu inline ne se rend pas (bloqueur de pub / réseau) ou
    quand le serveur ne peut pas générer le PDF : centré sur la zone sombre,
    jamais un cadre d'erreur brut. */
