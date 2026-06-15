@@ -24,12 +24,13 @@ import {
   packConfig,
   productionKwh,
   billToAnnualKwh,
+  annualSavingsMad,
   type Recommendation,
   type PackResult,
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrain';
-import { annualSavingsBandMad, type LngLat } from '../lib/roof';
+import { type LngLat } from '../lib/roof';
 
 interface InitOptions {
   maptilerKey: string;
@@ -310,8 +311,6 @@ export function initRoofToolPro3(opts: InitOptions): void {
     // Axes de visée à partir de l'azimut de la famille.
     const azRad = pack.azimuthDeg * DEG2RAD;
     const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
-    const s0 = f[0];
-    const s1 = f[1];
     const u: [number, number] = [-f[1], f[0]];
     const rowAngleRad = Math.atan2(u[1], u[0]);
     const ca = Math.cos(rowAngleRad);
@@ -351,11 +350,9 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
 
     for (const p of panels) {
-      // Pour l'Est-Ouest : alterner le sens d'inclinaison selon la rangée
-      // d'empilement (chevrons faces E/O). Parité = index de rangée le long de s.
-      const v = p.cx * s0 + p.cy * s1;
-      const parity = Math.round(v / Math.max(0.5, grid.rowPitchM)) % 2;
-      const signedTilt = family === 'eastwest' ? (parity === 0 ? tilt : -tilt) : tilt;
+      // Pour l'Est-Ouest : le sens d'inclinaison vient de la FACE du panneau
+      // (chevrons dos à dos faces E/O), fournie par le cerveau. Sud : tilt simple.
+      const signedTilt = family === 'eastwest' ? (p.face === 'E' ? -tilt : tilt) : tilt;
       const pZ = baseZ + frontStrut + rise / 2 + 0.07;
       panelMatsArr.push(compose(p.cx, p.cy, pZ, rowAngleRad, signedTilt));
       for (const xe of ends) {
@@ -523,7 +520,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const grid = gridFor(pack);
     const annualKwh = productionKwh(centroidLat, family, tiltDeg, grid.kwc);
     const target = billToAnnualKwh(monthlyBill());
-    const savings = annualSavingsBandMad(annualKwh);
+    const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(pack, grid, tiltDeg, family, grid.count);
     paintCard({
       title: `${family === 'eastwest' ? 'Est-Ouest' : 'Plein sud'} ${tiltDeg}° · ${grid.panelOrientation === 'portrait' ? 'portrait' : 'paysage'}`,
@@ -582,7 +579,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const r = rec.recommended;
     const annual = pvgisKwh ?? r.annualKwh;
     const target = rec.targetAnnualKwh;
-    const savings = annualSavingsBandMad(annual);
+    const savings = annualSavingsMad(annual, target); // plafonné à la conso
     paintCard(
       {
         title: r.label,
