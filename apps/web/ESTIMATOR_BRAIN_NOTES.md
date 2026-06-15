@@ -28,6 +28,31 @@ midi → pas ≈ 3,9 m (GCR ≈ 0,62) ; 10 h → pas ≈ 4,1 m (GCR ≈ 0,58). L
 reproduit les deux au centième (testé). Baisser β de 29° → 15° → 10° resserre le
 pas → beaucoup plus de rangées : c'est tout l'intérêt, visible dans les comptes.
 
+**UNE seule fonction d'ombre pour TOUTES les configs (correctif 2026-06).** Le
+terme d'ombre `ombre = rise · (composante directionnelle)/tan(α_s)`, avec
+`rise = L·sin β`, est partagé :
+- **Sud** (rangées E-O empilées vers le sud) : composante = `cos(γ_s)`.
+- **Est-Ouest** (chevrons N-S empilés vers l'est) : composante = `|sin(γ_s)|`. Le
+  soleil de design (10 h, SE) projette ses ombres vers le NW ; la composante de
+  blocage **est-ouest** entre chevrons est donc le **sinus** de l'azimut, pas le
+  cosinus — plus petite, d'où un intervalle plus serré à basse inclinaison, mais
+  **calculé**, jamais une densité/GCR codée en dur.
+
+**Pavage de vrais rectangles, pas une surface × ratio.** Chaque panneau est un
+rectangle `(L·cos β) × largeur` pavé dans le tracé (après retrait + obstructions) ;
+on compte les panneaux qui tiennent réellement. Borne physique dure (testée sur
+chaque config) : **Σ empreintes au sol ≤ surface utile** — les panneaux ne peuvent
+pas se superposer, donc un compte E-O aberrant est mathématiquement impossible.
+**Cohérence E-O vs Sud à inclinaison égale** : ~1,20× à 10°, ~1,33× à 15° — jamais
+l'ancien +71 %.
+
+**Correctif de rive (bug flottant).** `sin(180°) ≈ 1e−16` rendait les vecteurs de
+base légèrement imprécis : les cellules pile au retrait calculaient une distance de
+`0,5 − ε` et étaient rejetées → **toute la 1re rangée et la 1re colonne** étaient
+perdues, asymétriquement entre Sud et E-O. Sur les petits toits, ce seul bug gonflait
+le ratio à 1,7–2,4×. Corrigé par une tolérance `EDGE_EPS = 1 mm` sur la comparaison
+au retrait ; les comptes Sud et E-O sont désormais corrects et cohérents.
+
 ## 2. Configurations évaluées
 
 - **A. Sud @ inclinaison optimale** (≈29–30°, lue dans la table PVGIS pour la
@@ -69,26 +94,37 @@ toit plat marocain), mais le compte paysage est toujours montré.
 - Bande de cohérence Casablanca sud-optimal : la table donne ≈1 650 kWh/kWc/an
   (dans la fourchette 1 650–1 900 après pertes ; bas de fourchette, normal).
 
-## 4. Facture → énergie → économies (base RÉUTILISÉE du site)
+## 4. Facture → énergie → économies (deux tarifs, économies plafonnées)
 
-Le site chiffre déjà l'énergie et les économies avec (dans `src/lib/roof.ts`,
-aligné `billRange.ts`) :
+**Correctif 2026-06 — tarif moyen pour la conso, marginal pour les économies, et
+plafond à la facture.** Deux tarifs distincts (constantes dans `estimatorBrain.ts`) :
 
-- **Tarif** `TARIFF_MAD_PER_KWH = 1,4` MAD/kWh (tarif moyen).
-- **Productible de repli** 1 600 kWh/kWc/an.
-- **Économies** = 60–90 % de la valeur produite (autoconsommation).
+- `RATE_AVERAGE_MAD_PER_KWH = 1,17` — tarif **moyen mélangé** résidentiel (la facture
+  couvre toutes les tranches). Sert à **facture → consommation** :
+  `conso_annuelle_kWh = facture_mensuelle × 12 / 1,17`.
+- `RATE_MARGINAL_MAD_PER_KWH = 1,5958` — **tranche haute sélective** (> 500 kWh/mois,
+  TTC). Le solaire efface d'abord le kWh le plus cher → valorise l'autoconsommation.
+- `RATE_EXPORT_MAD_PER_KWH = 0` — pas de net-billing BT clair au Maroc → surplus non
+  valorisé (conservateur, honnête).
 
-Le cerveau réutilise EXACTEMENT cette base pour ne pas diverger du reste du site :
+**Économies plafonnées (ne peuvent jamais dépasser la facture) :**
 
-- **Facture → consommation annuelle cible** :
-  `conso_annuelle_kWh = facture_mensuelle_MAD × 12 / 1,4`.
-- **Économies** : `annualSavingsBandMad()` de `roof.ts` (60–90 %), inchangé.
+    économies/an = min(autoconsommé · 1,5958 , facture_annuelle) + surplus · 0
+    autoconsommé = min(production, consommation)
+    surplus      = max(0, production − consommation)
 
-> ⚠️ **NOMBRE À CONFIRMER PAR REDA.** Le 1,4 MAD/kWh est un tarif **moyen**. Le
-> solaire efface d'abord le kWh le plus cher (tranches hautes Lydec/ONEE, souvent
-> ~1,5–1,8 MAD/kWh marginal en résidentiel). Utiliser le marginal *augmenterait*
-> les économies affichées. On garde 1,4 pour rester **cohérent avec le reste du
-> site** ; à valider/ajuster en un seul endroit (`roof.ts`).
+Conséquence : un système qui produit ~2× la conso voit ses économies **plafonner
+vers la facture**, jamais au-delà. Le système recommandé (dimensionné au besoin)
+n'est pas affecté. Borne dure testée : pour CHAQUE config, économies affichées
+≤ facture annuelle du client. Fourchette basse = 75 % (alignement temporel réel).
+
+> ⚠️ **DEUX NOMBRES À CONFIRMER PAR REDA contre une vraie facture Lydec/ONEE.**
+> Tarif moyen ≈ **1,17 MAD/kWh** (BT résidentiel Maroc 2025-26) et tranche haute
+> sélective ≈ **1,5958 MAD/kWh TTC** (> 500 kWh/mois ; facturation sélective au-delà
+> de 150 kWh/mois). Sources : kherba.com/tarifs, globalpetrolprices.com (Maroc).
+> Modifiables en un seul endroit (`estimatorBrain.ts`). Note : ce preview privé
+> diverge **volontairement** de l'ancien 1,4 MAD/kWh du reste du site — c'est le
+> chiffrage corrigé ; à harmoniser plus tard si Reda valide.
 
 ## 5. Bifacial
 

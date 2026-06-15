@@ -8,21 +8,21 @@
  * Est-Ouest) avec compte de panneaux, kWc, production annuelle, % de la facture
  * couverte, fourchette d'économies — et une recommandation dimensionnée au besoin.
  *
- * Réutilise :
- *  - la géométrie pure de roof.ts (aire géodésique, point-dans-polygone, tarif,
- *    fourchette d'économies — base PARTAGÉE avec le reste du site) ;
- *  - le vrai panneau Canadian Solar 720 W de roofPro2.ts ;
- *  - la table de productible PVGIS committée (yieldTable.ts).
+ * PHYSIQUE EXACTE (corrigée 2026-06) :
+ *  - UNE seule règle d'espacement solaire (solstice d'hiver, soleil 10 h) gouverne
+ *    TOUTES les configs — rangées Sud ET intervalle entre chevrons Est-Ouest. Aucune
+ *    densité/GCR codée en dur.
+ *  - Pavage de vrais rectangles de panneaux dans le tracé (pas une surface × ratio) :
+ *    Σ empreintes au sol ≤ surface utile pour chaque config (borne physique testée).
+ *  - Économies plafonnées à la consommation : autoconsommation au tarif MARGINAL,
+ *    jamais > la facture ; surplus au tarif d'export (nul par défaut, conservateur).
+ *  - Facture → conso au tarif MOYEN mélangé ; économies au tarif MARGINAL.
  *
- * JAMAIS un devis : une fourchette indicative. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
+ * Réutilise la géométrie pure de roof.ts (aire géodésique, point-dans-polygone), le
+ * vrai panneau Canadian Solar 720 W de roofPro2.ts, et la table PVGIS committée
+ * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
-import {
-  geodesicAreaM2,
-  pointInPolygon,
-  annualSavingsBandMad,
-  TARIFF_MAD_PER_KWH,
-  type LngLat,
-} from './roof';
+import { geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 
@@ -39,8 +39,21 @@ const MAX_CELLS = 200000;
 export const DESIGN_SOLAR_HOUR = 10;
 const SOLAR_DECLINATION_DEG = -23.44; // déclinaison au solstice d'hiver (hémisphère nord)
 const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une rangée
-const EW_RIDGE_GAP_M = 0.15; // petit jeu entre paires Est-Ouest dos à dos (≈ jointif)
 const SHADOW_MARGIN_M = 0.05; // marge en plus de l'ombre calculée
+const EDGE_EPS_M = 1e-3; // tolérance flottante au retrait (anti-bruit sin(180°)≈1e−16)
+
+// — Tarifs (MAD/kWh). À CONFIRMER contre une vraie facture Lydec/ONEE. —
+/** Tarif MOYEN mélangé résidentiel (la facture couvre toutes les tranches) — sert
+ * à convertir facture → consommation. Source : grille BT résidentielle Maroc 2025-26. */
+export const RATE_AVERAGE_MAD_PER_KWH = 1.17;
+/** Tarif MARGINAL (tranche haute sélective > 500 kWh/mois, ~1,5958 MAD/kWh TTC) —
+ * le solaire efface d'abord le kWh le plus cher. Valorise l'autoconsommation. */
+export const RATE_MARGINAL_MAD_PER_KWH = 1.5958;
+/** Tarif d'EXPORT du surplus. Pas de net-billing BT clair au Maroc → 0 (conservateur).
+ * Le surplus produit au-delà de la conso n'est pas valorisé. */
+export const RATE_EXPORT_MAD_PER_KWH = 0;
+/** Part autoconsommée réellement alignée dans le temps (borne basse de la fourchette). */
+const SELF_CONSUMPTION_TIMING_LOW = 0.75;
 
 // — Bifacial : JAMAIS dans le chiffre de tête (face avant uniquement). —
 /** Gain bifacial prudent, affiché en ligne séparée et étiquetée. */
@@ -65,15 +78,31 @@ export function sunPositionWinterSolstice(
   return { elevationDeg: alpha / DEG2RAD, azimuthFromSouthDeg: gamma / DEG2RAD };
 }
 
+/**
+ * Longueur d'ombre horizontale (m) projetée par une arête haute de hauteur `riseM`
+ * au moment de design, dans la direction d'empilement des rangées. C'est LE terme
+ * d'ombre partagé par toutes les configs :
+ *   ombre = riseM · (composante directionnelle du soleil) / tan(α_s).
+ * - Sud : rangées E-O empilées vers le sud → composante = cos(γ_s) (γ_s = azimut/sud).
+ * - Est-Ouest : chevrons N-S empilés vers l'est → composante = |sin(γ_s)|.
+ */
+function shadeLengthM(riseM: number, latitudeDeg: number, solarHour: number, eastWest: boolean): number {
+  const sun = sunPositionWinterSolstice(latitudeDeg, solarHour);
+  const alpha = Math.max(5, sun.elevationDeg) * DEG2RAD; // garde-fou soleil très bas
+  const gamma = sun.azimuthFromSouthDeg * DEG2RAD;
+  const dir = eastWest ? Math.abs(Math.sin(gamma)) : Math.abs(Math.cos(gamma));
+  return Math.max(0, (riseM * dir) / Math.tan(alpha));
+}
+
 export interface PitchOptions {
   /** Heure solaire du moment de design (défaut DESIGN_SOLAR_HOUR = 10 h). */
   solarHour?: number;
 }
 
 /**
- * Pas inter-rangées (m, centre à centre dans le sens de la pente) pour qu'une
+ * Pas inter-rangées SUD (m, centre à centre dans le sens de la pente) pour qu'une
  * rangée n'ombre pas la suivante au moment de design :
- *   D = L · [ cos β + sin β · cos γ_s / tan α_s ]
+ *   D = L · cos β + L · sin β · cos(γ_s)/tan(α_s) + marge.
  */
 export function rowPitchM(
   slopeLenM: number,
@@ -82,12 +111,10 @@ export function rowPitchM(
   opts: PitchOptions = {},
 ): number {
   const beta = tiltDeg * DEG2RAD;
-  const sun = sunPositionWinterSolstice(latitudeDeg, opts.solarHour ?? DESIGN_SOLAR_HOUR);
-  const alpha = Math.max(5, sun.elevationDeg) * DEG2RAD; // garde-fou soleil très bas
-  const gamma = sun.azimuthFromSouthDeg * DEG2RAD;
   const footprint = slopeLenM * Math.cos(beta);
-  const shadow = (slopeLenM * Math.sin(beta) * Math.cos(gamma)) / Math.tan(alpha);
-  return footprint + Math.max(0, shadow) + SHADOW_MARGIN_M;
+  const rise = slopeLenM * Math.sin(beta);
+  const shadow = shadeLengthM(rise, latitudeDeg, opts.solarHour ?? DESIGN_SOLAR_HOUR, false);
+  return footprint + shadow + SHADOW_MARGIN_M;
 }
 
 // — Productible (kWh/kWc/an) depuis la table committée, interpolé en latitude —
@@ -100,7 +127,6 @@ function interpAspect(
   const aspects = Object.keys(grid)
     .map(Number)
     .sort((a, b) => a - b);
-  // azimut encadrant
   let aLo = aspects[0];
   let aHi = aspects[aspects.length - 1];
   for (let i = 0; i < aspects.length - 1; i++) {
@@ -136,7 +162,6 @@ function interpTilt(row: Record<string, number>, tiltDeg: number): number {
  * @param aspect azimut PVGIS : 0=Sud, −90=Est, 90=Ouest. */
 export function specificYield(latitudeDeg: number, tiltDeg: number, aspect: number): number {
   const cities = Object.values(YIELD_TABLE).sort((a, b) => a.lat - b.lat);
-  // ville encadrante en latitude
   if (latitudeDeg <= cities[0].lat) return interpAspect(cities[0].grid, aspect, tiltDeg);
   if (latitudeDeg >= cities[cities.length - 1].lat)
     return interpAspect(cities[cities.length - 1].grid, aspect, tiltDeg);
@@ -166,15 +191,36 @@ export function optimalSouthTiltDeg(latitudeDeg: number): number {
 }
 
 /** Facture mensuelle (MAD) → consommation annuelle estimée (kWh).
- * Base RÉUTILISÉE du site : tarif moyen 1,4 MAD/kWh (roof.ts / billRange.ts). */
+ * Au tarif MOYEN mélangé (la facture couvre toutes les tranches). */
 export function billToAnnualKwh(monthlyBillMad: number): number {
   if (!Number.isFinite(monthlyBillMad) || monthlyBillMad <= 0) return 0;
-  return (monthlyBillMad * 12) / TARIFF_MAD_PER_KWH;
+  return (monthlyBillMad * 12) / RATE_AVERAGE_MAD_PER_KWH;
+}
+
+/**
+ * Économies annuelles (MAD), PLAFONNÉES à ce que le client consomme :
+ *   économies = min(autoconsommé · tarif_marginal, facture_annuelle) + surplus · tarif_export.
+ * L'autoconsommation efface d'abord le kWh le plus cher (marginal), mais ne peut
+ * jamais dépasser la facture réelle. Le surplus (au-delà de la conso) est valorisé
+ * au tarif d'export (nul par défaut). Fourchette : alignement temporel 75–100 %.
+ */
+export function annualSavingsMad(
+  productionKwhYr: number,
+  consumptionKwhYr: number,
+): { low: number; high: number } {
+  const cons = Math.max(0, consumptionKwhYr);
+  const selfConsumed = Math.min(Math.max(0, productionKwhYr), cons);
+  const surplus = Math.max(0, productionKwhYr - cons);
+  const annualBill = cons * RATE_AVERAGE_MAD_PER_KWH;
+  const selfValue = Math.min(selfConsumed * RATE_MARGINAL_MAD_PER_KWH, annualBill);
+  const high = selfValue + surplus * RATE_EXPORT_MAD_PER_KWH;
+  return { low: SELF_CONSUMPTION_TIMING_LOW * high, high };
 }
 
 // — Pavage —
 
 export type ConfigFamily = 'south' | 'eastwest';
+export type PanelFace = 'E' | 'W';
 
 export interface PackOptions {
   family: ConfigFamily;
@@ -184,16 +230,26 @@ export interface PackOptions {
   setbackM?: number;
 }
 
+export interface PackedPanel {
+  cx: number;
+  cy: number;
+  /** Sens de la pente, pour le rendu Est-Ouest en chevrons (sinon absent). */
+  face?: PanelFace;
+}
+
 export interface PanelGrid {
   panelOrientation: 'portrait' | 'landscape';
   count: number;
   kwc: number;
+  /** Pas d'empilement appliqué (m) : rangée Sud, ou paire de chevrons E-O. */
   rowPitchM: number;
-  panels: { cx: number; cy: number }[];
+  panels: PackedPanel[];
   /** Sens de la pente du panneau (m). */
   slopeLenM: number;
   /** Largeur le long de la rangée (m). */
   rowWidthM: number;
+  /** Empreinte au sol d'UN panneau (m²) = L·cos β × largeur. */
+  footprintPerPanelM2: number;
 }
 
 export interface PackResult {
@@ -203,6 +259,8 @@ export interface PackResult {
   tiltDeg: number;
   family: ConfigFamily;
   areaM2: number;
+  /** Surface utile (m²) = aire tracée − obstructions (la borne empreinte). */
+  usableAreaM2: number;
   portrait: PanelGrid;
   landscape: PanelGrid;
   /** La meilleure des deux orientations sur CE tracé. */
@@ -231,23 +289,36 @@ function familyAzimuthDeg(family: ConfigFamily): number {
   return family === 'eastwest' ? 90 : 180; // E-O empile vers l'est ; sud vers le sud
 }
 
-interface OneGridParams {
-  slopeLenM: number;
-  rowWidthM: number;
+interface CellParams {
+  /** Empreinte au sol d'UN panneau dans le sens d'empilement (m) = L·cos β. */
+  panelDepthM: number;
+  /** Profondeur de la cellule posée (m) : Sud = panelDepth ; E-O = 2·panelDepth. */
+  cellDepthM: number;
+  /** Pas cellule-à-cellule dans le sens d'empilement (m). */
   pitchM: number;
+  /** Largeur le long de la rangée (m). */
+  rowWidthM: number;
+  /** Panneaux par cellule : 1 (Sud) ou 2 (chevron E-O dos à dos). */
+  panelsPerCell: number;
 }
 
-function packOneGrid(
+/**
+ * Pave de vrais rectangles de panneaux dans le tracé. Chaque CELLULE (rectangle
+ * largeur × cellDepth) doit tenir entièrement dans le tracé (retrait inclus) ; on y
+ * pose `panelsPerCell` panneaux empilés. Les obstructions retirent les panneaux dont
+ * le centre tombe dedans. Aucune surface × ratio : on compte les panneaux réels.
+ */
+function packCells(
   ringENU: [number, number][],
   obstructionsENU: [number, number][][],
   azimuthDeg: number,
   setbackM: number,
-  p: OneGridParams,
-): { count: number; panels: { cx: number; cy: number }[] } {
-  if (ringENU.length < 3) return { count: 0, panels: [] };
+  p: CellParams,
+): PackedPanel[] {
+  if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
   const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
-  const s = f; // les rangées s'empilent vers la visée
+  const s = f; // empilement vers la visée
   const u: [number, number] = [-f[1], f[0]]; // axe long des rangées
 
   const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
@@ -265,37 +336,38 @@ function packOneGrid(
   const colPitch = p.rowWidthM + PANEL_SIDE_GAP_M;
   const rows = Math.floor((vMax - vMin) / p.pitchM);
   const cols = Math.floor((uMax - uMin) / colPitch);
-  if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return { count: 0, panels: [] };
+  if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
-  const toENU = (uu: number, vv: number): [number, number] => [
-    uu * u[0] + vv * s[0],
-    uu * u[1] + vv * s[1],
-  ];
-  const inObstruction = (c: [number, number]): boolean =>
-    obstructionsENU.some((o) => pointInPolygon(c, o));
-  const ok = (corners: [number, number][], center: [number, number]): boolean =>
-    corners.every((c) => pointInPolygon(c, ringENU) && distToBoundary(c, ringENU) >= setbackM) &&
-    !inObstruction(center);
+  const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
+  const inObstruction = (c: [number, number]): boolean => obstructionsENU.some((o) => pointInPolygon(c, o));
+  // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
+  // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
+  // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
+  const cellInside = (corners: [number, number][]): boolean =>
+    corners.every((c) => pointInPolygon(c, ringENU) && distToBoundary(c, ringENU) >= setbackM - EDGE_EPS_M);
 
-  const panels: { cx: number; cy: number }[] = [];
-  const depthFootprint = p.slopeLenM * Math.cos(0); // empreinte gérée via pitch ; coin = slope projeté
-  // L'empreinte projetée est < slopeLenM ; on pose le coin haut à pitch utile.
-  const footprint = Math.min(p.slopeLenM, p.pitchM - SHADOW_MARGIN_M);
-  void depthFootprint;
+  const panels: PackedPanel[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vMin + setbackM + r * p.pitchM;
-    const v1 = v0 + footprint;
-    if (v1 > vMax - setbackM + 1e-6) break;
+    const v1 = v0 + p.cellDepthM;
+    if (v1 > vMax - setbackM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uMin + setbackM + c * colPitch;
       const u1 = u0 + p.rowWidthM;
       const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];
-      const center = toENU(u0 + p.rowWidthM / 2, v0 + footprint / 2);
-      if (!ok(corners, center)) continue;
-      panels.push({ cx: center[0], cy: center[1] });
+      if (!cellInside(corners)) continue;
+      const uMid = u0 + p.rowWidthM / 2;
+      for (let k = 0; k < p.panelsPerCell; k++) {
+        const vc = v0 + p.panelDepthM * (k + 0.5);
+        const center = toENU(uMid, vc);
+        if (inObstruction(center)) continue;
+        const panel: PackedPanel = { cx: center[0], cy: center[1] };
+        if (p.panelsPerCell === 2) panel.face = k === 0 ? 'W' : 'E';
+        panels.push(panel);
+      }
     }
   }
-  return { count: panels.length, panels };
+  return panels;
 }
 
 /** Pave le toit pour une config donnée, en portrait ET paysage, garde le meilleur. */
@@ -304,8 +376,19 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const azimuthDeg = familyAzimuthDeg(opts.family);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const tiltDeg = opts.tiltDeg;
+  const beta = tiltDeg * DEG2RAD;
+  const eastWest = opts.family === 'eastwest';
 
-  const empty = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number, pitchM: number): PanelGrid => ({
+  // Surface utile = aire tracée − obstructions (la borne « Σ empreintes ≤ utile »).
+  const obstructionArea = (opts.obstructions ?? []).reduce((sum, o) => sum + geodesicAreaM2(o), 0);
+  const usableAreaM2 = Math.max(0, areaM2 - obstructionArea);
+
+  const buildEmpty = (
+    panelOrientation: 'portrait' | 'landscape',
+    slopeLenM: number,
+    rowWidthM: number,
+    pitchM: number,
+  ): PanelGrid => ({
     panelOrientation,
     count: 0,
     kwc: 0,
@@ -313,14 +396,52 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     panels: [],
     slopeLenM,
     rowWidthM,
+    footprintPerPanelM2: slopeLenM * Math.cos(beta) * rowWidthM,
   });
 
+  // Pas d'empilement, UNE seule règle solaire pour les deux familles.
+  //  - Sud : 1 panneau/cellule, pas = empreinte + ombre(cos) + marge.
+  //  - Est-Ouest : 2 panneaux/cellule (chevron dos à dos), profondeur = 2 empreintes,
+  //    intervalle entre chevrons = MÊME terme d'ombre (composante E-O, sin).
+  const cellFor = (slopeLenM: number, rowWidthM: number): CellParams => {
+    const panelDepthM = slopeLenM * Math.cos(beta);
+    const rise = slopeLenM * Math.sin(beta);
+    if (eastWest) {
+      const gap = shadeLengthM(rise, latitudeDeg, DESIGN_SOLAR_HOUR, true);
+      return {
+        panelDepthM,
+        cellDepthM: 2 * panelDepthM,
+        pitchM: 2 * panelDepthM + gap + SHADOW_MARGIN_M,
+        rowWidthM,
+        panelsPerCell: 2,
+      };
+    }
+    return {
+      panelDepthM,
+      cellDepthM: panelDepthM,
+      pitchM: rowPitchM(slopeLenM, tiltDeg, latitudeDeg),
+      rowWidthM,
+      panelsPerCell: 1,
+    };
+  };
+
   if (!Array.isArray(ring) || ring.length < 3) {
-    const pPit = rowPitchM(PANEL2_LONG_M, tiltDeg, latitudeDeg);
-    const lPit = rowPitchM(PANEL2_SHORT_M, tiltDeg, latitudeDeg);
-    const portrait = empty('portrait', PANEL2_LONG_M, PANEL2_SHORT_M, pPit);
-    const landscape = empty('landscape', PANEL2_SHORT_M, PANEL2_LONG_M, lPit);
-    return { origin: ring?.[0] ?? [0, 0], ringENU: [], azimuthDeg, tiltDeg, family: opts.family, areaM2, portrait, landscape, best: portrait };
+    const cP = cellFor(PANEL2_LONG_M, PANEL2_SHORT_M);
+    const cL = cellFor(PANEL2_SHORT_M, PANEL2_LONG_M);
+    const portrait = buildEmpty('portrait', PANEL2_LONG_M, PANEL2_SHORT_M, cP.pitchM);
+    const landscape = buildEmpty('landscape', PANEL2_SHORT_M, PANEL2_LONG_M, cL.pitchM);
+    return {
+      origin: ring?.[0] ?? [0, 0],
+      ringENU: [],
+      azimuthDeg,
+      tiltDeg,
+      family: opts.family,
+      areaM2,
+      usableAreaM2,
+      portrait,
+      landscape,
+      best: portrait,
+    };
   }
 
   // Projection ENU centrée sur le centroïde.
@@ -337,25 +458,19 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const ringENU = ring.map(toENU);
   const obstructionsENU = (opts.obstructions ?? []).map((o) => o.map(toENU));
 
-  // Pas inter-rangées : Est-Ouest dos à dos = quasi jointif (pas d'ombre solaire) ;
-  // sud = géométrie solaire anti-ombrage à la latitude du toit.
-  const pitchFor = (slopeLenM: number): number =>
-    opts.family === 'eastwest'
-      ? slopeLenM * Math.cos(tiltDeg * DEG2RAD) + EW_RIDGE_GAP_M
-      : rowPitchM(slopeLenM, tiltDeg, latitudeDeg);
-
-  const makeGrid = (
-    panelOrientation: 'portrait' | 'landscape',
-    slopeLenM: number,
-    rowWidthM: number,
-  ): PanelGrid => {
-    const pitchM = pitchFor(slopeLenM);
-    const { count, panels } = packOneGrid(ringENU, obstructionsENU, azimuthDeg, setbackM, {
+  const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
+    const cell = cellFor(slopeLenM, rowWidthM);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell);
+    return {
+      panelOrientation,
+      count: panels.length,
+      kwc: (panels.length * PANEL2_WATT) / 1000,
+      rowPitchM: cell.pitchM,
+      panels,
       slopeLenM,
       rowWidthM,
-      pitchM,
-    });
-    return { panelOrientation, count, kwc: (count * PANEL2_WATT) / 1000, rowPitchM: pitchM, panels, slopeLenM, rowWidthM };
+      footprintPerPanelM2: slopeLenM * Math.cos(beta) * rowWidthM,
+    };
   };
 
   // Portrait : grand côté (2,384) dans le sens de la pente. Paysage : l'inverse.
@@ -363,7 +478,18 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const landscape = makeGrid('landscape', PANEL2_SHORT_M, PANEL2_LONG_M);
   const best = portrait.count >= landscape.count ? portrait : landscape;
 
-  return { origin: [olng, olat], ringENU, azimuthDeg, tiltDeg, family: opts.family, areaM2, portrait, landscape, best };
+  return {
+    origin: [olng, olat],
+    ringENU,
+    azimuthDeg,
+    tiltDeg,
+    family: opts.family,
+    areaM2,
+    usableAreaM2,
+    portrait,
+    landscape,
+    best,
+  };
 }
 
 // — Évaluation d'une config (production + économies) —
@@ -401,7 +527,6 @@ export function productionKwh(
   return kwc * specificYield(latitudeDeg, tiltDeg, 0);
 }
 
-/** Production annuelle (kWh, face avant) d'une grille selon la famille/inclinaison. */
 function gridAnnualKwh(grid: PanelGrid, family: ConfigFamily, tiltDeg: number, latitudeDeg: number): number {
   return productionKwh(latitudeDeg, family, tiltDeg, grid.kwc);
 }
@@ -413,11 +538,11 @@ function buildConfigResult(
   pack: PackResult,
   grid: PanelGrid,
   latitudeDeg: number,
-  targetAnnualKwh: number,
+  consumptionKwh: number,
 ): ConfigResult {
   const annualKwh = gridAnnualKwh(grid, pack.family, pack.tiltDeg, latitudeDeg);
   const bifGain = pack.family === 'eastwest' || pack.tiltDeg < 12 ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
-  const savings = annualSavingsBandMad(annualKwh);
+  const savings = annualSavingsMad(annualKwh, consumptionKwh);
   return {
     id,
     family: pack.family,
@@ -429,7 +554,7 @@ function buildConfigResult(
     specificYield: grid.kwc > 0 ? annualKwh / grid.kwc : 0,
     annualKwh,
     bifacialAnnualKwh: annualKwh * (1 + bifGain),
-    pctOfTarget: targetAnnualKwh > 0 ? (annualKwh / targetAnnualKwh) * 100 : 0,
+    pctOfTarget: consumptionKwh > 0 ? (annualKwh / consumptionKwh) * 100 : 0,
     savingsLow: savings.low,
     savingsHigh: savings.high,
     notes,
@@ -446,8 +571,12 @@ export interface Recommendation {
   maxPerPanelTiltDeg: number;
   maxRoofEnergyTiltDeg: number;
   maxRoofEnergyKwh: number;
-  /** Tarif utilisé pour facture→énergie→économies (à confirmer). */
-  tariffMadPerKwh: number;
+  /** Tarifs utilisés (à confirmer contre une vraie facture). */
+  rateAverageMadPerKwh: number;
+  rateMarginalMadPerKwh: number;
+  rateExportMadPerKwh: number;
+  /** Facture annuelle estimée (MAD) = facture mensuelle × 12. */
+  annualBillMad: number;
 }
 
 interface ConfigSpec {
@@ -466,6 +595,7 @@ export function recommend(
   obstructions: LngLat[][] = [],
 ): Recommendation {
   const target = billToAnnualKwh(monthlyBillMad);
+  const annualBillMad = Math.max(0, monthlyBillMad) * 12;
   const optTilt = optimalSouthTiltDeg(latitudeDeg);
 
   const specs: ConfigSpec[] = [
@@ -476,11 +606,9 @@ export function recommend(
     { id: 'ew-15', family: 'eastwest', tiltDeg: 15, label: 'Est-Ouest 15°', notes: 'Est-Ouest un peu plus incliné.' },
   ];
 
-  const packs = new Map<string, PackResult>();
   const comparison: ConfigResult[] = [];
   for (const spec of specs) {
     const pack = packConfig(ring, latitudeDeg, { family: spec.family, tiltDeg: spec.tiltDeg, obstructions });
-    packs.set(spec.id, pack);
     comparison.push(buildConfigResult(spec.id, spec.label, spec.notes, pack, pack.best, latitudeDeg, target));
   }
 
@@ -510,7 +638,7 @@ export function recommend(
     const panelsNeeded = Math.min(configA.count, Math.max(1, Math.ceil(kwcNeeded / (PANEL2_WATT / 1000))));
     const kwc = (panelsNeeded * PANEL2_WATT) / 1000;
     const annualKwh = kwc * yld;
-    const savings = annualSavingsBandMad(annualKwh);
+    const savings = annualSavingsMad(annualKwh, target);
     recommended = {
       ...configA,
       count: panelsNeeded,
@@ -557,6 +685,9 @@ export function recommend(
     maxPerPanelTiltDeg: optTilt,
     maxRoofEnergyTiltDeg,
     maxRoofEnergyKwh: Math.max(0, maxRoofEnergyKwh),
-    tariffMadPerKwh: TARIFF_MAD_PER_KWH,
+    rateAverageMadPerKwh: RATE_AVERAGE_MAD_PER_KWH,
+    rateMarginalMadPerKwh: RATE_MARGINAL_MAD_PER_KWH,
+    rateExportMadPerKwh: RATE_EXPORT_MAD_PER_KWH,
+    annualBillMad,
   };
 }
