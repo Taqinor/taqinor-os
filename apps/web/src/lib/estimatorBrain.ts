@@ -42,18 +42,63 @@ const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une rangée
 const SHADOW_MARGIN_M = 0.05; // marge en plus de l'ombre calculée
 const EDGE_EPS_M = 1e-3; // tolérance flottante au retrait (anti-bruit sin(180°)≈1e−16)
 
-// — Tarifs (MAD/kWh). À CONFIRMER contre une vraie facture Lydec/ONEE. —
-/** Tarif MOYEN mélangé résidentiel (la facture couvre toutes les tranches) — sert
- * à convertir facture → consommation. Source : grille BT résidentielle Maroc 2025-26. */
-export const RATE_AVERAGE_MAD_PER_KWH = 1.17;
-/** Tarif MARGINAL (tranche haute sélective > 500 kWh/mois, ~1,5958 MAD/kWh TTC) —
- * le solaire efface d'abord le kWh le plus cher. Valorise l'autoconsommation. */
-export const RATE_MARGINAL_MAD_PER_KWH = 1.5958;
-/** Tarif d'EXPORT du surplus. Pas de net-billing BT clair au Maroc → 0 (conservateur).
- * Le surplus produit au-delà de la conso n'est pas valorisé. */
-export const RATE_EXPORT_MAD_PER_KWH = 0;
+// ===== Modèle de facturation ONEE/Lydec — BT « usage domestique » (2026) =====
+// Coût de l'ÉNERGIE uniquement (les tranches au kWh). Les frais fixes (TPPAN,
+// redevances, taxes d'abonnement) ne sont PAS modélisés : invariants au solaire,
+// ils s'annulent dans le calcul d'économies. CALIBRATION exacte (HT vs TTC, frais
+// fixes) = un seul ajustement de ce bloc, à valider sur une vraie facture Lydec.
+/** Tranches PROGRESSIVES (≤ 150 kWh/mois) : chaque tranche à son tarif. */
+const ONEE_PROGRESSIVE = [
+  { upToKwh: 100, rate: 0.9 },
+  { upToKwh: 150, rate: 1.07 },
+];
+/** Tranches SÉLECTIVES (> 150 kWh/mois) : TOUTE la conso au tarif de SA tranche. */
+const ONEE_SELECTIVE = [
+  { upToKwh: 200, rate: 1.07 },
+  { upToKwh: 300, rate: 1.18 },
+  { upToKwh: 500, rate: 1.45 },
+  { upToKwh: Infinity, rate: 1.66 },
+];
+const ONEE_SELECTIVE_THRESHOLD_KWH = 150; // au-delà → facturation sélective
+const ONEE_BOUNDARY_TOLERANCE_KWH = 10; // tolérance de tranche (on n'entre qu'à +10 kWh)
 /** Part autoconsommée réellement alignée dans le temps (borne basse de la fourchette). */
 const SELF_CONSUMPTION_TIMING_LOW = 0.75;
+
+/** Coût progressif (≤ 150 kWh) — somme des tranches à leur tarif. */
+function progressiveBillMAD(monthlyKwh: number): number {
+  let cost = 0;
+  let prev = 0;
+  for (const b of ONEE_PROGRESSIVE) {
+    const upper = Math.min(monthlyKwh, b.upToKwh);
+    if (upper > prev) cost += (upper - prev) * b.rate;
+    prev = b.upToKwh;
+    if (monthlyKwh <= b.upToKwh) break;
+  }
+  return cost;
+}
+
+/**
+ * Facture ÉNERGIE mensuelle (MAD) pour une conso mensuelle (kWh), grille ONEE BT
+ * domestique : progressive ≤ 150 kWh, sinon SÉLECTIVE (toute la conso au tarif de sa
+ * tranche, tolérance de 10 kWh à la borne). Monotone non-décroissante par
+ * construction (les tarifs montent à chaque tranche), garantie au raccord
+ * progressif→sélectif par un plancher.
+ */
+export function billMAD(monthlyKwh: number): number {
+  if (!Number.isFinite(monthlyKwh) || monthlyKwh <= 0) return 0;
+  const k = monthlyKwh;
+  if (k <= ONEE_SELECTIVE_THRESHOLD_KWH) return progressiveBillMAD(k);
+  let rate = ONEE_SELECTIVE[ONEE_SELECTIVE.length - 1].rate;
+  for (const b of ONEE_SELECTIVE) {
+    if (k <= b.upToKwh + ONEE_BOUNDARY_TOLERANCE_KWH) {
+      rate = b.rate;
+      break;
+    }
+  }
+  // Plancher au seuil : un client juste au-dessus de 150 kWh ne paie jamais moins
+  // que la facture progressive de 150 kWh.
+  return Math.max(k * rate, progressiveBillMAD(ONEE_SELECTIVE_THRESHOLD_KWH));
+}
 
 // — Bifacial : JAMAIS dans le chiffre de tête (face avant uniquement). —
 /** Gain bifacial prudent, affiché en ligne séparée et étiquetée. */
@@ -190,31 +235,47 @@ export function optimalSouthTiltDeg(latitudeDeg: number): number {
   return bestTilt;
 }
 
-/** Facture mensuelle (MAD) → consommation annuelle estimée (kWh).
- * Au tarif MOYEN mélangé (la facture couvre toutes les tranches). */
+/**
+ * Facture mensuelle (MAD) → consommation ANNUELLE estimée (kWh). On inverse
+ * numériquement billMAD (monotone) : on cherche la conso mensuelle dont la facture
+ * énergie égale la facture saisie, ×12. Pour une grosse facture, ceci donne le
+ * tarif effectif de la tranche haute (donc beaucoup moins de kWh qu'un diviseur
+ * moyen plat) — c'est le bon comportement sélectif.
+ */
 export function billToAnnualKwh(monthlyBillMad: number): number {
   if (!Number.isFinite(monthlyBillMad) || monthlyBillMad <= 0) return 0;
-  return (monthlyBillMad * 12) / RATE_AVERAGE_MAD_PER_KWH;
+  let lo = 0;
+  let hi = 1000;
+  while (billMAD(hi) < monthlyBillMad && hi < 1e6) hi *= 2;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (billMAD(mid) < monthlyBillMad) lo = mid;
+    else hi = mid;
+  }
+  return ((lo + hi) / 2) * 12;
 }
 
 /**
- * Économies annuelles (MAD), PLAFONNÉES à ce que le client consomme :
- *   économies = min(autoconsommé · tarif_marginal, facture_annuelle) + surplus · tarif_export.
- * L'autoconsommation efface d'abord le kWh le plus cher (marginal), mais ne peut
- * jamais dépasser la facture réelle. Le surplus (au-delà de la conso) est valorisé
- * au tarif d'export (nul par défaut). Fourchette : alignement temporel 75–100 %.
+ * Économies annuelles (MAD) = RÉDUCTION de la facture énergie :
+ *   économies = [ billMAD(conso) − billMAD(conso − autoconsommé) ] × 12.
+ * Comme on retire l'autoconsommation de la facture sélective, l'économie ne peut
+ * jamais dépasser billMAD(conso) (le coût énergie évitable) — plafond automatique
+ * et plus serré que « ≤ facture totale ». Le surplus au-delà de la conso vaut 0
+ * (pas de net-billing BT clair au Maroc — conservateur). Fourchette : alignement
+ * temporel réel de l'autoconsommation (75–100 %).
  */
 export function annualSavingsMad(
   productionKwhYr: number,
   consumptionKwhYr: number,
 ): { low: number; high: number } {
-  const cons = Math.max(0, consumptionKwhYr);
-  const selfConsumed = Math.min(Math.max(0, productionKwhYr), cons);
-  const surplus = Math.max(0, productionKwhYr - cons);
-  const annualBill = cons * RATE_AVERAGE_MAD_PER_KWH;
-  const selfValue = Math.min(selfConsumed * RATE_MARGINAL_MAD_PER_KWH, annualBill);
-  const high = selfValue + surplus * RATE_EXPORT_MAD_PER_KWH;
-  return { low: SELF_CONSUMPTION_TIMING_LOW * high, high };
+  const consMo = Math.max(0, consumptionKwhYr) / 12;
+  const prodMo = Math.max(0, productionKwhYr) / 12;
+  const selfHi = Math.min(prodMo, consMo);
+  const selfLo = SELF_CONSUMPTION_TIMING_LOW * selfHi;
+  const billCons = billMAD(consMo);
+  const high = (billCons - billMAD(consMo - selfHi)) * 12;
+  const low = (billCons - billMAD(consMo - selfLo)) * 12;
+  return { low: Math.max(0, low), high: Math.max(0, high) };
 }
 
 // — Pavage —
@@ -571,12 +632,10 @@ export interface Recommendation {
   maxPerPanelTiltDeg: number;
   maxRoofEnergyTiltDeg: number;
   maxRoofEnergyKwh: number;
-  /** Tarifs utilisés (à confirmer contre une vraie facture). */
-  rateAverageMadPerKwh: number;
-  rateMarginalMadPerKwh: number;
-  rateExportMadPerKwh: number;
-  /** Facture annuelle estimée (MAD) = facture mensuelle × 12. */
+  /** Facture ÉNERGIE annuelle modélisée (MAD) = billMAD(conso mensuelle) × 12. */
   annualBillMad: number;
+  /** Tarif effectif (MAD/kWh) = facture énergie ÷ conso (info, à confirmer). */
+  effectiveRateMadPerKwh: number;
 }
 
 interface ConfigSpec {
@@ -595,7 +654,8 @@ export function recommend(
   obstructions: LngLat[][] = [],
 ): Recommendation {
   const target = billToAnnualKwh(monthlyBillMad);
-  const annualBillMad = Math.max(0, monthlyBillMad) * 12;
+  const annualBillMad = billMAD(target / 12) * 12; // facture énergie modélisée
+  const effectiveRateMadPerKwh = target > 0 ? annualBillMad / target : 0;
   const optTilt = optimalSouthTiltDeg(latitudeDeg);
 
   const specs: ConfigSpec[] = [
@@ -685,9 +745,7 @@ export function recommend(
     maxPerPanelTiltDeg: optTilt,
     maxRoofEnergyTiltDeg,
     maxRoofEnergyKwh: Math.max(0, maxRoofEnergyKwh),
-    rateAverageMadPerKwh: RATE_AVERAGE_MAD_PER_KWH,
-    rateMarginalMadPerKwh: RATE_MARGINAL_MAD_PER_KWH,
-    rateExportMadPerKwh: RATE_EXPORT_MAD_PER_KWH,
     annualBillMad,
+    effectiveRateMadPerKwh,
   };
 }
