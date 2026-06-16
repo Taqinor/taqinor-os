@@ -165,3 +165,25 @@ When I say "add to plan:" followed by tasks (one per line or separated by ;):
 - Land the change on main the protected way — never push to main directly: open a pull request for it and merge it yourself (main requires NO approvals; never ask me to approve, never remove branch protection). Confirm in one line which file you added to.
 
 If I say "reset the plan lock", delete docs/PLAN.running and confirm.
+
+## Website plan execution (apps/web) — Reda's commands
+Anything Reda types after a command is extra detail for that run. This block governs the WEBSITE autopilot only (apps/web). A separate taqinor-os autopilot may run in parallel — if it shares this repo, it uses its own "os"-named commands, plan/lock files, and the dev-os branch, and never touches apps/web. The two must never share a branch, plan file, or lock file, or edit the same files. The website autopilot stays strictly inside apps/web plus its own docs/PLAN-web* files.
+
+When Reda says "work on the web plan":
+- If docs/PLAN-web.running exists, a website batch is already running — stop and say so; do not start a second.
+- Pick the active file: docs/PLAN-web.md if it has unchecked [ ] tasks, else docs/PLAN-web2.md if it has any; if neither, say there's nothing to do.
+- Read it fully and verify real repo state (git log, file contents, open PRs).
+- Create docs/PLAN-web.running and a fresh dev-web branch off main; do ALL work on dev-web — never touch main until the end.
+- Scope: edit ONLY apps/web/** and the docs/PLAN-web* files. NEVER touch OS code, the docs/PLAN-os* files, or anything outside apps/web.
+- Build every unchecked [ ] task. Independent tasks in parallel via subagents in separate git worktrees (never two on the same files); dependent/overlapping ones in sequence — decide from the code. Commit each finished task to dev-web, tick it [x], add one dated line to the DONE LOG.
+- If a task can't be made to pass, skip it (leave it unticked, note why) and keep going.
+- Pre-approved unattended: anything website-safe a task plainly needs. NOT pre-approved (skip and list): new external dependencies, auth or cost changes, deleted state files, brand-new architecture, anything touching the form's lead data flow, anything outside apps/web.
+- When all buildable tasks are integrated, run the project's full CI checks. Only if green, merge dev-web → main once via a PR you open and self-merge (no approval) — this auto-deploys the site via Cloudflare on merge; never run a deploy command. If red, back out the blocking task, re-check, merge the rest; never merge a red dev-web.
+- Delete docs/PLAN-web.running. Report in plain language (no diffs, no commit hashes): what shipped, what was skipped, and the exact preview URLs or live changes Reda can click. One plan file per run.
+
+When Reda says "add to web plan:" followed by tasks (one per line or separated by ;):
+- If docs/PLAN-web.running exists, append them as [ ] lines to docs/PLAN-web2.md (create if missing) — never touch docs/PLAN-web.md while a run is in progress.
+- Otherwise append them as [ ] lines to docs/PLAN-web.md's BUILD QUEUE.
+- Commit, and confirm in one line which file you added to.
+
+If Reda says "reset the web plan lock", delete docs/PLAN-web.running and confirm.
