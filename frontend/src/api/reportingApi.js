@@ -33,6 +33,20 @@ const reportingApi = {
   // T12 — export comptable journal des ventes + TVA (toujours .xlsx)
   getJournalVentesXlsx: (params = {}) =>
     api.get('/reporting/journal-ventes/', { params, responseType: 'blob' }),
+
+  // N32 — archive documentaire par client / par chantier
+  getArchiveClient: (id) =>
+    api.get(`/reporting/archive/client/${id}/`),
+  getArchiveChantier: (id) =>
+    api.get(`/reporting/archive/chantier/${id}/`),
+
+  // N49 — CA récurrent (contrats d'entretien)
+  getRecurringRevenue: (params = {}) =>
+    api.get('/reporting/recurring-revenue/', { params }),
+
+  // N70 — activité par utilisateur (agrégation)
+  getUserActivity: (params = {}) =>
+    api.get('/reporting/user-activity/', { params }),
 }
 
 export default reportingApi

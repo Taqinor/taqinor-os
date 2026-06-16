@@ -1007,3 +1007,399 @@ def journal_ventes_xlsx(request):
     ws2.append(['Période', label])
 
     return helpers.xlsx_response(wb, f'journal_ventes_{label}.xlsx')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  N32 — Archive documentaire par client et par chantier
+#  Agrégation LECTURE SEULE de tous les documents générés pour un client ou un
+#  chantier, pointant vers les endpoints de téléchargement EXISTANTS (les PDFs
+#  se régénèrent à la demande — aucun stockage nouveau). Tout est scopé société.
+#  Les liens de téléchargement ne pointent QUE vers des endpoints client-safe
+#  (jamais de prix d'achat / marge).
+# ═══════════════════════════════════════════════════════════════════════════
+
+from apps.ventes.models import Avoir, BonCommande            # noqa: E402
+from apps.crm.models import LeadActivity                      # noqa: E402
+from apps.installations.models import (                       # noqa: E402
+    InstallationActivity,
+)
+from apps.sav.models import (                                 # noqa: E402
+    ContratMaintenance, TicketActivity,
+)
+from apps.stock.models import ProduitAuditLog                 # noqa: E402
+from apps.parametres.models import SettingsAuditLog           # noqa: E402
+
+
+def _doc(type_, label, reference, dt, url):
+    """Forme une entrée de document typée pour l'archive."""
+    return {
+        'type': type_,
+        'label': label,
+        'reference': reference or '',
+        'date': dt.isoformat() if dt else None,
+        'download_url': url,
+    }
+
+
+def _devis_docs(devis_qs):
+    out = []
+    for d in devis_qs:
+        out.append(_doc(
+            'devis', 'Devis', d.reference,
+            getattr(d, 'date_creation', None),
+            f'/api/django/ventes/devis/{d.id}/proposal/'))
+    return out
+
+
+def _facture_docs(facture_qs):
+    out = []
+    for f in facture_qs:
+        out.append(_doc(
+            'facture', 'Facture', f.reference,
+            getattr(f, 'date_emission', None),
+            f'/api/django/ventes/factures/{f.id}/telecharger-pdf/'))
+    return out
+
+
+def _avoir_docs(avoir_qs):
+    out = []
+    for a in avoir_qs:
+        out.append(_doc(
+            'avoir', 'Avoir', a.reference,
+            getattr(a, 'date_emission', None),
+            f'/api/django/ventes/avoirs/{a.id}/telecharger-pdf/'))
+    return out
+
+
+def _bon_commande_docs(bc_qs):
+    # Le bon de commande client n'a pas de PDF de téléchargement dédié ; on le
+    # liste tout de même (référence + date) avec download_url=None pour la
+    # complétude de l'archive (rétention 10 ans).
+    out = []
+    for bc in bc_qs:
+        out.append(_doc(
+            'bon_commande', 'Bon de commande', bc.reference,
+            getattr(bc, 'date_creation', None), None))
+    return out
+
+
+def _chantier_post_sale_docs(installation):
+    """Documents post-vente d'un chantier (régénérés à la demande)."""
+    iid = installation.id
+    ref = installation.reference
+    dt = getattr(installation, 'date_creation', None)
+    base = f'/api/django/documents/chantiers/{iid}'
+    return [
+        _doc('pv_reception', 'PV de réception', ref, dt,
+             f'{base}/pv-reception/'),
+        _doc('bon_livraison', 'Bon de livraison', ref, dt,
+             f'{base}/bon-livraison/'),
+        _doc('dossier_remise', 'Dossier de remise', ref, dt,
+             f'{base}/dossier-remise/'),
+        _doc('attestation', 'Attestation', ref, dt,
+             f'{base}/attestation/'),
+    ]
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def archive_client(request, pk):
+    """Tous les documents d'un client (devis, factures, avoirs, bons de
+    commande + post-vente de ses chantiers). Lecture seule, scopé société."""
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    try:
+        client = Client.objects.get(pk=pk, **co)
+    except Client.DoesNotExist:
+        return Response({'detail': 'Client introuvable.'}, status=404)
+
+    docs = []
+    docs += _devis_docs(
+        Devis.objects.filter(**co, client_id=client.id))
+    docs += _facture_docs(
+        Facture.objects.filter(**co, client_id=client.id))
+    docs += _avoir_docs(
+        Avoir.objects.filter(**co, client_id=client.id))
+    docs += _bon_commande_docs(
+        BonCommande.objects.filter(**co, client_id=client.id))
+    # Post-vente : pour chaque chantier de ce client.
+    for inst in Installation.objects.filter(**co, client_id=client.id):
+        docs += _chantier_post_sale_docs(inst)
+
+    docs.sort(key=lambda d: (d['date'] or ''), reverse=True)
+    return Response({
+        'client': {'id': client.id, 'nom': str(client)},
+        'count': len(docs),
+        'documents': docs,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def archive_chantier(request, pk):
+    """Tous les documents d'un chantier (devis/facture/avoir/BC rattachés +
+    documents post-vente). Lecture seule, scopé société."""
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    try:
+        inst = Installation.objects.select_related('client').get(pk=pk, **co)
+    except Installation.DoesNotExist:
+        return Response({'detail': 'Chantier introuvable.'}, status=404)
+
+    docs = []
+    # Devis rattaché au chantier.
+    if inst.devis_id:
+        docs += _devis_docs(Devis.objects.filter(**co, id=inst.devis_id))
+        # Factures issues de ce devis.
+        docs += _facture_docs(
+            Facture.objects.filter(**co, devis_id=inst.devis_id))
+    # Bon de commande rattaché.
+    if inst.bon_commande_id:
+        docs += _bon_commande_docs(
+            BonCommande.objects.filter(**co, id=inst.bon_commande_id))
+    # Avoirs des factures de ce chantier.
+    if inst.devis_id:
+        facture_ids = list(
+            Facture.objects.filter(**co, devis_id=inst.devis_id)
+            .values_list('id', flat=True))
+        if facture_ids:
+            docs += _avoir_docs(
+                Avoir.objects.filter(**co, facture_id__in=facture_ids))
+    # Documents post-vente du chantier.
+    docs += _chantier_post_sale_docs(inst)
+
+    docs.sort(key=lambda d: (d['date'] or ''), reverse=True)
+    return Response({
+        'chantier': {
+            'id': inst.id, 'reference': inst.reference,
+            'client': str(inst.client),
+        },
+        'count': len(docs),
+        'documents': docs,
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  N49 — Vue du chiffre d'affaires récurrent (contrats d'entretien)
+#  Résumé LECTURE SEULE des sav.ContratMaintenance : nombre + valeur mensuelle/
+#  annuelle des contrats ACTIFS, renouvellements à venir (drapeau a_renouveler),
+#  et contrats expirés/résiliés. Scopé société.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _contrat_montant_mensuel(contrat):
+    """Valeur mensuelle d'un contrat — depuis un champ existant si présent.
+
+    Le modèle ContratMaintenance ne porte aujourd'hui aucun champ de prix ; on
+    lit donc un attribut optionnel `montant_mensuel` s'il existe (à venir),
+    sinon 0. On n'invente jamais de montant."""
+    val = getattr(contrat, 'montant_mensuel', None)
+    if val is None:
+        return Decimal('0')
+    try:
+        return Decimal(str(val))
+    except (TypeError, ValueError):
+        return Decimal('0')
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def recurring_revenue(request):
+    """CA récurrent des contrats d'entretien : actifs (nombre + valeur mensuelle
+    /annuelle), renouvellements à venir, et contrats expirés/résiliés. Lecture
+    seule, scopé société."""
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    today = date.today()
+    contrats = list(ContratMaintenance.objects.filter(**co)
+                    .select_related('client', 'installation'))
+
+    actifs = []
+    expires = []
+    a_renouveler = []
+    mensuel_total = Decimal('0')
+
+    for c in contrats:
+        fin = c.date_fin_effective
+        est_expire = (not c.actif) or (fin is not None and fin < today)
+        if est_expire:
+            expires.append(c)
+            continue
+        # Contrat actif (non expiré).
+        actifs.append(c)
+        mensuel_total += _contrat_montant_mensuel(c)
+        if c.a_renouveler(today=today):
+            a_renouveler.append(c)
+
+    def _row(c):
+        return {
+            'id': c.id,
+            'libelle': str(c),
+            'client': str(c.client),
+            'date_debut': c.date_debut.isoformat() if c.date_debut else None,
+            'date_fin': (c.date_fin_effective.isoformat()
+                         if c.date_fin_effective else None),
+            'jours_avant_fin': c.jours_avant_fin(today=today),
+            'montant_mensuel': helpers.f2(_contrat_montant_mensuel(c)),
+            'actif': c.actif,
+        }
+
+    annuel_total = mensuel_total * Decimal('12')
+    return Response({
+        'actifs': {
+            'count': len(actifs),
+            'valeur_mensuelle': helpers.f2(mensuel_total),
+            'valeur_annuelle': helpers.f2(annuel_total),
+        },
+        'a_renouveler': {
+            'count': len(a_renouveler),
+            'contrats': [_row(c) for c in a_renouveler],
+        },
+        'expires': {
+            'count': len(expires),
+            'contrats': [_row(c) for c in expires],
+        },
+        'contrats_actifs': [_row(c) for c in actifs],
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  N70 — Vue activité & accès par utilisateur
+#  Agrège les pistes d'audit/activité EXISTANTES (chatter CRM, installations,
+#  SAV, ProduitAuditLog) + le nouveau SettingsAuditLog en un flux unique scopé
+#  société, filtrable par utilisateur, ordonné dans le temps. AUCUN nouveau
+#  framework d'audit : on ne fait qu'agréger ce qui existe.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _activity_label(kind, field_label, body, old, new):
+    """Construit un libellé humain pour une ligne d'activité chatter."""
+    if body:
+        return body
+    if field_label:
+        chunk = field_label
+        if old or new:
+            chunk += f' : « {old or "—"} » → « {new or "—"} »'
+        return chunk
+    return kind or 'Activité'
+
+
+def _collect_chatter(qs, source, parent_attr, parent_fmt):
+    """Normalise un queryset de chatter (Lead/Installation/Ticket Activity)."""
+    out = []
+    for a in qs:
+        parent = getattr(a, parent_attr, None)
+        out.append({
+            'source': source,
+            'user_id': a.user_id,
+            'user': ((a.user.get_full_name() or a.user.username)
+                     if a.user else 'Système'),
+            'timestamp': a.created_at.isoformat() if a.created_at else None,
+            'action': a.kind,
+            'cible': parent_fmt(parent) if parent else '',
+            'detail': _activity_label(
+                a.get_kind_display() if hasattr(a, 'get_kind_display') else
+                a.kind, a.field_label, a.body, a.old_value, a.new_value),
+        })
+    return out
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def user_activity(request):
+    """Flux d'activité unifié par utilisateur — agrège chatter CRM /
+    installations / SAV, ProduitAuditLog et SettingsAuditLog. Filtres :
+    `?user=<id>`, `?source=...`, `?limit=N` (défaut 200, max 1000). Lecture
+    seule, scopé société, ordonné du plus récent au plus ancien."""
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    user_id = request.GET.get('user')
+    source_filter = request.GET.get('source')
+    try:
+        limit = min(int(request.GET.get('limit', 200)), 1000)
+    except (TypeError, ValueError):
+        limit = 200
+
+    events = []
+
+    def _want(src):
+        return (not source_filter) or source_filter == src
+
+    if _want('crm'):
+        q = LeadActivity.objects.filter(**co).select_related('user', 'lead')
+        if user_id:
+            q = q.filter(user_id=user_id)
+        events += _collect_chatter(
+            q[:limit], 'crm', 'lead',
+            lambda le: f'Lead {getattr(le, "nom", le.id)}')
+
+    if _want('installations'):
+        q = (InstallationActivity.objects.filter(**co)
+             .select_related('user', 'installation'))
+        if user_id:
+            q = q.filter(user_id=user_id)
+        events += _collect_chatter(
+            q[:limit], 'installations', 'installation',
+            lambda i: f'Chantier {getattr(i, "reference", i.id)}')
+
+    if _want('sav'):
+        q = (TicketActivity.objects.filter(**co)
+             .select_related('user', 'ticket'))
+        if user_id:
+            q = q.filter(user_id=user_id)
+        events += _collect_chatter(
+            q[:limit], 'sav', 'ticket',
+            lambda t: f'Ticket {getattr(t, "reference", t.id)}')
+
+    if _want('stock'):
+        q = (ProduitAuditLog.objects.filter(**co)
+             .select_related('created_by', 'produit'))
+        if user_id:
+            q = q.filter(created_by_id=user_id)
+        for a in q[:limit]:
+            detail = a.action
+            if a.champ:
+                detail = (f'{a.champ} : « {a.ancienne_valeur or "—"} » → '
+                          f'« {a.nouvelle_valeur or "—"} »')
+            events.append({
+                'source': 'stock',
+                'user_id': a.created_by_id,
+                'user': ((a.created_by.get_full_name()
+                          or a.created_by.username)
+                         if a.created_by else 'Système'),
+                'timestamp': a.date.isoformat() if a.date else None,
+                'action': a.action,
+                'cible': (f'Produit {a.produit.nom}' if a.produit else ''),
+                'detail': detail,
+            })
+
+    if _want('parametres'):
+        q = (SettingsAuditLog.objects.filter(**co).select_related('user'))
+        if user_id:
+            q = q.filter(user_id=user_id)
+        for a in q[:limit]:
+            events.append({
+                'source': 'parametres',
+                'user_id': a.user_id,
+                'user': ((a.user.get_full_name() or a.user.username)
+                         if a.user else 'Système'),
+                'timestamp': a.timestamp.isoformat() if a.timestamp else None,
+                'action': a.section,
+                'cible': f'Paramètres ({a.section})',
+                'detail': _activity_label(
+                    a.section, a.field_label, '',
+                    a.old_value, a.new_value),
+            })
+
+    events.sort(key=lambda e: (e['timestamp'] or ''), reverse=True)
+    events = events[:limit]
+    return Response({
+        'count': len(events),
+        'events': events,
+    })

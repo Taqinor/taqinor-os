@@ -1237,6 +1237,18 @@ export default function ParametresEntreprise() {
         <CustomFieldsAdmin />
       </div>
 
+      {/* ── N55 — Journal d'audit des paramètres ── */}
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+        padding: '1.25rem 1.4rem', marginTop: '1.5rem' }}>
+        <SectionTitle color="#0f766e" label="Journal des modifications de paramètres"
+          icon={<><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></>}/>
+        <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 1rem' }}>
+          Qui a changé quoi, et quand. Chaque modification du profil entreprise
+          ou des modèles de message est tracée (ancienne → nouvelle valeur).
+        </p>
+        <SettingsAuditPanel />
+      </div>
+
       <style>{`
         @keyframes paramSpin     { to { transform: rotate(360deg); } }
         @keyframes paramSlideDown {
@@ -1247,6 +1259,49 @@ export default function ParametresEntreprise() {
           .param-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
+    </div>
+  )
+}
+
+// N55 — Panneau d'audit des changements de paramètres (lecture seule, admin).
+const AUDIT_SECTION_LABELS = { profil: 'Profil', messages: 'Messages' }
+
+function SettingsAuditPanel() {
+  const [rows, setRows] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    parametresApi.getAuditLog({ limit: 100 })
+      .then(r => { if (alive) setRows(r.data) })
+      .catch(() => { if (alive) setRows([]) })
+    return () => { alive = false }
+  }, [])
+
+  if (rows === null) return <p style={{ color: '#94a3b8', fontSize: 13 }}>Chargement…</p>
+  if (rows.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>Aucune modification enregistrée.</p>
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="data-table" style={{ width: '100%', fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th>Date</th><th>Utilisateur</th><th>Section</th>
+            <th>Champ</th><th>Ancienne</th><th>Nouvelle</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id}>
+              <td>{r.timestamp ? new Date(r.timestamp).toLocaleString('fr-MA') : '—'}</td>
+              <td>{r.user_nom}</td>
+              <td>{AUDIT_SECTION_LABELS[r.section] || r.section}</td>
+              <td>{r.field_label || r.field}</td>
+              <td style={{ color: '#94a3b8' }}>{r.old_value || '—'}</td>
+              <td style={{ fontWeight: 600 }}>{r.new_value || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

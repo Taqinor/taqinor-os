@@ -292,6 +292,180 @@ class TestJournalVentesTVA(BaseData):
         self.assertNotIn('FX', refs)
 
 
+# ── N32 — Archive documentaire par client / par chantier ─────────────────────
+
+class TestDocumentArchive(BaseData):
+    def _devis(self, ref='D-AR', client=None):
+        d = Devis.objects.create(
+            company=self.company, reference=ref,
+            client=client or self.client_a, taux_tva=Decimal('20'))
+        LigneDevis.objects.create(
+            devis=d, produit=self.prod, designation='x',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+        return d
+
+    def test_client_archive_types_and_urls(self):
+        d = self._devis()
+        Facture.objects.create(
+            company=self.company, reference='F-AR', client=self.client_a,
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20'))
+        resp = self.api.get(
+            f'/api/django/reporting/archive/client/{self.client_a.id}/')
+        self.assertEqual(resp.status_code, 200)
+        types = {x['type'] for x in resp.data['documents']}
+        self.assertIn('devis', types)
+        self.assertIn('facture', types)
+        # URL pointe vers l'endpoint client-safe existant (/proposal).
+        devis_doc = next(x for x in resp.data['documents']
+                         if x['type'] == 'devis')
+        self.assertEqual(
+            devis_doc['download_url'],
+            f'/api/django/ventes/devis/{d.id}/proposal/')
+        for x in resp.data['documents']:
+            self.assertIn('reference', x)
+            self.assertIn('label', x)
+
+    def test_client_archive_company_scoped(self):
+        # Document d'une autre société : 404 (client hors périmètre).
+        resp = self.api.get(
+            f'/api/django/reporting/archive/client/{self.client_b.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_chantier_archive_includes_post_sale(self):
+        d = self._devis(ref='D-CH')
+        inst = Installation.objects.create(
+            company=self.company, reference='CH-AR', client=self.client_a,
+            devis=d, statut=Installation.Statut.CLOTURE)
+        resp = self.api.get(
+            f'/api/django/reporting/archive/chantier/{inst.id}/')
+        self.assertEqual(resp.status_code, 200)
+        types = {x['type'] for x in resp.data['documents']}
+        self.assertIn('devis', types)
+        self.assertIn('pv_reception', types)
+        self.assertIn('dossier_remise', types)
+        pv = next(x for x in resp.data['documents']
+                  if x['type'] == 'pv_reception')
+        self.assertEqual(
+            pv['download_url'],
+            f'/api/django/documents/chantiers/{inst.id}/pv-reception/')
+
+    def test_chantier_archive_company_scoped(self):
+        inst = Installation.objects.create(
+            company=self.other, reference='CH-OTH', client=self.client_b,
+            statut=Installation.Statut.A_PLANIFIER)
+        resp = self.api.get(
+            f'/api/django/reporting/archive/chantier/{inst.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+
+# ── N49 — CA récurrent (contrats d'entretien) ────────────────────────────────
+
+class TestRecurringRevenue(BaseData):
+    def setUp(self):
+        super().setUp()
+        from apps.sav.models import ContratMaintenance
+        self.CM = ContratMaintenance
+        self.inst = Installation.objects.create(
+            company=self.company, reference='CH-RR', client=self.client_a,
+            statut=Installation.Statut.CLOTURE)
+
+    def test_active_count_and_renewal_and_lapsed(self):
+        today = date.today()
+        # Actif, loin de la fin → pas à renouveler.
+        self.CM.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_a, date_debut=today - timedelta(days=10),
+            date_fin=today + timedelta(days=365), actif=True)
+        # Actif, fin proche → à renouveler.
+        self.CM.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_a, date_debut=today - timedelta(days=300),
+            date_fin=today + timedelta(days=20), actif=True)
+        # Expiré (date_fin passée).
+        self.CM.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_a, date_debut=today - timedelta(days=800),
+            date_fin=today - timedelta(days=30), actif=True)
+        # Résilié (inactif).
+        self.CM.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_a, date_debut=today - timedelta(days=10),
+            actif=False)
+        resp = self.api.get('/api/django/reporting/recurring-revenue/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['actifs']['count'], 2)
+        self.assertEqual(resp.data['a_renouveler']['count'], 1)
+        self.assertEqual(resp.data['expires']['count'], 2)
+
+    def test_monthly_annual_value_default_zero(self):
+        # Le modèle ContratMaintenance ne porte aucun champ prix aujourd'hui :
+        # la valeur récurrente est donc 0 (aucun montant inventé), et l'annuel
+        # vaut toujours 12 × le mensuel.
+        self.CM.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_a, date_debut=date.today(), actif=True)
+        resp = self.api.get('/api/django/reporting/recurring-revenue/')
+        mensuel = resp.data['actifs']['valeur_mensuelle']
+        annuel = resp.data['actifs']['valeur_annuelle']
+        self.assertEqual(mensuel, 0.0)
+        self.assertEqual(annuel, mensuel * 12)
+
+    def test_company_scoped(self):
+        other_inst = Installation.objects.create(
+            company=self.other, reference='CH-O', client=self.client_b,
+            statut=Installation.Statut.A_PLANIFIER)
+        self.CM.objects.create(
+            company=self.other, installation=other_inst,
+            client=self.client_b, date_debut=date.today(), actif=True)
+        self.CM.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_a, date_debut=date.today(), actif=True)
+        resp = self.api.get('/api/django/reporting/recurring-revenue/')
+        self.assertEqual(resp.data['actifs']['count'], 1)
+
+
+# ── N70 — Activité par utilisateur (agrégation) ──────────────────────────────
+
+class TestUserActivity(BaseData):
+    def test_aggregates_and_filters_by_user(self):
+        from apps.crm.models import LeadActivity
+        from apps.parametres.models import SettingsAuditLog
+        lead = Lead.objects.create(company=self.company, nom='L', stage=NEW)
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, user=self.user,
+            kind=LeadActivity.Kind.NOTE, body='Note CRM')
+        SettingsAuditLog.objects.create(
+            company=self.company, user=self.user, section='profil',
+            field='nom', field_label='Nom', old_value='A', new_value='B')
+        resp = self.api.get('/api/django/reporting/user-activity/')
+        self.assertEqual(resp.status_code, 200)
+        sources = {e['source'] for e in resp.data['events']}
+        self.assertIn('crm', sources)
+        self.assertIn('parametres', sources)
+        # Filtre par utilisateur.
+        resp2 = self.api.get(
+            f'/api/django/reporting/user-activity/?user={self.user.id}')
+        self.assertTrue(all(e['user_id'] == self.user.id
+                            for e in resp2.data['events']))
+        # Filtre par source.
+        resp3 = self.api.get(
+            '/api/django/reporting/user-activity/?source=parametres')
+        self.assertTrue(all(e['source'] == 'parametres'
+                            for e in resp3.data['events']))
+
+    def test_company_scoped(self):
+        from apps.crm.models import LeadActivity
+        _, other_user = auth(self.other)
+        other_lead = Lead.objects.create(
+            company=self.other, nom='LO', stage=NEW)
+        LeadActivity.objects.create(
+            company=self.other, lead=other_lead, user=other_user,
+            kind=LeadActivity.Kind.NOTE, body='Autre société')
+        resp = self.api.get('/api/django/reporting/user-activity/')
+        details = [e['detail'] for e in resp.data['events']]
+        self.assertNotIn('Autre société', details)
+
+
 class TestAccessControl(BaseData):
     def test_requires_auth(self):
         anon = APIClient()
@@ -299,5 +473,7 @@ class TestAccessControl(BaseData):
                     '/api/django/reporting/sales/',
                     '/api/django/reporting/stock/',
                     '/api/django/reporting/service/',
+                    '/api/django/reporting/recurring-revenue/',
+                    '/api/django/reporting/user-activity/',
                     '/api/django/reporting/journal-ventes/'):
             self.assertIn(anon.get(url).status_code, (401, 403), url)

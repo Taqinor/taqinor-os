@@ -12,8 +12,59 @@ from authentication.permissions import IsAdminRole, IsAnyRole
 from apps.ventes.utils.minio_client import get_minio_client
 from .models import (
     CompanyProfile, MessageTemplate, MESSAGE_TEMPLATE_DEFAULTS,
+    SettingsAuditLog,
 )
-from .serializers import CompanyProfileSerializer
+from .serializers import (
+    CompanyProfileSerializer, SettingsAuditLogSerializer,
+)
+
+
+# Champs du profil entreprise suivis par l'audit (N55) : nom FR lisible par
+# champ. Les clés d'image (logo_key/signature_key) et les FK techniques sont
+# tracées séparément si besoin ; ici on couvre les champs éditables du profil.
+_PROFILE_AUDIT_FIELDS = {
+    'nom': 'Nom',
+    'adresse': 'Adresse',
+    'email': 'Email',
+    'telephone': 'Téléphone',
+    'siret': 'SIRET',
+    'tva_intra': 'TVA intra',
+    'ice': 'ICE',
+    'identifiant_fiscal': 'Identifiant fiscal',
+    'rc': 'Registre de commerce',
+    'patente': 'Patente',
+    'cnss': 'CNSS',
+    'rib': 'RIB',
+    'banque': 'Banque',
+    'couleur_principale': 'Couleur principale',
+    'responsable_defaut_leads': 'Responsable par défaut des leads',
+    'payment_terms': 'Échéancier de paiement',
+    'quote_validity_days': 'Validité du devis (jours)',
+    'seuil_remise_approbation': "Seuil de remise pour approbation",
+    'agricole_pump_hours': 'Heures de pompage par défaut',
+    'doc_prefixes': 'Préfixes de numérotation',
+    'tva_standard': 'TVA standard',
+    'tva_panneaux': 'TVA panneaux',
+    'roi_constants': 'Constantes ROI',
+    'chantier_checklist_defaut': 'Checklist chantier par défaut',
+}
+
+
+def _audit_profile_changes(request, profile, before):
+    """Écrit une ligne SettingsAuditLog par champ de profil modifié.
+
+    `before` est un dict {field: valeur} capturé AVANT save. On compare aux
+    valeurs APRÈS save et on journalise chaque écart (ancien→nouveau)."""
+    company = request.user.company if request.user.company_id else None
+    for field, label in _PROFILE_AUDIT_FIELDS.items():
+        old = before.get(field)
+        new = getattr(profile, field, None)
+        if old == new:
+            continue
+        SettingsAuditLog.log_change(
+            company=company, user=request.user, section='profil',
+            field=field, field_label=label, old=old, new=new,
+        )
 
 
 def _profile(request):
@@ -35,12 +86,15 @@ def get_profile(request):
 def update_profile(request):
     profile = _profile(request)
     partial = request.method == 'PATCH'
+    # Capture l'état AVANT save pour l'audit (N55).
+    before = {f: getattr(profile, f, None) for f in _PROFILE_AUDIT_FIELDS}
     serializer = CompanyProfileSerializer(
         profile, data=request.data, partial=partial,
         context={'request': request},
     )
     serializer.is_valid(raise_exception=True)
     updated = serializer.save()
+    _audit_profile_changes(request, updated, before)
     return Response(CompanyProfileSerializer(updated).data)
 
 
@@ -208,15 +262,54 @@ def _messages_save(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
     obj, _ = MessageTemplate.objects.get_or_create(company=company, cle=cle)
+    label = dict(MessageTemplate.Cle.choices).get(cle, cle)
     if 'corps_fr' in request.data:
+        old = obj.corps_fr
         obj.corps_fr = request.data.get('corps_fr') or ''
+        if old != obj.corps_fr:
+            SettingsAuditLog.log_change(
+                company=company, user=request.user, section='messages',
+                field=f'{cle}.corps_fr', field_label=f'{label} (FR)',
+                old=old, new=obj.corps_fr)
     if 'corps_darija' in request.data:
+        old = obj.corps_darija
         obj.corps_darija = request.data.get('corps_darija') or ''
+        if old != obj.corps_darija:
+            SettingsAuditLog.log_change(
+                company=company, user=request.user, section='messages',
+                field=f'{cle}.corps_darija', field_label=f'{label} (Darija)',
+                old=old, new=obj.corps_darija)
     obj.save()
     return Response({
         'cle': obj.cle, 'corps_fr': obj.corps_fr,
         'corps_darija': obj.corps_darija,
     })
+
+
+# ── Journal d'audit des paramètres (N55) — LECTURE SEULE ─────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def settings_audit_log(request):
+    """Liste les changements de paramètres récents de la société (admin only).
+
+    Filtres : `?section=profil|messages`, `?user=<id>`, `?limit=N` (défaut 100,
+    max 500). Toujours scopé à la société de l'utilisateur connecté."""
+    company = request.user.company if request.user.company_id else None
+    qs = SettingsAuditLog.objects.filter(
+        company=company).select_related('user')
+    section = request.GET.get('section')
+    if section:
+        qs = qs.filter(section=section)
+    user_id = request.GET.get('user')
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+    try:
+        limit = min(int(request.GET.get('limit', 100)), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    data = SettingsAuditLogSerializer(qs[:limit], many=True).data
+    return Response(data)
 
 
 def _delete_image(request, field):
