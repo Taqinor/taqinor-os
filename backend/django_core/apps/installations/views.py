@@ -8,12 +8,14 @@ from authentication.permissions import (
 )
 from apps.imports.exports import XlsxExportMixin
 from . import activity
-from .models import Installation, Intervention, TypeIntervention
+from .models import (
+    ChecklistItem, Installation, Intervention, TypeIntervention,
+)
 from .serializers import (
-    InstallationSerializer, InterventionSerializer,
+    ChecklistItemSerializer, InstallationSerializer, InterventionSerializer,
     InstallationActivitySerializer, TypeInterventionSerializer,
 )
-from .services import create_installation_from_devis
+from .services import create_installation_from_devis, ensure_checklist
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -25,7 +27,7 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     """
     queryset = Installation.objects.select_related(
         'client', 'devis', 'lead', 'technicien_responsable',
-    ).prefetch_related('interventions').all()
+    ).prefetch_related('interventions', 'checklist').all()
     serializer_class = InstallationSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
@@ -87,11 +89,11 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'export']:
+        if self.action in READ_ACTIONS + ['historique', 'export', 'checklist']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
-            'annuler', 'reactiver',
+            'annuler', 'reactiver', 'toggle_checklist',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -102,6 +104,7 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         super().perform_create(serializer)
         serializer.instance.created_by = self.request.user
         serializer.instance.save(update_fields=['created_by'])
+        ensure_checklist(serializer.instance)
         activity.log_creation(serializer.instance, self.request.user)
 
     def perform_update(self, serializer):
@@ -141,6 +144,46 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         inst = self.get_object()
         return Response(
             InstallationActivitySerializer(inst.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='checklist',
+            permission_classes=[IsAnyRole])
+    def checklist(self, request, pk=None):
+        """Checklist d'exécution du chantier (auto-remplie si vide)."""
+        inst = self.get_object()
+        items = ensure_checklist(inst)
+        return Response(ChecklistItemSerializer(items, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'checklist/(?P<item_id>\d+)/toggle',
+            permission_classes=[IsResponsableOrAdmin])
+    def toggle_checklist(self, request, pk=None, item_id=None):
+        """Bascule une étape de la checklist : enregistre fait/par-qui/quand et
+        journalise la bascule dans l'Historique du chantier."""
+        from django.utils import timezone
+        inst = self.get_object()
+        ensure_checklist(inst)
+        item = ChecklistItem.objects.filter(
+            installation=inst, pk=item_id).first()
+        if item is None:
+            return Response({'detail': 'Étape inconnue.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        # Bascule, ou force la valeur si 'done' est fourni explicitement.
+        if 'done' in request.data:
+            new_done = bool(request.data.get('done'))
+        else:
+            new_done = not item.done
+        item.done = new_done
+        if new_done:
+            item.done_by = request.user
+            item.done_at = timezone.now()
+        else:
+            item.done_by = None
+            item.done_at = None
+        item.save(update_fields=['done', 'done_by', 'done_at'])
+        verbe = 'cochée' if new_done else 'décochée'
+        activity.log_note(
+            inst, request.user, f"Étape « {item.label} » {verbe}")
+        return Response(ChecklistItemSerializer(item).data)
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])

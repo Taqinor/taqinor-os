@@ -158,6 +158,85 @@ class TestAttachments(TestCase):
         self.assertFalse(Attachment.objects.filter(id=att_id).exists())
 
 
+class TestAttachmentPhase(TestCase):
+    """N4 — pièces jointes taguées par phase (avant/pendant/apres) sur un
+    chantier, filtrage par phase, retag, et scoping société."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Ph Co', slug='ph-co')
+        self.user = User.objects.create_user(
+            username='ph_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        client = Client.objects.create(
+            company=self.company, nom='Cli', email='cli-ph@example.invalid')
+        self.inst = Installation.objects.create(
+            company=self.company, reference='CHT-PH-1', client=client)
+        self.api = auth(self.user)
+
+    def _upload(self, phase=None):
+        from io import BytesIO
+        png = (b'\x89PNG\r\n\x1a\n' + b'\x00' * 64)
+
+        def fake_store(file):
+            return ({'file_key': 'attachments/x.png', 'filename': 'x.png',
+                     'size': len(png), 'mime': 'image/png'}, None)
+
+        with mock.patch('apps.records.views.store_attachment',
+                        side_effect=fake_store):
+            up = BytesIO(png)
+            up.name = 'x.png'
+            data = {'model': 'installations.installation', 'id': self.inst.id,
+                    'file': up}
+            if phase is not None:
+                data['phase'] = phase
+            return self.api.post('/api/django/records/attachments/', data,
+                                 format='multipart')
+
+    def test_upload_with_phase_persists(self):
+        r = self._upload(phase='avant')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['phase'], 'avant')
+
+    def test_invalid_phase_falls_back_to_null(self):
+        r = self._upload(phase='bidon')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIsNone(r.data['phase'])
+
+    def test_filter_by_phase(self):
+        self._upload(phase='avant')
+        self._upload(phase='apres')
+        r = self.api.get(
+            '/api/django/records/attachments/'
+            f'?model=installations.installation&id={self.inst.id}&phase=apres')
+        data = r.data['results'] if 'results' in r.data else r.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['phase'], 'apres')
+
+    def test_set_phase_retags(self):
+        att_id = self._upload(phase='avant').data['id']
+        r = self.api.post(
+            f'/api/django/records/attachments/{att_id}/set-phase/',
+            {'phase': 'pendant'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['phase'], 'pendant')
+
+    def test_other_company_cannot_tag(self):
+        from apps.records.models import Attachment
+        att_id = self._upload(phase='avant').data['id']
+        other = Company.objects.create(nom='Ph Other', slug='ph-other')
+        ub = User.objects.create_user(
+            username='ph_b', password='x', role_legacy='responsable',
+            company=other)
+        r = auth(ub).post(
+            f'/api/django/records/attachments/{att_id}/set-phase/',
+            {'phase': 'pendant'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(
+            Attachment.objects.get(id=att_id).phase, 'avant')
+
+
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType
     return ContentType.objects.get_for_model(Lead)

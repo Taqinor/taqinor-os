@@ -18,7 +18,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
-from apps.installations.models import Installation, Intervention, InstallationActivity
+from apps.installations.models import (
+    ChecklistItem, Installation, Intervention, InstallationActivity,
+)
 
 User = get_user_model()
 
@@ -229,6 +231,88 @@ class TestClientType(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['cin'], 'BK123456')
+
+
+class TestChecklist(TestCase):
+    """N3 — checklist d'exécution : auto-remplissage depuis les défauts société,
+    bascule (qui/quand + journal chatter) et pourcentage d'avancement."""
+
+    def setUp(self):
+        self.company = make_company(slug='cl-co', nom='CL Co')
+        self.user = User.objects.create_user(
+            username='cl_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        self.devis, _, _ = make_accepted_devis(self.company)
+        self.inst = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': self.devis.id}, format='json').data['id'])
+
+    def test_checklist_autopopulated_on_creation(self):
+        items = ChecklistItem.objects.filter(installation=self.inst)
+        labels = list(items.order_by('ordre').values_list('label', flat=True))
+        from apps.parametres.models import CHANTIER_CHECKLIST_DEFAUT
+        self.assertEqual(labels, list(CHANTIER_CHECKLIST_DEFAUT))
+
+    def test_checklist_endpoint_lazy_populates(self):
+        # Chantier créé directement (sans checklist), puis GET la remplit.
+        client = Client.objects.create(
+            company=self.company, nom='Direct', email='direct@example.invalid')
+        bare = Installation.objects.create(
+            company=self.company, reference='CHT-BARE', client=client)
+        self.assertEqual(bare.checklist.count(), 0)
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{bare.id}/checklist/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(len(r.data) > 0)
+        self.assertEqual(bare.checklist.count(), len(r.data))
+
+    def test_toggle_records_who_and_when_and_logs(self):
+        item = ChecklistItem.objects.filter(installation=self.inst).first()
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}'
+            f'/checklist/{item.id}/toggle/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['done'])
+        self.assertEqual(r.data['done_by'], self.user.id)
+        self.assertIsNotNone(r.data['done_at'])
+        item.refresh_from_db()
+        self.assertTrue(item.done)
+        # Journalisé dans le chatter du chantier.
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__icontains=item.label).exists())
+        # Re-bascule = décoche, efface qui/quand.
+        r2 = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}'
+            f'/checklist/{item.id}/toggle/', {}, format='json')
+        self.assertFalse(r2.data['done'])
+        self.assertIsNone(r2.data['done_by'])
+
+    def test_completion_percentage(self):
+        items = list(ChecklistItem.objects.filter(installation=self.inst)
+                     .order_by('ordre'))
+        total = len(items)
+        # Coche la moitié.
+        for it in items[:total // 2]:
+            self.api.post(
+                f'/api/django/installations/chantiers/{self.inst.id}'
+                f'/checklist/{it.id}/toggle/', {}, format='json')
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{self.inst.id}/')
+        comp = r.data['completion']
+        self.assertEqual(comp['total'], total)
+        self.assertEqual(comp['done'], total // 2)
+        self.assertEqual(comp['percent'], round((total // 2) * 100 / total))
+
+    def test_toggle_other_company_404(self):
+        other = make_company(slug='cl-other', nom='CL Other')
+        ub = User.objects.create_user(
+            username='cl_b', password='x', role_legacy='admin', company=other)
+        item = ChecklistItem.objects.filter(installation=self.inst).first()
+        r = auth(ub).post(
+            f'/api/django/installations/chantiers/{self.inst.id}'
+            f'/checklist/{item.id}/toggle/', {}, format='json')
+        self.assertEqual(r.status_code, 404)
 
 
 class TestTypeIntervention(TestCase):

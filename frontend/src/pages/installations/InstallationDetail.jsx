@@ -17,6 +17,10 @@ import {
   SOUS_GARANTIE_LABELS,
   statusColor as ticketStatusColor,
 } from '../../features/sav/ticketStatuses'
+import ChecklistPanel from './ChecklistPanel'
+import PhaseGallery from './PhaseGallery'
+import ChantierTimeline from './ChantierTimeline'
+import './chantier-detail.css'
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -341,6 +345,30 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         onChange={e => set('notes', e.target.value)} />
             </div>
             {saveError && <div className="form-error-box" role="alert">{saveError}</div>}
+          </div>
+
+          {/* ── Timeline (N5) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">📆 Chronologie</span>
+            </div>
+            <ChantierTimeline installation={current} />
+          </div>
+
+          {/* ── Checklist d'exécution (N3) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">✅ Checklist d'exécution</span>
+            </div>
+            <ChecklistPanel installationId={id} onChange={refreshInstallation} />
+          </div>
+
+          {/* ── Photos par phase (N4) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">🖼️ Photos (Avant / Pendant / Après)</span>
+            </div>
+            <PhaseGallery installationId={id} />
           </div>
 
           {/* ── Interventions ── */}

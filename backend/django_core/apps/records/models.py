@@ -90,6 +90,12 @@ class Activity(models.Model):
 
 class Attachment(models.Model):
     """Pièce jointe rattachée à un enregistrement (générique), stockée MinIO."""
+
+    class Phase(models.TextChoices):
+        AVANT = 'avant', 'Avant'
+        PENDANT = 'pendant', 'Pendant'
+        APRES = 'apres', 'Après'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='attachments')
@@ -104,6 +110,11 @@ class Attachment(models.Model):
     filename = models.CharField(max_length=255)
     size = models.PositiveIntegerField(default=0)
     mime = models.CharField(max_length=120, blank=True, default='')
+
+    # Phase du chantier (N4) — additif, nullable. null = non groupé / autre.
+    # Permet une galerie groupée Avant / Pendant / Après côté chantier.
+    phase = models.CharField(
+        max_length=10, choices=Phase.choices, null=True, blank=True)
 
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

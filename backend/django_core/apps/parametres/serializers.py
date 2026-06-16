@@ -12,6 +12,9 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     roi_constants_effective = serializers.SerializerMethodField()
     # Défauts historiques exposés pour le bouton « Réinitialiser ».
     roi_constants_defaults = serializers.SerializerMethodField()
+    # Checklist chantier effective (toujours non vide) + défauts historiques.
+    chantier_checklist_effective = serializers.SerializerMethodField()
+    chantier_checklist_defaults = serializers.SerializerMethodField()
 
     class Meta:
         model = CompanyProfile
@@ -24,6 +27,13 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     def get_roi_constants_defaults(self, obj):
         from .models import ROI_CONSTANTS_DEFAULTS
         return ROI_CONSTANTS_DEFAULTS
+
+    def get_chantier_checklist_effective(self, obj):
+        return obj.chantier_checklist_effective
+
+    def get_chantier_checklist_defaults(self, obj):
+        from .models import CHANTIER_CHECKLIST_DEFAUT
+        return list(CHANTIER_CHECKLIST_DEFAUT)
 
     def validate_responsable_defaut_leads(self, value):
         # Le responsable par défaut doit appartenir à la même société.

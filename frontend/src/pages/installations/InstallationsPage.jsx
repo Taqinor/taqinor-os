@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchInstallations } from '../../features/installations/store/installationsSlice'
+import {
+  fetchInstallations,
+  updateInstallation,
+  upsertInstallation,
+} from '../../features/installations/store/installationsSlice'
 import {
   EMPTY_FILTERS,
   filterInstallations,
@@ -8,14 +12,18 @@ import {
   statusColor,
 } from '../../features/installations/statuses'
 import installationsApi from '../../api/installationsApi'
+import crmApi from '../../api/crmApi'
 import ExportButton from '../../components/ExportButton'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
+import KanbanView from './views/KanbanView'
 import InstallationDetail from './InstallationDetail'
 import '../crm/leads/views/calendar.css'
+import '../../components/assigneepicker.css'
+import '../crm/leads/leadspage.css'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
-const VALID_VIEWS = ['liste', 'calendrier']
+const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
 
 // Paramètre SERVEUR dérivé du filtre « annulés ».
 const annuleParam = (annule) => {
@@ -186,6 +194,23 @@ export default function InstallationsPage() {
 
   const [selected, setSelected] = useState(null)
 
+  // Employés assignables (avatar + nom) pour le sélecteur de technicien des
+  // cartes kanban. Ouvert à la Commerciale (endpoint dédié, comme les leads).
+  const [users, setUsers] = useState([])
+  useEffect(() => {
+    crmApi.getAssignableUsers()
+      .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+  }, [])
+
+  // Changement de statut optimiste (kanban) avec retour-arrière.
+  const [busyId, setBusyId] = useState(null)
+  const [statusError, setStatusError] = useState(null)
+  useEffect(() => {
+    if (!statusError) return undefined
+    const t = setTimeout(() => setStatusError(null), 6000)
+    return () => clearTimeout(t)
+  }, [statusError])
+
   // Le filtre « annulés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
   const refetch = () => dispatch(fetchInstallations(annuleParam(filters.annule)))
@@ -196,6 +221,35 @@ export default function InstallationsPage() {
   const onOpen = (it) => setSelected(it)
   const onClose = () => setSelected(null)
   const onSaved = () => { refetch(); setSelected(null) }
+
+  // Glisser-déposer kanban : change le statut (PATCH). « Annulé » reste un
+  // drapeau, jamais une colonne — le statut suit son propre ordre fermé.
+  const changeStatus = async (item, newStatus) => {
+    if (!item || item.statut === newStatus) return
+    const prev = item.statut
+    setBusyId(item.id)
+    dispatch(upsertInstallation({ ...item, statut: newStatus }))
+    try {
+      await dispatch(updateInstallation({ id: item.id, data: { statut: newStatus } })).unwrap()
+    } catch {
+      dispatch(upsertInstallation({ ...item, statut: prev }))
+      setStatusError("Le changement de statut n'a pas pu être enregistré — réessayez.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // (Ré)assignation rapide du technicien depuis une carte kanban.
+  const reassign = async (item, userId) => {
+    try {
+      await dispatch(updateInstallation({
+        id: item.id, data: { technicien_responsable: userId },
+      })).unwrap()
+      refetch()
+    } catch {
+      setStatusError("La réassignation n'a pas pu être enregistrée — réessayez.")
+    }
+  }
 
   if (loading) return <p className="page-loading">Chargement des chantiers...</p>
   if (error) return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
@@ -229,6 +283,13 @@ export default function InstallationsPage() {
             </button>
             <button
               type="button"
+              className={`fb-pill${view === 'kanban' ? ' fb-pill-active' : ''}`}
+              onClick={() => setView('kanban')}
+            >
+              Kanban
+            </button>
+            <button
+              type="button"
               className={`fb-pill${view === 'calendrier' ? ' fb-pill-active' : ''}`}
               onClick={() => setView('calendrier')}
             >
@@ -240,8 +301,32 @@ export default function InstallationsPage() {
 
       <FilterBar filters={filters} setFilters={setFilters} items={items} />
 
+      {statusError && (
+        <div className="lp-stage-error" role="alert">
+          <span>{statusError}</span>
+          <button
+            type="button"
+            className="lp-stage-error-close"
+            aria-label="Fermer le message d'erreur"
+            onClick={() => setStatusError(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="lp-view-area">
         {view === 'liste' && <ListView items={filtered} onOpen={onOpen} />}
+        {view === 'kanban' && (
+          <KanbanView
+            items={filtered}
+            onOpen={onOpen}
+            onChangeStatus={changeStatus}
+            busyId={busyId}
+            users={users}
+            onReassign={reassign}
+          />
+        )}
         {view === 'calendrier' && <CalendarView items={filtered} onOpen={onOpen} />}
       </div>
 

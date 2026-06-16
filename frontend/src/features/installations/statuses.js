@@ -66,6 +66,28 @@ export function statusOrder(key) {
   return i === -1 ? INSTALLATION_STATUSES.length : i
 }
 
+// Regroupe les chantiers par statut pour la vue kanban — TOUJOURS les 7
+// colonnes, dans l'ordre d'entonnoir (jamais alphabétique), même vides.
+// « annulé » reste un DRAPEAU : un chantier annulé reste dans sa colonne de
+// statut, marqué distinctement (jamais une colonne). Module pur (node --test).
+export function groupInstallationsByStatus(items) {
+  return INSTALLATION_STATUSES.map((key) => {
+    const inStatus = (items ?? [])
+      .filter((it) => it.statut === key)
+      .sort(
+        (a, b) =>
+          new Date(b.date_creation ?? 0) - new Date(a.date_creation ?? 0),
+      )
+    return {
+      key,
+      label: STATUS_LABELS[key],
+      color: STATUS_COLORS[key],
+      items: inStatus,
+      count: inStatus.length,
+    }
+  })
+}
+
 export const EMPTY_FILTERS = {
   q: '',
   statut: '',

@@ -1,8 +1,24 @@
 from rest_framework import serializers
 
 from .models import (
-    Installation, Intervention, InstallationActivity, TypeIntervention,
+    ChecklistItem, Installation, Intervention, InstallationActivity,
+    TypeIntervention,
 )
+
+
+class ChecklistItemSerializer(serializers.ModelSerializer):
+    done_by_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChecklistItem
+        fields = [
+            'id', 'label', 'ordre', 'done', 'done_by', 'done_by_nom', 'done_at',
+        ]
+        # done/done_by/done_at posés côté serveur via l'endpoint de bascule.
+        read_only_fields = ['done', 'done_by', 'done_at']
+
+    def get_done_by_nom(self, obj):
+        return getattr(obj.done_by, 'username', None)
 
 
 class InstallationActivitySerializer(serializers.ModelSerializer):
@@ -63,6 +79,8 @@ class InstallationSerializer(serializers.ModelSerializer):
     lead_nom = serializers.SerializerMethodField()
     interventions = InterventionSerializer(many=True, read_only=True)
     nb_interventions = serializers.SerializerMethodField()
+    checklist = ChecklistItemSerializer(many=True, read_only=True)
+    completion = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -96,3 +114,11 @@ class InstallationSerializer(serializers.ModelSerializer):
 
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
+
+    def get_completion(self, obj):
+        """Avancement de la checklist : {done, total, percent} (0–100)."""
+        items = obj.checklist.all()
+        total = len(items)
+        done = sum(1 for it in items if it.done)
+        percent = round(done * 100 / total) if total else 0
+        return {'done': done, 'total': total, 'percent': percent}

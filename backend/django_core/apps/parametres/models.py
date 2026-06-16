@@ -1,6 +1,23 @@
 from django.db import models
 
 
+# ── Checklist d'exécution chantier (N3) — ADDITIF ────────────────────────────
+# Étapes par défaut d'un chantier, éditables dans Paramètres → Chantiers.
+# Stockées telles quelles (liste ordonnée de libellés FRANÇAIS) dans le
+# JSONField CompanyProfile.chantier_checklist_defaut. Chaque nouveau chantier
+# est pré-rempli depuis cette liste. Tant que le founder n'édite rien, ces
+# défauts s'appliquent.
+CHANTIER_CHECKLIST_DEFAUT = [
+    'Matériel reçu',
+    'Structure posée',
+    'Panneaux posés',
+    'Onduleur raccordé',
+    'Mise en service',
+    'Photos prises',
+    'PV de réception signé',
+]
+
+
 # ── Constantes ROI / économie (T6) — ADDITIF ─────────────────────────────────
 # Surfacées comme paramètres éditables (JSONField CompanyProfile.roi_constants).
 # Les DÉFAUTS sont STRICTEMENT IDENTIQUES aux valeurs codées en dur côté
@@ -116,12 +133,29 @@ class CompanyProfile(models.Model):
     # ROI_CONSTANTS_DEFAULTS (valeurs codées en dur de solar.js) → rien ne
     # change tant que le founder n'édite pas.
     roi_constants = models.JSONField(null=True, blank=True)
+    # Checklist d'exécution chantier par défaut (N3). Liste ordonnée de libellés
+    # FR ; NULL/vide = repli sur CHANTIER_CHECKLIST_DEFAUT. Chaque nouveau
+    # chantier est pré-rempli depuis cette liste.
+    chantier_checklist_defaut = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Profil entreprise'
 
     def __str__(self):
         return self.nom
+
+    @property
+    def chantier_checklist_effective(self):
+        """Checklist par défaut avec repli sur CHANTIER_CHECKLIST_DEFAUT.
+
+        Retourne toujours une liste non vide de libellés ; un profil non édité
+        garde les défauts historiques."""
+        val = self.chantier_checklist_defaut
+        if isinstance(val, list):
+            cleaned = [str(x).strip() for x in val if str(x).strip()]
+            if cleaned:
+                return cleaned
+        return list(CHANTIER_CHECKLIST_DEFAUT)
 
     @property
     def roi_constants_effective(self):
