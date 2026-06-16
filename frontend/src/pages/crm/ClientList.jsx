@@ -2,8 +2,10 @@ import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchClients, deleteClient } from '../../features/crm/store/crmSlice'
 import ventesApi from '../../api/ventesApi'
+import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
+import ExcelImport from '../../components/ExcelImport'
 
 export default function ClientList() {
   const dispatch = useDispatch()
@@ -14,6 +16,7 @@ export default function ClientList() {
   const [editClient, setEditClient]   = useState(null)
   const [search, setSearch]           = useState('')
   const [deletingId, setDeletingId]   = useState(null)
+  const [showImport, setShowImport]   = useState(false)
 
   useEffect(() => { dispatch(fetchClients()) }, [dispatch])
 
@@ -75,6 +78,21 @@ export default function ClientList() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <button className="btn btn-sm btn-outline" onClick={async () => {
+            const ids = filtered.map(c => c.id)
+            if (!ids.length) return
+            try {
+              const res = await crmApi.exportClientsXlsx(ids)
+              const url = URL.createObjectURL(new Blob([res.data]))
+              const a = document.createElement('a')
+              a.href = url; a.download = 'clients.xlsx'
+              document.body.appendChild(a); a.click(); a.remove()
+              setTimeout(() => URL.revokeObjectURL(url), 1000)
+            } catch { /* ignore */ }
+          }}>⬇ Exporter Excel</button>
+          <button className="btn btn-sm btn-outline" onClick={() => setShowImport(true)}>
+            ⬆ Importer
+          </button>
           <button className="btn btn-primary" onClick={openNew}>
             + Nouveau client
           </button>
@@ -83,6 +101,11 @@ export default function ClientList() {
 
       {showForm && (
         <ClientForm client={editClient} onClose={closeForm} />
+      )}
+
+      {showImport && (
+        <ExcelImport target="clients" onClose={() => setShowImport(false)}
+                     onDone={() => dispatch(fetchClients())} />
       )}
 
       <table className="data-table">

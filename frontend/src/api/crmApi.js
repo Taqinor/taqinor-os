@@ -7,6 +7,8 @@ const crmApi = {
   updateClient: (id, data) => api.put(`/crm/clients/${id}/`, data),
   patchClient: (id, data) => api.patch(`/crm/clients/${id}/`, data),
   deleteClient: (id) => api.delete(`/crm/clients/${id}/`),
+  exportClientsXlsx: (ids) =>
+    api.post('/crm/clients/export-xlsx/', { ids }, { responseType: 'blob' }),
 
   // Leads / opportunities
   getLeads: (params) => api.get('/crm/leads/', { params }),

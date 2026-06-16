@@ -73,3 +73,20 @@ class TestCommit(ImportBase):
                              {'file': f, 'target': 'clients'}, format='multipart')
         self.assertEqual(resp.data['created'], 1)
         self.assertTrue(Client.objects.filter(company=self.company, nom='Société A').exists())
+
+
+class TestGenericExport(ImportBase):
+    def test_export_devis_xlsx(self):
+        c = Client.objects.create(company=self.company, nom='C')
+        from decimal import Decimal
+        from apps.ventes.models import Devis
+        Devis.objects.create(company=self.company, reference='DEV-EXP-1', client=c,
+                             taux_tva=Decimal('20'), remise_globale=Decimal('0'))
+        resp = self.api.post('/api/django/imports/export/devis/', {}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
+
+    def test_unknown_entity_400(self):
+        resp = self.api.post('/api/django/imports/export/bogus/', {}, format='json')
+        self.assertEqual(resp.status_code, 400)

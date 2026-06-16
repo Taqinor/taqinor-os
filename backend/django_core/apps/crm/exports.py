@@ -96,3 +96,18 @@ def export_leads_xlsx(leads):
     rows = [lead_row(lead) for lead in leads]
     return build_xlsx_response(
         'leads.xlsx', LEAD_EXPORT_HEADERS, rows, sheet_title='Leads')
+
+
+CLIENT_EXPORT_HEADERS = [
+    'Nom', 'Prénom', 'Email', 'Téléphone', 'Adresse', 'ICE', 'Créé le',
+]
+
+
+def export_clients_xlsx(clients):
+    rows = [[
+        c.nom or '', c.prenom or '', c.email or '', c.telephone or '',
+        c.adresse or '', getattr(c, 'ice', '') or '',
+        c.date_creation.strftime('%Y-%m-%d') if getattr(c, 'date_creation', None) else '',
+    ] for c in clients]
+    return build_xlsx_response(
+        'clients.xlsx', CLIENT_EXPORT_HEADERS, rows, sheet_title='Clients')
