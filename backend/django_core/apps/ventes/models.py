@@ -73,6 +73,18 @@ class Devis(models.Model):
     etude_params = models.JSONField(blank=True, null=True)
     prix_cible_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── Révisions / versionnage (T10) — additif. Un devis envoyé peut être
+    # révisé en une nouvelle version qui garde l'historique lisible. La version
+    # courante porte is_active=True ; les versions remplacées pointent vers leur
+    # remplaçante (superseded_by) et redeviennent en lecture seule côté UI.
+    version = models.PositiveIntegerField(default=1)
+    version_parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='versions_enfants')
+    superseded_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='remplace')
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = 'Devis'

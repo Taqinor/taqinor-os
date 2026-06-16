@@ -73,6 +73,13 @@ class DevisSerializer(serializers.ModelSerializer):
     is_expired = serializers.SerializerMethodField()
     date_expiration = serializers.SerializerMethodField()
 
+    # Référence de la version qui remplace ce devis (T10) — pour le lien
+    # « remplacé par » dans l'UI.
+    superseded_by_ref = serializers.SerializerMethodField()
+
+    def get_superseded_by_ref(self, obj):
+        return obj.superseded_by.reference if obj.superseded_by_id else None
+
     def get_is_expired(self, obj):
         from .utils.expiry import is_expired
         return is_expired(obj)

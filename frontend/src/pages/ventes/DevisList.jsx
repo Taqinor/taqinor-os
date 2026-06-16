@@ -316,7 +316,19 @@ export default function DevisList() {
             const isDownloading = pdfDownloading[d.id]
             return (
               <tr key={d.id}>
-                <td><strong>{d.reference}</strong></td>
+                <td>
+                  <strong>{d.reference}</strong>
+                  {d.version > 1 && (
+                    <span className="badge" style={{ background: '#e0e7ff', color: '#3730a3', marginLeft: 6, fontSize: '0.65rem' }}>
+                      v{d.version}
+                    </span>
+                  )}
+                  {d.superseded_by_ref && (
+                    <div style={{ fontSize: '0.66rem', color: '#b45309', marginTop: 2 }}>
+                      remplacé par {d.superseded_by_ref}
+                    </div>
+                  )}
+                </td>
                 <td data-label="Client">
                   {d.client_nom ?? '—'}
                   {d.lead && (
@@ -376,6 +388,19 @@ export default function DevisList() {
                     >
                       Éditer
                     </button>
+                    {d.is_active && d.statut !== 'brouillon' && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        title="Créer une nouvelle version (v2, v3…) de ce devis"
+                        onClick={() => {
+                          ventesApi.reviserDevis(d.id)
+                            .then(() => dispatch(fetchDevis()))
+                            .catch(() => {})
+                        }}
+                      >
+                        Réviser
+                      </button>
+                    )}
                     {canDelete && (
                       <button
                         className="btn btn-sm btn-outline btn-danger-outline"

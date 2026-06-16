@@ -59,7 +59,7 @@ class DevisViewSet(viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture',
+            'generer_facture', 'reviser',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -105,6 +105,43 @@ class DevisViewSet(viewsets.ModelViewSet):
             serializer.instance, Devis.Statut.BROUILLON,
             serializer.instance.statut, self.request.user,
         )
+
+    @action(detail=True, methods=['post'], url_path='reviser',
+            permission_classes=[IsResponsableOrAdmin])
+    def reviser(self, request, pk=None):
+        """Révise un devis en une NOUVELLE version (v2, v3…). La nouvelle version
+        clone les lignes et repart en brouillon ; l'ancienne devient inactive et
+        pointe vers sa remplaçante (lecture seule côté UI). Les liens lead/client
+        et le schéma de numérotation sont préservés. Additif, sans perte."""
+        old = self.get_object()
+        company = old.company
+        root = old.version_parent or old
+        new_devis = {}
+
+        def _save(ref):
+            new_devis['obj'] = Devis.objects.create(
+                company=company, reference=ref, client=old.client, lead=old.lead,
+                statut=Devis.Statut.BROUILLON, taux_tva=old.taux_tva,
+                remise_globale=old.remise_globale, note=old.note,
+                mode_installation=old.mode_installation,
+                etude_params=old.etude_params, prix_cible_kwc=old.prix_cible_kwc,
+                created_by=request.user, version=old.version + 1,
+                version_parent=root, is_active=True)
+            return new_devis['obj']
+
+        create_with_reference(Devis, doc_prefix(company, 'devis'), company, _save)
+        nd = new_devis['obj']
+        for ligne in old.lignes.all():
+            LigneDevis.objects.create(
+                devis=nd, produit=ligne.produit, designation=ligne.designation,
+                quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+                remise=ligne.remise, taux_tva=ligne.taux_tva)
+        old.is_active = False
+        old.superseded_by = nd
+        old.save(update_fields=['is_active', 'superseded_by'])
+        return Response(
+            DevisSerializer(nd, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         # Snapshot du statut AVANT écriture, puis mouvement automatique du
