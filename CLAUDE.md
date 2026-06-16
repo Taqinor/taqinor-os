@@ -145,3 +145,23 @@ repo yet, the rule still applies to any future integration.
   screen and the one-page PDF. Never print m³/jour for curve-less pumps —
   omit the card. Pompage compositions contain NO inverter and NO battery,
   and auto-fill never quotes a price-less product (all guarded by tests).
+
+## Plan execution (my commands)
+Anything I type after a command is extra detail for that run.
+
+When I say "work on the plan":
+- If docs/PLAN.running exists, a batch is already running — stop and tell me; do not start a second.
+- Otherwise pick the active file: docs/PLAN.md if it has unchecked [ ] tasks, else docs/PLAN2.md if it has any; if neither, say there's nothing to do.
+- Read it fully and verify real repo state. Create docs/PLAN.running and a fresh dev branch off current main; do ALL work on dev — never touch main until the end.
+- Build every unchecked [ ] task. Run independent tasks in parallel via subagents in separate worktrees (never two on the same files); do dependent or overlapping ones in sequence — decide from the code. Commit each finished task to dev, tick it [x], add one dated line to a DONE LOG.
+- If a task can't be made to pass, skip it (leave it unticked, note why) and keep going.
+- Database migrations a task needs are approved. New external dependencies, auth or cost changes, deleted state, or brand-new architecture are NOT — skip those and list them.
+- When all buildable tasks are integrated, run the project's full CI checks (the same ones .github/workflows runs). Only if green, get dev onto main: main is protected and takes no direct pushes, so open a pull request from dev into main and merge it yourself (main requires NO approvals — never ask me to approve, never remove branch protection). This merge auto-deploys to api.taqinor.ma; never run a deploy command. If red, back out the blocking task, re-check, then open the PR for the rest; never merge a red dev.
+- Delete docs/PLAN.running. Report in plain language what shipped and what was skipped. One plan file per run — don't auto-start the other.
+
+When I say "add to plan:" followed by tasks (one per line or separated by ;):
+- If docs/PLAN.running exists, append them as [ ] lines to docs/PLAN2.md (create it if missing) — never touch docs/PLAN.md while a run is in progress.
+- Otherwise append them as [ ] lines to docs/PLAN.md's BUILD QUEUE.
+- Land the change on main the protected way — never push to main directly: open a pull request for it and merge it yourself (main requires NO approvals; never ask me to approve, never remove branch protection). Confirm in one line which file you added to.
+
+If I say "reset the plan lock", delete docs/PLAN.running and confirm.
