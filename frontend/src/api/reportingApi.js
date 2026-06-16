@@ -9,6 +9,12 @@ const reportingApi = {
   getNotifications: () => api.get('/reporting/notifications/'),
   // Tableau de bord valeur du pipeline (par étape, prévision, devis, pertes).
   getPipeline: () => api.get('/reporting/pipeline/'),
+  // Hub Rapports (T13/T14/T15) — ventes, stock, service.
+  salesReport: () => api.get('/reporting/reports/sales/'),
+  stockReport: () => api.get('/reporting/reports/stock/'),
+  serviceReport: () => api.get('/reporting/reports/service/'),
+  reportXlsx: (kind) =>
+    api.get(`/reporting/reports/${kind}/`, { params: { export: 'xlsx' }, responseType: 'blob' }),
 }
 
 export default reportingApi

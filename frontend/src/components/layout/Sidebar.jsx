@@ -104,6 +104,7 @@ const NAV_SECTIONS = [
     label: 'ANALYSE',
     items: [
       { to: '/reporting',            label: 'Reporting',        icon: I.reporting,    roles: ['responsable','admin'] },
+      { to: '/rapports',             label: 'Rapports',         icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   icon: I.reporting,    roles: ['responsable','admin'] },
     ],
   },

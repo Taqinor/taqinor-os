@@ -245,6 +245,17 @@ export default function FactureList() {
                     .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
             ⬇ Exporter Excel
           </button>
+          <button className="btn btn-sm btn-outline" title="Journal des ventes + résumé TVA (comptable)"
+                  onClick={() => {
+                    const m = window.prompt('Mois du journal des ventes (AAAA-MM) :',
+                      new Date().toISOString().slice(0, 7))
+                    if (!m) return
+                    ventesApi.journalVentes({ month: m })
+                      .then(r => downloadXlsx(r.data, `journal-ventes-${m}.xlsx`))
+                      .catch(() => {})
+                  }}>
+            📒 Journal comptable
+          </button>
           <button className="btn btn-primary" onClick={openNew}>
             + Nouvelle facture
           </button>
