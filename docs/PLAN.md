@@ -209,7 +209,7 @@ Multi-select products → bulk: change sell price (% or fixed — sell price onl
 buy-price-visibility rules), set warranty (`garantie_mois` / `garantie_production_mois`), reassign
 category and/or brand, export selection to .xlsx. Logged.
 
-### T9 — Reusable import + Excel export everywhere — [ ]
+### T9 — Reusable import + Excel export everywhere — [x]
 `openpyxl` is pre-approved.
 - A **reusable CSV/XLSX import** for leads, clients, and products: a **10-row dry-run** showing
   column→field mapping (and what didn't map) for approval before the full batch, origin-tagged,
@@ -337,3 +337,4 @@ Tracked here so they aren't lost:
 - 2026-06-16 — T17 done: garde d'approbation de remise — seuil configurable (Paramètres → Devis, désactivé par défaut); au passage en « envoyé », une remise au-dessus du seuil exige l'approbation d'un admin/responsable, sinon blocage FR.
 - 2026-06-16 — T6 done: settings unlocked safely — Canaux/Sources de lead éditables (CanalSource, site_web protégé contre renommage/suppression, suppression bloquée si utilisé, backfill), Types d'intervention éditables (mêmes garde-fous), Marque promue en modèle (FK marque_ref additif + colonne texte conservée, backfill, select free-add), constantes ROI éditables (CompanyProfile.roi_constants, défauts = valeurs actuelles de solar.js). Additif uniquement.
 - 2026-06-16 — T11 done: mécanisme de champs personnalisés (app customfields) — un admin définit des champs (texte/nombre/date/choix/booléen) par module (lead/client/produit) depuis Paramètres, rendus dynamiquement sur les formulaires, valeurs stockées dans un JSONField custom_fields additif (pas de changement de schéma cœur), validés serveur par type/obligatoire/choix; masquage de champs standard + restauration; portée « appliquer à tous ? » à la création.
+- 2026-06-16 — T9 done: import CSV/XLSX réutilisable (app imports) pour leads/clients/produits avec aperçu à blanc 10 lignes (mapping colonnes→champs + colonnes non mappées) avant le lot complet, création seule (jamais d'écrasement silencieux), enregistrements tagués d'origine (ImportBatch), séparé de la migration Odoo ponctuelle; bouton « Exporter Excel » (.xlsx) sur les listes clients/devis/factures/produits/chantiers/équipements/SAV (+ leads/produits déjà existants), respectant les filtres courants et excluant les prix d'achat. Écran « Importer » sous Administration.

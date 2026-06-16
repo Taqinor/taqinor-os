@@ -114,6 +114,7 @@ const NAV_SECTIONS = [
   {
     label: 'ADMINISTRATION',
     items: [
+      { to: '/imports',              label: 'Importer',         icon: I.ocr_import,    roles: ['responsable','admin'] },
       { to: '/admin/users',          label: 'Utilisateurs',     icon: I.utilisateurs,  roles: ['admin'] },
       { to: '/admin/roles',          label: 'Rôles',            icon: I.roles_icon,    roles: ['admin'] },
       { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['admin'] },

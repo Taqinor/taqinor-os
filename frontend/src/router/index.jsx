@@ -40,6 +40,7 @@ const StockReportPage = lazy(() => import('../pages/reporting/StockReportPage'))
 const ServiceReportPage = lazy(() => import('../pages/reporting/ServiceReportPage'))
 const ContratsMaintenancePage = lazy(() => import('../pages/sav/ContratsMaintenancePage'))
 const ContratsAVenirPage = lazy(() => import('../pages/sav/ContratsAVenirPage'))
+const ImportPage = lazy(() => import('../pages/imports/ImportPage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client
@@ -115,6 +116,7 @@ const router = createBrowserRouter([
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },
   { path: '/admin/roles', loader: authLoader, element: <WithLayout><RolesManagement /></WithLayout> },
   { path: '/parametres', loader: authLoader, element: <WithLayout><ParametresEntreprise /></WithLayout> },
+  { path: '/imports', loader: authLoader, element: <WithLayout><ImportPage /></WithLayout> },
 
   // Catch-all
   { path: '*', element: <Navigate to="/dashboard" replace /> },
