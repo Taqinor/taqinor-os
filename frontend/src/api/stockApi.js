@@ -28,6 +28,10 @@ const stockApi = {
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
   createMouvement: (data) => api.post('/stock/mouvements/', data),
 
+  // Édition en masse du catalogue (T8) + export Excel d'une sélection.
+  bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
+  exportProduitsXlsx: (ids) =>
+    api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
   getMarques: () => api.get('/stock/marques/'),
   saveMarque: (id, data) => id

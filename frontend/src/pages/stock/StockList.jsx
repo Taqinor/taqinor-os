@@ -11,18 +11,27 @@ import {
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
 import InlineEdit from '../../components/InlineEdit'
+import BulkProductBar from './BulkProductBar'
+import stockApi from '../../api/stockApi'
+import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
 
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, onInlineSave }) {
+function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, onInlineSave, selected, onToggleSelect }) {
   const spec = keySpec(p)
   const ttc = prixTtc(p)
   const catOptions = [{ value: '', label: '— Catégorie —' }]
     .concat((categories ?? []).map((c) => ({ value: c.id, label: c.nom })))
   return (
     <div className={`cat-row${p.is_low_stock ? ' cat-row-low' : ''}`}>
+      {onToggleSelect && (
+        <input type="checkbox" className="cat-row-check"
+               aria-label={`Sélectionner ${p.nom}`}
+               checked={selected} onChange={() => onToggleSelect(p.id)}
+               style={{ marginRight: 8 }} />
+      )}
       <div className="cat-row-id">
         <div className="cat-row-nom">{p.nom}</div>
         <div className="cat-row-sub">
@@ -189,8 +198,53 @@ export default function StockList() {
   const [archiveNotif, setArchiveNotif]   = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting]           = useState(false)
+  // Multi-sélection + édition en masse (T8).
+  const [selected, setSelected]   = useState(() => new Set())
+  const [marquesList, setMarques] = useState([])
+  const [bulkBusy, setBulkBusy]   = useState(false)
+  const [bulkMsg, setBulkMsg]     = useState(null)
 
-  useEffect(() => { dispatch(fetchProduits()); dispatch(fetchCategories()) }, [dispatch])
+  useEffect(() => {
+    dispatch(fetchProduits()); dispatch(fetchCategories())
+    stockApi.getMarques().then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
+  }, [dispatch])
+
+  // Sélection effective (élague les produits disparus après refetch/filtre).
+  const visibleSelected = useMemo(
+    () => pruneSelection(selected, (produits ?? []).map(p => p.id)),
+    [selected, produits],
+  )
+  const onToggleSelect = (id) => setSelected(s => toggleId(s, id))
+  const clearSelection = () => setSelected(new Set())
+
+  const runBulk = async (action, params = {}) => {
+    if (!visibleSelected.size) return
+    setBulkBusy(true)
+    try {
+      const { data } = await stockApi.bulkProduits({ ids: [...visibleSelected], action, ...params })
+      setBulkMsg(bulkResultMessage(data))
+      dispatch(fetchProduits())
+    } catch (e) {
+      setBulkMsg(e?.response?.data?.detail ?? "L'action en masse a échoué.")
+    } finally { setBulkBusy(false) }
+  }
+  const exportSelection = async () => {
+    if (!visibleSelected.size) return
+    setBulkBusy(true)
+    try {
+      const res = await stockApi.exportProduitsXlsx([...visibleSelected])
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'produits.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { setBulkMsg('Export indisponible.') } finally { setBulkBusy(false) }
+  }
+  useEffect(() => {
+    if (!bulkMsg) return undefined
+    const t = setTimeout(() => setBulkMsg(null), 8000)
+    return () => clearTimeout(t)
+  }, [bulkMsg])
 
   // Édition en place (T4) : PATCH d'UN seul champ produit (prix de vente,
   // quantité, catégorie). Validation serveur ; renvoie la promesse pour
@@ -327,6 +381,23 @@ export default function StockList() {
         </div>
       )}
 
+      {canWrite && visibleSelected.size > 0 && (
+        <BulkProductBar
+          count={visibleSelected.size}
+          categories={categories}
+          marques={marquesList}
+          busy={bulkBusy}
+          onAction={runBulk}
+          onExport={exportSelection}
+          onClear={clearSelection}
+        />
+      )}
+      {bulkMsg && (
+        <div className="alert alert-info" style={{ marginBottom: '1rem', background: '#ecfdf5', border: '1px solid #6ee7b7', color: '#065f46', borderRadius: 8, padding: '0.6rem 0.85rem' }}>
+          {bulkMsg}
+        </div>
+      )}
+
       {showForm && (
         <ProduitForm produit={editProduit} onClose={closeForm} onSaved={onSaved} />
       )}
@@ -379,7 +450,9 @@ export default function StockList() {
                     <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
                                   onEdit={openEdit} onDelete={handleDelete}
                                   categories={categories}
-                                  onInlineSave={canWrite ? onInlineSave : null} />
+                                  onInlineSave={canWrite ? onInlineSave : null}
+                                  selected={visibleSelected.has(p.id)}
+                                  onToggleSelect={canWrite ? onToggleSelect : null} />
                   ))}
                 </div>
               ))}
