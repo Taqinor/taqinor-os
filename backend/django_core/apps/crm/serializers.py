@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Client, Lead, LeadActivity
 from .devis_auto import champs_manquants, message_manquants
+from apps.customfields.mixins import CustomFieldsSerializerMixin
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
@@ -27,7 +28,8 @@ class _CurrentCompanyDefault:
         return serializer_field.context['request'].user.company
 
 
-class ClientSerializer(serializers.ModelSerializer):
+class ClientSerializer(CustomFieldsSerializerMixin, serializers.ModelSerializer):
+    custom_fields_module = 'client'
     devis_count = serializers.SerializerMethodField()
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
 
@@ -39,7 +41,8 @@ class ClientSerializer(serializers.ModelSerializer):
         return obj.devis.count()
 
 
-class LeadSerializer(serializers.ModelSerializer):
+class LeadSerializer(CustomFieldsSerializerMixin, serializers.ModelSerializer):
+    custom_fields_module = 'lead'
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()

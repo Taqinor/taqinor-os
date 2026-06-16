@@ -37,6 +37,10 @@ class Client(models.Model):
     ice = models.CharField(max_length=30, blank=True, null=True)
     if_fiscal = models.CharField(max_length=30, blank=True, null=True)
     rc = models.CharField(max_length=30, blank=True, null=True)
+    # Valeurs des champs personnalisés définis par la société (module 'client').
+    # Additif : map {field_key: value} validée par customfields. Jamais null en
+    # base (défaut {}), scopé société via les définitions.
+    custom_fields = models.JSONField(default=dict, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -282,6 +286,9 @@ class Lead(models.Model):
         related_name='leads_archives',
     )
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    # Valeurs des champs personnalisés (module 'lead') — voir app customfields.
+    custom_fields = models.JSONField(default=dict, blank=True, null=True)
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)

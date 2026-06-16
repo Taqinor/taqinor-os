@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Produit, Categorie, Fournisseur, MouvementStock, Marque
+from apps.customfields.mixins import CustomFieldsSerializerMixin
 
 
 class CategorieSerializer(serializers.ModelSerializer):
@@ -42,7 +43,8 @@ class MouvementStockSerializer(serializers.ModelSerializer):
         ]
 
 
-class ProduitSerializer(serializers.ModelSerializer):
+class ProduitSerializer(CustomFieldsSerializerMixin, serializers.ModelSerializer):
+    custom_fields_module = 'produit'
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
         queryset=Categorie.objects.none(),

@@ -9,6 +9,7 @@ import {
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
+import CustomFieldsRenderer from '../../components/customfields/CustomFieldsRenderer'
 
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
@@ -49,6 +50,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     garantie_mois:            produit?.garantie_mois != null ? String(produit.garantie_mois) : '',
     garantie_production_mois: produit?.garantie_production_mois != null ? String(produit.garantie_production_mois) : '',
   })
+  const [customFields, setCustomFields] = useState(produit?.custom_fields ?? {})
 
   useEffect(() => {
     dispatch(fetchCategories())
@@ -130,6 +132,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         marque:         fields.marque.trim() || null,
         garantie_mois:            fields.garantie_mois            !== '' ? parseInt(fields.garantie_mois)            : null,
         garantie_production_mois: fields.garantie_production_mois !== '' ? parseInt(fields.garantie_production_mois) : null,
+        custom_fields:  customFields,
       }
       if (isEdit) {
         await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
@@ -398,6 +401,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 <div className="form-hint">Pour les panneaux. Optionnel.</div>
               </div>
             </div>
+
+            <CustomFieldsRenderer
+              module="produit"
+              values={customFields}
+              onChange={setCustomFields}
+              errors={errors.custom_fields || {}}
+            />
 
             {errors.submit && <div className="form-error-box">{errors.submit}</div>}
           </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
+import CustomFieldsRenderer from '../../components/customfields/CustomFieldsRenderer'
 
 export default function ClientForm({ client = null, onClose }) {
   const dispatch = useDispatch()
@@ -23,6 +24,7 @@ export default function ClientForm({ client = null, onClose }) {
     if_fiscal:   client?.if_fiscal   ?? '',
     rc:          client?.rc          ?? '',
   })
+  const [customFields, setCustomFields] = useState(client?.custom_fields ?? {})
   const isEntreprise = fields.type_client === 'entreprise'
 
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
@@ -56,6 +58,7 @@ export default function ClientForm({ client = null, onClose }) {
         ice:       isEntreprise ? (fields.ice.trim() || null) : null,
         if_fiscal: isEntreprise ? (fields.if_fiscal.trim() || null) : null,
         rc:        isEntreprise ? (fields.rc.trim() || null) : null,
+        custom_fields: customFields,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -204,6 +207,13 @@ export default function ClientForm({ client = null, onClose }) {
                 placeholder="Rue, ville, code postal..."
               />
             </div>
+
+            <CustomFieldsRenderer
+              module="client"
+              values={customFields}
+              onChange={setCustomFields}
+              errors={errors.custom_fields || {}}
+            />
 
             {errors.submit && (
               <div className="form-error-box">{errors.submit}</div>

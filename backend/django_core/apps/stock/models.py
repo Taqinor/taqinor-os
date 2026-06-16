@@ -162,6 +162,9 @@ class Produit(models.Model):
         help_text="Courbe de performance constructeur : "
                   '{"debits_m3h": [0, 12, ...], "hmt_m": [91, 85, ...]} '
                   '(HMT délivrée à chaque débit).')
+    # Valeurs des champs personnalisés (module 'produit') — voir app
+    # customfields. Ne JAMAIS y exposer prix_achat/marge côté client.
+    custom_fields = models.JSONField(default=dict, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
 
