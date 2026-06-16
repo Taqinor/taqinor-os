@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 
-from .models import Equipement, Ticket, TicketActivity
+from .models import ContratMaintenance, Equipement, Ticket, TicketActivity
 
 # Fenêtre « garantie expirant bientôt » (jours).
 EXPIRING_SOON_DAYS = 90
@@ -142,3 +142,47 @@ class TicketSerializer(serializers.ModelSerializer):
 
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
+
+
+class ContratMaintenanceSerializer(serializers.ModelSerializer):
+    client_nom = serializers.SerializerMethodField()
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    # Échéance + état « due / à venir » — CALCULÉS à la lecture, jamais stockés.
+    prochaine_visite = serializers.SerializerMethodField()
+    est_due = serializers.SerializerMethodField()
+    est_a_venir = serializers.SerializerMethodField()
+    jours_avant_visite = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContratMaintenance
+        fields = '__all__'
+        # company / client / created_by / garde-fou d'idempotence posés côté
+        # serveur — jamais lus du corps. client est résolu depuis le chantier.
+        read_only_fields = [
+            'company', 'client', 'created_by',
+            'derniere_echeance_traitee',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_client_nom(self, obj):
+        c = obj.client
+        if not c:
+            return None
+        return f"{c.nom} {c.prenom or ''}".strip()
+
+    def get_prochaine_visite(self, obj):
+        d = obj.prochaine_visite
+        return d.isoformat() if d else None
+
+    def get_est_due(self, obj):
+        return obj.est_due()
+
+    def get_est_a_venir(self, obj):
+        return obj.est_a_venir()
+
+    def get_jours_avant_visite(self, obj):
+        d = obj.prochaine_visite
+        if not d:
+            return None
+        return (d - timezone.localdate()).days

@@ -11,11 +11,13 @@ from authentication.permissions import HasPermissionOrLegacy, IsAdminRole
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
-from .models import Equipement, Ticket
+from .models import ContratMaintenance, Equipement, Ticket
 from .serializers import (
+    ContratMaintenanceSerializer,
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     EXPIRING_SOON_DAYS,
 )
+from .services import generer_ticket_du
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -249,3 +251,103 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(ticket, request.user, "Ticket réactivé")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+
+class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Contrats de maintenance préventive (visites récurrentes). Tout est scopé
+    à la société ; le client est résolu côté serveur depuis le chantier. La
+    détection d'échéance et la génération de tickets sont calculées À LA LECTURE
+    / à la demande — aucun planificateur, comme partout dans l'OS."""
+    queryset = ContratMaintenance.objects.select_related(
+        'client', 'installation',
+    ).all()
+    serializer_class = ContratMaintenanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'libelle', 'client__nom', 'client__prenom', 'installation__reference',
+    ]
+    ordering_fields = ['date_debut', 'derniere_visite', 'date_creation']
+    ordering = ['-date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        installation = params.get('installation')
+        client = params.get('client')
+        actif = params.get('actif')
+        if installation:
+            qs = qs.filter(installation_id=installation)
+        if client:
+            qs = qs.filter(client_id=client)
+        if actif == 'true':
+            qs = qs.filter(actif=True)
+        elif actif == 'false':
+            qs = qs.filter(actif=False)
+        return qs
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['a_venir']:
+            return [HasPermissionOrLegacy('sav_voir')()]
+        elif self.action in WRITE_ACTIONS + ['generer_dus']:
+            return [HasPermissionOrLegacy('sav_gerer')()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        installation = serializer.validated_data.get('installation')
+        if installation is not None and installation.company_id != company.id:
+            raise ValidationError({'installation': 'Chantier inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        company = self.request.user.company
+        # Client résolu côté serveur depuis le chantier — jamais lu du corps.
+        installation = serializer.validated_data.get('installation')
+        serializer.save(
+            company=company, client=installation.client,
+            created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        company = self.request.user.company
+        installation = serializer.validated_data.get('installation')
+        client = installation.client if installation is not None else None
+        if client is not None:
+            serializer.save(company=company, client=client)
+        else:
+            serializer.save(company=company)
+
+    @action(detail=True, methods=['post'], url_path='generer-dus',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def generer_dus(self, request, pk=None):
+        """Génère le ticket dû d'UN contrat (idempotent). Renvoie le contrat à
+        jour + le ticket créé le cas échéant."""
+        contrat = self.get_object()
+        ticket = generer_ticket_du(contrat, user=request.user)
+        contrat.refresh_from_db()
+        data = self.get_serializer(contrat).data
+        data['ticket_genere'] = (
+            TicketSerializer(ticket, context={'request': request}).data
+            if ticket else None)
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='a-venir',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def a_venir(self, request):
+        """Liste les contrats actifs dont une visite est due / due bientôt —
+        échéances CALCULÉES à la lecture. On NE génère rien ici par défaut :
+        ?generer=1 déclenche en plus la création des tickets dus (idempotente)."""
+        generate = request.query_params.get('generer') == '1'
+        rows = []
+        for contrat in self.get_queryset().filter(actif=True):
+            if not contrat.est_a_venir():
+                continue
+            if generate:
+                generer_ticket_du(contrat, user=request.user)
+                contrat.refresh_from_db()
+            rows.append(self.get_serializer(contrat).data)
+        # Tri par échéance la plus proche d'abord (les plus en retard en tête).
+        rows.sort(key=lambda r: r.get('prochaine_visite') or '')
+        return Response(rows)
