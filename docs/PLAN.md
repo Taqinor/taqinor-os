@@ -185,7 +185,7 @@ inline and note it.
 - An **in-app notification bell** (no email): overdue activities, warranties expiring within 90 days,
   overdue/unpaid invoices — counts + a clickable list.
 
-### T6 — Unlock the deferred settings (safely) — [ ]
+### T6 — Unlock the deferred settings (safely) — [x]
 Tags and motifs de perte are already editable — leave them. Add:
 - Make **Canaux / Sources de lead** editable (add / rename / reorder). The key `site_web` is used by
   the website form webhook: **protect it from rename and deletion** so the pipeline never breaks.
@@ -335,3 +335,4 @@ Tracked here so they aren't lost:
 - 2026-06-16 — T15 done: Rapports → service (charge & délais chantiers, activité techniciens, SAV ouverts/résolus + délai, garanties expirant) exportable .xlsx.
 - 2026-06-16 — T16 done: contrats de maintenance récurrents (sav app, additif) attachés au chantier/client; échéances calculées à la volée à la lecture (aucun scheduler) et génèrent des tickets SAV à l'échéance (idempotent); vues « Contrats » + « Maintenance à venir ».
 - 2026-06-16 — T17 done: garde d'approbation de remise — seuil configurable (Paramètres → Devis, désactivé par défaut); au passage en « envoyé », une remise au-dessus du seuil exige l'approbation d'un admin/responsable, sinon blocage FR.
+- 2026-06-16 — T6 done: settings unlocked safely — Canaux/Sources de lead éditables (CanalSource, site_web protégé contre renommage/suppression, suppression bloquée si utilisé, backfill), Types d'intervention éditables (mêmes garde-fous), Marque promue en modèle (FK marque_ref additif + colonne texte conservée, backfill, select free-add), constantes ROI éditables (CompanyProfile.roi_constants, défauts = valeurs actuelles de solar.js). Additif uniquement.
