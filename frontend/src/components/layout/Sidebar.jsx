@@ -89,6 +89,7 @@ const NAV_SECTIONS = [
   {
     label: 'APRÈS-VENTE',
     items: [
+      { to: '/parc',                 label: 'Parc installé',    icon: I.equipements,  roles: ['normal','responsable','admin'] },
       { to: '/equipements',          label: 'Équipements',      icon: I.equipements,  roles: ['normal','responsable','admin'] },
       { to: '/sav',                  label: 'Tickets SAV',      icon: I.sav,          roles: ['normal','responsable','admin'] },
       { to: '/sav/contrats',         label: 'Contrats maintenance', icon: I.agenda,   roles: ['responsable','admin'] },
@@ -108,6 +109,7 @@ const NAV_SECTIONS = [
       { to: '/reporting',            label: 'Reporting',        icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/reporting/pipeline',   label: 'Valeur du pipeline', icon: I.reporting,  roles: ['responsable','admin'] },
       { to: '/reporting/rapports',   label: 'Rapports',         icon: I.reporting,    roles: ['responsable','admin'] },
+      { to: '/reporting/recurring-revenue', label: 'CA récurrent', icon: I.reporting, roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   icon: I.reporting,    roles: ['responsable','admin'] },
     ],
   },
@@ -115,6 +117,7 @@ const NAV_SECTIONS = [
     label: 'ADMINISTRATION',
     items: [
       { to: '/imports',              label: 'Importer',         icon: I.ocr_import,    roles: ['responsable','admin'] },
+      { to: '/reporting/activite',   label: 'Activité utilisateurs', icon: I.parametres, roles: ['admin'] },
       { to: '/admin/users',          label: 'Utilisateurs',     icon: I.utilisateurs,  roles: ['admin'] },
       { to: '/admin/roles',          label: 'Rôles',            icon: I.roles_icon,    roles: ['admin'] },
       { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['admin'] },

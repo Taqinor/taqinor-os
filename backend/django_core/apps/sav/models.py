@@ -386,6 +386,10 @@ class ContratMaintenance(models.Model):
     # Échéance déjà matérialisée par un ticket — garde-fou d'idempotence.
     derniere_echeance_traitee = models.DateField(null=True, blank=True)
     actif = models.BooleanField(default=True)
+    # Montant mensuel HT du contrat (CA récurrent N49) — ADDITIF, optionnel.
+    # Alimente la vue « CA récurrent » ; 0/None tant qu'il n'est pas renseigné.
+    montant_mensuel = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True, null=True)
 
     created_by = models.ForeignKey(

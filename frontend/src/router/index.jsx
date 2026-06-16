@@ -41,6 +41,12 @@ const ServiceReportPage = lazy(() => import('../pages/reporting/ServiceReportPag
 const ContratsMaintenancePage = lazy(() => import('../pages/sav/ContratsMaintenancePage'))
 const ContratsAVenirPage = lazy(() => import('../pages/sav/ContratsAVenirPage'))
 const ImportPage = lazy(() => import('../pages/imports/ImportPage'))
+const ParcPage = lazy(() => import('../pages/installations/ParcPage'))
+const ParcDetailPage = lazy(() => import('../pages/installations/ParcDetailPage'))
+const RecurringRevenuePage = lazy(() => import('../pages/reporting/RecurringRevenuePage'))
+const UserActivityPage = lazy(() => import('../pages/reporting/UserActivityPage'))
+const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
+const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client
@@ -96,6 +102,8 @@ const router = createBrowserRouter([
   // Après-vente : parc d'équipements & tickets SAV
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
   { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
+  { path: '/parc', loader: authLoader, element: <WithLayout><ParcPage /></WithLayout> },
+  { path: '/parc/:id', loader: authLoader, element: <WithLayout><ParcDetailPage /></WithLayout> },
   { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenancePage /></WithLayout> },
   { path: '/sav/maintenance-a-venir', loader: authLoader, element: <WithLayout><ContratsAVenirPage /></WithLayout> },
 
@@ -111,6 +119,10 @@ const router = createBrowserRouter([
   { path: '/reporting/rapports/ventes', loader: authLoader, element: <WithLayout><SalesReportPage /></WithLayout> },
   { path: '/reporting/rapports/stock', loader: authLoader, element: <WithLayout><StockReportPage /></WithLayout> },
   { path: '/reporting/rapports/service', loader: authLoader, element: <WithLayout><ServiceReportPage /></WithLayout> },
+  { path: '/reporting/recurring-revenue', loader: authLoader, element: <WithLayout><RecurringRevenuePage /></WithLayout> },
+  { path: '/reporting/activite', loader: authLoader, element: <WithLayout><UserActivityPage /></WithLayout> },
+  { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
+  { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
 
   // Administration
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },
