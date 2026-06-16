@@ -182,8 +182,9 @@ When Reda says "work on the web plan":
 - Delete docs/PLAN-web.running. Report in plain language (no diffs, no commit hashes): what shipped, what was skipped, and the exact preview URLs or live changes Reda can click. One plan file per run.
 
 When Reda says "add to web plan:" followed by tasks (one per line or separated by ;):
-- If docs/PLAN-web.running exists, append them as [ ] lines to docs/PLAN-web2.md (create if missing) — never touch docs/PLAN-web.md while a run is in progress.
-- Otherwise append them as [ ] lines to docs/PLAN-web.md's BUILD QUEUE.
-- Commit, and confirm in one line which file you added to.
+- Pick the target file: if docs/PLAN-web.running exists (a run is in progress), append the [ ] lines to docs/PLAN-web2.md (create if missing) — never touch docs/PLAN-web.md while a run is in progress; otherwise append them as [ ] lines to docs/PLAN-web.md's BUILD QUEUE.
+- DURABILITY — this is the whole point of "queue now, fire later (another session / overnight)": a queued task only counts once it reaches the plan file on MAIN. A plain commit here lands on the ephemeral Claude Code web session branch (e.g. claude/...) and is lost when that session ends — so it must NOT stop there. Land the append on main the protected way, exactly like "add to plan" above: branch off the current main, commit only the one-line plan append, open a pull request, and self-merge it (main needs NO approval — never ask Reda to approve, never push to main directly, never remove branch protection). This durable-to-main rule applies to BOTH the PLAN-web.md case and the PLAN-web2.md case.
+- Keep this PR to the docs/PLAN-web* files only — bundle no other change into it.
+- Confirm in one line which file you appended to and that it is merged to main.
 
 If Reda says "reset the web plan lock", delete docs/PLAN-web.running and confirm.
