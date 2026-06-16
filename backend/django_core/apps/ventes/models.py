@@ -77,6 +77,12 @@ class Devis(models.Model):
     # révisé en une nouvelle version qui garde l'historique lisible. La version
     # courante porte is_active=True ; les versions remplacées pointent vers leur
     # remplaçante (superseded_by) et redeviennent en lecture seule côté UI.
+    # Approbation de remise (T17) : quand la remise dépasse le seuil société,
+    # le passage en « envoyé » exige une approbation admin/propriétaire.
+    remise_approuvee = models.BooleanField(default=False)
+    remise_approuvee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='remises_approuvees')
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

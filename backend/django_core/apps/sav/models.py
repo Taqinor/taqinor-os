@@ -143,10 +143,11 @@ class Ticket(models.Model):
     client = models.ForeignKey(
         'crm.Client', on_delete=models.PROTECT, related_name='tickets_sav',
     )
-    # Le chantier concerné.
+    # Le chantier concerné (optionnel : un ticket de maintenance préventive
+    # peut être lié au seul client quand aucun chantier précis n'est ciblé).
     installation = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
-        related_name='tickets',
+        null=True, blank=True, related_name='tickets',
     )
     # L'appareil précis, si connu. SET_NULL : pas de perte du ticket.
     equipement = models.ForeignKey(
@@ -251,3 +252,65 @@ class TicketActivity(models.Model):
 
     def __str__(self):
         return f"{self.ticket_id} {self.kind} {self.field or ''}".strip()
+
+
+class ContratMaintenance(models.Model):
+    """T16 — contrat de maintenance préventive (abonnement de visites).
+
+    Rattaché à un client (et optionnellement un chantier). La prochaine visite
+    et le caractère « dû » sont calculés À LA LECTURE (pas de planificateur,
+    cohérent avec l'expiration des devis T7). Quand une visite est due, un
+    ticket SAV préventif est généré (idempotent) via le service dédié.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+        SEMESTRIEL = 'semestriel', 'Semestriel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    # Nombre de mois entre deux visites, par périodicité.
+    MONTHS = {'mensuel': 1, 'trimestriel': 3, 'semestriel': 6, 'annuel': 12}
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='contrats_maintenance')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='contrats_maintenance')
+    installation = models.ForeignKey(
+        'installations.Installation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='contrats_maintenance')
+    periodicite = models.CharField(
+        max_length=15, choices=Periodicite.choices,
+        default=Periodicite.ANNUEL)
+    date_debut = models.DateField()
+    # Date de la dernière visite générée — avance à chaque génération.
+    derniere_visite = models.DateField(null=True, blank=True)
+    prix = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_creation']
+        verbose_name = 'Contrat de maintenance'
+        verbose_name_plural = 'Contrats de maintenance'
+
+    def __str__(self):
+        return f'Contrat #{self.pk} — {self.client_id}'
+
+    def prochaine_visite(self):
+        """Date de la prochaine visite (dernière visite ou début + période)."""
+        from datetime import date
+        base = self.derniere_visite or self.date_debut
+        m = self.MONTHS.get(self.periodicite, 12)
+        # Avance de m mois sans dépendance externe.
+        y, mo = base.year, base.month + m
+        y += (mo - 1) // 12
+        mo = ((mo - 1) % 12) + 1
+        day = min(base.day, 28)
+        return date(y, mo, day)
+
+    def is_due(self, today=None):
+        from datetime import date
+        return self.actif and (today or date.today()) >= self.prochaine_visite()

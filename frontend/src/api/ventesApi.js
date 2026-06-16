@@ -18,6 +18,8 @@ const ventesApi = {
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  // Approbation admin de la remise (T17) — débloque l'envoi.
+  approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
   journalVentes: (params) =>
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),

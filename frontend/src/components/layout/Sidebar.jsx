@@ -91,6 +91,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/equipements',          label: 'Équipements',      icon: I.equipements,  roles: ['normal','responsable','admin'] },
       { to: '/sav',                  label: 'Tickets SAV',      icon: I.sav,          roles: ['normal','responsable','admin'] },
+      { to: '/sav/contrats',         label: 'Contrats maintenance', icon: I.sav,      roles: ['responsable','admin'] },
     ],
   },
   {

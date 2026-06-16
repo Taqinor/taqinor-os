@@ -89,6 +89,10 @@ class CompanyProfile(models.Model):
     # Productible annuel moyen (kWh par kWc installé) — repère ROI éditable.
     productible_kwh_kwc = models.DecimalField(
         max_digits=7, decimal_places=1, default=Decimal('1600.0'))
+    # Seuil d'approbation de remise (%) (T17). NULL/vide = désactivé (défaut) :
+    # tant qu'il n'est pas renseigné, aucun devis n'exige d'approbation.
+    discount_approval_threshold = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Profil entreprise'
