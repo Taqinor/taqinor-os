@@ -19,6 +19,14 @@ const savApi = {
   noterTicket: (id, body) => api.post(`/sav/tickets/${id}/noter/`, { body }),
   annulerTicket: (id, motif) => api.post(`/sav/tickets/${id}/annuler/`, { motif }),
   reactiverTicket: (id) => api.post(`/sav/tickets/${id}/reactiver/`),
+
+  // T16 — contrats de maintenance.
+  getContrats: (params) => api.get('/sav/contrats-maintenance/', { params }),
+  saveContrat: (id, data) => id
+    ? api.patch(`/sav/contrats-maintenance/${id}/`, data)
+    : api.post('/sav/contrats-maintenance/', data),
+  deleteContrat: (id) => api.delete(`/sav/contrats-maintenance/${id}/`),
+  genererVisitesDues: () => api.post('/sav/contrats-maintenance/generer-dus/'),
 }
 
 export default savApi

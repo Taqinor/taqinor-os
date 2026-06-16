@@ -13,6 +13,7 @@ const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
 const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
+const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance').then(m => ({ default: m.Component })))
 const StockList = lazy(() => import('../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
@@ -89,6 +90,7 @@ const router = createBrowserRouter([
   // Après-vente : parc d'équipements & tickets SAV
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
   { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
+  { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenance /></WithLayout> },
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
