@@ -19,6 +19,8 @@ const savApi = {
   noterTicket: (id, body) => api.post(`/sav/tickets/${id}/noter/`, { body }),
   annulerTicket: (id, motif) => api.post(`/sav/tickets/${id}/annuler/`, { motif }),
   reactiverTicket: (id) => api.post(`/sav/tickets/${id}/reactiver/`),
+  // N45 — rapport d'intervention (PDF régénéré à la demande, sans prix d'achat).
+  rapportPdf: (id) => api.get(`/sav/tickets/${id}/rapport-pdf/`, { responseType: 'blob' }),
 
   // T16 — contrats de maintenance.
   getContrats: (params) => api.get('/sav/contrats-maintenance/', { params }),

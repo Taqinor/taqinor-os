@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
+import { downloadBlob } from '../../utils/downloadBlob'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
@@ -184,6 +185,14 @@ function TicketDetail({ ticket, onClose, onSaved }) {
       loadHistorique()
       onSaved?.()
     } catch { /* silencieux */ }
+  }
+  const telechargerRapport = async () => {
+    try {
+      const r = await savApi.rapportPdf(id)
+      downloadBlob(r.data, `rapport-intervention-${current.reference || id}.pdf`)
+    } catch {
+      alert('Rapport indisponible.')
+    }
   }
 
   const linkedEquip = equipements.find((e) => String(e.id) === String(fields.equipement))
@@ -408,6 +417,9 @@ function TicketDetail({ ticket, onClose, onSaved }) {
           {!current.annule && (
             <button type="button" className="btn btn-danger" onClick={annuler}>Annuler le ticket</button>
           )}
+          <button type="button" className="btn btn-outline" onClick={telechargerRapport}>
+            Rapport d'intervention (PDF)
+          </button>
           <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
           <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
             {saving ? 'Enregistrement...' : 'Mettre à jour'}
