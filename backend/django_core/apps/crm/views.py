@@ -2,10 +2,10 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Client, Lead, LeadTag, MotifPerte
+from .models import Client, Lead, LeadTag, MotifPerte, Canal
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
-    LeadTagSerializer, MotifPerteSerializer,
+    LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -420,3 +420,60 @@ class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+
+# Canaux par défaut (clés = Lead.Canal) — 'site_web' est PROTÉGÉ (webhook site).
+_DEFAULT_CANAUX = [
+    ('meta_ads', 'Publicité Meta', False),
+    ('whatsapp_ctwa', 'WhatsApp/CTWA', False),
+    ('site_web', 'Site web', True),
+    ('reference', 'Référence', False),
+    ('telephone', 'Téléphone', False),
+    ('walk_in', 'Visite/Walk-in', False),
+    ('autre', 'Autre', False),
+]
+
+
+def seed_canaux(company):
+    """Crée les canaux par défaut pour une société qui n'en a aucun (idempotent,
+    additif). 'site_web' est marqué protégé."""
+    if company is None or Canal.objects.filter(company=company).exists():
+        return
+    for i, (cle, libelle, protege) in enumerate(_DEFAULT_CANAUX):
+        Canal.objects.get_or_create(
+            company=company, cle=cle,
+            defaults={'libelle': libelle, 'ordre': i, 'protege': protege})
+
+
+class CanalViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Canaux / sources de lead gérés (Paramètres → CRM). Lecture tout rôle,
+    écriture admin. Garde-fous : un canal protégé ('site_web') ne se supprime
+    pas, et aucun canal utilisé par des leads ne se supprime."""
+    queryset = Canal.objects.all()
+    serializer_class = CanalSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        # Amorçage paresseux : à la 1re consultation, on peuple les canaux par
+        # défaut de la société (préserve le comportement existant).
+        if request.user.company_id:
+            seed_canaux(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        canal = self.get_object()
+        if canal.protege:
+            return Response(
+                {'detail': "Ce canal est protégé (utilisé par le site web) et "
+                           "ne peut pas être supprimé."},
+                status=status.HTTP_409_CONFLICT)
+        if Lead.objects.filter(company=canal.company, canal=canal.cle).exists():
+            return Response(
+                {'detail': "Ce canal est utilisé par des leads — archivez-le "
+                           "plutôt que de le supprimer."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)

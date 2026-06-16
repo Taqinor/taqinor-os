@@ -7,15 +7,63 @@ from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from . import activity
-from .models import Installation, Intervention
+from .models import Installation, Intervention, TypeIntervention
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer,
+    InstallationActivitySerializer, TypeInterventionSerializer,
 )
 from .services import create_installation_from_devis
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+# Types d'intervention par défaut (clés = Intervention.Type), tous « système ».
+_DEFAULT_TYPES_INTERVENTION = [
+    ('pose', 'Pose'),
+    ('raccordement', 'Raccordement'),
+    ('mise_en_service', 'Mise en service'),
+    ('controle', 'Contrôle'),
+    ('depannage', 'Dépannage'),
+]
+
+
+def seed_types_intervention(company):
+    if company is None or TypeIntervention.objects.filter(company=company).exists():
+        return
+    for i, (cle, libelle) in enumerate(_DEFAULT_TYPES_INTERVENTION):
+        TypeIntervention.objects.get_or_create(
+            company=company, cle=cle,
+            defaults={'libelle': libelle, 'ordre': i, 'protege': True})
+
+
+class TypeInterventionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Types d'intervention gérés (Paramètres → Chantiers). Lecture tout rôle,
+    écriture admin. Un type protégé ou utilisé ne peut pas être supprimé."""
+    queryset = TypeIntervention.objects.all()
+    serializer_class = TypeInterventionSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            seed_types_intervention(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        t = self.get_object()
+        if t.protege:
+            return Response(
+                {'detail': "Ce type est protégé et ne peut pas être supprimé."},
+                status=status.HTTP_409_CONFLICT)
+        if Intervention.objects.filter(company=t.company, type_intervention=t.cle).exists():
+            return Response(
+                {'detail': "Ce type est utilisé par des interventions — "
+                           "archivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):

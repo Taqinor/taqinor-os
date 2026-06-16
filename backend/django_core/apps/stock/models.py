@@ -49,6 +49,25 @@ class Fournisseur(models.Model):
         return self.nom
 
 
+class Marque(models.Model):
+    """Marque produit gérée (Paramètres → Stock). `Produit.marque` reste un
+    texte libre (compat ascendante) ; cette liste sert de référentiel + ajout
+    libre dans le formulaire produit. Additif — aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='marques')
+    nom = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Marque'
+
+    def __str__(self):
+        return self.nom
+
+
 class Produit(models.Model):
     company = models.ForeignKey(
         'authentication.Company',

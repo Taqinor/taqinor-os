@@ -27,6 +27,12 @@ const stockApi = {
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
   createMouvement: (data) => api.post('/stock/mouvements/', data),
+
+  // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
+  getMarques: () => api.get('/stock/marques/'),
+  saveMarque: (id, data) => id
+    ? api.patch(`/stock/marques/${id}/`, data) : api.post('/stock/marques/', data),
+  deleteMarque: (id) => api.delete(`/stock/marques/${id}/`),
 }
 
 export default stockApi

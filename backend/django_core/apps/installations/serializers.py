@@ -1,6 +1,27 @@
 from rest_framework import serializers
 
-from .models import Installation, Intervention, InstallationActivity
+from .models import (
+    Installation, Intervention, InstallationActivity, TypeIntervention,
+)
+
+
+class TypeInterventionSerializer(serializers.ModelSerializer):
+    en_usage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TypeIntervention
+        fields = ['id', 'cle', 'libelle', 'ordre', 'protege', 'archived', 'en_usage']
+        read_only_fields = ['protege']
+
+    def get_en_usage(self, obj):
+        return Intervention.objects.filter(
+            company=obj.company, type_intervention=obj.cle).count()
+
+    def validate_cle(self, value):
+        if self.instance and self.instance.protege and value != self.instance.cle:
+            raise serializers.ValidationError(
+                "La clé d'un type protégé ne peut pas être modifiée.")
+        return value
 
 
 class InstallationActivitySerializer(serializers.ModelSerializer):

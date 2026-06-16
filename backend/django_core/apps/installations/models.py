@@ -141,6 +141,30 @@ class Installation(models.Model):
         return self.reference
 
 
+class TypeIntervention(models.Model):
+    """Type d'intervention géré (Paramètres → Chantiers). `Intervention.type`
+    reste une clé texte ; cette liste pilote le sélecteur et les libellés.
+    `protege` verrouille un type système contre le renommage/la suppression.
+    Additif — aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='types_intervention')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=80)
+    ordre = models.PositiveIntegerField(default=0)
+    protege = models.BooleanField(default=False)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'cle')]
+        verbose_name = "Type d'intervention"
+        verbose_name_plural = "Types d'intervention"
+
+    def __str__(self):
+        return self.libelle
+
+
 class Intervention(models.Model):
     class Type(models.TextChoices):
         POSE = 'pose', 'Pose'

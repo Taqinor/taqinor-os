@@ -147,3 +147,26 @@ class MotifPerteSerializer(serializers.ModelSerializer):
         from .models import MotifPerte
         model = MotifPerte
         fields = ['id', 'nom', 'archived']
+
+
+class CanalSerializer(serializers.ModelSerializer):
+    # Nombre de leads utilisant ce canal — l'UI désactive la suppression si > 0.
+    en_usage = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import Canal
+        model = Canal
+        fields = ['id', 'cle', 'libelle', 'ordre', 'protege', 'archived', 'en_usage']
+        read_only_fields = ['protege']
+
+    def get_en_usage(self, obj):
+        from .models import Lead
+        return Lead.objects.filter(company=obj.company, canal=obj.cle).count()
+
+    def validate_cle(self, value):
+        # La clé d'un canal protégé (ex. 'site_web') ne peut pas être renommée :
+        # le webhook du site web en dépend.
+        if self.instance and self.instance.protege and value != self.instance.cle:
+            raise serializers.ValidationError(
+                "La clé d'un canal protégé ne peut pas être modifiée.")
+        return value

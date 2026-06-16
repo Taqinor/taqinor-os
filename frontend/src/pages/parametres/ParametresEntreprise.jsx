@@ -14,6 +14,8 @@ import { originFrom } from '../../api/origin'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+import installationsApi from '../../api/installationsApi'
+import stockApi from '../../api/stockApi'
 import './parametres.css'
 
 // Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
@@ -349,6 +351,8 @@ export default function ParametresEntreprise() {
     doc_prefixes: DEFAULT_PREFIXES,
     tva_standard: 20,
     tva_panneaux: 10,
+    onee_tarif_kwh: 1.75,
+    productible_kwh_kwc: 1600,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -360,6 +364,20 @@ export default function ParametresEntreprise() {
   const [newMotif, setNewMotif] = useState('')
   const [messages, setMessages] = useState([])
   const [msgSavedCle, setMsgSavedCle] = useState(null)
+  // Listes gérées additives (T6) : canaux, types d'intervention, marques.
+  const [canaux, setCanaux] = useState([])
+  const [typesItv, setTypesItv] = useState([])
+  const [marques, setMarques] = useState([])
+  const [newCanal, setNewCanal] = useState('')
+  const [newType, setNewType] = useState('')
+  const [newMarque, setNewMarque] = useState('')
+  const loadCanaux = () => crmApi.getCanaux()
+    .then(r => setCanaux(r.data.results ?? r.data)).catch(() => {})
+  const loadTypesItv = () => installationsApi.getTypesIntervention()
+    .then(r => setTypesItv(r.data.results ?? r.data)).catch(() => {})
+  const loadMarques = () => stockApi.getMarques()
+    .then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
+  const slugify = (s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 
   const loadNiveaux = () => {
     ventesApi.getNiveauxRelance()
@@ -382,7 +400,54 @@ export default function ParametresEntreprise() {
     loadTags()
     loadMotifs()
     loadMessages()
+    loadCanaux()
+    loadTypesItv()
+    loadMarques()
   }, [dispatch])
+
+  const addCanal = async () => {
+    const libelle = newCanal.trim()
+    if (!libelle) return
+    try {
+      await crmApi.saveCanal(null, { cle: slugify(libelle), libelle })
+      setNewCanal(''); loadCanaux()
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const renameCanal = async (c, libelle) => {
+    try { await crmApi.saveCanal(c.id, { libelle }) } catch { /* */ }
+  }
+  const delCanal = async (c) => {
+    if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
+    try { await crmApi.deleteCanal(c.id); loadCanaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  const addType = async () => {
+    const libelle = newType.trim()
+    if (!libelle) return
+    try {
+      await installationsApi.saveTypeIntervention(null, { cle: slugify(libelle), libelle })
+      setNewType(''); loadTypesItv()
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const renameType = async (t, libelle) => {
+    try { await installationsApi.saveTypeIntervention(t.id, { libelle }) } catch { /* */ }
+  }
+  const delType = async (t) => {
+    if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
+    try { await installationsApi.deleteTypeIntervention(t.id); loadTypesItv() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  const addMarque = async () => {
+    const nom = newMarque.trim()
+    if (!nom) return
+    try { await stockApi.saveMarque(null, { nom }); setNewMarque(''); loadMarques() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const delMarque = async (m) => {
+    if (!window.confirm(`Supprimer la marque « ${m.nom} » ?`)) return
+    try { await stockApi.deleteMarque(m.id); loadMarques() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
 
   const setMsgField = (cle, key, val) =>
     setMessages(ms => ms.map(m => (m.cle === cle ? { ...m, [key]: val } : m)))
@@ -463,6 +528,8 @@ export default function ParametresEntreprise() {
       doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
       tva_standard: profile.tva_standard ?? 20,
       tva_panneaux: profile.tva_panneaux ?? 10,
+      onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
+      productible_kwh_kwc: profile.productible_kwh_kwc ?? 1600,
     })
   }, [profile])
 
@@ -503,6 +570,8 @@ export default function ParametresEntreprise() {
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
       tva_standard: Number(form.tva_standard) || 20,
       tva_panneaux: Number(form.tva_panneaux) || 10,
+      onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
+      productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
     }
     dispatch(saveProfile(payload))
   }
@@ -767,6 +836,26 @@ export default function ParametresEntreprise() {
             </div>
           </div>
 
+          {/* ROI — hypothèses (tarif ONEE, productible) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0e7490" label="Hypothèses ROI" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Constantes utilisées pour les estimations d'économies/rentabilité.
+              Les valeurs par défaut reprennent l'historique du simulateur — rien
+              ne change tant que vous ne les modifiez pas.
+            </p>
+            <div className="pe-grid-2">
+              <Field label="Tarif ONEE moyen (MAD/kWh)">
+                <input style={inputBase} type="number" min="0" step="0.001"
+                       name="onee_tarif_kwh" value={form.onee_tarif_kwh} onChange={set} />
+              </Field>
+              <Field label="Productible (kWh/kWc/an)">
+                <input style={inputBase} type="number" min="0" step="1"
+                       name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
+              </Field>
+            </div>
+          </div>
+
           {/* CRM — Étiquettes & motifs de perte (listes gérées) */}
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
             <SectionTitle color="#7c3aed" label="CRM — Étiquettes & motifs" icon={<><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>}/>
@@ -805,6 +894,91 @@ export default function ParametresEntreprise() {
                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMotif() } }} />
               <button type="button" onClick={addMotif}
                       style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* CRM — Canaux / sources de lead (liste gérée, site_web protégé) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0891b2" label="CRM — Canaux / sources" icon={<><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Sources d'où viennent les leads. « Site web » est protégé (utilisé
+              par le formulaire du site) et ne peut être ni renommé ni supprimé.
+              Un canal déjà utilisé par des leads ne peut pas être supprimé.
+            </p>
+            {canaux.map(c => (
+              <div key={c.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1 }} defaultValue={c.libelle}
+                       onBlur={e => renameCanal(c, e.target.value)} />
+                {c.protege
+                  ? <span style={{ fontSize: 10, color: '#0891b2', fontWeight: 600 }}>protégé</span>
+                  : (
+                    <button type="button" onClick={() => delCanal(c)}
+                            disabled={c.en_usage > 0}
+                            title={c.en_usage > 0 ? `${c.en_usage} lead(s) utilisent ce canal` : 'Supprimer'}
+                            style={{ border: 'none', background: c.en_usage > 0 ? '#e2e8f0' : '#fee2e2', color: c.en_usage > 0 ? '#94a3b8' : '#b91c1c', borderRadius: 6, padding: '4px 9px', cursor: c.en_usage > 0 ? 'not-allowed' : 'pointer' }}>✕</button>
+                  )}
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouveau canal" value={newCanal}
+                     onChange={e => setNewCanal(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCanal() } }} />
+              <button type="button" onClick={addCanal}
+                      style={{ border: 'none', background: '#0891b2', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* Chantiers — Types d'intervention (liste gérée) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0d9488" label="Chantiers — Types d'intervention" icon={<><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6l-6 6 2 2 6-6a4 4 0 0 0 5.6-5.6l-2.5 2.5-2-2 2.5-2.5z"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Types d'intervention proposés sur les chantiers. Les types système
+              sont protégés ; un type déjà utilisé ne peut pas être supprimé.
+            </p>
+            {typesItv.map(t => (
+              <div key={t.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1 }} defaultValue={t.libelle}
+                       onBlur={e => renameType(t, e.target.value)} />
+                {t.protege
+                  ? <span style={{ fontSize: 10, color: '#0d9488', fontWeight: 600 }}>système</span>
+                  : (
+                    <button type="button" onClick={() => delType(t)}
+                            disabled={t.en_usage > 0}
+                            style={{ border: 'none', background: t.en_usage > 0 ? '#e2e8f0' : '#fee2e2', color: t.en_usage > 0 ? '#94a3b8' : '#b91c1c', borderRadius: 6, padding: '4px 9px', cursor: t.en_usage > 0 ? 'not-allowed' : 'pointer' }}>✕</button>
+                  )}
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouveau type" value={newType}
+                     onChange={e => setNewType(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addType() } }} />
+              <button type="button" onClick={addType}
+                      style={{ border: 'none', background: '#0d9488', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* Stock — Marques (liste gérée) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#b45309" label="Stock — Marques" icon={<><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Marques proposées sur les produits (ajout libre possible). Une
+              marque utilisée par des produits ne peut pas être supprimée.
+            </p>
+            {marques.map(m => (
+              <div key={m.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1 }} defaultValue={m.nom} readOnly />
+                <button type="button" onClick={() => delMarque(m)}
+                        disabled={m.en_usage > 0}
+                        title={m.en_usage > 0 ? `${m.en_usage} produit(s)` : 'Supprimer'}
+                        style={{ border: 'none', background: m.en_usage > 0 ? '#e2e8f0' : '#fee2e2', color: m.en_usage > 0 ? '#94a3b8' : '#b91c1c', borderRadius: 6, padding: '4px 9px', cursor: m.en_usage > 0 ? 'not-allowed' : 'pointer' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouvelle marque" value={newMarque}
+                     onChange={e => setNewMarque(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMarque() } }} />
+              <button type="button" onClick={addMarque}
+                      style={{ border: 'none', background: '#b45309', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
             </div>
           </div>
 
