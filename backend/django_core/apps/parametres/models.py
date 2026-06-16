@@ -1,6 +1,33 @@
 from django.db import models
 
 
+# ── Constantes ROI / économie (T6) — ADDITIF ─────────────────────────────────
+# Surfacées comme paramètres éditables (JSONField CompanyProfile.roi_constants).
+# Les DÉFAUTS sont STRICTEMENT IDENTIQUES aux valeurs codées en dur côté
+# frontend (frontend/src/features/ventes/solar.js) : tant que le founder n'édite
+# rien, le ROI ne change pas d'un iota.
+#   - ghi : irradiance GHI mensuelle (kWh/m²/mois) — solar.js GHI
+#   - efficiency : rendement global — solar.js EFFICIENCY = 0.8
+#   - kwh_price : tarif ONEE MAD/kWh (usage interne) — solar.js KWH_PRICE = 1.75
+#   - battery_value_per_kwh_month : valeur batterie MAD/kWh/mois — solar.js (60)
+#   - day_usage_defaults : autoconsommation % par type — solar.js DAY_USAGE_DEFAULTS
+ROI_CONSTANTS_DEFAULTS = {
+    'ghi': [
+        83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
+        179.56, 161.17, 137.03, 111.59, 81.91, 74.61,
+    ],
+    'efficiency': 0.8,
+    'kwh_price': 1.75,
+    'battery_value_per_kwh_month': 60,
+    'day_usage_defaults': {
+        'Résidentielle': 60,
+        'Commerciale': 80,
+        'Industrielle': 80,
+        'Agricole': 100,
+    },
+}
+
+
 class CompanyProfile(models.Model):
     """
     Un profil par entreprise (utilisé dans les PDFs et paramètres).
@@ -85,12 +112,28 @@ class CompanyProfile(models.Model):
         max_digits=5, decimal_places=2, default=20)
     tva_panneaux = models.DecimalField(
         max_digits=5, decimal_places=2, default=10)
+    # Constantes ROI / économie (T6) éditables. NULL = repli sur
+    # ROI_CONSTANTS_DEFAULTS (valeurs codées en dur de solar.js) → rien ne
+    # change tant que le founder n'édite pas.
+    roi_constants = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Profil entreprise'
 
     def __str__(self):
         return self.nom
+
+    @property
+    def roi_constants_effective(self):
+        """ROI constants avec repli sur les défauts (jamais None côté lecture).
+
+        Fusion peu profonde : les défauts comblent toute clé absente, de sorte
+        qu'un profil partiellement édité garde les valeurs historiques pour le
+        reste."""
+        merged = dict(ROI_CONSTANTS_DEFAULTS)
+        if isinstance(self.roi_constants, dict):
+            merged.update(self.roi_constants)
+        return merged
 
     @classmethod
     def get(cls, company=None):

@@ -187,6 +187,37 @@ class Intervention(models.Model):
         return f"{self.get_type_intervention_display()} — {self.installation_id}"
 
 
+class TypeIntervention(models.Model):
+    """Type d'ordre de travail / intervention, géré (Paramètres → Chantiers).
+
+    Promotion de l'ancien enum Intervention.Type (pose, raccordement, mise en
+    service, contrôle, dépannage) vers une liste de référence éditable, scopée
+    par société. Le champ `Intervention.type_intervention` reste un CharField :
+    cette liste fournit le libellé + l'ordre ; aucun ordre de travail existant
+    ne change. Additif.
+
+    Un type utilisé par un ordre de travail ne peut pas être supprimé (garde
+    côté viewset, message français clair).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='types_intervention')
+    # Clé stable (anglais/slug) stockée dans Intervention.type_intervention.
+    key = models.CharField(max_length=40)
+    label = models.CharField(max_length=120)
+    ordre = models.PositiveIntegerField(default=100)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'label']
+        unique_together = [('company', 'key')]
+        verbose_name = "Type d'intervention"
+        verbose_name_plural = "Types d'intervention"
+
+    def __str__(self):
+        return self.label
+
+
 class InstallationActivity(models.Model):
     """Historique « chatter » d'un chantier — même modèle que LeadActivity.
 

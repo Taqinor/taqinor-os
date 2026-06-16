@@ -229,3 +229,88 @@ class TestClientType(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['cin'], 'BK123456')
+
+
+class TestTypeIntervention(TestCase):
+    """Types d'intervention éditables (T6) : scoping, blocage suppression
+    en usage, seed par migration."""
+
+    def setUp(self):
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.company = make_company(slug='ti-co', nom='TI Co')
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='ti_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.commerciale = User.objects.create_user(
+            username='ti_comm', password='x', role_legacy='responsable',
+            company=self.company)
+
+    def test_backfill_seeds_legacy_types(self):
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        from apps.installations.models import TypeIntervention
+        mod = import_module(
+            'apps.installations.migrations.0004_backfill_typeintervention')
+        mod.backfill(django_apps, None)
+        keys = set(TypeIntervention.objects.filter(company=self.company)
+                   .values_list('key', flat=True))
+        self.assertIn('pose', keys)
+        self.assertIn('depannage', keys)
+
+    def test_admin_create_derives_key(self):
+        from apps.installations.models import TypeIntervention
+        r = auth(self.admin).post(
+            '/api/django/installations/types-intervention/',
+            {'label': 'Audit Énergétique'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        obj = TypeIntervention.objects.get(
+            company=self.company, label='Audit Énergétique')
+        self.assertEqual(obj.key, 'audit_energetique')
+
+    def test_commerciale_cannot_write(self):
+        r = auth(self.commerciale).post(
+            '/api/django/installations/types-intervention/',
+            {'label': 'X'}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_cannot_delete_type_in_use(self):
+        from apps.installations.models import (
+            TypeIntervention, Installation, Intervention,
+        )
+        client = Client.objects.create(
+            company=self.company, nom='C', email='c-ti@example.invalid')
+        inst = Installation.objects.create(
+            company=self.company, reference='CHT-TI-1', client=client)
+        ti = TypeIntervention.objects.create(
+            company=self.company, key='controle', label='Contrôle', ordre=40)
+        Intervention.objects.create(
+            company=self.company, installation=inst,
+            type_intervention='controle')
+        r = auth(self.admin).delete(
+            f'/api/django/installations/types-intervention/{ti.id}/')
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', None))
+        self.assertTrue(TypeIntervention.objects.filter(id=ti.id).exists())
+
+    def test_unused_type_can_be_deleted(self):
+        from apps.installations.models import TypeIntervention
+        ti = TypeIntervention.objects.create(
+            company=self.company, key='libre', label='Libre', ordre=99)
+        r = auth(self.admin).delete(
+            f'/api/django/installations/types-intervention/{ti.id}/')
+        self.assertEqual(r.status_code, 204)
+
+    def test_list_company_scoped(self):
+        from apps.installations.models import TypeIntervention
+        other = make_company(slug='ti-other', nom='TI Other')
+        TypeIntervention.objects.create(
+            company=other, key='secret', label='Secret', ordre=10)
+        r = auth(self.admin).get(
+            '/api/django/installations/types-intervention/')
+        keys = [t['key'] for t in (r.data['results']
+                if 'results' in r.data else r.data)]
+        self.assertNotIn('secret', keys)

@@ -1,6 +1,8 @@
 from rest_framework import serializers
 
-from .models import Installation, Intervention, InstallationActivity
+from .models import (
+    Installation, Intervention, InstallationActivity, TypeIntervention,
+)
 
 
 class InstallationActivitySerializer(serializers.ModelSerializer):
@@ -15,6 +17,19 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+class TypeInterventionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TypeIntervention
+        fields = ['id', 'key', 'label', 'ordre', 'archived']
+        read_only_fields = ['key']
+
+    def validate_label(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Libellé requis.')
+        return value
 
 
 class InterventionSerializer(serializers.ModelSerializer):

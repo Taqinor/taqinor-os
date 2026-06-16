@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     ClientViewSet, LeadViewSet, assignable_users,
-    LeadTagViewSet, MotifPerteViewSet,
+    LeadTagViewSet, MotifPerteViewSet, CanalSourceViewSet,
     global_search_view, notifications_view,
 )
 from .webhooks import website_lead_webhook
@@ -12,6 +12,7 @@ router.register(r'clients', ClientViewSet)
 router.register(r'leads', LeadViewSet)
 router.register(r'tags', LeadTagViewSet)
 router.register(r'motifs-perte', MotifPerteViewSet)
+router.register(r'canaux', CanalSourceViewSet)
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)

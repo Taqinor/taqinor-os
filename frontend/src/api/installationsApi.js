@@ -21,6 +21,15 @@ const installationsApi = {
   createIntervention: (data) => api.post('/installations/interventions/', data),
   updateIntervention: (id, data) => api.patch(`/installations/interventions/${id}/`, data),
   deleteIntervention: (id) => api.delete(`/installations/interventions/${id}/`),
+
+  // Types d'intervention gérés (Paramètres → Chantiers). La clé est posée
+  // côté serveur ; un type utilisé par un ordre de travail ne peut être
+  // supprimé (409 avec message FR).
+  getTypesIntervention: () => api.get('/installations/types-intervention/'),
+  saveTypeIntervention: (id, data) => id
+    ? api.patch(`/installations/types-intervention/${id}/`, data)
+    : api.post('/installations/types-intervention/', data),
+  deleteTypeIntervention: (id) => api.delete(`/installations/types-intervention/${id}/`),
 }
 
 export default installationsApi

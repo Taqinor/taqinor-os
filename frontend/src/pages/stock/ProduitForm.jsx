@@ -8,11 +8,16 @@ import {
   createCategorie,
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
+import stockApi from '../../api/stockApi'
 
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const { categories, fournisseurs } = useSelector(s => s.stock)
   const isEdit = !!produit
+
+  // Marques existantes (suggestions pour le champ marque, create-on-type côté
+  // serveur : saisir un texte crée/relie la marque automatiquement).
+  const [marqueOptions, setMarqueOptions] = useState([])
 
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
@@ -40,6 +45,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     seuil_alerte:   String(produit?.seuil_alerte  ?? '0'),
     categorie_id:   produit?.categorie?.id  ? String(produit.categorie.id) : '',
     fournisseur_id: produit?.fournisseur?.id ? String(produit.fournisseur.id) : '',
+    marque:         produit?.marque         ?? '',
     garantie_mois:            produit?.garantie_mois != null ? String(produit.garantie_mois) : '',
     garantie_production_mois: produit?.garantie_production_mois != null ? String(produit.garantie_production_mois) : '',
   })
@@ -47,6 +53,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   useEffect(() => {
     dispatch(fetchCategories())
     dispatch(fetchFournisseurs())
+    stockApi.getMarques()
+      .then(r => setMarqueOptions(r.data.results ?? r.data))
+      .catch(() => {})
   }, [dispatch])
 
   useEffect(() => {
@@ -118,6 +127,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
         categorie_id:   fields.categorie_id   ? parseInt(fields.categorie_id)   : null,
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,
+        marque:         fields.marque.trim() || null,
         garantie_mois:            fields.garantie_mois            !== '' ? parseInt(fields.garantie_mois)            : null,
         garantie_production_mois: fields.garantie_production_mois !== '' ? parseInt(fields.garantie_production_mois) : null,
       }
@@ -265,6 +275,20 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 )}
                 {fouError && <div className="form-feedback" style={{ display: 'block' }}>{fouError}</div>}
               </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Marque</label>
+              <input
+                className="form-control"
+                list="produit-marques"
+                value={fields.marque}
+                onChange={e => setField('marque', e.target.value)}
+                placeholder="ex : JA Solar, Huawei… (choisir ou saisir)"
+              />
+              <datalist id="produit-marques">
+                {marqueOptions.map(m => <option key={m.id} value={m.nom} />)}
+              </datalist>
             </div>
 
             <div className="form-group">

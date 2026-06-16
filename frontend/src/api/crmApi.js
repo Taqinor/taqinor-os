@@ -57,6 +57,12 @@ const crmApi = {
   getMotifsPerte: () => api.get('/crm/motifs-perte/'),
   saveMotifPerte: (id, data) => id ? api.patch(`/crm/motifs-perte/${id}/`, data) : api.post('/crm/motifs-perte/', data),
   deleteMotifPerte: (id) => api.delete(`/crm/motifs-perte/${id}/`),
+  // Canaux / sources de lead gérés. La clé `site_web` est protégée (ni
+  // renommable ni supprimable) ; un canal utilisé par un lead ne peut être
+  // supprimé (409 avec message FR). À la création on n'envoie que `label`.
+  getCanaux: () => api.get('/crm/canaux/'),
+  saveCanal: (id, data) => id ? api.patch(`/crm/canaux/${id}/`, data) : api.post('/crm/canaux/', data),
+  deleteCanal: (id) => api.delete(`/crm/canaux/${id}/`),
 }
 
 export default crmApi

@@ -49,6 +49,34 @@ class Fournisseur(models.Model):
         return self.nom
 
 
+class Marque(models.Model):
+    """Marque (brand) produit, gérée — scopée par société.
+
+    Promotion de l'ancien champ texte libre `Produit.marque` vers un vrai
+    modèle. ADDITIF : la colonne texte `Produit.marque` reste en place et
+    lisible ; un FK nullable `Produit.marque_ref` est ajouté à côté. Aucune
+    valeur existante n'est perdue. Le formulaire produit utilise un SELECT
+    avec création à la volée (create-on-type).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='marques',
+    )
+    nom = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = "Marque"
+        verbose_name_plural = "Marques"
+        unique_together = [('company', 'nom')]
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
 class Produit(models.Model):
     company = models.ForeignKey(
         'authentication.Company',
@@ -82,7 +110,18 @@ class Produit(models.Model):
     is_archived = models.BooleanField(default=False)
 
     # ── Fiche commerciale (devis PDF riches, 2026-06) — tout optionnel ──
+    # Texte libre HISTORIQUE conservé (additif : jamais supprimé/altéré).
     marque = models.CharField(max_length=100, blank=True, null=True)
+    # FK nullable vers le vrai modèle Marque (2026-06, T6). Coexiste avec le
+    # texte `marque` : le backfill remplit ce FK depuis les valeurs distinctes ;
+    # le texte reste la source affichée tant qu'il est rempli.
+    marque_ref = models.ForeignKey(
+        Marque,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='produits',
+    )
     description = models.TextField(
         blank=True, null=True,
         help_text='Lignes descriptives affichées sous la désignation dans les PDF (une par ligne).')

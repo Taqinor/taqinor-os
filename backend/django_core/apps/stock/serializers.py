@@ -1,11 +1,24 @@
 from rest_framework import serializers
-from .models import Produit, Categorie, Fournisseur, MouvementStock
+from .models import Produit, Categorie, Fournisseur, MouvementStock, Marque
 
 
 class CategorieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Categorie
         fields = '__all__'
+
+
+class MarqueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Marque
+        # company posée côté serveur (perform_create) — jamais du corps.
+        fields = ['id', 'nom']
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Nom requis.')
+        return value
 
 
 class FournisseurSerializer(serializers.ModelSerializer):
@@ -62,10 +75,39 @@ class ProduitSerializer(serializers.ModelSerializer):
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()
     derniere_date_mouvement = serializers.SerializerMethodField()
+    # Nom de la marque liée (lecture). Le texte libre `marque` reste exposé tel
+    # quel (additif) ; ce champ reflète le FK quand il existe.
+    marque_ref_nom = serializers.CharField(
+        source='marque_ref.nom', read_only=True, default=None)
 
     class Meta:
         model = Produit
         fields = '__all__'
+
+    def _resolve_marque(self, validated_data):
+        """Crée/relie la marque (create-on-type) à partir du texte `marque`.
+
+        ADDITIF : le texte `marque` reste enregistré tel quel ; on remplit en
+        plus le FK `marque_ref` (jamais on ne supprime le texte). Scopé société.
+        """
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None or 'marque' not in validated_data:
+            return
+        nom = (validated_data.get('marque') or '').strip()
+        if not nom:
+            validated_data['marque_ref'] = None
+            return
+        marque, _ = Marque.objects.get_or_create(company=company, nom=nom)
+        validated_data['marque_ref'] = marque
+
+    def create(self, validated_data):
+        self._resolve_marque(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._resolve_marque(validated_data)
+        return super().update(instance, validated_data)
 
     def get_is_low_stock(self, obj):
         return obj.seuil_alerte > 0 and obj.quantite_stock <= obj.seuil_alerte

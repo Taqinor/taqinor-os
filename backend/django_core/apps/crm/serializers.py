@@ -147,3 +147,21 @@ class MotifPerteSerializer(serializers.ModelSerializer):
         from .models import MotifPerte
         model = MotifPerte
         fields = ['id', 'nom', 'archived']
+
+
+class CanalSourceSerializer(serializers.ModelSerializer):
+    is_protected = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        from .models import CanalSource
+        model = CanalSource
+        fields = ['id', 'key', 'label', 'ordre', 'archived', 'is_protected']
+        # La clé est posée à la création (slug du libellé) et n'est JAMAIS
+        # modifiable ensuite (stabilité du lien avec Lead.canal).
+        read_only_fields = ['key', 'is_protected']
+
+    def validate_label(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Libellé requis.')
+        return value

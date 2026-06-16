@@ -30,6 +30,11 @@ const stockApi = {
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
 
+  // Marques (brand) — SELECT avec création à la volée côté formulaire produit.
+  getMarques: (params) => api.get('/stock/marques/', { params }),
+  createMarque: (data) => api.post('/stock/marques/', data),
+  deleteMarque: (id) => api.delete(`/stock/marques/${id}/`),
+
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
   createMouvement: (data) => api.post('/stock/mouvements/', data),

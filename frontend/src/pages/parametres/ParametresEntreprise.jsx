@@ -14,6 +14,7 @@ import { originFrom } from '../../api/origin'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+import installationsApi from '../../api/installationsApi'
 import './parametres.css'
 
 // Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
@@ -361,6 +362,16 @@ export default function ParametresEntreprise() {
   const [newMotif, setNewMotif] = useState('')
   const [messages, setMessages] = useState([])
   const [msgSavedCle, setMsgSavedCle] = useState(null)
+  // Canaux / sources (T6) + types d'intervention (T6).
+  const [canaux, setCanaux] = useState([])
+  const [newCanal, setNewCanal] = useState('')
+  const [typesInt, setTypesInt] = useState([])
+  const [newTypeInt, setNewTypeInt] = useState('')
+  // Constantes ROI (T6). roi = valeurs éditées (effective au chargement) ;
+  // roiDefaults = défauts historiques (pour « Réinitialiser »).
+  const [roi, setRoi] = useState(null)
+  const [roiDefaults, setRoiDefaults] = useState(null)
+  const [roiSaved, setRoiSaved] = useState(false)
 
   const loadNiveaux = () => {
     ventesApi.getNiveauxRelance()
@@ -372,6 +383,10 @@ export default function ParametresEntreprise() {
     .then(r => setMotifs(r.data.results ?? r.data)).catch(() => {})
   const loadMessages = () => parametresApi.getMessages()
     .then(r => setMessages(r.data)).catch(() => {})
+  const loadCanaux = () => crmApi.getCanaux()
+    .then(r => setCanaux(r.data.results ?? r.data)).catch(() => {})
+  const loadTypesInt = () => installationsApi.getTypesIntervention()
+    .then(r => setTypesInt(r.data.results ?? r.data)).catch(() => {})
 
   useEffect(() => {
     dispatch(fetchProfile())
@@ -383,7 +398,45 @@ export default function ParametresEntreprise() {
     loadTags()
     loadMotifs()
     loadMessages()
+    loadCanaux()
+    loadTypesInt()
   }, [dispatch])
+
+  // ── Canaux / sources (T6) ──
+  const addCanal = async () => {
+    const label = newCanal.trim()
+    if (!label) return
+    try { await crmApi.saveCanal(null, { label }); setNewCanal(''); loadCanaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+  }
+  const renameCanal = async (c, label) => {
+    if (label.trim() === c.label) return
+    try { await crmApi.saveCanal(c.id, { label: label.trim() }); loadCanaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Renommage impossible.'); loadCanaux() }
+  }
+  const delCanal = async (c) => {
+    if (!window.confirm(`Supprimer le canal « ${c.label} » ?`)) return
+    try { await crmApi.deleteCanal(c.id); loadCanaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+
+  // ── Types d'intervention (T6) ──
+  const addTypeInt = async () => {
+    const label = newTypeInt.trim()
+    if (!label) return
+    try { await installationsApi.saveTypeIntervention(null, { label }); setNewTypeInt(''); loadTypesInt() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+  }
+  const renameTypeInt = async (t, label) => {
+    if (label.trim() === t.label) return
+    try { await installationsApi.saveTypeIntervention(t.id, { label: label.trim() }); loadTypesInt() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Renommage impossible.'); loadTypesInt() }
+  }
+  const delTypeInt = async (t) => {
+    if (!window.confirm(`Supprimer le type « ${t.label} » ?`)) return
+    try { await installationsApi.deleteTypeIntervention(t.id); loadTypesInt() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
 
   const setMsgField = (cle, key, val) =>
     setMessages(ms => ms.map(m => (m.cle === cle ? { ...m, [key]: val } : m)))
@@ -476,6 +529,44 @@ export default function ParametresEntreprise() {
       return () => clearTimeout(t)
     }
   }, [saveSuccess, dispatch])
+
+  // Synchronise l'éditeur ROI avec le profil (valeurs effectives = défauts tant
+  // que rien n'est édité, donc rien ne change avant édition).
+  useEffect(() => {
+    if (profile) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRoi(profile.roi_constants_effective || null)
+      setRoiDefaults(profile.roi_constants_defaults || null)
+    }
+  }, [profile])
+
+  const setRoiField = (key, val) => setRoi(r => ({ ...r, [key]: val }))
+  const setRoiUsage = (key, val) => setRoi(r => ({
+    ...r, day_usage_defaults: { ...(r?.day_usage_defaults || {}), [key]: val } }))
+  const setRoiGhi = (i, val) => setRoi(r => {
+    const ghi = [...(r?.ghi || [])]; ghi[i] = val; return { ...r, ghi }
+  })
+  const resetRoi = () => { if (roiDefaults) setRoi(roiDefaults) }
+  const saveRoi = async () => {
+    if (!roi) return
+    // Coercition numérique (jamais de chaîne en base).
+    const payload = {
+      roi_constants: {
+        ghi: (roi.ghi || []).map(v => Number(v) || 0),
+        efficiency: Number(roi.efficiency) || 0,
+        kwh_price: Number(roi.kwh_price) || 0,
+        battery_value_per_kwh_month: Number(roi.battery_value_per_kwh_month) || 0,
+        day_usage_defaults: Object.fromEntries(
+          Object.entries(roi.day_usage_defaults || {})
+            .map(([k, v]) => [k, Number(v) || 0])),
+      },
+    }
+    try {
+      await dispatch(saveProfile(payload)).unwrap?.() ?? dispatch(saveProfile(payload))
+      setRoiSaved(true)
+      setTimeout(() => setRoiSaved(false), 3000)
+    } catch { /* erreur globale affichée ailleurs */ }
+  }
 
   const set = (e) => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
   const setPT = (mode, key, val) => setForm(p => ({
@@ -818,6 +909,120 @@ export default function ParametresEntreprise() {
                       style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
             </div>
           </div>
+
+          {/* CRM — Canaux / sources de lead (T6) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0369a1" label="CRM — Canaux / sources de lead" icon={<><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Canaux d'origine proposés sur les leads. « Site web » est protégé
+              (utilisé par le formulaire du site) : ni renommable ni supprimable.
+              Un canal utilisé par un lead ne peut pas être supprimé.
+            </p>
+            {canaux.map(c => (
+              <div key={c.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1, ...(c.is_protected ? { background: '#f1f5f9' } : {}) }}
+                       defaultValue={c.label} disabled={c.is_protected}
+                       onBlur={e => renameCanal(c, e.target.value)} />
+                {c.is_protected
+                  ? <span title="Canal protégé (site web)" style={{ fontSize: 14, padding: '4px 8px' }}>🔒</span>
+                  : <button type="button" onClick={() => delCanal(c)}
+                            style={{ border: '1px solid #fca5a5', color: '#ef4444', background: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>✕</button>}
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouveau canal" value={newCanal}
+                     onChange={e => setNewCanal(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCanal() } }} />
+              <button type="button" onClick={addCanal}
+                      style={{ border: 'none', background: '#0369a1', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* Chantiers — Types d'intervention (T6) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#0d9488" label="Chantiers — Types d'intervention" icon={<><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Types d'ordre de travail proposés sur les chantiers. Un type utilisé
+              par un ordre de travail ne peut pas être supprimé.
+            </p>
+            {typesInt.map(t => (
+              <div key={t.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1 }} defaultValue={t.label}
+                       onBlur={e => renameTypeInt(t, e.target.value)} />
+                <button type="button" onClick={() => delTypeInt(t)}
+                        style={{ border: '1px solid #fca5a5', color: '#ef4444', background: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouveau type" value={newTypeInt}
+                     onChange={e => setNewTypeInt(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTypeInt() } }} />
+              <button type="button" onClick={addTypeInt}
+                      style={{ border: 'none', background: '#0d9488', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* Constantes ROI / économie (T6) */}
+          {roi && (
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #fde68a', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#b45309" label="Constantes ROI / économie" icon={<><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#b45309' }}>
+              ⚠ Hypothèses du calcul d'économie (tarif ONEE, ensoleillement,
+              rendement, autoconsommation). Les défauts correspondent aux valeurs
+              actuelles du simulateur : rien ne change tant que vous n'éditez pas.
+            </p>
+            <div className="pe-grid-3">
+              <Field label="Tarif ONEE (MAD/kWh)">
+                <input style={inputBase} type="number" step="any" min="0"
+                       value={roi.kwh_price ?? ''} onChange={e => setRoiField('kwh_price', e.target.value)} />
+              </Field>
+              <Field label="Rendement global (0–1)">
+                <input style={inputBase} type="number" step="any" min="0" max="1"
+                       value={roi.efficiency ?? ''} onChange={e => setRoiField('efficiency', e.target.value)} />
+              </Field>
+              <Field label="Valeur batterie (MAD/kWh/mois)">
+                <input style={inputBase} type="number" step="any" min="0"
+                       value={roi.battery_value_per_kwh_month ?? ''}
+                       onChange={e => setRoiField('battery_value_per_kwh_month', e.target.value)} />
+              </Field>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0.8rem 0 0.4rem' }}>
+              Autoconsommation par défaut (%)
+            </div>
+            <div className="pe-grid-4">
+              {Object.keys(roi.day_usage_defaults || {}).map(k => (
+                <div key={k}>
+                  <label style={{ fontSize: 10.5, color: '#64748b' }}>{k}</label>
+                  <input style={inputBase} type="number" step="any" min="0" max="100"
+                         value={roi.day_usage_defaults[k] ?? ''}
+                         onChange={e => setRoiUsage(k, e.target.value)} />
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0.8rem 0 0.4rem' }}>
+              Ensoleillement mensuel (GHI, kWh/m²/mois)
+            </div>
+            <div className="pe-grid-4">
+              {(roi.ghi || []).map((v, i) => (
+                <div key={i}>
+                  <label style={{ fontSize: 10.5, color: '#64748b' }}>{['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'][i]}</label>
+                  <input style={inputBase} type="number" step="any" min="0"
+                         value={v ?? ''} onChange={e => setRoiGhi(i, e.target.value)} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={saveRoi}
+                      style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: roiSaved ? '#10b981' : '#b45309', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                {roiSaved ? 'Constantes enregistrées ✓' : 'Enregistrer les constantes'}
+              </button>
+              <button type="button" onClick={resetRoi}
+                      style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', color: '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                Réinitialiser aux défauts
+              </button>
+            </div>
+          </div>
+          )}
 
           {/* Niveaux de relance */}
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>

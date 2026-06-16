@@ -8,13 +8,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from .models import (
-    Produit, Categorie, Fournisseur, MouvementStock, ProduitAuditLog,
+    Produit, Categorie, Fournisseur, MouvementStock, ProduitAuditLog, Marque,
 )
 from .serializers import (
     ProduitSerializer,
     CategorieSerializer,
     FournisseurSerializer,
     MouvementStockSerializer,
+    MarqueSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -357,6 +358,25 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = FournisseurSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'email', 'contact_personne']
+    ordering = ['nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS:
+            return [HasPermissionOrLegacy('stock_modifier')()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+
+class MarqueViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Marques produit gérées — scopées société. SELECT avec création à la
+    volée côté formulaire produit. Lecture tout rôle, écriture = droit stock."""
+    queryset = Marque.objects.all()
+    serializer_class = MarqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
     ordering = ['nom']
 
     def get_permissions(self):

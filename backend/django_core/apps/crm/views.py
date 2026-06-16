@@ -2,10 +2,10 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Client, Lead, LeadTag, MotifPerte
+from .models import Client, Lead, LeadTag, MotifPerte, CanalSource
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
-    LeadTagSerializer, MotifPerteSerializer,
+    LeadTagSerializer, MotifPerteSerializer, CanalSourceSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -449,3 +449,80 @@ class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+
+def _slugify_canal_key(label):
+    """Clé stable (a-z0-9_) dérivée d'un libellé, pour un nouveau canal."""
+    import re
+    import unicodedata
+    norm = unicodedata.normalize('NFKD', label or '')
+    norm = norm.encode('ascii', 'ignore').decode('ascii').lower()
+    norm = re.sub(r'[^a-z0-9]+', '_', norm).strip('_')
+    return norm or 'canal'
+
+
+class CanalSourceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Canaux / sources de lead gérés (Paramètres → CRM).
+
+    Lecture tout rôle, écriture admin. La clé `site_web` est protégée (non
+    renommable, non supprimable) ; un canal utilisé par un lead ne peut pas
+    être supprimé (message français clair).
+    """
+    queryset = CanalSource.objects.all()
+    serializer_class = CanalSourceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        # Clé posée côté serveur (slug du libellé), unique par société.
+        company = self.request.user.company
+        label = serializer.validated_data.get('label', '')
+        base = _slugify_canal_key(label)
+        key = base
+        i = 2
+        while CanalSource.objects.filter(company=company, key=key).exists():
+            key = f'{base}_{i}'
+            i += 1
+        serializer.save(company=company, key=key)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # La clé n'est jamais modifiable (stabilité du lien Lead.canal).
+        if 'key' in request.data and request.data.get('key') != instance.key:
+            return Response(
+                {'detail': "La clé d'un canal ne peut pas être modifiée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Le canal « Site web » est protégé : libellé verrouillé (utilisé par
+        # le webhook du site public). On autorise seulement l'ordre/archivage.
+        if instance.is_protected:
+            new_label = request.data.get('label')
+            if new_label is not None and str(new_label).strip() != instance.label:
+                return Response(
+                    {'detail': "Le canal « Site web » est protégé et ne peut "
+                               "pas être renommé."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_protected:
+            return Response(
+                {'detail': "Le canal « Site web » est protégé et ne peut pas "
+                           "être supprimé."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        # Bloque la suppression d'un canal encore utilisé par un lead.
+        in_use = Lead.objects.filter(
+            company=instance.company, canal=instance.key).exists()
+        if in_use:
+            return Response(
+                {'detail': "Ce canal est utilisé par des leads — il ne peut "
+                           "pas être supprimé. Archivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
