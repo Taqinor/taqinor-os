@@ -40,6 +40,12 @@ export const DESIGN_SOLAR_HOUR = 10;
 const SOLAR_DECLINATION_DEG = -23.44; // déclinaison au solstice d'hiver (hémisphère nord)
 const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une rangée
 const SHADOW_MARGIN_M = 0.05; // marge en plus de l'ombre calculée
+/** Jeu de maintenance/aération entre deux chevrons Est-Ouest dos à dos (m). Un
+ * chevron en A absorbe sa PROPRE ombre de faîte tant que l'ombre < empreinte d'un
+ * panneau — vrai à toutes les inclinaisons E-O réalistes (≤29°). L'écart entre
+ * chevrons n'est donc PAS un pas de rangée sud : c'est l'ombre résiduelle (≈0 ici)
+ * + ce passage. Réglable ici. */
+const EW_MAINTENANCE_GAP_M = 0.2;
 const EDGE_EPS_M = 1e-3; // tolérance flottante au retrait (anti-bruit sin(180°)≈1e−16)
 /** Dégagement autour d'un obstacle marqué (m) : un panneau dont le centre tombe
  * à moins de cette distance d'un obstacle (ou dedans) est retiré. Modèle prudent
@@ -522,11 +528,18 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     const panelDepthM = slopeLenM * Math.cos(beta);
     const rise = slopeLenM * Math.sin(beta);
     if (eastWest) {
-      const gap = shadeLengthM(rise, latitudeDeg, DESIGN_SOLAR_HOUR, true);
+      // Chevron en A dos à dos (faces E/O), profondeur = 2 empreintes. L'ombre de
+      // faîte au moment de design se projette dans la moitié OUEST du chevron et
+      // est absorbée par sa propre empreinte tant qu'elle est < panelDepthM (vrai à
+      // toutes les inclinaisons E-O réalistes). L'écart entre chevrons = ombre
+      // RÉSIDUELLE qui déborde (≈0 ici) + un passage de maintenance — JAMAIS un pas
+      // de rangée sud, sinon on gaspillerait du toit entre les chevrons.
+      const ridgeShade = shadeLengthM(rise, latitudeDeg, DESIGN_SOLAR_HOUR, true);
+      const interTentGap = Math.max(0, ridgeShade - panelDepthM) + EW_MAINTENANCE_GAP_M;
       return {
         panelDepthM,
         cellDepthM: 2 * panelDepthM,
-        pitchM: 2 * panelDepthM + gap + SHADOW_MARGIN_M,
+        pitchM: 2 * panelDepthM + interTentGap,
         rowWidthM,
         panelsPerCell: 2,
       };
