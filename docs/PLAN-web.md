@@ -6,3 +6,4 @@
 
 ## DONE LOG
 2026-06-16 — Added `<!-- autopilot shakedown 2026-06-16 -->` at the top of the homepage markup (apps/web/src/pages/index.astro); renders into page source, invisible to visitors. Astro build verified.
+2026-06-16 — Removed the `<!-- autopilot shakedown 2026-06-16 -->` marker from apps/web/src/pages/index.astro (its one-shot purpose served); homepage source is clean again.
