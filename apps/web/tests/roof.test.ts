@@ -9,6 +9,7 @@ import {
   PANEL_WATT,
   SETBACK_M,
   geodesicAreaM2,
+  roofAreaLabel,
   pointInPolygon,
   orientationToAspect,
   kwcFromPanelCount,
@@ -59,6 +60,34 @@ describe('geodesicAreaM2 — aire d’un polygone WGS84 (m²)', () => {
     expect(geodesicAreaM2([])).toBe(0);
     expect(geodesicAreaM2([[-7.6, 33.57]])).toBe(0);
     expect(geodesicAreaM2([[-7.6, 33.57], [-7.5, 33.57]])).toBe(0);
+  });
+});
+
+describe('roofAreaLabel — readout « surface du toit » à l’écran', () => {
+  it('un carré ~10 m de côté → « ~100 m² » (arrondi au m²)', () => {
+    const label = roofAreaLabel(rectMeters(-7.6, 33.57, 10, 10));
+    expect(label).toBe('~100 m²');
+  });
+
+  it('arrondit au m² entier et préfixe ~ (estimation satellite)', () => {
+    // ~84,3 m² doit s’afficher « ~84 m² » (jamais de décimale).
+    const label = roofAreaLabel(rectMeters(-7.6, 33.57, 12, 7));
+    expect(label).toMatch(/^~\d+ m²$/);
+    expect(label).not.toContain(',');
+    expect(label).not.toContain('.');
+  });
+
+  it('grands toits : séparateur de milliers FR (format du site)', () => {
+    // 40 m × 40 m ≈ 1 600 m² ; on compare au format Intl fr-FR de référence.
+    const label = roofAreaLabel(rectMeters(-7.6, 33.57, 40, 40));
+    const expected = `~${new Intl.NumberFormat('fr-FR').format(1600)} m²`;
+    expect(label).toBe(expected);
+  });
+
+  it('tracé vide / dégénéré (< 3 sommets) → null (readout effacé)', () => {
+    expect(roofAreaLabel([])).toBeNull();
+    expect(roofAreaLabel([[-7.6, 33.57]])).toBeNull();
+    expect(roofAreaLabel([[-7.6, 33.57], [-7.5, 33.57]])).toBeNull();
   });
 });
 

@@ -49,6 +49,19 @@ export function geodesicAreaM2(ring: LngLat[]): number {
   return Math.abs((total * WGS84_RADIUS * WGS84_RADIUS) / 2);
 }
 
+/**
+ * Libellé à afficher pour la « surface du toit » tracée : aire géodésique BRUTE
+ * du tracé (la forme dessinée, obstacles non déduits — ils n'affectent que le
+ * pavage), arrondie au m² entier, au format FR (séparateur d'espace, unité
+ * après), préfixée « ~ » car c'est une estimation lue sur une image satellite.
+ * Tracé vide/dégénéré (< 3 sommets, aire nulle) → null pour effacer le readout.
+ */
+export function roofAreaLabel(ring: LngLat[]): string | null {
+  const area = geodesicAreaM2(ring);
+  if (!(area > 0)) return null;
+  return `~${new Intl.NumberFormat('fr-FR').format(Math.round(area))} m²`;
+}
+
 /** Appartenance par lancer de rayon (anneau en coordonnées planes quelconques). */
 export function pointInPolygon(pt: [number, number], ring: [number, number][]): boolean {
   const [x, y] = pt;
