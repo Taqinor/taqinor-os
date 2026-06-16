@@ -713,6 +713,21 @@ interface ConfigSpec {
   notes: string;
 }
 
+/**
+ * Nombre de panneaux STRICTEMENT dicté par la facture (le « besoin ») : de quoi
+ * couvrir la cible annuelle + la marge de couverture (10 %), au rendement du sud
+ * optimal de la latitude. INDÉPENDANT du toit et des obstacles — c'est un plafond
+ * « besoin » que le calepinage ne dépasse jamais : panneaux posés = min(besoin, ce
+ * qui tient réellement après retrait/obstacles). Même formule que la branche
+ * « couvre » de recommend(), isolée ici pour piloter le curseur côté écran. */
+export function neededPanelsForTarget(targetAnnualKwh: number, latitudeDeg: number): number {
+  if (!(targetAnnualKwh > 0)) return 0;
+  const yld = specificYield(latitudeDeg, optimalSouthTiltDeg(latitudeDeg), 0);
+  if (!(yld > 0)) return 0;
+  const kwcNeeded = (targetAnnualKwh * COVERAGE_MARGIN) / yld;
+  return Math.max(1, Math.ceil(kwcNeeded / (PANEL2_WATT / 1000)));
+}
+
 /** Évalue le panel complet de configurations + l'algorithme de recommandation. */
 export function recommend(
   ring: LngLat[],

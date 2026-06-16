@@ -43,6 +43,43 @@ export function mapboxSatelliteTileUrl(token: string): string {
 }
 
 /**
+ * Dimensions (px) d'une image satellite préservant l'aspect géographique d'un toit
+ * (envergure est-ouest × nord-sud, en mètres) : le plus grand côté vaut `maxPx`,
+ * l'autre suit le ratio. Faire correspondre l'aspect de l'image à celui de la bbox
+ * évite que l'API Static n'ajoute du remplissage (padding) — condition de
+ * l'alignement géographique exact. Bornes Mapbox Static : 1–1280 px par côté.
+ */
+export function roofImageSize(widthSpanM: number, heightSpanM: number, maxPx = 1024): { w: number; h: number } {
+  const cap = Math.max(1, Math.min(1280, Math.round(maxPx)));
+  const w = Math.max(1e-6, widthSpanM);
+  const h = Math.max(1e-6, heightSpanM);
+  if (w >= h) return { w: cap, h: Math.max(1, Math.min(1280, Math.round((cap * h) / w))) };
+  return { w: Math.max(1, Math.min(1280, Math.round((cap * w) / h))), h: cap };
+}
+
+/**
+ * URL Mapbox Static Images pour l'imagerie satellite Maxar d'une bbox
+ * [minLng,minLat,maxLng,maxLat] (le toit tracé), aux dimensions WxH. RÉUTILISE le
+ * MÊME token public Mapbox que les tuiles de la carte (aucune nouvelle dépendance,
+ * même fournisseur/imagerie). `@2x` = sortie haute densité ; logo/attribution
+ * retirés de l'image (l'attribution Mapbox/Maxar reste visible sur la carte). La
+ * netteté plafonne à celle de l'imagerie (~0,3–0,6 m sur Casablanca) — assez pour
+ * repérer la plupart des édicules de toiture, pas une ortho aérienne.
+ */
+export function mapboxStaticRoofImageUrl(
+  token: string,
+  bbox: [number, number, number, number],
+  w: number,
+  h: number,
+): string {
+  const [minLng, minLat, maxLng, maxLat] = bbox;
+  const b = `[${minLng},${minLat},${maxLng},${maxLat}]`;
+  const W = Math.max(1, Math.min(1280, Math.round(w)));
+  const H = Math.max(1, Math.min(1280, Math.round(h)));
+  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${b}/${W}x${H}@2x?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
+}
+
+/**
  * Style de la carte de l'estimateur, choisi par la PRÉSENCE du token Mapbox :
  *  - token présent → style MapLibre minimal avec une source RASTER Mapbox
  *    Satellite (imagerie Maxar nette) + attribution visible exigée par Mapbox ;

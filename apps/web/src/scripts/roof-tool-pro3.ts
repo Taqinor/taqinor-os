@@ -25,12 +25,13 @@ import {
   productionKwh,
   billToAnnualKwh,
   annualSavingsMad,
+  neededPanelsForTarget,
   type Recommendation,
   type PackResult,
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrain';
-import { roofAreaLabel, type LngLat } from '../lib/roof';
+import { roofAreaLabel, ringBBox, type LngLat } from '../lib/roof';
 import {
   obstacleRing,
   obstacleFromDrag,
@@ -40,7 +41,7 @@ import {
   OBSTACLE_STEP_FACTOR,
   type Obstacle,
 } from '../lib/obstacles';
-import { buildSatelliteStyle } from '../lib/roofConfig';
+import { buildSatelliteStyle, roofImageSize, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
 
 interface InitOptions {
   maptilerKey: string;
@@ -152,6 +153,10 @@ export function initRoofToolPro3(opts: InitOptions): void {
   const configPanel = $('rp3-config');
   const compassArrow = $('rp3-compass-arrow');
   const areaValueEl = $('rp3-area-value');
+  const needInputEl = $<HTMLInputElement>('rp3-need-input');
+  const needMinusEl = $<HTMLButtonElement>('rp3-need-minus');
+  const needPlusEl = $<HTMLButtonElement>('rp3-need-plus');
+  const needNoteEl = $('rp3-need-note');
   const obstacleBtn = $<HTMLButtonElement>('rp3-obstacle');
   const obstacleClearBtn = $<HTMLButtonElement>('rp3-obstacle-clear');
   const obsEditPanel = $('rp3-obs-edit');
@@ -185,6 +190,9 @@ export function initRoofToolPro3(opts: InitOptions): void {
   let drawStart: { lngLat: LngLat; point: maplibregl.Point } | null = null;
   let drawing = false;
   let suppressClick = false; // ignore le « click » de synthèse après un glissé
+  // Change C : déplacement (glissé) d'un obstacle existant. Delta-based (newCenter =
+  // centre de départ + déplacement lng/lat) → robuste au parallaxe en vue inclinée.
+  let moveObs: { id: string; startLng: number; startLat: number; centerLng: number; centerLat: number; moved: boolean } | null = null;
   let rec: Recommendation | null = null;
 
   // Les obstacles sont stockés par centre + dimensions ; le cerveau reçoit leurs
@@ -196,7 +204,17 @@ export function initRoofToolPro3(opts: InitOptions): void {
   let centroidLat = 33.5;
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode } = { family: 'south', tilt: 'reco', orient: 'auto' };
-  let pvgisKwh: number | null = null; // affinage live de la recommandation
+  // Affinage PVGIS stocké en rendement (kWh/kWc/an) pour suivre le nombre de
+  // panneaux RÉELLEMENT posé (qui peut descendre sous le besoin si le toit/les
+  // obstacles contraignent) — jamais un kWh absolu figé sur le besoin.
+  let pvgisPerKwc: number | null = null;
+  // Plafond « panneaux nécessaires » (Change A) : dicté par la facture, PERSISTE à
+  // travers les bascules d'orientation/calepinage et l'édition d'obstacles. Posés =
+  // min(neededPanels, ce qui tient). `neededAuto` : tant que vrai, on le redérive de
+  // la facture ; un réglage manuel (+/−/saisie) le fige jusqu'au prochain changement
+  // de facture ou nouveau tracé.
+  let neededPanels = 0;
+  let neededAuto = true;
 
   const monthlyBill = (): number => {
     const raw = parseFloat((billEl?.value || '').replace(/\s/g, '').replace(',', '.'));
@@ -241,6 +259,17 @@ export function initRoofToolPro3(opts: InitOptions): void {
   let sun: THREE.DirectionalLight | null = null;
   let modelMatrix: THREE.Matrix4 | null = null;
   const panelTex = makeCanadianPanelTexture();
+  // Change B : photo satellite posée sur la face supérieure du toit. Texture mise en
+  // cache par bbox (chargée UNE fois par tracé) ; matériau du deck courant suivi pour
+  // l'appliquer dès l'arrivée de l'image. Repli silencieux (deck gris) si pas de token
+  // Mapbox ou échec de chargement.
+  let roofTex: THREE.Texture | null = null;
+  let roofTexKey = '';
+  let deckMaterial: THREE.MeshStandardMaterial | null = null;
+  // Change C : meshes d'obstacles 3D (transparents) suivis par id pour les DÉPLACER
+  // en direct pendant un glissé, et l'origine ENU de la scène courante (centroïde).
+  const obstacleMeshes = new Map<string, THREE.Mesh>();
+  let sceneOrigin: LngLat = [0, 0];
 
   const AXIS_X = new THREE.Vector3(1, 0, 0);
   const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -320,10 +349,74 @@ export function initRoofToolPro3(opts: InitOptions): void {
     return im;
   }
 
+  /** UV de la face supérieure du toit = position du sommet dans la bbox ENU du
+   *  tracé, ∈ [0,1] (équivalent à lngLatToUV : mapping linéaire ENU↔lng/lat). Aligne
+   *  la photo satellite exactement sur le toit et le calepinage. */
+  function setDeckUVs(geo: THREE.BufferGeometry, ringENU: [number, number][]) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of ringENU) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    const pos = geo.attributes.position;
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      uv[i * 2] = (pos.getX(i) - minX) / Math.max(1e-9, maxX - minX);
+      uv[i * 2 + 1] = (pos.getY(i) - minY) / Math.max(1e-9, maxY - minY);
+    }
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  }
+
+  /** Pose (ou réapplique) la photo satellite sur la face supérieure du toit. Texture
+   *  cachée par bbox : chargée une seule fois par tracé ; appliquée d'emblée si déjà
+   *  en cache. Sans token Mapbox ou en cas d'échec : deck gris inchangé (gracieux). */
+  function applyRoofPhoto(deck: THREE.Mesh, mat: THREE.MeshStandardMaterial, ringENU: [number, number][]) {
+    deckMaterial = mat;
+    if (!opts.mapboxToken || vertices.length < 3) return;
+    setDeckUVs(deck.geometry, ringENU);
+    const bbox = ringBBox(vertices);
+    const key = bbox.map((n) => n.toFixed(6)).join(',');
+    if (roofTex && roofTexKey === key) {
+      mat.map = roofTex;
+      mat.color.set(0xffffff);
+      mat.needsUpdate = true;
+      return;
+    }
+    const [minLng, minLat, maxLng, maxLat] = bbox;
+    const cosLat = Math.cos(((minLat + maxLat) / 2) * DEG2RAD);
+    const size = roofImageSize((maxLng - minLng) * DEG2M * cosLat, (maxLat - minLat) * DEG2M);
+    const url = mapboxStaticRoofImageUrl(opts.mapboxToken, bbox, size.w, size.h);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const tex = new THREE.Texture(img);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      tex.needsUpdate = true;
+      roofTex = tex;
+      roofTexKey = key;
+      // Réapplique sur le deck COURANT (un bascule a pu le recréer entre-temps).
+      if (deckMaterial) {
+        deckMaterial.map = tex;
+        deckMaterial.color.set(0xffffff);
+        deckMaterial.needsUpdate = true;
+        map.triggerRepaint();
+      }
+    };
+    img.onerror = () => {
+      /* imagerie indisponible → on garde le deck gris, sans erreur visible */
+    };
+    img.src = url;
+  }
+
   // — Rendu d'une config (Sud sur châssis OU Est-Ouest en chevrons) —
   function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number) {
     if (!sceneRoot || !sun) return;
     setOrigin(pack.origin);
+    sceneOrigin = pack.origin;
+    obstacleMeshes.clear();
     disposeScene();
 
     const wallH = FLOORS * FLOOR_HEIGHT_M;
@@ -342,13 +435,13 @@ export function initRoofToolPro3(opts: InitOptions): void {
     sceneRoot.add(building);
 
     const baseZ = wallH + DECK_THK;
-    const deck = new THREE.Mesh(
-      new THREE.ShapeGeometry(shape),
-      new THREE.MeshStandardMaterial({ color: 0xb9bfca, roughness: 0.95, metalness: 0 }),
-    );
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0xb9bfca, roughness: 0.95, metalness: 0 });
+    const deck = new THREE.Mesh(new THREE.ShapeGeometry(shape), deckMat);
     deck.position.z = wallH + 0.02;
     deck.receiveShadow = true;
     sceneRoot.add(deck);
+    // Change B : pose la photo satellite (géo-alignée) sur la face supérieure.
+    applyRoofPhoto(deck, deckMat, ring);
 
     // Axes de visée à partir de l'azimut de la famille.
     const azRad = pack.azimuthDeg * DEG2RAD;
@@ -425,20 +518,36 @@ export function initRoofToolPro3(opts: InitOptions): void {
     ];
     for (const me of meshes) if (me) sceneRoot.add(me);
 
-    // Obstacles marqués : un volume sombre par obstacle, à sa VRAIE taille
-    // (largeur E-O × longueur N-S), posé sur le toit, qui projette une ombre.
+    // Obstacles marqués (Change C) : volume SEMI-TRANSPARENT à la VRAIE taille
+    // (largeur E-O × longueur N-S), posé sur le toit, avec une arête visible — la
+    // photo satellite dessous (le vrai climatiseur/cheminée) transparaît, ce qui
+    // confirme que la boîte est bien posée dessus. Sélectionné → teinte or.
     if (obstacles.length) {
-      const obsMat = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, metalness: 0.2, roughness: 0.8 });
       const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
       for (const o of obstacles) {
         const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat;
         const oy = (o.centerLat - pack.origin[1]) * DEG2M;
+        const selected = o.id === selectedObsId;
+        const tint = selected ? 0xf3cc66 : 0xff6b6b;
         const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
-        const mesh = new THREE.Mesh(geo, obsMat);
+        const mat = new THREE.MeshStandardMaterial({
+          color: tint,
+          metalness: 0.1,
+          roughness: 0.7,
+          transparent: true,
+          opacity: selected ? 0.5 : 0.42,
+          depthWrite: false, // laisse la texture du toit transparaître
+        });
+        const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        mesh.renderOrder = 3;
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.95 }),
+        );
+        mesh.add(edges);
         sceneRoot.add(mesh);
+        obstacleMeshes.set(o.id, mesh);
       }
     }
 
@@ -618,6 +727,79 @@ export function initRoofToolPro3(opts: InitOptions): void {
     return pack.best;
   }
 
+  // — Plafond « panneaux nécessaires » (Change A) —
+  const clampNeeded = (n: number): number => Math.max(1, Math.min(400, Math.round(n)));
+  /** Posés = min(plafond besoin, ce qui tient). Sans facture (besoin 0) il n'y a
+   *  pas de besoin à plafonner → on montre ce qui tient (comportement historique). */
+  const placedFor = (grid: PanelGrid): number =>
+    neededPanels > 0 ? Math.max(0, Math.min(neededPanels, grid.count)) : grid.count;
+
+  /** Synchronise le contrôle éditable + sa note honnête (besoin vs ce qui tient). */
+  function syncNeedControl(fitCount: number, familyLabel: string) {
+    const active = neededPanels > 0;
+    if (needInputEl) {
+      needInputEl.disabled = !active;
+      if (document.activeElement !== needInputEl) needInputEl.value = active ? fmt(neededPanels) : '—';
+    }
+    if (needMinusEl) needMinusEl.disabled = !active || neededPanels <= 1;
+    if (needPlusEl) needPlusEl.disabled = !active || neededPanels >= 400;
+    if (!needNoteEl) return;
+    if (!active) {
+      needNoteEl.textContent = 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
+      return;
+    }
+    const placed = Math.min(neededPanels, fitCount);
+    if (placed < neededPanels) {
+      needNoteEl.textContent = `${fmt(neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles). On pose ${fmt(placed)}.`;
+    } else if (fitCount > neededPanels) {
+      needNoteEl.textContent = `${fmt(neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
+    } else {
+      needNoteEl.textContent = `On pose ${fmt(placed)} panneaux.`;
+    }
+  }
+
+  interface RenderConfigOpts {
+    pack: PackResult;
+    grid: PanelGrid;
+    family: ConfigFamily;
+    tiltDeg: number;
+    isReco: boolean;
+    title: string;
+    why: string;
+    sourceLabel?: string;
+    rowId: string | null;
+  }
+
+  /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
+   *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
+  function renderConfig(o: RenderConfigOpts) {
+    const placed = placedFor(o.grid);
+    const kwc = o.grid.count > 0 ? (o.grid.kwc * placed) / o.grid.count : 0;
+    const tableAnnual = productionKwh(centroidLat, o.family, o.tiltDeg, kwc);
+    // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
+    const annualKwh = o.isReco && pvgisPerKwc != null ? pvgisPerKwc * kwc : tableAnnual;
+    const target = rec ? rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
+    const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
+    renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);
+    paintCard(
+      {
+        title: o.title,
+        isReco: o.isReco,
+        count: placed,
+        kwc,
+        annualKwh,
+        pct: target > 0 ? (annualKwh / target) * 100 : 0,
+        savingsLow: savings.low,
+        savingsHigh: savings.high,
+        why: o.why,
+      },
+      o.sourceLabel,
+    );
+    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud');
+    if (o.isReco) paintMaxLine();
+    highlightRow(o.rowId);
+  }
+
   function renderSelection() {
     if (!closed || vertices.length < 3 || !rec) return;
     const ring: LngLat[] = [...vertices];
@@ -626,9 +808,17 @@ export function initRoofToolPro3(opts: InitOptions): void {
       const r = rec.recommended;
       const pack = packConfig(ring, centroidLat, { family: r.family, tiltDeg: r.tiltDeg, obstructions: obstructionRings() });
       const grid = r.panelOrientation === 'portrait' ? pack.portrait : pack.landscape;
-      renderScene(pack, grid, r.tiltDeg, r.family, r.count);
-      paintRecoCard();
-      highlightRow(r.id);
+      renderConfig({
+        pack,
+        grid,
+        family: r.family,
+        tiltDeg: r.tiltDeg,
+        isReco: true,
+        title: r.label,
+        why: r.notes,
+        sourceLabel: pvgisPerKwc != null ? '(production affinée via PVGIS)' : '(production estimée — table par latitude)',
+        rowId: r.id,
+      });
       return;
     }
 
@@ -636,22 +826,16 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const tiltDeg = tiltOf(family);
     const pack = packConfig(ring, centroidLat, { family, tiltDeg, obstructions: obstructionRings() });
     const grid = gridFor(pack);
-    const annualKwh = productionKwh(centroidLat, family, tiltDeg, grid.kwc);
-    const target = billToAnnualKwh(monthlyBill());
-    const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
-    renderScene(pack, grid, tiltDeg, family, grid.count);
-    paintCard({
-      title: `${family === 'eastwest' ? 'Est-Ouest' : 'Plein sud'} ${tiltDeg}° · ${grid.panelOrientation === 'portrait' ? 'portrait' : 'paysage'}`,
+    renderConfig({
+      pack,
+      grid,
+      family,
+      tiltDeg,
       isReco: false,
-      count: grid.count,
-      kwc: grid.kwc,
-      annualKwh,
-      pct: target > 0 ? (annualKwh / target) * 100 : 0,
-      savingsLow: savings.low,
-      savingsHigh: savings.high,
+      title: `${family === 'eastwest' ? 'Est-Ouest' : 'Plein sud'} ${tiltDeg}° · ${grid.panelOrientation === 'portrait' ? 'portrait' : 'paysage'}`,
       why: 'Vous explorez une configuration manuelle. Le « Recommandé » reste le meilleur compromis pour votre facture.',
+      rowId: null,
     });
-    highlightRow(null);
   }
 
   interface CardData {
@@ -692,26 +876,8 @@ export function initRoofToolPro3(opts: InitOptions): void {
     }
   }
 
-  function paintRecoCard() {
+  function paintMaxLine() {
     if (!rec) return;
-    const r = rec.recommended;
-    const annual = pvgisKwh ?? r.annualKwh;
-    const target = rec.targetAnnualKwh;
-    const savings = annualSavingsMad(annual, target); // plafonné à la conso
-    paintCard(
-      {
-        title: r.label,
-        isReco: true,
-        count: r.count,
-        kwc: r.kwc,
-        annualKwh: annual,
-        pct: target > 0 ? (annual / target) * 100 : r.pctOfTarget,
-        savingsLow: savings.low,
-        savingsHigh: savings.high,
-        why: r.notes,
-      },
-      pvgisKwh != null ? '(production affinée via PVGIS)' : '(production estimée — table par latitude)',
-    );
     const maxline = $('rp3-maxline');
     if (maxline) {
       maxline.textContent = `Rendement max par panneau : ~${rec.maxPerPanelTiltDeg}° plein sud. Énergie totale max sur CE toit : ~${rec.maxRoofEnergyTiltDeg}° (un toit limité gagne à être plus plat pour loger plus de panneaux).`;
@@ -728,14 +894,25 @@ export function initRoofToolPro3(opts: InitOptions): void {
     for (const c of rec.comparison) {
       const tr = document.createElement('tr');
       tr.dataset.id = c.id;
-      const cover = rec.targetAnnualKwh > 0 ? Math.round((c.annualKwh / rec.targetAnnualKwh) * 100) : 0;
+      // Le comparatif respecte le plafond « besoin » : on montre le nombre POSÉ
+      // (min(besoin, ce qui tient pour cette config)) et recalcule kWc/kWh/économies
+      // dessus — jamais la capacité max. Sans facture (besoin 0), on montre la
+      // capacité de chaque config à titre indicatif.
+      const placed = neededPanels > 0 ? Math.min(neededPanels, c.count) : c.count;
+      const scale = c.count > 0 ? placed / c.count : 0;
+      const kwc = c.kwc * scale;
+      const annualKwh = c.annualKwh * scale;
+      // Économies recalculées sur la production posée (plafond ONEE non linéaire) —
+      // pas un simple produit en croix.
+      const savings = scale >= 1 ? { low: c.savingsLow, high: c.savingsHigh } : annualSavingsMad(annualKwh, rec.targetAnnualKwh);
+      const cover = rec.targetAnnualKwh > 0 ? Math.round((annualKwh / rec.targetAnnualKwh) * 100) : 0;
       tr.innerHTML =
         `<td>${c.label}${c.id === rec.recommended.id ? ' <span style="color:var(--color-brass-300)">✓</span>' : ''}</td>` +
-        `<td class="num">${fmt(c.count)}</td>` +
-        `<td class="num">${c.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
-        `<td class="num">${fmt(Math.round(c.annualKwh))}</td>` +
+        `<td class="num">${fmt(placed)}</td>` +
+        `<td class="num">${kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
+        `<td class="num">${fmt(Math.round(annualKwh))}</td>` +
         `<td class="num">${cover} %</td>` +
-        `<td class="num">${fmtMad(c.savingsLow)} – ${fmtMad(c.savingsHigh)}</td>`;
+        `<td class="num">${fmtMad(savings.low)} – ${fmtMad(savings.high)}</td>`;
       tr.addEventListener('click', () => {
         useRecommended = false;
         sel = { family: c.family, tilt: c.tiltDeg, orient: 'auto' };
@@ -762,7 +939,14 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const ring: LngLat[] = [...vertices];
     const bill = monthlyBill();
     rec = recommend(ring, centroidLat, bill, obstructionRings());
-    pvgisKwh = null;
+    pvgisPerKwc = null;
+    // Plafond « besoin » : redérivé de la facture tant que l'utilisateur ne l'a pas
+    // figé. INDÉPENDANT des obstacles — eux ne changent que « ce qui tient », pas le
+    // besoin énergétique — donc une édition d'obstacle ne réécrit jamais ce nombre.
+    if (neededAuto) {
+      const n = neededPanelsForTarget(rec.targetAnnualKwh, centroidLat);
+      neededPanels = n > 0 ? clampNeeded(n) : 0;
+    }
     paintComparison();
     renderSelection();
     if (rec.recommended.count === 0) {
@@ -793,9 +977,11 @@ export function initRoofToolPro3(opts: InitOptions): void {
         body: JSON.stringify({ lat: centroid[1], lon: centroid[0], legs }),
       });
       const data = await res.json();
-      if (res.ok && data.ok && typeof data.annualKwh === 'number') {
-        pvgisKwh = data.annualKwh;
-        if (useRecommended) paintRecoCard();
+      if (res.ok && data.ok && typeof data.annualKwh === 'number' && r.kwc > 0) {
+        // Stocke le rendement (kWh/kWc) — réappliqué au nombre POSÉ, qui peut être
+        // sous le besoin si le toit/les obstacles contraignent.
+        pvgisPerKwc = data.annualKwh / r.kwc;
+        if (useRecommended) renderSelection();
       }
     } catch {
       /* la table committée a déjà fourni un chiffre — pas d'erreur visible */
@@ -864,8 +1050,22 @@ export function initRoofToolPro3(opts: InitOptions): void {
     setObstacleMode(false);
     drawing = false;
     drawStart = null;
+    moveObs = null;
     rec = null;
-    pvgisKwh = null;
+    pvgisPerKwc = null;
+    roofTex?.dispose();
+    roofTex = null;
+    roofTexKey = '';
+    deckMaterial = null;
+    neededPanels = 0;
+    neededAuto = true;
+    if (needInputEl) {
+      needInputEl.value = '—';
+      needInputEl.disabled = true;
+    }
+    if (needMinusEl) needMinusEl.disabled = true;
+    if (needPlusEl) needPlusEl.disabled = true;
+    if (needNoteEl) needNoteEl.textContent = '';
     useRecommended = true;
     sel = { family: 'south', tilt: 'reco', orient: 'auto' };
     srcOf('rp3-line')?.setData(empty as never);
@@ -948,29 +1148,86 @@ export function initRoofToolPro3(opts: InitOptions): void {
     setStatus('Obstacle ajouté — le calepinage l’évite. Touchez-le pour l’ajuster, ou ajoutez-en un autre.');
   }
 
+  // — Déplacement d'un obstacle (glissé), Change C —
+  /** Tente de saisir un obstacle sous le pointeur pour le déplacer. Renvoie true si
+   *  un glissé de déplacement démarre (→ on neutralise le pan de la carte). */
+  function tryBeginMove(lngLat: LngLat, point: maplibregl.Point): boolean {
+    if (!closed || obstacleMode) return false;
+    const hit = obstacleAtPoint(point);
+    if (!hit) return false;
+    const o = obstacles.find((x) => x.id === hit);
+    if (!o) return false;
+    selectObstacle(hit);
+    moveObs = { id: hit, startLng: lngLat[0], startLat: lngLat[1], centerLng: o.centerLng, centerLat: o.centerLat, moved: false };
+    map.dragPan.disable();
+    return true;
+  }
+  function doMove(lngLat: LngLat) {
+    if (!moveObs) return;
+    const idx = obstacles.findIndex((x) => x.id === moveObs!.id);
+    if (idx < 0) return;
+    // Delta lng/lat : annule le parallaxe absolu de la vue inclinée.
+    const centerLng = moveObs.centerLng + (lngLat[0] - moveObs.startLng);
+    const centerLat = moveObs.centerLat + (lngLat[1] - moveObs.startLat);
+    moveObs.moved = true;
+    obstacles[idx] = { ...obstacles[idx], centerLng, centerLat };
+    redrawObstacles();
+    // Déplacement 3D EN DIRECT du seul mesh concerné (pas de re-pavage par image).
+    const mesh = obstacleMeshes.get(moveObs.id);
+    if (mesh) {
+      const cosLat = Math.cos(sceneOrigin[1] * DEG2RAD);
+      mesh.position.x = (centerLng - sceneOrigin[0]) * DEG2M * cosLat;
+      mesh.position.y = (centerLat - sceneOrigin[1]) * DEG2M;
+      map.triggerRepaint();
+    }
+  }
+  function endMove() {
+    if (!moveObs) return;
+    const moved = moveObs.moved;
+    moveObs = null;
+    map.dragPan.enable();
+    suppressClick = true; // évite la désélection au click de synthèse
+    // Re-pavage + recalcul seulement si l'obstacle a réellement bougé.
+    if (moved) recompute();
+  }
+
   // — Interactions carte —
   map.on('mousedown', (e) => {
     suppressClick = false;
-    if (obstacleMode) beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+    if (obstacleMode) {
+      beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+      return;
+    }
+    tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
   });
   map.on('mousemove', (e) => {
     if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
+    else if (moveObs) doMove([e.lngLat.lng, e.lngLat.lat]);
   });
   map.on('mouseup', (e) => {
     if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+    else if (moveObs) endMove();
   });
   map.on('touchstart', (e) => {
     suppressClick = false;
-    if (obstacleMode) beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+    if (obstacleMode) {
+      beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+      return;
+    }
+    if (!e.points || e.points.length === 1) tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
   });
   map.on('touchmove', (e) => {
     if (drawing) {
       e.preventDefault();
       moveDraw([e.lngLat.lng, e.lngLat.lat]);
+    } else if (moveObs) {
+      e.preventDefault();
+      doMove([e.lngLat.lng, e.lngLat.lat]);
     }
   });
   map.on('touchend', (e) => {
     if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+    else if (moveObs) endMove();
   });
 
   map.on('click', (e) => {
@@ -1010,9 +1267,29 @@ export function initRoofToolPro3(opts: InitOptions): void {
   }
   billEl?.addEventListener('input', () => {
     updateBillKwh();
+    // Changer la facture = nouveau besoin : on relâche le réglage manuel éventuel.
+    neededAuto = true;
     if (closed) recompute();
   });
   updateBillKwh();
+
+  // — Plafond « panneaux nécessaires » : +/− et saisie directe (Change A) —
+  function setNeeded(n: number) {
+    neededPanels = clampNeeded(n);
+    neededAuto = false; // figé sur le choix de l'utilisateur jusqu'au prochain changement de facture/tracé
+    renderSelection();
+  }
+  needMinusEl?.addEventListener('click', () => {
+    if (neededPanels > 0) setNeeded(neededPanels - 1);
+  });
+  needPlusEl?.addEventListener('click', () => setNeeded(neededPanels + 1));
+  needInputEl?.addEventListener('input', () => {
+    const v = parseInt((needInputEl.value || '').replace(/\D/g, ''), 10);
+    if (Number.isFinite(v) && v > 0) setNeeded(v);
+  });
+  needInputEl?.addEventListener('blur', () => {
+    if (needInputEl) needInputEl.value = neededPanels > 0 ? fmt(neededPanels) : '—';
+  });
 
   // — Chips de config —
   function syncChips() {

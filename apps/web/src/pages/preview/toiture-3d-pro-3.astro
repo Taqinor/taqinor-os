@@ -229,6 +229,24 @@ const chipClass =
           <div id="rp3-results" class="rp3-results cine-card p-6">
             <p class="tech-label rule-brass text-brass-300">Recommandation</p>
             <p id="rp3-reco-title" class="fig mt-4 text-2xl text-brass-300 sm:text-3xl">—</p>
+
+            <!-- Plafond « panneaux nécessaires » — éditable, jamais dépassé quelle
+                 que soit l'orientation. Emplacement réservé (la carte réserve déjà
+                 520px) → aucun saut de mise en page. -->
+            <div class="mt-5 border border-white/10 bg-nuit-800/60 p-4">
+              <label for="rp3-need-input" class="tech-label text-lune-faint">Panneaux nécessaires</label>
+              <div class="mt-2 flex items-center gap-3">
+                <button type="button" id="rp3-need-minus" aria-label="Un panneau de moins"
+                  class="h-11 w-11 flex-none border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">−</button>
+                <input id="rp3-need-input" type="text" inputmode="numeric" autocomplete="off"
+                  aria-label="Nombre de panneaux nécessaires" value="—" disabled
+                  class="fig h-11 w-20 border border-white/20 bg-nuit-900 text-center text-2xl text-white outline-none focus:border-brass-400 disabled:opacity-50" />
+                <button type="button" id="rp3-need-plus" aria-label="Un panneau de plus"
+                  class="h-11 w-11 flex-none border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">+</button>
+              </div>
+              <p id="rp3-need-note" class="mt-2 min-h-[1.5rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
+            </div>
+
             <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-6">
               <div>
                 <dd id="rp3-reco-kwc" class="fig text-2xl text-white sm:text-3xl">—</dd>
