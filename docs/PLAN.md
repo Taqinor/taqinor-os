@@ -1,8 +1,7 @@
 # Taqinor OS — Build Plan & Progress
 
 This file is the **single source of truth** for the Taqinor OS build backlog and the
-**memory between Claude Code sessions**. Each session does **exactly one task**, ticks it
-off *in this file*, commits, deploys, and stops. The next session reads this file and
+**memory between Claude Code sessions**. Each run works through EVERY unchecked task in this file from top to bottom — not just one — ticking each off in this file as it lands, then does the same for `docs/PLAN2.md` if that file exists, and only stops when both queues are clear (or a usage limit pauses it, in which case re-running resumes from the next unchecked task). The next session reads this file and
 continues. Nothing relies on the agent's own memory — the file on disk is the memory.
 
 ---
@@ -29,8 +28,7 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
    to the server without a rebuild).
 7. **STOP and report** in plain language only — no diffs, no commit hashes: which task, what
    changed, exactly what Reda must click/type (with menu paths), and confirm the auto-deploy
-   shipped it (the server records each deploy in its own log). **Do not start the next task.**
-   One task per session.
+   shipped it (the server records each deploy in its own log). Continue to the next `[ ]` task. Do not stop until every task in this file — then every task in `docs/PLAN2.md`, if it exists — is `[x]`, `[SKIP]`, or `[BLOCKED]`.
 8. **If a task hits a blocker** (it would need a destructive migration, a paid/external
    dependency that isn't pre-approved, an auth change, or a real decision): do **not** guess
    and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to the GATED section,
@@ -40,18 +38,13 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
 from Claude Code on the web or from the phone with no PC involved. **One-line starter** to
 paste into a fresh cloud session:
 
-> Read docs/PLAN.md top to bottom. Do exactly ONE task: the first `[ ]` in the BUILD QUEUE.
-> Verify it isn't already built; build only that task with tests; get CI fully green (with
-> MinIO); self-merge `dev` → `main` (this AUTO-DEPLOYS to api.taqinor.ma — do not run any
-> deploy command); then tick the task `[x]`, add one dated line to the DONE LOG, and report
-> in plain language. One task only — do not start another.
+> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task in the BUILD QUEUE in order: verify each isn't already built, build it with tests, tick it `[x]`, add a dated DONE LOG line. Then do the same for `docs/PLAN2.md` if it exists. Get CI fully green (with MinIO) and self-merge `dev` → `main` (this auto-deploys — do not run any deploy command). Report in plain language. Do not stop after one task.
 
 ---
 
 ## STANDING RULES (every task obeys these)
 
-- **One session = one task.** Many subagents inside the session are fine; multiple sessions
-  or multiple PRs are not.
+- **One run = the whole queue, not one task.** Give each independent task its own subagent in its own git worktree so each subagent's context stays small and focused; run tasks that depend on or overlap each other in sequence. Never stop after a single task. (Human-review PRs are still not wanted — the run self-merges its own green work.)
 - **Verify against real code first. Never trust prior reports.** (Round 1 reported a preview
   fix that was never real, because that session's CI was silently broken.)
 - **Additive only.** New tables / nullable columns / new defaults. **Never** a destructive
@@ -110,7 +103,7 @@ production on Hetzner at **api.taqinor.ma** (cx23, daily backups, deploy via
 
 ## BUILD QUEUE (do top-down — highest value first)
 
-### T1 — Fix the devis preview (PRIORITY 1, blocks daily quoting) — [ ]
+### T1 — Fix the devis preview (PRIORITY 1, blocks daily quoting) — [x] (already present)
 **Symptom (confirmed by screenshot):** on a lead's devis preview panel (titled "Devis — <name>"
 with Premium / 1 page / Inclure l'étude toggles, an "Édition complète" button, and a
 "Télécharger le PDF" button), the PDF area shows a generic **broken-file icon** instead of the
@@ -138,7 +131,7 @@ scratch — do not assume any previous change is present or correct.
 **Acceptance:** open DEV-202606-0024 → the PDF renders in the panel AND downloads, in Premium,
 1-page, and étude.
 
-### T2 — Installable PWA / "app version" (like Odoo on mobile) — [ ]
+### T2 — Installable PWA / "app version" (like Odoo on mobile) — [x] (already present)
 Make the OS installable so Reda and Meryem can "Add to Home Screen" and run it full-screen like a
 native app. The "app" is the existing web app — no second codebase. **OS React app only**, not the
 Astro marketing site under `apps/web`.
@@ -164,7 +157,7 @@ Astro marketing site under `apps/web`.
 **Acceptance:** installs on Android Chrome and iPhone Safari; launches full-screen; a new deploy is
 picked up automatically.
 
-### T3 — Bulk actions on leads — [ ]
+### T3 — Bulk actions on leads — [x]
 Multi-select leads in **both** the list and the kanban (checkboxes), with a selection toolbar
 showing the count. Bulk actions: reassign responsable; add a tag; remove a tag; change stage
 (respect the no-going-backwards funnel rule, never auto-move a Perdu lead, reactivate Froid — same
@@ -321,3 +314,6 @@ Tracked here so they aren't lost:
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state)*
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
+- 2026-06-16 — T1 verified already present: /proposal serves a real inline PDF; the lead devis panel fetches it as a blob and renders it with PDF.js (clear FR error on server failure, graceful fallback on network failure); non-mocked regression tests cover Premium / 1-page / étude; Vite content-hashes the build. No change needed.
+- 2026-06-16 — T2 verified already present: vite-plugin-pwa configured (autoUpdate, injectManifest sw.js with skipWaiting/clientsClaim), manifest + icons + iOS head tags + offline page, and a French install helper (PwaPrompts.jsx, beforeinstallprompt). No change needed.
+- 2026-06-16 — T3 done: bulk actions on leads (multi-select in list + kanban, selection toolbar). Bulk reassign / add+remove tag / change stage (no-going-backwards, never moves a Perdu lead, reactivates Froid) / set+clear relance / flag+unflag Perdu / archive+unarchive / admin-only delete (skips leads with linked devis) / export selection to .xlsx. Every change writes a per-lead Historique entry badged « en masse ». Backend POST /crm/leads/bulk/ + /crm/leads/export-xlsx/ (company-scoped); 15 new backend tests + a frontend selection-logic test. Developed on branch claude/gallant-mccarthy-vh5e98 (not merged to main).

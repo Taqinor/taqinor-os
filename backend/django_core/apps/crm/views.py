@@ -140,11 +140,11 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
-                                          'doublons']:
+                                          'doublons', 'export_xlsx']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
-            'whatsapp_devis',
+            'whatsapp_devis', 'bulk',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -348,6 +348,54 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         act = activity.log_note(lead, request.user, body)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='bulk',
+            permission_classes=[IsResponsableOrAdmin])
+    def bulk(self, request):
+        """Actions EN MASSE sur une sélection de leads (liste + kanban).
+
+        Corps : {ids: [...], action: 'reassign'|'add_tag'|'remove_tag'|
+        'set_stage'|'set_relance'|'clear_relance'|'set_perdu'|'unset_perdu'|
+        'archive'|'unarchive'|'delete', + paramètres de l'action}. La société et
+        l'acteur viennent du serveur ; la règle métier (funnel, garde-fous,
+        Historique « en masse ») vit dans services.apply_bulk_action."""
+        from .services import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
+        op = request.data.get('action')
+        ids = request.data.get('ids') or []
+        if op not in BULK_ACTIONS:
+            return Response({'detail': 'Action en masse inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Sélectionnez au moins un lead.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if op in BULK_ADMIN_ONLY and not request.user.is_admin_role:
+            return Response(
+                {'detail': "Action réservée à l'administrateur."},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            result = apply_bulk_action(
+                company=request.user.company, user=request.user,
+                lead_ids=ids, op=op, params=request.data)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+    @action(detail=False, methods=['post'], url_path='export-xlsx',
+            permission_classes=[IsAnyRole])
+    def export_xlsx(self, request):
+        """Exporte une sélection de leads en .xlsx (société courante).
+
+        Corps : {ids: [...]} — la sélection. Vide → 400 (l'UI exporte une
+        sélection). Borné à la société de l'utilisateur."""
+        from .exports import export_leads_xlsx
+        ids = request.data.get('ids') or []
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Sélectionnez au moins un lead.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        leads = (Lead.objects.filter(company=request.user.company, id__in=ids)
+                 .select_related('owner').order_by('id'))
+        return export_leads_xlsx(leads)
 
 
 class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):

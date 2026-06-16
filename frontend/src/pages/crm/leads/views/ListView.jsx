@@ -16,6 +16,7 @@ import {
   tagColor,
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
+import { allVisibleSelected } from '../../../../features/crm/bulk'
 import './listview.css'
 
 // Fond de pastille d'étape : couleur de l'étape à ~14 % d'opacité.
@@ -74,7 +75,10 @@ function SortableTh({ col, label, sort, onSort, className }) {
   )
 }
 
-export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign }) {
+export default function ListView({
+  leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
+  selected = new Set(), onToggleSelect, onToggleAll,
+}) {
   const dispatch = useDispatch()
   const role = useSelector((s) => s.auth.role)
   const canDelete = role === 'admin' // règle existante : destroy = admin
@@ -136,11 +140,24 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
     })
   }, [leads, sort])
 
+  const visibleIds = sorted.map((l) => l.id)
+  const allChecked = allVisibleSelected(selected, visibleIds)
+
   return (
     <div className="lv-wrap">
       <table className="data-table lv-table">
         <thead>
           <tr>
+            {onToggleSelect && (
+              <th className="lv-check-col">
+                <input
+                  type="checkbox"
+                  aria-label="Tout sélectionner"
+                  checked={allChecked}
+                  onChange={() => onToggleAll?.(visibleIds)}
+                />
+              </th>
+            )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
             <SortableTh col="canal" label="Canal" sort={sort} onSort={onSort} className="m-hide" />
@@ -160,9 +177,22 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
             return (
               <tr
                 key={lead.id}
-                className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}`}
+                className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}${selected.has(lead.id) ? ' lv-row-selected' : ''}`}
                 onClick={() => onOpenLead(lead)}
               >
+                {onToggleSelect && (
+                  <td
+                    className="lv-check-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Sélectionner ${fullName(lead) || 'ce lead'}`}
+                      checked={selected.has(lead.id)}
+                      onChange={() => onToggleSelect(lead.id)}
+                    />
+                  </td>
+                )}
                 <td data-label="Lead">
                   <div className="lv-lead-cell">
                     <span className="lv-lead-name">
@@ -304,7 +334,7 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
           })}
           {!sorted.length && (
             <tr>
-              <td colSpan={8} className="lv-empty">
+              <td colSpan={onToggleSelect ? 9 : 8} className="lv-empty">
                 Aucun lead à afficher.
               </td>
             </tr>

@@ -339,3 +339,16 @@
 .kb-act-clock.overdue { filter: none; color: #dc2626; }
 .kb-act-clock.today { color: #d97706; }
 .kb-act-clock.upcoming { color: #16a34a; }
+
+/* Case de sélection sur la carte (actions en masse, T3). */
+.kb-card-check {
+  width: 15px;
+  height: 15px;
+  margin-right: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.kb-card-selected {
+  outline: 2px solid #0f172a;
+  outline-offset: -1px;
+}

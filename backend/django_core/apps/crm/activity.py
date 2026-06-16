@@ -100,6 +100,32 @@ def log_note(lead: Lead, user, body: str) -> LeadActivity:
     )
 
 
+def log_bulk_change(lead: Lead, user, field: str, old_val, new_val) -> LeadActivity:
+    """Une entrée de modification issue d'une action EN MASSE (édition groupée).
+
+    Identique à une modification normale (champ, ancienne → nouvelle valeur),
+    mais marquée `bulk=True` pour que l'Historique affiche le badge « en masse ».
+    Valeurs déjà affichables — ou brutes, alors mises en forme comme ailleurs.
+    """
+    label = TRACKED_FIELDS.get(field, field)
+    return LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field=field, field_label=label,
+        old_value=_display(lead, field, old_val),
+        new_value=_display(lead, field, new_val),
+        bulk=True,
+    )
+
+
+def log_bulk_note(lead: Lead, user, body: str) -> LeadActivity:
+    """Note libre issue d'une action en masse (archivage groupé, etc.)."""
+    return LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE, body=body, bulk=True,
+    )
+
+
 def log_archive(lead: Lead, user) -> LeadActivity:
     """Trace l'archivage dans le chatter (geste réversible)."""
     return LeadActivity.objects.create(

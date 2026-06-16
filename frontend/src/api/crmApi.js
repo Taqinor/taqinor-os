@@ -24,6 +24,12 @@ const crmApi = {
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
+  // Actions EN MASSE sur une sélection de leads (liste + kanban). Le corps
+  // porte {ids, action, …paramètres} ; la règle métier vit côté serveur.
+  bulkLeads: (payload) => api.post('/crm/leads/bulk/', payload),
+  // Export Excel (.xlsx) d'une sélection — réponse binaire (blob).
+  exportLeadsXlsx: (ids) =>
+    api.post('/crm/leads/export-xlsx/', { ids }, { responseType: 'blob' }),
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
   // Atelier doublons : tous les clusters de la société (survivant suggéré).

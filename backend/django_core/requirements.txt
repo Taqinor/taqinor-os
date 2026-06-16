@@ -29,6 +29,9 @@ django-anymail[sendgrid]==10.3
 django-storages[s3]==1.14.4
 boto3==1.35.99
 
+# Excel (.xlsx) export — exports CRM/listes (pré-approuvé, voir docs/PLAN.md)
+openpyxl==3.1.5
+
 # Image handling
 Pillow==10.4.0
 
