@@ -174,8 +174,45 @@ const chipClass =
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <span class="tech-label mr-1 text-lune-faint">Obstacles</span>
-                <button type="button" id="rp3-obstacle" class={chipClass}>Marquer un obstacle (cheminée…)</button>
-                <button type="button" id="rp3-obstacle-clear" class={chipClass}>Effacer les obstacles</button>
+                <button type="button" id="rp3-obstacle" class={chipClass}>Ajouter un obstacle (cheminée…)</button>
+                <button type="button" id="rp3-obstacle-clear" class={chipClass}>Tout effacer</button>
+              </div>
+              <p class="text-xs leading-relaxed text-lune-faint">
+                Marquez les obstacles (climatiseur, cheminée, lanterneau, citerne…) —
+                on n'y posera pas de panneaux. Glissez sur le toit pour dessiner un
+                rectangle ; touchez-le pour le redimensionner. Un dégagement de
+                0,3 m est réservé tout autour.
+              </p>
+
+              <!-- Panneau d'édition d'un obstacle sélectionné (tactile) -->
+              <div id="rp3-obs-edit" hidden class="border border-white/15 bg-nuit-900/40 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="tech-label text-brass-300">Obstacle sélectionné</span>
+                  <button type="button" id="rp3-obs-delete"
+                    class="border border-alert-300/60 px-3 py-2 text-sm font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">
+                    × Supprimer
+                  </button>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <label class="block text-sm text-lune-soft">
+                    Longueur (m)
+                    <input id="rp3-obs-length" type="text" inputmode="decimal" step="any"
+                      class={`${inputClass} mt-1`} />
+                  </label>
+                  <label class="block text-sm text-lune-soft">
+                    Largeur (m)
+                    <input id="rp3-obs-width" type="text" inputmode="decimal" step="any"
+                      class={`${inputClass} mt-1`} />
+                  </label>
+                </div>
+                <div class="mt-3 flex items-center gap-3">
+                  <span class="tech-label text-lune-faint">Taille</span>
+                  <button type="button" id="rp3-obs-minus" aria-label="Réduire l'obstacle"
+                    class="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">−</button>
+                  <button type="button" id="rp3-obs-plus" aria-label="Agrandir l'obstacle"
+                    class="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">+</button>
+                  <span id="rp3-obs-dims" class="fig text-sm text-lune-soft">—</span>
+                </div>
               </div>
             </div>
 
@@ -338,6 +375,7 @@ const chipClass =
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let started = false;
   let key = '';
+  let mapboxToken = '';
 
   function showFallback() {
     if (fallback) fallback.hidden = false;
@@ -353,6 +391,7 @@ const chipClass =
       placeholder?.remove();
       mod.initRoofToolPro3({
         maptilerKey: key,
+        mapboxToken: mapboxToken || undefined,
         reducedMotion,
         initialQuery,
         onReady: () => {
@@ -370,12 +409,15 @@ const chipClass =
   (async () => {
     try {
       const res = await fetch('/api/roof-config');
-      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string };
+      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
       if (!cfg.available || !cfg.maptilerKey) {
         showFallback();
         return;
       }
       key = cfg.maptilerKey;
+      // Token Mapbox facultatif : présent → imagerie satellite plus nette ;
+      // absent → repli transparent sur le style hybride MapTiler.
+      mapboxToken = cfg.mapboxToken || '';
       searchForm?.addEventListener('submit', (e) => {
         e.preventDefault();
         boot(addressEl?.value.trim() || undefined);
