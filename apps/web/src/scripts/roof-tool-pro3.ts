@@ -41,7 +41,7 @@ import {
   OBSTACLE_STEP_FACTOR,
   type Obstacle,
 } from '../lib/obstacles';
-import { buildSatelliteStyle, roofImageSize, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
+import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
 
 interface InitOptions {
   maptilerKey: string;
@@ -361,45 +361,43 @@ export function initRoofToolPro3(opts: InitOptions): void {
     return im;
   }
 
-  /** UV de la face supérieure du toit = position du sommet dans la bbox ENU du
-   *  tracé, ∈ [0,1] (équivalent à lngLatToUV : mapping linéaire ENU↔lng/lat). Aligne
-   *  la photo satellite exactement sur le toit et le calepinage. */
-  function setDeckUVs(geo: THREE.BufferGeometry, ringENU: [number, number][]) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of ringENU) {
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
+  /** UV de la face supérieure du toit = VRAIE position (Web Mercator) de chaque
+   *  sommet dans l'étendue EXACTE de l'image satellite (calculée par
+   *  roofImageRequest, et NON la bbox demandée — l'endpoint Static élargit la bbox).
+   *  Le sommet, en ENU, est reprojeté en lng/lat via l'origine de la scène puis en
+   *  UV. Le mesh ÉTANT le polygone tracé (ShapeGeometry), seule l'imagerie du
+   *  contour est peinte, alignée au pixel près sur le calepinage et les obstacles. */
+  function setDeckUVs(geo: THREE.BufferGeometry, origin: LngLat, extent: [number, number, number, number]) {
+    const cosLat = Math.cos(origin[1] * DEG2RAD);
     const pos = geo.attributes.position;
     const uv = new Float32Array(pos.count * 2);
     for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = (pos.getX(i) - minX) / Math.max(1e-9, maxX - minX);
-      uv[i * 2 + 1] = (pos.getY(i) - minY) / Math.max(1e-9, maxY - minY);
+      const lng = origin[0] + pos.getX(i) / (DEG2M * cosLat);
+      const lat = origin[1] + pos.getY(i) / DEG2M;
+      const [u, v] = roofVertexUV(lng, lat, extent);
+      uv[i * 2] = u;
+      uv[i * 2 + 1] = v;
     }
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   }
 
-  /** Pose (ou réapplique) la photo satellite sur la face supérieure du toit. Texture
-   *  cachée par bbox : chargée une seule fois par tracé ; appliquée d'emblée si déjà
-   *  en cache. Sans token Mapbox ou en cas d'échec : deck gris inchangé (gracieux). */
-  function applyRoofPhoto(deck: THREE.Mesh, mat: THREE.MeshStandardMaterial, ringENU: [number, number][]) {
+  /** Pose (ou réapplique) la photo satellite sur la face supérieure du toit. Image
+   *  demandée par centre+zoom (étendue déterministe) → cachée par cette étendue,
+   *  chargée une seule fois par tracé. Sans token Mapbox ou en cas d'échec : deck
+   *  gris inchangé (gracieux). */
+  function applyRoofPhoto(deck: THREE.Mesh, mat: THREE.MeshStandardMaterial, origin: LngLat) {
     deckMaterial = mat;
     if (!opts.mapboxToken || vertices.length < 3) return;
-    setDeckUVs(deck.geometry, ringENU);
-    const bbox = ringBBox(vertices);
-    const key = bbox.map((n) => n.toFixed(6)).join(',');
+    const req = roofImageRequest(ringBBox(vertices));
+    setDeckUVs(deck.geometry, origin, req.extent);
+    const key = req.extent.map((n) => n.toFixed(6)).join(',');
     if (roofTex && roofTexKey === key) {
       mat.map = roofTex;
       mat.color.set(0xffffff);
       mat.needsUpdate = true;
       return;
     }
-    const [minLng, minLat, maxLng, maxLat] = bbox;
-    const cosLat = Math.cos(((minLat + maxLat) / 2) * DEG2RAD);
-    const size = roofImageSize((maxLng - minLng) * DEG2M * cosLat, (maxLat - minLat) * DEG2M);
-    const url = mapboxStaticRoofImageUrl(opts.mapboxToken, bbox, size.w, size.h);
+    const url = mapboxStaticRoofImageUrl(opts.mapboxToken, req.center, req.zoom, req.w, req.h);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -505,8 +503,9 @@ export function initRoofToolPro3(opts: InitOptions): void {
     deck.position.z = wallH + 0.02;
     deck.receiveShadow = true;
     sceneRoot.add(deck);
-    // Change B : pose la photo satellite (géo-alignée) sur la face supérieure.
-    applyRoofPhoto(deck, deckMat, ring);
+    // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
+    // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
+    applyRoofPhoto(deck, deckMat, pack.origin);
 
     // Axes de visée à partir de l'azimut de la famille.
     const azRad = pack.azimuthDeg * DEG2RAD;
@@ -632,22 +631,10 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const cxm = (minX + maxX) / 2;
     const cym = (minY + maxY) / 2;
     const span = Math.max(maxX - minX, maxY - minY, wallH) + 8;
-
-    // Change A : tapis sombre OPAQUE sous le bâtiment. Il occulte l'imagerie
-    // satellite de FOND dans la vue 3D (sinon, même image que la photo du toit →
-    // le tracé « se perd » et l'on voit les voisins/pools/routes). Résultat : hors
-    // du contour, tout est sombre ; SEUL le toit porte la photo, détourée au tracé.
-    // N'existe qu'en 3D (renderScene, après fermeture) — le fond satellite reste
-    // pour la phase de TRACÉ. Posé sous la base du bâtiment (z<0), aucun z-fighting.
-    const apronSize = Math.max(span * 18, 1200);
-    const apron = new THREE.Mesh(
-      new THREE.PlaneGeometry(apronSize, apronSize),
-      new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 1, metalness: 0 }),
-    );
-    apron.position.set(cxm, cym, -0.1);
-    apron.receiveShadow = true;
-    sceneRoot.add(apron);
-
+    // Aucun « tapis » sombre : le fond satellite réel (les vrais environs) reste
+    // visible autour du bâtiment, qui se lit comme un volume 3D posé dans son
+    // contexte, son toit texturé sur le dessus (détouré au tracé). La photo du toit
+    // (surélevée) et le sol viennent de la même imagerie source.
     const roofZ = wallH + 0.5;
     const latAbs = Math.abs(pack.origin[1]);
     const dispElevDeg = Math.max(28, (90 - latAbs) * 0.62);
