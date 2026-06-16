@@ -5,6 +5,8 @@ import { updateInstallation } from '../../features/installations/store/installat
 import { fetchProduits } from '../../features/stock/store/stockSlice'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
+import documentsApi from '../../api/documentsApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
@@ -211,6 +213,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     } catch { /* erreur silencieuse */ }
   }
 
+  const openDocument = async (kind, filename) => {
+    try {
+      const r = await documentsApi[kind](current.id)
+      downloadBlob(r.data, filename)
+    } catch {
+      alert('Document indisponible.')
+    }
+  }
+
   const interventions = current.interventions ?? []
 
   return (
@@ -260,6 +271,35 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   Voir le lead
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* ── Documents après-vente (PDF régénérés à la demande) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">📄 Documents après-vente</span>
+            </div>
+            <div className="actions-cell">
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`)}>
+                PV de réception
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`)}>
+                Bon de livraison
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`)}>
+                Dossier de remise
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`)}>
+                Attestation
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={() => navigate(`/reporting/archive/chantier/${current.id}`)}>
+                Archive documentaire
+              </button>
             </div>
           </div>
 

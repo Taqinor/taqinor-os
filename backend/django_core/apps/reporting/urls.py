@@ -3,6 +3,7 @@ from .views import dashboard
 from .search import global_search, notifications
 from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
+from .archive import archive_client, archive_chantier
 
 urlpatterns = [
     path('dashboard/', dashboard, name='reporting-dashboard'),
@@ -12,4 +13,8 @@ urlpatterns = [
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
     path('reports/service/', service_report, name='report-service'),
+    path('archive/client/<int:pk>/', archive_client,
+         name='reporting-archive-client'),
+    path('archive/chantier/<int:pk>/', archive_chantier,
+         name='reporting-archive-chantier'),
 ]
