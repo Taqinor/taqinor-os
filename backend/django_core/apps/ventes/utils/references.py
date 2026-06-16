@@ -37,6 +37,47 @@ def next_reference(model, doc_prefix, company):
     return f"{prefix}-{highest + 1:04d}"
 
 
+def detect_reference_gaps(model, doc_prefix, company):
+    """Detect gaps in the per-(company, doc_prefix, period) sequence (N11).
+
+    Builds on the SAME prefix scheme as next_reference (does NOT change it):
+    groups existing references by their YYYYMM period and, within each period,
+    reports any missing number between 1 and the highest used. WARNS only —
+    a gap is normal after a deletion; this just surfaces it for the admin.
+
+    Returns a list of dicts: {period, prefix, missing: [ints], expected_max,
+    present_count}.
+    """
+    refs = model.objects.filter(
+        company=company, reference__startswith=f"{doc_prefix}-",
+    ).values_list('reference', flat=True)
+
+    by_period = {}
+    period_re = re.compile(
+        rf'^{re.escape(doc_prefix)}-(\d{{6}})-(\d+)$')
+    for ref in refs:
+        m = period_re.match(ref)
+        if not m:
+            continue
+        period, num = m.group(1), int(m.group(2))
+        by_period.setdefault(period, set()).add(num)
+
+    report = []
+    for period in sorted(by_period):
+        used = by_period[period]
+        top = max(used)
+        missing = [n for n in range(1, top + 1) if n not in used]
+        if missing:
+            report.append({
+                'period': period,
+                'prefix': f"{doc_prefix}-{period}",
+                'missing': missing,
+                'expected_max': top,
+                'present_count': len(used),
+            })
+    return report
+
+
 def create_with_reference(model, doc_prefix, company, save_fn):
     """Run save_fn(reference) inside a savepoint, retrying on reference races.
 

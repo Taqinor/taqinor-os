@@ -38,6 +38,22 @@ def _q(amount) -> Decimal:
     return Decimal(amount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+def mes_for_devis(devis):
+    """Date de mise en service du chantier lié au devis (N30), ou None.
+
+    Sert de défaut à la date de livraison/prestation d'une facture. Import local
+    pour éviter tout cycle ventes ↔ installations."""
+    if devis is None:
+        return None
+    try:
+        from apps.installations.models import Installation
+    except Exception:
+        return None
+    inst = Installation.objects.filter(devis=devis).exclude(
+        date_mise_en_service__isnull=True).order_by('-id').first()
+    return inst.date_mise_en_service if inst else None
+
+
 def schedule_for_devis(devis):
     """Liste ordonnée [(clé, pourcentage)] selon le mode du devis.
 
@@ -139,6 +155,8 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             montant_tva=tr['tva'],
             montant_ttc=tr['ttc'],
             taux_tva=blended_tva_pct(devis),
+            # N30 : date de livraison/prestation par défaut = MES du chantier.
+            date_livraison=mes_for_devis(devis),
             created_by=user,
             company=company,
         )

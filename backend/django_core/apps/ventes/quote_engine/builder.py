@@ -119,6 +119,7 @@ DEFAULT_PDF_OPTIONS = {
     'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
     'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
     'include_etude': False,    # page Étude (industriel) — 4th premium page
+    'acceptance_stamp': None,  # texte du tampon « accepté le … par … » (N9)
 }
 
 
@@ -128,6 +129,11 @@ def clean_pdf_options(raw) -> dict:
     opts = dict(DEFAULT_PDF_OPTIONS)
     if raw.get('pdf_mode') in ('full', 'onepage'):
         opts['pdf_mode'] = raw['pdf_mode']
+    # Tampon d'acceptation : texte court et inoffensif (overlay, jamais une
+    # page premium). Toujours côté serveur ; on borne la longueur.
+    stamp = raw.get('acceptance_stamp')
+    if isinstance(stamp, str) and stamp.strip():
+        opts['acceptance_stamp'] = stamp.strip()[:200]
     if 'show_monthly' in raw:
         opts['show_monthly'] = bool(raw['show_monthly'])
     if 'devis_final' in raw:
@@ -484,6 +490,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "payment_terms": payment_terms,
         "mode_installation": mode,
         "etude": etude,
+        "acceptance_stamp": opts.get("acceptance_stamp"),
     }
     return data
 
@@ -524,6 +531,45 @@ def _ensure_pdf_bucket() -> None:
             logger.warning("Could not ensure MinIO bucket %s: %s", bucket, exc)
 
 
+def _stamp_div_html(stamp_text: str) -> str:
+    """Fixed-position acceptance overlay, repeated on every page. Self-contained
+    inline CSS so it never depends on (nor touches) the premium page styles."""
+    import html as _html
+    safe = _html.escape(stamp_text)
+    return (
+        '<div style="position:fixed;bottom:18mm;left:0;right:0;'
+        'text-align:center;z-index:9999;pointer-events:none;">'
+        '<span style="display:inline-block;border:2px solid #1b7a3d;'
+        'color:#1b7a3d;background:rgba(232,245,233,0.85);'
+        'font-family:Arial,Helvetica,sans-serif;font-size:11pt;'
+        'font-weight:700;letter-spacing:0.5px;padding:6px 18px;'
+        'border-radius:6px;transform:rotate(-4deg);'
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.12);">{safe}</span>'
+        '</div>'
+    )
+
+
+def _render_with_stamp(gen, data, out_path, stamp_text) -> None:
+    """Render the premium PDF with an acceptance stamp overlay, WITHOUT editing
+    any premium page. We temporarily wrap the engine's WeasyPrint renderer so
+    the stamp div is injected into the already-built HTML before </body>."""
+    overlay = _stamp_div_html(stamp_text)
+    original = gen._render_pdf_weasyprint
+
+    def _wrapped(html_string, target):
+        if '</body>' in html_string:
+            html_string = html_string.replace('</body>', overlay + '</body>', 1)
+        else:
+            html_string = html_string + overlay
+        return original(html_string, target)
+
+    gen._render_pdf_weasyprint = _wrapped
+    try:
+        gen.generate_premium_pdf(data, out_path)
+    finally:
+        gen._render_pdf_weasyprint = original
+
+
 def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
     """Render the quote PDF for a Devis in the requested format and store it
     in MinIO. pdf_options (see DEFAULT_PDF_OPTIONS) selects the simulator
@@ -532,6 +578,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
     """
     from apps.ventes.models import Devis
     from apps.ventes.utils.pdf import _upload_pdf
+    from . import generate_devis_premium as gen
     from .generate_devis_premium import generate_premium_pdf
 
     devis = (
@@ -542,11 +589,19 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
     )
 
     data = build_quote_data(devis, pdf_options)
+    stamp = data.get("acceptance_stamp")
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
         tmp_path = tf.name
     try:
-        generate_premium_pdf(data, tmp_path)
+        if stamp:
+            # Copie ACCEPTÉE estampillée (N9). On NE touche AUCUNE page premium :
+            # on enveloppe le rendu WeasyPrint du moteur pour injecter un overlay
+            # fixe (« accepté le … par … ») dans le HTML déjà produit, juste
+            # avant </body>. Le moteur reste l'unique chemin de rendu du PDF.
+            _render_with_stamp(gen, data, tmp_path, stamp)
+        else:
+            generate_premium_pdf(data, tmp_path)
         pdf_bytes = Path(tmp_path).read_bytes()
     finally:
         Path(tmp_path).unlink(missing_ok=True)

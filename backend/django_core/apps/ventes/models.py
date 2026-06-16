@@ -93,6 +93,19 @@ class Devis(models.Model):
     )
     remise_approuvee_le = models.DateTimeField(null=True, blank=True)
 
+    # ── Acceptation client « Bon pour accord » (N9) — additif, tout optionnel ──
+    # Capture explicite de l'acceptation : c'est CE geste qui déclenche la
+    # possibilité de créer le chantier (le flux chantier-depuis-devis exige
+    # déjà statut == 'accepte'). `accepte_par_nom` = nom CLIENT saisi à la main ;
+    # `accepte_par_user` = membre du staff qui a consigné l'acceptation.
+    date_acceptation = models.DateField(null=True, blank=True)
+    accepte_par_nom = models.CharField(max_length=255, blank=True, default='')
+    accepte_par_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='devis_acceptes',
+    )
+    bon_pour_accord = models.BooleanField(default=False)
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'
@@ -308,6 +321,13 @@ class Facture(models.Model):
     )
     date_emission = models.DateField(auto_now_add=True)
     date_echeance = models.DateField(null=True, blank=True)
+    # ── Conformité Article 145 CGI (N30/N11) — additif, tout optionnel ──
+    # date_livraison = date de la livraison/prestation (mention obligatoire) ;
+    # par défaut, reprise de la mise en service du chantier lié à la création.
+    # conditions_paiement = conditions et mode de règlement (mention obligatoire)
+    # — défaut vide pour ne RIEN changer au comportement existant.
+    date_livraison = models.DateField(null=True, blank=True)
+    conditions_paiement = models.TextField(blank=True, default='')
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, default=20.00
     )
@@ -430,6 +450,83 @@ class Facture(models.Model):
             return 0
         delta = (timezone.now().date() - self.date_echeance).days
         return delta if delta > 0 else 0
+
+    @property
+    def mentions_manquantes(self):
+        """Mentions obligatoires manquantes (Article 145 CGI marocain).
+
+        AVERTISSEMENT seulement : renvoie la liste des mentions absentes — ne
+        bloque JAMAIS l'émission. Couvre l'identité + IF/ICE/RC du vendeur,
+        l'identité du client (+ ICE en B2B), le numéro séquentiel, la date
+        d'émission, la date de livraison/prestation, le détail des lignes
+        (désignation/qté/PU HT/taux TVA/total HT), les totaux HT/TVA/TTC, et
+        les conditions + mode de paiement.
+        """
+        manquantes = []
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=self.company)
+
+        # Identité + identifiants légaux du vendeur
+        if not (profile.nom or '').strip():
+            manquantes.append("Identité du vendeur (raison sociale)")
+        if not (getattr(profile, 'identifiant_fiscal', '') or '').strip():
+            manquantes.append("Identifiant fiscal (IF) du vendeur")
+        if not (getattr(profile, 'ice', '') or '').strip():
+            manquantes.append("ICE du vendeur")
+        if not (getattr(profile, 'rc', '') or '').strip():
+            manquantes.append("Registre de commerce (RC) du vendeur")
+
+        # Identité du client (+ ICE pour un client professionnel/B2B)
+        client = self.client
+        if client is None or not (client.nom or '').strip():
+            manquantes.append("Identité du client")
+        elif self._client_est_pro(client) and \
+                not (getattr(client, 'ice', '') or '').strip():
+            manquantes.append("ICE du client (client professionnel)")
+
+        # Numéro séquentiel + date d'émission
+        if not (self.reference or '').strip():
+            manquantes.append("Numéro de facture séquentiel")
+        if self.date_emission is None:
+            manquantes.append("Date d'émission")
+
+        # Date de livraison / prestation
+        if self.date_livraison is None:
+            manquantes.append("Date de livraison / prestation")
+
+        # Détail des lignes (désignation, qté, PU HT, taux TVA, total HT)
+        lignes = list(self.lignes.all())
+        if not lignes and not (self.libelle or '').strip():
+            manquantes.append("Détail des lignes (désignation, quantité, "
+                              "prix unitaire HT, taux TVA, total HT)")
+        else:
+            for ligne in lignes:
+                if not (ligne.designation or '').strip() \
+                        or ligne.quantite is None \
+                        or ligne.prix_unitaire is None \
+                        or ligne.taux_tva_effectif is None:
+                    manquantes.append("Détail des lignes (désignation, "
+                                      "quantité, prix unitaire HT, taux TVA, "
+                                      "total HT)")
+                    break
+
+        # Conditions + mode de paiement
+        if not (self.conditions_paiement or '').strip():
+            manquantes.append("Conditions et mode de paiement")
+
+        return manquantes
+
+    @staticmethod
+    def _client_est_pro(client):
+        """B2B : un client est « professionnel » s'il est de type Entreprise ou
+        s'il porte un marqueur entreprise (ICE, IF ou RC renseigné)."""
+        type_client = (getattr(client, 'type_client', '') or '').lower()
+        if type_client == 'entreprise':
+            return True
+        for attr in ('ice', 'if_fiscal', 'rc'):
+            if (getattr(client, attr, '') or '').strip():
+                return True
+        return False
 
 
 class LigneFacture(models.Model):

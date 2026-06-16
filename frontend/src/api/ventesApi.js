@@ -25,6 +25,9 @@ const ventesApi = {
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
   // Approbation de remise (T17) : débloque l'envoi d'un devis très remisé.
   approuverRemiseDevis: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
+  // Acceptation client « Bon pour accord » (N9) : consigne nom + date, passe le
+  // devis « Accepté » (débloque la création du chantier) et journalise au chatter.
+  accepterDevis: (id, data) => api.post(`/ventes/devis/${id}/accepter/`, data),
 
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),

@@ -33,6 +33,31 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+def _devis_acceptance_stamp(devis):
+    """Texte du tampon d'acceptation (« accepté le <date> par <nom> ») pour la
+    copie estampillée du devis. Renvoie None si le devis n'est pas accepté."""
+    if not devis.bon_pour_accord and devis.statut != Devis.Statut.ACCEPTE:
+        return None
+    nom = (devis.accepte_par_nom or '').strip()
+    date_acc = devis.date_acceptation
+    date_str = date_acc.strftime('%d/%m/%Y') if date_acc else ''
+    parts = ['ACCEPTÉ']
+    if date_str:
+        parts.append(f'le {date_str}')
+    if nom:
+        parts.append(f'par {nom}')
+    return ' '.join(parts) + ' — Bon pour accord'
+
+
+def _mes_from_facture(facture):
+    """Mise en service du chantier lié à la facture (via son devis), ou None.
+    Sert de défaut N30 à la date de livraison/prestation."""
+    from .utils.echeancier import mes_for_devis
+    devis = facture.devis or (
+        facture.bon_commande.devis if facture.bon_commande_id else None)
+    return mes_for_devis(devis)
+
+
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -96,7 +121,7 @@ class DevisViewSet(XlsxExportMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture', 'reviser', 'approuver_remise',
+            'generer_facture', 'reviser', 'approuver_remise', 'accepter',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -244,6 +269,12 @@ class DevisViewSet(XlsxExportMixin, viewsets.ModelViewSet):
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
+            # Copie ACCEPTÉE estampillée (N9) : overlay « accepté le … par … »
+            # rendu PAR le moteur /proposal — aucune page premium modifiée.
+            # ?accepte=1 (ou détecté quand le devis porte bon_pour_accord).
+            want_stamp = request.query_params.get('accepte') in ('1', 'true')
+            if want_stamp or devis.bon_pour_accord:
+                raw['acceptance_stamp'] = _devis_acceptance_stamp(devis)
             key = generate_premium_devis_pdf(devis.id, clean_pdf_options(raw))
             pdf_bytes = download_pdf(key)
         except Exception as exc:
@@ -398,6 +429,67 @@ class DevisViewSet(XlsxExportMixin, viewsets.ModelViewSet):
             Devis, doc_prefix(company, 'devis'), company, _create)
         return Response(
             DevisSerializer(nouveau).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='accepter',
+            permission_classes=[IsResponsableOrAdmin])
+    def accepter(self, request, pk=None):
+        """Consigne l'acceptation client « Bon pour accord » (N9).
+
+        Capture le nom CLIENT saisi + une date choisie, passe le devis au statut
+        « Accepté », pose le drapeau bon_pour_accord et journalise le geste dans
+        le chatter du lead lié (le seul chatter rattaché à un devis). C'est CETTE
+        acceptation explicite qui débloque la création du chantier (le flux
+        chantier-depuis-devis exige déjà statut == 'accepte').
+        """
+        from rest_framework.exceptions import ValidationError
+        from django.utils import timezone as _tz
+        import datetime as _dt
+        devis = self.get_object()
+        if devis.statut in (Devis.Statut.REFUSE, Devis.Statut.EXPIRE):
+            return Response(
+                {'detail': 'Un devis refusé ou expiré ne peut pas être '
+                           'accepté. Révisez-le d\'abord.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        nom = (request.data.get('nom') or '').strip()
+        if not nom:
+            raise ValidationError(
+                {'nom': 'Le nom de la personne qui accepte est requis.'})
+        raw_date = request.data.get('date')
+        if raw_date:
+            try:
+                date_acc = _dt.date.fromisoformat(str(raw_date)[:10])
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    {'date': 'Date invalide (format attendu AAAA-MM-JJ).'})
+        else:
+            date_acc = _tz.now().date()
+
+        ancien_statut = devis.statut
+        devis.statut = Devis.Statut.ACCEPTE
+        devis.date_acceptation = date_acc
+        devis.accepte_par_nom = nom[:255]
+        devis.accepte_par_user = request.user
+        devis.bon_pour_accord = True
+        devis.save(update_fields=[
+            'statut', 'date_acceptation', 'accepte_par_nom',
+            'accepte_par_user', 'bon_pour_accord'])
+
+        # Chatter : journalise sur le lead lié (chatter existant d'un devis).
+        if devis.lead_id is not None:
+            try:
+                from apps.crm.activity import log_note
+                log_note(
+                    devis.lead, request.user,
+                    f"Devis {devis.reference} accepté « Bon pour accord » "
+                    f"par {nom} le {date_acc.strftime('%d/%m/%Y')}.")
+            except Exception:
+                pass
+
+        # Mouvement automatique du funnel CRM (accepté → SIGNED).
+        from apps.crm.services import avancer_stage_pour_devis
+        avancer_stage_pour_devis(
+            devis, ancien_statut, devis.statut, request.user)
+        return Response(DevisSerializer(devis).data)
 
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsResponsableOrAdmin])
@@ -564,6 +656,9 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                 bon_commande=bc,
                 client=bc.client,
                 statut=Facture.Statut.BROUILLON,
+                # N30 : défaut date de livraison = MES du chantier (via devis).
+                date_livraison=_mes_from_facture(
+                    Facture(bon_commande=bc, devis=bc.devis)),
                 created_by=request.user,
                 company=company,
             )
@@ -655,14 +750,24 @@ class FactureViewSet(XlsxExportMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         company = self.request.user.company
-        create_with_reference(
-            Facture, doc_prefix(company, 'facture'), company,
-            lambda ref: serializer.save(
+
+        def _save(ref):
+            facture = serializer.save(
                 created_by=self.request.user,
                 reference=ref,
                 company=company,
-            ),
-        )
+            )
+            # N30 : à défaut, la date de livraison reprend la mise en service
+            # du chantier lié (via le devis), quand elle existe.
+            if facture.date_livraison is None:
+                mes = _mes_from_facture(facture)
+                if mes is not None:
+                    facture.date_livraison = mes
+                    facture.save(update_fields=['date_livraison'])
+            return facture
+
+        create_with_reference(
+            Facture, doc_prefix(company, 'facture'), company, _save)
 
     @action(detail=True, methods=['post'], url_path='emettre',
             permission_classes=[IsResponsableOrAdmin])
@@ -946,6 +1051,21 @@ class FactureViewSet(XlsxExportMixin, viewsets.ModelViewSet):
         facture = self.get_object()
         return Response(
             RelanceLogSerializer(facture.relances.all(), many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='gaps-numerotation',
+            permission_classes=[IsAdminRole])
+    def gaps_numerotation(self, request):
+        """Rapport admin (N11) : trous dans la séquence de numérotation des
+        factures par (société, type, période). Construit sur references.py ;
+        ne modifie JAMAIS le schéma de numérotation. AVERTISSEMENT seulement."""
+        from .utils.references import detect_reference_gaps
+        from .utils.company_settings import doc_prefix
+        company = request.user.company
+        if company is None:
+            return Response({'gaps': []})
+        gaps = detect_reference_gaps(
+            Facture, doc_prefix(company, 'facture'), company)
+        return Response({'gaps': gaps})
 
 
 class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
