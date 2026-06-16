@@ -19,6 +19,12 @@ const installationsApi = {
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
 
+  // Checklist d'exécution (N3) — auto-remplie côté serveur ; bascule d'étape.
+  getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
+  toggleChecklistItem: (id, itemId, done) =>
+    api.post(`/installations/chantiers/${id}/checklist/${itemId}/toggle/`,
+      done === undefined ? {} : { done }),
+
   // Interventions / ordres de travail
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),

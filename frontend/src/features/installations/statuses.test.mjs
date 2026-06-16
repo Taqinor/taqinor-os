@@ -8,6 +8,7 @@ import {
   statusOrder,
   filterInstallations,
   sortInstallations,
+  groupInstallationsByStatus,
   EMPTY_FILTERS,
 } from './statuses.js'
 
@@ -53,4 +54,21 @@ test('filterInstallations : recherche + drapeau annulé', () => {
   assert.equal(filterInstallations(rows, { ...EMPTY_FILTERS, annule: 'sans' }).length, 1)
   assert.equal(filterInstallations(rows, { ...EMPTY_FILTERS, annule: 'seuls' }).length, 1)
   assert.equal(filterInstallations(rows, EMPTY_FILTERS).length, 2)
+})
+
+test('groupInstallationsByStatus : 7 colonnes ordonnées, drapeau annulé reste dans sa colonne', () => {
+  const rows = [
+    { id: 1, statut: 'pose', annule: false },
+    { id: 2, statut: 'pose', annule: true },
+    { id: 3, statut: 'a_planifier', annule: false },
+  ]
+  const cols = groupInstallationsByStatus(rows)
+  // Toujours 7 colonnes, dans l'ordre d'entonnoir.
+  assert.equal(cols.length, 7)
+  assert.deepEqual(cols.map((c) => c.key), INSTALLATION_STATUSES)
+  // Un chantier annulé reste dans sa colonne de statut (pas exclu).
+  const pose = cols.find((c) => c.key === 'pose')
+  assert.equal(pose.count, 2)
+  assert.equal(cols.find((c) => c.key === 'a_planifier').count, 1)
+  assert.equal(cols.find((c) => c.key === 'cloture').count, 0)
 })

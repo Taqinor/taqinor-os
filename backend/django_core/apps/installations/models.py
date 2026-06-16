@@ -218,6 +218,41 @@ class TypeIntervention(models.Model):
         return self.label
 
 
+class ChecklistItem(models.Model):
+    """Étape de la checklist d'exécution d'un chantier (N3) — ADDITIF.
+
+    Chaque chantier porte sa propre liste d'étapes, pré-remplie depuis la
+    checklist par défaut de la société (parametres.CompanyProfile
+    .chantier_checklist_defaut) à la création (et paresseusement si vide). Une
+    étape enregistre qui l'a cochée et quand. Le pourcentage d'avancement
+    (fait/total) est exposé sur le serializer Installation.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='checklist_items',
+    )
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE, related_name='checklist',
+    )
+    label = models.CharField(max_length=200)
+    ordre = models.PositiveIntegerField(default=100)
+    done = models.BooleanField(default=False)
+    done_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='checklist_items_faits',
+    )
+    done_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Étape de checklist'
+        verbose_name_plural = 'Étapes de checklist'
+        ordering = ['ordre', 'id']
+        indexes = [models.Index(fields=['installation', 'ordre'])]
+
+    def __str__(self):
+        return f'{self.installation_id} — {self.label}'
+
+
 class InstallationActivity(models.Model):
     """Historique « chatter » d'un chantier — même modèle que LeadActivity.
 

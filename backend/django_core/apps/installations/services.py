@@ -7,7 +7,33 @@ raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
 from apps.ventes.utils.references import create_with_reference
-from .models import Installation
+from .models import ChecklistItem, Installation
+
+
+def ensure_checklist(installation):
+    """Pré-remplit la checklist d'un chantier depuis les défauts de la société.
+
+    Appelé à la création du chantier et PARESSEUSEMENT (si la liste est vide)
+    au premier accès. Idempotent : ne crée rien si le chantier a déjà des
+    étapes. Retourne le queryset ordonné des étapes.
+    """
+    # Requête fraîche (jamais le cache de prefetch, qui peut être vide après un
+    # get_object() précédent).
+    qs = ChecklistItem.objects.filter(installation=installation).order_by(
+        'ordre', 'id')
+    if qs.exists():
+        return qs
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=installation.company)
+    labels = profile.chantier_checklist_effective
+    ChecklistItem.objects.bulk_create([
+        ChecklistItem(
+            company=installation.company, installation=installation,
+            label=label, ordre=(i + 1) * 10)
+        for i, label in enumerate(labels)
+    ])
+    return ChecklistItem.objects.filter(installation=installation).order_by(
+        'ordre', 'id')
 
 
 def _devis_bon_commande(devis):
@@ -73,4 +99,5 @@ def create_installation_from_devis(devis, user, company):
         )
 
     inst = create_with_reference(Installation, 'CHT', company, _create)
+    ensure_checklist(inst)
     return inst, True

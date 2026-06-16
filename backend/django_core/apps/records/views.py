@@ -9,7 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes,
 )
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -26,6 +26,12 @@ from .storage import delete_attachment, store_attachment
 
 def _company(request):
     return request.user.company if request.user.company_id else None
+
+
+def _clean_phase(value):
+    """Normalise une phase de pièce jointe : choix valide, sinon None."""
+    val = (value or '').strip().lower()
+    return val if val in dict(Attachment.Phase.choices) else None
 
 
 def _scoped(qs, user):
@@ -181,7 +187,8 @@ def _log_done_to_chatter(activity, user):
 # ── Pièces jointes ──────────────────────────────────────────────────
 class AttachmentViewSet(viewsets.ModelViewSet):
     serializer_class = AttachmentSerializer
-    parser_classes = [MultiPartParser]
+    # Multipart pour l'upload du fichier ; JSON pour le (re)tag de phase.
+    parser_classes = [MultiPartParser, JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -202,6 +209,10 @@ class AttachmentViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
+        # Filtre optionnel par phase (avant/pendant/apres) pour la galerie.
+        phase = self.request.query_params.get('phase')
+        if phase in dict(Attachment.Phase.choices):
+            qs = qs.filter(phase=phase)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -222,9 +233,19 @@ class AttachmentViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         att = Attachment.objects.create(
             company=company, content_type=ct, object_id=request.data.get('id'),
-            uploaded_by=request.user, **meta)
+            uploaded_by=request.user, phase=_clean_phase(request.data.get('phase')),
+            **meta)
         return Response(AttachmentSerializer(att).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='set-phase',
+            permission_classes=[IsResponsableOrAdmin])
+    def set_phase(self, request, pk=None):
+        """(Re)tague une pièce jointe par phase (avant/pendant/apres ou null)."""
+        att = self.get_object()
+        att.phase = _clean_phase(request.data.get('phase'))
+        att.save(update_fields=['phase'])
+        return Response(AttachmentSerializer(att).data)
 
     def perform_destroy(self, instance):
         delete_attachment(instance.file_key)

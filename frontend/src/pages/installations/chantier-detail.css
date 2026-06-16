@@ -1,0 +1,160 @@
+/* Sections d'exécution du chantier (N3 checklist, N4 galerie, N5 timeline).
+   Classes préfixées cd- pour éviter toute collision. */
+
+/* ---------- Checklist + barre d'avancement (N3) ---------- */
+.cd-progress {
+  margin: 0.2rem 0 0.6rem;
+}
+.cd-progress-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+.cd-progress-fill {
+  height: 100%;
+  background: #16a34a;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.cd-progress-label {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.cd-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cd-check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+.cd-check-item.cd-done {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.cd-check-item input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.cd-check-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.86rem;
+  color: var(--cat-navy, #1e293b);
+}
+.cd-done .cd-check-label {
+  text-decoration: line-through;
+  color: #64748b;
+}
+.cd-check-meta {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+/* ---------- Galerie photos par phase (N4) ---------- */
+.cd-phase-group {
+  margin-bottom: 0.8rem;
+}
+.cd-phase-title {
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--cat-navy, #1e293b);
+}
+.cd-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.cd-thumb {
+  position: relative;
+  width: 96px;
+}
+.cd-thumb-img,
+.cd-thumb-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+  text-decoration: none;
+  color: #475569;
+  font-size: 0.7rem;
+  text-align: center;
+  padding: 0.2rem;
+}
+.cd-thumb-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cd-thumb-phase {
+  margin-top: 0.2rem;
+  width: 100%;
+  font-size: 0.7rem;
+  padding: 0.1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.cd-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+/* ---------- Timeline (N5) ---------- */
+.cd-timeline {
+  position: relative;
+  margin-left: 0.5rem;
+  padding-left: 1.1rem;
+  border-left: 2px solid #e2e8f0;
+}
+.cd-tl-item {
+  position: relative;
+  padding: 0.25rem 0 0.7rem;
+}
+.cd-tl-dot {
+  position: absolute;
+  left: -1.62rem;
+  top: 0.45rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  border: 2px solid #fff;
+}
+.cd-tl-item.cd-tl-done .cd-tl-dot {
+  background: #16a34a;
+}
+.cd-tl-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cat-navy, #1e293b);
+}
+.cd-tl-date {
+  font-size: 0.76rem;
+  color: #64748b;
+}
+.cd-tl-item.cd-tl-pending .cd-tl-label,
+.cd-tl-item.cd-tl-pending .cd-tl-date {
+  color: #94a3b8;
+}
