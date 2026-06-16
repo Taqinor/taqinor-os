@@ -401,6 +401,19 @@ export default function DevisList() {
                         Réviser
                       </button>
                     )}
+                    {role === 'admin' && d.statut === 'brouillon'
+                      && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        title="Approuver la remise (autorise l'envoi si au-dessus du seuil)"
+                        onClick={() => {
+                          ventesApi.approuverRemise(d.id)
+                            .then(() => dispatch(fetchDevis())).catch(() => {})
+                        }}
+                      >
+                        Approuver remise
+                      </button>
+                    )}
                     {canDelete && (
                       <button
                         className="btn btn-sm btn-outline btn-danger-outline"

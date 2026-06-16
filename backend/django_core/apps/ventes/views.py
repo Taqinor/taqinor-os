@@ -106,6 +106,17 @@ class DevisViewSet(viewsets.ModelViewSet):
             serializer.instance.statut, self.request.user,
         )
 
+    @action(detail=True, methods=['post'], url_path='approuver-remise',
+            permission_classes=[IsAdminRole])
+    def approuver_remise(self, request, pk=None):
+        """Approbation admin de la remise (T17) — débloque l'envoi du devis."""
+        devis = self.get_object()
+        devis.remise_approuvee = True
+        devis.remise_approuvee_par = request.user
+        devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
+        return Response(
+            DevisSerializer(devis, context={'request': request}).data)
+
     @action(detail=True, methods=['post'], url_path='reviser',
             permission_classes=[IsResponsableOrAdmin])
     def reviser(self, request, pk=None):
@@ -143,11 +154,38 @@ class DevisViewSet(viewsets.ModelViewSet):
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    def _guard_discount_approval(self, devis, ancien, nouveau, remise):
+        """T17 — bloque le passage en « envoyé » si la remise dépasse le seuil
+        société sans approbation. Seuil non renseigné = désactivé (défaut).
+        Un admin/propriétaire approuve implicitement en envoyant."""
+        from rest_framework.exceptions import ValidationError
+        if nouveau != 'envoye' or ancien == 'envoye':
+            return
+        from apps.parametres.models import CompanyProfile
+        seuil = CompanyProfile.get(devis.company).discount_approval_threshold
+        if seuil is None:
+            return
+        if (remise or 0) <= seuil or devis.remise_approuvee:
+            return
+        if getattr(self.request.user, 'is_admin_role', False):
+            devis.remise_approuvee = True
+            devis.remise_approuvee_par = self.request.user
+            devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
+            return
+        raise ValidationError({'statut': (
+            f'Remise de {remise} % supérieure au seuil de {seuil} % : '
+            "l'approbation d'un administrateur est requise avant l'envoi.")})
+
     def perform_update(self, serializer):
         # Snapshot du statut AVANT écriture, puis mouvement automatique du
         # funnel CRM (envoye → QUOTE_SENT, accepte → SIGNED). Import local
         # pour éviter les cycles, comme dans perform_create.
         ancien_statut = serializer.instance.statut
+        nouveau_statut = serializer.validated_data.get('statut', ancien_statut)
+        remise = serializer.validated_data.get(
+            'remise_globale', serializer.instance.remise_globale)
+        self._guard_discount_approval(
+            serializer.instance, ancien_statut, nouveau_statut, remise)
         super().perform_update(serializer)
         from apps.crm.services import avancer_stage_pour_devis
         avancer_stage_pour_devis(

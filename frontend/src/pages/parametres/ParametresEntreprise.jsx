@@ -354,6 +354,7 @@ export default function ParametresEntreprise() {
     tva_panneaux: 10,
     onee_tarif_kwh: 1.75,
     productible_kwh_kwc: 1600,
+    discount_approval_threshold: '',
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -559,6 +560,7 @@ export default function ParametresEntreprise() {
       tva_panneaux: profile.tva_panneaux ?? 10,
       onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
       productible_kwh_kwc: profile.productible_kwh_kwc ?? 1600,
+      discount_approval_threshold: profile.discount_approval_threshold ?? '',
     })
   }, [profile])
 
@@ -601,6 +603,7 @@ export default function ParametresEntreprise() {
       tva_panneaux: Number(form.tva_panneaux) || 10,
       onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
       productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
+      discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
     }
     dispatch(saveProfile(payload))
   }
@@ -882,7 +885,16 @@ export default function ParametresEntreprise() {
                 <input style={inputBase} type="number" min="0" step="1"
                        name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
               </Field>
+              <Field label="Seuil d'approbation de remise (%)">
+                <input style={inputBase} type="number" min="0" max="100" step="0.01"
+                       name="discount_approval_threshold" placeholder="vide = désactivé"
+                       value={form.discount_approval_threshold} onChange={set} />
+              </Field>
             </div>
+            <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
+              Au-delà de ce seuil de remise, un devis exige l'approbation d'un
+              administrateur avant l'envoi. Vide = désactivé (défaut).
+            </p>
           </div>
 
           {/* CRM — Étiquettes & motifs de perte (listes gérées) */}
