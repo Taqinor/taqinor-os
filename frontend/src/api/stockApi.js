@@ -11,6 +11,12 @@ const stockApi = {
   getProduitsArchived: () => api.get('/stock/produits/', { params: { show_archived: 'true' } }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
+  // Édition groupée du catalogue (prix de vente, garantie, catégorie, marque)
+  bulkProduits: (action, ids, params) =>
+    api.post('/stock/produits/bulk/', { action, ids, params }),
+  // Export .xlsx de la sélection (réponse binaire)
+  exportProduitsXlsx: (ids) =>
+    api.post('/stock/produits/bulk/', { action: 'export_xlsx', ids }, { responseType: 'blob' }),
 
   // Catégories
   getCategories: (params) => api.get('/stock/categories/', { params }),
