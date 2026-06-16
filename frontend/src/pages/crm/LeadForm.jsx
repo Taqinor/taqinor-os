@@ -8,6 +8,7 @@ import AssigneePicker from '../../components/AssigneePicker'
 import '../../components/assigneepicker.css'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import CustomFieldsRenderer from '../../components/customfields/CustomFieldsRenderer'
 import '../../components/records-panels.css'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import './leads/leaddevispanel.css'
@@ -75,7 +76,8 @@ const buildNavSections = ({ agricole, isEdit }) => {
     ['energie', 'Profil énergétique'],
   ]
   if (agricole) secs.push(['pompage', 'Pompage'])
-  secs.push(['toiture', 'Toiture & site'], ['visite', 'Visite'])
+  secs.push(['toiture', 'Toiture & site'], ['visite', 'Visite'],
+    ['personnalise', 'Personnalisé'])
   if (isEdit) secs.push(
     ['devis', 'Devis'], ['activites', 'Activités'],
     ['pieces', 'Pièces jointes'], ['doublons', 'Doublons'],
@@ -215,6 +217,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     visite_notes: F('visite_notes'),
     note: F('note'),
   })
+  const [customFields, setCustomFields] = useState(lead?.custom_fields ?? {})
   const [users, setUsers] = useState([])
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
@@ -385,6 +388,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
         Object.entries(fields).map(([k, v]) => [k, typeof v === 'boolean' ? v : nullable(v)]))
       // bascule OFF → la valeur unique vaut hiver ET été
       if (!fields.ete_differente) payload.facture_ete = null
+      payload.custom_fields = customFields
       if (isEdit) {
         await dispatch(updateLead({ id: lead.id, data: payload })).unwrap()
       } else {
@@ -710,6 +714,16 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               <textarea className="form-control" rows={2} value={fields.note ?? ''}
                         onChange={e => set('note', e.target.value)} />
             </div>
+
+            {/* ── Champs personnalisés (définis dans Paramètres) ── */}
+            <Sec id="personnalise" title="🧩 Champs personnalisés">
+              <CustomFieldsRenderer
+                module="lead"
+                values={customFields}
+                onChange={setCustomFields}
+                errors={errors.custom_fields || {}}
+              />
+            </Sec>
 
             {/* ── Devis empilés ── */}
             {isEdit && (

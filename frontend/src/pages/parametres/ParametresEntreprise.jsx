@@ -15,6 +15,7 @@ import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
+import CustomFieldsAdmin from './CustomFieldsAdmin'
 import './parametres.css'
 
 // Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
@@ -1221,6 +1222,19 @@ export default function ParametresEntreprise() {
           onUpdate={(id, nom) => dispatch(updateFournisseur({ id, data: { nom } })).unwrap()}
           onDelete={id => dispatch(deleteFournisseur(id)).unwrap()}
         />
+      </div>
+
+      {/* ── Champs personnalisés (T11) ── */}
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+        padding: '1.25rem 1.4rem', marginTop: '1.5rem' }}>
+        <SectionTitle color="#7c3aed" label="Champs personnalisés"
+          icon={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></>}/>
+        <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 1rem' }}>
+          Ajoutez vos propres champs aux Leads, Clients et Produits, masquez des
+          champs standard, ou réinitialisez un module par défaut. Tout est borné
+          à votre société.
+        </p>
+        <CustomFieldsAdmin />
       </div>
 
       <style>{`
