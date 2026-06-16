@@ -47,7 +47,16 @@ class DevisViewSet(viewsets.ModelViewSet):
     ).prefetch_related('lignes').all()
 
     def get_queryset(self):
-        return _company_qs(super().get_queryset(), self.request.user)
+        qs = _company_qs(super().get_queryset(), self.request.user)
+        # Filtre expiré/non-expiré (T7a) — calculé en Python (l'expiration est
+        # une propriété à la volée). ?expire=true → seuls les devis expirés ;
+        # ?expire=false → seuls les non-expirés. Absent → aucun filtre.
+        expire = self.request.query_params.get('expire')
+        if expire is not None:
+            want = expire.lower() in ('1', 'true', 'oui')
+            ids = [d.id for d in qs if d.est_expire == want]
+            qs = qs.filter(id__in=ids)
+        return qs
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -59,12 +68,33 @@ class DevisViewSet(viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture',
+            'generer_facture', 'reviser', 'approuver_remise',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    def _check_remise_approbation(self, devis):
+        """Garde d'approbation de remise (T17).
+
+        Lève une 400 FR si le devis passe « envoyé » avec une remise globale
+        au-dessus du seuil société ET non encore approuvée. Seuil NULL/0 =
+        garde désactivée → ne lève jamais (comportement historique).
+        """
+        from rest_framework.exceptions import ValidationError
+        from .utils.company_settings import seuil_remise_approbation
+        seuil = seuil_remise_approbation(getattr(devis, 'company', None))
+        if seuil is None or seuil <= 0:
+            return
+        if devis.remise_globale is None or devis.remise_globale <= seuil:
+            return
+        if devis.remise_approuvee_par_id is not None:
+            return
+        raise ValidationError({'remise_globale': (
+            f'Remise de {devis.remise_globale} % supérieure au seuil autorisé '
+            f'({seuil} %). Une approbation par un responsable est requise avant '
+            'l\'envoi de ce devis.')})
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -87,6 +117,13 @@ class DevisViewSet(viewsets.ModelViewSet):
                 raise ValidationError(
                     {'client': 'Un client ou un lead est requis.'})
             client = resolve_client_for_lead(lead)
+
+        # Garde d'approbation de remise (T17) : un devis créé directement en
+        # « envoyé » avec une remise au-dessus du seuil exige l'approbation.
+        if serializer.validated_data.get('statut') == Devis.Statut.ENVOYE:
+            remise = serializer.validated_data.get('remise_globale')
+            tmp = Devis(company=company, remise_globale=remise or 0)
+            self._check_remise_approbation(tmp)
 
         create_with_reference(
             Devis, doc_prefix(company, 'devis'), company,
@@ -111,6 +148,19 @@ class DevisViewSet(viewsets.ModelViewSet):
         # funnel CRM (envoye → QUOTE_SENT, accepte → SIGNED). Import local
         # pour éviter les cycles, comme dans perform_create.
         ancien_statut = serializer.instance.statut
+        # Garde d'approbation de remise (T17) : si le devis PASSE « envoyé »
+        # (transition seulement), on contrôle la remise contre le seuil société.
+        nouveau_statut = serializer.validated_data.get('statut', ancien_statut)
+        if (nouveau_statut == Devis.Statut.ENVOYE
+                and ancien_statut != Devis.Statut.ENVOYE):
+            remise = serializer.validated_data.get(
+                'remise_globale', serializer.instance.remise_globale)
+            tmp = Devis(
+                company=serializer.instance.company,
+                remise_globale=remise or 0,
+                remise_approuvee_par_id=serializer.instance.remise_approuvee_par_id,
+            )
+            self._check_remise_approbation(tmp)
         super().perform_update(serializer)
         from apps.crm.services import avancer_stage_pour_devis
         avancer_stage_pour_devis(
@@ -273,6 +323,66 @@ class DevisViewSet(viewsets.ModelViewSet):
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['post'], url_path='reviser',
+            permission_classes=[IsResponsableOrAdmin])
+    def reviser(self, request, pk=None):
+        """Crée une RÉVISION (v+1) d'un devis : clone les lignes dans un nouveau
+        devis, relie `revision_de` au source, conserve lead + client, attribue
+        une référence neuve (jamais count()+1). Le source devient superseded.
+        """
+        from rest_framework.exceptions import ValidationError
+        source = self.get_object()
+        company = request.user.company
+        if source.company_id != company.id:
+            raise ValidationError({'detail': 'Devis inconnu.'})
+
+        def _create(ref):
+            nouveau = Devis.objects.create(
+                company=company,
+                reference=ref,
+                client=source.client,
+                lead=source.lead,
+                statut=Devis.Statut.BROUILLON,
+                taux_tva=source.taux_tva,
+                remise_globale=source.remise_globale,
+                note=source.note,
+                mode_installation=source.mode_installation,
+                etude_params=source.etude_params,
+                prix_cible_kwc=source.prix_cible_kwc,
+                revision_de=source,
+                version=source.version + 1,
+                created_by=request.user,
+            )
+            for ligne in source.lignes.all():
+                LigneDevis.objects.create(
+                    devis=nouveau,
+                    produit=ligne.produit,
+                    designation=ligne.designation,
+                    quantite=ligne.quantite,
+                    prix_unitaire=ligne.prix_unitaire,
+                    remise=ligne.remise,
+                    taux_tva=ligne.taux_tva,
+                )
+            return nouveau
+
+        nouveau = create_with_reference(
+            Devis, doc_prefix(company, 'devis'), company, _create)
+        return Response(
+            DevisSerializer(nouveau).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approuver-remise',
+            permission_classes=[IsResponsableOrAdmin])
+    def approuver_remise(self, request, pk=None):
+        """Approuve la remise d'un devis (T17) — débloque l'envoi quand la
+        remise dépasse le seuil société. Réservé responsable/admin."""
+        from django.utils import timezone as _tz
+        devis = self.get_object()
+        devis.remise_approuvee_par = request.user
+        devis.remise_approuvee_le = _tz.now()
+        devis.save(update_fields=[
+            'remise_approuvee_par', 'remise_approuvee_le'])
+        return Response(DevisSerializer(devis).data)
 
 
 class LigneDevisViewSet(viewsets.ModelViewSet):

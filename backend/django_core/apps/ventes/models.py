@@ -74,6 +74,25 @@ class Devis(models.Model):
     prix_cible_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
 
+    # ── Révisions / versionnage (T10) — additif, tout optionnel ──
+    # Une révision pointe vers le devis source via `revision_de` ; le source
+    # expose ses révisions via `revisions` (reverse). `version` part à 1.
+    # SET_NULL : supprimer un source ne casse jamais la révision.
+    revision_de = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='revisions',
+    )
+    version = models.PositiveIntegerField(default=1)
+
+    # ── Garde d'approbation de remise (T17) — additif, tout optionnel ──
+    # Renseignés quand un responsable/admin approuve une remise au-dessus du
+    # seuil société. NULL = jamais approuvé (cas par défaut).
+    remise_approuvee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='remises_devis_approuvees',
+    )
+    remise_approuvee_le = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'
@@ -99,6 +118,29 @@ class Devis(models.Model):
     @property
     def total_ttc(self):
         return self.total_ht + self.total_tva
+
+    # ── Expiration calculée À LA VOLÉE (T7a) ──
+    # Jamais stockée, jamais persistée : le statut du devis et le funnel CRM
+    # ne bougent pas. La validité = date de création + N jours (réglage société
+    # `quote_validity_days`, défaut 30). On privilégie `date_validite` si elle a
+    # été saisie explicitement sur le devis, sinon on la calcule.
+    @property
+    def date_expiration(self):
+        from datetime import timedelta
+        if self.date_validite is not None:
+            return self.date_validite
+        if self.date_creation is None:
+            return None
+        from .utils.company_settings import quote_validity_days
+        days = quote_validity_days(self.company)
+        return (self.date_creation + timedelta(days=days)).date()
+
+    @property
+    def est_expire(self):
+        exp = self.date_expiration
+        if exp is None:
+            return False
+        return timezone.now().date() > exp
 
 
 class LigneDevis(models.Model):

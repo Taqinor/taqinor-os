@@ -18,6 +18,10 @@ const ventesApi = {
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
+  // Révision d'un devis (T10) : crée une v+1 clonée, source superseded.
+  reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  // Approbation de remise (T17) : débloque l'envoi d'un devis très remisé.
+  approuverRemiseDevis: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
 
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),

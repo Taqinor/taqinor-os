@@ -67,6 +67,13 @@ class CompanyProfile(models.Model):
     payment_terms = models.JSONField(null=True, blank=True)
     # Durée de validité du devis (jours). Défaut historique 30.
     quote_validity_days = models.PositiveIntegerField(default=30)
+    # Seuil de remise (%) au-delà duquel l'envoi d'un devis exige une
+    # approbation admin/responsable. NULL = garde DÉSACTIVÉE (défaut) → rien
+    # ne change tant que le founder ne l'active pas.
+    seuil_remise_approbation = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Remise (%) au-delà de laquelle l\'envoi d\'un devis '
+                  'requiert une approbation. Vide ou 0 = désactivé.')
     # Heures de pompage effectives/jour par défaut (mode agricole). Défaut 7.
     agricole_pump_hours = models.DecimalField(
         max_digits=4, decimal_places=1, default=7)

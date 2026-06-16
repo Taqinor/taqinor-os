@@ -345,6 +345,7 @@ export default function ParametresEntreprise() {
     responsable_defaut_leads: '',
     payment_terms: DEFAULT_PAYMENT_TERMS,
     quote_validity_days: 30,
+    seuil_remise_approbation: '',
     agricole_pump_hours: 7,
     doc_prefixes: DEFAULT_PREFIXES,
     tva_standard: 20,
@@ -459,6 +460,7 @@ export default function ParametresEntreprise() {
       responsable_defaut_leads: profile.responsable_defaut_leads ?? '',
       payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}) },
       quote_validity_days: profile.quote_validity_days ?? 30,
+      seuil_remise_approbation: profile.seuil_remise_approbation ?? '',
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
       doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
       tva_standard: profile.tva_standard ?? 20,
@@ -500,6 +502,10 @@ export default function ParametresEntreprise() {
         ? null : form.responsable_defaut_leads,
       payment_terms: pt,
       quote_validity_days: Number(form.quote_validity_days) || 30,
+      // Seuil d'approbation de remise (T17) : vide ou 0 → null (désactivé).
+      seuil_remise_approbation:
+        form.seuil_remise_approbation === '' || Number(form.seuil_remise_approbation) <= 0
+          ? null : Number(form.seuil_remise_approbation),
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
       tva_standard: Number(form.tva_standard) || 20,
       tva_panneaux: Number(form.tva_panneaux) || 10,
@@ -728,6 +734,11 @@ export default function ParametresEntreprise() {
               <Field label="Heures de pompage / jour (agricole, défaut)">
                 <input style={inputBase} type="number" min="0" step="0.5" name="agricole_pump_hours"
                        value={form.agricole_pump_hours} onChange={set} />
+              </Field>
+              <Field label="Seuil d'approbation de remise (%) — vide ou 0 = désactivé">
+                <input style={inputBase} type="number" min="0" step="any" name="seuil_remise_approbation"
+                       placeholder="Désactivé"
+                       value={form.seuil_remise_approbation} onChange={set} />
               </Field>
             </div>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0.8rem 0 0.4rem' }}>
