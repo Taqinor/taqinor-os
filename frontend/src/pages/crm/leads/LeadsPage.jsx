@@ -8,6 +8,7 @@ import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
 import LeadForm from '../LeadForm'
+import ExcelImport from '../../../components/ExcelImport'
 import '../../../components/assigneepicker.css'
 import FilterBar from './FilterBar'
 import BulkActionBar from './BulkActionBar'
@@ -59,6 +60,22 @@ export default function LeadsPage() {
   const [formDevisIntent, setFormDevisIntent] = useState(null)
   // Atelier doublons (modal).
   const [showDoublons, setShowDoublons] = useState(false)
+  // Import CSV/XLSX (T9).
+  const [showImport, setShowImport] = useState(false)
+
+  // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
+  const exportFiltered = async () => {
+    const ids = filtered.map((l) => l.id)
+    if (!ids.length) return
+    try {
+      const res = await crmApi.exportLeadsXlsx(ids)
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'leads.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { /* ignore */ }
+  }
 
   // Changement d'étape optimiste avec retour-arrière.
   const [busyLeadId, setBusyLeadId] = useState(null)
@@ -240,6 +257,12 @@ export default function LeadsPage() {
           <button className="btn btn-outline" onClick={() => setShowDoublons(true)}>
             🔀 Doublons
           </button>
+          <button className="btn btn-outline" onClick={() => setShowImport(true)}>
+            ⬆ Importer
+          </button>
+          <button className="btn btn-outline" onClick={exportFiltered}>
+            ⬇ Exporter Excel
+          </button>
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
@@ -306,6 +329,14 @@ export default function LeadsPage() {
         <DoublonsPanel
           onClose={() => setShowDoublons(false)}
           onAnyMerge={refetch}
+        />
+      )}
+
+      {showImport && (
+        <ExcelImport
+          target="leads"
+          onClose={() => setShowImport(false)}
+          onDone={refetch}
         />
       )}
     </div>
