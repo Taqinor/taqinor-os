@@ -15,6 +15,9 @@ const reportingApi = {
   serviceReport: () => api.get('/reporting/reports/service/'),
   reportXlsx: (kind) =>
     api.get(`/reporting/reports/${kind}/`, { params: { export: 'xlsx' }, responseType: 'blob' }),
+  // N32 — Archive documentaire (lecture seule) par client / par chantier.
+  getArchiveClient: (id) => api.get(`/reporting/archive/client/${id}/`),
+  getArchiveChantier: (id) => api.get(`/reporting/archive/chantier/${id}/`),
 }
 
 export default reportingApi

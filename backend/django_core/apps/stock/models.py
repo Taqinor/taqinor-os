@@ -202,3 +202,112 @@ class MouvementStock(models.Model):
 
     def __str__(self):
         return f"{self.type_mouvement} | {self.produit.nom} | {self.quantite}"
+
+
+class BonCommandeFournisseur(models.Model):
+    """Bon de commande FOURNISSEUR (achat / approvisionnement) — N12.
+
+    À NE PAS confondre avec `ventes.BonCommande`, qui est un bon de commande
+    CLIENT lié à un devis. Celui-ci est un document d'ACHAT : il liste les
+    références (SKU) commandées à un fournisseur, avec leurs PRIX D'ACHAT
+    (INTERNES — jamais exposés sur un document client).
+
+    À la réception (totale ou partielle), le stock est INCRÉMENTÉ exactement
+    comme partout ailleurs : via `MouvementStock` (type ENTREE). Aucun
+    mécanisme parallèle.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ENVOYE = 'envoye', 'Envoyé'
+        RECU = 'recu', 'Reçu'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='bons_commande_fournisseur',
+    )
+    reference = models.CharField(max_length=50)
+    fournisseur = models.ForeignKey(
+        Fournisseur,
+        on_delete=models.PROTECT,
+        related_name='bons_commande',
+    )
+    statut = models.CharField(
+        max_length=20,
+        choices=Statut.choices,
+        default=Statut.BROUILLON,
+    )
+    date_commande = models.DateField(null=True, blank=True)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bons_commande_fournisseur',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Bon de commande fournisseur'
+        verbose_name_plural = 'Bons de commande fournisseur'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def total_achat(self):
+        """Total HT d'achat (INTERNE — jamais sur un document client)."""
+        return sum((ligne.total_achat for ligne in self.lignes.all()), 0)
+
+    @property
+    def est_entierement_recu(self):
+        lignes = list(self.lignes.all())
+        return bool(lignes) and all(
+            ligne.quantite_recue >= ligne.quantite for ligne in lignes
+        )
+
+
+class LigneBonCommandeFournisseur(models.Model):
+    """Ligne d'un bon de commande fournisseur : SKU, quantité, prix d'achat
+    unitaire (INTERNE) et quantité déjà reçue (réceptions partielles)."""
+
+    bon_commande = models.ForeignKey(
+        BonCommandeFournisseur,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+    )
+    produit = models.ForeignKey(
+        Produit,
+        on_delete=models.PROTECT,
+        related_name='lignes_bon_commande_fournisseur',
+    )
+    quantite = models.IntegerField()
+    # Prix d'ACHAT unitaire — donnée INTERNE. N'apparaît JAMAIS sur un document
+    # destiné au client (devis, facture, BC client).
+    prix_achat_unitaire = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+    )
+    quantite_recue = models.IntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Ligne de bon de commande fournisseur'
+        verbose_name_plural = 'Lignes de bon de commande fournisseur'
+
+    def __str__(self):
+        return f'{self.produit_id} × {self.quantite}'
+
+    @property
+    def quantite_restante(self):
+        return max(self.quantite - self.quantite_recue, 0)
+
+    @property
+    def total_achat(self):
+        return self.quantite * self.prix_achat_unitaire

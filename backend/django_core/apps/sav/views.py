@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
@@ -12,6 +13,7 @@ from apps.ventes.utils.references import create_with_reference
 
 from . import activity
 from .models import Equipement, Ticket
+from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     EXPIRING_SOON_DAYS,
@@ -167,7 +169,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'rapport_pdf']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + ['noter', 'annuler', 'reactiver']:
             return [HasPermissionOrLegacy('sav_gerer')()]
@@ -249,3 +251,16 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(ticket, request.user, "Ticket réactivé")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='rapport-pdf',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def rapport_pdf(self, request, pk=None):
+        """Rapport d'intervention SAV (N45) — PDF régénéré à la demande.
+
+        Aucun prix d'achat / marge n'y figure. Disponible sur tout ticket."""
+        ticket = self.get_object()
+        pdf_bytes = rapport_intervention_pdf(ticket)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="rapport-intervention-{ticket.reference}.pdf"')
+        return resp

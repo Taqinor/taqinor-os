@@ -10,4 +10,6 @@ urlpatterns = [
     path('delete-signature/', views.delete_signature),
     # Modèles de message WhatsApp (FR + Darija) éditables.
     path('messages/', views.messages_endpoint),
+    # Journal d'audit des changements de paramètres (admin, lecture seule).
+    path('audit/', views.settings_audit_log),
 ]

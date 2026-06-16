@@ -15,6 +15,11 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/mise-en-service/`, data),
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
+  // N13 — besoin matériel (lecture seule) + création d'un BCF brouillon.
+  besoinMateriel: (id) => api.get(`/installations/chantiers/${id}/besoin-materiel/`),
+  commanderBesoin: (id, fournisseurId) =>
+    api.post(`/installations/chantiers/${id}/commander-besoin/`,
+      fournisseurId ? { fournisseur: fournisseurId } : {}),
 
   // Interventions / ordres de travail
   getInterventions: (params) => api.get('/installations/interventions/', { params }),

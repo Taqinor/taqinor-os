@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 13px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 14px 16px; width: 48%; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+    .section-title { font-size: 13px; font-weight: bold; color: {{ couleur_principale }}; margin: 22px 0 10px; border-bottom: 2px solid {{ couleur_principale }}; padding-bottom: 4px; }
+    .meta-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+    .meta-item { background: #f0fdf4; border-radius: 4px; padding: 8px 14px; min-width: 120px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 9px 12px; text-align: left; font-size: 11px; text-transform: uppercase; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .text-right { text-align: right; }
+    .intro { font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
+    .checklist li { margin: 4px 0; font-size: 11px; list-style: none; }
+    .checklist .ok { color: #065f46; }
+    .checklist .ko { color: #991b1b; }
+    .signature-section { display: flex; justify-content: space-between; margin-top: 40px; gap: 24px; }
+    .signature-block { text-align: center; width: 46%; }
+    .signature-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 6px; }
+    .signature-mention { font-size: 10px; color: #888; margin-bottom: 36px; }
+    .signature-line { border-top: 1px solid #cbd5e1; padding-top: 6px; font-size: 10px; color: #555; }
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">PROCÈS-VERBAL DE RÉCEPTION</div>
+      <div class="doc-ref">Chantier {{ chantier.reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="partie-block">
+      <div class="partie-label">Installateur</div>
+      <div class="partie-nom">{{ entreprise_nom }}</div>
+      <div class="partie-detail">
+        {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+        {% if technicien %}Technicien : {{ technicien }}{% endif %}
+      </div>
+    </div>
+    <div class="partie-block">
+      <div class="partie-label">Client</div>
+      <div class="partie-nom">{{ client.nom }} {{ client.prenom }}</div>
+      <div class="partie-detail">
+        {% if client.telephone %}{{ client.telephone }}<br />{% endif %}
+        {% if systeme.site_adresse %}{{ systeme.site_adresse }}{% if systeme.site_ville %}, {{ systeme.site_ville }}{% endif %}{% elif client.adresse %}{{ client.adresse }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="intro">
+    Le présent procès-verbal constate la réception des travaux d'installation
+    du système photovoltaïque réalisé par {{ entreprise_nom }} pour le client
+    ci-dessus.
+  </p>
+
+  <div class="meta-row">
+    {% if systeme.puissance_kwc is not none %}
+    <div class="meta-item"><strong>Puissance</strong><span>{{ systeme.puissance_kwc }} kWc</span></div>
+    {% endif %}
+    {% if systeme.type_installation %}
+    <div class="meta-item"><strong>Type</strong><span>{{ systeme.type_installation }}</span></div>
+    {% endif %}
+    {% if systeme.raccordement %}
+    <div class="meta-item"><strong>Raccordement</strong><span>{{ systeme.raccordement }}</span></div>
+    {% endif %}
+    {% if systeme.date_mise_en_service %}
+    <div class="meta-item"><strong>Mise en service</strong><span>{{ systeme.date_mise_en_service.strftime('%d/%m/%Y') }}</span></div>
+    {% endif %}
+  </div>
+
+  {% if composants %}
+  <div class="section-title">Composants installés</div>
+  <table>
+    <thead><tr><th>#</th><th>Désignation</th><th class="text-right">Qté</th></tr></thead>
+    <tbody>
+      {% for c in composants %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ c.designation }}</td>
+        <td class="text-right">{{ c.quantite }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if checklist %}
+  <div class="section-title">Réception — vérifications ({{ checklist.done }}/{{ checklist.total }})</div>
+  <ul class="checklist">
+    {% for item in checklist.items %}
+    <li class="{{ 'ok' if item.fait else 'ko' }}">{{ '☑' if item.fait else '☐' }} {{ item.label }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">Le client</div>
+      <div class="signature-mention">Mention manuscrite « Bon pour accord »</div>
+      <div class="signature-line">{{ client.nom }} {{ client.prenom }}</div>
+    </div>
+    <div class="signature-block">
+      <div class="signature-label">L'installateur</div>
+      <div class="signature-mention">Mention manuscrite « Bon pour accord »</div>
+      <div class="signature-line">{{ technicien or entreprise_nom }}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
+    <br />Document généré le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+  </div>
+</div>
+</body>
+</html>

@@ -35,6 +35,8 @@ const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
+const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
+const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client
@@ -100,6 +102,8 @@ const router = createBrowserRouter([
   { path: '/reporting', loader: authLoader, element: <WithLayout><Reporting /></WithLayout> },
   { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
+  { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
+  { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
 
   // Administration
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },

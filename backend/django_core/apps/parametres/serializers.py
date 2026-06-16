@@ -1,5 +1,16 @@
 from rest_framework import serializers
-from .models import CompanyProfile
+from .models import CompanyProfile, SettingsAuditLog
+
+
+class SettingsAuditLogSerializer(serializers.ModelSerializer):
+    user_nom = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = SettingsAuditLog
+        fields = [
+            'id', 'section', 'field', 'field_label',
+            'old_value', 'new_value', 'user', 'user_nom', 'timestamp',
+        ]
 
 
 class CompanyProfileSerializer(serializers.ModelSerializer):
