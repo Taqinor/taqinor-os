@@ -41,6 +41,16 @@ const installationsApi = {
       params: { type }, responseType: 'blob',
     }),
 
+  // Besoin matériel par chantier (N13) — dérivé du devis source vs stock.
+  // Lecture seule ; signale les manques (manque > 0).
+  getBesoinMateriel: (id) =>
+    api.get(`/installations/chantiers/${id}/besoin-materiel/`),
+  // Crée un BonCommandeFournisseur BROUILLON pour les manques. `fournisseur`
+  // optionnel (sinon celui du premier produit en pénurie).
+  commanderBesoin: (id, fournisseurId) =>
+    api.post(`/installations/chantiers/${id}/commander-besoin/`,
+      fournisseurId ? { fournisseur: fournisseurId } : {}),
+
   // Interventions / ordres de travail
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),
