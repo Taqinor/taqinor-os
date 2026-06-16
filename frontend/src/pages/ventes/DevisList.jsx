@@ -221,6 +221,34 @@ export default function DevisList() {
     }
   }
 
+  // N9 — accepter le devis « Bon pour accord » : capture le nom CLIENT saisi
+  // + une date, passe le devis « Accepté » (débloque la création du chantier).
+  const [acceptingId, setAcceptingId] = useState(null)
+  const handleAccepter = async (d) => {
+    const nom = window.prompt(
+      `Acceptation du devis ${d.reference}\n\n` +
+      'Nom de la personne qui accepte (« Bon pour accord ») :',
+      d.client_nom || '')
+    if (nom == null || !nom.trim()) return
+    const today = new Date().toISOString().slice(0, 10)
+    const date = window.prompt(
+      "Date d'acceptation (AAAA-MM-JJ) :", today)
+    if (date == null || !date.trim()) return
+    setAcceptingId(d.id)
+    try {
+      await ventesApi.accepterDevis(d.id, { nom: nom.trim(), date: date.trim() })
+      dispatch(fetchDevis())
+      alert(`Devis ${d.reference} accepté « Bon pour accord » par ${nom.trim()}.`)
+    } catch (err) {
+      alert(err?.response?.data?.detail
+        ?? err?.response?.data?.nom
+        ?? err?.response?.data?.date
+        ?? 'Acceptation impossible.')
+    } finally {
+      setAcceptingId(null)
+    }
+  }
+
   // T7a — filtre d'expiration appliqué côté affichage (badge déjà serveur).
   const visibleDevis = filterDevisByExpiry(devis, expireFilter)
 
@@ -511,6 +539,19 @@ export default function DevisList() {
                         title="Télécharger le dernier PDF généré"
                       >
                         {isDownloading ? '...' : '↓'}
+                      </button>
+                    )}
+
+                    {/* N9 — accepter le devis « Bon pour accord » */}
+                    {d.statut !== 'accepte' && d.statut !== 'refuse'
+                      && d.statut !== 'expire' && (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleAccepter(d)}
+                        disabled={acceptingId === d.id}
+                        title="Consigner l'acceptation client (Bon pour accord)"
+                      >
+                        {acceptingId === d.id ? '...' : '✓ Accepter'}
                       </button>
                     )}
 

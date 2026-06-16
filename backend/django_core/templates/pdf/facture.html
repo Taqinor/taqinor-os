@@ -119,6 +119,13 @@
       <strong>Échéance</strong>
       <span>{{ facture.date_echeance.strftime('%d/%m/%Y') if facture.date_echeance else 'N/A' }}</span>
     </div>
+    {# Date de livraison / prestation (mention Article 145 CGI). #}
+    {% if facture.date_livraison %}
+    <div class="meta-item">
+      <strong>Livraison / prestation</strong>
+      <span>{{ facture.date_livraison.strftime('%d/%m/%Y') }}</span>
+    </div>
+    {% endif %}
     <div class="meta-item">
       <strong>TVA</strong>
       <span>{{ facture.taux_tva }}%</span>
@@ -199,11 +206,12 @@
     </div>
   </div>
 
-  <!-- Coordonnées bancaires -->
-  {% if rib %}
+  <!-- Coordonnées bancaires & instructions de paiement (N36) -->
+  {% if rib or facture.conditions_paiement %}
   <div class="rib-block">
-    <strong>Coordonnées bancaires</strong>
-    RIB : {{ rib }}{% if banque %} — {{ banque }}{% endif %}
+    <strong>Coordonnées bancaires &amp; modalités de règlement</strong>
+    {% if rib %}RIB : {{ rib }}{% if banque %} — {{ banque }}{% endif %}<br />{% endif %}
+    {% if facture.conditions_paiement %}Conditions de paiement : {{ facture.conditions_paiement }}{% endif %}
   </div>
   {% endif %}
 
