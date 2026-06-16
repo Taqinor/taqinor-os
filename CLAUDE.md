@@ -156,12 +156,12 @@ When I say "work on the plan":
 - Build every unchecked [ ] task. Run independent tasks in parallel via subagents in separate worktrees (never two on the same files); do dependent or overlapping ones in sequence — decide from the code. Commit each finished task to dev, tick it [x], add one dated line to a DONE LOG.
 - If a task can't be made to pass, skip it (leave it unticked, note why) and keep going.
 - Database migrations a task needs are approved. New external dependencies, auth or cost changes, deleted state, or brand-new architecture are NOT — skip those and list them.
-- When all buildable tasks are integrated, run the project's full CI checks (the same ones .github/workflows runs). Only if green, merge dev → main once — this auto-deploys to api.taqinor.ma; never run a deploy command. If red, back out the blocking task, re-check, merge the rest; never merge a red dev.
+- When all buildable tasks are integrated, run the project's full CI checks (the same ones .github/workflows runs). Only if green, get dev onto main: main is protected and takes no direct pushes, so open a pull request from dev into main and merge it yourself (main requires NO approvals — never ask me to approve, never remove branch protection). This merge auto-deploys to api.taqinor.ma; never run a deploy command. If red, back out the blocking task, re-check, then open the PR for the rest; never merge a red dev.
 - Delete docs/PLAN.running. Report in plain language what shipped and what was skipped. One plan file per run — don't auto-start the other.
 
 When I say "add to plan:" followed by tasks (one per line or separated by ;):
 - If docs/PLAN.running exists, append them as [ ] lines to docs/PLAN2.md (create it if missing) — never touch docs/PLAN.md while a run is in progress.
 - Otherwise append them as [ ] lines to docs/PLAN.md's BUILD QUEUE.
-- Commit, and confirm in one line which file you added to.
+- Land the change on main the protected way — never push to main directly: open a pull request for it and merge it yourself (main requires NO approvals; never ask me to approve, never remove branch protection). Confirm in one line which file you added to.
 
 If I say "reset the plan lock", delete docs/PLAN.running and confirm.
