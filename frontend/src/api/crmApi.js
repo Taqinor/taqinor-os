@@ -2,6 +2,10 @@ import api from './axios'
 
 const crmApi = {
   getClients: (params) => api.get('/crm/clients/', { params }),
+  // Export .xlsx standardisé (respecte les filtres courants : mêmes params que
+  // la liste). Réponse blob.
+  exportClients: (params = {}) =>
+    api.get('/crm/clients/export/', { params, responseType: 'blob' }),
   getClient: (id) => api.get(`/crm/clients/${id}/`),
   createClient: (data) => api.post('/crm/clients/', data),
   updateClient: (id, data) => api.put(`/crm/clients/${id}/`, data),
@@ -42,6 +46,10 @@ const crmApi = {
   exportLeads: (ids, params = {}) =>
     api.post('/crm/leads/bulk/', { action: 'export', ids, params },
       { responseType: 'blob' }),
+  // Export .xlsx de la LISTE complète filtrée (au-delà de la sélection) — mêmes
+  // query params que la liste. Réponse blob.
+  exportLeadsList: (params = {}) =>
+    api.get('/crm/leads/export/', { params, responseType: 'blob' }),
 
   // Recherche globale (leads, clients, devis, factures, chantiers,
   // équipements, tickets SAV) — tout scopé société.

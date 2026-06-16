@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'apps.sav',
     'apps.records',
     'apps.customfields',
+    'apps.imports',
 ]
 
 MIDDLEWARE = [

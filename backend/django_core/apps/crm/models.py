@@ -41,6 +41,11 @@ class Client(models.Model):
     # Additif : map {field_key: value} validée par customfields. Jamais null en
     # base (défaut {}), scopé société via les définitions.
     custom_fields = models.JSONField(default=dict, blank=True, null=True)
+    # Marqueur d'origine : non nul = fiche issue d'un import CSV/Excel (à
+    # distinguer des fiches saisies à la main et de la migration Odoo). Additif.
+    import_batch = models.ForeignKey(
+        'imports.ImportBatch', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='clients')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -289,6 +294,12 @@ class Lead(models.Model):
 
     # Valeurs des champs personnalisés (module 'lead') — voir app customfields.
     custom_fields = models.JSONField(default=dict, blank=True, null=True)
+
+    # Marqueur d'origine : non nul = lead issu d'un import CSV/Excel. Séparé du
+    # champ `source` (Odoo/site/natif) et de la migration Odoo ponctuelle.
+    import_batch = models.ForeignKey(
+        'imports.ImportBatch', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='leads')
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)

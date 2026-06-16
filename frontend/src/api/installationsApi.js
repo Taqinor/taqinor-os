@@ -3,6 +3,9 @@ import api from './axios'
 const installationsApi = {
   // Chantiers
   getInstallations: (params) => api.get('/installations/chantiers/', { params }),
+  // Export .xlsx (respecte les filtres courants). Réponse blob.
+  exportInstallations: (params = {}) =>
+    api.get('/installations/chantiers/export/', { params, responseType: 'blob' }),
   getInstallation: (id) => api.get(`/installations/chantiers/${id}/`),
   createInstallation: (data) => api.post('/installations/chantiers/', data),
   updateInstallation: (id, data) => api.patch(`/installations/chantiers/${id}/`, data),

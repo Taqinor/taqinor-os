@@ -2,7 +2,9 @@ import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchClients, deleteClient } from '../../features/crm/store/crmSlice'
 import ventesApi from '../../api/ventesApi'
+import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import ExportButton from '../../components/ExportButton'
 import ClientForm from './ClientForm'
 
 export default function ClientList() {
@@ -74,6 +76,11 @@ export default function ClientList() {
             placeholder="Rechercher nom, email, tél…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+          />
+          <ExportButton
+            fetcher={crmApi.exportClients}
+            params={search.trim() ? { search: search.trim() } : {}}
+            filename="clients.xlsx"
           />
           <button className="btn btn-primary" onClick={openNew}>
             + Nouveau client

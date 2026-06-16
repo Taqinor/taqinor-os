@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy, IsAdminRole
 from apps.ventes.utils.references import create_with_reference
+from apps.imports.exports import XlsxExportMixin
 
 from . import activity
 from .models import ContratMaintenance, Equipement, Ticket
@@ -23,7 +24,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
+class EquipementViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     """Parc d'équipements (n° de série + horloges de garantie). Tout est scopé
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
@@ -36,6 +37,35 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         'date_fin_garantie', 'date_pose', 'date_creation', 'numero_serie',
     ]
     ordering = ['-date_creation']
+
+    # Export .xlsx (respecte tous les filtres produit/marque/garantie/etc.).
+    export_filename = 'equipements.xlsx'
+    export_sheet_title = 'Équipements'
+    export_columns = [
+        ('numero_serie', 'N° série'), ('produit', 'Produit'),
+        ('marque', 'Marque'), ('installation', 'Chantier'),
+        ('client', 'Client'), ('statut', 'Statut'),
+        ('date_pose', 'Date pose'),
+        ('date_fin_garantie', 'Fin garantie'),
+        ('date_fin_garantie_production', 'Fin garantie production'),
+    ]
+
+    def get_export_row(self, obj):
+        inst = obj.installation
+        return {
+            'numero_serie': obj.numero_serie or '',
+            'produit': obj.produit.nom if obj.produit else '',
+            'marque': (obj.produit.marque or '') if obj.produit else '',
+            'installation': inst.reference if inst else '',
+            'client': (str(inst.client) if inst and inst.client else ''),
+            'statut': obj.get_statut_display(),
+            'date_pose': str(obj.date_pose) if obj.date_pose else '',
+            'date_fin_garantie': (str(obj.date_fin_garantie)
+                                  if obj.date_fin_garantie else ''),
+            'date_fin_garantie_production': (
+                str(obj.date_fin_garantie_production)
+                if obj.date_fin_garantie_production else ''),
+        }
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -71,7 +101,7 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['export']:
             return [HasPermissionOrLegacy('equipement_voir')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('equipement_gerer')()]
@@ -110,7 +140,7 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
             'date_fin_garantie', 'date_fin_garantie_production'])
 
 
-class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
+class TicketViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
     Tout est scopé à la société ; acteur et société posés côté serveur."""
@@ -128,6 +158,34 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         'reference', 'date_creation', 'date_ouverture', 'priorite', 'statut',
     ]
     ordering = ['-date_creation']
+
+    # Export .xlsx (respecte statut/type/priorité/technicien/ouvert/annule…).
+    export_filename = 'tickets-sav.xlsx'
+    export_sheet_title = 'Tickets SAV'
+    export_columns = [
+        ('reference', 'Référence'), ('client', 'Client'),
+        ('installation', 'Chantier'), ('type', 'Type'),
+        ('statut', 'Statut'), ('priorite', 'Priorité'),
+        ('sous_garantie', 'Sous garantie'),
+        ('date_ouverture', 'Ouvert le'),
+        ('date_resolution', 'Résolu le'),
+    ]
+
+    def get_export_row(self, obj):
+        return {
+            'reference': obj.reference,
+            'client': str(obj.client) if obj.client else '',
+            'installation': (obj.installation.reference
+                             if obj.installation else ''),
+            'type': obj.get_type_display(),
+            'statut': obj.get_statut_display(),
+            'priorite': obj.get_priorite_display(),
+            'sous_garantie': obj.get_sous_garantie_display(),
+            'date_ouverture': (str(obj.date_ouverture)
+                               if obj.date_ouverture else ''),
+            'date_resolution': (str(obj.date_resolution)
+                                if obj.date_resolution else ''),
+        }
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -169,7 +227,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'export']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + ['noter', 'annuler', 'reactiver']:
             return [HasPermissionOrLegacy('sav_gerer')()]

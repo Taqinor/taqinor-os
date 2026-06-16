@@ -8,6 +8,7 @@ import {
   genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import ExportButton from '../../components/ExportButton'
 import FactureForm from './FactureForm'
 
 const STATUT_META = {
@@ -238,6 +239,11 @@ export default function FactureList() {
             placeholder="Référence, client…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+          />
+          <ExportButton
+            fetcher={ventesApi.exportFactures}
+            params={search.trim() ? { search: search.trim() } : {}}
+            filename="factures.xlsx"
           />
           <button className="btn btn-primary" onClick={openNew}>
             + Nouvelle facture

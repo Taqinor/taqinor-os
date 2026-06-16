@@ -2,6 +2,7 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
+from apps.imports.exports import XlsxExportMixin
 from .models import Client, Lead, LeadTag, MotifPerte, CanalSource
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
@@ -70,13 +71,36 @@ def assignable_users(request):
     ])
 
 
-class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
+class ClientViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'email', 'telephone']
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
+
+    # Export .xlsx standardisé (respecte recherche + tri courants).
+    export_filename = 'clients.xlsx'
+    export_sheet_title = 'Clients'
+    export_columns = [
+        ('id', 'ID'), ('nom', 'Nom'), ('prenom', 'Prénom'),
+        ('type_client', 'Type'), ('email', 'Email'),
+        ('telephone', 'Téléphone'), ('adresse', 'Adresse'),
+        ('ice', 'ICE'), ('cin', 'CIN'), ('if_fiscal', 'IF'), ('rc', 'RC'),
+        ('date_creation', 'Créé le'),
+    ]
+
+    def get_export_row(self, obj):
+        return {
+            'id': obj.id, 'nom': obj.nom, 'prenom': obj.prenom or '',
+            'type_client': obj.get_type_client_display(),
+            'email': obj.email or '', 'telephone': obj.telephone or '',
+            'adresse': obj.adresse or '', 'ice': obj.ice or '',
+            'cin': obj.cin or '', 'if_fiscal': obj.if_fiscal or '',
+            'rc': obj.rc or '',
+            'date_creation': (obj.date_creation.strftime('%Y-%m-%d %H:%M')
+                              if obj.date_creation else ''),
+        }
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -101,7 +125,7 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
             )
 
 
-class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
+class LeadViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
 
     L'utilisateur acteur et la société viennent toujours de la requête côté
@@ -113,6 +137,24 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
     ordering_fields = ['nom', 'date_creation', 'stage']
     ordering = ['-date_creation']
+
+    # Export .xlsx standardisé (GET .../leads/export/). Réutilise EXACTEMENT le
+    # constructeur de colonnes de l'export « en masse » (bulk.export_leads_xlsx)
+    # pour éviter toute divergence ; respecte les filtres courants (stage/source/
+    # archived + recherche).
+    def export(self, request, *args, **kwargs):
+        from . import bulk as bulk_ops
+        from django.http import HttpResponse
+        leads = self.filter_queryset(self.get_queryset())
+        content = bulk_ops.export_leads_xlsx(leads)
+        resp = HttpResponse(
+            content,
+            content_type=('application/vnd.openxmlformats-officedocument'
+                          '.spreadsheetml.sheet'))
+        resp['Content-Disposition'] = 'attachment; filename="leads.xlsx"'
+        return resp
+    export = action(detail=False, methods=['get'], url_path='export',
+                    permission_classes=[IsAnyRole])(export)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -128,7 +170,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         # « Archivés »). Les actions detail (retrieve/archiver/restaurer/
         # destroy) doivent atteindre un lead archivé → pas de filtre alors.
         archived = self.request.query_params.get('archived')
-        if self.action == 'list':
+        if self.action in ('list', 'export'):
             if archived == 'only':
                 qs = qs.filter(is_archived=True)
             elif archived != 'all':

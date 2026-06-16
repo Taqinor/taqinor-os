@@ -7,6 +7,8 @@ import {
   statusLabel,
   statusColor,
 } from '../../features/installations/statuses'
+import installationsApi from '../../api/installationsApi'
+import ExportButton from '../../components/ExportButton'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import InstallationDetail from './InstallationDetail'
@@ -206,6 +208,17 @@ export default function InstallationsPage() {
           <span className="count-badge">{filtered.length}</span>
         </h2>
         <div className="page-header-actions lp-header-actions">
+          <ExportButton
+            fetcher={installationsApi.exportInstallations}
+            params={{
+              ...annuleParam(filters.annule),
+              ...(filters.statut ? { statut: filters.statut } : {}),
+              ...(filters.type_installation
+                ? { type_installation: filters.type_installation } : {}),
+              ...(filters.q?.trim() ? { search: filters.q.trim() } : {}),
+            }}
+            filename="chantiers.xlsx"
+          />
           <div className="fb-pills" role="group" aria-label="Changer de vue">
             <button
               type="button"

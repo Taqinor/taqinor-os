@@ -165,6 +165,10 @@ class Produit(models.Model):
     # Valeurs des champs personnalisés (module 'produit') — voir app
     # customfields. Ne JAMAIS y exposer prix_achat/marge côté client.
     custom_fields = models.JSONField(default=dict, blank=True, null=True)
+    # Marqueur d'origine : non nul = produit issu d'un import CSV/Excel. Additif.
+    import_batch = models.ForeignKey(
+        'imports.ImportBatch', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='produits')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
 

@@ -4,6 +4,9 @@ import api from './axios'
 const savApi = {
   // ── Équipements ──
   getEquipements: (params) => api.get('/sav/equipements/', { params }),
+  // Export .xlsx (respecte les filtres courants). Réponse blob.
+  exportEquipements: (params = {}) =>
+    api.get('/sav/equipements/export/', { params, responseType: 'blob' }),
   getEquipement: (id) => api.get(`/sav/equipements/${id}/`),
   createEquipement: (data) => api.post('/sav/equipements/', data),
   updateEquipement: (id, data) => api.patch(`/sav/equipements/${id}/`, data),
@@ -11,6 +14,9 @@ const savApi = {
 
   // ── Tickets SAV ──
   getTickets: (params) => api.get('/sav/tickets/', { params }),
+  // Export .xlsx (respecte les filtres courants). Réponse blob.
+  exportTickets: (params = {}) =>
+    api.get('/sav/tickets/export/', { params, responseType: 'blob' }),
   getTicket: (id) => api.get(`/sav/tickets/${id}/`),
   createTicket: (data) => api.post('/sav/tickets/', data),
   updateTicket: (id, data) => api.patch(`/sav/tickets/${id}/`, data),
