@@ -30,7 +30,7 @@ import {
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrain';
-import { type LngLat } from '../lib/roof';
+import { roofAreaLabel, type LngLat } from '../lib/roof';
 import {
   obstacleRing,
   obstacleFromDrag,
@@ -151,6 +151,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
   const addressEl = $<HTMLInputElement>('rp3-address');
   const configPanel = $('rp3-config');
   const compassArrow = $('rp3-compass-arrow');
+  const areaValueEl = $('rp3-area-value');
   const obstacleBtn = $<HTMLButtonElement>('rp3-obstacle');
   const obstacleClearBtn = $<HTMLButtonElement>('rp3-obstacle-clear');
   const obsEditPanel = $('rp3-obs-edit');
@@ -164,6 +165,12 @@ export function initRoofToolPro3(opts: InitOptions): void {
 
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
+  };
+
+  // Readout « surface du toit » : aire BRUTE du tracé (obstacles non déduits),
+  // mise à jour à chaque sommet/retracé, effacée quand le tracé est vide.
+  const updateAreaReadout = () => {
+    if (areaValueEl) areaValueEl.textContent = roofAreaLabel(vertices) ?? '—';
   };
 
   // — État —
@@ -513,6 +520,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
     srcOf('rp3-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: vertices }, properties: {} } as never);
     srcOf('rp3-pts')?.setData({ type: 'FeatureCollection', features: vertices.map((v) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: v }, properties: {} })) } as never);
     if (finishBtn) finishBtn.disabled = vertices.length < 3 || closed;
+    updateAreaReadout();
   }
 
   function redrawObstacles() {
@@ -870,6 +878,7 @@ export function initRoofToolPro3(opts: InitOptions): void {
     map.triggerRepaint();
     if (configPanel) configPanel.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
+    updateAreaReadout();
     const wrap = $('rp3-compare-wrap');
     if (wrap) wrap.hidden = true;
     $('rp3-results')?.classList.remove('rp3-results--ready');
