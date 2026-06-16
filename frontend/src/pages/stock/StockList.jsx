@@ -3,19 +3,24 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   fetchProduits,
   fetchProduitsArchived,
+  fetchCategories,
+  updateProduit,
   deleteProduit,
   unarchiveProduit,
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
+import InlineEdit from '../../components/InlineEdit'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
 
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete }) {
+function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, onInlineSave }) {
   const spec = keySpec(p)
   const ttc = prixTtc(p)
+  const catOptions = [{ value: '', label: '— Catégorie —' }]
+    .concat((categories ?? []).map((c) => ({ value: c.id, label: c.nom })))
   return (
     <div className={`cat-row${p.is_low_stock ? ' cat-row-low' : ''}`}>
       <div className="cat-row-id">
@@ -25,22 +30,53 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete }) {
           {parseFloat(p.prix_achat) > 0 && (
             <span> · achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
           )}
+          {onInlineSave && (
+            <span className="cat-row-cat-edit">
+              {' · '}
+              <InlineEdit
+                value={p.categorie?.id ?? ''}
+                options={catOptions}
+                display={p.categorie?.nom ?? null}
+                placeholder="catégorie"
+                onSave={(v) => onInlineSave(p, 'categorie_id', v)}
+              />
+            </span>
+          )}
         </div>
       </div>
       <div className="cat-row-spec">{spec && <span className="cat-spec-chip">{spec}</span>}</div>
       <div className="cat-row-prix">
-        {sansPrix(p)
+        {sansPrix(p) && !onInlineSave
           ? <span className="cat-badge cat-badge-prix">prix à renseigner</span>
           : (
             <>
               <div className="cat-prix-ttc">{ttc.toLocaleString('fr-MA')} DH <span>TTC</span></div>
-              <div className="cat-prix-ht">{parseFloat(p.prix_vente).toFixed(2)} HT · TVA {parseFloat(p.tva ?? 20)}%</div>
+              <div className="cat-prix-ht">
+                {onInlineSave ? (
+                  <InlineEdit
+                    value={p.prix_vente}
+                    type="number"
+                    display={`${parseFloat(p.prix_vente || 0).toFixed(2)} HT`}
+                    placeholder="prix HT"
+                    onSave={(v) => onInlineSave(p, 'prix_vente', v)}
+                  />
+                ) : `${parseFloat(p.prix_vente).toFixed(2)} HT`}
+                {' · TVA '}{parseFloat(p.tva ?? 20)}%
+              </div>
             </>
           )}
       </div>
       <div className="cat-row-stock">
         <span className={p.is_low_stock ? 'text-danger' : ''}>
-          <strong>{p.quantite_stock}</strong> en stock
+          {onInlineSave ? (
+            <InlineEdit
+              value={p.quantite_stock}
+              type="number"
+              display={<strong>{p.quantite_stock}</strong>}
+              onSave={(v) => onInlineSave(p, 'quantite_stock', v)}
+            />
+          ) : <strong>{p.quantite_stock}</strong>}
+          {' '}en stock
         </span>
         {p.is_low_stock && <span className="cat-badge cat-badge-low">⚠ seuil {p.seuil_alerte}</span>}
       </div>
@@ -134,7 +170,7 @@ function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
 // ── Page principale ────────────────────────────────────────────────────────
 export default function StockList() {
   const dispatch = useDispatch()
-  const { produits, produitsArchived, loading, error } = useSelector(s => s.stock)
+  const { produits, produitsArchived, categories, loading, error } = useSelector(s => s.stock)
   const role = useSelector(s => s.auth.role)
   const permissions = useSelector(s => s.auth.permissions)
   // Rôle fin (ex. « Commerciale » lecture seule) : les permissions priment ;
@@ -154,7 +190,13 @@ export default function StockList() {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting]           = useState(false)
 
-  useEffect(() => { dispatch(fetchProduits()) }, [dispatch])
+  useEffect(() => { dispatch(fetchProduits()); dispatch(fetchCategories()) }, [dispatch])
+
+  // Édition en place (T4) : PATCH d'UN seul champ produit (prix de vente,
+  // quantité, catégorie). Validation serveur ; renvoie la promesse pour
+  // qu'InlineEdit restaure la valeur si l'enregistrement échoue.
+  const onInlineSave = (p, field, value) =>
+    dispatch(updateProduit({ id: p.id, data: { [field]: value } })).unwrap()
 
   useEffect(() => {
     if (showArchived) dispatch(fetchProduitsArchived())
@@ -335,7 +377,9 @@ export default function StockList() {
                   </div>
                   {b.items.map(p => (
                     <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
-                                  onEdit={openEdit} onDelete={handleDelete} />
+                                  onEdit={openEdit} onDelete={handleDelete}
+                                  categories={categories}
+                                  onInlineSave={canWrite ? onInlineSave : null} />
                   ))}
                 </div>
               ))}

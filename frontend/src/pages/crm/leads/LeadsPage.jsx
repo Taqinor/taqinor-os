@@ -187,6 +187,14 @@ export default function LeadsPage() {
     } catch { /* erreur silencieuse */ }
   }
 
+  // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
+  // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
+  // Renvoie la promesse pour qu'InlineEdit restaure la valeur si ça échoue.
+  const onInlineSave = (lead, field, value) =>
+    dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
+      .unwrap()
+      .then(() => { refetch() })
+
   const changeStage = async (lead, newStage) => {
     if (!lead || lead.stage === newStage) return
     const prev = lead.stage
@@ -217,6 +225,7 @@ export default function LeadsPage() {
     selected: visibleSelected,
     onToggleSelect,
     onToggleAll,
+    onInlineSave,
   }
 
   return (

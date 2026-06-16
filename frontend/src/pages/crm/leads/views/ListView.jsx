@@ -16,8 +16,17 @@ import {
   tagColor,
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
+import InlineEdit from '../../../../components/InlineEdit'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import './listview.css'
+
+// Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
+const STAGE_OPTIONS = PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s }))
+const PRIORITE_OPTIONS = [
+  { value: 'basse', label: PRIORITE_LABELS.basse },
+  { value: 'normale', label: PRIORITE_LABELS.normale },
+  { value: 'haute', label: PRIORITE_LABELS.haute },
+]
 
 // Fond de pastille d'étape : couleur de l'étape à ~14 % d'opacité.
 const stageBg = (hex) => {
@@ -77,7 +86,7 @@ function SortableTh({ col, label, sort, onSort, className }) {
 
 export default function ListView({
   leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
-  selected = new Set(), onToggleSelect, onToggleAll,
+  selected = new Set(), onToggleSelect, onToggleAll, onInlineSave,
 }) {
   const dispatch = useDispatch()
   const role = useSelector((s) => s.auth.role)
@@ -204,16 +213,24 @@ export default function ListView({
                     ) : null}
                   </div>
                 </td>
-                <td data-label="Stade">
-                  <span
-                    className="lv-stage-badge"
-                    style={{
-                      background: stageBg(STAGE_COLORS[lead.stage]),
-                      color: STAGE_COLORS[lead.stage] ?? '#475569',
-                    }}
-                  >
-                    {STAGE_LABELS[lead.stage] ?? lead.stage}
-                  </span>
+                <td data-label="Stade" onClick={(e) => e.stopPropagation()}>
+                  <InlineEdit
+                    value={lead.stage}
+                    options={STAGE_OPTIONS}
+                    disabled={!onInlineSave}
+                    display={(
+                      <span
+                        className="lv-stage-badge"
+                        style={{
+                          background: stageBg(STAGE_COLORS[lead.stage]),
+                          color: STAGE_COLORS[lead.stage] ?? '#475569',
+                        }}
+                      >
+                        {STAGE_LABELS[lead.stage] ?? lead.stage}
+                      </span>
+                    )}
+                    onSave={(v) => onInlineSave(lead, 'stage', v)}
+                  />
                 </td>
                 <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
@@ -225,43 +242,60 @@ export default function ListView({
                     disabled={!onReassign}
                   />
                 </td>
-                <td className="m-hide">
-                  <span
-                    className="lv-stars"
-                    title={PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}
-                  >
-                    <span className={stars >= 1 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
-                    <span className={stars >= 2 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
-                  </span>
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  <InlineEdit
+                    value={lead.priorite ?? 'normale'}
+                    options={PRIORITE_OPTIONS}
+                    disabled={!onInlineSave}
+                    display={(
+                      <span
+                        className="lv-stars"
+                        title={PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}
+                      >
+                        <span className={stars >= 1 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
+                        <span className={stars >= 2 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
+                      </span>
+                    )}
+                    onSave={(v) => onInlineSave(lead, 'priorite', v)}
+                  />
                 </td>
-                <td data-label="Relance">
-                  {lead.relance_date ? (
-                    <span className={enRetard ? 'lv-relance-late' : undefined}>
-                      {formatDateFR(lead.relance_date)}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
+                <td data-label="Relance" onClick={(e) => e.stopPropagation()}>
+                  <InlineEdit
+                    value={lead.relance_date ?? ''}
+                    type="date"
+                    disabled={!onInlineSave}
+                    display={lead.relance_date ? (
+                      <span className={enRetard ? 'lv-relance-late' : undefined}>
+                        {formatDateFR(lead.relance_date)}
+                      </span>
+                    ) : null}
+                    onSave={(v) => onInlineSave(lead, 'relance_date', v)}
+                  />
                 </td>
-                <td className="m-hide">
-                  {tags.length ? (
-                    <span className="lv-tags">
-                      {tags.map((t) => {
-                        const c = tagColor(t)
-                        return (
-                          <span
-                            key={t}
-                            className="lv-tag"
-                            style={{ background: c.bg, color: c.color }}
-                          >
-                            {t}
-                          </span>
-                        )
-                      })}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  <InlineEdit
+                    value={lead.tags ?? ''}
+                    type="text"
+                    disabled={!onInlineSave}
+                    placeholder="+ tags"
+                    display={tags.length ? (
+                      <span className="lv-tags">
+                        {tags.map((t) => {
+                          const c = tagColor(t)
+                          return (
+                            <span
+                              key={t}
+                              className="lv-tag"
+                              style={{ background: c.bg, color: c.color }}
+                            >
+                              {t}
+                            </span>
+                          )
+                        })}
+                      </span>
+                    ) : null}
+                    onSave={(v) => onInlineSave(lead, 'tags', v)}
+                  />
                 </td>
                 <td data-label="Actions">
                   <div className="actions-cell">

@@ -166,7 +166,7 @@ admin-only delete (confirmed dialog, blocked with a clear French message if it w
 quotes/invoices, logged); export selection to .xlsx. Every change writes a per-lead Historique entry
 marked « en masse ».
 
-### T4 — Inline list editing (Odoo-style edit-in-place) — [ ]
+### T4 — Inline list editing (Odoo-style edit-in-place) — [x]
 Edit a field without opening the record: on the **leads list** — stage, responsable, relance date,
 priorité, tags; on the **products list** — sell price, quantity, category. Each edit saves just that
 field, validates server-side, logs to Historique where applicable. Skip any field risky to edit
@@ -316,4 +316,5 @@ Tracked here so they aren't lost:
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
 - 2026-06-16 — T1 verified already present: /proposal serves a real inline PDF; the lead devis panel fetches it as a blob and renders it with PDF.js (clear FR error on server failure, graceful fallback on network failure); non-mocked regression tests cover Premium / 1-page / étude; Vite content-hashes the build. No change needed.
 - 2026-06-16 — T2 verified already present: vite-plugin-pwa configured (autoUpdate, injectManifest sw.js with skipWaiting/clientsClaim), manifest + icons + iOS head tags + offline page, and a French install helper (PwaPrompts.jsx, beforeinstallprompt). No change needed.
+- 2026-06-16 — T4 done: inline edit-in-place via a reusable InlineEdit cell. Leads list — stage, priorité, relance, tags (responsable was already inline); products catalogue — sell price, quantity, category. Each saves only that field via PATCH, validates server-side, and lead edits log to Historique. Backend tests added.
 - 2026-06-16 — T3 done: bulk actions on leads (multi-select in list + kanban, selection toolbar). Bulk reassign / add+remove tag / change stage (no-going-backwards, never moves a Perdu lead, reactivates Froid) / set+clear relance / flag+unflag Perdu / archive+unarchive / admin-only delete (skips leads with linked devis) / export selection to .xlsx. Every change writes a per-lead Historique entry badged « en masse ». Backend POST /crm/leads/bulk/ + /crm/leads/export-xlsx/ (company-scoped); 15 new backend tests + a frontend selection-logic test. Developed on branch claude/gallant-mccarthy-vh5e98 (not merged to main).
