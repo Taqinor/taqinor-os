@@ -8,11 +8,22 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     responsable_defaut_leads_nom = serializers.CharField(
         source='responsable_defaut_leads.username', read_only=True
     )
+    # ROI avec repli sur défauts (pour l'affichage : toujours des valeurs).
+    roi_constants_effective = serializers.SerializerMethodField()
+    # Défauts historiques exposés pour le bouton « Réinitialiser ».
+    roi_constants_defaults = serializers.SerializerMethodField()
 
     class Meta:
         model = CompanyProfile
         fields = '__all__'
         read_only_fields = ['logo_key', 'signature_key']
+
+    def get_roi_constants_effective(self, obj):
+        return obj.roi_constants_effective
+
+    def get_roi_constants_defaults(self, obj):
+        from .models import ROI_CONSTANTS_DEFAULTS
+        return ROI_CONSTANTS_DEFAULTS
 
     def validate_responsable_defaut_leads(self, value):
         # Le responsable par défaut doit appartenir à la même société.

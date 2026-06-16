@@ -421,3 +421,45 @@ class MotifPerte(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# Clé du canal « Site web » — protégée : utilisée par le webhook du site public
+# (webhooks.py). Elle ne peut être ni renommée ni supprimée.
+CANAL_SITE_WEB_KEY = 'site_web'
+
+
+class CanalSource(models.Model):
+    """Canal / source d'origine d'un lead, géré (Paramètres → CRM).
+
+    Promotion de l'ancien enum Lead.Canal (texte libre stocké dans
+    Lead.canal) vers une liste de référence éditable, scopée par société :
+    ajout / renommage / réordonnancement. Le champ `Lead.canal` reste un
+    CharField : cette liste fournit le libellé + l'ordre ; aucune valeur de
+    lead existante ne change. Additif.
+
+    La clé `site_web` (CANAL_SITE_WEB_KEY) est PROTÉGÉE — le webhook du site
+    public écrit cette valeur. Elle ne peut être ni renommée ni supprimée.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='canaux_sources')
+    # Clé stable (anglais/slug) stockée dans Lead.canal — jamais renommée.
+    key = models.CharField(max_length=40)
+    # Libellé affiché (français), librement modifiable.
+    label = models.CharField(max_length=120)
+    ordre = models.PositiveIntegerField(default=100)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'label']
+        unique_together = [('company', 'key')]
+        verbose_name = 'Canal / source de lead'
+        verbose_name_plural = 'Canaux / sources de lead'
+
+    def __str__(self):
+        return self.label
+
+    @property
+    def is_protected(self):
+        """Canal système non supprimable / non renommable (clé)."""
+        return self.key == CANAL_SITE_WEB_KEY

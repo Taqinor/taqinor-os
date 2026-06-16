@@ -692,3 +692,115 @@ class TestManagedLists(TestCase):
         noms = [m['nom'] for m in (resp.data['results'] if 'results' in resp.data else resp.data)]
         self.assertIn('Concurrent', noms)
         self.assertNotIn('Autre société', noms)
+
+
+class TestCanalSource(TestCase):
+    """Canaux / sources de lead éditables (T6).
+
+    Couvre : scoping société, protection de la clé `site_web` (ni renommable ni
+    supprimable), blocage de la suppression d'un canal en usage, et création
+    avec clé dérivée du libellé (slug).
+    """
+
+    def setUp(self):
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.crm.models import CanalSource
+        self.company = make_company(slug='canal-co', nom='Canal Co')
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='canal_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.commerciale = User.objects.create_user(
+            username='canal_comm', password='x', role_legacy='responsable',
+            company=self.company)
+        # Le canal protégé existe (seedé par migration, mais on garantit ici).
+        self.site_web, _ = CanalSource.objects.get_or_create(
+            company=self.company, key='site_web',
+            defaults={'label': 'Site web', 'ordre': 30})
+
+    def _api(self, u):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(u)}')
+        return api
+
+    def test_backfill_seeds_legacy_canaux(self):
+        # La logique de backfill seede les libellés de l'ancien enum + toute
+        # valeur `canal` distincte présente sur des leads.
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        from apps.crm.models import CanalSource
+        Lead.objects.create(
+            company=self.company, nom='Ancien', canal='custom_legacy')
+        mod = import_module('apps.crm.migrations.0015_backfill_canalsource')
+        mod.backfill(django_apps, None)
+        keys = set(CanalSource.objects.filter(company=self.company)
+                   .values_list('key', flat=True))
+        self.assertIn('site_web', keys)
+        self.assertIn('meta_ads', keys)
+        self.assertIn('custom_legacy', keys)
+
+    def test_admin_create_derives_key_from_label(self):
+        from apps.crm.models import CanalSource
+        resp = self._api(self.admin).post(
+            '/api/django/crm/canaux/', {'label': 'Salon Pro 2026'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        obj = CanalSource.objects.get(company=self.company, label='Salon Pro 2026')
+        self.assertEqual(obj.key, 'salon_pro_2026')
+
+    def test_commerciale_cannot_write(self):
+        resp = self._api(self.commerciale).post(
+            '/api/django/crm/canaux/', {'label': 'X'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_site_web_cannot_be_renamed(self):
+        resp = self._api(self.admin).patch(
+            f'/api/django/crm/canaux/{self.site_web.id}/',
+            {'label': 'Renommé'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.site_web.refresh_from_db()
+        self.assertEqual(self.site_web.label, 'Site web')
+
+    def test_site_web_can_reorder_without_rename(self):
+        resp = self._api(self.admin).patch(
+            f'/api/django/crm/canaux/{self.site_web.id}/',
+            {'ordre': 5}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.site_web.refresh_from_db()
+        self.assertEqual(self.site_web.ordre, 5)
+
+    def test_site_web_cannot_be_deleted(self):
+        resp = self._api(self.admin).delete(
+            f'/api/django/crm/canaux/{self.site_web.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+
+    def test_cannot_delete_canal_in_use(self):
+        from apps.crm.models import CanalSource
+        canal = CanalSource.objects.create(
+            company=self.company, key='reference', label='Référence', ordre=40)
+        Lead.objects.create(company=self.company, nom='Userlead', canal='reference')
+        resp = self._api(self.admin).delete(
+            f'/api/django/crm/canaux/{canal.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(CanalSource.objects.filter(id=canal.id).exists())
+
+    def test_unused_canal_can_be_deleted(self):
+        from apps.crm.models import CanalSource
+        canal = CanalSource.objects.create(
+            company=self.company, key='walk_in', label='Walk-in', ordre=50)
+        resp = self._api(self.admin).delete(
+            f'/api/django/crm/canaux/{canal.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(CanalSource.objects.filter(id=canal.id).exists())
+
+    def test_list_company_scoped(self):
+        from apps.crm.models import CanalSource
+        other = make_company(slug='canal-other', nom='Canal Other')
+        CanalSource.objects.create(
+            company=other, key='secret', label='Secret', ordre=10)
+        resp = self._api(self.admin).get('/api/django/crm/canaux/')
+        keys = [c['key'] for c in (resp.data['results']
+                if 'results' in resp.data else resp.data)]
+        self.assertNotIn('secret', keys)

@@ -7,10 +7,10 @@ from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from . import activity
-from .models import Installation, Intervention
+from .models import Installation, Intervention, TypeIntervention
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer,
+    InstallationActivitySerializer, TypeInterventionSerializer,
 )
 from .services import create_installation_from_devis
 
@@ -181,6 +181,64 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(inst, request.user, "Chantier réactivé")
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
+
+
+def _slugify_type_key(label):
+    """Clé stable (a-z0-9_) dérivée d'un libellé, pour un nouveau type."""
+    import re
+    import unicodedata
+    norm = unicodedata.normalize('NFKD', label or '')
+    norm = norm.encode('ascii', 'ignore').decode('ascii').lower()
+    norm = re.sub(r'[^a-z0-9]+', '_', norm).strip('_')
+    return norm or 'type'
+
+
+class TypeInterventionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Types d'intervention gérés (Paramètres → Chantiers).
+
+    Lecture tout rôle, écriture admin. Un type utilisé par un ordre de travail
+    ne peut pas être supprimé (message français clair).
+    """
+    queryset = TypeIntervention.objects.all()
+    serializer_class = TypeInterventionSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        label = serializer.validated_data.get('label', '')
+        base = _slugify_type_key(label)
+        key = base
+        i = 2
+        while TypeIntervention.objects.filter(company=company, key=key).exists():
+            key = f'{base}_{i}'
+            i += 1
+        serializer.save(company=company, key=key)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if 'key' in request.data and request.data.get('key') != instance.key:
+            return Response(
+                {'detail': "La clé d'un type ne peut pas être modifiée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        in_use = Intervention.objects.filter(
+            company=instance.company,
+            type_intervention=instance.key).exists()
+        if in_use:
+            return Response(
+                {'detail': "Ce type est utilisé par des ordres de travail — "
+                           "il ne peut pas être supprimé. Archivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):

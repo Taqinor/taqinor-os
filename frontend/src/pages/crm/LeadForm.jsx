@@ -170,6 +170,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // Listes gérées (suggestions ; le texte libre reste possible).
   const [tagOptions, setTagOptions] = useState([])
   const [motifOptions, setMotifOptions] = useState([])
+  // Canaux / sources éditables (Paramètres → CRM). Repli sur la liste statique
+  // tant que l'API n'a pas répondu (le canal du lead reste affichable).
+  const [canalOptions, setCanalOptions] = useState(null)
 
   // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
   const [billEditing, setBillEditing] = useState(false)
@@ -249,6 +252,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       .catch(() => {})
     crmApi.getMotifsPerte()
       .then(r => setMotifOptions((r.data.results ?? r.data).filter(m => !m.archived)))
+      .catch(() => {})
+    crmApi.getCanaux()
+      .then(r => setCanalOptions((r.data.results ?? r.data).filter(c => !c.archived)))
       .catch(() => {})
     if (isEdit) {
       api.get(`/crm/leads/${lead.id}/historique/`)
@@ -392,6 +398,18 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       setSaving(false)
     }
   }
+
+  // Libellés de canal : liste éditable si disponible, sinon repli statique.
+  // On garantit que la valeur actuelle du lead reste affichable même si elle
+  // n'est plus dans la liste (canal archivé/supprimé hors usage).
+  const canalLabels = (() => {
+    const base = canalOptions
+      ? Object.fromEntries(canalOptions.map(c => [c.key, c.label]))
+      : { ...CANAUX }
+    const cur = fields.canal
+    if (cur && !(cur in base)) base[cur] = cur
+    return base
+  })()
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -567,7 +585,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               </div>
               <div className="form-row">
                 <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
-                <Sel fields={fields} set={set} k="canal" label="Canal" labels={CANAUX} />
+                <Sel fields={fields} set={set} k="canal" label="Canal" labels={canalLabels} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
                        placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />

@@ -538,3 +538,71 @@ class TestBulkAndInlineEditing(TestCase):
         self.assertEqual(r.status_code, 404)
         self.foreign.refresh_from_db()
         self.assertEqual(self.foreign.prix_vente, Decimal('500.00'))
+
+
+class TestMarqueBackfillAndAPI(TestCase):
+    """Marque (brand) promue en modèle (T6) : backfill, scoping, create-on-type."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.company = make_company(slug='marque-co')
+        self.other = make_company(slug='marque-other')
+        self.user = User.objects.create_user(
+            username='marque_resp', password='x',
+            company=self.company, role_legacy='responsable')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_backfill_creates_marque_from_text_and_links_fk(self):
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        from apps.stock.models import Marque
+        # Produit avec un texte marque mais sans FK (état pré-T6).
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau X', sku='PX',
+            prix_vente=Decimal('100.00'), marque='JA Solar')
+        Produit.objects.filter(id=p.id).update(marque_ref=None)
+        # Rejoue la logique de backfill de la migration de données (idempotent).
+        mod = import_module('apps.stock.migrations.0016_backfill_marque')
+        mod.backfill(django_apps, None)
+        p.refresh_from_db()
+        self.assertTrue(
+            Marque.objects.filter(company=self.company, nom='JA Solar').exists())
+        self.assertIsNotNone(p.marque_ref_id)
+        self.assertEqual(p.marque_ref.nom, 'JA Solar')
+
+    def test_marque_text_column_preserved(self):
+        # Le texte libre `marque` reste lisible (additif — jamais supprimé).
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau Y', sku='PY',
+            prix_vente=Decimal('100.00'), marque='Longi')
+        p.refresh_from_db()
+        self.assertEqual(p.marque, 'Longi')
+
+    def test_patch_product_resolves_marque_on_type(self):
+        # Create-on-type : saisir un texte marque crée/relie la Marque (FK).
+        from apps.stock.models import Marque
+        p = Produit.objects.create(
+            company=self.company, nom='Onduleur Z', sku='OZ',
+            prix_vente=Decimal('500.00'))
+        r = self.api.patch(f'/api/django/stock/produits/{p.id}/',
+                           {'marque': 'Huawei'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        p.refresh_from_db()
+        self.assertEqual(p.marque, 'Huawei')
+        self.assertIsNotNone(p.marque_ref_id)
+        self.assertTrue(
+            Marque.objects.filter(company=self.company, nom='Huawei').exists())
+
+    def test_marque_list_company_scoped(self):
+        from apps.stock.models import Marque
+        Marque.objects.create(company=self.company, nom='Mine')
+        Marque.objects.create(company=self.other, nom='Theirs')
+        r = self.api.get('/api/django/stock/marques/')
+        noms = [m['nom'] for m in (r.data['results'] if 'results' in r.data else r.data)]
+        self.assertIn('Mine', noms)
+        self.assertNotIn('Theirs', noms)
