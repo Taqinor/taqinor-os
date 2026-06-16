@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from django.utils import timezone
 
-from .models import ContratMaintenance, Equipement, Ticket, TicketActivity
+from .models import (
+    ContratMaintenance, Equipement, ReclamationGarantie, Ticket,
+    TicketActivity, TicketPiece,
+)
 
 # Fenêtre « garantie expirant bientôt » (jours).
 EXPIRING_SOON_DAYS = 90
@@ -144,6 +147,49 @@ class TicketSerializer(serializers.ModelSerializer):
         return obj.interventions.count()
 
 
+class TicketPieceSerializer(serializers.ModelSerializer):
+    """Pièce consommée sur un ticket. Le prix d'achat n'est JAMAIS exposé."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True, default=None)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
+
+    class Meta:
+        model = TicketPiece
+        fields = [
+            'id', 'ticket', 'produit', 'produit_nom', 'produit_marque',
+            'produit_sku', 'quantite', 'stock_decremente', 'note',
+            'date_creation',
+        ]
+        # company / created_by posés côté serveur ; stock_decremente est une
+        # trace serveur (jamais lue du corps).
+        read_only_fields = [
+            'company', 'created_by', 'stock_decremente', 'date_creation',
+        ]
+
+
+class ReclamationGarantieSerializer(serializers.ModelSerializer):
+    equipement_serie = serializers.CharField(
+        source='equipement.numero_serie', read_only=True, default=None)
+    equipement_produit = serializers.CharField(
+        source='equipement.produit.nom', read_only=True, default=None)
+    resultat_display = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+
+    class Meta:
+        model = ReclamationGarantie
+        fields = [
+            'id', 'equipement', 'equipement_serie', 'equipement_produit',
+            'date', 'description', 'resultat', 'resultat_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'company', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+
 class ContratMaintenanceSerializer(serializers.ModelSerializer):
     client_nom = serializers.SerializerMethodField()
     installation_reference = serializers.CharField(
@@ -153,6 +199,10 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     est_due = serializers.SerializerMethodField()
     est_a_venir = serializers.SerializerMethodField()
     jours_avant_visite = serializers.SerializerMethodField()
+    # Renouvellement (N47) — CALCULÉS à la lecture, jamais stockés.
+    date_fin_effective = serializers.SerializerMethodField()
+    jours_avant_fin = serializers.SerializerMethodField()
+    a_renouveler = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratMaintenance
@@ -186,3 +236,13 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
         if not d:
             return None
         return (d - timezone.localdate()).days
+
+    def get_date_fin_effective(self, obj):
+        d = obj.date_fin_effective
+        return d.isoformat() if d else None
+
+    def get_jours_avant_fin(self, obj):
+        return obj.jours_avant_fin()
+
+    def get_a_renouveler(self, obj):
+        return obj.a_renouveler()

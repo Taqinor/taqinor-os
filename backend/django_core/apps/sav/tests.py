@@ -33,7 +33,8 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.installations.models import Installation
 from apps.sav.models import (
-    ContratMaintenance, Equipement, Ticket, TicketActivity,
+    ContratMaintenance, Equipement, ReclamationGarantie, Ticket,
+    TicketActivity,
 )
 from apps.sav.services import add_months
 
@@ -524,3 +525,297 @@ class TestContratMaintenance(TestCase):
             ids_of(api_o.get('/api/django/sav/contrats/')), [])
         self.assertEqual(
             api_o.get(f'/api/django/sav/contrats/{cid}/').status_code, 404)
+
+
+class TestInterventionReportPdf(TestCase):
+    """N45 — rapport d'intervention PDF (FR) sur ticket résolu/clôturé."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_pdf', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(self.company)
+        self.produit = make_produit(self.company, garantie_mois=120)
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-PDF-1', client=self.client_obj,
+            installation=self.inst, type='correctif',
+            description='Onduleur ne démarre pas')
+
+    def test_pdf_blocked_while_open(self):
+        r = self.api.get(
+            f'/api/django/sav/tickets/{self.ticket.id}/rapport-pdf/')
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_pdf_returned_for_closed_ticket(self):
+        self.ticket.statut = 'cloture'
+        self.ticket.date_resolution = timezone.localdate()
+        self.ticket.save(update_fields=['statut', 'date_resolution'])
+        r = self.api.get(
+            f'/api/django/sav/tickets/{self.ticket.id}/rapport-pdf/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertTrue(r.content.startswith(b'%PDF'), r.content[:20])
+
+    def test_pdf_for_resolved_ticket(self):
+        self.ticket.statut = 'resolu'
+        self.ticket.save(update_fields=['statut'])
+        r = self.api.get(
+            f'/api/django/sav/tickets/{self.ticket.id}/rapport-pdf/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.content.startswith(b'%PDF'))
+
+
+class TestTicketPieces(TestCase):
+    """N46 — pièces consommées + décrément de stock optionnel, scopé société."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_piece', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(self.company)
+        self.produit = make_produit(self.company, sku='PIECE-1')
+        self.produit.quantite_stock = 10
+        self.produit.save(update_fields=['quantite_stock'])
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-PC-1', client=self.client_obj,
+            installation=self.inst)
+
+    def test_record_piece_without_decrement(self):
+        r = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/',
+            {'produit': self.produit.id, 'quantite': 3}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertFalse(r.data['stock_decremente'])
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 10)
+
+    def test_record_piece_with_decrement(self):
+        from apps.stock.models import MouvementStock
+        r = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/'
+            '?decrement=1',
+            {'produit': self.produit.id, 'quantite': 4}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data['stock_decremente'])
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 6)
+        mv = MouvementStock.objects.filter(produit=self.produit,
+                                           type_mouvement='sortie')
+        self.assertEqual(mv.count(), 1)
+        self.assertEqual(mv.first().company_id, self.company.id)
+        self.assertEqual(mv.first().quantite_apres, 6)
+
+    def test_decrement_via_body_flag(self):
+        r = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/',
+            {'produit': self.produit.id, 'quantite': 2,
+             'decrementer_stock': True}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 8)
+
+    def test_pieces_listed_and_on_report(self):
+        self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/',
+            {'produit': self.produit.id, 'quantite': 1}, format='json')
+        lst = self.api.get(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/')
+        self.assertEqual(len(lst.data), 1)
+        # Pièce visible sur le rapport PDF du ticket clôturé.
+        self.ticket.statut = 'cloture'
+        self.ticket.save(update_fields=['statut'])
+        r = self.api.get(
+            f'/api/django/sav/tickets/{self.ticket.id}/rapport-pdf/')
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.content.startswith(b'%PDF'))
+
+    def test_piece_cross_tenant_produit_rejected(self):
+        other = make_company(slug='piece-other', nom='Other')
+        prod_o = make_produit(other, sku='OTH-1')
+        r = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/',
+            {'produit': prod_o.id, 'quantite': 1}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_piece_write_requires_sav_gerer(self):
+        role = Role.objects.create(
+            company=self.company, nom='Lecteur',
+            permissions=['sav_voir'])
+        viewer = User.objects.create_user(
+            username='piece_viewer', password='x', company=self.company)
+        viewer.role = role
+        viewer.save(update_fields=['role'])
+        api = auth(viewer)
+        # Lecture OK.
+        self.assertEqual(
+            api.get(f'/api/django/sav/tickets/{self.ticket.id}/pieces/')
+            .status_code, 200)
+        # Écriture refusée.
+        r = api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/',
+            {'produit': self.produit.id, 'quantite': 1}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+
+
+class TestContratRenewal(TestCase):
+    """N47 — flag de renouvellement calculé + rapport de maintenance PDF."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_renew', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(self.company)
+
+    def _create(self, **extra):
+        body = {'installation': self.inst.id, 'intervalle_mois': 12,
+                'date_debut': '2026-01-01'}
+        body.update(extra)
+        return self.api.post('/api/django/sav/contrats/', body, format='json')
+
+    def test_a_renouveler_flag_within_horizon(self):
+        soon = (timezone.localdate() + timedelta(days=30)).isoformat()
+        r = self._create(date_fin=soon)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data['a_renouveler'])
+        self.assertEqual(r.data['date_fin_effective'], soon)
+
+    def test_a_renouveler_false_when_far(self):
+        far = (timezone.localdate() + timedelta(days=300)).isoformat()
+        r = self._create(date_fin=far)
+        self.assertFalse(r.data['a_renouveler'])
+
+    def test_date_fin_effective_from_duree_mois(self):
+        c = ContratMaintenance.objects.create(
+            company=self.company, installation=self.inst,
+            client=self.client_obj, date_debut=date(2026, 1, 1),
+            duree_mois=12)
+        self.assertEqual(c.date_fin_effective, date(2027, 1, 1))
+
+    def test_a_renouveler_view_lists_only_due(self):
+        soon = (timezone.localdate() + timedelta(days=20)).isoformat()
+        far = (timezone.localdate() + timedelta(days=400)).isoformat()
+        due_id = self._create(date_fin=soon).data['id']
+        self._create(date_fin=far)
+        r = self.api.get('/api/django/sav/contrats/a-renouveler/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual({row['id'] for row in r.data}, {due_id})
+
+    def test_inactive_never_a_renouveler(self):
+        soon = (timezone.localdate() + timedelta(days=10)).isoformat()
+        self._create(date_fin=soon, actif=False)
+        r = self.api.get('/api/django/sav/contrats/a-renouveler/')
+        self.assertEqual([row['id'] for row in r.data], [])
+
+    def test_visite_effectuee_advances_last_visit(self):
+        cid = self._create(date_debut='2026-01-01').data['id']
+        r = self.api.post(
+            f'/api/django/sav/contrats/{cid}/visite-effectuee/',
+            {'date': '2026-06-01'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        c = ContratMaintenance.objects.get(pk=cid)
+        self.assertEqual(c.derniere_visite, date(2026, 6, 1))
+
+    def test_maintenance_report_pdf(self):
+        cid = self._create(date_debut='2026-01-01').data['id']
+        r = self.api.get(f'/api/django/sav/contrats/{cid}/rapport-pdf/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertTrue(r.content.startswith(b'%PDF'))
+
+
+class TestWarrantyExpiringAndClaims(TestCase):
+    """N48 — garanties qui expirent (horizon) + CRUD réclamation de garantie."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_war', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(self.company)
+        self.prod = make_produit(self.company, sku='WAR-1')
+        today = timezone.localdate()
+        self.soon = Equipement.objects.create(
+            company=self.company, produit=self.prod, installation=self.inst,
+            numero_serie='SOON', date_fin_garantie=today + timedelta(days=30))
+        self.far = Equipement.objects.create(
+            company=self.company, produit=self.prod, installation=self.inst,
+            numero_serie='FAR', date_fin_garantie=today + timedelta(days=300))
+        self.expired = Equipement.objects.create(
+            company=self.company, produit=self.prod, installation=self.inst,
+            numero_serie='EXPIRED', date_fin_garantie=today - timedelta(days=5))
+
+    def test_garanties_expirent_default_horizon(self):
+        r = self.api.get('/api/django/sav/equipements/garanties-expirent/')
+        self.assertEqual(r.status_code, 200, r.data)
+        got = set(ids_of(r))
+        # 90 j par défaut : SOON + EXPIRED (déjà dépassé), pas FAR.
+        self.assertEqual(got, {self.soon.id, self.expired.id})
+
+    def test_garanties_expirent_custom_horizon(self):
+        r = self.api.get('/api/django/sav/equipements/garanties-expirent/',
+                         {'jours': 400})
+        self.assertEqual(
+            set(ids_of(r)), {self.soon.id, self.far.id, self.expired.id})
+
+    def test_garanties_expirent_scoped(self):
+        other = make_company(slug='war-other', nom='Other')
+        ou = User.objects.create_user(
+            username='war_other', password='x', role_legacy='admin',
+            company=other)
+        api_o = auth(ou)
+        r = api_o.get('/api/django/sav/equipements/garanties-expirent/')
+        self.assertEqual(ids_of(r), [])
+
+    def test_reclamation_crud_scoped(self):
+        # Création.
+        r = self.api.post('/api/django/sav/reclamations-garantie/', {
+            'equipement': self.soon.id, 'date': '2026-06-01',
+            'description': 'Panne onduleur sous garantie',
+            'resultat': 'en_cours'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        rid = r.data['id']
+        rec = ReclamationGarantie.objects.get(pk=rid)
+        self.assertEqual(rec.company_id, self.company.id)
+        self.assertEqual(rec.created_by_id, self.user.id)
+        # Lecture.
+        self.assertIn(rid, set(ids_of(
+            self.api.get('/api/django/sav/reclamations-garantie/'))))
+        # Mise à jour du résultat.
+        u = self.api.patch(f'/api/django/sav/reclamations-garantie/{rid}/',
+                           {'resultat': 'accordee'}, format='json')
+        self.assertEqual(u.status_code, 200, u.data)
+        self.assertEqual(u.data['resultat'], 'accordee')
+
+    def test_reclamation_cross_tenant_equipement_rejected(self):
+        other = make_company(slug='war-x', nom='X')
+        inst_o, _ = make_installation(other, ref='X-CHT')
+        prod_o = make_produit(other, sku='XPROD')
+        eq_o = Equipement.objects.create(
+            company=other, produit=prod_o, installation=inst_o,
+            numero_serie='XEQ')
+        r = self.api.post('/api/django/sav/reclamations-garantie/', {
+            'equipement': eq_o.id, 'description': 'x'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_reclamation_scoping_other_company_blind(self):
+        rec = ReclamationGarantie.objects.create(
+            company=self.company, equipement=self.soon,
+            description='secret', created_by=self.user)
+        other = make_company(slug='war-blind', nom='Blind')
+        ou = User.objects.create_user(
+            username='war_blind', password='x', role_legacy='admin',
+            company=other)
+        api_o = auth(ou)
+        self.assertEqual(
+            ids_of(api_o.get('/api/django/sav/reclamations-garantie/')), [])
+        self.assertEqual(
+            api_o.get(
+                f'/api/django/sav/reclamations-garantie/{rec.id}/')
+            .status_code, 404)
