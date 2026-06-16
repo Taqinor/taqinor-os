@@ -299,7 +299,11 @@ export default function DevisList() {
         </thead>
         <tbody>
           {devis.map(d => {
-            const meta = STATUT_META[d.statut] ?? STATUT_META.brouillon
+            // Expiration calculée à la volée (T7) : un devis en attente dont la
+            // date de validité est dépassée s'affiche « Expiré » sans changer
+            // son statut stocké ni l'étape du lead.
+            const effStatut = d.is_expired ? 'expire' : d.statut
+            const meta = STATUT_META[effStatut] ?? STATUT_META.brouillon
             const isGenerating = pdfGenerating[d.id]
             const isDownloading = pdfDownloading[d.id]
             return (
