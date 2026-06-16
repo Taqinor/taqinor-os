@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import Produit, Categorie, Fournisseur, MouvementStock
+from .models import (
+    Produit, Categorie, Fournisseur, MouvementStock, ProduitAuditLog,
+)
 
 
 @admin.register(Categorie)
@@ -28,3 +30,12 @@ class MouvementStockAdmin(admin.ModelAdmin):
     list_filter = ('type_mouvement',)
     search_fields = ('produit__nom', 'reference')
     readonly_fields = ('quantite_avant', 'quantite_apres', 'date')
+
+
+@admin.register(ProduitAuditLog)
+class ProduitAuditLogAdmin(admin.ModelAdmin):
+    list_display = ('produit', 'action', 'champ', 'ancienne_valeur',
+                    'nouvelle_valeur', 'created_by', 'date')
+    list_filter = ('action',)
+    search_fields = ('produit__nom', 'champ')
+    readonly_fields = ('date',)

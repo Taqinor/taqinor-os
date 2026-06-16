@@ -297,3 +297,244 @@ class TestSeedCatalogue(TestCase):
         other = make_company(slug='test-cat-other')
         seed(self.company)
         self.assertEqual(Produit.objects.filter(company=other).count(), 0)
+
+
+class TestBulkAndInlineEditing(TestCase):
+    """Édition groupée (T8) + édition en ligne (T4) du catalogue produits."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from django.contrib.auth import get_user_model
+        from apps.stock.models import Categorie
+
+        User = get_user_model()
+        self.company = make_company(slug='bulk-co')
+        self.other = make_company(slug='bulk-other-co')
+        self.cat = Categorie.objects.create(company=self.company, nom='Onduleurs')
+        self.cat_other = Categorie.objects.create(company=self.other, nom='Autres')
+
+        self.user = User.objects.create_user(
+            username='bulk_resp', password='x',
+            company=self.company, role_legacy='responsable')
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+        self.p1 = Produit.objects.create(
+            company=self.company, nom='Onduleur A', sku='OND-A',
+            prix_vente=Decimal('1000.00'), prix_achat=Decimal('700.00'),
+            quantite_stock=10)
+        self.p2 = Produit.objects.create(
+            company=self.company, nom='Onduleur B', sku='OND-B',
+            prix_vente=Decimal('2000.00'), prix_achat=Decimal('1500.00'),
+            quantite_stock=5)
+        # Produit d'une AUTRE entreprise : doit toujours être ignoré.
+        self.foreign = Produit.objects.create(
+            company=self.other, nom='Etranger', sku='FOR-1',
+            prix_vente=Decimal('500.00'), prix_achat=Decimal('400.00'),
+            quantite_stock=3)
+
+    def _bulk(self, action, ids, params=None):
+        return self.client.post(
+            '/api/django/stock/produits/bulk/',
+            {'action': action, 'ids': ids, 'params': params or {}},
+            format='json')
+
+    # ── T8 : prix de vente en pourcentage ──
+    def test_bulk_price_percent(self):
+        r = self._bulk('change_prix', [self.p1.id, self.p2.id],
+                       {'mode': 'percent', 'valeur': '10'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['updated'], 2)
+        self.p1.refresh_from_db()
+        self.p2.refresh_from_db()
+        self.assertEqual(self.p1.prix_vente, Decimal('1100.00'))
+        self.assertEqual(self.p2.prix_vente, Decimal('2200.00'))
+
+    # ── T8 : prix de vente en montant fixe ──
+    def test_bulk_price_fixed(self):
+        r = self._bulk('change_prix', [self.p1.id],
+                       {'mode': 'fixed', 'valeur': '250'})
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.prix_vente, Decimal('1250.00'))
+
+    def test_bulk_price_negative_floors_at_zero(self):
+        r = self._bulk('change_prix', [self.p1.id],
+                       {'mode': 'fixed', 'valeur': '-99999'})
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.prix_vente, Decimal('0.00'))
+
+    # ── prix_achat n'est JAMAIS modifié par un changement de prix de vente ──
+    def test_bulk_price_never_touches_prix_achat(self):
+        before1 = self.p1.prix_achat
+        before2 = self.p2.prix_achat
+        self._bulk('change_prix', [self.p1.id, self.p2.id],
+                   {'mode': 'percent', 'valeur': '50'})
+        self.p1.refresh_from_db()
+        self.p2.refresh_from_db()
+        self.assertEqual(self.p1.prix_achat, before1)
+        self.assertEqual(self.p2.prix_achat, before2)
+
+    # ── T8 : multi-tenant — les ids étrangers sont ignorés ──
+    def test_bulk_ignores_foreign_ids(self):
+        before = self.foreign.prix_vente
+        r = self._bulk('change_prix', [self.p1.id, self.foreign.id],
+                       {'mode': 'percent', 'valeur': '10'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['updated'], 1)  # seul p1 compté
+        self.foreign.refresh_from_db()
+        self.assertEqual(self.foreign.prix_vente, before)  # intact
+
+    def test_bulk_only_foreign_ids_rejected(self):
+        r = self._bulk('change_prix', [self.foreign.id],
+                       {'mode': 'percent', 'valeur': '10'})
+        self.assertEqual(r.status_code, 400)
+        self.foreign.refresh_from_db()
+        self.assertEqual(self.foreign.prix_vente, Decimal('500.00'))
+
+    # ── T8 : garantie ──
+    def test_bulk_set_garantie(self):
+        r = self._bulk('set_garantie', [self.p1.id, self.p2.id],
+                       {'garantie_mois': 60, 'garantie_production_mois': 300})
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.garantie_mois, 60)
+        self.assertEqual(self.p1.garantie_production_mois, 300)
+
+    # ── T8 : catégorie ──
+    def test_bulk_set_categorie(self):
+        r = self._bulk('set_categorie', [self.p1.id], {'categorie_id': self.cat.id})
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.categorie_id, self.cat.id)
+
+    def test_bulk_set_categorie_foreign_rejected(self):
+        r = self._bulk('set_categorie', [self.p1.id],
+                       {'categorie_id': self.cat_other.id})
+        self.assertEqual(r.status_code, 400)
+        self.p1.refresh_from_db()
+        self.assertIsNone(self.p1.categorie_id)
+
+    # ── T8 : marque ──
+    def test_bulk_set_marque(self):
+        r = self._bulk('set_marque', [self.p1.id, self.p2.id], {'marque': 'Huawei'})
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.p2.refresh_from_db()
+        self.assertEqual(self.p1.marque, 'Huawei')
+        self.assertEqual(self.p2.marque, 'Huawei')
+
+    # ── T8 : export .xlsx ──
+    def test_bulk_export_xlsx(self):
+        r = self._bulk('export_xlsx', [self.p1.id, self.p2.id])
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('spreadsheetml', r['Content-Type'])
+        self.assertIn('attachment', r['Content-Disposition'])
+        self.assertTrue(len(r.content) > 0)
+
+    def test_bulk_export_excludes_prix_achat(self):
+        # Le prix d'achat ne doit JAMAIS apparaître dans l'export client.
+        import io
+        import openpyxl
+        r = self._bulk('export_xlsx', [self.p1.id])
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        ws = wb.active
+        headers = [c.value for c in ws[1]]
+        self.assertNotIn('Prix achat', headers)
+        for h in headers:
+            self.assertNotIn('achat', (h or '').lower())
+            self.assertNotIn('marge', (h or '').lower())
+        # Et aucune cellule ne contient la valeur du prix d'achat.
+        values = [c.value for row in ws.iter_rows() for c in row]
+        self.assertNotIn(700.0, values)
+
+    # ── T8 : action inconnue / aucun id ──
+    def test_bulk_unknown_action(self):
+        r = self._bulk('drop_table', [self.p1.id])
+        self.assertEqual(r.status_code, 400)
+
+    def test_bulk_no_ids(self):
+        r = self._bulk('change_prix', [], {'mode': 'percent', 'valeur': '1'})
+        self.assertEqual(r.status_code, 400)
+
+    # ── T8 : audit logging ──
+    def test_bulk_creates_audit_log(self):
+        from apps.stock.models import ProduitAuditLog
+        self._bulk('change_prix', [self.p1.id], {'mode': 'percent', 'valeur': '10'})
+        log = ProduitAuditLog.objects.filter(
+            produit=self.p1, action='change_prix').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.champ, 'prix_vente')
+        self.assertEqual(log.company, self.company)
+        self.assertEqual(log.created_by, self.user)
+
+    # ── T8 : un autre tenant ne voit pas / ne touche pas mes produits ──
+    def test_bulk_cross_tenant_user_cannot_touch(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        intruder = User.objects.create_user(
+            username='intruder', password='x',
+            company=self.other, role_legacy='responsable')
+        cli = APIClient()
+        cli.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(intruder)}')
+        r = cli.post('/api/django/stock/produits/bulk/',
+                     {'action': 'change_prix', 'ids': [self.p1.id],
+                      'params': {'mode': 'percent', 'valeur': '99'}},
+                     format='json')
+        # Aucun produit de l'intrus ne correspond → 400, p1 intact.
+        self.assertEqual(r.status_code, 400)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.prix_vente, Decimal('1000.00'))
+
+    # ── T4 : édition en ligne, PATCH d'un seul champ, validé serveur ──
+    def test_inline_patch_prix_vente(self):
+        r = self.client.patch(
+            f'/api/django/stock/produits/{self.p1.id}/',
+            {'prix_vente': '1234.50'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.prix_vente, Decimal('1234.50'))
+        self.assertEqual(self.p1.prix_achat, Decimal('700.00'))  # inchangé
+
+    def test_inline_patch_quantite(self):
+        r = self.client.patch(
+            f'/api/django/stock/produits/{self.p1.id}/',
+            {'quantite_stock': 42}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.quantite_stock, 42)
+
+    def test_inline_patch_categorie(self):
+        r = self.client.patch(
+            f'/api/django/stock/produits/{self.p1.id}/',
+            {'categorie_id': self.cat.id}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.categorie_id, self.cat.id)
+
+    def test_inline_patch_invalid_prix_rejected(self):
+        r = self.client.patch(
+            f'/api/django/stock/produits/{self.p1.id}/',
+            {'prix_vente': 'pas-un-nombre'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.prix_vente, Decimal('1000.00'))
+
+    def test_inline_patch_foreign_categorie_rejected(self):
+        r = self.client.patch(
+            f'/api/django/stock/produits/{self.p1.id}/',
+            {'categorie_id': self.cat_other.id}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_inline_patch_cross_tenant_product_404(self):
+        r = self.client.patch(
+            f'/api/django/stock/produits/{self.foreign.id}/',
+            {'prix_vente': '1.00'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.foreign.refresh_from_db()
+        self.assertEqual(self.foreign.prix_vente, Decimal('500.00'))

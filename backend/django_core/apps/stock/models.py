@@ -135,6 +135,52 @@ class Produit(models.Model):
         return self.nom
 
 
+class ProduitAuditLog(models.Model):
+    """Trace légère des modifications de fiche catalogue (prix de vente,
+    garantie, catégorie, marque, quantité, export) — séparée des mouvements
+    de stock (quantités), qui restent dans MouvementStock.
+
+    N'expose JAMAIS le prix d'achat : les changements de prix ne portent que
+    sur le prix de vente (prix_vente). Aucune ligne n'enregistre prix_achat.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='produit_audit_logs',
+    )
+    produit = models.ForeignKey(
+        Produit,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='audit_logs',
+    )
+    action = models.CharField(max_length=50)
+    champ = models.CharField(max_length=50, blank=True, null=True)
+    ancienne_valeur = models.CharField(max_length=255, blank=True, null=True)
+    nouvelle_valeur = models.CharField(max_length=255, blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='produit_audit_logs',
+    )
+    date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Journal produit"
+        verbose_name_plural = "Journaux produit"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.action} | {self.champ or '-'} | {self.produit_id}"
+
+
 class MouvementStock(models.Model):
     """Entrées / Sorties / Transferts de stock avec traçabilité complète."""
 

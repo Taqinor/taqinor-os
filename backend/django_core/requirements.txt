@@ -32,6 +32,9 @@ boto3==1.35.99
 # Image handling
 Pillow==10.4.0
 
+# Spreadsheet export (catalogue bulk .xlsx export)
+openpyxl==3.1.5
+
 # HTTP client
 httpx==0.28.1
 

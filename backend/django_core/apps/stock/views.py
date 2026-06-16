@@ -1,9 +1,15 @@
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
 from django.db.models import ProtectedError, Count, Min, Max
+from django.http import HttpResponse
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Produit, Categorie, Fournisseur, MouvementStock
+from .models import (
+    Produit, Categorie, Fournisseur, MouvementStock, ProduitAuditLog,
+)
 from .serializers import (
     ProduitSerializer,
     CategorieSerializer,
@@ -41,6 +47,10 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_creer')()]
         elif self.action in WRITE_ACTIONS:
+            return [HasPermissionOrLegacy('stock_modifier')()]
+        elif self.action == 'bulk':
+            # Édition groupée (prix de vente, garantie, catégorie, marque,
+            # export) = même droit que la modification unitaire.
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
@@ -90,6 +100,214 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         produit.save(update_fields=['is_archived'])
         serializer = self.get_serializer(produit)
         return Response(serializer.data)
+
+    # ── Édition groupée du catalogue ───────────────────────────────────────
+    # Actions supportées (toutes confinées à request.user.company ; les ids
+    # hors entreprise sont silencieusement ignorés) :
+    #   - change_prix : variation du PRIX DE VENTE uniquement, en % ou montant
+    #                   fixe (jamais prix_achat, jamais marge).
+    #   - set_garantie : garantie_mois / garantie_production_mois.
+    #   - set_categorie / set_marque : ré-affectation catégorie et/ou marque.
+    #   - export_xlsx : export de la sélection en .xlsx.
+    BULK_ACTIONS = (
+        'change_prix', 'set_garantie', 'set_categorie', 'set_marque',
+        'export_xlsx',
+    )
+
+    @action(detail=False, methods=['post'], url_path='bulk')
+    def bulk(self, request, *args, **kwargs):
+        action_name = request.data.get('action')
+        ids = request.data.get('ids') or []
+        params = request.data.get('params') or {}
+
+        if action_name not in self.BULK_ACTIONS:
+            return Response(
+                {'detail': f"Action inconnue : {action_name!r}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {'detail': 'Aucun produit sélectionné.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Scope tenant : on ne touche QUE les produits de l'entreprise.
+        # get_queryset() filtre déjà par company (TenantMixin) ; les ids
+        # étrangers tombent d'eux-mêmes.
+        produits = list(self.get_queryset().filter(id__in=ids))
+
+        if action_name == 'export_xlsx':
+            return self._bulk_export_xlsx(produits)
+
+        if not produits:
+            return Response(
+                {'detail': 'Aucun produit valide dans votre entreprise.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        handlers = {
+            'change_prix': self._bulk_change_prix,
+            'set_garantie': self._bulk_set_garantie,
+            'set_categorie': self._bulk_set_categorie,
+            'set_marque': self._bulk_set_marque,
+        }
+        try:
+            with transaction.atomic():
+                updated = handlers[action_name](request, produits, params)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'updated': updated, 'detail': f'{updated} produit(s) mis à jour.'})
+
+    def _log(self, request, produit, action, champ=None, old=None, new=None, note=None):
+        ProduitAuditLog.objects.create(
+            company=produit.company,
+            produit=produit,
+            action=action,
+            champ=champ,
+            ancienne_valeur=None if old is None else str(old),
+            nouvelle_valeur=None if new is None else str(new),
+            note=note,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+
+    def _bulk_change_prix(self, request, produits, params):
+        mode = params.get('mode')   # 'percent' | 'fixed'
+        raw = params.get('valeur')
+        if mode not in ('percent', 'fixed'):
+            raise ValueError("mode doit valoir 'percent' ou 'fixed'.")
+        try:
+            valeur = Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError('valeur invalide.')
+
+        updated = 0
+        for p in produits:
+            old = p.prix_vente
+            if mode == 'percent':
+                new = (old * (Decimal('1') + valeur / Decimal('100')))
+            else:
+                new = old + valeur
+            new = new.quantize(Decimal('0.01'))
+            if new < 0:
+                new = Decimal('0.00')
+            if new == old:
+                continue
+            # prix_achat n'est JAMAIS touché ici (vente uniquement).
+            p.prix_vente = new
+            p.save(update_fields=['prix_vente'])
+            self._log(request, p, 'change_prix', champ='prix_vente', old=old, new=new,
+                      note=f'{mode} {valeur}')
+            updated += 1
+        return updated
+
+    def _bulk_set_garantie(self, request, produits, params):
+        fields = {}
+        for key in ('garantie_mois', 'garantie_production_mois'):
+            if key in params:
+                val = params[key]
+                if val in ('', None):
+                    fields[key] = None
+                else:
+                    try:
+                        ival = int(val)
+                    except (TypeError, ValueError):
+                        raise ValueError(f'{key} doit être un entier.')
+                    if ival < 0:
+                        raise ValueError(f'{key} ne peut pas être négatif.')
+                    fields[key] = ival
+        if not fields:
+            raise ValueError('Aucune garantie fournie.')
+        updated = 0
+        for p in produits:
+            changed = []
+            for key, val in fields.items():
+                if getattr(p, key) != val:
+                    old = getattr(p, key)
+                    setattr(p, key, val)
+                    changed.append((key, old, val))
+            if changed:
+                p.save(update_fields=[c[0] for c in changed])
+                for key, old, val in changed:
+                    self._log(request, p, 'set_garantie', champ=key, old=old, new=val)
+                updated += 1
+        return updated
+
+    def _bulk_set_categorie(self, request, produits, params):
+        cat_id = params.get('categorie_id')
+        if cat_id in ('', None):
+            categorie = None
+        else:
+            categorie = Categorie.objects.filter(
+                id=cat_id, company=request.user.company).first()
+            if categorie is None:
+                raise ValueError('Catégorie introuvable dans votre entreprise.')
+        updated = 0
+        for p in produits:
+            if p.categorie_id == (categorie.id if categorie else None):
+                continue
+            old = p.categorie.nom if p.categorie else None
+            p.categorie = categorie
+            p.save(update_fields=['categorie'])
+            self._log(request, p, 'set_categorie', champ='categorie', old=old,
+                      new=categorie.nom if categorie else None)
+            updated += 1
+        return updated
+
+    def _bulk_set_marque(self, request, produits, params):
+        if 'marque' not in params:
+            raise ValueError('marque manquante.')
+        marque = (params.get('marque') or '').strip() or None
+        updated = 0
+        for p in produits:
+            if (p.marque or None) == marque:
+                continue
+            old = p.marque
+            p.marque = marque
+            p.save(update_fields=['marque'])
+            self._log(request, p, 'set_marque', champ='marque', old=old, new=marque)
+            updated += 1
+        return updated
+
+    def _bulk_export_xlsx(self, produits):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Catalogue'
+        # JAMAIS de prix_achat / marge dans l'export client.
+        headers = [
+            'SKU', 'Nom', 'Marque', 'Catégorie', 'Prix vente HT', 'TVA %',
+            'Quantité', 'Seuil alerte', 'Garantie (mois)',
+            'Garantie production (mois)',
+        ]
+        ws.append(headers)
+        for p in produits:
+            ws.append([
+                p.sku or '',
+                p.nom,
+                p.marque or '',
+                p.categorie.nom if p.categorie else '',
+                float(p.prix_vente),
+                float(p.tva) if p.tva is not None else '',
+                p.quantite_stock,
+                p.seuil_alerte,
+                p.garantie_mois if p.garantie_mois is not None else '',
+                p.garantie_production_mois if p.garantie_production_mois is not None else '',
+            ])
+        from io import BytesIO
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.'
+                'spreadsheetml.sheet'
+            ),
+        )
+        resp['Content-Disposition'] = 'attachment; filename="catalogue.xlsx"'
+        return resp
 
     @action(detail=True, methods=['delete'], url_path='force-delete')
     def force_delete(self, request, *args, **kwargs):
