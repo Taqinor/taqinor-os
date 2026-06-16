@@ -222,6 +222,28 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     }
   }
 
+  const [besoin, setBesoin] = useState(null)
+  const [besoinLoading, setBesoinLoading] = useState(false)
+  const chargerBesoin = async () => {
+    setBesoinLoading(true)
+    try {
+      const r = await installationsApi.besoinMateriel(current.id)
+      setBesoin(r.data)
+    } catch {
+      setBesoin({ items: [], nb_manques: 0, error: true })
+    }
+    setBesoinLoading(false)
+  }
+  const commanderBesoin = async () => {
+    try {
+      const r = await installationsApi.commanderBesoin(current.id)
+      alert(`Bon de commande fournisseur créé : ${r.data.reference} (${r.data.nb_lignes} ligne(s)).`)
+      chargerBesoin()
+    } catch (e) {
+      alert(e?.response?.data?.detail || 'Création impossible.')
+    }
+  }
+
   const interventions = current.interventions ?? []
 
   return (
@@ -301,6 +323,49 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 Archive documentaire
               </button>
             </div>
+          </div>
+
+          {/* ── Besoin matériel vs stock (N13) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">📦 Besoin matériel</span>
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={chargerBesoin} disabled={besoinLoading}>
+                {besoinLoading ? 'Calcul…' : 'Calculer le besoin'}
+              </button>
+            </div>
+            {besoin && (
+              besoin.error ? (
+                <p className="gen-hint">Besoin indisponible (ce chantier a-t-il un devis ?).</p>
+              ) : besoin.items.length === 0 ? (
+                <p className="gen-hint">Aucune ligne produit sur le devis source.</p>
+              ) : (
+                <>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Article</th><th>Requis</th><th>Stock</th><th>Manque</th><th>Fournisseur</th></tr>
+                    </thead>
+                    <tbody>
+                      {besoin.items.map((it) => (
+                        <tr key={it.produit_id} style={it.manque > 0 ? { background: '#fef2f2' } : undefined}>
+                          <td>{it.designation}</td>
+                          <td>{it.requis}</td>
+                          <td>{it.disponible}</td>
+                          <td>{it.manque > 0 ? <strong style={{ color: '#b91c1c' }}>{it.manque}</strong> : '—'}</td>
+                          <td>{it.fournisseur_nom || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {besoin.nb_manques > 0 && (
+                    <button type="button" className="btn btn-sm btn-primary" style={{ marginTop: 8 }}
+                            onClick={commanderBesoin}>
+                      Créer un bon de commande fournisseur ({besoin.nb_manques})
+                    </button>
+                  )}
+                </>
+              )
+            )}
           </div>
 
           {/* ── Infos & édition ── */}
