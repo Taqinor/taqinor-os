@@ -50,3 +50,6 @@ logs/
 
 # transient plan-run lock (never committed)
 docs/PLAN.running
+
+# Redis local dump (test artifact)
+dump.rdb

@@ -4,6 +4,10 @@ Tasks appended here while a run was in progress (docs/PLAN.running existed). Sam
 STANDING RULES as docs/PLAN.md apply (additive only, multi-tenant, French UI,
 STAGES.py pipeline contract is never editable/altered, buy prices never client-facing).
 
+> **Resuming?** Read `docs/HANDOFF.md` first — it records the exact end-state
+> (30/102 done, partial-UI follow-ups, GATED items, and how to bring up services +
+> run the full CI locally in a fresh container).
+
 ---
 
 ## BUILD QUEUE (added 2026-06-16) — post-sale, procurement/inventory, Moroccan billing/compliance, editability, platform
