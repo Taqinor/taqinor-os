@@ -57,26 +57,122 @@ export function roofImageSize(widthSpanM: number, heightSpanM: number, maxPx = 1
   return { w: Math.max(1, Math.min(1280, Math.round((cap * w) / h))), h: cap };
 }
 
+// — Web Mercator (EPSG:3857), normalisé [0,1] sur le monde — utilisé pour CALCULER
+//   l'étendue exacte que couvre une image Static demandée par centre+zoom. Mapbox
+//   rend en Mercator ; c'est la seule projection où l'étendue d'une image
+//   centre+zoom est déterministe (donc des UV alignables au pixel près).
+export function lngToMercX(lng: number): number {
+  return (lng + 180) / 360;
+}
+export function latToMercY(lat: number): number {
+  const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  const s = Math.sin((clamped * Math.PI) / 180);
+  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+}
+export function mercXToLng(x: number): number {
+  return x * 360 - 180;
+}
+export function mercYToLat(y: number): number {
+  return (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
+}
+
+export interface RoofImageRequest {
+  /** Centre géographique demandé à l'API Static. */
+  center: [number, number];
+  /** Zoom (fractionnaire) demandé. */
+  zoom: number;
+  /** Dimensions logiques de l'image (px ; `@2x` double la densité, pas l'étendue). */
+  w: number;
+  h: number;
+  /** Étendue géographique RÉELLEMENT couverte [minLng,minLat,maxLng,maxLat]. */
+  extent: [number, number, number, number];
+}
+
 /**
- * URL Mapbox Static Images pour l'imagerie satellite Maxar d'une bbox
- * [minLng,minLat,maxLng,maxLat] (le toit tracé), aux dimensions WxH. RÉUTILISE le
+ * Requête d'image satellite DÉTERMINISTE pour un toit, par centre + zoom (et NON
+ * par `[bbox]`, dont l'endpoint Static élargit l'étendue — padding/cadrage — ce qui
+ * faisait « déborder » l'imagerie des voisins sur le toit). On choisit le zoom le
+ * plus serré qui contient la bbox du toit, puis on CALCULE l'étendue exacte que
+ * l'image couvrira : les UV peuvent alors mapper chaque sommet à sa vraie position
+ * dans l'image. Le toit étant rendu comme le POLYGONE tracé, seule l'imagerie du
+ * contour est peinte. Borne de zoom 22 (max imagerie satellite).
+ */
+export function roofImageRequest(
+  bbox: [number, number, number, number],
+  maxPx = 1024,
+  tile = 512,
+  maxZoom = 22,
+): RoofImageRequest {
+  const [minLng, minLat, maxLng, maxLat] = bbox;
+  const xMin = lngToMercX(minLng);
+  const xMax = lngToMercX(maxLng);
+  const yNorth = latToMercY(maxLat); // plus PETIT y (le nord est en haut)
+  const ySouth = latToMercY(minLat); // plus GRAND y
+  const mercW = Math.max(1e-12, xMax - xMin);
+  const mercH = Math.max(1e-12, ySouth - yNorth);
+  // Dimensions de l'image en aspect Mercator de la bbox (longue côté = maxPx).
+  const { w, h } = roofImageSize(mercW, mercH, maxPx);
+  // Zoom tel que w×h px (logiques, tuiles `tile`) contiennent la bbox ; borné.
+  const zFit = Math.log2(Math.min(w / mercW, h / mercH) / tile);
+  const zoom = Math.max(0, Math.min(maxZoom, zFit));
+  const scale = tile * Math.pow(2, zoom); // px par unité Mercator
+  const cx = (xMin + xMax) / 2;
+  const cy = (yNorth + ySouth) / 2;
+  const exMinX = cx - w / 2 / scale;
+  const exMaxX = cx + w / 2 / scale;
+  const exMinY = cy - h / 2 / scale; // vers le nord (y plus petit)
+  const exMaxY = cy + h / 2 / scale; // vers le sud (y plus grand)
+  return {
+    center: [mercXToLng(cx), mercYToLat(cy)],
+    zoom,
+    w,
+    h,
+    extent: [mercXToLng(exMinX), mercYToLat(exMaxY), mercXToLng(exMaxX), mercYToLat(exMinY)],
+  };
+}
+
+/**
+ * UV (u,v) ∈ [0,1] d'un point lng/lat dans une image satellite couvrant EXACTEMENT
+ * `extent` (étendue calculée par roofImageRequest), en Web Mercator. u suit l'est ;
+ * v suit le nord (avec THREE.Texture flipY par défaut, v=1 = nord = haut de l'image)
+ * → la photo se pose géographiquement alignée sur le toit et le calepinage.
+ */
+export function roofVertexUV(
+  lng: number,
+  lat: number,
+  extent: [number, number, number, number],
+): [number, number] {
+  const [exMinLng, exMinLat, exMaxLng, exMaxLat] = extent;
+  const x0 = lngToMercX(exMinLng);
+  const x1 = lngToMercX(exMaxLng);
+  const ySouth = latToMercY(exMinLat); // y max
+  const yNorth = latToMercY(exMaxLat); // y min
+  const u = (lngToMercX(lng) - x0) / Math.max(1e-12, x1 - x0);
+  const v = (ySouth - latToMercY(lat)) / Math.max(1e-12, ySouth - yNorth);
+  return [u, v];
+}
+
+/**
+ * URL Mapbox Static Images pour l'imagerie satellite Maxar centrée (centre+zoom →
+ * étendue déterministe, cf. roofImageRequest), aux dimensions WxH. RÉUTILISE le
  * MÊME token public Mapbox que les tuiles de la carte (aucune nouvelle dépendance,
  * même fournisseur/imagerie). `@2x` = sortie haute densité ; logo/attribution
  * retirés de l'image (l'attribution Mapbox/Maxar reste visible sur la carte). La
- * netteté plafonne à celle de l'imagerie (~0,3–0,6 m sur Casablanca) — assez pour
- * repérer la plupart des édicules de toiture, pas une ortho aérienne.
+ * netteté plafonne à celle de l'imagerie (~0,3–0,6 m sur Casablanca).
  */
 export function mapboxStaticRoofImageUrl(
   token: string,
-  bbox: [number, number, number, number],
+  center: [number, number],
+  zoom: number,
   w: number,
   h: number,
 ): string {
-  const [minLng, minLat, maxLng, maxLat] = bbox;
-  const b = `[${minLng},${minLat},${maxLng},${maxLat}]`;
+  const [lng, lat] = center;
+  const z = Math.max(0, Math.min(22, zoom));
   const W = Math.max(1, Math.min(1280, Math.round(w)));
   const H = Math.max(1, Math.min(1280, Math.round(h)));
-  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${b}/${W}x${H}@2x?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
+  const pos = `${lng},${lat},${z.toFixed(4)},0`;
+  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${pos}/${W}x${H}@2x?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
 }
 
 /**
