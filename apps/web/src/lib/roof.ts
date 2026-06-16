@@ -62,6 +62,35 @@ export function roofAreaLabel(ring: LngLat[]): string | null {
   return `~${new Intl.NumberFormat('fr-FR').format(Math.round(area))} m²`;
 }
 
+/** Boîte englobante (lng/lat) d'un anneau : [minLng, minLat, maxLng, maxLat]. */
+export function ringBBox(ring: LngLat[]): [number, number, number, number] {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of ring) {
+    if (lng < minLng) minLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lng > maxLng) maxLng = lng;
+    if (lat > maxLat) maxLat = lat;
+  }
+  return [minLng, minLat, maxLng, maxLat];
+}
+
+/**
+ * Coordonnée de texture (u, v) ∈ [0,1] d'un point lng/lat dans une image satellite
+ * couvrant EXACTEMENT la bbox [minLng,minLat,maxLng,maxLat]. u suit la longitude
+ * (ouest→est), v suit la latitude (sud→nord). Avec une THREE.Texture (flipY par
+ * défaut), la première ligne de l'image (nord = maxLat) tombe à v=1 : l'image se
+ * pose donc géographiquement alignée sur le toit (un climatiseur visible reste
+ * sous l'emplacement où l'utilisateur posera sa boîte d'obstacle). */
+export function lngLatToUV(lng: number, lat: number, bbox: [number, number, number, number]): [number, number] {
+  const [minLng, minLat, maxLng, maxLat] = bbox;
+  const u = (lng - minLng) / Math.max(1e-12, maxLng - minLng);
+  const v = (lat - minLat) / Math.max(1e-12, maxLat - minLat);
+  return [u, v];
+}
+
 /** Appartenance par lancer de rayon (anneau en coordonnées planes quelconques). */
 export function pointInPolygon(pt: [number, number], ring: [number, number][]): boolean {
   const [x, y] = pt;

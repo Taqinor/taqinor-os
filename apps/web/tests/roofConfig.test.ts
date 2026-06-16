@@ -6,7 +6,7 @@
 // available:false → repli affiché alors que la clé existait. Le helper doit
 // accepter l'une OU l'autre source ; le repli ne reste QUE si aucune n'a de clé.
 import { describe, expect, it } from 'vitest';
-import { resolveMaptilerKey, resolveMapboxToken, buildSatelliteStyle } from '../src/lib/roofConfig';
+import { resolveMaptilerKey, resolveMapboxToken, buildSatelliteStyle, roofImageSize, mapboxStaticRoofImageUrl } from '../src/lib/roofConfig';
 
 describe('resolveMaptilerKey — clé runtime OU build, repli seulement si aucune', () => {
   it('aucune source → chaîne vide (repli gracieux légitime)', () => {
@@ -91,5 +91,46 @@ describe('buildSatelliteStyle — Mapbox si token, repli MapTiler sinon', () => 
       expect(style as string).toContain('api.maptiler.com/maps/hybrid/style.json');
       expect(style as string).toContain('key=MK_KEY');
     }
+  });
+});
+
+describe('roofImageSize — aspect géographique préservé (alignement exact)', () => {
+  it('toit large (E-O) : plus grand côté = maxPx, hauteur au ratio', () => {
+    const s = roofImageSize(40, 20, 1024);
+    expect(s.w).toBe(1024);
+    expect(s.h).toBe(512);
+  });
+  it('toit haut (N-S) : hauteur = maxPx', () => {
+    const s = roofImageSize(10, 30, 900);
+    expect(s.h).toBe(900);
+    expect(s.w).toBe(300);
+  });
+  it('carré → carré', () => {
+    const s = roofImageSize(15, 15, 600);
+    expect(s.w).toBe(600);
+    expect(s.h).toBe(600);
+  });
+  it('borne Mapbox : jamais > 1280, jamais < 1', () => {
+    const big = roofImageSize(1000, 10, 5000);
+    expect(big.w).toBeLessThanOrEqual(1280);
+    expect(big.h).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('mapboxStaticRoofImageUrl — image satellite alignée sur la bbox du toit', () => {
+  const url = mapboxStaticRoofImageUrl('TOK EN', [-7.62, 33.58, -7.61, 33.59], 800, 400);
+  it('cible l’endpoint satellite Static avec la bbox exacte', () => {
+    expect(url).toContain('api.mapbox.com/styles/v1/mapbox/satellite-v9/static/');
+    expect(url).toContain('[-7.62,33.58,-7.61,33.59]');
+    expect(url).toContain('/800x400@2x');
+  });
+  it('réutilise le token (encodé) et retire logo/attribution de l’image', () => {
+    expect(url).toContain('access_token=TOK%20EN');
+    expect(url).toContain('logo=false');
+    expect(url).toContain('attribution=false');
+  });
+  it('borne les dimensions hors plage', () => {
+    const u = mapboxStaticRoofImageUrl('t', [0, 0, 1, 1], 99999, 0);
+    expect(u).toContain('/1280x1@2x');
   });
 });

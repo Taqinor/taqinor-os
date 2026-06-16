@@ -10,6 +10,8 @@ import {
   SETBACK_M,
   geodesicAreaM2,
   roofAreaLabel,
+  ringBBox,
+  lngLatToUV,
   pointInPolygon,
   orientationToAspect,
   kwcFromPanelCount,
@@ -88,6 +90,37 @@ describe('roofAreaLabel — readout « surface du toit » à l’écran', () => 
     expect(roofAreaLabel([])).toBeNull();
     expect(roofAreaLabel([[-7.6, 33.57]])).toBeNull();
     expect(roofAreaLabel([[-7.6, 33.57], [-7.5, 33.57]])).toBeNull();
+  });
+});
+
+describe('ringBBox + lngLatToUV — alignement géographique de la texture satellite', () => {
+  const ring: LngLat[] = [
+    [-7.62, 33.58],
+    [-7.60, 33.58],
+    [-7.60, 33.59],
+    [-7.62, 33.59],
+  ];
+  it('bbox = min/max lng/lat du tracé', () => {
+    expect(ringBBox(ring)).toEqual([-7.62, 33.58, -7.60, 33.59]);
+  });
+  it('coin sud-ouest → (0,0), coin nord-est → (1,1)', () => {
+    const bbox = ringBBox(ring);
+    expect(lngLatToUV(-7.62, 33.58, bbox)).toEqual([0, 0]);
+    expect(lngLatToUV(-7.60, 33.59, bbox)).toEqual([1, 1]);
+  });
+  it('le centre tombe au milieu de la texture', () => {
+    const bbox = ringBBox(ring);
+    const [u, v] = lngLatToUV(-7.61, 33.585, bbox);
+    expect(u).toBeCloseTo(0.5, 6);
+    expect(v).toBeCloseTo(0.5, 6);
+  });
+  it('le nord (lat haute) tombe en haut de l’image (v→1, flipY THREE)', () => {
+    const bbox = ringBBox(ring);
+    const [, vNorth] = lngLatToUV(-7.61, 33.59, bbox);
+    const [, vSouth] = lngLatToUV(-7.61, 33.58, bbox);
+    expect(vNorth).toBeGreaterThan(vSouth);
+    expect(vNorth).toBe(1);
+    expect(vSouth).toBe(0);
   });
 });
 

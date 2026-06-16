@@ -11,6 +11,7 @@ import {
   billToAnnualKwh,
   packConfig,
   recommend,
+  neededPanelsForTarget,
   annualSavingsMad,
   productionKwh,
   billMAD,
@@ -532,5 +533,95 @@ describe('FIX — productionKwh Est-Ouest = moitié Est + moitié Ouest (inchang
     const south = productionKwh(33.59, 'south', 29, kwc);
     expect(ew).toBeGreaterThan(0);
     expect(south).toBeGreaterThan(ew); // sud optimal rend plus par kWc
+  });
+});
+
+describe('neededPanelsForTarget — plafond « besoin » dicté par la facture', () => {
+  it('0 / cible nulle → 0 panneau', () => {
+    expect(neededPanelsForTarget(0, 33.59)).toBe(0);
+    expect(neededPanelsForTarget(-5, 33.59)).toBe(0);
+  });
+
+  it('couvre la cible + ~10 % au rendement sud optimal (panneaux entiers)', () => {
+    // Cible modeste : doit donner quelques panneaux, jamais 0.
+    const n = neededPanelsForTarget(6000, 33.59);
+    expect(n).toBeGreaterThanOrEqual(4);
+    expect(n).toBeLessThanOrEqual(8);
+  });
+
+  it('croît avec la facture (besoin monotone)', () => {
+    const small = neededPanelsForTarget(4000, 33.59);
+    const big = neededPanelsForTarget(12000, 33.59);
+    expect(big).toBeGreaterThan(small);
+  });
+
+  it('indépendant du toit : même besoin quel que soit le tracé (c’est un plafond énergie)', () => {
+    // La fonction ne prend pas le tracé : deux appels identiques → même besoin.
+    expect(neededPanelsForTarget(9000, 33.59)).toBe(neededPanelsForTarget(9000, 33.59));
+  });
+
+  it('égale le compte recommandé quand le sud optimal couvre sur un grand toit', () => {
+    // Grand toit (40 m) + facture modérée : le sud optimal couvre → la reco se
+    // dimensionne au besoin, qui doit égaler neededPanelsForTarget(cible).
+    const rec = recommend(squareRing(40), 33.59, 600);
+    const need = neededPanelsForTarget(rec.targetAnnualKwh, 33.59);
+    expect(rec.recommended.count).toBe(need);
+  });
+});
+
+describe('Change A — le plafond « besoin » composé avec le calepinage (posés = min(besoin, tient))', () => {
+  // Reproduit EXACTEMENT la règle de l'écran : panneaux posés = min(besoin, ce que
+  // la config fait tenir après retrait/obstacles). Jamais au-dessus du besoin.
+  const placed = (need: number, ring: LngLat[], family: 'south' | 'eastwest', tilt: number, obstructions: LngLat[][] = []) => {
+    const pack = packConfig(ring, 33.59, { family, tiltDeg: tilt, obstructions });
+    return Math.min(need, pack.best.count);
+  };
+
+  it('jamais au-dessus du besoin, et IDENTIQUE en sud et en Est-Ouest sur un grand toit', () => {
+    const ring = squareRing(40); // grand toit : les deux configs tiennent bien plus que le besoin
+    const need = neededPanelsForTarget(recommend(ring, 33.59, 600).targetAnnualKwh, 33.59);
+    const south = placed(need, ring, 'south', 29);
+    const ew = placed(need, ring, 'eastwest', 10);
+    expect(south).toBeLessThanOrEqual(need);
+    expect(ew).toBeLessThanOrEqual(need);
+    // Anti-instabilité : basculer sud↔Est-Ouest ne change PAS le nombre posé.
+    expect(south).toBe(need);
+    expect(ew).toBe(need);
+  });
+
+  it('un toit trop petit pose le maximum qui tient (< besoin), honnêtement', () => {
+    const ring = squareRing(7); // petit toit
+    const bigNeed = neededPanelsForTarget(50000, 33.59); // besoin volontairement énorme
+    const southFit = packConfig(ring, 33.59, { family: 'south', tiltDeg: 29 }).best.count;
+    const p = placed(bigNeed, ring, 'south', 29);
+    expect(bigNeed).toBeGreaterThan(southFit); // le besoin dépasse ce qui tient
+    expect(p).toBe(southFit); // donc on pose le max-fit
+    expect(p).toBeLessThan(bigNeed); // sous le besoin, assumé
+  });
+
+  it('les obstacles composent avec le plafond : posés = min(besoin, tient-après-obstacles) ≤ sans obstacle', () => {
+    const ring = squareRing(12);
+    const need = neededPanelsForTarget(40000, 33.59); // besoin élevé → toit limitant
+    // Obstacle ~6 m centré sur le toit (assez gros pour retirer des panneaux).
+    const d = 3 / 111320;
+    const obstruction: LngLat[] = [
+      [-7.62 - d, 33.59 - d],
+      [-7.62 + d, 33.59 - d],
+      [-7.62 + d, 33.59 + d],
+      [-7.62 - d, 33.59 + d],
+    ];
+    const without = placed(need, ring, 'south', 29);
+    const withObs = placed(need, ring, 'south', 29, [obstruction]);
+    expect(withObs).toBeLessThanOrEqual(without);
+    expect(withObs).toBeLessThan(without); // l'obstacle retire bien des panneaux
+    expect(withObs).toBeLessThanOrEqual(need);
+  });
+
+  it('changer le besoin re-plafonne : un besoin plus petit pose moins, un plus grand jusqu’à ce qui tient', () => {
+    const ring = squareRing(40);
+    const fit = packConfig(ring, 33.59, { family: 'south', tiltDeg: 29 }).best.count;
+    expect(Math.min(5, fit)).toBe(5); // besoin 5 → 5 posés (le toit tient bien plus)
+    expect(Math.min(8, fit)).toBe(8); // besoin 8 → 8 posés
+    expect(Math.min(fit + 100, fit)).toBe(fit); // besoin > capacité → on plafonne au toit
   });
 });
