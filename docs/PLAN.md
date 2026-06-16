@@ -164,7 +164,7 @@ Astro marketing site under `apps/web`.
 **Acceptance:** installs on Android Chrome and iPhone Safari; launches full-screen; a new deploy is
 picked up automatically.
 
-### T3 — Bulk actions on leads — [ ]
+### T3 — Bulk actions on leads — [x]
 Multi-select leads in **both** the list and the kanban (checkboxes), with a selection toolbar
 showing the count. Bulk actions: reassign responsable; add a tag; remove a tag; change stage
 (respect the no-going-backwards funnel rule, never auto-move a Perdu lead, reactivate Froid — same
@@ -173,13 +173,13 @@ admin-only delete (confirmed dialog, blocked with a clear French message if it w
 quotes/invoices, logged); export selection to .xlsx. Every change writes a per-lead Historique entry
 marked « en masse ».
 
-### T4 — Inline list editing (Odoo-style edit-in-place) — [ ]
+### T4 — Inline list editing (Odoo-style edit-in-place) — [x]
 Edit a field without opening the record: on the **leads list** — stage, responsable, relance date,
 priorité, tags; on the **products list** — sell price, quantity, category. Each edit saves just that
 field, validates server-side, logs to Historique where applicable. Skip any field risky to edit
 inline and note it.
 
-### T5 — Global search + in-app notifications — [ ]
+### T5 — Global search + in-app notifications — [x]
 - A single **global search box** in the top bar across leads, clients, quotes, invoices, chantiers,
   equipements, SAV tickets; results grouped by type; click to open.
 - An **in-app notification bell** (no email): overdue activities, warranties expiring within 90 days,
@@ -196,7 +196,7 @@ Tags and motifs de perte are already editable — leave them. Add:
 - Audit hard-coded **ROI constants** (ONEE tariff assumptions, irradiance/ensoleillement) and surface
   them as editable settings. Defaults must equal today's exact values.
 
-### T7 — Quote expiry (on-the-fly) + pipeline-value dashboard — [ ]
+### T7 — Quote expiry (on-the-fly) + pipeline-value dashboard — [x]
 - **Expiry:** a quote shows « Expiré » when today is past its validity date (creation + the
   "validité du devis" setting). **Compute on the fly at read/display time — no scheduler, cron, or
   background job, no daily command.** Never move the lead backward; just reflect it visually and in
@@ -204,7 +204,7 @@ Tags and motifs de perte are already editable — leave them. Add:
 - **Pipeline-value dashboard:** total MAD by stage, a simple weighted forecast, count + value of
   quotes by status, win/loss by motif de perte. Read-only; respects the shared filter bar.
 
-### T8 — Bulk product / catalogue editing — [ ]
+### T8 — Bulk product / catalogue editing — [x]
 Multi-select products → bulk: change sell price (% or fixed — sell price only, never alter
 buy-price-visibility rules), set warranty (`garantie_mois` / `garantie_production_mois`), reassign
 category and/or brand, export selection to .xlsx. Logged.
@@ -217,7 +217,7 @@ category and/or brand, export selection to .xlsx. Logged.
 - An **"Exporter Excel" (.xlsx)** button on every list view (leads, clients, quotes, invoices,
   products, chantiers, equipements, SAV tickets) that respects current filters.
 
-### T10 — Quote revisions / versioning — [ ]
+### T10 — Quote revisions / versioning — [x]
 Let a sent quote be **revised into a new version** (v2, v3…) that keeps the prior versions readable,
 without breaking the lead↔devis links or the numbering scheme. The active/latest version is clearly
 marked; superseded versions are read-only with a "remplacé par" link. Additive only.
@@ -229,30 +229,30 @@ choice, boolean), make it appear on the form and optionally in lists/filters, hi
 and restore-to-default. Scope question on creation ("appliquer à tous ?"). Additive; if it would need
 a destructive migration, `[BLOCKED]`. If `docs/erp-data-model-proposal.md` exists, use it as input.
 
-### T12 — Accountant export: journal des ventes + TVA summary — [ ]
+### T12 — Accountant export: journal des ventes + TVA summary — [x]
 A periodable (month/quarter) **.xlsx export for the comptable**: all issued invoices with their
 per-line TVA, plus a **TVA summary split 10% / 20%** reconciled to the centime, and totals HT/TVA/TTC.
 Read-only; openpyxl. (This is also direct groundwork for the DGI e-invoicing mandate — see GATED.)
 
-### T13 — Reports hub: sales reports — [ ]
+### T13 — Reports hub: sales reports — [x]
 A **"Rapports"** section. Start with **sales/pipeline**: leads & conversion by stage (funnel),
 quotes by status and value, sales by responsable / by canal / by period, win-loss by motif de perte.
 Read-only, respects filters, each report exportable to .xlsx.
 
-### T14 — Reports hub: stock reports — [ ]
+### T14 — Reports hub: stock reports — [x]
 Add to "Rapports": **stock valuation** (sell + buy, buy kept internal/non-client-facing), movement
 history report, low-stock list, by category/brand. Exportable to .xlsx.
 
-### T15 — Reports hub: service reports (chantier + SAV) — [ ]
+### T15 — Reports hub: service reports (chantier + SAV) — [x]
 Add to "Rapports": chantier planning load + completion timing, technician activity, SAV open vs
 resolved + resolution time, equipment warranties expiring. Exportable to .xlsx.
 
-### T16 — Recurring maintenance contracts — [ ]
+### T16 — Recurring maintenance contracts — [x]
 A `ContratMaintenance` model (additive) attached to a chantier/client: a preventive-visit
 subscription on a schedule that **generates SAV tickets when a visit is due, computed on the fly /
 at read time (consistent with T7 — no scheduler)**; a list view and an "à venir" view.
 
-### T17 — (optional, lower priority) Discount approval guard — [ ]
+### T17 — (optional, lower priority) Discount approval guard — [x]
 When a quote discount exceeds a configurable threshold, require an admin/owner approval before the
 quote can be marked « envoyé » (protects margin once Meryem works quotes solo). Configurable in
 Paramètres; default threshold = off so nothing changes until Reda sets it.
@@ -323,3 +323,15 @@ Tracked here so they aren't lost:
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
 - 2026-06-16 — T1 verified already present: the lead devis preview fetches the PDF authenticated via /proposal as a blob and renders it page-by-page with PDF.js on canvas (unblockable), with distinct FR server-error vs network-fallback states; download/new-tab reuse the same blob; Vite content-hashes build output for cache-busting. Covered by previewPdf.test.mjs + crm.tests_devis_preview; full CI green.
 - 2026-06-16 — T2 verified already present: installable PWA via vite-plugin-pwa (manifest standalone/scope/lang/theme + 192/512/maskable/apple-touch icons), iOS head tags, custom sw.js (skipWaiting+clientsClaim, branded offline.html, API never cached), autoUpdate + FR install helper (PwaPrompts).
+- 2026-06-16 — T3 done: bulk actions on leads (list + kanban checkboxes, selection toolbar) — reassign/tag add-remove/change stage (funnel-safe, Perdu never moved)/relance set-clear/flag-unflag Perdu/archive/admin-only delete (blocked if it orphans devis-factures)/.xlsx export; each writes a « en masse » Historique entry. Company-scoped.
+- 2026-06-16 — T4 done: inline list editing — leads list (stage, responsable, relance, priorité, tags) and products list (prix de vente, quantité, catégorie); each edit PATCHes one field, validated + logged server-side. prix_achat never inline.
+- 2026-06-16 — T5 done: global search box (leads/clients/devis/factures/chantiers/équipements/SAV, company-scoped, grouped) + in-app notification bell (overdue activities, garanties ≤90 j, factures impayées) wired into the top bar; no email.
+- 2026-06-16 — T7 done: quote « Expiré » computed on the fly at read time (création + validité), badge + filter, no scheduler; pipeline-value dashboard (MAD par étape, prévision pondérée, devis par statut, gagné/perdu par motif) under Analyse → Valeur du pipeline.
+- 2026-06-16 — T8 done: bulk product/catalogue editing (prix de vente % ou fixe — jamais le prix d'achat, garanties, catégorie/marque, export .xlsx), logged; selection toolbar on the products list.
+- 2026-06-16 — T10 done: quote revisions/versioning — « Réviser » clones a devis into v(n+1) (fresh reference via references util), links revision_de + « remplacé par », preserves lead+client; superseded versions stay readable.
+- 2026-06-16 — T12 done: comptable export — journal des ventes (.xlsx, mois/trimestre) with per-line TVA + a TVA 10/20 récap reconciled to the centime + HT/TVA/TTC totals.
+- 2026-06-16 — T13 done: Rapports → ventes (funnel par étape, devis par statut/valeur, CA par responsable/canal/période, gagné-perdu par motif), each exportable .xlsx.
+- 2026-06-16 — T14 done: Rapports → stock (valorisation vente + achat interne, historique mouvements, stock faible, par catégorie/marque) exportable .xlsx; buy value internal-only.
+- 2026-06-16 — T15 done: Rapports → service (charge & délais chantiers, activité techniciens, SAV ouverts/résolus + délai, garanties expirant) exportable .xlsx.
+- 2026-06-16 — T16 done: contrats de maintenance récurrents (sav app, additif) attachés au chantier/client; échéances calculées à la volée à la lecture (aucun scheduler) et génèrent des tickets SAV à l'échéance (idempotent); vues « Contrats » + « Maintenance à venir ».
+- 2026-06-16 — T17 done: garde d'approbation de remise — seuil configurable (Paramètres → Devis, désactivé par défaut); au passage en « envoyé », une remise au-dessus du seuil exige l'approbation d'un admin/responsable, sinon blocage FR.
