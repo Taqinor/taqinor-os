@@ -10,8 +10,7 @@ from django.utils import timezone
 
 from . import activity
 from .models import (
-    Installation, Intervention, TypeIntervention,
-    ChecklistEtapeModele, ChantierChecklistItem,
+    Installation, Intervention, TypeIntervention, ChecklistEtapeModele,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
