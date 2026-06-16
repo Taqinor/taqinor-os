@@ -187,6 +187,10 @@ class FactureSerializer(serializers.ModelSerializer):
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
     jours_retard = serializers.IntegerField(read_only=True)
+    # Conformité Article 145 CGI (N11) : mentions légales manquantes — pur
+    # AVERTISSEMENT, ne bloque jamais l'émission.
+    mentions_manquantes = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
 
     def get_tva_par_taux(self, obj):
         return [
