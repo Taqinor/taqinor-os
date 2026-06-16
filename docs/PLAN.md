@@ -222,7 +222,7 @@ Let a sent quote be **revised into a new version** (v2, v3…) that keeps the pr
 without breaking the lead↔devis links or the numbering scheme. The active/latest version is clearly
 marked; superseded versions are read-only with a "remplacé par" link. Additive only.
 
-### T11 — User-defined custom fields — [ ]
+### T11 — User-defined custom fields — [x]
 Build the **mechanism** (not the specific fields — those are Reda's choice). Let an admin add a custom
 field to a module (start with leads, then clients/products), choose its type (text, number, date,
 choice, boolean), make it appear on the form and optionally in lists/filters, hide standard fields,
@@ -336,3 +336,4 @@ Tracked here so they aren't lost:
 - 2026-06-16 — T16 done: contrats de maintenance récurrents (sav app, additif) attachés au chantier/client; échéances calculées à la volée à la lecture (aucun scheduler) et génèrent des tickets SAV à l'échéance (idempotent); vues « Contrats » + « Maintenance à venir ».
 - 2026-06-16 — T17 done: garde d'approbation de remise — seuil configurable (Paramètres → Devis, désactivé par défaut); au passage en « envoyé », une remise au-dessus du seuil exige l'approbation d'un admin/responsable, sinon blocage FR.
 - 2026-06-16 — T6 done: settings unlocked safely — Canaux/Sources de lead éditables (CanalSource, site_web protégé contre renommage/suppression, suppression bloquée si utilisé, backfill), Types d'intervention éditables (mêmes garde-fous), Marque promue en modèle (FK marque_ref additif + colonne texte conservée, backfill, select free-add), constantes ROI éditables (CompanyProfile.roi_constants, défauts = valeurs actuelles de solar.js). Additif uniquement.
+- 2026-06-16 — T11 done: mécanisme de champs personnalisés (app customfields) — un admin définit des champs (texte/nombre/date/choix/booléen) par module (lead/client/produit) depuis Paramètres, rendus dynamiquement sur les formulaires, valeurs stockées dans un JSONField custom_fields additif (pas de changement de schéma cœur), validés serveur par type/obligatoire/choix; masquage de champs standard + restauration; portée « appliquer à tous ? » à la création.
