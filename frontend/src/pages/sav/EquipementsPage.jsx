@@ -13,6 +13,7 @@ import {
   garantieLabel,
   garantieColor,
 } from '../../features/sav/equipement'
+import ExportButton from '../../components/ExportButton'
 
 const formatDateFR = (iso) => {
   if (!iso) return '—'
@@ -176,8 +177,21 @@ export default function EquipementsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Parc d'équipements</h1>
-        <div className="page-subtitle">{rows.length} équipement(s)</div>
+        <div>
+          <h1 className="page-title">Parc d'équipements</h1>
+          <div className="page-subtitle">{rows.length} équipement(s)</div>
+        </div>
+        <ExportButton
+          fetcher={savApi.exportEquipements}
+          params={{
+            ...(filters.q?.trim() ? { search: filters.q.trim() } : {}),
+            ...(filters.produit ? { produit: filters.produit } : {}),
+            ...(filters.marque ? { marque: filters.marque } : {}),
+            ...(filters.garantie ? { garantie: filters.garantie } : {}),
+            ...(filters.statut ? { statut: filters.statut } : {}),
+          }}
+          filename="equipements.xlsx"
+        />
       </div>
 
       {/* ── Filtres ── */}

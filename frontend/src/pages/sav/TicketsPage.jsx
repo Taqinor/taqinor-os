@@ -20,6 +20,7 @@ import {
   statusLabel,
   statusColor,
 } from '../../features/sav/ticketStatuses'
+import ExportButton from '../../components/ExportButton'
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -444,8 +445,21 @@ export default function TicketsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Tickets SAV</h1>
-        <div className="page-subtitle">{rows.length} ticket(s)</div>
+        <div>
+          <h1 className="page-title">Tickets SAV</h1>
+          <div className="page-subtitle">{rows.length} ticket(s)</div>
+        </div>
+        <ExportButton
+          fetcher={savApi.exportTickets}
+          params={{
+            ...(filters.q?.trim() ? { search: filters.q.trim() } : {}),
+            ...(filters.statut ? { statut: filters.statut } : {}),
+            ...(filters.type ? { type: filters.type } : {}),
+            ...(filters.priorite ? { priorite: filters.priorite } : {}),
+            ...(filters.ouvert === 'tous' ? { ouvert: 'tous' } : {}),
+          }}
+          filename="tickets-sav.xlsx"
+        />
       </div>
 
       <div className="filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>

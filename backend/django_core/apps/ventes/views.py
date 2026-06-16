@@ -27,6 +27,7 @@ from authentication.permissions import (
 )
 from .utils.references import create_with_reference
 from .utils.company_settings import doc_prefix
+from apps.imports.exports import XlsxExportMixin
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -41,10 +42,37 @@ def _company_qs(qs, user):
     return qs.none()
 
 
-class DevisViewSet(viewsets.ModelViewSet):
+class DevisViewSet(XlsxExportMixin, viewsets.ModelViewSet):
     queryset = Devis.objects.select_related(
         'client', 'created_by'
     ).prefetch_related('lignes').all()
+
+    # Export .xlsx (respecte le filtre ?expire courant). Aucune donnée d'achat.
+    export_filename = 'devis.xlsx'
+    export_sheet_title = 'Devis'
+    export_columns = [
+        ('reference', 'Référence'), ('client', 'Client'),
+        ('statut', 'Statut'), ('mode_installation', 'Mode'),
+        ('total_ht', 'Total HT'), ('total_tva', 'TVA'),
+        ('total_ttc', 'Total TTC'), ('remise_globale', 'Remise %'),
+        ('date_creation', 'Créé le'), ('date_validite', 'Validité'),
+    ]
+
+    def get_export_row(self, obj):
+        return {
+            'reference': obj.reference,
+            'client': str(obj.client) if obj.client else '',
+            'statut': obj.get_statut_display(),
+            'mode_installation': obj.get_mode_installation_display(),
+            'total_ht': float(obj.total_ht),
+            'total_tva': float(obj.total_tva),
+            'total_ttc': float(obj.total_ttc),
+            'remise_globale': (float(obj.remise_globale)
+                               if obj.remise_globale is not None else ''),
+            'date_creation': (obj.date_creation.strftime('%Y-%m-%d')
+                              if obj.date_creation else ''),
+            'date_validite': str(obj.date_validite) if obj.date_validite else '',
+        }
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
@@ -64,7 +92,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['export']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
@@ -564,7 +592,7 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         )
 
 
-class FactureViewSet(viewsets.ModelViewSet):
+class FactureViewSet(XlsxExportMixin, viewsets.ModelViewSet):
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande'
     ).prefetch_related('lignes').all()
@@ -577,6 +605,31 @@ class FactureViewSet(viewsets.ModelViewSet):
     ]
     ordering = ['-date_emission']
 
+    # Export .xlsx (respecte recherche/tri courants). Aucune donnée d'achat.
+    export_filename = 'factures.xlsx'
+    export_sheet_title = 'Factures'
+    export_columns = [
+        ('reference', 'Référence'), ('client', 'Client'),
+        ('type_facture', 'Type'), ('statut', 'Statut'),
+        ('total_ht', 'Total HT'), ('total_ttc', 'Total TTC'),
+        ('montant_paye', 'Payé'), ('montant_du', 'Reste dû'),
+        ('date_emission', 'Émise le'), ('date_echeance', 'Échéance'),
+    ]
+
+    def get_export_row(self, obj):
+        return {
+            'reference': obj.reference,
+            'client': str(obj.client) if obj.client else '',
+            'type_facture': obj.get_type_facture_display(),
+            'statut': obj.get_statut_display(),
+            'total_ht': float(obj.total_ht),
+            'total_ttc': float(obj.total_ttc),
+            'montant_paye': float(obj.montant_paye),
+            'montant_du': float(obj.montant_du),
+            'date_emission': str(obj.date_emission) if obj.date_emission else '',
+            'date_echeance': str(obj.date_echeance) if obj.date_echeance else '',
+        }
+
     def get_queryset(self):
         return _company_qs(super().get_queryset(), self.request.user)
 
@@ -586,7 +639,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['paiements', 'relances']:
+        if self.action in READ_ACTIONS + ['paiements', 'relances', 'export']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',

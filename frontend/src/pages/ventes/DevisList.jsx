@@ -9,6 +9,7 @@ import {
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import { filterDevisByExpiry } from '../../features/ventes/devisFilters'
+import ExportButton from '../../components/ExportButton'
 import DevisForm from './DevisForm'
 
 const STATUT_META = {
@@ -230,7 +231,15 @@ export default function DevisList() {
     <div className="page">
       <div className="page-header">
         <h2>Devis</h2>
-        <button className="btn btn-primary" onClick={openNew}>+ Nouveau devis</button>
+        <div className="page-header-actions">
+          <ExportButton
+            fetcher={ventesApi.exportDevis}
+            params={expireFilter === 'expire' ? { expire: 'true' }
+              : expireFilter === 'valide' ? { expire: 'false' } : {}}
+            filename="devis.xlsx"
+          />
+          <button className="btn btn-primary" onClick={openNew}>+ Nouveau devis</button>
+        </div>
       </div>
 
       {/* T7a — filtre d'expiration (visuel) */}

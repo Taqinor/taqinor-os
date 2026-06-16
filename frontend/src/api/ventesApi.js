@@ -3,6 +3,9 @@ import api from './axios'
 const ventesApi = {
   // Devis
   getDevis: (params) => api.get('/ventes/devis/', { params }),
+  // Export .xlsx (respecte les filtres courants). Réponse blob.
+  exportDevis: (params = {}) =>
+    api.get('/ventes/devis/export/', { params, responseType: 'blob' }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
@@ -42,6 +45,9 @@ const ventesApi = {
 
   // Factures
   getFactures: (params) => api.get('/ventes/factures/', { params }),
+  // Export .xlsx (respecte les filtres courants). Réponse blob.
+  exportFactures: (params = {}) =>
+    api.get('/ventes/factures/export/', { params, responseType: 'blob' }),
   getFacture: (id) => api.get(`/ventes/factures/${id}/`),
   createFacture: (data) => api.post('/ventes/factures/', data),
   updateFacture: (id, data) => api.put(`/ventes/factures/${id}/`, data),

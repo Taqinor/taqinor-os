@@ -7,6 +7,7 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
+from apps.imports.exports import XlsxExportMixin
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, ProduitAuditLog, Marque,
 )
@@ -27,7 +28,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProduitViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     queryset = Produit.objects.select_related(
         'categorie', 'fournisseur'
     ).all()
@@ -38,6 +39,33 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         'nom', 'quantite_stock', 'prix_vente', 'date_creation'
     ]
     ordering = ['nom']
+
+    # Export .xlsx au niveau liste (respecte recherche/tri/filtres courants).
+    # JAMAIS de prix_achat / marge. Mêmes colonnes que l'export « en masse ».
+    export_filename = 'catalogue.xlsx'
+    export_sheet_title = 'Catalogue'
+    export_columns = [
+        ('sku', 'SKU'), ('nom', 'Nom'), ('marque', 'Marque'),
+        ('categorie', 'Catégorie'), ('prix_vente', 'Prix vente HT'),
+        ('tva', 'TVA %'), ('quantite_stock', 'Quantité'),
+        ('seuil_alerte', 'Seuil alerte'), ('garantie_mois', 'Garantie (mois)'),
+        ('garantie_production_mois', 'Garantie production (mois)'),
+    ]
+
+    def get_export_row(self, obj):
+        return {
+            'sku': obj.sku or '', 'nom': obj.nom, 'marque': obj.marque or '',
+            'categorie': obj.categorie.nom if obj.categorie else '',
+            'prix_vente': float(obj.prix_vente),
+            'tva': float(obj.tva) if obj.tva is not None else '',
+            'quantite_stock': obj.quantite_stock,
+            'seuil_alerte': obj.seuil_alerte,
+            'garantie_mois': (obj.garantie_mois
+                              if obj.garantie_mois is not None else ''),
+            'garantie_production_mois': (obj.garantie_production_mois
+                                         if obj.garantie_production_mois
+                                         is not None else ''),
+        }
 
     def get_permissions(self):
         # Écritures Stock : permission ERP granulaire (rôles fins type

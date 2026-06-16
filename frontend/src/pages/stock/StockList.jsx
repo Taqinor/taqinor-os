@@ -10,6 +10,7 @@ import {
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
+import ExportButton from '../../components/ExportButton'
 import ProduitForm from './ProduitForm'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
@@ -513,6 +514,14 @@ export default function StockList() {
               {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
             </button>
           )}
+          <ExportButton
+            fetcher={stockApi.exportProduitsList}
+            params={{
+              ...(search.trim() ? { search: search.trim() } : {}),
+              ...(showArchived ? { show_archived: 'true' } : {}),
+            }}
+            filename="catalogue.xlsx"
+          />
           {canWrite && (
             <button className="btn btn-primary" onClick={openNew}>
               + Nouveau produit

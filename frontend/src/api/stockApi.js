@@ -17,6 +17,10 @@ const stockApi = {
   // Export .xlsx de la sélection (réponse binaire)
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/bulk/', { action: 'export_xlsx', ids }, { responseType: 'blob' }),
+  // Export .xlsx de la LISTE complète filtrée (au-delà de la sélection) — mêmes
+  // query params que la liste. Réponse blob. Jamais de prix d'achat.
+  exportProduitsList: (params = {}) =>
+    api.get('/stock/produits/export/', { params, responseType: 'blob' }),
 
   // Catégories
   getCategories: (params) => api.get('/stock/categories/', { params }),

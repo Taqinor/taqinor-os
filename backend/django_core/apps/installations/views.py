@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from apps.imports.exports import XlsxExportMixin
 from . import activity
 from .models import Installation, Intervention, TypeIntervention
 from .serializers import (
@@ -18,7 +19,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
+class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     """Chantiers + historique « chatter ». Tout est scopé à la société du
     user ; l'acteur et la société sont posés côté serveur, jamais lus du corps.
     """
@@ -32,6 +33,36 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     ]
     ordering_fields = ['reference', 'date_creation', 'date_pose_prevue', 'statut']
     ordering = ['-date_creation']
+
+    # Export .xlsx (respecte statut/technicien/type/annule + recherche/tri).
+    export_filename = 'chantiers.xlsx'
+    export_sheet_title = 'Chantiers'
+    export_columns = [
+        ('reference', 'Référence'), ('client', 'Client'),
+        ('statut', 'Statut'), ('type_installation', 'Type'),
+        ('puissance', 'Puissance (kWc)'), ('site_ville', 'Ville'),
+        ('technicien', 'Technicien'),
+        ('date_pose_prevue', 'Pose prévue'),
+        ('date_mise_en_service', 'Mise en service'),
+    ]
+
+    def get_export_row(self, obj):
+        return {
+            'reference': obj.reference,
+            'client': str(obj.client) if obj.client else '',
+            'statut': obj.get_statut_display(),
+            'type_installation': (obj.get_type_installation_display()
+                                  if obj.type_installation else ''),
+            'puissance': (float(obj.puissance_installee_kwc)
+                          if obj.puissance_installee_kwc is not None else ''),
+            'site_ville': obj.site_ville or '',
+            'technicien': (getattr(obj.technicien_responsable, 'username', '')
+                           or ''),
+            'date_pose_prevue': (str(obj.date_pose_prevue)
+                                 if obj.date_pose_prevue else ''),
+            'date_mise_en_service': (str(obj.date_mise_en_service)
+                                     if obj.date_mise_en_service else ''),
+        }
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -56,7 +87,7 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'export']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
