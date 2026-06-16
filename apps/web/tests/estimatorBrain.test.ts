@@ -309,14 +309,38 @@ describe('FIX 2 — Est-Ouest ≥ Sud à inclinaison ÉGALE (les chevrons récup
   });
 });
 
-describe('FIX 1c — UNE seule règle d’espacement solaire ; E-O n’a pas de densité codée en dur', () => {
-  it('le pas E-O dépend de la latitude (donc du soleil), il n’est pas constant', () => {
+describe('FIX 1c — règle d’espacement E-O : ombre de faîte auto-absorbée → jeu = maintenance', () => {
+  // CORRECTION 2026-06-16 : l'ancien test affirmait « le pas E-O grandit avec la
+  // latitude » — il encodait le BUG d'espacement (on appliquait à l'E-O un pas de
+  // rangée sud, dépendant du soleil). Vérité physique : un chevron en A absorbe sa
+  // PROPRE ombre de faîte tant que l'ombre < empreinte d'un panneau, ce qui est
+  // vrai à TOUTES les inclinaisons E-O réalistes (≤29°) et jusqu'à 50° de latitude.
+  // L'écart entre chevrons est donc l'ombre RÉSIDUELLE (≈0) + un jeu de maintenance
+  // → constant en latitude aux inclinaisons utilisées, et BIEN plus serré qu'un sud.
+  it('le pas E-O ne dépend PAS de la latitude aux inclinaisons réalistes (ombre auto-absorbée)', () => {
     const ring = squareRing(40);
     const ewLow = packConfig(ring, 20, { family: 'eastwest', tiltDeg: 15 });
     const ewHigh = packConfig(ring, 50, { family: 'eastwest', tiltDeg: 15 });
-    // latitude plus haute → ombres plus longues → pas plus grand → moins de panneaux
-    expect(ewHigh.best.rowPitchM).toBeGreaterThan(ewLow.best.rowPitchM);
-    expect(ewHigh.best.count).toBeLessThanOrEqual(ewLow.best.count);
+    // même orientation « best » → même pas (l'ombre de faîte est absorbée des deux côtés)
+    expect(ewHigh.best.panelOrientation).toBe(ewLow.best.panelOrientation);
+    expect(ewHigh.best.rowPitchM).toBeCloseTo(ewLow.best.rowPitchM, 6);
+    expect(ewHigh.best.count).toBe(ewLow.best.count);
+  });
+
+  it('le jeu entre chevrons E-O est un passage de maintenance, PAS un pas de rangée sud', () => {
+    const ring = squareRing(40);
+    const tiltDeg = 15;
+    const ew = packConfig(ring, 33.59, { family: 'eastwest', tiltDeg });
+    const south = packConfig(ring, 33.59, { family: 'south', tiltDeg });
+    // Profondeur d'une empreinte de panneau dans le sens de l'inclinaison.
+    const depth = ew.best.slopeLenM * Math.cos((tiltDeg * Math.PI) / 180);
+    // L'écart entre chevrons = pas − 2 empreintes ; il doit rester un petit jeu
+    // de maintenance (< 0,5 m), jamais une ombre de rangée sud (qui dépasserait 0,6 m).
+    const interTentGap = ew.best.rowPitchM - 2 * depth;
+    expect(interTentGap).toBeGreaterThan(0);
+    expect(interTentGap).toBeLessThan(0.5);
+    // E-O nettement plus dense que sud à inclinaison égale (+ de panneaux sur le même toit).
+    expect(ew.best.count).toBeGreaterThan(south.best.count);
   });
 });
 
