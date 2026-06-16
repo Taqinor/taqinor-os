@@ -16,6 +16,8 @@ const ventesApi = {
   getProposalPdf: (id, params = {}) =>
     api.get(`/ventes/devis/${id}/proposal/`, { params, responseType: 'blob' }),
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
+  // Révision : crée une nouvelle version (v2, v3…) d'un devis.
+  reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
 

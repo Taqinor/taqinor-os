@@ -210,7 +210,7 @@ category and/or brand, export selection to .xlsx. Logged.
 - An **"Exporter Excel" (.xlsx)** button on every list view (leads, clients, quotes, invoices,
   products, chantiers, equipements, SAV tickets) that respects current filters.
 
-### T10 — Quote revisions / versioning — [ ]
+### T10 — Quote revisions / versioning — [x]
 Let a sent quote be **revised into a new version** (v2, v3…) that keeps the prior versions readable,
 without breaking the lead↔devis links or the numbering scheme. The active/latest version is clearly
 marked; superseded versions are read-only with a "remplacé par" link. Additive only.
@@ -316,6 +316,7 @@ Tracked here so they aren't lost:
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
 - 2026-06-16 — T1 verified already present: /proposal serves a real inline PDF; the lead devis panel fetches it as a blob and renders it with PDF.js (clear FR error on server failure, graceful fallback on network failure); non-mocked regression tests cover Premium / 1-page / étude; Vite content-hashes the build. No change needed.
 - 2026-06-16 — T2 verified already present: vite-plugin-pwa configured (autoUpdate, injectManifest sw.js with skipWaiting/clientsClaim), manifest + icons + iOS head tags + offline page, and a French install helper (PwaPrompts.jsx, beforeinstallprompt). No change needed.
+- 2026-06-16 — T10 done: quote revisions/versioning. A sent devis can be « Révisé » into a new version (v2, v3…) that clones its lines and restarts as brouillon; the previous version becomes inactive, read-only, and shows a « remplacé par » link to its successor. Lead/client links and the DEV- numbering scheme are preserved. Additive (version/version_parent/superseded_by/is_active). Endpoint /ventes/devis/<id>/reviser/ + UI (Réviser button, version badge). Tests included.
 - 2026-06-16 — T9 done: reusable CSV/XLSX importer (leads, clients, products) with a dry-run preview (10 rows + column→field mapping + ignored columns) before commit; create-only, duplicates skipped (email/phone/SKU), imported leads origin-tagged « Import ». Endpoints /imports/dry-run, /imports/commit. « Exporter Excel » buttons on every list (leads, clients, products, devis, factures, chantiers, equipements, SAV) honouring the current filter, via dedicated exports + a generic /imports/export/<entity>. Reusable import modal in the UI. Tests included.
 - 2026-06-16 — T8 done: bulk product/catalogue editing. Multi-select products in the catalogue → bulk change sell price (% variation or fixed — buy price never touched), set warranty (garantie_mois / garantie_production_mois), reassign category, set brand, and export the selection to .xlsx. Company-scoped backend POST /stock/produits/bulk/ + /export-xlsx/ with an audit log and tests.
 - 2026-06-16 — T7 done: quote expiry computed on-the-fly (a pending devis past its validity date shows « Expiré » in the list and the API, never persisted, never moves the lead) + a pipeline-value dashboard in Reporting (total MAD by stage, weighted forecast, devis by status with on-the-fly expiry, win count/value, losses by motif). Read-only, company-scoped, with tests.
