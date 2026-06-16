@@ -179,3 +179,45 @@
     justify-content: flex-end;
   }
 }
+
+/* ── Sélection en masse + édition en place (T3/T4) ── */
+.lv-cb-col {
+  width: 34px;
+  text-align: center;
+}
+
+.lv-row-selected {
+  background: #eff6ff;
+}
+
+.lv-inline-select,
+.lv-inline-date,
+.lv-inline-tags {
+  font: inherit;
+  font-size: 0.84rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.2rem 0.35rem;
+  background: #f8fafc;
+  max-width: 160px;
+  cursor: pointer;
+}
+
+.lv-inline-select:hover,
+.lv-inline-date:hover,
+.lv-inline-tags:hover {
+  border-color: #cbd5e1;
+}
+
+.lv-inline-select:focus,
+.lv-inline-date:focus,
+.lv-inline-tags:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #fff;
+}
+
+.lv-inline-tags {
+  cursor: text;
+  width: 100%;
+}

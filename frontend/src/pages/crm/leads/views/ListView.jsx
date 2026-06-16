@@ -17,6 +17,7 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import './listview.css'
+import '../bulktoolbar.css'
 
 // Fond de pastille d'étape : couleur de l'étape à ~14 % d'opacité.
 const stageBg = (hex) => {
@@ -74,7 +75,29 @@ function SortableTh({ col, label, sort, onSort, className }) {
   )
 }
 
-export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign }) {
+// Édition en place d'une cellule (T4) : un <select> piloté qui PATCHe au
+// changement. Le clic ne doit pas ouvrir la fiche (stopPropagation).
+function InlineSelect({ value, options, onCommit, ariaLabel, style }) {
+  return (
+    <select
+      className="lv-inline-select"
+      aria-label={ariaLabel}
+      value={value ?? ''}
+      style={style}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onCommit(e.target.value)}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  )
+}
+
+export default function ListView({
+  leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
+  selectedIds = [], onToggleSelect, onSetSelection, onInlineEdit,
+}) {
   const dispatch = useDispatch()
   const role = useSelector((s) => s.auth.role)
   const canDelete = role === 'admin' // règle existante : destroy = admin
@@ -136,11 +159,36 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
     })
   }, [leads, sort])
 
+  const visibleIds = sorted.map((l) => l.id)
+  const allSelected = visibleIds.length > 0
+    && visibleIds.every((id) => selectedIds.includes(id))
+  const toggleAll = () => {
+    if (allSelected) {
+      onSetSelection?.(selectedIds.filter((id) => !visibleIds.includes(id)))
+    } else {
+      onSetSelection?.([...new Set([...selectedIds, ...visibleIds])])
+    }
+  }
+
+  const PRIORITE_OPTIONS = Object.entries(PRIORITE_LABELS)
+    .map(([value, label]) => ({ value, label }))
+  const STAGE_OPTIONS = PIPELINE_STAGES
+    .map((s) => ({ value: s, label: STAGE_LABELS[s] }))
+
   return (
     <div className="lv-wrap">
       <table className="data-table lv-table">
         <thead>
           <tr>
+            <th className="lv-cb-col">
+              <input
+                type="checkbox"
+                className="lead-select-cb"
+                aria-label="Tout sélectionner"
+                checked={allSelected}
+                onChange={toggleAll}
+              />
+            </th>
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
             <SortableTh col="canal" label="Canal" sort={sort} onSort={onSort} className="m-hide" />
@@ -160,9 +208,18 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
             return (
               <tr
                 key={lead.id}
-                className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}`}
+                className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}${selectedIds.includes(lead.id) ? ' lv-row-selected' : ''}`}
                 onClick={() => onOpenLead(lead)}
               >
+                <td className="lv-cb-col" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="lead-select-cb"
+                    aria-label={`Sélectionner ${fullName(lead) || lead.id}`}
+                    checked={selectedIds.includes(lead.id)}
+                    onChange={() => onToggleSelect?.(lead.id)}
+                  />
+                </td>
                 <td data-label="Lead">
                   <div className="lv-lead-cell">
                     <span className="lv-lead-name">
@@ -175,15 +232,28 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
                   </div>
                 </td>
                 <td data-label="Stade">
-                  <span
-                    className="lv-stage-badge"
-                    style={{
-                      background: stageBg(STAGE_COLORS[lead.stage]),
-                      color: STAGE_COLORS[lead.stage] ?? '#475569',
-                    }}
-                  >
-                    {STAGE_LABELS[lead.stage] ?? lead.stage}
-                  </span>
+                  {onInlineEdit ? (
+                    <InlineSelect
+                      ariaLabel="Étape"
+                      value={lead.stage}
+                      options={STAGE_OPTIONS}
+                      onCommit={(v) => v !== lead.stage && onInlineEdit(lead, 'stage', v)}
+                      style={{
+                        background: stageBg(STAGE_COLORS[lead.stage]),
+                        color: STAGE_COLORS[lead.stage] ?? '#475569',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="lv-stage-badge"
+                      style={{
+                        background: stageBg(STAGE_COLORS[lead.stage]),
+                        color: STAGE_COLORS[lead.stage] ?? '#475569',
+                      }}
+                    >
+                      {STAGE_LABELS[lead.stage] ?? lead.stage}
+                    </span>
+                  )}
                 </td>
                 <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
@@ -196,16 +266,35 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
                   />
                 </td>
                 <td className="m-hide">
-                  <span
-                    className="lv-stars"
-                    title={PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}
-                  >
-                    <span className={stars >= 1 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
-                    <span className={stars >= 2 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
-                  </span>
+                  {onInlineEdit ? (
+                    <InlineSelect
+                      ariaLabel="Priorité"
+                      value={lead.priorite ?? 'normale'}
+                      options={PRIORITE_OPTIONS}
+                      onCommit={(v) => v !== (lead.priorite ?? 'normale') && onInlineEdit(lead, 'priorite', v)}
+                    />
+                  ) : (
+                    <span
+                      className="lv-stars"
+                      title={PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}
+                    >
+                      <span className={stars >= 1 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
+                      <span className={stars >= 2 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
+                    </span>
+                  )}
                 </td>
-                <td data-label="Relance">
-                  {lead.relance_date ? (
+                <td data-label="Relance" onClick={(e) => onInlineEdit && e.stopPropagation()}>
+                  {onInlineEdit ? (
+                    <input
+                      type="date"
+                      className="lv-inline-date"
+                      aria-label="Relance"
+                      value={lead.relance_date ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) =>
+                        onInlineEdit(lead, 'relance_date', e.target.value || null)}
+                    />
+                  ) : lead.relance_date ? (
                     <span className={enRetard ? 'lv-relance-late' : undefined}>
                       {formatDateFR(lead.relance_date)}
                     </span>
@@ -213,8 +302,22 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
                     '—'
                   )}
                 </td>
-                <td className="m-hide">
-                  {tags.length ? (
+                <td className="m-hide" onClick={(e) => onInlineEdit && e.stopPropagation()}>
+                  {onInlineEdit ? (
+                    <input
+                      type="text"
+                      className="lv-inline-tags"
+                      aria-label="Tags (séparés par des virgules)"
+                      defaultValue={tags.join(', ')}
+                      placeholder="tags…"
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => {
+                        const next = e.target.value.trim()
+                        if (next !== tags.join(', ')) onInlineEdit(lead, 'tags', next)
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }}
+                    />
+                  ) : tags.length ? (
                     <span className="lv-tags">
                       {tags.map((t) => {
                         const c = tagColor(t)
@@ -304,7 +407,7 @@ export default function ListView({ leads, onOpenLead, onAutoQuote, onRefetch, us
           })}
           {!sorted.length && (
             <tr>
-              <td colSpan={8} className="lv-empty">
+              <td colSpan={9} className="lv-empty">
                 Aucun lead à afficher.
               </td>
             </tr>
