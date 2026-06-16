@@ -41,6 +41,20 @@ class DevisSerializer(serializers.ModelSerializer):
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+    # Expiration calculée à la volée (T7a) — lecture seule, jamais stockée.
+    date_expiration = serializers.DateField(read_only=True)
+    est_expire = serializers.BooleanField(read_only=True)
+    # Révisions (T10) — version + lien vers le remplaçant éventuel.
+    remplace_par = serializers.SerializerMethodField()
+    remise_approuvee_par_nom = serializers.CharField(
+        source='remise_approuvee_par.username', read_only=True, default=None)
+
+    def get_remplace_par(self, obj):
+        """Devis qui remplace celui-ci (révision la plus récente le pointant)."""
+        rev = obj.revisions.order_by('-version', '-id').first()
+        if rev is None:
+            return None
+        return {'id': rev.id, 'reference': rev.reference, 'version': rev.version}
 
     def _display(self, obj):
         if not hasattr(obj, '_display_totals_cache'):

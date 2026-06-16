@@ -58,3 +58,26 @@ def tva_standard(company):
         return Decimal(str(val)) if val is not None else Decimal('20')
     except Exception:
         return Decimal('20')
+
+
+def quote_validity_days(company):
+    """Durée de validité du devis en jours (réglage ou défaut historique 30)."""
+    prof = _profile(company)
+    val = getattr(prof, 'quote_validity_days', None) if prof else None
+    try:
+        n = int(val) if val is not None else 30
+        return n if n > 0 else 30
+    except (TypeError, ValueError):
+        return 30
+
+
+def seuil_remise_approbation(company):
+    """Seuil de remise (%) au-delà duquel l'envoi d'un devis exige une
+    approbation admin/responsable. NULL/0 = garde DÉSACTIVÉE (défaut) →
+    comportement historique strictement inchangé."""
+    prof = _profile(company)
+    val = getattr(prof, 'seuil_remise_approbation', None) if prof else None
+    try:
+        return Decimal(str(val)) if val is not None else None
+    except Exception:
+        return None

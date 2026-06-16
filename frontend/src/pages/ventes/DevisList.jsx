@@ -8,6 +8,7 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
+import { filterDevisByExpiry } from '../../features/ventes/devisFilters'
 import DevisForm from './DevisForm'
 
 const STATUT_META = {
@@ -44,6 +45,10 @@ export default function DevisList() {
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
+  const [revisingId, setRevisingId] = useState(null)   // T10 : révision en cours
+  const [approvingId, setApprovingId] = useState(null) // T17 : approbation en cours
+  // T7a : filtre d'expiration visuel — 'all' | 'expire' | 'valide'.
+  const [expireFilter, setExpireFilter] = useState('all')
 
   // ── Choix du format PDF (parité simulateur) ──
   const [pdfTarget, setPdfTarget] = useState(null) // devis ciblé par la modale
@@ -186,6 +191,38 @@ export default function DevisList() {
     }
   }
 
+  // T10 — créer une révision (v+1) d'un devis : clone côté serveur.
+  const handleReviser = async (d) => {
+    if (!window.confirm(`Créer une révision (v${(d.version ?? 1) + 1}) du devis ${d.reference} ?`)) return
+    setRevisingId(d.id)
+    try {
+      const res = await ventesApi.reviserDevis(d.id)
+      dispatch(fetchDevis())
+      alert(`Révision ${res.data.reference} (v${res.data.version}) créée.`)
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Révision impossible.')
+    } finally {
+      setRevisingId(null)
+    }
+  }
+
+  // T17 — approuver la remise d'un devis bloqué (responsable/admin).
+  const handleApprouverRemise = async (d) => {
+    if (!window.confirm(`Approuver la remise de ${d.remise_globale} % sur ${d.reference} ?`)) return
+    setApprovingId(d.id)
+    try {
+      await ventesApi.approuverRemiseDevis(d.id)
+      dispatch(fetchDevis())
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Approbation impossible.')
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  // T7a — filtre d'expiration appliqué côté affichage (badge déjà serveur).
+  const visibleDevis = filterDevisByExpiry(devis, expireFilter)
+
   if (loading) return <p className="page-loading">Chargement des devis...</p>
   if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
 
@@ -194,6 +231,21 @@ export default function DevisList() {
       <div className="page-header">
         <h2>Devis</h2>
         <button className="btn btn-primary" onClick={openNew}>+ Nouveau devis</button>
+      </div>
+
+      {/* T7a — filtre d'expiration (visuel) */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 0' }}>
+        <label className="form-label" style={{ margin: 0 }}>Expiration :</label>
+        <select
+          className="form-control"
+          style={{ width: 'auto' }}
+          value={expireFilter}
+          onChange={e => setExpireFilter(e.target.value)}
+        >
+          <option value="all">Tous</option>
+          <option value="valide">Valides</option>
+          <option value="expire">Expirés</option>
+        </select>
       </div>
 
       {showForm && (
@@ -298,13 +350,38 @@ export default function DevisList() {
           </tr>
         </thead>
         <tbody>
-          {devis.map(d => {
+          {visibleDevis.map(d => {
             const meta = STATUT_META[d.statut] ?? STATUT_META.brouillon
             const isGenerating = pdfGenerating[d.id]
             const isDownloading = pdfDownloading[d.id]
             return (
               <tr key={d.id}>
-                <td><strong>{d.reference}</strong></td>
+                <td>
+                  <strong>{d.reference}</strong>
+                  {(d.version ?? 1) > 1 && (
+                    <span className="badge" title="Version du devis"
+                          style={{ background: '#ede9fe', color: '#6d28d9', marginLeft: 6, fontSize: '0.65rem' }}>
+                      v{d.version}
+                    </span>
+                  )}
+                  {d.remplace_par && (
+                    <div>
+                      <button
+                        type="button"
+                        title={`Ce devis a été remplacé par ${d.remplace_par.reference}`}
+                        onClick={() => navigate(`/ventes/devis?devis=${d.remplace_par.id}`)}
+                        style={{
+                          background: '#f1f5f9', color: '#475569',
+                          border: '1px solid #cbd5e1', borderRadius: 10,
+                          padding: '1px 8px', fontSize: '0.65rem',
+                          fontWeight: 600, cursor: 'pointer', marginTop: 3,
+                        }}
+                      >
+                        ↳ remplacé par {d.remplace_par.reference} (v{d.remplace_par.version})
+                      </button>
+                    </div>
+                  )}
+                </td>
                 <td data-label="Client">
                   {d.client_nom ?? '—'}
                   {d.lead && (
@@ -351,6 +428,16 @@ export default function DevisList() {
                   <span className="badge" style={{ background: meta.bg, color: meta.color }}>
                     {meta.label}
                   </span>
+                  {/* T7a — badge « Expiré » calculé à la volée (visuel) */}
+                  {d.est_expire && (
+                    <span className="badge"
+                          title={d.date_expiration
+                            ? `Validité dépassée le ${new Date(d.date_expiration).toLocaleDateString('fr-FR')}`
+                            : 'Validité dépassée'}
+                          style={{ background: '#fef3c7', color: '#b45309', marginLeft: 6, fontSize: '0.65rem' }}>
+                      Expiré
+                    </span>
+                  )}
                 </td>
                 <td>
                   <div className="actions-cell">
@@ -372,6 +459,30 @@ export default function DevisList() {
                         title="Supprimer ce devis"
                       >
                         {deletingId === d.id ? '...' : 'Supprimer'}
+                      </button>
+                    )}
+
+                    {/* T10 — créer une révision (clone v+1) */}
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={() => handleReviser(d)}
+                      disabled={revisingId === d.id || !!d.remplace_par}
+                      title={d.remplace_par
+                        ? 'Ce devis a déjà été révisé'
+                        : 'Créer une nouvelle version de ce devis'}
+                    >
+                      {revisingId === d.id ? '...' : 'Réviser'}
+                    </button>
+
+                    {/* T17 — approuver la remise quand l'envoi est bloqué */}
+                    {!d.remise_approuvee_par && parseFloat(d.remise_globale || 0) > 0 && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => handleApprouverRemise(d)}
+                        disabled={approvingId === d.id}
+                        title={`Approuver la remise de ${d.remise_globale} % (débloque l'envoi si elle dépasse le seuil)`}
+                      >
+                        {approvingId === d.id ? '...' : 'Approuver remise'}
                       </button>
                     )}
 
