@@ -297,3 +297,40 @@ class TestBuyPriceConfidentiality(ProcurementBase):
         self.assertEqual(ctx['lignes'][0].prix_achat_unitaire,
                          Decimal('123.45'))
         self.assertEqual(ctx['total_achat'], Decimal('246.90'))
+
+
+class TestInventaire(TestCase):
+    """N16 — inventaire physique : comptage → ajustement audité (admin)."""
+
+    def setUp(self):
+        self.company = make_company(slug='inv-co', nom='Inv Co')
+        self.admin = User.objects.create_user(
+            username='inv_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.resp = User.objects.create_user(
+            username='inv_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.p1 = make_produit(self.company, 'INV-1', stock=10)
+        self.p2 = make_produit(self.company, 'INV-2', stock=5)
+
+    def test_count_posts_adjustment_and_sets_stock(self):
+        r = auth(self.admin).post('/api/django/stock/produits/inventaire/', {
+            'motif': 'Comptage annuel',
+            'lignes': [
+                {'produit': self.p1.id, 'quantite_comptee': 8},
+                {'produit': self.p2.id, 'quantite_comptee': 5},
+            ],
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['ajustes'], 1)
+        self.assertEqual(r.data['inchanges'], 1)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.quantite_stock, 8)
+        self.assertTrue(MouvementStock.objects.filter(
+            produit=self.p1, type_mouvement='ajustement').exists())
+
+    def test_non_admin_forbidden(self):
+        r = auth(self.resp).post('/api/django/stock/produits/inventaire/', {
+            'lignes': [{'produit': self.p1.id, 'quantite_comptee': 3}],
+        }, format='json')
+        self.assertEqual(r.status_code, 403)

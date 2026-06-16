@@ -2,7 +2,34 @@ from rest_framework import serializers
 
 from .models import (
     Installation, Intervention, InstallationActivity, TypeIntervention,
+    ChecklistEtapeModele, ChantierChecklistItem,
 )
+
+
+class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChecklistEtapeModele
+        fields = ['id', 'cle', 'libelle', 'ordre', 'capture_serie',
+                  'actif', 'protege']
+        read_only_fields = ['protege']
+
+    def validate_cle(self, value):
+        if self.instance and self.instance.protege and value != self.instance.cle:
+            raise serializers.ValidationError(
+                "La clé d'une étape protégée ne peut pas être modifiée.")
+        return value
+
+
+class ChantierChecklistItemSerializer(serializers.ModelSerializer):
+    fait_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChantierChecklistItem
+        fields = ['id', 'cle', 'libelle', 'ordre', 'capture_serie',
+                  'fait', 'fait_par_nom', 'fait_le']
+
+    def get_fait_par_nom(self, obj):
+        return getattr(obj.fait_par, 'username', None)
 
 
 class TypeInterventionSerializer(serializers.ModelSerializer):
@@ -62,6 +89,13 @@ class InstallationSerializer(serializers.ModelSerializer):
         source='get_type_installation_display', read_only=True, default=None)
     # Position dans l'entonnoir — pour un tri non-alphabétique côté UI.
     statut_ordre = serializers.SerializerMethodField()
+    # Statut rabattu sur sa colonne canonique (kanban/parc) — les valeurs
+    # héritées tombent dans la bonne colonne sans réécrire la donnée stockée.
+    statut_canonique = serializers.SerializerMethodField()
+    # N7 — le chantier est-il un « système installé » actif (réceptionné) ?
+    est_parc = serializers.SerializerMethodField()
+    # N4 — avancement de la checklist d'exécution (0–100, ou null si vide).
+    checklist_completion = serializers.SerializerMethodField()
     client_nom = serializers.SerializerMethodField()
     technicien_nom = serializers.SerializerMethodField()
     devis_reference = serializers.CharField(
@@ -82,9 +116,27 @@ class InstallationSerializer(serializers.ModelSerializer):
     def get_statut_ordre(self, obj):
         order = list(Installation.STATUT_ORDER)
         try:
-            return order.index(obj.statut)
+            return order.index(Installation.canonical_statut(obj.statut))
         except ValueError:
             return len(order)
+
+    def get_statut_canonique(self, obj):
+        return Installation.canonical_statut(obj.statut)
+
+    def get_est_parc(self, obj):
+        # Système installé = chantier réceptionné (ou clôturé) et toujours
+        # actif dans le parc, hors chantier annulé.
+        canon = Installation.canonical_statut(obj.statut)
+        reached = canon in (
+            Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
+        return bool(reached and obj.parc_actif and not obj.annule)
+
+    def get_checklist_completion(self, obj):
+        items = list(obj.checklist.all())
+        if not items:
+            return None
+        done = sum(1 for it in items if it.fait)
+        return round(100 * done / len(items))
 
     def get_client_nom(self, obj):
         c = obj.client

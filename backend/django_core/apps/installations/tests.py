@@ -85,7 +85,8 @@ class TestCreateFromDevis(TestCase):
         self.assertEqual(r.data['raccordement'], 'triphase')  # gelé depuis le lead
         self.assertEqual(r.data['type_installation'], 'residentiel')
         self.assertEqual(Decimal(r.data['puissance_installee_kwc']), Decimal('7.20'))
-        self.assertEqual(r.data['statut'], 'a_planifier')
+        # Entonnoir N1 : un chantier créé depuis un devis accepté démarre « Signé ».
+        self.assertEqual(r.data['statut'], 'signe')
         self.assertEqual(str(r.data['gps_lat']), '33.456789')
 
     def test_create_is_idempotent_no_duplicate(self):
@@ -173,6 +174,115 @@ class TestStatusAndMES(TestCase):
         # L'ajout est tracé dans le chatter du chantier
         self.assertTrue(InstallationActivity.objects.filter(
             installation=self.inst, body__icontains='Intervention ajoutée').exists())
+
+
+class TestChantierFunnelParcChecklist(TestCase):
+    """N1/N2/N4/N7/N9 — entonnoir N1, parc installé, checklist, séries."""
+
+    def setUp(self):
+        self.company = make_company(slug='cht-funnel', nom='Funnel')
+        self.user = User.objects.create_user(
+            username='funnel_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        devis, _, _ = make_accepted_devis(self.company)
+        self.inst = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json').data['id'])
+
+    def test_starts_signed_and_installer_defaulted(self):
+        self.assertEqual(self.inst.statut, 'signe')
+        self.assertEqual(self.inst.technicien_responsable_id, self.user.id)
+        self.assertIsInstance(self.inst.bom, list)
+
+    def test_reception_stamps_date_and_enters_parc(self):
+        r = self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'statut': 'receptionne'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['est_parc'])
+        self.assertIsNotNone(r.data['date_reception'])
+        # Présent dans la vue parc.
+        parc = self.api.get('/api/django/installations/chantiers/?parc=1')
+        self.assertIn(self.inst.id, ids_of(parc))
+
+    def test_legacy_status_maps_to_canonical_column(self):
+        self.inst.statut = 'mise_en_service'
+        self.inst.save(update_fields=['statut'])
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{self.inst.id}/')
+        self.assertEqual(r.data['statut_canonique'], 'receptionne')
+        self.assertTrue(r.data['est_parc'])
+
+    def test_labour_days_editable(self):
+        r = self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'labour_jours_estimes': '2.5', 'labour_jours_reels': '3'},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Decimal(r.data['labour_jours_estimes']), Decimal('2.5'))
+
+    def test_checklist_seeds_and_tracks_completion(self):
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{self.inst.id}/checklist/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data['items']), 7)
+        self.assertEqual(r.data['completion'], 0)
+        cle = r.data['items'][0]['cle']
+        r2 = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/cocher-checklist/',
+            {'cle': cle, 'fait': True}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertGreater(r2.data['completion'], 0)
+
+    def test_serial_capture_on_checklist_creates_equipement(self):
+        from apps.stock.models import Produit
+        from apps.sav.models import Equipement
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur X', prix_vente=Decimal('100'))
+        self.api.get(
+            f'/api/django/installations/chantiers/{self.inst.id}/checklist/')
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/cocher-checklist/',
+            {'cle': 'onduleur_raccorde', 'fait': True,
+             'equipements': [{'produit': produit.id, 'numero_serie': 'SN-001'}]},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['equipements_crees'], 1)
+        self.assertTrue(Equipement.objects.filter(
+            installation=self.inst, numero_serie='SN-001').exists())
+
+    def test_serial_capture_optional_never_blocks(self):
+        self.api.get(
+            f'/api/django/installations/chantiers/{self.inst.id}/checklist/')
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/cocher-checklist/',
+            {'cle': 'panneaux_poses', 'fait': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['equipements_crees'], 0)
+
+    def test_checklist_etapes_seeded_for_parametres(self):
+        r = self.api.get('/api/django/installations/checklist-etapes/')
+        self.assertEqual(r.status_code, 200)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        self.assertEqual(len(rows), 7)
+
+    def test_regulatory_dossier_and_filters(self):
+        # N40/N42 — pose un régime + statut + drapeau Article 33.
+        r = self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'regime_8221': 'declaration_bt', 'dossier_statut': 'a_deposer',
+             'art33_regularisation': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['regime_8221'], 'declaration_bt')
+        self.assertTrue(r.data['art33_regularisation'])
+        # N41 — filtres serveur par régime / statut / art33.
+        self.assertIn(self.inst.id, ids_of(self.api.get(
+            '/api/django/installations/chantiers/?regime=declaration_bt')))
+        self.assertIn(self.inst.id, ids_of(self.api.get(
+            '/api/django/installations/chantiers/?art33=1')))
+        self.assertNotIn(self.inst.id, ids_of(self.api.get(
+            '/api/django/installations/chantiers/?regime=autorisation_anre')))
 
 
 class TestTenantScoping(TestCase):

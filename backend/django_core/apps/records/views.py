@@ -220,9 +220,12 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)
+        phase = (request.data.get('phase') or '').strip().lower()
+        if phase not in ('', 'avant', 'pendant', 'apres'):
+            phase = ''
         att = Attachment.objects.create(
             company=company, content_type=ct, object_id=request.data.get('id'),
-            uploaded_by=request.user, **meta)
+            uploaded_by=request.user, phase=phase, **meta)
         return Response(AttachmentSerializer(att).data,
                         status=status.HTTP_201_CREATED)
 

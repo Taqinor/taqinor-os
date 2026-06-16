@@ -104,6 +104,9 @@ class Attachment(models.Model):
     filename = models.CharField(max_length=255)
     size = models.PositiveIntegerField(default=0)
     mime = models.CharField(max_length=120, blank=True, default='')
+    # N5 — phase de chantier (avant / pendant / après) pour la galerie groupée.
+    # Vide par défaut (usages génériques : leads, tickets…). Additif.
+    phase = models.CharField(max_length=12, blank=True, default='')
 
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

@@ -15,6 +15,17 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/mise-en-service/`, data),
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
+  // N4/N9 — checklist d'exécution + saisie de n° de série.
+  getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
+  cocherChecklist: (id, payload) =>
+    api.post(`/installations/chantiers/${id}/cocher-checklist/`, payload),
+  // N4 — étapes modèle de checklist (Paramètres → Chantiers).
+  getChecklistEtapes: () => api.get('/installations/checklist-etapes/'),
+  saveChecklistEtape: (id, data) => id
+    ? api.patch(`/installations/checklist-etapes/${id}/`, data)
+    : api.post('/installations/checklist-etapes/', data),
+  deleteChecklistEtape: (id) => api.delete(`/installations/checklist-etapes/${id}/`),
+
   // N13 — besoin matériel (lecture seule) + création d'un BCF brouillon.
   besoinMateriel: (id) => api.get(`/installations/chantiers/${id}/besoin-materiel/`),
   commanderBesoin: (id, fournisseurId) =>

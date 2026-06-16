@@ -16,6 +16,7 @@ const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.
 const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance').then(m => ({ default: m.Component })))
 const StockList = lazy(() => import('../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
+const BonsCommandeFournisseur = lazy(() => import('../pages/stock/BonsCommandeFournisseur'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
@@ -23,6 +24,7 @@ const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
+const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -71,6 +73,7 @@ const router = createBrowserRouter([
   // Stock
   { path: '/stock', loader: authLoader, element: <WithLayout><StockList /></WithLayout> },
   { path: '/stock/mouvements', loader: authLoader, element: <WithLayout><MouvementsPage /></WithLayout> },
+  { path: '/stock/bons-commande-fournisseur', loader: authLoader, element: <WithLayout><BonsCommandeFournisseur /></WithLayout> },
   { path: '/stock/ocr-import', loader: authLoader, element: <WithLayout><OcrStockImport /></WithLayout> },
 
   // CRM
@@ -88,6 +91,7 @@ const router = createBrowserRouter([
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
+  { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
 
   // Après-vente : parc d'équipements & tickets SAV
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },

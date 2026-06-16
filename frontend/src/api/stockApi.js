@@ -30,6 +30,8 @@ const stockApi = {
 
   // Édition en masse du catalogue (T8) + export Excel d'une sélection.
   bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
+  // N16 — inventaire physique : comptage par produit → ajustement de stock.
+  inventaire: (payload) => api.post('/stock/produits/inventaire/', payload),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
@@ -37,6 +39,26 @@ const stockApi = {
   saveMarque: (id, data) => id
     ? api.patch(`/stock/marques/${id}/`, data) : api.post('/stock/marques/', data),
   deleteMarque: (id) => api.delete(`/stock/marques/${id}/`),
+
+  // Bons de commande FOURNISSEUR (achats — N11). Les prix d'achat sont INTERNES.
+  getBonsCommandeFournisseur: (params) =>
+    api.get('/stock/bons-commande-fournisseur/', { params }),
+  getBonCommandeFournisseur: (id) =>
+    api.get(`/stock/bons-commande-fournisseur/${id}/`),
+  createBonCommandeFournisseur: (data) =>
+    api.post('/stock/bons-commande-fournisseur/', data),
+  updateBonCommandeFournisseur: (id, data) =>
+    api.patch(`/stock/bons-commande-fournisseur/${id}/`, data),
+  deleteBonCommandeFournisseur: (id) =>
+    api.delete(`/stock/bons-commande-fournisseur/${id}/`),
+  envoyerBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/envoyer/`),
+  recevoirBcf: (id, receptions) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }),
+  annulerBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/annuler/`),
+  bcfPdf: (id) =>
+    api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
 }
 
 export default stockApi

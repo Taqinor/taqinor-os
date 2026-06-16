@@ -369,14 +369,18 @@ export default function ParametresEntreprise() {
   // Listes gérées additives (T6) : canaux, types d'intervention, marques.
   const [canaux, setCanaux] = useState([])
   const [typesItv, setTypesItv] = useState([])
+  const [checklistEtapes, setChecklistEtapes] = useState([])
   const [marques, setMarques] = useState([])
   const [newCanal, setNewCanal] = useState('')
   const [newType, setNewType] = useState('')
+  const [newEtape, setNewEtape] = useState('')
   const [newMarque, setNewMarque] = useState('')
   const loadCanaux = () => crmApi.getCanaux()
     .then(r => setCanaux(r.data.results ?? r.data)).catch(() => {})
   const loadTypesItv = () => installationsApi.getTypesIntervention()
     .then(r => setTypesItv(r.data.results ?? r.data)).catch(() => {})
+  const loadChecklistEtapes = () => installationsApi.getChecklistEtapes()
+    .then(r => setChecklistEtapes(r.data.results ?? r.data)).catch(() => {})
   const loadMarques = () => stockApi.getMarques()
     .then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
   // Champs personnalisés (T11) — module choisi (lead/client/produit).
@@ -431,9 +435,32 @@ export default function ParametresEntreprise() {
     loadMessages()
     loadCanaux()
     loadTypesItv()
+    loadChecklistEtapes()
     loadMarques()
     loadCfDefs('lead')
   }, [dispatch])
+
+  const addEtape = async () => {
+    const libelle = newEtape.trim()
+    if (!libelle) return
+    try {
+      await installationsApi.saveChecklistEtape(null, {
+        cle: slugify(libelle), libelle, ordre: checklistEtapes.length })
+      setNewEtape(''); loadChecklistEtapes()
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const renameEtape = async (et, libelle) => {
+    try { await installationsApi.saveChecklistEtape(et.id, { libelle }) } catch { /* */ }
+  }
+  const toggleEtapeActif = async (et) => {
+    try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); loadChecklistEtapes() }
+    catch { /* */ }
+  }
+  const delEtape = async (et) => {
+    if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
+    try { await installationsApi.deleteChecklistEtape(et.id); loadChecklistEtapes() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
+  }
 
   const addCanal = async () => {
     const libelle = newCanal.trim()
@@ -995,6 +1022,41 @@ export default function ParametresEntreprise() {
                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addType() } }} />
               <button type="button" onClick={addType}
                       style={{ border: 'none', background: '#0d9488', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* Chantiers — Étapes de checklist d'exécution (N4) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#2563eb" label="Chantiers — Checklist d'exécution" icon={<><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Étapes proposées sur la checklist des chantiers. Désactivez une
+              étape pour la retirer des nouveaux chantiers sans toucher aux
+              chantiers existants ; les étapes système sont protégées.
+            </p>
+            {checklistEtapes.map(et => (
+              <div key={et.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <input style={{ ...inputBase, flex: 1, opacity: et.actif ? 1 : 0.5 }} defaultValue={et.libelle}
+                       onBlur={e => renameEtape(et, e.target.value)} />
+                {et.capture_serie && <span style={{ fontSize: 10, color: '#2563eb' }} title="Saisie de n° de série">série</span>}
+                <button type="button" onClick={() => toggleEtapeActif(et)}
+                        title={et.actif ? 'Désactiver' : 'Activer'}
+                        style={{ border: 'none', background: et.actif ? '#dcfce7' : '#e2e8f0', color: et.actif ? '#15803d' : '#64748b', borderRadius: 6, padding: '4px 9px', cursor: 'pointer' }}>
+                  {et.actif ? 'Actif' : 'Inactif'}
+                </button>
+                {et.protege
+                  ? <span style={{ fontSize: 10, color: '#2563eb', fontWeight: 600 }}>système</span>
+                  : (
+                    <button type="button" onClick={() => delEtape(et)}
+                            style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 6, padding: '4px 9px', cursor: 'pointer' }}>✕</button>
+                  )}
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputBase, flex: 1 }} placeholder="Nouvelle étape" value={newEtape}
+                     onChange={e => setNewEtape(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtape() } }} />
+              <button type="button" onClick={addEtape}
+                      style={{ border: 'none', background: '#2563eb', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
             </div>
           </div>
 

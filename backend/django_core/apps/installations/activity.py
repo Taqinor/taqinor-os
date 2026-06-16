@@ -17,11 +17,20 @@ TRACKED_FIELDS = {
     'date_pose_prevue': 'Date de pose prévue',
     'date_pose_reelle': 'Date de pose réelle',
     'date_mise_en_service': 'Date de mise en service',
+    'date_reception': 'Date de réception',
+    'date_cloture': 'Date de clôture',
+    'labour_jours_estimes': 'Jours-homme estimés',
+    'labour_jours_reels': 'Jours-homme réels',
+    'parc_actif': 'Système actif (parc)',
+    'regime_8221': 'Régime loi 82-21',
+    'dossier_statut': 'Statut dossier réglementaire',
+    'art33_regularisation': 'Régularisation Article 33',
     'annule': 'Annulé',
     'motif_annulation': "Motif d'annulation",
 }
 
-_CHOICE_FIELDS = {'statut', 'raccordement', 'type_installation'}
+_CHOICE_FIELDS = {'statut', 'raccordement', 'type_installation',
+                  'regime_8221', 'dossier_statut'}
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
 
 
