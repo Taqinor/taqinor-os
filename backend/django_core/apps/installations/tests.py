@@ -398,3 +398,301 @@ class TestTypeIntervention(TestCase):
         keys = [t['key'] for t in (r.data['results']
                 if 'results' in r.data else r.data)]
         self.assertNotIn('secret', keys)
+
+
+# ── Parc installé (système installé / asset base) — N7–N10 ──
+
+def make_produit(company, nom, sku, marque='ACME', garantie_mois=None):
+    from apps.stock.models import Produit
+    return Produit.objects.create(
+        company=company, nom=nom, sku=sku, marque=marque,
+        prix_achat=Decimal('100'), prix_vente=Decimal('200'),
+        garantie_mois=garantie_mois)
+
+
+def make_devis_with_lines(company, designations_produits, **kw):
+    """Crée un devis accepté + lignes (produit, désignation). Retourne le devis.
+
+    designations_produits : liste de (produit, designation).
+    """
+    from apps.ventes.models import Devis, LigneDevis
+    client = Client.objects.create(
+        company=company, nom='Parc', prenom='Client',
+        email=f'parc-{company.id}-{kw.get("ref", "x")}@example.invalid')
+    lead = Lead.objects.create(
+        company=company, nom='Parc', prenom='Client', stage='SIGNED',
+        adresse='Route X', ville=kw.get('ville', 'Casablanca'),
+        gps_lat=Decimal('33.5'), gps_lng=Decimal('-7.6'),
+        raccordement='triphase', type_installation='residentiel',
+        taille_souhaitee_kwc=Decimal('6.5'))
+    devis = Devis.objects.create(
+        company=company, reference=f'DEV-PARC-{company.id}-{kw.get("ref", "x")}',
+        client=client, lead=lead, statut=Devis.Statut.ACCEPTE,
+        taux_tva=Decimal('20'), mode_installation='residentiel',
+        etude_params={'puissance_kwc': kw.get('kwc', 7.2)})
+    for produit, designation in designations_produits:
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=designation,
+            quantite=Decimal('1'), prix_unitaire=Decimal('200'))
+    return devis
+
+
+class TestParcReception(TestCase):
+    """N7 — système installé auto-créé à la réception (MES / clôture)."""
+
+    def setUp(self):
+        self.company = make_company(slug='parc-co', nom='Parc Co')
+        self.user = User.objects.create_user(
+            username='parc_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        self.panneau = make_produit(
+            self.company, 'Panneau 550W', 'PAN-550', garantie_mois=144)
+        self.onduleur = make_produit(
+            self.company, 'Onduleur hybride 5kW', 'OND-5', garantie_mois=60)
+        self.batterie = make_produit(self.company, 'Batterie 5kWh', 'BAT-5')
+        self.pose = make_produit(self.company, 'Pose et main d\'œuvre', 'POSE')
+        devis = make_devis_with_lines(self.company, [
+            (self.panneau, '12 panneaux 550 W'),
+            (self.onduleur, 'Onduleur hybride 5kW'),
+            (self.batterie, 'Batterie lithium 5kWh'),
+            (self.pose, 'Pose et mise en service'),
+        ], ref='r')
+        self.inst = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json').data['id'])
+
+    def test_mise_en_service_creates_equipements_and_reception(self):
+        from apps.sav.models import Equipement
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertTrue(self.inst.parc_actif)
+        self.assertEqual(str(self.inst.date_reception), '2026-06-20')
+        # Un équipement par composant (panneau/onduleur/batterie) — PAS la pose.
+        produits = set(Equipement.objects.filter(installation=self.inst)
+                       .values_list('produit_id', flat=True))
+        self.assertEqual(
+            produits, {self.panneau.id, self.onduleur.id, self.batterie.id})
+
+    def test_garanties_computed_on_auto_equipements(self):
+        from apps.sav.models import Equipement
+        self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20'}, format='json')
+        eq = Equipement.objects.get(
+            installation=self.inst, produit=self.panneau)
+        # 2026-06-20 + 144 mois = 2038-06-20.
+        self.assertEqual(str(eq.date_fin_garantie), '2038-06-20')
+
+    def test_reception_is_idempotent(self):
+        from apps.sav.models import Equipement
+        self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20'}, format='json')
+        count1 = Equipement.objects.filter(installation=self.inst).count()
+        # Re-trigger : passe à clôturé via PATCH — ne doit PAS dupliquer.
+        self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'statut': 'cloture'}, format='json')
+        count2 = Equipement.objects.filter(installation=self.inst).count()
+        self.assertEqual(count1, count2)
+        self.assertEqual(count1, 3)
+
+    def test_patch_to_cloture_triggers_reception(self):
+        from apps.sav.models import Equipement
+        r = self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'statut': 'cloture'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertIsNotNone(self.inst.date_reception)
+        self.assertEqual(
+            Equipement.objects.filter(installation=self.inst).count(), 3)
+
+    def test_non_received_status_does_not_materialise(self):
+        from apps.sav.models import Equipement
+        self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'statut': 'planifie'}, format='json')
+        self.inst.refresh_from_db()
+        self.assertIsNone(self.inst.date_reception)
+        self.assertEqual(
+            Equipement.objects.filter(installation=self.inst).count(), 0)
+
+    def test_existing_equipement_not_duplicated(self):
+        from apps.sav.models import Equipement
+        # Pré-crée manuellement l'équipement onduleur → réception ne le double pas.
+        Equipement.objects.create(
+            company=self.company, produit=self.onduleur, installation=self.inst)
+        self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20'}, format='json')
+        self.assertEqual(
+            Equipement.objects.filter(
+                installation=self.inst, produit=self.onduleur).count(), 1)
+
+
+class TestSerialCapture(TestCase):
+    """N9 — saisie des n° de série par composant, sans bloquer la checklist."""
+
+    def setUp(self):
+        self.company = make_company(slug='ser-co', nom='Ser Co')
+        self.user = User.objects.create_user(
+            username='ser_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        self.panneau = make_produit(self.company, 'Panneau', 'PAN')
+        devis = make_devis_with_lines(
+            self.company, [(self.panneau, 'Panneau 550W')], ref='s')
+        self.inst = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json').data['id'])
+        self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20'}, format='json')
+
+    def test_set_serials_updates_equipements(self):
+        from apps.sav.models import Equipement
+        eq = Equipement.objects.get(installation=self.inst)
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/set-serials/',
+            {'serials': {str(eq.id): 'SN-ABC-123'}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        eq.refresh_from_db()
+        self.assertEqual(eq.numero_serie, 'SN-ABC-123')
+
+    def test_empty_serial_clears_and_does_not_block(self):
+        from apps.sav.models import Equipement
+        eq = Equipement.objects.get(installation=self.inst)
+        eq.numero_serie = 'OLD'
+        eq.save(update_fields=['numero_serie'])
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/set-serials/',
+            {'serials': {str(eq.id): ''}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        eq.refresh_from_db()
+        self.assertIsNone(eq.numero_serie)
+
+    def test_checklist_completes_with_empty_serials(self):
+        # Cocher toutes les étapes ne dépend JAMAIS des n° de série.
+        items = list(ChecklistItem.objects.filter(installation=self.inst))
+        for it in items:
+            r = self.api.post(
+                f'/api/django/installations/chantiers/{self.inst.id}'
+                f'/checklist/{it.id}/toggle/', {'done': True}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        detail = self.api.get(
+            f'/api/django/installations/chantiers/{self.inst.id}/')
+        self.assertEqual(detail.data['completion']['percent'], 100)
+
+
+class TestParcListAndHub(TestCase):
+    """N8/N10 — liste parc (filtres + scope + carte) et hub détail."""
+
+    def setUp(self):
+        self.company = make_company(slug='pl-co', nom='PL Co')
+        self.user = User.objects.create_user(
+            username='pl_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        self.panneau = make_produit(
+            self.company, 'Panneau', 'PAN', marque='Longi')
+        self.onduleur = make_produit(
+            self.company, 'Onduleur', 'OND', marque='Huawei')
+
+    def _received_inst(self, ref='a', ville='Casablanca', kwc=7.2):
+        devis = make_devis_with_lines(self.company, [
+            (self.panneau, 'Panneau 550W'),
+            (self.onduleur, 'Onduleur hybride'),
+        ], ref=ref, ville=ville, kwc=kwc)
+        inst = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json').data['id'])
+        self.api.post(
+            f'/api/django/installations/chantiers/{inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20'}, format='json')
+        inst.refresh_from_db()
+        return inst
+
+    def test_only_received_appear_in_parc(self):
+        received = self._received_inst(ref='a')
+        # Un chantier non réceptionné ne doit PAS apparaître.
+        devis2 = make_devis_with_lines(
+            self.company, [(self.panneau, 'Panneau')], ref='b')
+        not_received = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis2.id}, format='json').data['id'])
+        r = self.api.get('/api/django/installations/parc/')
+        ids = ids_of(r)
+        self.assertIn(received.id, ids)
+        self.assertNotIn(not_received.id, ids)
+
+    def test_filter_by_ville_and_kwc_and_marque(self):
+        a = self._received_inst(ref='a', ville='Casablanca', kwc=5.0)
+        b = self._received_inst(ref='b', ville='Marrakech', kwc=12.0)
+        # ville
+        r = self.api.get('/api/django/installations/parc/?ville=marrak')
+        self.assertEqual(ids_of(r), [b.id])
+        # kwc band
+        r = self.api.get('/api/django/installations/parc/?kwc_min=10')
+        self.assertEqual(ids_of(r), [b.id])
+        # marque de composant
+        r = self.api.get('/api/django/installations/parc/?marque=Longi')
+        self.assertEqual(set(ids_of(r)), {a.id, b.id})
+        r = self.api.get('/api/django/installations/parc/?marque=Inexistante')
+        self.assertEqual(ids_of(r), [])
+
+    def test_filter_by_annee(self):
+        a = self._received_inst(ref='a')
+        r = self.api.get('/api/django/installations/parc/?annee=2026')
+        self.assertIn(a.id, ids_of(r))
+        r = self.api.get('/api/django/installations/parc/?annee=2099')
+        self.assertNotIn(a.id, ids_of(r))
+
+    def test_carte_returns_only_geolocated(self):
+        a = self._received_inst(ref='a')
+        r = self.api.get('/api/django/installations/parc/carte/')
+        self.assertEqual(r.status_code, 200)
+        pts = r.data
+        self.assertTrue(any(p['id'] == a.id for p in pts))
+        for p in pts:
+            self.assertIsNotNone(p['gps_lat'])
+            self.assertIsNotNone(p['gps_lng'])
+
+    def test_hub_aggregates_related_objects(self):
+        from apps.sav.models import (
+            Equipement, Ticket, ContratMaintenance,
+        )
+        a = self._received_inst(ref='a')
+        eq = Equipement.objects.filter(installation=a).first()
+        Ticket.objects.create(
+            company=self.company, reference='SAV-1', client=a.client,
+            installation=a, equipement=eq)
+        ContratMaintenance.objects.create(
+            company=self.company, installation=a, client=a.client,
+            date_debut='2026-06-20')
+        r = self.api.get(f'/api/django/installations/parc/{a.id}/hub/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data['equipements']), 2)
+        self.assertEqual(len(r.data['tickets']), 1)
+        self.assertEqual(len(r.data['contrats_maintenance']), 1)
+        self.assertEqual(r.data['monitoring']['statut'], 'non_configure')
+
+    def test_parc_no_buy_price_exposed(self):
+        a = self._received_inst(ref='a')
+        r = self.api.get(f'/api/django/installations/parc/{a.id}/hub/')
+        blob = str(r.data).lower()
+        self.assertNotIn('prix_achat', blob)
+
+    def test_parc_company_scoped(self):
+        a = self._received_inst(ref='a')
+        other = make_company(slug='pl-other', nom='PL Other')
+        ub = User.objects.create_user(
+            username='pl_b', password='x', role_legacy='admin', company=other)
+        r = auth(ub).get('/api/django/installations/parc/')
+        self.assertNotIn(a.id, ids_of(r))
+        r2 = auth(ub).get(f'/api/django/installations/parc/{a.id}/hub/')
+        self.assertEqual(r2.status_code, 404)

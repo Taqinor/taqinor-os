@@ -19,6 +19,16 @@ const installationsApi = {
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
 
+  // Parc installé (N8/N10) — systèmes installés = chantiers réceptionnés.
+  getParc: (params) => api.get('/installations/parc/', { params }),
+  getParcCarte: (params) => api.get('/installations/parc/carte/', { params }),
+  getParcHub: (id) => api.get(`/installations/parc/${id}/hub/`),
+  // Composants installés d'un chantier (lecture) + saisie des n° de série (N9).
+  getChantierEquipements: (id) =>
+    api.get(`/installations/chantiers/${id}/equipements/`),
+  setSerials: (id, serials) =>
+    api.post(`/installations/chantiers/${id}/set-serials/`, { serials }),
+
   // Checklist d'exécution (N3) — auto-remplie côté serveur ; bascule d'étape.
   getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
   toggleChecklistItem: (id, itemId, done) =>
