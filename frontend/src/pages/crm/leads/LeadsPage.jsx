@@ -13,6 +13,7 @@ import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
+import BulkToolbar from './BulkToolbar'
 import './leadspage.css'
 
 const VIEW_KEY = 'taqinor.leads.view'
@@ -59,6 +60,16 @@ export default function LeadsPage() {
   // Changement d'étape optimiste avec retour-arrière.
   const [busyLeadId, setBusyLeadId] = useState(null)
   const [stageError, setStageError] = useState(null)
+
+  // Sélection « en masse » partagée par la liste et le kanban (T3).
+  const [selectedIds, setSelectedIds] = useState([])
+  const toggleSelect = (id) =>
+    setSelectedIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])
+  const setSelection = (ids) => setSelectedIds(ids)
+  const clearSelection = () => setSelectedIds([])
+  // Après une action en masse : on rafraîchit et on vide la sélection.
+  const onBulkDone = () => { refetch(); clearSelection() }
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
@@ -117,6 +128,18 @@ export default function LeadsPage() {
     } catch { /* erreur silencieuse */ }
   }
 
+  // Édition en place d'un champ unique depuis la liste (T4) : PATCH ciblé,
+  // validation + journal Historique côté serveur (même endpoint que la fiche).
+  const inlineEdit = async (lead, field, value) => {
+    if (!lead) return
+    try {
+      await dispatch(updateLead({ id: lead.id, data: { [field]: value } })).unwrap()
+      refetch()
+    } catch {
+      setStageError("La modification n'a pas pu être enregistrée — réessayez.")
+    }
+  }
+
   const changeStage = async (lead, newStage) => {
     if (!lead || lead.stage === newStage) return
     const prev = lead.stage
@@ -144,6 +167,12 @@ export default function LeadsPage() {
     busyLeadId,
     users,
     onReassign: reassign,
+    // Sélection « en masse » (liste + kanban).
+    selectedIds,
+    onToggleSelect: toggleSelect,
+    onSetSelection: setSelection,
+    // Édition en place (liste uniquement).
+    onInlineEdit: inlineEdit,
   }
 
   return (
@@ -177,6 +206,13 @@ export default function LeadsPage() {
           </button>
         </div>
       )}
+
+      <BulkToolbar
+        selectedIds={selectedIds}
+        onClear={clearSelection}
+        onDone={onBulkDone}
+        users={users}
+      />
 
       <div className="lp-view-area">
         {view === 'kanban' && <KanbanView {...viewProps} />}

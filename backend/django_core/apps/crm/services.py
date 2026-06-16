@@ -43,6 +43,38 @@ def _rang_funnel(stage_key: str) -> int:
     return stages.STAGES.index(stage_key)
 
 
+def stage_rank(stage_key: str) -> int:
+    """Rang public d'avancement d'une étape (réutilise _rang_funnel)."""
+    return _rang_funnel(stage_key)
+
+
+def can_move_to_stage(lead, nouveau_stage: str):
+    """Règle « jamais en arrière » du funnel pour un changement MANUEL d'étape.
+
+    Renvoie (ok: bool, raison: str|None). Aligné sur la logique de
+    avancer_stage_pour_devis :
+      - une étape inconnue est refusée ;
+      - un lead Perdu (drapeau) ne bouge jamais via une action en masse ;
+      - réactiver depuis COLD/Froid est autorisé (COLD est un parking, classé
+        sous QUOTE_SENT par _rang_funnel — comme une édition simple) ;
+      - sinon on n'autorise que d'avancer (ou de parquer en COLD).
+    """
+    if nouveau_stage not in stages.STAGES:
+        return False, "Étape inconnue."
+    if lead.perdu:
+        return False, "Lead perdu — réactivez-le d'abord."
+    if lead.stage == nouveau_stage:
+        return False, "Déjà à cette étape."
+    # COLD est un parking : on peut toujours y mettre un lead.
+    if nouveau_stage == 'COLD':
+        return True, None
+    # Sinon : pas de recul dans l'entonnoir (COLD compte comme < QUOTE_SENT,
+    # donc en sortir vers une étape plus avancée est permis).
+    if _rang_funnel(nouveau_stage) < _rang_funnel(lead.stage):
+        return False, "Le funnel ne recule pas — étape ignorée."
+    return True, None
+
+
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     """Avance l'étape du lead quand le STATUT d'un devis change.
 

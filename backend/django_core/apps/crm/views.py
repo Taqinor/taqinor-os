@@ -21,6 +21,26 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 @api_view(['GET'])
+@permission_classes([IsAnyRole])
+def global_search_view(request):
+    """Recherche globale multi-modèles (leads, clients, devis, factures,
+    chantiers, équipements, tickets SAV) — tout scopé société. Résultats
+    groupés par type avec id + libellé + route."""
+    from .discovery import global_search
+    q = request.query_params.get('q', '')
+    return Response({'q': q, 'groups': global_search(request.user, q)})
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def notifications_view(request):
+    """Notifications in-app calculées à la volée (activités en retard,
+    garanties bientôt expirées, factures impayées) — scopé société."""
+    from .discovery import notifications
+    return Response(notifications(request.user))
+
+
+@api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def assignable_users(request):
     """Employés assignables comme responsable d'un lead (société courante).
@@ -144,9 +164,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
-            'whatsapp_devis',
+            'whatsapp_devis', 'bulk',
         ]:
-            # L'archivage réversible est ouvert à la Commerciale.
+            # L'archivage réversible est ouvert à la Commerciale. Les actions
+            # en masse aussi (la suppression en masse est gardée à l'intérieur).
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire.
@@ -348,6 +369,62 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         act = activity.log_note(lead, request.user, body)
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='bulk',
+            permission_classes=[IsResponsableOrAdmin])
+    def bulk(self, request):
+        """Actions « en masse » sur une sélection de leads.
+
+        Corps : {action, ids:[...], params:{...}}. Tout est scopé société (les
+        ids étrangers sont ignorés), chaque changement est journalisé dans
+        l'Historique avec le marqueur « en masse ». L'export renvoie un fichier
+        .xlsx ; la suppression est admin-only et bloquée si elle orphelinerait
+        des devis."""
+        from . import bulk as bulk_ops
+        from django.http import HttpResponse
+
+        action_name = request.data.get('action')
+        ids = request.data.get('ids') or []
+        params = request.data.get('params') or {}
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Aucun lead sélectionné.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Leads de la société courante uniquement — les ids étrangers sont
+        # silencieusement ignorés (get_queryset applique déjà le scope).
+        base = Lead.objects.filter(company=request.user.company)
+        leads = list(base.filter(pk__in=ids))
+
+        if action_name == 'export':
+            content = bulk_ops.export_leads_xlsx(leads)
+            resp = HttpResponse(
+                content,
+                content_type=('application/vnd.openxmlformats-officedocument'
+                              '.spreadsheetml.sheet'))
+            resp['Content-Disposition'] = (
+                'attachment; filename="leads.xlsx"')
+            return resp
+
+        if action_name == 'delete':
+            if not getattr(request.user, 'is_admin_role', False):
+                return Response(
+                    {'detail': "Suppression réservée à l'administrateur."},
+                    status=status.HTTP_403_FORBIDDEN)
+            ok, result = bulk_ops.delete_leads(leads, request.user)
+            if not ok:
+                return Response({'detail': result},
+                                status=status.HTTP_409_CONFLICT)
+            return Response({'deleted': result})
+
+        if action_name not in bulk_ops.MUTATING_ACTIONS:
+            return Response({'detail': 'Action inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        summary = bulk_ops.run_mutating_action(
+            action_name, leads, request.user, params)
+        summary['requested'] = len(ids)
+        summary['matched'] = len(leads)
+        return Response(summary)
 
 
 class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):

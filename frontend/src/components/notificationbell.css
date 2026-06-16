@@ -1,0 +1,99 @@
+/* Cloche de notifications (T5) — préfixe nb-. */
+.nb-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.nb-trigger {
+  position: relative;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 0.3rem;
+}
+
+.nb-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.66rem;
+  line-height: 16px;
+  text-align: center;
+}
+
+.nb-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
+  padding: 0.4rem;
+}
+
+.nb-head {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.5rem;
+  color: #1e293b;
+}
+
+.nb-group + .nb-group {
+  border-top: 1px solid #f1f5f9;
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+}
+
+.nb-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  padding: 0.25rem 0.5rem;
+}
+
+.nb-count {
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  color: #334155;
+}
+
+.nb-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.85rem;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.nb-item:hover {
+  background: #eff6ff;
+}
+
+.nb-empty {
+  padding: 0.6rem 0.7rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}

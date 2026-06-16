@@ -1,0 +1,92 @@
+/* Barre d'actions « en masse » (T3) — préfixe bt-. */
+.bt-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  background: #1e293b;
+  color: #f8fafc;
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.bt-count {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.bt-clear {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 0.82rem;
+  text-decoration: underline;
+}
+
+.bt-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.bt-dd {
+  position: relative;
+  display: inline-block;
+}
+
+.bt-dd-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 180px;
+  background: #fff;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.bt-dd-pad {
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bt-dd-item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: #1e293b;
+}
+
+.bt-dd-item:hover {
+  background: #f1f5f9;
+}
+
+.bt-msg {
+  font-size: 0.85rem;
+  color: #fde68a;
+}
+
+/* Cases à cocher de sélection. */
+.lead-select-cb {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}

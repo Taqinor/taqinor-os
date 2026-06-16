@@ -34,6 +34,22 @@ const crmApi = {
   whatsappDevis: (id, payload) =>
     api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
 
+  // Actions « en masse » sur une sélection de leads (T3). Le corps porte
+  // {action, ids, params}. Toutes les actions journalisent « en masse » côté
+  // serveur ; l'export renvoie un fichier .xlsx (responseType blob).
+  bulkLeads: (action, ids, params = {}) =>
+    api.post('/crm/leads/bulk/', { action, ids, params }),
+  exportLeads: (ids, params = {}) =>
+    api.post('/crm/leads/bulk/', { action: 'export', ids, params },
+      { responseType: 'blob' }),
+
+  // Recherche globale (leads, clients, devis, factures, chantiers,
+  // équipements, tickets SAV) — tout scopé société.
+  globalSearch: (q) => api.get('/crm/search/', { params: { q } }),
+  // Notifications in-app calculées à la volée (activités en retard, garanties
+  // bientôt expirées, factures impayées).
+  getNotifications: () => api.get('/crm/notifications/'),
+
   // Listes gérées (Paramètres → CRM).
   getTags: () => api.get('/crm/tags/'),
   saveTag: (id, data) => id ? api.patch(`/crm/tags/${id}/`, data) : api.post('/crm/tags/', data),

@@ -35,5 +35,8 @@ Pillow==10.4.0
 # HTTP client
 httpx==0.28.1
 
+# Spreadsheet export (CRM bulk lead export to .xlsx)
+openpyxl==3.1.5
+
 # Server
 gunicorn==22.0.0
