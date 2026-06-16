@@ -32,7 +32,9 @@ from apps.roles.models import Role
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.installations.models import Installation
-from apps.sav.models import Equipement, Ticket, TicketActivity
+from apps.sav.models import (
+    ContratMaintenance, Equipement, Ticket, TicketActivity,
+)
 from apps.sav.services import add_months
 
 User = get_user_model()
@@ -400,3 +402,125 @@ class TestPermissions(TestCase):
             'produit': self.produit.id, 'installation': self.inst.id,
         }, format='json')
         self.assertEqual(r3.status_code, 403, r3.data)
+
+
+class TestContratMaintenance(TestCase):
+    """Contrats de maintenance préventive : échéance calculée à la lecture,
+    génération de ticket à la demande, idempotence, scoping société."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_contrat', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(self.company)
+
+    def _create(self, **extra):
+        body = {'installation': self.inst.id, 'intervalle_mois': 12,
+                'date_debut': '2026-01-01'}
+        body.update(extra)
+        return self.api.post('/api/django/sav/contrats/', body, format='json')
+
+    def test_create_resolves_client_from_chantier(self):
+        # Le client n'est jamais lu du corps : il vient du chantier.
+        r = self.api.post('/api/django/sav/contrats/', {
+            'installation': self.inst.id, 'intervalle_mois': 6,
+            'date_debut': '2026-01-01', 'client': 999999,
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        c = ContratMaintenance.objects.get(pk=r.data['id'])
+        self.assertEqual(c.client_id, self.client_obj.id)
+        self.assertEqual(c.company_id, self.company.id)
+
+    def test_prochaine_visite_computed_on_the_fly(self):
+        # Jamais visité → première échéance = date de début.
+        r = self._create(date_debut='2026-01-01')
+        self.assertEqual(r.data['prochaine_visite'], '2026-01-01')
+        c = ContratMaintenance.objects.get(pk=r.data['id'])
+        # Après une visite, échéance = visite + intervalle (calculé, non stocké).
+        c.derniere_visite = date(2026, 1, 1)
+        c.save(update_fields=['derniere_visite'])
+        self.assertEqual(c.prochaine_visite, date(2027, 1, 1))
+
+    def test_not_due_before_echeance(self):
+        # Début dans le futur → pas due, aucun ticket même via génération.
+        future = (timezone.localdate() + timedelta(days=400)).isoformat()
+        r = self._create(date_debut=future)
+        cid = r.data['id']
+        self.assertFalse(r.data['est_due'])
+        gen = self.api.post(f'/api/django/sav/contrats/{cid}/generer-dus/')
+        self.assertEqual(gen.status_code, 200, gen.data)
+        self.assertIsNone(gen.data['ticket_genere'])
+        self.assertEqual(
+            Ticket.objects.filter(installation=self.inst,
+                                  type='preventif').count(), 0)
+
+    def test_generate_due_creates_one_preventive_ticket(self):
+        past = (timezone.localdate() - timedelta(days=10)).isoformat()
+        r = self._create(date_debut=past)
+        cid = r.data['id']
+        self.assertTrue(r.data['est_due'])
+        gen = self.api.post(f'/api/django/sav/contrats/{cid}/generer-dus/')
+        self.assertEqual(gen.status_code, 200, gen.data)
+        self.assertIsNotNone(gen.data['ticket_genere'])
+        tickets = Ticket.objects.filter(installation=self.inst, type='preventif')
+        self.assertEqual(tickets.count(), 1)
+        self.assertEqual(tickets.first().statut, 'nouveau')
+        # La dernière visite a avancé à l'échéance traitée.
+        c = ContratMaintenance.objects.get(pk=cid)
+        self.assertEqual(c.derniere_visite.isoformat(), past)
+
+    def test_generation_is_idempotent(self):
+        past = (timezone.localdate() - timedelta(days=10)).isoformat()
+        cid = self._create(date_debut=past).data['id']
+        # Deux appels successifs : un seul ticket.
+        self.api.post(f'/api/django/sav/contrats/{cid}/generer-dus/')
+        second = self.api.post(f'/api/django/sav/contrats/{cid}/generer-dus/')
+        self.assertIsNone(second.data['ticket_genere'])
+        self.assertEqual(
+            Ticket.objects.filter(installation=self.inst,
+                                  type='preventif').count(), 1)
+
+    def test_a_venir_lists_due_without_generating(self):
+        past = (timezone.localdate() - timedelta(days=10)).isoformat()
+        far = (timezone.localdate() + timedelta(days=400)).isoformat()
+        due_id = self._create(date_debut=past).data['id']
+        self._create(date_debut=far)
+        r = self.api.get('/api/django/sav/contrats/a-venir/')
+        self.assertEqual(r.status_code, 200, r.data)
+        got = {row['id'] for row in r.data}
+        self.assertEqual(got, {due_id})
+        # La simple lecture ne génère AUCUN ticket.
+        self.assertEqual(
+            Ticket.objects.filter(installation=self.inst,
+                                  type='preventif').count(), 0)
+
+    def test_a_venir_with_generer_creates_tickets(self):
+        past = (timezone.localdate() - timedelta(days=10)).isoformat()
+        self._create(date_debut=past)
+        r = self.api.get('/api/django/sav/contrats/a-venir/', {'generer': '1'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(
+            Ticket.objects.filter(installation=self.inst,
+                                  type='preventif').count(), 1)
+
+    def test_inactive_contract_never_due(self):
+        past = (timezone.localdate() - timedelta(days=10)).isoformat()
+        cid = self._create(date_debut=past, actif=False).data['id']
+        gen = self.api.post(f'/api/django/sav/contrats/{cid}/generer-dus/')
+        self.assertIsNone(gen.data['ticket_genere'])
+        r = self.api.get('/api/django/sav/contrats/a-venir/')
+        self.assertEqual([row['id'] for row in r.data], [])
+
+    def test_tenant_scoping(self):
+        cid = self._create(date_debut='2026-01-01').data['id']
+        other = make_company(slug='sav-other', nom='Other')
+        ou = User.objects.create_user(
+            username='other_u', password='x', role_legacy='admin',
+            company=other)
+        api_o = auth(ou)
+        self.assertEqual(
+            ids_of(api_o.get('/api/django/sav/contrats/')), [])
+        self.assertEqual(
+            api_o.get(f'/api/django/sav/contrats/{cid}/').status_code, 404)

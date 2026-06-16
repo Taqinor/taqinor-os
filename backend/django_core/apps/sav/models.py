@@ -20,6 +20,8 @@ Le ticket sait si l'équipement qu'il concerne est sous garantie : quand un
 équipement est lié, `sous_garantie_calcule` compare la date du jour à sa fin
 de garantie ; sinon, la valeur manuelle (oui/non/à déterminer) est utilisée.
 """
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -251,3 +253,94 @@ class TicketActivity(models.Model):
 
     def __str__(self):
         return f"{self.ticket_id} {self.kind} {self.field or ''}".strip()
+
+
+# Fenêtre « visite à venir bientôt » (jours) — une visite due dans cet horizon
+# remonte dans la vue « à venir ».
+UPCOMING_SOON_DAYS = 30
+
+
+class ContratMaintenance(models.Model):
+    """Contrat de maintenance préventive — un abonnement de visites récurrentes
+    accroché à un chantier (et donc à un client). Quand une visite arrive à
+    échéance, le contrat GÉNÈRE un ticket SAV préventif. La détection d'échéance
+    est CALCULÉE à la lecture (next_visite = dernière visite / début + intervalle)
+    — aucun planificateur, cron ou tâche de fond, comme partout dans l'OS.
+
+    La génération est déclenchée À LA DEMANDE (ouverture de la vue « à venir »
+    ou clic « générer les tickets dus ») et reste idempotente : un seul ticket
+    par échéance grâce à `derniere_echeance_traitee`.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='contrats_maintenance',
+    )
+    # Le chantier couvert (objet pivot de l'après-vente).
+    installation = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='contrats_maintenance',
+    )
+    # Client — résolu côté serveur depuis le chantier ; jamais lu du corps.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='contrats_maintenance',
+    )
+
+    libelle = models.CharField(max_length=150, blank=True, null=True)
+    # Nombre de mois entre deux visites préventives.
+    intervalle_mois = models.PositiveSmallIntegerField(default=12)
+    date_debut = models.DateField()
+    # Date de la dernière visite réalisée/générée (None = jamais encore visité).
+    derniere_visite = models.DateField(null=True, blank=True)
+    # Échéance déjà matérialisée par un ticket — garde-fou d'idempotence.
+    derniere_echeance_traitee = models.DateField(null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='contrats_maintenance_crees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Contrat de maintenance'
+        verbose_name_plural = 'Contrats de maintenance'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'actif']),
+            models.Index(fields=['company', 'installation']),
+        ]
+
+    def __str__(self):
+        return self.libelle or f"Contrat #{self.pk}"
+
+    @property
+    def prochaine_visite(self):
+        """Date de la prochaine visite préventive — CALCULÉE à la lecture.
+
+        base = dernière visite si elle existe, sinon date de début ; on ajoute
+        l'intervalle. Si aucune visite n'a eu lieu, la première échéance est la
+        date de début elle-même (la visite de mise en route)."""
+        if not self.derniere_visite:
+            return self.date_debut
+        return add_months(self.derniere_visite, self.intervalle_mois)
+
+    def est_due(self, today=None):
+        """Vrai si une visite est due (prochaine échéance <= aujourd'hui)."""
+        if not self.actif:
+            return False
+        today = today or timezone.localdate()
+        prochaine = self.prochaine_visite
+        return prochaine is not None and prochaine <= today
+
+    def est_a_venir(self, today=None, horizon_jours=UPCOMING_SOON_DAYS):
+        """Vrai si une visite est due OU due dans l'horizon proche."""
+        if not self.actif:
+            return False
+        today = today or timezone.localdate()
+        prochaine = self.prochaine_visite
+        if prochaine is None:
+            return False
+        return prochaine <= today + timedelta(days=horizon_jours)
