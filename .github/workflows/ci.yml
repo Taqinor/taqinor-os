@@ -116,3 +116,22 @@ jobs:
           python-version: '3.12'
       - name: Check pipeline stage names against STAGES.py
         run: python scripts/check_stages.py
+
+  web-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install apps/web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Build marketing site (astro build)
+        working-directory: apps/web
+        run: npm run build
+      - name: Run apps/web test suite (vitest)
+        working-directory: apps/web
+        run: npm test
