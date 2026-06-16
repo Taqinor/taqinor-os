@@ -38,6 +38,8 @@ class Client(models.Model):
     if_fiscal = models.CharField(max_length=30, blank=True, null=True)
     rc = models.CharField(max_length=30, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
+    # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Client"
@@ -275,6 +277,8 @@ class Lead(models.Model):
     # graphique) mais reste filtrable (« Archivés ») et restaurable. La
     # suppression définitive reste un geste admin distinct (destroy).
     is_archived = models.BooleanField(default=False)
+    # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
+    custom_data = models.JSONField(null=True, blank=True)
     archived_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
