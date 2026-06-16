@@ -30,6 +30,8 @@ const stockApi = {
 
   // Édition en masse du catalogue (T8) + export Excel d'une sélection.
   bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
+  // N16 — inventaire physique : comptage par produit → ajustement de stock.
+  inventaire: (payload) => api.post('/stock/produits/inventaire/', payload),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.

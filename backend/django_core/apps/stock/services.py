@@ -119,6 +119,51 @@ def export_products_xlsx(produits):
 # action amont peut transformer ces manques en un BonCommandeFournisseur
 # brouillon. Le prix d'achat reste INTERNE (jamais sur un document client).
 
+def apply_inventory_count(*, company, user, motif, lignes):
+    """N16 — inventaire : pose un comptage physique par produit et enregistre
+    l'écart en MouvementStock (AJUSTEMENT). Renvoie {ajustes, inchanges,
+    mouvements:[…]}. Le stock devient la quantité comptée ; rien n'est touché
+    quand le comptage = stock actuel. Tout est scopé à la société."""
+    from django.db import transaction
+    from .models import Produit, MouvementStock
+
+    motif = (motif or '').strip()
+    result = {'ajustes': 0, 'inchanges': 0, 'mouvements': []}
+    with transaction.atomic():
+        for ligne in (lignes or []):
+            pid = ligne.get('produit')
+            try:
+                compte = int(ligne.get('quantite_comptee'))
+            except (TypeError, ValueError):
+                continue
+            if compte < 0:
+                continue
+            produit = Produit.objects.select_for_update().filter(
+                id=pid, company=company).first()
+            if produit is None:
+                continue
+            avant = produit.quantite_stock
+            if compte == avant:
+                result['inchanges'] += 1
+                continue
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+                quantite=compte, quantite_avant=avant, quantite_apres=compte,
+                reference='INVENTAIRE',
+                note=f'Inventaire — comptage {compte} (écart {compte - avant})'
+                     + (f' · {motif}' if motif else ''),
+                created_by=user)
+            produit.quantite_stock = compte
+            produit.save(update_fields=['quantite_stock'])
+            result['ajustes'] += 1
+            result['mouvements'].append({
+                'produit': produit.id, 'avant': avant, 'apres': compte})
+    logger.info('INVENTAIRE %d ajustement(s) par user=%s (company=%s)',
+                result['ajustes'], getattr(user, 'username', '?'), company.id)
+    return result
+
+
 def compute_besoin_materiel(installation):
     """Agrège les besoins matériel d'un chantier depuis son devis source.
 

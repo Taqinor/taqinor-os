@@ -110,6 +110,25 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
+    @action(detail=False, methods=['post'], url_path='inventaire',
+            permission_classes=[IsAdminRole])
+    def inventaire(self, request):
+        """N16 — inventaire physique : pose un comptage par produit et publie
+        l'écart en ajustement de stock (audité). Réservé admin.
+
+        Corps : {"motif": <str>, "lignes": [{"produit": <id>,
+                 "quantite_comptee": <int>}]}.
+        """
+        from .services import apply_inventory_count
+        lignes = request.data.get('lignes') or []
+        if not isinstance(lignes, list) or not lignes:
+            return Response({'detail': 'Aucune ligne de comptage fournie.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        result = apply_inventory_count(
+            company=request.user.company, user=request.user,
+            motif=request.data.get('motif'), lignes=lignes)
+        return Response(result)
+
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):

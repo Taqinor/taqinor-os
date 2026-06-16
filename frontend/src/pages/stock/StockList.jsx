@@ -19,6 +19,84 @@ import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
 
+// ── N16 — Inventaire physique : comptage par produit → ajustement de stock ──
+function InventaireModal({ produits, onClose, onDone }) {
+  const [motif, setMotif] = useState('')
+  const [counts, setCounts] = useState({}) // { produitId: '12' }
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const rows = (produits ?? []).filter((p) => !p.is_archived)
+
+  const submit = async () => {
+    const lignes = rows
+      .filter((p) => counts[p.id] !== undefined && counts[p.id] !== '')
+      .map((p) => ({ produit: p.id, quantite_comptee: parseInt(counts[p.id], 10) }))
+      .filter((l) => Number.isInteger(l.quantite_comptee) && l.quantite_comptee >= 0)
+    if (lignes.length === 0) { setError('Saisissez au moins un comptage.'); return }
+    setSaving(true); setError(null)
+    try {
+      const r = await stockApi.inventaire({ motif, lignes })
+      onDone?.()
+      onClose()
+      alert(`Inventaire enregistré : ${r.data.ajustes} ajustement(s), ${r.data.inchanges} inchangé(s).`)
+    } catch (err) {
+      setError(err.response?.data?.detail ?? "Échec de l'inventaire.")
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Inventaire physique</h3>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p className="gen-hint" style={{ marginTop: 0 }}>
+            Saisissez la quantité comptée ; seuls les écarts sont ajustés (mouvement
+            « Ajustement » audité). Laissez vide pour ne pas toucher un produit.
+          </p>
+          <div className="form-group">
+            <label className="form-label">Motif (optionnel)</label>
+            <input className="form-control" value={motif}
+                   onChange={(e) => setMotif(e.target.value)}
+                   placeholder="Ex. comptage annuel" />
+          </div>
+          <div className="table-wrap" style={{ maxHeight: 360, overflow: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr><th>Produit</th><th>SKU</th><th>Stock actuel</th><th>Compté</th></tr>
+              </thead>
+              <tbody>
+                {rows.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.nom}</td>
+                    <td>{p.sku ?? '—'}</td>
+                    <td>{p.quantite_stock}</td>
+                    <td>
+                      <input type="number" min="0" className="form-control"
+                             style={{ width: 90 }} value={counts[p.id] ?? ''}
+                             placeholder={String(p.quantite_stock)}
+                             onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {error && <div className="form-error-box" role="alert">{error}</div>}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
+          <button type="button" className="btn btn-primary" disabled={saving} onClick={submit}>
+            {saving ? 'Enregistrement…' : 'Valider l\'inventaire'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
 function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, onInlineSave, selected, onToggleSelect }) {
   const spec = keySpec(p)
@@ -205,6 +283,7 @@ export default function StockList() {
   const [bulkBusy, setBulkBusy]   = useState(false)
   const [bulkMsg, setBulkMsg]     = useState(null)
   const [showImport, setShowImport] = useState(false)
+  const [showInventaire, setShowInventaire] = useState(false)
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
@@ -374,6 +453,12 @@ export default function StockList() {
               {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
             </button>
           )}
+          {role === 'admin' && (
+            <button className="btn btn-sm btn-outline" onClick={() => setShowInventaire(true)}
+                    title="Inventaire physique : saisir un comptage et ajuster le stock">
+              🧮 Inventaire
+            </button>
+          )}
           <button className="btn btn-sm btn-outline" onClick={exportFiltered}>
             ⬇ Exporter Excel
           </button>
@@ -393,6 +478,11 @@ export default function StockList() {
       {showImport && (
         <ExcelImport target="products" onClose={() => setShowImport(false)}
                      onDone={() => dispatch(fetchProduits())} />
+      )}
+
+      {showInventaire && (
+        <InventaireModal produits={filtered} onClose={() => setShowInventaire(false)}
+                         onDone={() => dispatch(fetchProduits())} />
       )}
 
       {archiveNotif && (
