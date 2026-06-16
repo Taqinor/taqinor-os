@@ -33,6 +33,13 @@ const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
+const PipelineValuePage = lazy(() => import('../pages/reporting/PipelineValuePage'))
+const RapportsHub = lazy(() => import('../pages/reporting/RapportsHub'))
+const SalesReportPage = lazy(() => import('../pages/reporting/SalesReportPage'))
+const StockReportPage = lazy(() => import('../pages/reporting/StockReportPage'))
+const ServiceReportPage = lazy(() => import('../pages/reporting/ServiceReportPage'))
+const ContratsMaintenancePage = lazy(() => import('../pages/sav/ContratsMaintenancePage'))
+const ContratsAVenirPage = lazy(() => import('../pages/sav/ContratsAVenirPage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client
@@ -88,6 +95,8 @@ const router = createBrowserRouter([
   // Après-vente : parc d'équipements & tickets SAV
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
   { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
+  { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenancePage /></WithLayout> },
+  { path: '/sav/maintenance-a-venir', loader: authLoader, element: <WithLayout><ContratsAVenirPage /></WithLayout> },
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
@@ -96,6 +105,11 @@ const router = createBrowserRouter([
   // Reporting
   { path: '/reporting', loader: authLoader, element: <WithLayout><Reporting /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
+  { path: '/reporting/pipeline', loader: authLoader, element: <WithLayout><PipelineValuePage /></WithLayout> },
+  { path: '/reporting/rapports', loader: authLoader, element: <WithLayout><RapportsHub /></WithLayout> },
+  { path: '/reporting/rapports/ventes', loader: authLoader, element: <WithLayout><SalesReportPage /></WithLayout> },
+  { path: '/reporting/rapports/stock', loader: authLoader, element: <WithLayout><StockReportPage /></WithLayout> },
+  { path: '/reporting/rapports/service', loader: authLoader, element: <WithLayout><ServiceReportPage /></WithLayout> },
 
   // Administration
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },

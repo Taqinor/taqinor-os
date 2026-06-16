@@ -91,6 +91,8 @@ const NAV_SECTIONS = [
     items: [
       { to: '/equipements',          label: 'Équipements',      icon: I.equipements,  roles: ['normal','responsable','admin'] },
       { to: '/sav',                  label: 'Tickets SAV',      icon: I.sav,          roles: ['normal','responsable','admin'] },
+      { to: '/sav/contrats',         label: 'Contrats maintenance', icon: I.agenda,   roles: ['responsable','admin'] },
+      { to: '/sav/maintenance-a-venir', label: 'Maintenance à venir', icon: I.agenda, roles: ['responsable','admin'] },
     ],
   },
   {
@@ -104,6 +106,8 @@ const NAV_SECTIONS = [
     label: 'ANALYSE',
     items: [
       { to: '/reporting',            label: 'Reporting',        icon: I.reporting,    roles: ['responsable','admin'] },
+      { to: '/reporting/pipeline',   label: 'Valeur du pipeline', icon: I.reporting,  roles: ['responsable','admin'] },
+      { to: '/reporting/rapports',   label: 'Rapports',         icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   icon: I.reporting,    roles: ['responsable','admin'] },
     ],
   },

@@ -1,5 +1,7 @@
 import { useSelector } from 'react-redux'
 import { useLocation } from 'react-router-dom'
+import GlobalSearch from '../GlobalSearch'
+import NotificationBell from '../NotificationBell'
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
@@ -36,6 +38,8 @@ export default function Header({ onMenu }) {
         </svg>
       </button>
       <h1 className="header-title">{title}</h1>
+      <GlobalSearch />
+      <NotificationBell />
       <div className="header-user">
         <span className="header-user-avatar">
           {user?.username?.[0]?.toUpperCase() ?? 'U'}

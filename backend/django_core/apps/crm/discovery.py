@@ -120,7 +120,7 @@ def global_search(user, q, limit=8):
             'id': i.id,
             'label': f"{i.reference} · {i.client.nom if i.client_id else ''}"
                      .strip(' ·'),
-            'route': f"/installations?chantier={i.id}",
+            'route': f"/chantiers?chantier={i.id}",
         } for i in qs]
         if items:
             groups.append({
@@ -143,7 +143,7 @@ def global_search(user, q, limit=8):
         items = [{
             'id': e.id,
             'label': _equip_label(e),
-            'route': f"/sav?equipement={e.id}",
+            'route': f"/equipements?equipement={e.id}",
         } for e in qs]
         items = [it for it in items if it['label'].strip(' ·')]
         if items:
@@ -200,7 +200,7 @@ def notifications(user, limit=10):
         items = [{
             'id': a.id,
             'label': _act_label(a),
-            'route': '/calendrier',
+            'route': '/activites',
         } for a in qs[:limit]]
         if count:
             groups.append({
@@ -228,7 +228,7 @@ def notifications(user, limit=10):
         items = [{
             'id': e.id,
             'label': _warranty_label(e),
-            'route': f"/sav?equipement={e.id}",
+            'route': f"/equipements?equipement={e.id}",
         } for e in qs[:limit]]
         if count:
             groups.append({
