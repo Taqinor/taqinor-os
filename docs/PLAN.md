@@ -110,7 +110,7 @@ production on Hetzner at **api.taqinor.ma** (cx23, daily backups, deploy via
 
 ## BUILD QUEUE (do top-down — highest value first)
 
-### T1 — Fix the devis preview (PRIORITY 1, blocks daily quoting) — [ ]
+### T1 — Fix the devis preview (PRIORITY 1, blocks daily quoting) — [x] (already present, verified)
 **Symptom (confirmed by screenshot):** on a lead's devis preview panel (titled "Devis — <name>"
 with Premium / 1 page / Inclure l'étude toggles, an "Édition complète" button, and a
 "Télécharger le PDF" button), the PDF area shows a generic **broken-file icon** instead of the
@@ -138,7 +138,7 @@ scratch — do not assume any previous change is present or correct.
 **Acceptance:** open DEV-202606-0024 → the PDF renders in the panel AND downloads, in Premium,
 1-page, and étude.
 
-### T2 — Installable PWA / "app version" (like Odoo on mobile) — [ ]
+### T2 — Installable PWA / "app version" (like Odoo on mobile) — [x] (already present, verified)
 Make the OS installable so Reda and Meryem can "Add to Home Screen" and run it full-screen like a
 native app. The "app" is the existing web app — no second codebase. **OS React app only**, not the
 Astro marketing site under `apps/web`.
@@ -321,3 +321,5 @@ Tracked here so they aren't lost:
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state)*
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
+- 2026-06-16 — T1 verified already present: the lead devis preview fetches the PDF authenticated via /proposal as a blob and renders it page-by-page with PDF.js on canvas (unblockable), with distinct FR server-error vs network-fallback states; download/new-tab reuse the same blob; Vite content-hashes build output for cache-busting. Covered by previewPdf.test.mjs + crm.tests_devis_preview; full CI green.
+- 2026-06-16 — T2 verified already present: installable PWA via vite-plugin-pwa (manifest standalone/scope/lang/theme + 192/512/maskable/apple-touch icons), iOS head tags, custom sw.js (skipWaiting+clientsClaim, branded offline.html, API never cached), autoUpdate + FR install helper (PwaPrompts).
