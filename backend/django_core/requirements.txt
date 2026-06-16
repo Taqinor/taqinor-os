@@ -32,14 +32,11 @@ boto3==1.35.99
 # Image handling
 Pillow==10.4.0
 
-# Spreadsheet export (catalogue bulk .xlsx export)
+# Spreadsheet exports (.xlsx) — catalogue/CRM bulk + reporting/accountant exports
 openpyxl==3.1.5
 
 # HTTP client
 httpx==0.28.1
-
-# Spreadsheet export (CRM bulk lead export to .xlsx)
-openpyxl==3.1.5
 
 # Server
 gunicorn==22.0.0
