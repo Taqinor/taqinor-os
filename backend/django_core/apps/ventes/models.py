@@ -302,6 +302,18 @@ class Facture(models.Model):
     # relance) ; exclu_relances retire la facture des listes d'impayés.
     prochaine_relance = models.DateField(null=True, blank=True)
     exclu_relances = models.BooleanField(default=False)
+
+    # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
+    # main. Prépare le modèle de données pour un futur flux DGI sans aucun
+    # appel externe aujourd'hui. Défaut « Non soumise » = comportement actuel.
+    class StatutTeledeclaration(models.TextChoices):
+        NON_SOUMISE = 'non_soumise', 'Non soumise'
+        SOUMISE = 'soumise', 'Soumise'
+        VALIDEE = 'validee', 'Validée'
+
+    statut_teledeclaration = models.CharField(
+        max_length=15, choices=StatutTeledeclaration.choices,
+        default=StatutTeledeclaration.NON_SOUMISE)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

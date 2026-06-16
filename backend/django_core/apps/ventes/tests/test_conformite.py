@@ -107,3 +107,27 @@ class TestFactureConformite(TestCase):
             client_obj, date_livraison=date(2026, 6, 1),
             conditions_paiement='Virement à 30 jours')
         self.assertEqual(facture.mentions_manquantes, [])
+
+
+class TestClearanceStatut(TestCase):
+    """N39 — statut de télédéclaration DGI : informatif, défaut « non soumise »."""
+
+    def setUp(self):
+        self.company = make_company(slug='dgi-co', nom='DGI Co')
+        self.user = User.objects.create_user(
+            username='dgi_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        self.client_obj = make_client(self.company, email='dgi@example.com')
+
+    def test_default_non_soumise_and_editable(self):
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-9101',
+            client=self.client_obj, statut=Facture.Statut.BROUILLON,
+            taux_tva=Decimal('20.00'))
+        self.assertEqual(facture.statut_teledeclaration, 'non_soumise')
+        r = self.api.patch(
+            f'/api/django/ventes/factures/{facture.id}/',
+            {'statut_teledeclaration': 'soumise'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut_teledeclaration'], 'soumise')

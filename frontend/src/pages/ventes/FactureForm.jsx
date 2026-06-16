@@ -41,6 +41,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     date_echeance:   facture?.date_echeance    ?? '',
     taux_tva:        String(facture?.taux_tva        ?? '20.00'),
     remise_globale:  String(facture?.remise_globale  ?? '0'),
+    statut_teledeclaration: facture?.statut_teledeclaration ?? 'non_soumise',
     note:            facture?.note             ?? '',
   })
 
@@ -132,6 +133,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         date_echeance:  fields.date_echeance  || null,
         taux_tva:       fields.taux_tva,
         remise_globale: fields.remise_globale,
+        statut_teledeclaration: fields.statut_teledeclaration,
         note:           fields.note || null,
       }
 
@@ -281,6 +283,23 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                     <option value="payee">Payée</option>
                     <option value="en_retard">En retard</option>
                     <option value="annulee">Annulée</option>
+                  </select>
+                </div>
+              )}
+
+              {isEdit && (
+                <div className="form-group">
+                  <label className="form-label" title="Statut DGI — informatif, posé à la main">
+                    Télédéclaration DGI
+                  </label>
+                  <select
+                    className="form-select"
+                    value={fields.statut_teledeclaration}
+                    onChange={e => setField('statut_teledeclaration', e.target.value)}
+                  >
+                    <option value="non_soumise">Non soumise</option>
+                    <option value="soumise">Soumise</option>
+                    <option value="validee">Validée</option>
                   </select>
                 </div>
               )}
