@@ -93,11 +93,20 @@ export function statusOrder(key) {
   return i === -1 ? INSTALLATION_STATUSES.length : i
 }
 
+export const REGIME_8221_LABELS = {
+  non_concerne: 'Non concerné',
+  declaration_bt: 'Déclaration (< 11 kW, BT)',
+  accord_raccordement: 'Accord de raccordement',
+  autorisation_anre: 'Autorisation ANRE (> 1 MW)',
+}
+
 export const EMPTY_FILTERS = {
   q: '',
   statut: '',
   technicien: '',
   type_installation: '',
+  regime: '',
+  art33: '', // '' | 'seuls'
   annule: 'avec', // 'avec' | 'sans' | 'seuls'
 }
 
@@ -108,6 +117,8 @@ export function filterInstallations(items, filters) {
     if (f.statut && it.statut !== f.statut) return false
     if (f.type_installation && it.type_installation !== f.type_installation) return false
     if (f.technicien && (it.technicien_nom ?? '') !== f.technicien) return false
+    if (f.regime && (it.regime_8221 ?? '') !== f.regime) return false
+    if (f.art33 === 'seuls' && !it.art33_regularisation) return false
     if (f.annule === 'sans' && it.annule) return false
     if (f.annule === 'seuls' && !it.annule) return false
     if (!q) return true

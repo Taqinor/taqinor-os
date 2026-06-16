@@ -146,6 +146,34 @@ class Installation(models.Model):
     # du devis. Additif (JSON, défaut liste vide).
     bom = models.JSONField(default=list, blank=True)
 
+    # ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) — additif,
+    #    tout optionnel. Le régime et le statut pilotent les filtres (N41). ──
+    class Regime8221(models.TextChoices):
+        NON_CONCERNE = 'non_concerne', 'Non concerné'
+        DECLARATION_BT = 'declaration_bt', 'Déclaration (< 11 kW, BT)'
+        ACCORD_RACCORDEMENT = 'accord_raccordement', 'Accord de raccordement'
+        AUTORISATION_ANRE = 'autorisation_anre', 'Autorisation ANRE (> 1 MW)'
+
+    class DossierStatut(models.TextChoices):
+        NON_CONCERNE = 'non_concerne', 'Non concerné'
+        A_DEPOSER = 'a_deposer', 'À déposer'
+        DEPOSE = 'depose', 'Déposé'
+        APPROUVE = 'approuve', 'Approuvé'
+        COMPTEUR_POSE = 'compteur_pose', 'Compteur posé'
+
+    regime_8221 = models.CharField(
+        max_length=24, choices=Regime8221.choices,
+        default=Regime8221.NON_CONCERNE)
+    dossier_statut = models.CharField(
+        max_length=16, choices=DossierStatut.choices,
+        default=DossierStatut.NON_CONCERNE)
+    dossier_reference = models.CharField(max_length=120, blank=True, null=True)
+    dossier_operateur = models.CharField(max_length=120, blank=True, null=True)
+    dossier_date_depot = models.DateField(null=True, blank=True)
+    dossier_date_approbation = models.DateField(null=True, blank=True)
+    # N42 — régularisation Article 33 (installation existante à régulariser).
+    art33_regularisation = models.BooleanField(default=False)
+
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
     annule = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)

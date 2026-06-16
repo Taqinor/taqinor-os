@@ -267,6 +267,23 @@ class TestChantierFunnelParcChecklist(TestCase):
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
         self.assertEqual(len(rows), 7)
 
+    def test_regulatory_dossier_and_filters(self):
+        # N40/N42 — pose un régime + statut + drapeau Article 33.
+        r = self.api.patch(
+            f'/api/django/installations/chantiers/{self.inst.id}/',
+            {'regime_8221': 'declaration_bt', 'dossier_statut': 'a_deposer',
+             'art33_regularisation': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['regime_8221'], 'declaration_bt')
+        self.assertTrue(r.data['art33_regularisation'])
+        # N41 — filtres serveur par régime / statut / art33.
+        self.assertIn(self.inst.id, ids_of(self.api.get(
+            '/api/django/installations/chantiers/?regime=declaration_bt')))
+        self.assertIn(self.inst.id, ids_of(self.api.get(
+            '/api/django/installations/chantiers/?art33=1')))
+        self.assertNotIn(self.inst.id, ids_of(self.api.get(
+            '/api/django/installations/chantiers/?regime=autorisation_anre')))
+
 
 class TestTenantScoping(TestCase):
     def setUp(self):

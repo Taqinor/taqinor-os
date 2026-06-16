@@ -55,6 +55,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     puissance_installee_kwc: F('puissance_installee_kwc'),
     labour_jours_estimes: F('labour_jours_estimes'),
     labour_jours_reels: F('labour_jours_reels'),
+    regime_8221: F('regime_8221', 'non_concerne'),
+    dossier_statut: F('dossier_statut', 'non_concerne'),
+    dossier_reference: F('dossier_reference'),
+    dossier_operateur: F('dossier_operateur'),
+    art33_regularisation: current?.art33_regularisation ?? false,
     notes: F('notes'),
   })
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
@@ -481,6 +486,58 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         onChange={e => set('notes', e.target.value)} />
             </div>
             {saveError && <div className="form-error-box" role="alert">{saveError}</div>}
+          </div>
+
+          {/* ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">📋 Dossier réglementaire (loi 82-21)</span>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Régime</label>
+                <select className="form-select" value={fields.regime_8221 ?? 'non_concerne'}
+                        onChange={e => set('regime_8221', e.target.value)}>
+                  <option value="non_concerne">Non concerné</option>
+                  <option value="declaration_bt">Déclaration (&lt; 11 kW, BT)</option>
+                  <option value="accord_raccordement">Accord de raccordement</option>
+                  <option value="autorisation_anre">Autorisation ANRE (&gt; 1 MW)</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Statut du dossier</label>
+                <select className="form-select" value={fields.dossier_statut ?? 'non_concerne'}
+                        onChange={e => set('dossier_statut', e.target.value)}>
+                  <option value="non_concerne">Non concerné</option>
+                  <option value="a_deposer">À déposer</option>
+                  <option value="depose">Déposé</option>
+                  <option value="approuve">Approuvé</option>
+                  <option value="compteur_pose">Compteur posé</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+                <label className="form-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="checkbox" checked={!!fields.art33_regularisation}
+                         onChange={e => set('art33_regularisation', e.target.checked)} />
+                  Régularisation Article 33
+                </label>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group fg-grow">
+                <label className="form-label">Référence / N° de dossier</label>
+                <input className="form-control" value={fields.dossier_reference ?? ''}
+                       onChange={e => set('dossier_reference', e.target.value)} />
+              </div>
+              <div className="form-group fg-grow">
+                <label className="form-label">Opérateur / interlocuteur</label>
+                <input className="form-control" value={fields.dossier_operateur ?? ''}
+                       onChange={e => set('dossier_operateur', e.target.value)} />
+              </div>
+            </div>
+            <p className="gen-hint">
+              Joignez les pièces du dossier dans « Photos &amp; fichiers » ci-dessous.
+            </p>
           </div>
 
           {/* ── Checklist d'exécution (N4/N9) ── */}

@@ -133,6 +133,13 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                 qs = qs.filter(annule=True)
             elif annule == 'sans':
                 qs = qs.filter(annule=False)
+        # N41/N42 — filtres dossier réglementaire loi 82-21 / Article 33.
+        if params.get('regime'):
+            qs = qs.filter(regime_8221=params.get('regime'))
+        if params.get('dossier_statut'):
+            qs = qs.filter(dossier_statut=params.get('dossier_statut'))
+        if params.get('art33') in ('1', 'true', 'only'):
+            qs = qs.filter(art33_regularisation=True)
         # N8 — parc installé : systèmes réceptionnés/clôturés, actifs, non
         # annulés (statuts hérités « mise_en_service » inclus via la map).
         if params.get('parc') in ('1', 'true', 'only'):

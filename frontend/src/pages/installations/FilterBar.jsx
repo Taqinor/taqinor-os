@@ -4,6 +4,7 @@ import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
   TYPE_LABELS,
+  REGIME_8221_LABELS,
 } from '../../features/installations/statuses'
 
 // Barre de recherche/filtres partagée par les vues (façon Odoo).
@@ -55,6 +56,23 @@ export default function FilterBar({ filters, setFilters, items }) {
           <option key={t} value={t}>{t}</option>
         ))}
       </select>
+
+      <select className="search-input fb-select" value={filters.regime} onChange={set('regime')}
+              aria-label="Filtrer par régime loi 82-21">
+        <option value="">Tous les régimes</option>
+        {Object.entries(REGIME_8221_LABELS).map(([k, v]) => (
+          <option key={k} value={k}>{v}</option>
+        ))}
+      </select>
+
+      <button
+        type="button"
+        className={`fb-pill${filters.art33 === 'seuls' ? ' fb-pill-active' : ''}`}
+        onClick={() => setFilters({ ...filters, art33: filters.art33 === 'seuls' ? '' : 'seuls' })}
+        title="Régularisation Article 33"
+      >
+        Art. 33
+      </button>
 
       <div className="fb-pills" role="group" aria-label="Filtre chantiers annulés">
         <button
