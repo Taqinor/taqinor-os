@@ -8,6 +8,7 @@ import {
   genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
 
 const STATUT_META = {
@@ -239,6 +240,11 @@ export default function FactureList() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <button className="btn btn-sm btn-outline"
+                  onClick={() => importApi.exportList('factures', factures.map(f => f.id))
+                    .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
+            ⬇ Exporter Excel
+          </button>
           <button className="btn btn-primary" onClick={openNew}>
             + Nouvelle facture
           </button>

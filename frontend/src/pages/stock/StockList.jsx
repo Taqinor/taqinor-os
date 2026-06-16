@@ -12,6 +12,7 @@ import {
 import ProduitForm from './ProduitForm'
 import InlineEdit from '../../components/InlineEdit'
 import BulkProductBar from './BulkProductBar'
+import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
@@ -203,6 +204,7 @@ export default function StockList() {
   const [marquesList, setMarques] = useState([])
   const [bulkBusy, setBulkBusy]   = useState(false)
   const [bulkMsg, setBulkMsg]     = useState(null)
+  const [showImport, setShowImport] = useState(false)
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
@@ -265,6 +267,19 @@ export default function StockList() {
     list = searchCatalogue(list, search)
     return list
   }, [actifs, search, filterLow])
+  // Export Excel de la liste filtrée courante (T9) — défini après `filtered`.
+  const exportFiltered = async () => {
+    const ids = filtered.map(p => p.id)
+    if (!ids.length) return
+    try {
+      const res = await stockApi.exportProduitsXlsx(ids)
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'produits.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { /* ignore */ }
+  }
   const allGroups = useMemo(() => groupCatalogue(actifs), [actifs])
   const groups = useMemo(() => {
     const g = groupCatalogue(filtered)
@@ -359,6 +374,14 @@ export default function StockList() {
               {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
             </button>
           )}
+          <button className="btn btn-sm btn-outline" onClick={exportFiltered}>
+            ⬇ Exporter Excel
+          </button>
+          {canWrite && (
+            <button className="btn btn-sm btn-outline" onClick={() => setShowImport(true)}>
+              ⬆ Importer
+            </button>
+          )}
           {canWrite && (
             <button className="btn btn-primary" onClick={openNew}>
               + Nouveau produit
@@ -366,6 +389,11 @@ export default function StockList() {
           )}
         </div>
       </div>
+
+      {showImport && (
+        <ExcelImport target="products" onClose={() => setShowImport(false)}
+                     onDone={() => dispatch(fetchProduits())} />
+      )}
 
       {archiveNotif && (
         <div className="alert alert-warning" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

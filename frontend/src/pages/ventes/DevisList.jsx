@@ -8,6 +8,7 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
+import importApi, { downloadXlsx } from '../../api/importApi'
 import DevisForm from './DevisForm'
 
 const STATUT_META = {
@@ -193,7 +194,14 @@ export default function DevisList() {
     <div className="page">
       <div className="page-header">
         <h2>Devis</h2>
-        <button className="btn btn-primary" onClick={openNew}>+ Nouveau devis</button>
+        <div className="page-header-actions">
+          <button className="btn btn-sm btn-outline"
+                  onClick={() => importApi.exportList('devis', devis.map(d => d.id))
+                    .then(r => downloadXlsx(r.data, 'devis.xlsx')).catch(() => {})}>
+            ⬇ Exporter Excel
+          </button>
+          <button className="btn btn-primary" onClick={openNew}>+ Nouveau devis</button>
+        </div>
       </div>
 
       {showForm && (

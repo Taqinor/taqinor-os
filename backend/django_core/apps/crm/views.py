@@ -59,13 +59,24 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    @action(detail=False, methods=['post'], url_path='export-xlsx',
+            permission_classes=[IsAnyRole])
+    def export_xlsx(self, request):
+        """Exporte une sélection de clients en .xlsx (société courante)."""
+        from .exports import export_clients_xlsx
+        ids = request.data.get('ids') or []
+        qs = self.get_queryset()
+        if ids:
+            qs = qs.filter(id__in=ids)
+        return export_clients_xlsx(qs.order_by('nom'))
 
     def destroy(self, request, *args, **kwargs):
         # Un client avec des devis est PROTÉGÉ (pas de cascade) : message

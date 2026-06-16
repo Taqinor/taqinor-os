@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
+import importApi, { downloadXlsx } from '../../api/importApi'
 import {
   EMPTY_EQUIP_FILTERS,
   EQUIP_STATUTS,
@@ -178,6 +179,11 @@ export default function EquipementsPage() {
       <div className="page-header">
         <h1 className="page-title">Parc d'équipements</h1>
         <div className="page-subtitle">{rows.length} équipement(s)</div>
+        <button type="button" className="btn btn-sm btn-outline"
+                onClick={() => importApi.exportList('equipements', rows.map(r => r.id))
+                  .then(r => downloadXlsx(r.data, 'equipements.xlsx')).catch(() => {})}>
+          ⬇ Exporter Excel
+        </button>
       </div>
 
       {/* ── Filtres ── */}

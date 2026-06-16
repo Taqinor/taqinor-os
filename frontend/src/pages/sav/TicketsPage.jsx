@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
+import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
@@ -446,6 +447,11 @@ export default function TicketsPage() {
       <div className="page-header">
         <h1 className="page-title">Tickets SAV</h1>
         <div className="page-subtitle">{rows.length} ticket(s)</div>
+        <button type="button" className="btn btn-sm btn-outline"
+                onClick={() => importApi.exportList('tickets', rows.map(r => r.id))
+                  .then(r => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
+          ⬇ Exporter Excel
+        </button>
       </div>
 
       <div className="filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>

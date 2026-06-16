@@ -7,6 +7,7 @@ import {
   statusLabel,
   statusColor,
 } from '../../features/installations/statuses'
+import importApi, { downloadXlsx } from '../../api/importApi'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import InstallationDetail from './InstallationDetail'
@@ -206,6 +207,11 @@ export default function InstallationsPage() {
           <span className="count-badge">{filtered.length}</span>
         </h2>
         <div className="page-header-actions lp-header-actions">
+          <button type="button" className="btn btn-sm btn-outline"
+                  onClick={() => importApi.exportList('chantiers', filtered.map(i => i.id))
+                    .then(r => downloadXlsx(r.data, 'chantiers.xlsx')).catch(() => {})}>
+            ⬇ Exporter Excel
+          </button>
           <div className="fb-pills" role="group" aria-label="Changer de vue">
             <button
               type="button"

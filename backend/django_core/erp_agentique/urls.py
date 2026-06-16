@@ -36,6 +36,7 @@ urlpatterns = [
     path('api/django/installations/', include('apps.installations.urls')),
     path('api/django/sav/', include('apps.sav.urls')),
     path('api/django/records/', include('apps.records.urls')),
+    path('api/django/imports/', include('apps.dataimport.urls')),
     # Liens publics tokenisés (PDF client via WhatsApp) — sans login.
     path('api/django/public/', include('apps.ventes.public_urls')),
 ]
