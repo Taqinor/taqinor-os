@@ -824,6 +824,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                           {a.old_value} → <strong>{a.new_value}</strong>
                         </span>
                       )}
+                      {a.bulk && <span className="chatter-bulk">en masse</span>}
                       <span className="chatter-meta">
                         — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
                       </span>

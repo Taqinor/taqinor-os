@@ -110,7 +110,7 @@ production on Hetzner at **api.taqinor.ma** (cx23, daily backups, deploy via
 
 ## BUILD QUEUE (do top-down — highest value first)
 
-### T1 — Fix the devis preview (PRIORITY 1, blocks daily quoting) — [ ]
+### T1 — Fix the devis preview (PRIORITY 1, blocks daily quoting) — [x] (already present)
 **Symptom (confirmed by screenshot):** on a lead's devis preview panel (titled "Devis — <name>"
 with Premium / 1 page / Inclure l'étude toggles, an "Édition complète" button, and a
 "Télécharger le PDF" button), the PDF area shows a generic **broken-file icon** instead of the
@@ -138,7 +138,7 @@ scratch — do not assume any previous change is present or correct.
 **Acceptance:** open DEV-202606-0024 → the PDF renders in the panel AND downloads, in Premium,
 1-page, and étude.
 
-### T2 — Installable PWA / "app version" (like Odoo on mobile) — [ ]
+### T2 — Installable PWA / "app version" (like Odoo on mobile) — [x] (already present)
 Make the OS installable so Reda and Meryem can "Add to Home Screen" and run it full-screen like a
 native app. The "app" is the existing web app — no second codebase. **OS React app only**, not the
 Astro marketing site under `apps/web`.
@@ -164,7 +164,7 @@ Astro marketing site under `apps/web`.
 **Acceptance:** installs on Android Chrome and iPhone Safari; launches full-screen; a new deploy is
 picked up automatically.
 
-### T3 — Bulk actions on leads — [ ]
+### T3 — Bulk actions on leads — [x]
 Multi-select leads in **both** the list and the kanban (checkboxes), with a selection toolbar
 showing the count. Bulk actions: reassign responsable; add a tag; remove a tag; change stage
 (respect the no-going-backwards funnel rule, never auto-move a Perdu lead, reactivate Froid — same
@@ -321,3 +321,6 @@ Tracked here so they aren't lost:
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state)*
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
+- 2026-06-16 — T1 verified already present: /proposal serves a real inline PDF; the lead devis panel fetches it as a blob and renders it with PDF.js (clear FR error on server failure, graceful fallback on network failure); non-mocked regression tests cover Premium / 1-page / étude; Vite content-hashes the build. No change needed.
+- 2026-06-16 — T2 verified already present: vite-plugin-pwa configured (autoUpdate, injectManifest sw.js with skipWaiting/clientsClaim), manifest + icons + iOS head tags + offline page, and a French install helper (PwaPrompts.jsx, beforeinstallprompt). No change needed.
+- 2026-06-16 — T3 done: bulk actions on leads (multi-select in list + kanban, selection toolbar). Bulk reassign / add+remove tag / change stage (no-going-backwards, never moves a Perdu lead, reactivates Froid) / set+clear relance / flag+unflag Perdu / archive+unarchive / admin-only delete (skips leads with linked devis) / export selection to .xlsx. Every change writes a per-lead Historique entry badged « en masse ». Backend POST /crm/leads/bulk/ + /crm/leads/export-xlsx/ (company-scoped); 15 new backend tests + a frontend selection-logic test. Developed on branch claude/gallant-mccarthy-vh5e98 (not merged to main).

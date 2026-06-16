@@ -20,7 +20,10 @@ const isEnRetard = (iso) => {
   return iso < aujourdhui
 }
 
-export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote, users = [], onReassign }) {
+export default function LeadCard({
+  lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
+  selected = false, onToggleSelect,
+}) {
   const perdu = isPerdu(lead)
   const tags = tagList(lead)
   const etoiles = PRIORITE_STARS[lead.priorite] ?? PRIORITE_STARS.normale
@@ -33,6 +36,7 @@ export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote, user
     'kb-card',
     perdu ? 'kb-card-perdu' : '',
     busy ? 'kb-card-busy' : '',
+    selected ? 'kb-card-selected' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -43,6 +47,18 @@ export default function LeadCard({ lead, busy = false, onOpen, onAutoQuote, user
       onClick={onOpen ? () => onOpen(lead) : undefined}
     >
       <div className="kb-card-head">
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            className="kb-card-check"
+            aria-label={`Sélectionner ${nomComplet}`}
+            checked={selected}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onChange={() => onToggleSelect(lead.id)}
+          />
+        )}
         <span className="kb-card-name">{nomComplet}</span>
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
         {lead.next_activity && (

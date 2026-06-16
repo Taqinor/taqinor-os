@@ -179,3 +179,13 @@
     justify-content: flex-end;
   }
 }
+
+/* Colonne de sélection (actions en masse, T3). */
+.lv-check-col {
+  width: 36px;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 0;
+}
+.lv-check-col input { cursor: pointer; width: 16px; height: 16px; }
+.lv-row-selected { background: rgba(15, 23, 42, 0.06); }

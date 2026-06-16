@@ -17,7 +17,7 @@ import re as _re
 
 from django.utils import timezone
 
-from . import stages
+from . import activity, stages
 from .models import Client, Lead, LeadActivity
 
 # Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
@@ -379,3 +379,237 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     lead.client = client
     lead.save(update_fields=['client'])
     return client
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Actions EN MASSE sur les leads (T3) — multi-sélection liste/kanban.
+#
+# Toute la logique métier vit ici (les vues restent fines) : règles du funnel
+# (jamais en arrière, jamais un lead Perdu, réactivation du Froid), journal
+# Historique par lead marqué « en masse », et garde-fous (devis liés bloquent la
+# suppression). Tout est borné à la société de l'utilisateur appelant.
+# ─────────────────────────────────────────────────────────────────────────────
+
+COLD = 'COLD'  # état de PARKING (pas une régression) — cf. _rang_funnel.
+
+BULK_ACTIONS = {
+    'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_relance',
+    'clear_relance', 'set_perdu', 'unset_perdu', 'archive', 'unarchive',
+    'delete',
+}
+# Actions réservées à l'admin (la suppression définitive l'est déjà partout).
+BULK_ADMIN_ONLY = {'delete'}
+
+
+def _bulk_stage_allowed(current, target):
+    """Le funnel n'avance jamais EN ARRIÈRE en masse (même règle qu'un edit).
+
+    - même étape → non (rien à faire) ;
+    - Froid → n'importe quelle étape active → oui (réactivation) ;
+    - vers Froid → oui (mise au parking, autorisée depuis n'importe où) ;
+    - sinon → uniquement vers une étape PLUS avancée.
+    """
+    if current == target:
+        return False
+    if current == COLD or target == COLD:
+        return True
+    return _rang_funnel(target) > _rang_funnel(current)
+
+
+def _resolve_owner(company, owner_id):
+    """Responsable cible (société courante uniquement) ou None si vidé."""
+    if owner_id in (None, '', 'null'):
+        return None
+    from authentication.models import CustomUser
+    return CustomUser.objects.filter(id=owner_id, company=company).first()
+
+
+def _parse_date(value):
+    from datetime import date
+    if isinstance(value, date):
+        return value
+    if not value:
+        return None
+    from django.utils.dateparse import parse_date
+    return parse_date(str(value))
+
+
+def apply_bulk_action(*, company, user, lead_ids, op, params):
+    """Applique une action en masse à une sélection de leads de la société.
+
+    Renvoie un récapitulatif : nombre mis à jour, nombre inchangés, et la liste
+    des leads ignorés avec leur raison (en français). Chaque modification écrit
+    une entrée Historique marquée « en masse ».
+    """
+    from django.db import transaction
+
+    if op not in BULK_ACTIONS:
+        raise ValueError("Action en masse inconnue.")
+
+    leads = list(
+        Lead.objects.filter(company=company, id__in=lead_ids).order_by('id'))
+    updated, unchanged, skipped = 0, 0, []
+
+    def skip(lead, reason):
+        skipped.append({'id': lead.id, 'nom': str(lead), 'reason': reason})
+
+    # Pré-validation des paramètres dépendant de l'action.
+    target_stage = None
+    owner_obj = None
+    tag = (params.get('tag') or '').strip() if op in ('add_tag', 'remove_tag') else None
+    relance = None
+    if op == 'set_stage':
+        target_stage = params.get('stage')
+        if target_stage not in stages.STAGES:
+            raise ValueError("Étape cible invalide.")
+    elif op == 'reassign':
+        owner_obj = _resolve_owner(company, params.get('owner'))
+        if params.get('owner') not in (None, '', 'null') and owner_obj is None:
+            raise ValueError("Responsable introuvable dans cette société.")
+    elif op in ('add_tag', 'remove_tag') and not tag:
+        raise ValueError("Étiquette vide.")
+    elif op == 'set_relance':
+        relance = _parse_date(params.get('relance_date'))
+        if relance is None:
+            raise ValueError("Date de relance invalide.")
+
+    with transaction.atomic():
+        for lead in leads:
+            if op == 'reassign':
+                if lead.owner_id == (owner_obj.id if owner_obj else None):
+                    unchanged += 1
+                    continue
+                old = lead.owner
+                lead.owner = owner_obj
+                lead.save(update_fields=['owner'])
+                activity.log_bulk_change(lead, user, 'owner', old, owner_obj)
+                sync_relance_activity(lead, user)
+                updated += 1
+
+            elif op in ('add_tag', 'remove_tag'):
+                current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+                has = tag in current
+                if op == 'add_tag' and has:
+                    unchanged += 1
+                    continue
+                if op == 'remove_tag' and not has:
+                    unchanged += 1
+                    continue
+                old = lead.tags or ''
+                if op == 'add_tag':
+                    current.append(tag)
+                else:
+                    current = [t for t in current if t != tag]
+                lead.tags = ', '.join(current)[:500]
+                lead.save(update_fields=['tags'])
+                activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+                updated += 1
+
+            elif op == 'set_stage':
+                if lead.perdu:
+                    skip(lead, "lead Perdu — étape non modifiée")
+                    continue
+                if not _bulk_stage_allowed(lead.stage, target_stage):
+                    skip(lead, "étape déjà atteinte ou recul non autorisé")
+                    continue
+                old = lead.stage
+                lead.stage = target_stage
+                lead.save(update_fields=['stage'])
+                activity.log_bulk_change(lead, user, 'stage', old, target_stage)
+                # SIGNED_QUOTE_CAPI_HOOK: entrée manuelle en masse dans SIGNED.
+                updated += 1
+
+            elif op == 'set_relance':
+                if lead.relance_date == relance:
+                    unchanged += 1
+                    continue
+                old = lead.relance_date
+                lead.relance_date = relance
+                lead.save(update_fields=['relance_date'])
+                activity.log_bulk_change(lead, user, 'relance_date', old, relance)
+                sync_relance_activity(lead, user)
+                updated += 1
+
+            elif op == 'clear_relance':
+                if not lead.relance_date:
+                    unchanged += 1
+                    continue
+                old = lead.relance_date
+                lead.relance_date = None
+                lead.save(update_fields=['relance_date'])
+                activity.log_bulk_change(lead, user, 'relance_date', old, None)
+                sync_relance_activity(lead, user)
+                updated += 1
+
+            elif op == 'set_perdu':
+                motif = (params.get('motif') or '').strip() or None
+                if lead.perdu and lead.motif_perte == motif:
+                    unchanged += 1
+                    continue
+                old_perdu, old_motif = lead.perdu, lead.motif_perte
+                lead.perdu = True
+                lead.motif_perte = motif
+                lead.save(update_fields=['perdu', 'motif_perte'])
+                if not old_perdu:
+                    activity.log_bulk_change(lead, user, 'perdu', old_perdu, True)
+                if old_motif != motif:
+                    activity.log_bulk_change(lead, user, 'motif_perte', old_motif, motif)
+                updated += 1
+
+            elif op == 'unset_perdu':
+                if not lead.perdu:
+                    unchanged += 1
+                    continue
+                lead.perdu = False
+                old_motif = lead.motif_perte
+                lead.motif_perte = None
+                lead.save(update_fields=['perdu', 'motif_perte'])
+                activity.log_bulk_change(lead, user, 'perdu', True, False)
+                if old_motif:
+                    activity.log_bulk_change(lead, user, 'motif_perte', old_motif, None)
+                updated += 1
+
+            elif op == 'archive':
+                if lead.is_archived:
+                    unchanged += 1
+                    continue
+                lead.is_archived = True
+                lead.archived_by = user
+                lead.archived_at = timezone.now()
+                lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+                activity.log_bulk_note(
+                    lead, user,
+                    f"Lead archivé en masse par {getattr(user, 'username', '?')}")
+                updated += 1
+
+            elif op == 'unarchive':
+                if not lead.is_archived:
+                    unchanged += 1
+                    continue
+                lead.is_archived = False
+                lead.archived_by = None
+                lead.archived_at = None
+                lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+                activity.log_bulk_note(
+                    lead, user,
+                    f"Lead restauré en masse par {getattr(user, 'username', '?')}")
+                updated += 1
+
+            elif op == 'delete':
+                if lead.devis.exists():
+                    skip(lead, "devis liés — archivez-le plutôt")
+                    continue
+                import logging
+                logging.getLogger('crm.audit').warning(
+                    'BULK HARD DELETE lead id=%s "%s" par user=%s (company=%s)',
+                    lead.id, lead, getattr(user, 'username', '?'), company.id)
+                lead.delete()
+                updated += 1
+
+    return {
+        'ok': True,
+        'updated': updated,
+        'unchanged': unchanged,
+        'skipped': skipped,
+        'total': len(leads),
+    }

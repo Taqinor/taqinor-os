@@ -2126,3 +2126,16 @@ textarea.form-control {
   font-size: 0.75rem;
   margin-left: 6px;
 }
+
+/* Badge « en masse » sur une entrée d'historique issue d'une action groupée. */
+.chatter-bulk {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #475569;
+  background: #e2e8f0;
+  border-radius: 999px;
+  vertical-align: middle;
+}

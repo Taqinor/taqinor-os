@@ -371,6 +371,9 @@ class LeadActivity(models.Model):
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
     body = models.TextField(blank=True, null=True)
+    # Marque une entrée issue d'une action « en masse » (édition groupée de
+    # plusieurs leads) — l'Historique l'affiche avec un badge « en masse ».
+    bulk = models.BooleanField(default=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='lead_activities')

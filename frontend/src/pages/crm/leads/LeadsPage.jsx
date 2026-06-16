@@ -4,9 +4,13 @@ import { useSearchParams } from 'react-router-dom'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { filterLeads, EMPTY_FILTERS, archivedParam } from '../../../features/crm/stages'
+import {
+  toggleId, toggleAll, pruneSelection, bulkResultMessage,
+} from '../../../features/crm/bulk'
 import LeadForm from '../LeadForm'
 import '../../../components/assigneepicker.css'
 import FilterBar from './FilterBar'
+import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import KanbanView from './views/KanbanView'
@@ -60,6 +64,13 @@ export default function LeadsPage() {
   const [busyLeadId, setBusyLeadId] = useState(null)
   const [stageError, setStageError] = useState(null)
 
+  // ── Sélection multiple (actions en masse, T3) ───────────────────────────
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState(null)
+  const role = useSelector((s) => s.auth.role)
+  const canDelete = role === 'admin'
+
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
   const refetch = () => dispatch(fetchLeads(archivedParam(filters.archived)))
@@ -81,6 +92,65 @@ export default function LeadsPage() {
     const t = setTimeout(() => setStageError(null), 6000)
     return () => clearTimeout(t)
   }, [stageError])
+
+  // Le bilan d'une action en masse disparaît après quelques secondes.
+  useEffect(() => {
+    if (!bulkMsg) return undefined
+    const t = setTimeout(() => setBulkMsg(null), 8000)
+    return () => clearTimeout(t)
+  }, [bulkMsg])
+
+  // Sélection effective : on ignore (sans muter l'état) les leads disparus
+  // après un refetch/filtre. Dérivé → pas d'effet ni de rendu en cascade.
+  const visibleSelected = useMemo(
+    () => pruneSelection(selected, leads.map((l) => l.id)),
+    [selected, leads],
+  )
+
+  const onToggleSelect = (id) => setSelected((s) => toggleId(s, id))
+  const onToggleAll = (visibleIds) =>
+    setSelected((s) => toggleAll(s, visibleIds))
+  const clearSelection = () => setSelected(new Set())
+
+  // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
+  // côté serveur. On rafraîchit, on affiche le bilan et on garde la sélection
+  // (élaguée aux leads encore présents par l'effet ci-dessus).
+  const runBulk = async (action, params = {}) => {
+    if (!visibleSelected.size) return
+    setBulkBusy(true)
+    try {
+      const { data } = await crmApi.bulkLeads({
+        ids: [...visibleSelected], action, ...params,
+      })
+      setBulkMsg(bulkResultMessage(data))
+      refetch()
+    } catch (err) {
+      setBulkMsg(err?.response?.data?.detail
+        ?? "L'action en masse a échoué — réessayez.")
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  const exportSelection = async () => {
+    if (!visibleSelected.size) return
+    setBulkBusy(true)
+    try {
+      const res = await crmApi.exportLeadsXlsx([...visibleSelected])
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'leads.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      setBulkMsg("Export indisponible — réessayez.")
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const openNew = () => { setEditLead(null); setFormDevisIntent(null); setShowForm(true) }
   const onOpenLead = (lead) => { setEditLead(lead); setFormDevisIntent(null); setShowForm(true) }
@@ -144,6 +214,9 @@ export default function LeadsPage() {
     busyLeadId,
     users,
     onReassign: reassign,
+    selected: visibleSelected,
+    onToggleSelect,
+    onToggleAll,
   }
 
   return (
@@ -163,6 +236,32 @@ export default function LeadsPage() {
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
+
+      {visibleSelected.size > 0 && (
+        <BulkActionBar
+          count={visibleSelected.size}
+          users={users}
+          canDelete={canDelete}
+          busy={bulkBusy}
+          onAction={runBulk}
+          onExport={exportSelection}
+          onClear={clearSelection}
+        />
+      )}
+
+      {bulkMsg && (
+        <div className="lp-bulk-msg" role="status">
+          <span>{bulkMsg}</span>
+          <button
+            type="button"
+            className="lp-stage-error-close"
+            aria-label="Fermer le message"
+            onClick={() => setBulkMsg(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {stageError && (
         <div className="lp-stage-error" role="alert">
