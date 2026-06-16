@@ -321,14 +321,26 @@ export function initRoofToolPro3(opts: InitOptions): void {
     },
   };
 
+  /** Libère un objet (et sa géométrie/ses matériaux). L'étiquette d'obstacle porte
+   *  une texture canvas UNIQUE par rendu → libérée ici ; les textures PARTAGÉES
+   *  (texture de panneau, photo de toit en cache) ne sont jamais touchées. */
+  function disposeObject(obj: THREE.Object3D) {
+    const holder = obj as THREE.Mesh & { material?: THREE.Material | THREE.Material[] };
+    const isSprite = (obj as THREE.Sprite).isSprite === true;
+    // La géométrie d'un Sprite est PARTAGÉE (interne à three) → ne pas la libérer.
+    if (!isSprite) holder.geometry?.dispose?.();
+    const mat = holder.material;
+    const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
+    for (const m of mats) {
+      if (isSprite) (m as THREE.SpriteMaterial).map?.dispose?.(); // texture canvas unique
+      m.dispose();
+    }
+  }
+
   function disposeScene() {
     if (!sceneRoot) return;
     for (const child of [...sceneRoot.children]) {
-      const mesh = child as THREE.Mesh;
-      mesh.geometry?.dispose?.();
-      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-      else mat?.dispose?.();
+      child.traverse(disposeObject); // inclut les arêtes/étiquettes enfants
       sceneRoot.remove(child);
     }
   }
@@ -409,6 +421,59 @@ export function initRoofToolPro3(opts: InitOptions): void {
       /* imagerie indisponible → on garde le deck gris, sans erreur visible */
     };
     img.src = url;
+  }
+
+  /** Étiquette de taille (« L × l m ») dessinée sur un canevas → sprite 3D posé SUR
+   *  la boîte d'obstacle (Change B). Enfant du mesh : suit la boîte quand on la
+   *  déplace. Toujours face caméra, sans test de profondeur (lisible par-dessus la
+   *  3D, jamais masquée par le bâtiment), dimensionnée en mètres réels (lisible sur
+   *  mobile sans écraser la boîte ni les panneaux). */
+  function makeDimSprite(text: string): THREE.Sprite {
+    const fontPx = 60;
+    const padX = 26;
+    const padY = 16;
+    const font = `bold ${fontPx}px "Inter", system-ui, -apple-system, Segoe UI, sans-serif`;
+    const measure = document.createElement('canvas').getContext('2d');
+    if (measure) measure.font = font;
+    const textW = measure ? measure.measureText(text).width : text.length * fontPx * 0.55;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(textW + padX * 2);
+    canvas.height = fontPx + padY * 2;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.font = font;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const r = 18;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.arcTo(w, 0, w, h, r);
+      ctx.arcTo(w, h, 0, h, r);
+      ctx.arcTo(0, h, 0, 0, r);
+      ctx.arcTo(0, 0, w, 0, r);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(7, 11, 29, 0.84)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(243, 204, 102, 0.7)'; // teinte laiton (GOLD) discrète
+      ctx.stroke();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(7, 11, 29, 0.95)';
+      ctx.strokeText(text, w / 2, h / 2 + 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, w / 2, h / 2 + 2);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+    const worldW = 1.9; // largeur ~1,9 m → lisible sans masquer la boîte/les panneaux
+    sprite.scale.set(worldW, (worldW * canvas.height) / canvas.width, 1);
+    sprite.renderOrder = 20;
+    return sprite;
   }
 
   // — Rendu d'une config (Sud sur châssis OU Est-Ouest en chevrons) —
@@ -546,6 +611,11 @@ export function initRoofToolPro3(opts: InitOptions): void {
           new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.95 }),
         );
         mesh.add(edges);
+        // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
+        // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
+        const label = makeDimSprite(dimsLabel(o));
+        label.position.set(0, 0, OBSTACLE_BOX_H_M / 2 + 0.6);
+        mesh.add(label);
         sceneRoot.add(mesh);
         obstacleMeshes.set(o.id, mesh);
       }
@@ -562,6 +632,22 @@ export function initRoofToolPro3(opts: InitOptions): void {
     const cxm = (minX + maxX) / 2;
     const cym = (minY + maxY) / 2;
     const span = Math.max(maxX - minX, maxY - minY, wallH) + 8;
+
+    // Change A : tapis sombre OPAQUE sous le bâtiment. Il occulte l'imagerie
+    // satellite de FOND dans la vue 3D (sinon, même image que la photo du toit →
+    // le tracé « se perd » et l'on voit les voisins/pools/routes). Résultat : hors
+    // du contour, tout est sombre ; SEUL le toit porte la photo, détourée au tracé.
+    // N'existe qu'en 3D (renderScene, après fermeture) — le fond satellite reste
+    // pour la phase de TRACÉ. Posé sous la base du bâtiment (z<0), aucun z-fighting.
+    const apronSize = Math.max(span * 18, 1200);
+    const apron = new THREE.Mesh(
+      new THREE.PlaneGeometry(apronSize, apronSize),
+      new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 1, metalness: 0 }),
+    );
+    apron.position.set(cxm, cym, -0.1);
+    apron.receiveShadow = true;
+    sceneRoot.add(apron);
+
     const roofZ = wallH + 0.5;
     const latAbs = Math.abs(pack.origin[1]);
     const dispElevDeg = Math.max(28, (90 - latAbs) * 0.62);
@@ -604,13 +690,9 @@ export function initRoofToolPro3(opts: InitOptions): void {
       source: 'rp3-obs',
       paint: { 'line-color': ['case', ['get', 'selected'], GOLD, '#ff6b6b'], 'line-width': ['case', ['get', 'selected'], 3, 1.5] },
     });
-    map.addLayer({
-      id: 'rp3-obs-label',
-      type: 'symbol',
-      source: 'rp3-obs',
-      layout: { 'text-field': ['get', 'dims'], 'text-size': 13, 'text-font': ['Open Sans Bold', 'Noto Sans Bold'], 'text-allow-overlap': true, 'symbol-placement': 'point' },
-      paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
-    });
+    // Change B : la taille de l'obstacle s'affiche désormais SUR la boîte en 3D
+    // (sprite, cf. makeDimSprite) — plus de libellé de cote « en dessous » posé au
+    // sol sur la carte, qui sortait du cadre en vue inclinée.
     map.addLayer({
       id: 'rp3-obs-preview',
       type: 'line',
