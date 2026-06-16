@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
@@ -12,13 +13,20 @@ from apps.ventes.utils.references import create_with_reference
 from apps.imports.exports import XlsxExportMixin
 
 from . import activity
-from .models import ContratMaintenance, Equipement, Ticket
+from .models import (
+    ContratMaintenance, Equipement, ReclamationGarantie, Ticket, TicketPiece,
+)
 from .serializers import (
     ContratMaintenanceSerializer,
-    EquipementSerializer, TicketSerializer, TicketActivitySerializer,
+    EquipementSerializer, ReclamationGarantieSerializer,
+    TicketSerializer, TicketActivitySerializer, TicketPieceSerializer,
     EXPIRING_SOON_DAYS,
 )
-from .services import generer_ticket_du
+from .services import decrementer_stock_piece, generer_ticket_du
+from .pdf import rapport_intervention_pdf, rapport_maintenance_pdf
+
+# Statuts d'un ticket considérés « résolu / clôturé » — autorisent le rapport.
+CLOSED_STATUTS = [Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE]
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -101,13 +109,35 @@ class EquipementViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export']:
+        if self.action in READ_ACTIONS + ['export', 'garanties_expirent']:
             return [HasPermissionOrLegacy('equipement_voir')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('equipement_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    @action(detail=False, methods=['get'], url_path='garanties-expirent',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def garanties_expirent(self, request):
+        """Garanties qui expirent (N48) — équipements dont la fin de garantie
+        tombe dans l'horizon ?jours (défaut 90). Calculé à la volée, scopé à la
+        société. Inclut les garanties déjà dépassées (jours négatifs)."""
+        try:
+            jours = int(request.query_params.get('jours', 90))
+        except (ValueError, TypeError):
+            jours = 90
+        today = timezone.localdate()
+        horizon = today + timedelta(days=jours)
+        qs = (self.get_queryset()
+              .filter(date_fin_garantie__isnull=False,
+                      date_fin_garantie__lte=horizon)
+              .order_by('date_fin_garantie'))
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            ser = self.get_serializer(page, many=True)
+            return self.get_paginated_response(ser.data)
+        return Response(self.get_serializer(qs, many=True).data)
 
     def _check_tenant(self, serializer):
         company = self.request.user.company
@@ -227,9 +257,13 @@ class TicketViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'export']:
+        # 'pieces' (GET+POST) et 'rapport_pdf' : lecture autorisée par sav_voir ;
+        # l'écriture des pièces revérifie sav_gerer dans l'action elle-même.
+        if self.action in READ_ACTIONS + [
+                'historique', 'export', 'rapport_pdf', 'pieces']:
             return [HasPermissionOrLegacy('sav_voir')()]
-        elif self.action in WRITE_ACTIONS + ['noter', 'annuler', 'reactiver']:
+        elif self.action in WRITE_ACTIONS + [
+                'noter', 'annuler', 'reactiver', 'supprimer_piece']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -310,6 +344,94 @@ class TicketViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
+    @action(detail=True, methods=['get'], url_path='rapport-pdf',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def rapport_pdf(self, request, pk=None):
+        """Rapport d'intervention FR (N45) — disponible uniquement pour un
+        ticket résolu/clôturé. Rendu à la volée, streamé en PDF, jamais stocké.
+        Côté client : aucun prix d'achat."""
+        ticket = self.get_object()
+        if ticket.statut not in CLOSED_STATUTS:
+            return Response(
+                {'detail': 'Le rapport est disponible une fois le ticket '
+                           'résolu ou clôturé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        pdf_bytes = rapport_intervention_pdf(ticket)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="rapport-{ticket.reference}.pdf"')
+        return response
+
+    @action(detail=True, methods=['get', 'post'], url_path='pieces',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def pieces(self, request, pk=None):
+        """Pièces consommées sur le ticket (N46).
+
+        GET : liste. POST (sav_gerer) : enregistre une pièce et décrémente
+        OPTIONNELLEMENT le stock (?decrement=1 / body decrementer_stock=true),
+        en réutilisant le patron MouvementStock SORTIE de l'OS."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.pieces.select_related('produit').all()
+            return Response(TicketPieceSerializer(qs, many=True).data)
+
+        # Écriture → exige sav_gerer.
+        if not HasPermissionOrLegacy('sav_gerer')().has_permission(
+                request, self):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        company = request.user.company
+        produit_id = request.data.get('produit')
+        quantite = request.data.get('quantite', 1)
+        from apps.stock.models import Produit
+        try:
+            produit = Produit.objects.get(pk=produit_id)
+        except (Produit.DoesNotExist, ValueError, TypeError):
+            return Response({'produit': 'Produit inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if produit.company_id not in (company.id, None):
+            return Response({'produit': 'Produit inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            quantite = int(quantite)
+        except (ValueError, TypeError):
+            quantite = 1
+        if quantite < 1:
+            return Response({'quantite': 'Quantité invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        piece = TicketPiece.objects.create(
+            company=company, ticket=ticket, produit=produit,
+            quantite=quantite, note=(request.data.get('note') or None),
+            created_by=request.user)
+
+        decrement = (request.query_params.get('decrement') == '1'
+                     or request.data.get('decrementer_stock') in
+                     (True, 'true', '1', 1))
+        if decrement:
+            decrementer_stock_piece(piece, user=request.user)
+            piece.refresh_from_db()
+        activity.log_note(
+            ticket, request.user,
+            f"Pièce ajoutée : {quantite} × {produit.nom}"
+            + (' (stock décrémenté)' if piece.stock_decremente else ''))
+        return Response(TicketPieceSerializer(piece).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'],
+            url_path=r'pieces/(?P<piece_id>[^/.]+)',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def supprimer_piece(self, request, pk=None, piece_id=None):
+        """Retire une pièce du ticket (ne ré-incrémente PAS le stock — le
+        mouvement reste tracé ; un ajustement manuel s'en charge si besoin)."""
+        ticket = self.get_object()
+        try:
+            piece = ticket.pieces.get(pk=piece_id)
+        except TicketPiece.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        piece.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
     """Contrats de maintenance préventive (visites récurrentes). Tout est scopé
@@ -344,9 +466,10 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['a_venir']:
+        if self.action in READ_ACTIONS + [
+                'a_venir', 'a_renouveler', 'rapport_pdf']:
             return [HasPermissionOrLegacy('sav_voir')()]
-        elif self.action in WRITE_ACTIONS + ['generer_dus']:
+        elif self.action in WRITE_ACTIONS + ['generer_dus', 'visite_effectuee']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -409,3 +532,112 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         # Tri par échéance la plus proche d'abord (les plus en retard en tête).
         rows.sort(key=lambda r: r.get('prochaine_visite') or '')
         return Response(rows)
+
+    @action(detail=False, methods=['get'], url_path='a-renouveler',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def a_renouveler(self, request):
+        """Contrats actifs approchant leur renouvellement (N47) — date de fin
+        dans l'horizon RENEWAL_SOON_DAYS, calculée à la lecture. Triés par
+        date de fin la plus proche d'abord."""
+        rows = []
+        for contrat in self.get_queryset().filter(actif=True):
+            if not contrat.a_renouveler():
+                continue
+            rows.append(self.get_serializer(contrat).data)
+        rows.sort(key=lambda r: r.get('date_fin_effective') or '')
+        return Response(rows)
+
+    @action(detail=True, methods=['post'], url_path='visite-effectuee',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def visite_effectuee(self, request, pk=None):
+        """Marque une visite préventive comme effectuée (N47) : avance la
+        dernière visite à aujourd'hui (ou ?date). Renvoie le contrat à jour ;
+        le rapport PDF se récupère via l'action `rapport-pdf`."""
+        contrat = self.get_object()
+        date_str = request.data.get('date')
+        if date_str:
+            from django.utils.dateparse import parse_date
+            d = parse_date(date_str)
+            if d is None:
+                return Response({'date': 'Date invalide.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            d = timezone.localdate()
+        contrat.derniere_visite = d
+        contrat.derniere_echeance_traitee = d
+        contrat.save(update_fields=[
+            'derniere_visite', 'derniere_echeance_traitee',
+            'date_modification'])
+        return Response(self.get_serializer(contrat).data)
+
+    @action(detail=True, methods=['get'], url_path='rapport-pdf',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def rapport_pdf(self, request, pk=None):
+        """Rapport de maintenance préventive FR (N47). Rendu à la volée, streamé
+        en PDF, jamais stocké. Côté client : aucun prix d'achat. ?ticket=<id>
+        attache le compte rendu d'un ticket préventif clôturé du même contrat."""
+        contrat = self.get_object()
+        ticket = None
+        ticket_id = request.query_params.get('ticket')
+        if ticket_id:
+            ticket = (Ticket.objects
+                      .filter(pk=ticket_id, company=request.user.company,
+                              installation=contrat.installation)
+                      .prefetch_related('interventions', 'pieces__produit')
+                      .first())
+        pdf_bytes = rapport_maintenance_pdf(contrat, ticket=ticket)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="maintenance-contrat-{contrat.pk}.pdf"')
+        return response
+
+
+class ReclamationGarantieViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Réclamations de garantie (N48) — trace auditable d'une demande de prise
+    en charge sous garantie d'un équipement, avec son résultat. CRUD scopé à la
+    société ; acteur posé côté serveur, équipement vérifié côté serveur."""
+    queryset = ReclamationGarantie.objects.select_related(
+        'equipement', 'equipement__produit',
+    ).all()
+    serializer_class = ReclamationGarantieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'description', 'equipement__numero_serie', 'equipement__produit__nom',
+    ]
+    ordering_fields = ['date', 'date_creation', 'resultat']
+    ordering = ['-date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        equipement = params.get('equipement')
+        resultat = params.get('resultat')
+        if equipement:
+            qs = qs.filter(equipement_id=equipement)
+        if resultat:
+            qs = qs.filter(resultat=resultat)
+        return qs
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [HasPermissionOrLegacy('equipement_voir')()]
+        elif self.action in WRITE_ACTIONS:
+            return [HasPermissionOrLegacy('equipement_gerer')()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        equipement = serializer.validated_data.get('equipement')
+        if equipement is not None and equipement.company_id != company.id:
+            raise ValidationError({'equipement': 'Équipement inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)

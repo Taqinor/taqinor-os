@@ -218,6 +218,88 @@ class Ticket(models.Model):
         return self.sous_garantie
 
 
+class TicketPiece(models.Model):
+    """Pièce consommée sur un ticket SAV (N46).
+
+    Enregistre additivement une pièce (produit catalogue) utilisée lors d'une
+    intervention de dépannage, avec sa quantité. À l'enregistrement, le stock
+    PEUT être décrémenté (réutilise EXACTEMENT le patron MouvementStock SORTIE
+    du reste de l'OS — voir services.decrementer_stock_piece). Les pièces
+    apparaissent sur le rapport d'intervention (N45) — JAMAIS le prix d'achat.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_pieces',
+    )
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='pieces')
+    # PROTECT : on ne supprime pas un produit référencé par une pièce posée.
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT, related_name='ticket_pieces',
+    )
+    quantite = models.PositiveIntegerField(default=1)
+    # Trace : le stock a-t-il été décrémenté lors de l'enregistrement ?
+    stock_decremente = models.BooleanField(default=False)
+    note = models.CharField(max_length=255, blank=True, null=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='ticket_pieces_creees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Pièce ticket'
+        verbose_name_plural = 'Pièces ticket'
+        ordering = ['-date_creation']
+        indexes = [models.Index(fields=['company', 'ticket'])]
+
+    def __str__(self):
+        return f"{self.quantite} × {self.produit_id} (ticket {self.ticket_id})"
+
+
+class ReclamationGarantie(models.Model):
+    """Réclamation de garantie contre un composant (N48).
+
+    Trace auditable d'une demande de prise en charge sous garantie d'un
+    équipement, avec sa description et son résultat (accordée / refusée / en
+    cours). Scopée à la société ; acteur posé côté serveur.
+    """
+    class Resultat(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        ACCORDEE = 'accordee', 'Accordée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reclamations_garantie',
+    )
+    equipement = models.ForeignKey(
+        'sav.Equipement', on_delete=models.CASCADE,
+        related_name='reclamations_garantie',
+    )
+    date = models.DateField(null=True, blank=True)
+    description = models.TextField(blank=True, null=True)
+    resultat = models.CharField(
+        max_length=12, choices=Resultat.choices, default=Resultat.EN_COURS)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='reclamations_garantie_creees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réclamation de garantie'
+        verbose_name_plural = 'Réclamations de garantie'
+        ordering = ['-date_creation']
+        indexes = [models.Index(fields=['company', 'equipement'])]
+
+    def __str__(self):
+        return f"Réclamation #{self.pk} ({self.equipement_id})"
+
+
 class TicketActivity(models.Model):
     """Historique « chatter » d'un ticket — même modèle que LeadActivity /
     InstallationActivity. Entrées automatiques (création + changements de
@@ -259,6 +341,10 @@ class TicketActivity(models.Model):
 # remonte dans la vue « à venir ».
 UPCOMING_SOON_DAYS = 30
 
+# Fenêtre « renouvellement proche » (jours) — un contrat dont la date de fin
+# tombe dans cet horizon remonte dans la vue « à renouveler » (N47).
+RENEWAL_SOON_DAYS = 60
+
 
 class ContratMaintenance(models.Model):
     """Contrat de maintenance préventive — un abonnement de visites récurrentes
@@ -290,6 +376,11 @@ class ContratMaintenance(models.Model):
     # Nombre de mois entre deux visites préventives.
     intervalle_mois = models.PositiveSmallIntegerField(default=12)
     date_debut = models.DateField()
+    # ── Renouvellement (N47) — ADDITIF. Date de fin du contrat et/ou durée en
+    #    mois. Le drapeau « à renouveler » est CALCULÉ à la lecture (date_fin
+    #    dans l'horizon RENEWAL_SOON_DAYS), jamais stocké. ──
+    date_fin = models.DateField(null=True, blank=True)
+    duree_mois = models.PositiveSmallIntegerField(null=True, blank=True)
     # Date de la dernière visite réalisée/générée (None = jamais encore visité).
     derniere_visite = models.DateField(null=True, blank=True)
     # Échéance déjà matérialisée par un ticket — garde-fou d'idempotence.
@@ -344,3 +435,34 @@ class ContratMaintenance(models.Model):
         if prochaine is None:
             return False
         return prochaine <= today + timedelta(days=horizon_jours)
+
+    @property
+    def date_fin_effective(self):
+        """Date de fin du contrat — CALCULÉE à la lecture (N47).
+
+        date_fin explicite si elle existe ; sinon date_debut + duree_mois ;
+        sinon None (« non renseignée »). Aucune date inventée."""
+        if self.date_fin:
+            return self.date_fin
+        if self.duree_mois:
+            return add_months(self.date_debut, self.duree_mois)
+        return None
+
+    def jours_avant_fin(self, today=None):
+        fin = self.date_fin_effective
+        if fin is None:
+            return None
+        today = today or timezone.localdate()
+        return (fin - today).days
+
+    def a_renouveler(self, today=None, horizon_jours=RENEWAL_SOON_DAYS):
+        """Vrai si le contrat approche de son renouvellement — CALCULÉ.
+
+        Drapeau levé quand la date de fin tombe dans l'horizon (passée ou à
+        venir dans `horizon_jours`). Un contrat inactif n'est jamais signalé."""
+        if not self.actif:
+            return False
+        jours = self.jours_avant_fin(today)
+        if jours is None:
+            return False
+        return jours <= horizon_jours

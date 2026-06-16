@@ -68,3 +68,41 @@ def generer_ticket_du(contrat, user=None, today=None):
     contrat.save(update_fields=[
         'derniere_visite', 'derniere_echeance_traitee', 'date_modification'])
     return ticket
+
+
+def decrementer_stock_piece(piece, user=None):
+    """Décrémente le stock pour une pièce consommée sur un ticket SAV (N46).
+
+    Réutilise EXACTEMENT le patron du reste de l'OS (apps/stock & apps/ventes) :
+    un MouvementStock SORTIE avec quantite_avant/quantite_apres puis mise à jour
+    de Produit.quantite_stock. Aucune migration stock ajoutée. Idempotent au
+    niveau de la pièce via le drapeau `stock_decremente`.
+
+    Le stock peut passer négatif (les autres flux le permettent aussi quand non
+    bloquant) — ici on enregistre simplement le mouvement réel.
+    """
+    from apps.stock.models import MouvementStock
+
+    if piece.stock_decremente:
+        return None
+    produit = piece.produit
+    produit.refresh_from_db()
+    qte = int(piece.quantite)
+    qte_avant = produit.quantite_stock
+    qte_apres = qte_avant - qte
+    mouvement = MouvementStock.objects.create(
+        company=produit.company,
+        produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+        quantite=qte,
+        quantite_avant=qte_avant,
+        quantite_apres=qte_apres,
+        reference=f'SAV {piece.ticket.reference}',
+        note=f'Pièce SAV ticket {piece.ticket.reference}',
+        created_by=user,
+    )
+    produit.quantite_stock = qte_apres
+    produit.save(update_fields=['quantite_stock'])
+    piece.stock_decremente = True
+    piece.save(update_fields=['stock_decremente'])
+    return mouvement
