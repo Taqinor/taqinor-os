@@ -1,0 +1,10 @@
+/* N2 — compléments de style pour les cartes du kanban chantier. */
+.kb-card-title { font-weight: 600; font-size: 0.82rem; color: #0f172a; }
+.kb-card-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.kb-chip {
+  font-size: 0.68rem;
+  background: #f1f5f9;
+  color: #475569;
+  border-radius: 6px;
+  padding: 1px 6px;
+}

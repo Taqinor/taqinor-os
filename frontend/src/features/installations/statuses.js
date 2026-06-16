@@ -2,34 +2,61 @@
 // l'entonnoir lead (STAGES.py) et des statuts de document devis/facture.
 // Liste FERMÉE, en ordre d'entonnoir. « annulé » est un drapeau, pas une étape.
 
+// Entonnoir CANONIQUE du chantier (N1), dans l'ordre d'exécution.
 export const INSTALLATION_STATUSES = [
-  'a_planifier',
+  'signe',
+  'materiel_commande',
   'planifie',
-  'pose_en_cours',
-  'pose',
-  'raccordement_onee',
-  'mise_en_service',
+  'en_cours',
+  'installe',
+  'receptionne',
   'cloture',
 ]
 
 export const STATUS_LABELS = {
-  a_planifier: 'À planifier',
+  signe: 'Signé',
+  materiel_commande: 'Matériel commandé',
   planifie: 'Planifié',
+  en_cours: 'En cours',
+  installe: 'Installé',
+  receptionne: 'Réceptionné',
+  cloture: 'Clôturé',
+  // Statuts hérités (chantiers d'avant le funnel N1) — encore affichables.
+  a_planifier: 'À planifier',
   pose_en_cours: 'Pose en cours',
   pose: 'Posé',
   raccordement_onee: 'Raccordement ONEE',
   mise_en_service: 'Mise en service',
-  cloture: 'Clôturé',
 }
 
 export const STATUS_COLORS = {
-  a_planifier: '#64748b',
+  signe: '#64748b',
+  materiel_commande: '#a855f7',
   planifie: '#3b82f6',
+  en_cours: '#f59e0b',
+  installe: '#8b5cf6',
+  receptionne: '#16a34a',
+  cloture: '#15803d',
+  // Hérités → reprennent la teinte de leur colonne canonique.
+  a_planifier: '#64748b',
   pose_en_cours: '#f59e0b',
   pose: '#8b5cf6',
-  raccordement_onee: '#0ea5e9',
+  raccordement_onee: '#f59e0b',
   mise_en_service: '#16a34a',
-  cloture: '#15803d',
+}
+
+// Rabat un statut hérité sur sa colonne canonique (kanban/parc) — miroir du
+// backend Installation.LEGACY_STATUT_MAP.
+export const LEGACY_STATUT_MAP = {
+  a_planifier: 'signe',
+  pose_en_cours: 'en_cours',
+  pose: 'installe',
+  raccordement_onee: 'en_cours',
+  mise_en_service: 'receptionne',
+}
+
+export function canonicalStatus(key) {
+  return LEGACY_STATUT_MAP[key] ?? key
 }
 
 export const TYPE_LABELS = {
@@ -62,7 +89,7 @@ export function statusColor(key) {
 // Position dans l'entonnoir — pour TRIER les statuts dans l'ordre du funnel,
 // jamais alphabétiquement. Les inconnus vont en fin.
 export function statusOrder(key) {
-  const i = INSTALLATION_STATUSES.indexOf(key)
+  const i = INSTALLATION_STATUSES.indexOf(canonicalStatus(key))
   return i === -1 ? INSTALLATION_STATUSES.length : i
 }
 

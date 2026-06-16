@@ -20,24 +20,48 @@ from django.db import models
 
 class Installation(models.Model):
     class Statut(models.TextChoices):
-        A_PLANIFIER = 'a_planifier', 'À planifier'
+        # ── Entonnoir CANONIQUE du chantier (N1) — ordre d'exécution ──
+        SIGNE = 'signe', 'Signé'
+        MATERIEL_COMMANDE = 'materiel_commande', 'Matériel commandé'
         PLANIFIE = 'planifie', 'Planifié'
+        EN_COURS = 'en_cours', 'En cours'
+        INSTALLE = 'installe', 'Installé'
+        RECEPTIONNE = 'receptionne', 'Réceptionné'
+        CLOTURE = 'cloture', 'Clôturé'
+        # ── Statuts HÉRITÉS (chantiers d'avant le funnel N1) — conservés
+        #    valides pour ne jamais invalider une donnée existante. Hors de
+        #    l'entonnoir principal ; rabattus pour l'affichage via
+        #    LEGACY_STATUT_MAP. Additif : aucune migration destructive. ──
+        A_PLANIFIER = 'a_planifier', 'À planifier'
         POSE_EN_COURS = 'pose_en_cours', 'Pose en cours'
         POSE = 'pose', 'Posé'
         RACCORDEMENT_ONEE = 'raccordement_onee', 'Raccordement ONEE'
         MISE_EN_SERVICE = 'mise_en_service', 'Mise en service'
-        CLOTURE = 'cloture', 'Clôturé'
 
-    # Ordre d'entonnoir (pour le tri des vues — JAMAIS alphabétique).
+    # Ordre d'entonnoir CANONIQUE (pour le tri des vues — JAMAIS alphabétique).
     STATUT_ORDER = [
-        Statut.A_PLANIFIER,
+        Statut.SIGNE,
+        Statut.MATERIEL_COMMANDE,
         Statut.PLANIFIE,
-        Statut.POSE_EN_COURS,
-        Statut.POSE,
-        Statut.RACCORDEMENT_ONEE,
-        Statut.MISE_EN_SERVICE,
+        Statut.EN_COURS,
+        Statut.INSTALLE,
+        Statut.RECEPTIONNE,
         Statut.CLOTURE,
     ]
+
+    # Rabat un statut hérité sur sa colonne canonique (affichage/kanban only ;
+    # la valeur stockée reste intacte jusqu'à ce que l'utilisateur la change).
+    LEGACY_STATUT_MAP = {
+        'a_planifier': Statut.SIGNE,
+        'pose_en_cours': Statut.EN_COURS,
+        'pose': Statut.INSTALLE,
+        'raccordement_onee': Statut.EN_COURS,
+        'mise_en_service': Statut.RECEPTIONNE,
+    }
+
+    @classmethod
+    def canonical_statut(cls, value):
+        return cls.LEGACY_STATUT_MAP.get(value, value)
 
     class Raccordement(models.TextChoices):
         MONOPHASE = 'monophase', 'Monophasé'
@@ -102,16 +126,38 @@ class Installation(models.Model):
     )
 
     statut = models.CharField(
-        max_length=20, choices=Statut.choices, default=Statut.A_PLANIFIER)
+        max_length=20, choices=Statut.choices, default=Statut.SIGNE)
+
+    # ── Charge de main-d'œuvre (N1) — jours-homme estimés vs réels. ──
+    labour_jours_estimes = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True)
+    labour_jours_reels = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True)
+
+    # ── Parc installé (N7) — un chantier réceptionné devient un « système
+    #    installé » actif. Le drapeau permet de retirer un système du parc
+    #    sans le supprimer. La date de réception est posée au passage à
+    #    « Réceptionné ». ──
+    parc_actif = models.BooleanField(default=True)
+
+    # Nomenclature (BOM) GELÉE à la création depuis le devis : liste de
+    # {produit_id, designation, quantite, marque}. Sert de résumé système et
+    # de base composants pour le parc, indépendant d'une édition ultérieure
+    # du devis. Additif (JSON, défaut liste vide).
+    bom = models.JSONField(default=list, blank=True)
 
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
     annule = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
 
-    # ── Dates clés ──
+    # ── Dates clés (jalons — alimentent la timeline N6). ──
+    date_signature = models.DateField(null=True, blank=True)
+    date_materiel_commande = models.DateField(null=True, blank=True)
     date_pose_prevue = models.DateField(null=True, blank=True)
     date_pose_reelle = models.DateField(null=True, blank=True)
     date_mise_en_service = models.DateField(null=True, blank=True)
+    date_reception = models.DateField(null=True, blank=True)
+    date_cloture = models.DateField(null=True, blank=True)
 
     # ── Mise en service (commissioning) ──
     mes_pv_notes = models.TextField(blank=True, null=True)
@@ -248,3 +294,57 @@ class InstallationActivity(models.Model):
 
     def __str__(self):
         return f"{self.installation_id} {self.kind} {self.field or ''}".strip()
+
+
+class ChecklistEtapeModele(models.Model):
+    """N4 — étape MODÈLE de la checklist d'exécution chantier, éditable dans
+    Paramètres (libellé + ordre + activation). `capture_serie` marque les
+    étapes où l'on saisit des numéros de série (N9 : panneaux/onduleur).
+    `protege` verrouille une étape système contre la suppression. Additif."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='checklist_etapes')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=120)
+    ordre = models.PositiveIntegerField(default=0)
+    capture_serie = models.BooleanField(default=False)
+    actif = models.BooleanField(default=True)
+    protege = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'cle')]
+        verbose_name = "Étape de checklist chantier"
+        verbose_name_plural = "Étapes de checklist chantier"
+
+    def __str__(self):
+        return self.libelle
+
+
+class ChantierChecklistItem(models.Model):
+    """N4 — état d'une étape de checklist POUR un chantier donné : fait / par
+    qui / quand. Le pourcentage d'avancement du chantier en dérive. Créés
+    paresseusement depuis les étapes modèle à la première consultation."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='checklist_items')
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE, related_name='checklist')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=120)
+    ordre = models.PositiveIntegerField(default=0)
+    capture_serie = models.BooleanField(default=False)
+    fait = models.BooleanField(default=False)
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='checklist_items_faits')
+    fait_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        unique_together = [('installation', 'cle')]
+        verbose_name = "Étape de checklist (chantier)"
+        verbose_name_plural = "Étapes de checklist (chantier)"
+
+    def __str__(self):
+        return f"{self.installation_id} · {self.libelle} · {'✓' if self.fait else '—'}"

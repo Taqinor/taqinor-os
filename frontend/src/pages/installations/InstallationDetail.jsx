@@ -12,6 +12,9 @@ import {
   STATUS_LABELS,
   INTERVENTION_TYPES,
 } from '../../features/installations/statuses'
+import ChantierChecklist from './ChantierChecklist'
+import ChantierTimeline from './ChantierTimeline'
+import ChantierPhotos from './ChantierPhotos'
 import { garantieLabel, garantieColor } from '../../features/sav/equipement'
 import {
   TICKET_TYPES,
@@ -50,6 +53,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     date_pose_prevue: F('date_pose_prevue'),
     date_pose_reelle: F('date_pose_reelle'),
     puissance_installee_kwc: F('puissance_installee_kwc'),
+    labour_jours_estimes: F('labour_jours_estimes'),
+    labour_jours_reels: F('labour_jours_reels'),
     notes: F('notes'),
   })
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
@@ -82,6 +87,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [tickets, setTickets] = useState([])
   const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
   const [ticketBusy, setTicketBusy] = useState(false)
+  const [contrats, setContrats] = useState([])
 
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
@@ -95,11 +101,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     savApi.getTickets({ installation: id, ouvert: 'tous' })
       .then(r => setTickets(r.data?.results ?? r.data ?? [])).catch(() => {})
   }
+  const loadContrats = () => {
+    if (!installation.client) return
+    savApi.getContrats({ client: installation.client })
+      .then(r => setContrats(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }
 
   useEffect(() => {
     loadHistorique()
     loadEquipements()
     loadTickets()
+    loadContrats()
     if (produits.length === 0) dispatch(fetchProduits())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -296,6 +308,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </div>
           </div>
 
+          {/* ── Timeline du chantier (N6) ── */}
+          <ChantierTimeline installation={current} />
+
           {/* ── Documents après-vente (PDF régénérés à la demande) ── */}
           <div className="form-section">
             <div className="form-section-header">
@@ -406,6 +421,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <label className="form-label">Statut</label>
                 <select className="form-select" value={fields.statut ?? ''}
                         onChange={e => set('statut', e.target.value)}>
+                  {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
+                  {fields.statut && !INSTALLATION_STATUSES.includes(fields.statut) && (
+                    <option value={fields.statut}>
+                      {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
+                    </option>
+                  )}
                   {INSTALLATION_STATUSES.map(k => (
                     <option key={k} value={k}>{STATUS_LABELS[k]}</option>
                   ))}
@@ -440,6 +461,20 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                        onChange={e => set('puissance_installee_kwc', e.target.value)} />
               </div>
             </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Jours-homme estimés</label>
+                <input type="number" step="any" className="form-control"
+                       value={fields.labour_jours_estimes ?? ''}
+                       onChange={e => set('labour_jours_estimes', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Jours-homme réels</label>
+                <input type="number" step="any" className="form-control"
+                       value={fields.labour_jours_reels ?? ''}
+                       onChange={e => set('labour_jours_reels', e.target.value)} />
+              </div>
+            </div>
             <div className="form-group">
               <label className="form-label">Notes</label>
               <textarea className="form-control" rows={2} value={fields.notes ?? ''}
@@ -447,6 +482,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </div>
             {saveError && <div className="form-error-box" role="alert">{saveError}</div>}
           </div>
+
+          {/* ── Checklist d'exécution (N4/N9) ── */}
+          <ChantierChecklist installationId={id} produits={produits}
+                             onChanged={refreshInstallation} />
+
+          {/* ── Photos & fichiers avant/pendant/après (N5) ── */}
+          <ChantierPhotos installationId={id} />
 
           {/* ── Interventions ── */}
           <div className="form-section">
@@ -626,6 +668,39 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* ── Suivi & maintenance (N10 — hub système installé) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">🔧 Suivi & maintenance</span>
+              <button type="button" className="btn btn-sm btn-outline"
+                      onClick={() => navigate('/sav/contrats')}>
+                Contrats
+              </button>
+            </div>
+            {contrats.length === 0 ? (
+              <p className="gen-hint">Aucun contrat de maintenance pour ce client.</p>
+            ) : (
+              <table className="lines-table">
+                <thead>
+                  <tr><th>Périodicité</th><th>Début</th><th>Prochaine visite</th><th>Statut</th></tr>
+                </thead>
+                <tbody>
+                  {contrats.map(c => (
+                    <tr key={c.id}>
+                      <td>{c.periodicite_display ?? c.periodicite}</td>
+                      <td>{formatDateFR(c.date_debut)}</td>
+                      <td>{formatDateFR(c.prochaine_visite)}</td>
+                      <td>{c.actif ? (c.due ? 'Visite due' : 'Actif') : 'Inactif'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="gen-hint" style={{ marginTop: 8 }}>
+              📡 Supervision : non configurée (connecteur de monitoring à venir).
+            </p>
           </div>
 
           {/* ── Mise en service ── */}

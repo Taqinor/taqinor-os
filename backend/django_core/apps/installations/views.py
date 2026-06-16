@@ -6,13 +6,22 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from django.utils import timezone
+
 from . import activity
-from .models import Installation, Intervention, TypeIntervention
+from .models import (
+    Installation, Intervention, TypeIntervention,
+    ChecklistEtapeModele, ChantierChecklistItem,
+)
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
     InstallationActivitySerializer, TypeInterventionSerializer,
+    ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
 )
-from .services import create_installation_from_devis
+from .services import (
+    create_installation_from_devis, seed_checklist_etapes,
+    ensure_checklist_items,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -25,6 +34,29 @@ _DEFAULT_TYPES_INTERVENTION = [
     ('controle', 'Contrôle'),
     ('depannage', 'Dépannage'),
 ]
+
+
+# Jalon de statut canonique → champ date à horodater (N6/N7) si vide.
+_STATUT_DATE_FIELD = {
+    Installation.Statut.SIGNE: 'date_signature',
+    Installation.Statut.MATERIEL_COMMANDE: 'date_materiel_commande',
+    Installation.Statut.PLANIFIE: 'date_pose_prevue',
+    Installation.Statut.INSTALLE: 'date_pose_reelle',
+    Installation.Statut.RECEPTIONNE: 'date_reception',
+    Installation.Statut.CLOTURE: 'date_cloture',
+}
+
+
+def _stamp_statut_dates(inst, old_statut):
+    """Pose la date du jalon atteint si elle est vide (jamais d'écrasement).
+    Travaille sur le statut CANONIQUE pour couvrir aussi les statuts hérités."""
+    canon = Installation.canonical_statut(inst.statut)
+    if Installation.canonical_statut(old_statut) == canon:
+        return
+    field = _STATUT_DATE_FIELD.get(canon)
+    if field and getattr(inst, field, None) is None:
+        setattr(inst, field, timezone.localdate())
+        inst.save(update_fields=[field])
 
 
 def seed_types_intervention(company):
@@ -101,14 +133,25 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                 qs = qs.filter(annule=True)
             elif annule == 'sans':
                 qs = qs.filter(annule=False)
+        # N8 — parc installé : systèmes réceptionnés/clôturés, actifs, non
+        # annulés (statuts hérités « mise_en_service » inclus via la map).
+        if params.get('parc') in ('1', 'true', 'only'):
+            parc_statuts = [
+                Installation.Statut.RECEPTIONNE,
+                Installation.Statut.CLOTURE,
+                Installation.Statut.MISE_EN_SERVICE,
+            ]
+            qs = qs.filter(statut__in=parc_statuts, parc_actif=True, annule=False)
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'besoin_materiel']:
+        if self.action in READ_ACTIONS + [
+            'historique', 'besoin_materiel', 'checklist',
+        ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
-            'annuler', 'reactiver', 'commander_besoin',
+            'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -124,7 +167,18 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         old = Installation.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
-        activity.log_changes(old, serializer.instance, self.request.user)
+        inst = serializer.instance
+        _stamp_statut_dates(inst, old.statut)
+        activity.log_changes(old, inst, self.request.user)
+        # N7 — au passage à « Réceptionné », le chantier devient un système
+        # installé actif (parc) : on trace l'événement dans le chatter.
+        canon_old = Installation.canonical_statut(old.statut)
+        canon_new = Installation.canonical_statut(inst.statut)
+        if (canon_new == Installation.Statut.RECEPTIONNE
+                and canon_old != Installation.Statut.RECEPTIONNE):
+            activity.log_note(
+                inst, self.request.user,
+                "Chantier réceptionné — système ajouté au parc installé.")
 
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
@@ -230,6 +284,79 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
+    @action(detail=True, methods=['get'], url_path='checklist',
+            permission_classes=[IsAnyRole])
+    def checklist(self, request, pk=None):
+        """Checklist d'exécution du chantier (N4). Matérialise les étapes
+        depuis les modèles à la première consultation, puis renvoie l'état +
+        le pourcentage d'avancement."""
+        inst = self.get_object()
+        items = ensure_checklist_items(inst)
+        done = sum(1 for it in items if it.fait)
+        return Response({
+            'installation': inst.id,
+            'items': ChantierChecklistItemSerializer(items, many=True).data,
+            'completion': round(100 * done / len(items)) if items else None,
+        })
+
+    @action(detail=True, methods=['post'], url_path='cocher-checklist',
+            permission_classes=[IsResponsableOrAdmin])
+    def cocher_checklist(self, request, pk=None):
+        """Coche/décoche une étape (N4) et, optionnellement, enregistre des
+        n° de série pour l'étape concernée (N9). La saisie de série ne bloque
+        JAMAIS la complétion : `equipements` vide est accepté.
+
+        Corps : {"cle": <str>, "fait": <bool>,
+                 "equipements": [{"produit": <id>, "numero_serie": <str>}]}
+        """
+        inst = self.get_object()
+        ensure_checklist_items(inst)
+        cle = request.data.get('cle')
+        item = inst.checklist.filter(cle=cle).first()
+        if item is None:
+            return Response({'detail': 'Étape inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        fait = bool(request.data.get('fait', True))
+        item.fait = fait
+        item.fait_par = request.user if fait else None
+        item.fait_le = timezone.now() if fait else None
+        item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+
+        # N9 — saisie optionnelle de n° de série → équipements du parc.
+        created_equip = 0
+        for eq in (request.data.get('equipements') or []):
+            produit_id = eq.get('produit')
+            serie = (eq.get('numero_serie') or '').strip()
+            if not produit_id:
+                continue
+            from apps.stock.models import Produit
+            from apps.sav.models import Equipement
+            produit = Produit.objects.filter(
+                id=produit_id, company=inst.company).first()
+            if produit is None:
+                continue
+            equip = Equipement.objects.create(
+                company=inst.company, produit=produit, installation=inst,
+                numero_serie=serie or None,
+                date_pose=inst.date_pose_reelle or timezone.localdate(),
+                created_by=request.user)
+            equip.recompute_garanties()
+            equip.save(update_fields=[
+                'date_fin_garantie', 'date_fin_garantie_production'])
+            created_equip += 1
+
+        activity.log_note(
+            inst, request.user,
+            f"Checklist : « {item.libelle} » {'cochée' if fait else 'décochée'}"
+            + (f" (+{created_equip} équipement(s))" if created_equip else ""))
+        items = list(inst.checklist.all())
+        done = sum(1 for it in items if it.fait)
+        return Response({
+            'items': ChantierChecklistItemSerializer(items, many=True).data,
+            'completion': round(100 * done / len(items)) if items else None,
+            'equipements_crees': created_equip,
+        })
+
     @action(detail=True, methods=['get'], url_path='besoin-materiel',
             permission_classes=[IsAnyRole])
     def besoin_materiel(self, request, pk=None):
@@ -292,6 +419,33 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             bon, context={'request': request}).data
         data['nb_lignes'] = nb
         return Response(data, status=status.HTTP_201_CREATED)
+
+
+class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Étapes MODÈLE de la checklist d'exécution (Paramètres → Chantiers, N4).
+    Lecture tout rôle, écriture admin. Une étape protégée garde sa clé ; la
+    désactivation (actif=False) la retire des nouveaux chantiers sans toucher
+    aux chantiers existants (cohérent N57)."""
+    queryset = ChecklistEtapeModele.objects.all()
+    serializer_class = ChecklistEtapeModeleSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            seed_checklist_etapes(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        etape = self.get_object()
+        if etape.protege:
+            return Response(
+                {'detail': "Cette étape est protégée — désactivez-la plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):

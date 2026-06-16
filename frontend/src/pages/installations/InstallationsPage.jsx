@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchInstallations } from '../../features/installations/store/installationsSlice'
+import { fetchInstallations, updateInstallation } from '../../features/installations/store/installationsSlice'
 import {
   EMPTY_FILTERS,
   filterInstallations,
@@ -8,13 +8,15 @@ import {
   statusColor,
 } from '../../features/installations/statuses'
 import importApi, { downloadXlsx } from '../../api/importApi'
+import crmApi from '../../api/crmApi'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
+import KanbanView from './views/KanbanView'
 import InstallationDetail from './InstallationDetail'
 import '../crm/leads/views/calendar.css'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
-const VALID_VIEWS = ['liste', 'calendrier']
+const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
 
 // Paramètre SERVEUR dérivé du filtre « annulés ».
 const annuleParam = (annule) => {
@@ -184,6 +186,16 @@ export default function InstallationsPage() {
   const filtered = useMemo(() => filterInstallations(items, filters), [items, filters])
 
   const [selected, setSelected] = useState(null)
+  const [users, setUsers] = useState([])
+  useEffect(() => {
+    crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }, [])
+
+  // N2 — glisser une carte change le statut ; un select réassigne l'installateur.
+  const onChangeStatus = (inst, statut) =>
+    dispatch(updateInstallation({ id: inst.id, data: { statut } }))
+  const onReassign = (inst, technicien) =>
+    dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } }))
 
   // Le filtre « annulés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
@@ -222,6 +234,13 @@ export default function InstallationsPage() {
             </button>
             <button
               type="button"
+              className={`fb-pill${view === 'kanban' ? ' fb-pill-active' : ''}`}
+              onClick={() => setView('kanban')}
+            >
+              Kanban
+            </button>
+            <button
+              type="button"
               className={`fb-pill${view === 'calendrier' ? ' fb-pill-active' : ''}`}
               onClick={() => setView('calendrier')}
             >
@@ -235,6 +254,10 @@ export default function InstallationsPage() {
 
       <div className="lp-view-area">
         {view === 'liste' && <ListView items={filtered} onOpen={onOpen} />}
+        {view === 'kanban' && (
+          <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
+                      users={users} onReassign={onReassign} />
+        )}
         {view === 'calendrier' && <CalendarView items={filtered} onOpen={onOpen} />}
       </div>
 

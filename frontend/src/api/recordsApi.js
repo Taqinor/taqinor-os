@@ -16,11 +16,12 @@ const recordsApi = {
   // ── Pièces jointes ──
   getAttachments: (model, id) =>
     api.get('/records/attachments/', { params: { model, id } }),
-  uploadAttachment: (model, id, file) => {
+  uploadAttachment: (model, id, file, phase) => {
     const fd = new FormData()
     fd.append('model', model)
     fd.append('id', id)
     fd.append('file', file)
+    if (phase) fd.append('phase', phase)
     return api.post('/records/attachments/', fd)
   },
   deleteAttachment: (id) => api.delete(`/records/attachments/${id}/`),

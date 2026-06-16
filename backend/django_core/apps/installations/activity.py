@@ -17,6 +17,11 @@ TRACKED_FIELDS = {
     'date_pose_prevue': 'Date de pose prévue',
     'date_pose_reelle': 'Date de pose réelle',
     'date_mise_en_service': 'Date de mise en service',
+    'date_reception': 'Date de réception',
+    'date_cloture': 'Date de clôture',
+    'labour_jours_estimes': 'Jours-homme estimés',
+    'labour_jours_reels': 'Jours-homme réels',
+    'parc_actif': 'Système actif (parc)',
     'annule': 'Annulé',
     'motif_annulation': "Motif d'annulation",
 }

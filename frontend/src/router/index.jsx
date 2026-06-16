@@ -24,6 +24,7 @@ const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
+const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -90,6 +91,7 @@ const router = createBrowserRouter([
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
+  { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
 
   // Après-vente : parc d'équipements & tickets SAV
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },

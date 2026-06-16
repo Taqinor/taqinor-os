@@ -11,10 +11,10 @@ import {
   EMPTY_FILTERS,
 } from './statuses.js'
 
-test('les 7 statuts chantier, dans l\'ordre d\'entonnoir', () => {
+test('les 7 statuts chantier canoniques, dans l\'ordre d\'entonnoir', () => {
   assert.deepEqual(INSTALLATION_STATUSES, [
-    'a_planifier', 'planifie', 'pose_en_cours', 'pose',
-    'raccordement_onee', 'mise_en_service', 'cloture',
+    'signe', 'materiel_commande', 'planifie', 'en_cours',
+    'installe', 'receptionne', 'cloture',
   ])
   for (const s of INSTALLATION_STATUSES) {
     assert.ok(STATUS_LABELS[s], `libellé manquant pour ${s}`)
@@ -23,22 +23,21 @@ test('les 7 statuts chantier, dans l\'ordre d\'entonnoir', () => {
 })
 
 test('statusOrder respecte l\'entonnoir, pas l\'alphabet', () => {
-  // "à planifier" (a_planifier) vient AVANT "clôturé" (cloture) dans
-  // l'entonnoir, alors que l'alphabet mettrait a_planifier avant cloture
-  // aussi — on teste un cas où alpha ≠ funnel : pose_en_cours avant pose ?
-  assert.ok(statusOrder('a_planifier') < statusOrder('planifie'))
-  assert.ok(statusOrder('mise_en_service') < statusOrder('cloture'))
-  // "raccordement_onee" (commence par r) doit venir AVANT "mise_en_service"
-  // (commence par m) dans l'entonnoir — l'inverse de l'ordre alphabétique.
-  assert.ok(statusOrder('raccordement_onee') < statusOrder('mise_en_service'))
+  assert.ok(statusOrder('signe') < statusOrder('planifie'))
+  assert.ok(statusOrder('receptionne') < statusOrder('cloture'))
+  // "installe" (i) doit venir AVANT "receptionne" (r) dans l'entonnoir.
+  assert.ok(statusOrder('installe') < statusOrder('receptionne'))
+  // Un statut hérité tombe dans sa colonne canonique : mise_en_service →
+  // receptionne (donc au même rang que receptionne).
+  assert.equal(statusOrder('mise_en_service'), statusOrder('receptionne'))
   assert.equal(statusOrder('inconnu'), INSTALLATION_STATUSES.length)
 })
 
 test('sortInstallations trie par statut dans l\'ordre funnel', () => {
   const rows = [
     { id: 1, statut: 'cloture' },
-    { id: 2, statut: 'a_planifier' },
-    { id: 3, statut: 'pose' },
+    { id: 2, statut: 'signe' },
+    { id: 3, statut: 'installe' },
   ]
   const sorted = sortInstallations(rows, 'statut', 'asc')
   assert.deepEqual(sorted.map((r) => r.id), [2, 3, 1])
