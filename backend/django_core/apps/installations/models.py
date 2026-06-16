@@ -39,6 +39,12 @@ class Installation(models.Model):
         Statut.CLOTURE,
     ]
 
+    # États « réceptionné » — il n'existe PAS de statut « réceptionné » séparé :
+    # on traite la mise en service ET la clôture comme la réception du système
+    # installé (N7). Dès qu'un chantier atteint l'un d'eux, son système installé
+    # (parc) est matérialisé.
+    RECEIVED_STATUTS = [Statut.MISE_EN_SERVICE, Statut.CLOTURE]
+
     class Raccordement(models.TextChoices):
         MONOPHASE = 'monophase', 'Monophasé'
         TRIPHASE = 'triphase', 'Triphasé'
@@ -121,6 +127,18 @@ class Installation(models.Model):
         max_digits=8, decimal_places=2, null=True, blank=True)
 
     notes = models.TextField(blank=True, null=True)
+
+    # ── Parc installé (système installé / asset base) — ADDITIF (N7). ──
+    # Le chantier RÉCEPTIONNÉ (mise en service ou clôturé) EST le système
+    # installé : il porte déjà client / site / GPS / kWc / type / installateur /
+    # date de mise en service / liens devis. On ne crée donc PAS de modèle
+    # parallèle ; on ajoute seulement un drapeau d'activité du parc et la date
+    # de réception (posée une seule fois, quand le chantier atteint son état
+    # terminal pour la première fois). Les composants installés sont les
+    # sav.Equipement auto-créés à la réception.
+    parc_actif = models.BooleanField(default=True)
+    date_reception = models.DateField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='installations_creees',

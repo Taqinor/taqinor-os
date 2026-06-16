@@ -1,3 +1,4 @@
+from django.db import models
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,9 +14,11 @@ from .models import (
 )
 from .serializers import (
     ChecklistItemSerializer, InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer, TypeInterventionSerializer,
+    InstallationActivitySerializer, ParcInstalleSerializer,
+    TypeInterventionSerializer,
 )
 from .services import create_installation_from_devis, ensure_checklist
+from .parc import mark_received
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -89,11 +92,13 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'export', 'checklist']:
+        if self.action in READ_ACTIONS + [
+            'historique', 'export', 'checklist', 'equipements',
+        ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
-            'annuler', 'reactiver', 'toggle_checklist',
+            'annuler', 'reactiver', 'toggle_checklist', 'set_serials',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -110,7 +115,25 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         old = Installation.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
-        activity.log_changes(old, serializer.instance, self.request.user)
+        inst = serializer.instance
+        activity.log_changes(old, inst, self.request.user)
+        # N7 — réception au fil de l'eau : si le statut vient de passer à un état
+        # réceptionné (mise en service / clôture), matérialise le système
+        # installé (date de réception + équipements auto). Idempotent.
+        if (old.statut not in Installation.RECEIVED_STATUTS
+                and inst.statut in Installation.RECEIVED_STATUTS):
+            self._mark_received(inst)
+
+    def _mark_received(self, inst):
+        """Matérialise le système installé (N7) et journalise les équipements
+        auto-créés dans le chatter du chantier."""
+        created = mark_received(inst, user=self.request.user)
+        if created:
+            noms = ', '.join(eq.produit.nom for eq in created)
+            activity.log_note(
+                inst, self.request.user,
+                f"Système installé : {len(created)} équipement(s) "
+                f"auto-créé(s) ({noms})")
 
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
@@ -185,6 +208,47 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
             inst, request.user, f"Étape « {item.label} » {verbe}")
         return Response(ChecklistItemSerializer(item).data)
 
+    @action(detail=True, methods=['get'], url_path='equipements',
+            permission_classes=[IsAnyRole])
+    def equipements(self, request, pk=None):
+        """Composants installés du chantier (système installé / parc) — n° de
+        série + horloges de garantie. Lecture seule ici ; la saisie des n° de
+        série passe par `set-serials`."""
+        from apps.sav.serializers import EquipementSerializer
+        inst = self.get_object()
+        qs = inst.equipements.select_related('produit').all()
+        return Response(EquipementSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='set-serials',
+            permission_classes=[IsResponsableOrAdmin])
+    def set_serials(self, request, pk=None):
+        """Saisit les n° de série des composants du chantier (N9).
+
+        Corps : {"serials": {"<equipement_id>": "SN123", ...}}. NE BLOQUE JAMAIS
+        rien si un n° est vide — un n° vide remet simplement le champ à None.
+        Les équipements visés doivent appartenir au chantier (scope société via
+        get_object). Retourne la liste des équipements à jour.
+        """
+        from apps.sav.models import Equipement
+        from apps.sav.serializers import EquipementSerializer
+        inst = self.get_object()
+        serials = request.data.get('serials') or {}
+        if not isinstance(serials, dict):
+            return Response({'serials': 'Format attendu : objet id→n° série.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        updated = []
+        for eq_id, serie in serials.items():
+            eq = Equipement.objects.filter(
+                installation=inst, pk=eq_id).first()
+            if eq is None:
+                continue
+            valeur = (serie or '').strip() or None
+            if eq.numero_serie != valeur:
+                eq.numero_serie = valeur
+                eq.save(update_fields=['numero_serie', 'date_modification'])
+            updated.append(eq)
+        return Response(EquipementSerializer(updated, many=True).data)
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -218,6 +282,7 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
             inst.mes_production_test = data['mes_production_test']
         if data.get('mes_tension') not in (None, ''):
             inst.mes_tension = data['mes_tension']
+        was_received = old.statut in Installation.RECEIVED_STATUTS
         inst.statut = Installation.Statut.MISE_EN_SERVICE
         inst.save()
         activity.log_changes(old, inst, request.user)
@@ -225,6 +290,10 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
             inst, request.user,
             "Mise en service enregistrée"
             + (f" le {inst.date_mise_en_service}" if inst.date_mise_en_service else ""))
+        # N7 — la mise en service réceptionne le système installé (équipements
+        # auto + date de réception). Idempotent si déjà réceptionné.
+        if not was_received:
+            self._mark_received(inst)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -255,6 +324,126 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
             activity.log_note(inst, request.user, "Chantier réactivé")
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
+
+
+class ParcInstalleViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Parc installé (N8/N10) — systèmes installés = chantiers RÉCEPTIONNÉS et
+    actifs au parc. Lecture seule, scopé à la société. Orienté client-asset :
+    jamais de prix d'achat / marge.
+
+    Liste filtrable (client / ville / marque de composant / bande de puissance
+    kWc / année de réception) + données GPS pour la carte. L'action `hub`
+    agrège pour UN système : composants (équipements + n° série), garanties,
+    tickets SAV liés, contrats de maintenance, et un placeholder de monitoring.
+    """
+    queryset = Installation.objects.select_related(
+        'client', 'devis', 'technicien_responsable',
+    ).prefetch_related('equipements__produit').filter(
+        parc_actif=True,
+        statut__in=Installation.RECEIVED_STATUTS,
+    )
+    serializer_class = ParcInstalleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'reference', 'client__nom', 'client__prenom', 'site_ville',
+        'site_adresse',
+    ]
+    ordering_fields = [
+        'reference', 'date_reception', 'date_mise_en_service',
+        'puissance_installee_kwc',
+    ]
+    ordering = ['-date_reception', '-date_mise_en_service']
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        client = params.get('client')
+        ville = params.get('ville')
+        marque = params.get('marque')
+        type_inst = params.get('type_installation')
+        annee = params.get('annee')
+        kwc_min = params.get('kwc_min')
+        kwc_max = params.get('kwc_max')
+        if client:
+            qs = qs.filter(client_id=client)
+        if ville:
+            qs = qs.filter(site_ville__icontains=ville)
+        if marque:
+            qs = qs.filter(
+                equipements__produit__marque__icontains=marque).distinct()
+        if type_inst:
+            qs = qs.filter(type_installation=type_inst)
+        if annee:
+            try:
+                an = int(annee)
+                # Année de réception (sinon mise en service comme repli).
+                qs = qs.filter(
+                    models.Q(date_reception__year=an)
+                    | (models.Q(date_reception__isnull=True)
+                       & models.Q(date_mise_en_service__year=an)))
+            except (ValueError, TypeError):
+                pass
+        for bound, lookup in ((kwc_min, 'gte'), (kwc_max, 'lte')):
+            if bound not in (None, ''):
+                try:
+                    qs = qs.filter(
+                        **{f'puissance_installee_kwc__{lookup}': float(bound)})
+                except (ValueError, TypeError):
+                    pass
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='carte',
+            permission_classes=[IsAnyRole])
+    def carte(self, request):
+        """Points GPS des systèmes installés pour la vue carte (N8).
+
+        Renvoie uniquement les systèmes géolocalisés (gps_lat/lng non nuls),
+        respecte les filtres de la liste. Léger : pas de dépendance carto."""
+        qs = self.get_queryset().filter(
+            gps_lat__isnull=False, gps_lng__isnull=False)
+        points = [{
+            'id': obj.id,
+            'reference': obj.reference,
+            'client_nom': (f"{obj.client.nom} {obj.client.prenom or ''}".strip()
+                           if obj.client else None),
+            'site_ville': obj.site_ville,
+            'gps_lat': obj.gps_lat,
+            'gps_lng': obj.gps_lng,
+            'puissance_installee_kwc': obj.puissance_installee_kwc,
+            'type_installation': obj.type_installation,
+        } for obj in qs]
+        return Response(points)
+
+    @action(detail=True, methods=['get'], url_path='hub',
+            permission_classes=[IsAnyRole])
+    def hub(self, request, pk=None):
+        """Hub d'UN système installé (N10) — agrège ses relations existantes :
+        composants (équipements + garanties), tickets SAV, contrats de
+        maintenance, et un placeholder de monitoring. Lecture seule."""
+        from apps.sav.serializers import (
+            EquipementSerializer, TicketSerializer, ContratMaintenanceSerializer,
+        )
+        inst = self.get_object()
+        equipements = inst.equipements.select_related('produit').all()
+        tickets = inst.tickets.select_related(
+            'client', 'equipement', 'equipement__produit',
+            'technicien_responsable').all()
+        contrats = inst.contrats_maintenance.select_related('client').all()
+        ctx = {'request': request}
+        data = ParcInstalleSerializer(inst, context=ctx).data
+        data['equipements'] = EquipementSerializer(
+            equipements, many=True, context=ctx).data
+        data['tickets'] = TicketSerializer(
+            tickets, many=True, context=ctx).data
+        data['contrats_maintenance'] = ContratMaintenanceSerializer(
+            contrats, many=True, context=ctx).data
+        # Placeholder monitoring : aucune intégration de supervision n'existe.
+        data['monitoring'] = {'statut': 'non_configure',
+                              'statut_display': 'Non configuré'}
+        return Response(data)
 
 
 def _slugify_type_key(label):

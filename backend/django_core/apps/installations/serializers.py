@@ -122,3 +122,55 @@ class InstallationSerializer(serializers.ModelSerializer):
         done = sum(1 for it in items if it.done)
         percent = round(done * 100 / total) if total else 0
         return {'done': done, 'total': total, 'percent': percent}
+
+
+class ParcInstalleSerializer(serializers.ModelSerializer):
+    """Vue « parc installé » d'un système installé (chantier réceptionné, N8).
+
+    Lecture seule, orientée client-asset : JAMAIS de prix d'achat / marge. Porte
+    les coordonnées GPS pour la carte et un résumé des marques des composants
+    pour le filtre/affichage.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_installation_display = serializers.CharField(
+        source='get_type_installation_display', read_only=True, default=None)
+    client_nom = serializers.SerializerMethodField()
+    technicien_nom = serializers.SerializerMethodField()
+    devis_reference = serializers.CharField(
+        source='devis.reference', read_only=True, default=None)
+    marques = serializers.SerializerMethodField()
+    nb_equipements = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Installation
+        fields = [
+            'id', 'reference', 'statut', 'statut_display',
+            'type_installation', 'type_installation_display',
+            'client', 'client_nom', 'devis', 'devis_reference', 'lead',
+            'site_adresse', 'site_ville', 'gps_lat', 'gps_lng',
+            'puissance_installee_kwc', 'raccordement',
+            'technicien_responsable', 'technicien_nom',
+            'date_mise_en_service', 'date_reception', 'parc_actif',
+            'marques', 'nb_equipements',
+        ]
+
+    def get_client_nom(self, obj):
+        c = obj.client
+        if not c:
+            return None
+        return f"{c.nom} {c.prenom or ''}".strip()
+
+    def get_technicien_nom(self, obj):
+        return getattr(obj.technicien_responsable, 'username', None)
+
+    def get_marques(self, obj):
+        marques = []
+        for eq in obj.equipements.all():
+            m = getattr(eq.produit, 'marque', None)
+            if m and m not in marques:
+                marques.append(m)
+        return marques
+
+    def get_nb_equipements(self, obj):
+        return obj.equipements.count()
