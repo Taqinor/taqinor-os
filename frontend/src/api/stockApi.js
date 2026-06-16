@@ -42,6 +42,29 @@ const stockApi = {
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
   createMouvement: (data) => api.post('/stock/mouvements/', data),
+
+  // Bons de commande FOURNISSEUR (achats / approvisionnement) — N11/N12.
+  // Distinct du BC CLIENT de ventes. Les prix d'achat sont INTERNES.
+  getBonsCommandeFournisseur: (params) =>
+    api.get('/stock/bons-commande-fournisseur/', { params }),
+  getBonCommandeFournisseur: (id) =>
+    api.get(`/stock/bons-commande-fournisseur/${id}/`),
+  createBonCommandeFournisseur: (data) =>
+    api.post('/stock/bons-commande-fournisseur/', data),
+  updateBonCommandeFournisseur: (id, data) =>
+    api.patch(`/stock/bons-commande-fournisseur/${id}/`, data),
+  deleteBonCommandeFournisseur: (id) =>
+    api.delete(`/stock/bons-commande-fournisseur/${id}/`),
+  envoyerBonCommandeFournisseur: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/envoyer/`),
+  annulerBonCommandeFournisseur: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/annuler/`),
+  // receptions: [{ ligne: <id>, quantite: <int> }, ...]
+  recevoirBonCommandeFournisseur: (id, receptions) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }),
+  // PDF fournisseur (INTERNE — montre les prix d'achat). Réponse binaire.
+  bonCommandeFournisseurPdf: (id) =>
+    api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
 }
 
 export default stockApi

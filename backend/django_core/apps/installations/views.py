@@ -94,11 +94,13 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
             'historique', 'export', 'checklist', 'equipements',
+            'besoin_materiel',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
             'annuler', 'reactiver', 'toggle_checklist', 'set_serials',
+            'commander_besoin',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -160,6 +162,69 @@ class InstallationViewSet(XlsxExportMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='besoin-materiel',
+            permission_classes=[IsAnyRole])
+    def besoin_materiel(self, request, pk=None):
+        """Besoin matériel du chantier vs stock disponible (N13).
+
+        Lecture seule : dérive du devis source du chantier, confronte au
+        stock (Produit.quantite_stock) et signale les manques (manque > 0)."""
+        from apps.stock.services import compute_besoin_materiel
+        inst = self.get_object()
+        besoins = compute_besoin_materiel(inst)
+        items = [
+            {
+                'produit_id': b['produit_id'],
+                'sku': b['sku'],
+                'designation': b['designation'],
+                'requis': b['requis'],
+                'disponible': b['disponible'],
+                'manque': b['manque'],
+                'fournisseur_id': b['fournisseur_id'],
+                'fournisseur_nom': b['fournisseur_nom'],
+            }
+            for b in besoins
+        ]
+        return Response({
+            'installation': inst.id,
+            'reference': inst.reference,
+            'items': items,
+            'nb_manques': sum(1 for it in items if it['manque'] > 0),
+        })
+
+    @action(detail=True, methods=['post'], url_path='commander-besoin',
+            permission_classes=[IsResponsableOrAdmin])
+    def commander_besoin(self, request, pk=None):
+        """Crée un BonCommandeFournisseur BROUILLON pour les manques (N13).
+
+        Corps : {"fournisseur": <id>} (optionnel : sinon le fournisseur du
+        premier produit en pénurie). Renvoie le BCF brouillon créé."""
+        from apps.stock.services import (
+            draft_bcf_for_shortfall, resolve_fournisseur,
+        )
+        from apps.stock.serializers import BonCommandeFournisseurSerializer
+        inst = self.get_object()
+        company = request.user.company
+        fournisseur = resolve_fournisseur(
+            company, request.data.get('fournisseur'), inst)
+        if fournisseur is None:
+            return Response(
+                {'detail': (
+                    'Aucun fournisseur indiqué et aucun fournisseur par '
+                    'défaut sur les produits manquants.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            bon, nb = draft_bcf_for_shortfall(
+                inst, fournisseur, request.user, company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = BonCommandeFournisseurSerializer(
+            bon, context={'request': request}).data
+        data['nb_lignes'] = nb
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
