@@ -716,6 +716,28 @@ class FactureViewSet(viewsets.ModelViewSet):
         )
         return response
 
+    @action(detail=True, methods=['get'], url_path='ubl',
+            permission_classes=[IsResponsableOrAdmin])
+    def ubl(self, request, pk=None):
+        """N38 — aperçu BROUILLON UBL 2.1 de la facture (XML téléchargeable).
+
+        Génère le XML à la volée, le dépose en local (MinIO, best-effort) et le
+        renvoie. Aucun appel externe, aucune transmission DGI."""
+        facture = self.get_object()
+        from apps.parametres.models import CompanyProfile
+        from .utils.ubl import build_ubl_xml, store_ubl_xml
+        profile = CompanyProfile.get(company=facture.company)
+        xml_str = build_ubl_xml(facture, profile)
+        key = store_ubl_xml(facture, xml_str)
+        if key and facture.fichier_ubl != key:
+            facture.fichier_ubl = key
+            facture.save(update_fields=['fichier_ubl'])
+        response = HttpResponse(xml_str, content_type='application/xml')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{facture.reference}-ubl.xml"'
+        )
+        return response
+
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp(self, request, pk=None):

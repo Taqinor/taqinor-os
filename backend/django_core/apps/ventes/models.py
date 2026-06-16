@@ -323,6 +323,11 @@ class Facture(models.Model):
     fichier_pdf = models.CharField(
         max_length=500, blank=True, null=True
     )
+    # ── Export structuré UBL 2.1 (N38) — clé MinIO du dernier XML généré.
+    # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
+    fichier_ubl = models.CharField(
+        max_length=500, blank=True, null=True
+    )
 
     class Meta:
         verbose_name = 'Facture'

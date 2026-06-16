@@ -18,6 +18,7 @@ from .recouvrement import (
     lettre_relance_pdf,
 )
 from .journal_view import journal_ventes
+from .numbering_view import numerotation_audit
 
 router = DefaultRouter()
 router.register(r'devis', DevisViewSet)
@@ -33,6 +34,8 @@ router.register(r'niveaux-relance', FollowupLevelViewSet,
 urlpatterns = [
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
+    # Audit de la numérotation séquentielle (trous/doublons) — admin.
+    path('numerotation-audit/', numerotation_audit, name='numerotation-audit'),
     # Recouvrement (vue/consigne/impression — jamais d'envoi).
     path('relances/', relances_list, name='relances-list'),
     path('balance-agee/', balance_agee, name='balance-agee'),

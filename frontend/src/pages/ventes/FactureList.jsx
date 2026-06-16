@@ -82,6 +82,8 @@ export default function FactureList() {
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
   const [waBusyId, setWaBusyId] = useState(null)
+  const [ublBusyId, setUblBusyId] = useState(null)
+  const [auditBusy, setAuditBusy] = useState(false)
 
   // ── Enregistrement de paiement ──
   const [payTarget, setPayTarget] = useState(null) // facture ciblée
@@ -220,6 +222,49 @@ export default function FactureList() {
     }
   }
 
+  // N38 — télécharge l'aperçu BROUILLON UBL 2.1 (XML) de la facture.
+  const handleUbl = async (f) => {
+    setUblBusyId(f.id)
+    try {
+      const res = await ventesApi.telechargerUbl(f.id)
+      openPdfBlob(res.data, `${f.reference}-ubl.xml`)
+    } catch {
+      alert("Génération de l'aperçu UBL impossible.")
+    } finally {
+      setUblBusyId(null)
+    }
+  }
+
+  // N31 — audit admin de la numérotation : résumé des trous/doublons.
+  const handleAuditNumerotation = async () => {
+    setAuditBusy(true)
+    try {
+      const { data } = await ventesApi.auditNumerotation()
+      if (data.conforme) {
+        alert('Numérotation conforme : aucun trou ni doublon détecté.')
+      } else {
+        const lignes = []
+        const labels = { devis: 'Devis', facture: 'Factures',
+          avoir: 'Avoirs', bon_commande: 'Bons de commande' }
+        for (const cle of Object.keys(labels)) {
+          for (const g of (data[cle] || [])) {
+            const parts = []
+            if (g.manquants.length) parts.push(`manquants : ${g.manquants.join(', ')}`)
+            if (g.doublons.length) parts.push(`doublons : ${g.doublons.join(', ')}`)
+            lignes.push(`${labels[cle]} ${g.radical} → ${parts.join(' ; ')}`)
+          }
+        }
+        alert(`Anomalies de numérotation détectées :\n\n${lignes.join('\n')}\n\n`
+          + `(${data.total_manquants} numéro(s) manquant(s), `
+          + `${data.total_doublons} doublon(s)). Aucune renumérotation automatique.`)
+      }
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? "Audit de numérotation impossible.")
+    } finally {
+      setAuditBusy(false)
+    }
+  }
+
   if (loading) return <p className="page-loading">Chargement des factures...</p>
   if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
 
@@ -256,6 +301,13 @@ export default function FactureList() {
                   }}>
             📒 Journal comptable
           </button>
+          {isAdmin && (
+            <button className="btn btn-sm btn-outline" disabled={auditBusy}
+                    title="Vérifier les trous/doublons de numérotation (Art. 145 — séquence continue)"
+                    onClick={handleAuditNumerotation}>
+              {auditBusy ? '...' : '🔢 Audit numérotation'}
+            </button>
+          )}
           <button className="btn btn-primary" onClick={openNew}>
             + Nouvelle facture
           </button>
@@ -462,6 +514,16 @@ export default function FactureList() {
                       </button>
                     )}
 
+                    {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => handleUbl(f)}
+                        disabled={ublBusyId === f.id}
+                        title="Aperçu BROUILLON UBL 2.1 (XML) — préparation e-facturation, non transmis"
+                      >
+                        {ublBusyId === f.id ? '...' : '⟨/⟩ UBL'}
+                      </button>
+                    )}
                     {f.fichier_pdf ? (
                       <button
                         className="btn btn-sm btn-success"

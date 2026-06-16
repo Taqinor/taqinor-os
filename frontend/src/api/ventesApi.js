@@ -54,6 +54,10 @@ const ventesApi = {
   envoyerEmailFacture: (id, email) => api.post(`/ventes/factures/${id}/envoyer-email/`, { email }),
   // Envoyer par WhatsApp : lien wa.me prêt à envoyer (modele 'facture'/'relance').
   whatsappFacture: (id, payload = {}) => api.post(`/ventes/factures/${id}/whatsapp/`, payload),
+  // N38 — export structuré UBL 2.1 (aperçu BROUILLON, jamais transmis) en XML.
+  telechargerUbl: (id) => api.get(`/ventes/factures/${id}/ubl/`, { responseType: 'blob' }),
+  // N31 — audit admin de la numérotation séquentielle (trous/doublons).
+  auditNumerotation: () => api.get('/ventes/numerotation-audit/'),
   emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
   marquerPayeeFacture: (id) => api.post(`/ventes/factures/${id}/marquer-payee/`),
   annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),
