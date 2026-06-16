@@ -16,6 +16,7 @@ import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
+import customFieldsApi from '../../api/customFieldsApi'
 import './parametres.css'
 
 // Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
@@ -377,6 +378,33 @@ export default function ParametresEntreprise() {
     .then(r => setTypesItv(r.data.results ?? r.data)).catch(() => {})
   const loadMarques = () => stockApi.getMarques()
     .then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
+  // Champs personnalisés (T11) — module choisi (lead/client/produit).
+  const [cfModule, setCfModule] = useState('lead')
+  const [cfDefs, setCfDefs] = useState([])
+  const [newCf, setNewCf] = useState({ libelle: '', type: 'text', options: '' })
+  const loadCfDefs = (mod) => customFieldsApi.getDefs(mod)
+    .then(r => setCfDefs(r.data.results ?? r.data)).catch(() => {})
+  const slugifyCode = (s) => s.trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
+  const addCf = async () => {
+    const libelle = newCf.libelle.trim()
+    if (!libelle) return
+    try {
+      await customFieldsApi.saveDef(null, {
+        module: cfModule, code: slugifyCode(libelle), libelle, type: newCf.type,
+        options: newCf.type === 'choice'
+          ? newCf.options.split(',').map(o => o.trim()).filter(Boolean) : null,
+      })
+      setNewCf({ libelle: '', type: 'text', options: '' })
+      loadCfDefs(cfModule)
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const delCf = async (d) => {
+    if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
+    try { await customFieldsApi.deleteDef(d.id); loadCfDefs(cfModule) }
+    catch { /* */ }
+  }
   const slugify = (s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 
   const loadNiveaux = () => {
@@ -403,6 +431,7 @@ export default function ParametresEntreprise() {
     loadCanaux()
     loadTypesItv()
     loadMarques()
+    loadCfDefs('lead')
   }, [dispatch])
 
   const addCanal = async () => {
@@ -979,6 +1008,50 @@ export default function ParametresEntreprise() {
                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMarque() } }} />
               <button type="button" onClick={addMarque}
                       style={{ border: 'none', background: '#b45309', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
+            </div>
+          </div>
+
+          {/* Champs personnalisés (T11) */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
+            <SectionTitle color="#9333ea" label="Champs personnalisés" icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></>}/>
+            <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+              Ajoutez vos propres champs aux fiches (leads, clients, produits).
+              Ils apparaissent dans le formulaire ; rien n'est perdu si vous en
+              retirez un.
+            </p>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              <select className="form-control" style={{ maxWidth: 140 }} value={cfModule}
+                      onChange={e => { setCfModule(e.target.value); loadCfDefs(e.target.value) }}>
+                <option value="lead">Leads</option>
+                <option value="client">Clients</option>
+                <option value="produit">Produits</option>
+              </select>
+            </div>
+            {cfDefs.map(d => (
+              <div key={d.id} style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                <span style={{ flex: 1, fontSize: 13 }}>{d.libelle}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{d.type}</span>
+                <button type="button" onClick={() => delCf(d)}
+                        style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 6, padding: '4px 9px', cursor: 'pointer' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <input style={{ ...inputBase, flex: '1 1 140px' }} placeholder="Libellé du champ"
+                     value={newCf.libelle} onChange={e => setNewCf(c => ({ ...c, libelle: e.target.value }))} />
+              <select className="form-control" style={{ maxWidth: 120 }} value={newCf.type}
+                      onChange={e => setNewCf(c => ({ ...c, type: e.target.value }))}>
+                <option value="text">Texte</option>
+                <option value="number">Nombre</option>
+                <option value="date">Date</option>
+                <option value="choice">Choix</option>
+                <option value="boolean">Oui/Non</option>
+              </select>
+              {newCf.type === 'choice' && (
+                <input style={{ ...inputBase, flex: '1 1 160px' }} placeholder="Options (a, b, c)"
+                       value={newCf.options} onChange={e => setNewCf(c => ({ ...c, options: e.target.value }))} />
+              )}
+              <button type="button" onClick={addCf}
+                      style={{ border: 'none', background: '#9333ea', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
             </div>
           </div>
 

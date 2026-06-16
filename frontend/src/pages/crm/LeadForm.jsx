@@ -8,6 +8,7 @@ import AssigneePicker from '../../components/AssigneePicker'
 import '../../components/assigneepicker.css'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import CustomFieldsInput from '../../components/CustomFieldsInput'
 import '../../components/records-panels.css'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import './leads/leaddevispanel.css'
@@ -218,6 +219,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [activeSec, setActiveSec] = useState('contact')
+  // Champs personnalisés (T11).
+  const [customData, setCustomData] = useState(lead?.custom_data || {})
   const bodyRef = useRef(null)
 
   // Scroll-spy : la section dont le haut est le plus proche du haut du
@@ -379,6 +382,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
         Object.entries(fields).map(([k, v]) => [k, typeof v === 'boolean' ? v : nullable(v)]))
       // bascule OFF → la valeur unique vaut hiver ET été
       if (!fields.ete_differente) payload.facture_ete = null
+      payload.custom_data = customData  // champs personnalisés (T11)
       if (isEdit) {
         await dispatch(updateLead({ id: lead.id, data: payload })).unwrap()
       } else {
@@ -833,6 +837,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 </div>
               </Sec>
             )}
+
+            <CustomFieldsInput module="lead" value={customData} onChange={setCustomData} />
 
             {errors.submit && <div className="form-error-box">{errors.submit}</div>}
           </div>

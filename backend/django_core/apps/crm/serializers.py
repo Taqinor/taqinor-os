@@ -102,6 +102,21 @@ class LeadSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Utilisateur inconnu.')
         return value
 
+    def validate(self, attrs):
+        # Champs personnalisés (T11) : valider/nettoyer contre les définitions
+        # du module « lead ». À la création on valide toujours (champs
+        # obligatoires) ; en mise à jour, uniquement si custom_data est fourni
+        # (pour ne pas bloquer un PATCH d'un autre champ / édition en place).
+        is_create = self.instance is None
+        if is_create or 'custom_data' in attrs:
+            from apps.customfields.serializers import validate_custom_data
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            if company is not None:
+                attrs['custom_data'] = validate_custom_data(
+                    'lead', company, attrs.get('custom_data'))
+        return attrs
+
     class Meta:
         model = Lead
         fields = '__all__'

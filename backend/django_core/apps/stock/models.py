@@ -144,6 +144,8 @@ class Produit(models.Model):
                   '(HMT délivrée à chaque débit).')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
+    # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Produit"
