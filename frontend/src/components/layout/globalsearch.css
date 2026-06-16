@@ -1,0 +1,42 @@
+/* Recherche globale (barre du haut). */
+.gs-wrap { position: relative; flex: 1; max-width: 460px; }
+.gs-input {
+  width: 100%;
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: #f8fafc;
+}
+.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; }
+.gs-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 200;
+  padding: 6px;
+}
+.gs-empty { padding: 12px; color: #64748b; font-size: 0.85rem; }
+.gs-group { padding: 4px 0; }
+.gs-group-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  padding: 4px 10px;
+}
+.gs-result {
+  display: flex; flex-direction: column; align-items: flex-start;
+  width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 7px 10px; border-radius: 6px;
+}
+.gs-result:hover { background: #f1f5f9; }
+.gs-result-label { font-size: 0.875rem; color: #0f172a; }
+.gs-result-sub { font-size: 0.75rem; color: #64748b; }
