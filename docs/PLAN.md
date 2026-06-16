@@ -18,16 +18,33 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
 4. **Build only that one task, completely, with tests.** Obey every STANDING RULE below.
 5. **CI must pass** (lint, tests run 3×, stage-name check, PDF page-count guardrails) and
    **the CI must include MinIO** so PDF tests actually run. If green: self-merge `dev` →
-   `main` (merge commit, history preserved), then run `powershell -File scripts\deploy-prod.ps1`.
+   `main` (merge commit, history preserved). **Merging to `main` now AUTO-DEPLOYS to
+   api.taqinor.ma on its own** — the production server polls `main` about once a minute and
+   runs the full deploy (rebuild + migrations + role sync + nginx/Caddy reload + the
+   mandatory PDF pre-warm). A pure docs/markdown change (e.g. ticking this file) skips the
+   rebuild. **You do not run any deploy command.** `powershell -File scripts\deploy-prod.ps1`
+   still works as a **manual fallback** from a PC if ever needed.
 6. **Update this file on `main`:** flip the task to `[x]`, append one plain-language line
-   (with today's date) to the DONE LOG, and commit the updated file.
+   (with today's date) to the DONE LOG, and commit the updated file (this commit auto-syncs
+   to the server without a rebuild).
 7. **STOP and report** in plain language only — no diffs, no commit hashes: which task, what
-   changed, exactly what Reda must click/type (with menu paths), and confirm the deploy ran.
-   **Do not start the next task.** One task per session.
+   changed, exactly what Reda must click/type (with menu paths), and confirm the auto-deploy
+   shipped it (the server records each deploy in its own log). **Do not start the next task.**
+   One task per session.
 8. **If a task hits a blocker** (it would need a destructive migration, a paid/external
    dependency that isn't pre-approved, an auth change, or a real decision): do **not** guess
    and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to the GATED section,
    pick the **next** `[ ]` task instead, and note the block in your report.
+
+**Run from anywhere — web or phone.** Because `main` auto-deploys itself, a task can be run
+from Claude Code on the web or from the phone with no PC involved. **One-line starter** to
+paste into a fresh cloud session:
+
+> Read docs/PLAN.md top to bottom. Do exactly ONE task: the first `[ ]` in the BUILD QUEUE.
+> Verify it isn't already built; build only that task with tests; get CI fully green (with
+> MinIO); self-merge `dev` → `main` (this AUTO-DEPLOYS to api.taqinor.ma — do not run any
+> deploy command); then tick the task `[x]`, add one dated line to the DONE LOG, and report
+> in plain language. One task only — do not start another.
 
 ---
 
