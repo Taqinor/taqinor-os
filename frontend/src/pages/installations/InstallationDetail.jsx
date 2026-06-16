@@ -5,6 +5,7 @@ import { updateInstallation } from '../../features/installations/store/installat
 import { fetchProduits } from '../../features/stock/store/stockSlice'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
@@ -101,6 +102,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     if (produits.length === 0) dispatch(fetchProduits())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Documents après-vente (PDF clients) — N21–N24.
+  const [docBusy, setDocBusy] = useState('')
+  const downloadDoc = async (kind, fetcher, filename) => {
+    setDocBusy(kind)
+    try {
+      const r = await fetcher()
+      downloadBlob(r.data, filename)
+    } catch { /* erreur silencieuse */ } finally { setDocBusy('') }
+  }
+  const ref = current.reference ?? 'chantier'
 
   const addEquipement = async () => {
     if (!equip.produit) return
@@ -260,6 +272,52 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   Voir le lead
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* ── Documents après-vente (PDF clients) — N21–N24 ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">📄 Documents</span>
+            </div>
+            <div className="actions-cell">
+              <button type="button" className="btn btn-sm btn-outline"
+                      disabled={docBusy === 'pv'}
+                      onClick={() => downloadDoc(
+                        'pv', () => installationsApi.pvReceptionPdf(id),
+                        `pv-reception-${ref}.pdf`)}>
+                {docBusy === 'pv' ? '…' : 'PV de réception'}
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      disabled={docBusy === 'bl'}
+                      onClick={() => downloadDoc(
+                        'bl', () => installationsApi.bonLivraisonPdf(id),
+                        `bon-livraison-${ref}.pdf`)}>
+                {docBusy === 'bl' ? '…' : 'Bon de livraison'}
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      disabled={docBusy === 'dr'}
+                      onClick={() => downloadDoc(
+                        'dr', () => installationsApi.dossierRemisePdf(id),
+                        `dossier-remise-${ref}.pdf`)}>
+                {docBusy === 'dr' ? '…' : 'Dossier de remise'}
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      disabled={docBusy === 'att-i'}
+                      onClick={() => downloadDoc(
+                        'att-i',
+                        () => installationsApi.attestationPdf(id, 'installation'),
+                        `attestation-installation-${ref}.pdf`)}>
+                {docBusy === 'att-i' ? '…' : "Attestation d'installation"}
+              </button>
+              <button type="button" className="btn btn-sm btn-outline"
+                      disabled={docBusy === 'att-f'}
+                      onClick={() => downloadDoc(
+                        'att-f',
+                        () => installationsApi.attestationPdf(id, 'fin_travaux'),
+                        `attestation-fin-travaux-${ref}.pdf`)}>
+                {docBusy === 'att-f' ? '…' : 'Attestation de fin de travaux'}
+              </button>
             </div>
           </div>
 

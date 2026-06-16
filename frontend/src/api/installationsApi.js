@@ -19,6 +19,22 @@ const installationsApi = {
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
 
+  // Documents après-vente (PDF clients) — réponses blob (application/pdf).
+  // N21 — PV de réception des travaux.
+  pvReceptionPdf: (id) =>
+    api.get(`/documents/chantiers/${id}/pv-reception/`, { responseType: 'blob' }),
+  // N22 — Bon de livraison.
+  bonLivraisonPdf: (id) =>
+    api.get(`/documents/chantiers/${id}/bon-livraison/`, { responseType: 'blob' }),
+  // N23 — Dossier de remise (handover pack).
+  dossierRemisePdf: (id) =>
+    api.get(`/documents/chantiers/${id}/dossier-remise/`, { responseType: 'blob' }),
+  // N24 — Attestation (type = 'installation' | 'fin_travaux').
+  attestationPdf: (id, type = 'installation') =>
+    api.get(`/documents/chantiers/${id}/attestation/`, {
+      params: { type }, responseType: 'blob',
+    }),
+
   // Interventions / ordres de travail
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),

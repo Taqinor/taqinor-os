@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 50px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 50px; }
+    .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .doc-title { font-size: 26px; font-weight: bold; color: {{ couleur_principale }}; text-align: center; margin: 30px 0 40px; text-transform: uppercase; letter-spacing: 1px; }
+    .corps { font-size: 14px; line-height: 2; text-align: justify; margin-bottom: 30px; }
+    .details { background: #f8fafc; border-radius: 6px; padding: 16px 18px; margin: 20px 0 40px; font-size: 12px; line-height: 1.9; border-left: 3px solid {{ couleur_principale }}; }
+    .made-at { font-size: 12px; margin-bottom: 50px; }
+    .signature-section { display: flex; justify-content: flex-end; }
+    .signature-block { text-align: center; width: 260px; }
+    .signature-label { font-size: 11px; color: #555; margin-bottom: 8px; }
+    .signature-img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .signature-line { border-top: 1px solid #cbd5e1; margin-top: 8px; padding-top: 6px; font-size: 11px; color: #555; }
+    .footer { margin-top: 50px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 9.5px; color: #94a3b8; text-align: center; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
+      {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
+    </div>
+  </div>
+
+  <div class="doc-title">{{ attestation.titre }}</div>
+
+  <p class="corps">{{ attestation.corps }}</p>
+
+  <div class="details">
+    Chantier : <strong>{{ chantier.reference }}</strong><br />
+    Client : <strong>{{ client.nom }} {{ client.prenom }}</strong><br />
+    {% if systeme.site_adresse %}Site : {{ systeme.site_adresse }}{% if systeme.site_ville %}, {{ systeme.site_ville }}{% endif %}<br />{% endif %}
+    {% if systeme.puissance_kwc is not none %}Puissance installée : {{ systeme.puissance_kwc }} kWc<br />{% endif %}
+    {% if systeme.date_mise_en_service %}Date de mise en service : {{ systeme.date_mise_en_service.strftime('%d/%m/%Y') }}{% endif %}
+  </div>
+
+  <p class="made-at">
+    Fait pour servir et valoir ce que de droit, le {{ now.strftime('%d/%m/%Y') }}.
+  </p>
+
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">{{ entreprise_nom }}</div>
+      {% if signature_uri %}<img class="signature-img" src="{{ signature_uri }}" alt="Signature" />{% endif %}
+      <div class="signature-line">Signature & cachet</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
+    {% if entreprise_ice %}<br />ICE : {{ entreprise_ice }}{% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}{% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}{% endif %}
+  </div>
+</div>
+</body>
+</html>
