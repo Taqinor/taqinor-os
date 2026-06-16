@@ -227,16 +227,16 @@ A periodable (month/quarter) **.xlsx export for the comptable**: all issued invo
 per-line TVA, plus a **TVA summary split 10% / 20%** reconciled to the centime, and totals HT/TVA/TTC.
 Read-only; openpyxl. (This is also direct groundwork for the DGI e-invoicing mandate — see GATED.)
 
-### T13 — Reports hub: sales reports — [ ]
+### T13 — Reports hub: sales reports — [x]
 A **"Rapports"** section. Start with **sales/pipeline**: leads & conversion by stage (funnel),
 quotes by status and value, sales by responsable / by canal / by period, win-loss by motif de perte.
 Read-only, respects filters, each report exportable to .xlsx.
 
-### T14 — Reports hub: stock reports — [ ]
+### T14 — Reports hub: stock reports — [x]
 Add to "Rapports": **stock valuation** (sell + buy, buy kept internal/non-client-facing), movement
 history report, low-stock list, by category/brand. Exportable to .xlsx.
 
-### T15 — Reports hub: service reports (chantier + SAV) — [ ]
+### T15 — Reports hub: service reports (chantier + SAV) — [x]
 Add to "Rapports": chantier planning load + completion timing, technician activity, SAV open vs
 resolved + resolution time, equipment warranties expiring. Exportable to .xlsx.
 
@@ -316,6 +316,7 @@ Tracked here so they aren't lost:
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
 - 2026-06-16 — T1 verified already present: /proposal serves a real inline PDF; the lead devis panel fetches it as a blob and renders it with PDF.js (clear FR error on server failure, graceful fallback on network failure); non-mocked regression tests cover Premium / 1-page / étude; Vite content-hashes the build. No change needed.
 - 2026-06-16 — T2 verified already present: vite-plugin-pwa configured (autoUpdate, injectManifest sw.js with skipWaiting/clientsClaim), manifest + icons + iOS head tags + offline page, and a French install helper (PwaPrompts.jsx, beforeinstallprompt). No change needed.
+- 2026-06-16 — T13/T14/T15 done: « Rapports » hub (new sidebar entry /rapports). Sales report (funnel by stage, by responsable incl. won, losses by motif), Stock report (sell + internal buy valuation, by category, low stock), Service report (chantiers by status, technician activity, SAV open vs resolved, warranties ≤90 j). Read-only, company-scoped, each exportable to .xlsx (?export=xlsx). Endpoints /reporting/reports/{sales,stock,service}. Tests included. Buy-price valuation stays internal (never in a client export).
 - 2026-06-16 — T12 done: accountant export — journal des ventes + résumé TVA. Periodable (month/quarter/dates) .xlsx with 2 sheets: a per-line journal of every issued invoice (ref/date/client/ICE/désignation/HT/taux/TVA/TTC) and a TVA summary split by rate (10 %/20 %) reconciled to the centime with HT/TVA/TTC totals. GET /ventes/journal-ventes; « Journal comptable » button on the invoices list. Company-scoped, tests.
 - 2026-06-16 — T11 done: user-defined custom fields mechanism (additive, JSONField — per docs/erp-data-model-proposal.md). Admins define fields per module (leads/clients/products) in Paramètres — type text/number/date/choice/boolean, optional + required. Values live in each record's custom_data; the lead form renders them dynamically and the server validates (required/type/choice) on create. New CustomFieldDef model + /custom-fields/definitions API + custom_data on Lead/Client/Produit. Company-scoped, tests included.
 - 2026-06-16 — T10 done: quote revisions/versioning. A sent devis can be « Révisé » into a new version (v2, v3…) that clones its lines and restarts as brouillon; the previous version becomes inactive, read-only, and shows a « remplacé par » link to its successor. Lead/client links and the DEV- numbering scheme are preserved. Additive (version/version_parent/superseded_by/is_active). Endpoint /ventes/devis/<id>/reviser/ + UI (Réviser button, version badge). Tests included.

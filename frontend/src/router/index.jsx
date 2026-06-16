@@ -12,6 +12,7 @@ const Landing = lazy(() => import('../pages/Landing'))
 const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
 const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
+const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
 const StockList = lazy(() => import('../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
@@ -95,6 +96,7 @@ const router = createBrowserRouter([
 
   // Reporting
   { path: '/reporting', loader: authLoader, element: <WithLayout><Reporting /></WithLayout> },
+  { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
 
   // Administration
