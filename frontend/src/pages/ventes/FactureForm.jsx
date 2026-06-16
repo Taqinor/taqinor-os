@@ -200,6 +200,27 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {/* ── Conformité Article 145 CGI (N29) — AVERTISSEMENT, jamais bloquant ── */}
+            {isEdit && Array.isArray(facture.mentions_manquantes)
+              && facture.mentions_manquantes.length > 0 && (
+              <div className="form-error-box" role="alert" style={{
+                background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e',
+                marginBottom: 14,
+              }}>
+                <strong>⚠️ Conformité Article 145 — mentions légales manquantes :</strong>
+                <ul style={{ margin: '6px 0 4px', paddingLeft: 20 }}>
+                  {facture.mentions_manquantes.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+                <div style={{ fontSize: 12 }}>
+                  Vous pouvez tout de même émettre la facture — complétez ces
+                  mentions (Paramètres → Identité, fiche client, lignes) pour
+                  une facture pleinement conforme.
+                </div>
+              </div>
+            )}
+
             {/* ── Infos générales ── */}
             <div className="form-row">
               <div className="form-group fg-grow">

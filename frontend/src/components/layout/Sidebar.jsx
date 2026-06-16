@@ -59,6 +59,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/stock',                label: 'Produits',         icon: I.produits,     roles: ['normal','responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       icon: I.mouvements,   roles: ['normal','responsable','admin'] },
+      { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', icon: I.bons_cmd, roles: ['responsable','admin'] },
       { to: '/stock/ocr-import',     label: 'Import OCR',       icon: I.ocr_import,   roles: ['responsable','admin'] },
     ],
   },

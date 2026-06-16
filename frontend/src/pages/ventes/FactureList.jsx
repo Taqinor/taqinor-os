@@ -363,6 +363,16 @@ export default function FactureList() {
                       {f.type_facture_display}
                     </div>
                   )}
+                  {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
+                    <div
+                      className="badge"
+                      style={{ background: '#fffbeb', color: '#92400e', marginTop: 2,
+                               fontSize: '0.66rem', cursor: 'help' }}
+                      title={`Mentions légales manquantes (Art. 145) :\n- ${f.mentions_manquantes.join('\n- ')}`}
+                    >
+                      ⚠ {f.mentions_manquantes.length} mention(s) manquante(s)
+                    </div>
+                  )}
                 </td>
                 <td>{f.client_nom ?? '—'}</td>
                 <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>

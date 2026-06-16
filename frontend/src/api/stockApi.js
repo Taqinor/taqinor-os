@@ -37,6 +37,26 @@ const stockApi = {
   saveMarque: (id, data) => id
     ? api.patch(`/stock/marques/${id}/`, data) : api.post('/stock/marques/', data),
   deleteMarque: (id) => api.delete(`/stock/marques/${id}/`),
+
+  // Bons de commande FOURNISSEUR (achats — N11). Les prix d'achat sont INTERNES.
+  getBonsCommandeFournisseur: (params) =>
+    api.get('/stock/bons-commande-fournisseur/', { params }),
+  getBonCommandeFournisseur: (id) =>
+    api.get(`/stock/bons-commande-fournisseur/${id}/`),
+  createBonCommandeFournisseur: (data) =>
+    api.post('/stock/bons-commande-fournisseur/', data),
+  updateBonCommandeFournisseur: (id, data) =>
+    api.patch(`/stock/bons-commande-fournisseur/${id}/`, data),
+  deleteBonCommandeFournisseur: (id) =>
+    api.delete(`/stock/bons-commande-fournisseur/${id}/`),
+  envoyerBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/envoyer/`),
+  recevoirBcf: (id, receptions) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }),
+  annulerBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/annuler/`),
+  bcfPdf: (id) =>
+    api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
 }
 
 export default stockApi
