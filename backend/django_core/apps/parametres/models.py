@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -78,6 +80,15 @@ class CompanyProfile(models.Model):
         max_digits=5, decimal_places=2, default=20)
     tva_panneaux = models.DecimalField(
         max_digits=5, decimal_places=2, default=10)
+    # ── Constantes ROI éditables (T6) — défauts = valeurs historiques codées
+    # en dur dans le simulateur (solar.js). Tant qu'elles ne sont pas éditées,
+    # le comportement reste identique ; le simulateur garde son repli interne.
+    # Tarif ONEE moyen (MAD/kWh) — défaut 1.75 (solar.js KWH_PRICE).
+    onee_tarif_kwh = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('1.75'))
+    # Productible annuel moyen (kWh par kWc installé) — repère ROI éditable.
+    productible_kwh_kwc = models.DecimalField(
+        max_digits=7, decimal_places=1, default=Decimal('1600.0'))
 
     class Meta:
         verbose_name = 'Profil entreprise'

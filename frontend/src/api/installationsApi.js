@@ -21,6 +21,13 @@ const installationsApi = {
   createIntervention: (data) => api.post('/installations/interventions/', data),
   updateIntervention: (id, data) => api.patch(`/installations/interventions/${id}/`, data),
   deleteIntervention: (id) => api.delete(`/installations/interventions/${id}/`),
+
+  // Types d'intervention gérés (Paramètres → Chantiers). Types système protégés.
+  getTypesIntervention: () => api.get('/installations/types-intervention/'),
+  saveTypeIntervention: (id, data) => id
+    ? api.patch(`/installations/types-intervention/${id}/`, data)
+    : api.post('/installations/types-intervention/', data),
+  deleteTypeIntervention: (id) => api.delete(`/installations/types-intervention/${id}/`),
 }
 
 export default installationsApi

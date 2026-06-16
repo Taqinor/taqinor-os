@@ -3,12 +3,13 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Produit, Categorie, Fournisseur, MouvementStock
+from .models import Produit, Categorie, Fournisseur, MouvementStock, Marque
 from .serializers import (
     ProduitSerializer,
     CategorieSerializer,
     FournisseurSerializer,
     MouvementStockSerializer,
+    MarqueSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -36,11 +37,11 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # Écritures Stock : permission ERP granulaire (rôles fins type
         # « Commerciale » = lecture seule) avec comportement historique
         # pour les comptes hérités sans rôle fin.
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_creer')()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + ['bulk']:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
@@ -77,6 +78,42 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 },
                 status=status.HTTP_200_OK,
             )
+
+    @action(detail=False, methods=['post'], url_path='bulk',
+            permission_classes=[HasPermissionOrLegacy('stock_modifier')])
+    def bulk(self, request):
+        """Édition en masse d'une sélection de produits (prix %/fixe, garantie,
+        catégorie, marque). Le prix d'achat n'est jamais modifié."""
+        from .services import BULK_ACTIONS, apply_product_bulk
+        op = request.data.get('action')
+        ids = request.data.get('ids') or []
+        if op not in BULK_ACTIONS:
+            return Response({'detail': 'Action en masse inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Sélectionnez au moins un produit.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = apply_product_bulk(
+                company=request.user.company, user=request.user,
+                ids=ids, op=op, params=request.data)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+    @action(detail=False, methods=['post'], url_path='export-xlsx',
+            permission_classes=[IsAnyRole])
+    def export_xlsx(self, request):
+        """Exporte une sélection de produits en .xlsx (prix d'achat exclu)."""
+        from .services import export_products_xlsx
+        ids = request.data.get('ids') or []
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Sélectionnez au moins un produit.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        produits = (Produit.objects.filter(company=request.user.company, id__in=ids)
+                    .select_related('categorie').order_by('nom'))
+        return export_products_xlsx(produits)
 
     @action(detail=True, methods=['patch'], url_path='unarchive')
     def unarchive(self, request, *args, **kwargs):
@@ -115,6 +152,47 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+
+def seed_marques(company):
+    """Amorce le référentiel Marque depuis les marques déjà saisies sur les
+    produits (idempotent, additif). N'écrase rien."""
+    if company is None:
+        return
+    existing = set(Marque.objects.filter(company=company)
+                   .values_list('nom', flat=True))
+    used = (Produit.objects.filter(company=company)
+            .exclude(marque__isnull=True).exclude(marque='')
+            .values_list('marque', flat=True).distinct())
+    for nom in used:
+        if nom not in existing:
+            Marque.objects.get_or_create(company=company, nom=nom)
+
+
+class MarqueViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Marques produit gérées (Paramètres → Stock). Lecture tout rôle, écriture
+    admin. Une marque utilisée par des produits ne peut pas être supprimée."""
+    queryset = Marque.objects.all()
+    serializer_class = MarqueSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            seed_marques(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        marque = self.get_object()
+        if Produit.objects.filter(company=marque.company, marque=marque.nom).exists():
+            return Response(
+                {'detail': "Cette marque est utilisée par des produits — "
+                           "archivez-la plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 class CategorieViewSet(TenantMixin, viewsets.ModelViewSet):

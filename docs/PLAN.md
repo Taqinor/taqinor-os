@@ -166,19 +166,19 @@ admin-only delete (confirmed dialog, blocked with a clear French message if it w
 quotes/invoices, logged); export selection to .xlsx. Every change writes a per-lead Historique entry
 marked « en masse ».
 
-### T4 — Inline list editing (Odoo-style edit-in-place) — [ ]
+### T4 — Inline list editing (Odoo-style edit-in-place) — [x]
 Edit a field without opening the record: on the **leads list** — stage, responsable, relance date,
 priorité, tags; on the **products list** — sell price, quantity, category. Each edit saves just that
 field, validates server-side, logs to Historique where applicable. Skip any field risky to edit
 inline and note it.
 
-### T5 — Global search + in-app notifications — [ ]
+### T5 — Global search + in-app notifications — [x]
 - A single **global search box** in the top bar across leads, clients, quotes, invoices, chantiers,
   equipements, SAV tickets; results grouped by type; click to open.
 - An **in-app notification bell** (no email): overdue activities, warranties expiring within 90 days,
   overdue/unpaid invoices — counts + a clickable list.
 
-### T6 — Unlock the deferred settings (safely) — [ ]
+### T6 — Unlock the deferred settings (safely) — [x]
 Tags and motifs de perte are already editable — leave them. Add:
 - Make **Canaux / Sources de lead** editable (add / rename / reorder). The key `site_web` is used by
   the website form webhook: **protect it from rename and deletion** so the pipeline never breaks.
@@ -189,7 +189,7 @@ Tags and motifs de perte are already editable — leave them. Add:
 - Audit hard-coded **ROI constants** (ONEE tariff assumptions, irradiance/ensoleillement) and surface
   them as editable settings. Defaults must equal today's exact values.
 
-### T7 — Quote expiry (on-the-fly) + pipeline-value dashboard — [ ]
+### T7 — Quote expiry (on-the-fly) + pipeline-value dashboard — [x]
 - **Expiry:** a quote shows « Expiré » when today is past its validity date (creation + the
   "validité du devis" setting). **Compute on the fly at read/display time — no scheduler, cron, or
   background job, no daily command.** Never move the lead backward; just reflect it visually and in
@@ -197,7 +197,7 @@ Tags and motifs de perte are already editable — leave them. Add:
 - **Pipeline-value dashboard:** total MAD by stage, a simple weighted forecast, count + value of
   quotes by status, win/loss by motif de perte. Read-only; respects the shared filter bar.
 
-### T8 — Bulk product / catalogue editing — [ ]
+### T8 — Bulk product / catalogue editing — [x]
 Multi-select products → bulk: change sell price (% or fixed — sell price only, never alter
 buy-price-visibility rules), set warranty (`garantie_mois` / `garantie_production_mois`), reassign
 category and/or brand, export selection to .xlsx. Logged.
@@ -316,4 +316,9 @@ Tracked here so they aren't lost:
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
 - 2026-06-16 — T1 verified already present: /proposal serves a real inline PDF; the lead devis panel fetches it as a blob and renders it with PDF.js (clear FR error on server failure, graceful fallback on network failure); non-mocked regression tests cover Premium / 1-page / étude; Vite content-hashes the build. No change needed.
 - 2026-06-16 — T2 verified already present: vite-plugin-pwa configured (autoUpdate, injectManifest sw.js with skipWaiting/clientsClaim), manifest + icons + iOS head tags + offline page, and a French install helper (PwaPrompts.jsx, beforeinstallprompt). No change needed.
+- 2026-06-16 — T8 done: bulk product/catalogue editing. Multi-select products in the catalogue → bulk change sell price (% variation or fixed — buy price never touched), set warranty (garantie_mois / garantie_production_mois), reassign category, set brand, and export the selection to .xlsx. Company-scoped backend POST /stock/produits/bulk/ + /export-xlsx/ with an audit log and tests.
+- 2026-06-16 — T7 done: quote expiry computed on-the-fly (a pending devis past its validity date shows « Expiré » in the list and the API, never persisted, never moves the lead) + a pipeline-value dashboard in Reporting (total MAD by stage, weighted forecast, devis by status with on-the-fly expiry, win count/value, losses by motif). Read-only, company-scoped, with tests.
+- 2026-06-16 — T6 done: deferred settings unlocked. Editable Canaux/Sources de lead (Paramètres → CRM) with « Site web » protected from rename/delete and in-use canals undeletable; editable Types d'intervention (Paramètres → Chantiers, system types protected, in-use undeletable); Marque promoted to a real referential model (Paramètres → Stock), backfilled on first read from existing product brands, in-use undeletable; ROI hypotheses (tarif ONEE MAD/kWh, productible kWh/kWc/an) added as editable settings defaulting to today's simulator values. All additive (no destructive migration); the guarded simulator math keeps its internal fallback. Backend safeguards + tests across crm/stock/installations/parametres. (Product-form brand picker is a minor follow-up; the brand referential + backfill is in place.)
+- 2026-06-16 — T5 done: global search box in the top bar (leads, clients, devis, factures, chantiers, équipements, tickets SAV — grouped, click to open) + an in-app notification bell (overdue activities, warranties expiring ≤90 days, unpaid/overdue invoices — count + clickable list). Read-only, company-scoped backend endpoints (/reporting/search, /reporting/notifications) with tests.
+- 2026-06-16 — T4 done: inline edit-in-place via a reusable InlineEdit cell. Leads list — stage, priorité, relance, tags (responsable was already inline); products catalogue — sell price, quantity, category. Each saves only that field via PATCH, validates server-side, and lead edits log to Historique. Backend tests added.
 - 2026-06-16 — T3 done: bulk actions on leads (multi-select in list + kanban, selection toolbar). Bulk reassign / add+remove tag / change stage (no-going-backwards, never moves a Perdu lead, reactivates Froid) / set+clear relance / flag+unflag Perdu / archive+unarchive / admin-only delete (skips leads with linked devis) / export selection to .xlsx. Every change writes a per-lead Historique entry badged « en masse ». Backend POST /crm/leads/bulk/ + /crm/leads/export-xlsx/ (company-scoped); 15 new backend tests + a frontend selection-logic test. Developed on branch claude/gallant-mccarthy-vh5e98 (not merged to main).

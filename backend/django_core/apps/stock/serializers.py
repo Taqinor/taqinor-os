@@ -1,5 +1,16 @@
 from rest_framework import serializers
-from .models import Produit, Categorie, Fournisseur, MouvementStock
+from .models import Produit, Categorie, Fournisseur, MouvementStock, Marque
+
+
+class MarqueSerializer(serializers.ModelSerializer):
+    en_usage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Marque
+        fields = ['id', 'nom', 'archived', 'en_usage']
+
+    def get_en_usage(self, obj):
+        return Produit.objects.filter(company=obj.company, marque=obj.nom).count()
 
 
 class CategorieSerializer(serializers.ModelSerializer):

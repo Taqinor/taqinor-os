@@ -408,6 +408,32 @@ class LeadTag(models.Model):
         return self.nom
 
 
+class Canal(models.Model):
+    """Canal / source de lead géré (Paramètres → CRM). Le champ Lead.canal reste
+    une clé texte ; cette liste pilote le sélecteur et les libellés. Additif.
+
+    `cle` = clé stockée sur Lead.canal (ex. 'site_web'). `protege` verrouille un
+    canal critique contre le renommage/la suppression : 'site_web' est utilisé
+    par le webhook du site web — le supprimer/renommer casserait le pipeline."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='canaux')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=80)
+    ordre = models.PositiveIntegerField(default=0)
+    protege = models.BooleanField(default=False)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'cle')]
+        verbose_name = 'Canal de lead'
+        verbose_name_plural = 'Canaux de lead'
+
+    def __str__(self):
+        return self.libelle
+
+
 class MotifPerte(models.Model):
     """Motif de perte géré (Paramètres → CRM). Le champ Lead.motif_perte reste
     un texte libre ; cette liste sert de choix proposés. Additif."""

@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchDashboard } from '../features/reporting/store/reportingSlice'
+import reportingApi from '../api/reportingApi'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -109,6 +110,71 @@ function ConversionBar({ label, value, max, color }) {
 }
 
 // ── Page principale ───────────────────────────────────────────────────────────
+// ── Valeur du pipeline (T7) — section auto-chargée (lecture seule) ──────────
+function PipelineSection() {
+  const [p, setP] = useState(null)
+  useEffect(() => {
+    reportingApi.getPipeline().then((r) => setP(r.data)).catch(() => setP(null))
+  }, [])
+  if (!p) return null
+  const cell = { padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem', marginBottom: '1.5rem' }}>
+      <h3 style={{ margin: '0 0 0.25rem' }}>Valeur du pipeline</h3>
+      <p style={{ margin: '0 0 1rem', color: '#64748b', fontSize: 13 }}>
+        Prévision pondérée : <strong>{dh(p.prevision_ponderee)}</strong> ·
+        {' '}Gagnés : <strong>{p.gagnes.count}</strong> ({dh(p.gagnes.valeur)})
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Par étape</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {p.par_etape.map((s) => (
+                <tr key={s.stage}>
+                  <td style={cell}>{s.label}</td>
+                  <td style={{ ...cell, textAlign: 'right', color: '#64748b' }}>{s.count}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontWeight: 600 }}>{dh(s.valeur)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Devis par statut</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {p.devis_par_statut.map((s) => (
+                <tr key={s.statut}>
+                  <td style={cell}>{s.label}</td>
+                  <td style={{ ...cell, textAlign: 'right', color: '#64748b' }}>{s.count}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontWeight: 600 }}>{dh(s.valeur)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {p.perdus_par_motif.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', margin: '12px 0 4px' }}>Pertes par motif</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {p.perdus_par_motif.map((m) => (
+                    <tr key={m.motif}>
+                      <td style={cell}>{m.motif}</td>
+                      <td style={{ ...cell, textAlign: 'right', color: '#64748b' }}>{m.count}</td>
+                      <td style={{ ...cell, textAlign: 'right' }}>{dh(m.valeur)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Component() {
   const dispatch = useDispatch()
   const { data, loading, error } = useSelector((s) => s.reporting)
@@ -157,6 +223,8 @@ export function Component() {
           Actualiser
         </button>
       </div>
+
+      <PipelineSection />
 
       {/* ── KPIs ── */}
       <div style={{

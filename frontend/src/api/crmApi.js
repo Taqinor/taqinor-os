@@ -47,6 +47,10 @@ const crmApi = {
   getMotifsPerte: () => api.get('/crm/motifs-perte/'),
   saveMotifPerte: (id, data) => id ? api.patch(`/crm/motifs-perte/${id}/`, data) : api.post('/crm/motifs-perte/', data),
   deleteMotifPerte: (id) => api.delete(`/crm/motifs-perte/${id}/`),
+  // Canaux / sources de lead gérés (Paramètres → CRM). 'site_web' est protégé.
+  getCanaux: () => api.get('/crm/canaux/'),
+  saveCanal: (id, data) => id ? api.patch(`/crm/canaux/${id}/`, data) : api.post('/crm/canaux/', data),
+  deleteCanal: (id) => api.delete(`/crm/canaux/${id}/`),
 }
 
 export default crmApi

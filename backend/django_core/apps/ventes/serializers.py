@@ -68,6 +68,20 @@ class DevisSerializer(serializers.ModelSerializer):
         s = solde_devis(obj)
         return {k: str(v) for k, v in s.items()}
 
+    # Expiration calculée À LA VOLÉE (T7) — jamais persistée, ne touche pas le
+    # lead. `is_expired` = en attente + date de validité dépassée.
+    is_expired = serializers.SerializerMethodField()
+    date_expiration = serializers.SerializerMethodField()
+
+    def get_is_expired(self, obj):
+        from .utils.expiry import is_expired
+        return is_expired(obj)
+
+    def get_date_expiration(self, obj):
+        from .utils.expiry import date_expiration
+        d = date_expiration(obj)
+        return d.isoformat() if d else None
+
     # Chantier lié (s'il existe) — pour le lien devis ↔ chantier dans l'UI.
     chantier = serializers.SerializerMethodField()
 
