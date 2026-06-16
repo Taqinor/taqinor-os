@@ -10,11 +10,11 @@ STAGES.py pipeline contract is never editable/altered, buy prices never client-f
 
 ### Chantiers / projets & execution
 - [ ] N1 — Chantier (projet) object created from an accepted devis, linked to that devis, the lead and the client; carries client identity, full site address + GPS from the lead, a system summary (kWc, type d'installation résidentiel/industriel/agricole, components + bill of materials copied from the devis), planned install date, actual install date, assigned installer from the employee list (default Reda), estimated & actual labour-days, and a chatter + audit log reusing the existing activity-log pattern; uses its OWN ordered chantier status field (Signé, Matériel commandé, Planifié, En cours, Installé, Réceptionné, Clôturé) completely separate from and never modifying the lead pipeline STAGES.py contract.
-- [ ] N2 — Chantiers list view + kanban grouped by chantier status, same visual language and same drag-to-change-status + reassignment behaviour as the lead kanban; each card shows client, ville, kWc, planned install date, installer, status.
-- [ ] N3 — "Créer chantier" action on a devis and on a lead that creates a chantier from that devis in one click (copying client, site, system summary, bill of materials); prevent more than one chantier per devis.
-- [ ] N4 — Per-chantier configurable execution checklist; default steps editable in Paramètres (default: matériel reçu, structure posée, panneaux posés, onduleur raccordé, mise en service, photos prises, PV de réception signé); record per step done/by whom/when (existing audit pattern); compute chantier completion percentage from the checklist.
-- [ ] N5 — Photo & file attachments per chantier (reuse existing file-attachment feature) grouped into avant / pendant / après with a simple gallery view per chantier.
-- [ ] N6 — Chantier timeline view per job showing signed, material-ordered, planned & actual install, commissioning, and closure dates on one screen.
+- [x] N2 — Chantiers list view + kanban grouped by chantier status, same visual language and same drag-to-change-status + reassignment behaviour as the lead kanban; each card shows client, ville, kWc, planned install date, installer, status.
+- [x] N3 — "Créer chantier" action on a devis and on a lead that creates a chantier from that devis in one click (copying client, site, system summary, bill of materials); prevent more than one chantier per devis.
+- [x] N4 — Per-chantier configurable execution checklist; default steps editable in Paramètres (default: matériel reçu, structure posée, panneaux posés, onduleur raccordé, mise en service, photos prises, PV de réception signé); record per step done/by whom/when (existing audit pattern); compute chantier completion percentage from the checklist.
+- [x] N5 — Photo & file attachments per chantier (reuse existing file-attachment feature) grouped into avant / pendant / après with a simple gallery view per chantier.
+- [x] N6 — Chantier timeline view per job showing signed, material-ordered, planned & actual install, commissioning, and closure dates on one screen.
 
 ### Parc installé (installed-systems asset base)
 - [ ] N7 — Système installé (parc installé) record auto-created when a chantier reaches Réceptionné, capturing client, site address + GPS, kWc, type d'installation, installed components (brand/model + any captured serials), installer, commissioning date, link back to chantier/devis/client, active by default.
@@ -35,26 +35,26 @@ STAGES.py pipeline contract is never editable/altered, buy prices never client-f
 - [ ] N20 — Optional QR/barcode labels for stock SKUs and installed systems; printable labels; chatbot or search field resolves a scanned code to the SKU or Système installé.
 
 ### Post-sale / client-facing documents
-- [ ] N21 — PV de réception (procès-verbal de réception des travaux) PDF from a chantier (French, existing PDF engine + company identity): client/site, system summary (kWc/components/type), commissioning date, installer, signature block for client & installer with "Bon pour accord" manuscrit line, checklist-completion summary; no buy prices.
-- [ ] N22 — Bon de livraison (delivery note) PDF from a chantier or devis (French): delivered items + quantities, delivery date, client signature block; client-facing, no buy prices.
-- [ ] N23 — Client handover pack PDF (dossier de remise) per chantier (French): system summary, warranty terms per installed component (reuse devis warranty texts), basic operating/maintenance guidance, contact details; client-facing, no buy prices.
-- [ ] N24 — Attestation generator (French) from a chantier or installed system (e.g. attestation d'installation, attestation de fin de travaux) using configurable templates + company identity; client-facing, no buy prices.
+- [x] N21 — PV de réception (procès-verbal de réception des travaux) PDF from a chantier (French, existing PDF engine + company identity): client/site, system summary (kWc/components/type), commissioning date, installer, signature block for client & installer with "Bon pour accord" manuscrit line, checklist-completion summary; no buy prices.
+- [x] N22 — Bon de livraison (delivery note) PDF from a chantier or devis (French): delivered items + quantities, delivery date, client signature block; client-facing, no buy prices.
+- [x] N23 — Client handover pack PDF (dossier de remise) per chantier (French): system summary, warranty terms per installed component (reuse devis warranty texts), basic operating/maintenance guidance, contact details; client-facing, no buy prices.
+- [x] N24 — Attestation generator (French) from a chantier or installed system (e.g. attestation d'installation, attestation de fin de travaux) using configurable templates + company identity; client-facing, no buy prices.
 
 ### Devis acceptance trigger
-- [ ] N25 — Mark a devis accepted on a chosen date with the accepting person's name captured + recorded in the devis chatter, so acceptance is the explicit trigger enabling chantier creation.
-- [ ] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
+- [x] N25 — Mark a devis accepted on a chosen date with the accepting person's name captured + recorded in the devis chatter, so acceptance is the explicit trigger enabling chantier creation.
+- [x] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
 
 ### Moroccan legal billing & compliance
 - [ ] N27 — Full set of Moroccan legal company identifiers in Paramètres company identity (raison sociale, adresse complète, IF, ICE, RC + tribunal city, patente/taxe professionnelle, RIB); stamp the applicable subset automatically onto every devis, facture, avoir, bon de livraison, PV de réception.
 - [ ] N28 — Client ICE field on the client record, surfaced on devis & factures; carry the client ICE from a devis through to the facture without re-entry; non-blocking reminder on B2B documents when client ICE is missing.
-- [ ] N29 — Facture conformity check verifying every Article 145 CGI mention (seller identity/identifiers, client identity + ICE for B2B, sequential invoice number, emission date, delivery/prestation date, per-line description/quantity/unit-price-HT/TVA-rate/line-total-HT, totals HT/TVA/TTC, payment terms & mode); warn on any missing mention before finalising without blocking an override.
-- [ ] N30 — Explicit delivery-or-prestation date + payment-terms-and-mode fields on factures; default the delivery date from the linked chantier commissioning date when available.
-- [ ] N31 — Sequential, continuous, gap-free invoice/quote numbering per document type with no duplicates; surface any detected gap to an admin (build on existing race-safe auto-numbering).
+- [x] N29 — Facture conformity check verifying every Article 145 CGI mention (seller identity/identifiers, client identity + ICE for B2B, sequential invoice number, emission date, delivery/prestation date, per-line description/quantity/unit-price-HT/TVA-rate/line-total-HT, totals HT/TVA/TTC, payment terms & mode); warn on any missing mention before finalising without blocking an override.
+- [x] N30 — Explicit delivery-or-prestation date + payment-terms-and-mode fields on factures; default the delivery date from the linked chantier commissioning date when available.
+- [x] N31 — Sequential, continuous, gap-free invoice/quote numbering per document type with no duplicates; surface any detected gap to an admin (build on existing race-safe auto-numbering).
 - [ ] N32 — Documents archive view per client and per chantier gathering every generated devis/facture/avoir/bon de commande/bon de livraison/PV in one place (10-year retention), stored in existing object storage.
 - [ ] N33 — Facture d'acompte + facture de solde workflow: chantier/devis generates a deposit invoice for a configurable percentage on signature and a balance invoice on delivery (balance auto-deducts amounts already invoiced as acompte); both fully conformant Moroccan factures with sequential numbering; existing avoir feature remains for credits.
 - [ ] N34 — Configurable default acompte percentage + default payment terms in Paramètres to prefill new acompte invoices, editable per chantier.
 - [ ] N35 — Échéancier / installments option on a facture splitting TTC into dated instalments, each marked paid/pending, feeding the existing payment-follow-up + aged-receivables system so reminders work per instalment; no external financing provider, no bank integration.
-- [ ] N36 — RIB + payment-instructions block on facture and devis PDFs, sourced from Paramètres.
+- [x] N36 — RIB + payment-instructions block on facture and devis PDFs, sourced from Paramètres.
 - [ ] N37 — Per-line TVA on devis & factures with an editable TVA rate per line defaulting to a single configurable rate in Paramètres (current behaviour unchanged out of the box); totals chain HT → TVA per rate → TTC; per-rate VAT breakdown in PDF only when >1 rate; configurable TVA-exemption mention when a line is exempt; never hardcode which rate applies to which product.
 - [ ] N38 — Local structured-invoice export for factures: UBL 2.1-shaped XML generated & stored locally including ICE/IF/RC from Paramètres + per-line VAT, clearly marked draft preview, no external DGI/clearance endpoint, no credentials — groundwork only.
 - [ ] N39 — Clearance-status placeholder field on factures (Non soumise/Soumise/Validée), purely informational and manually set, so the data model is ready for a future DGI flow without any external call today.
@@ -67,10 +67,10 @@ STAGES.py pipeline contract is never editable/altered, buy prices never client-f
 
 ### SAV / maintenance / warranty / monitoring
 - [ ] N44 — SAV ticket object linked to a Système installé (and thus client + chantier): type de panne, priorité, canal d'ouverture, date d'ouverture, statut (Ouvert/En cours/Résolu/Clos), assigned technician (default Reda), description, resolution log (activity pattern), time-to-resolution computed on closure; SAV list + kanban grouped by statut.
-- [ ] N45 — SAV intervention report PDF on closing a ticket (French): reported issue, diagnosis, work done, parts used, client signature block; client-facing, no buy prices.
-- [ ] N46 — Parts consumption on a SAV ticket optionally decrements stock for parts used and records them on the intervention report; buy prices internal.
-- [ ] N47 — Contrat d'entretien object linked to one or more Systèmes installés (start date, duration, visit frequency, price, renewal date) auto-generating a schedule of upcoming maintenance visits; surfaces upcoming/overdue visits in a list + on the calendar; a completed visit generates a short maintenance report PDF (French, no buy prices); flags contracts approaching renewal.
-- [ ] N48 — Warranty tracking on each Système installé and components: store install date + warranty duration per component (default from configured warranty texts), compute warranty end dates, "Garanties qui expirent" view, record warranty claims per component with outcome for an auditable service history.
+- [x] N45 — SAV intervention report PDF on closing a ticket (French): reported issue, diagnosis, work done, parts used, client signature block; client-facing, no buy prices.
+- [x] N46 — Parts consumption on a SAV ticket optionally decrements stock for parts used and records them on the intervention report; buy prices internal.
+- [x] N47 — Contrat d'entretien object linked to one or more Systèmes installés (start date, duration, visit frequency, price, renewal date) auto-generating a schedule of upcoming maintenance visits; surfaces upcoming/overdue visits in a list + on the calendar; a completed visit generates a short maintenance report PDF (French, no buy prices); flags contracts approaching renewal.
+- [x] N48 — Warranty tracking on each Système installé and components: store install date + warranty duration per component (default from configured warranty texts), compute warranty end dates, "Garanties qui expirent" view, record warranty claims per component with outcome for an auditable service history.
 - [ ] N49 — Recurring-revenue view summarising active contrats d'entretien, monthly/annual value, upcoming renewals, lapsed contracts.
 - [ ] N50 — Monitoring-integration framework with a swappable provider interface, starting with a Huawei FusionSolar connector that (given per-system credentials in config) pulls recent production data; admin enables it per system; no-ops safely when no provider is configured.
 - [ ] N51 — Per-installed-system production view showing recent yield pulled by the monitoring framework when configured, with a manual-entry fallback.
@@ -139,3 +139,16 @@ STAGES.py pipeline contract is never editable/altered, buy prices never client-f
 - [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
 - [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
 - [ ] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped.
+
+---
+
+## DONE LOG (PLAN2)
+
+- 2026-06-16 — Run 2 (foundational post-sale wave). Verified real repo state first (chantier/Installation, Fournisseur, devis ACCEPTE, Moroccan legal IDs/client ICE already existed). Shipped on branch claude/optimistic-darwin-s5mxub (push-to-branch, no PR):
+  - N2 chantier kanban (drag-to-status + reassign, leads visual language); N3 « Créer chantier » one-click from devis + anti-doublon (verified already present); N4 execution checklist (defaults editable in Paramètres, done/by/when, completion %); N5 photo attachments avant/pendant/après gallery; N6 chantier timeline.
+  - N21 PV de réception, N22 bon de livraison, N23 dossier de remise, N24 attestations — new `documents` app PDFs (WeasyPrint, company identity, no buy prices).
+  - N25 devis marked accepted (date + accepting name + chatter); N26 « Bon pour accord » capture + stamped « accepté le … par … » copy via the /proposal engine (no premium-page edit).
+  - N29 facture Article 145 conformity warnings; N30 facture date de livraison + conditions de paiement (delivery date defaults from chantier MES); N31 numbering-gap detection report; N36 RIB/modalités block on the facture PDF (devis premium left untouched per rule #4).
+  - N45 SAV intervention report PDF; N46 parts consumption (optional stock decrement, buy prices internal); N47 contrat d'entretien renewal flag + maintenance report PDF; N48 « garanties qui expirent » view + warranty-claim records.
+  - Full local CI green (flake8, stage-check, makemigrations --check, eslint 0 errors, 88 node tests, Vite build, full backend suite). All migrations additive.
+- SKIPPED / GATED this run (need external deps, paid services, auth, or new architecture — left unticked): monitoring/FusionSolar (N50-52), automation engine (N72-73), email integration/inbound (N87-88), push notifications (N92), Arabic/Darija i18n (N93-94), 2FA/security (N96), public REST API (N89), multi-tenant platform/console (N100-101). Deep procurement/inventory (N11-N20), parc-installé asset model (N7-N10), and the editability/notifications/analytics blocks (N54-N86) remain queued for future runs.
