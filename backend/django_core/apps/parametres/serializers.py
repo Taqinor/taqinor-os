@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import CompanyProfile
+from .models import CompanyProfile, SettingsAuditLog
 
 
 class CompanyProfileSerializer(serializers.ModelSerializer):
@@ -62,3 +62,21 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
 
     def get_signature_url(self, obj):
         return self._presign(obj.signature_key)
+
+
+class SettingsAuditLogSerializer(serializers.ModelSerializer):
+    """Lecture seule du journal d'audit des paramètres (N55)."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SettingsAuditLog
+        fields = [
+            'id', 'section', 'field', 'field_label',
+            'old_value', 'new_value', 'timestamp',
+            'user', 'user_nom',
+        ]
+
+    def get_user_nom(self, obj):
+        if not obj.user:
+            return 'Système'
+        return obj.user.get_full_name() or obj.user.username

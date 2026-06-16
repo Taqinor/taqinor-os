@@ -10,6 +10,8 @@ const parametresApi = {
   // Modèles de message WhatsApp (FR + Darija) éditables.
   getMessages: () => api.get('/parametres/messages/'),
   saveMessage: (data) => api.put('/parametres/messages/', data),
+  // N55 — journal d'audit des changements de paramètres (lecture, admin).
+  getAuditLog: (params = {}) => api.get('/parametres/audit-log/', { params }),
 }
 
 export default parametresApi

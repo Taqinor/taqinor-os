@@ -94,3 +94,61 @@ class TestRoiConstants(TestCase):
         # Effective fusionne avec les défauts.
         self.assertEqual(profile.roi_constants_effective['kwh_price'],
                          SOLAR_JS_KWH_PRICE)
+
+
+# ── N55 — Journal d'audit des changements de paramètres ──────────────────────
+
+class TestSettingsAuditLog(TestCase):
+    def setUp(self):
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        self.company, _ = Company.objects.get_or_create(
+            slug='audit-co', defaults={'nom': 'Audit Co'})
+        self.other, _ = Company.objects.get_or_create(
+            slug='audit-co2', defaults={'nom': 'Audit Co 2'})
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='audit_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+
+    def test_profile_change_writes_audit_who_old_new(self):
+        from apps.parametres.models import SettingsAuditLog
+        # Crée le profil avec un nom connu.
+        CompanyProfile.get(company=self.company)
+        r = self.api.patch('/api/django/parametres/update/', {
+            'nom': 'Nouveau Nom',
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        log = SettingsAuditLog.objects.filter(
+            company=self.company, field='nom').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.user_id, self.admin.id)       # qui
+        self.assertEqual(log.new_value, 'Nouveau Nom')      # nouveau
+        self.assertEqual(log.section, 'profil')
+
+    def test_no_change_writes_nothing(self):
+        from apps.parametres.models import SettingsAuditLog
+        profile = CompanyProfile.get(company=self.company)
+        before = SettingsAuditLog.objects.count()
+        self.api.patch('/api/django/parametres/update/', {
+            'nom': profile.nom,
+        }, format='json')
+        self.assertEqual(SettingsAuditLog.objects.count(), before)
+
+    def test_audit_endpoint_company_scoped(self):
+        from apps.parametres.models import SettingsAuditLog
+        SettingsAuditLog.objects.create(
+            company=self.company, user=self.admin, section='profil',
+            field='nom', field_label='Nom', old_value='A', new_value='B')
+        SettingsAuditLog.objects.create(
+            company=self.other, user=None, section='profil',
+            field='nom', field_label='Nom', old_value='X', new_value='Y')
+        r = self.api.get('/api/django/parametres/audit-log/')
+        self.assertEqual(r.status_code, 200)
+        fields = [(row['old_value'], row['new_value']) for row in r.data]
+        self.assertIn(('A', 'B'), fields)
+        self.assertNotIn(('X', 'Y'), fields)
