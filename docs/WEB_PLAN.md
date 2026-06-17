@@ -508,7 +508,7 @@ résidentiel and professionnel pages** — a brief block built **only from the f
 20 ans structure, 2 ans main-d'œuvre, monitoring Deye Cloud avec accès client) that **links to
 `/garanties`**. **Invent no new SLA or underperformance policy.**
 
-### W17 — Verify (and if needed fix) the homepage shares the site header & footer — [ ]
+### W17 — Verify (and if needed fix) the homepage shares the site header & footer — [x] (verified, already correct)
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -805,3 +805,10 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   professionnel. NO invented SLA / underperformance policy (guarded by a test that scopes the
   negative checks to the rendered body, not the docstring). 587 web tests green. Lead form untouched.
   URLs to open: `/`, `/résidentiel`, `/professionnel` (scroll to the « Garanties écrites » strip).
+- 2026-06-17 — W17 verified CORRECT (no fix needed). The homepage (`index.astro`) renders through the
+  same shared `Layout.astro` as every other page, and that Layout renders `<Header />` + `<Footer />`.
+  So the homepage already shows the identical updated nav (Résidentiel, Professionnel, Équipement, Loi
+  82-21, À propos, Guides, FAQ), the formatted phone +212 6 61 85 04 10 (`NAP.phoneDisplayIntl`), and
+  the full footer (Ressources block + « Installation solaire par ville » section). Locked with a guard
+  test (index uses the shared Layout; Layout renders Header + Footer). 588 web tests green. No code
+  change to the page was required.

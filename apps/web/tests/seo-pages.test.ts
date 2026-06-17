@@ -179,6 +179,17 @@ describe('maillage & téléphone (W9 / W10)', () => {
       expect(read(`../src/pages/${p}.astro`), p).toContain('Breadcrumb');
     }
   });
+
+  it('l’accueil partage le même header/footer que le reste du site (W17)', () => {
+    // L'accueil passe par le Layout partagé, qui rend <Header/> + <Footer/> :
+    // même nav (Guides, FAQ, À propos), même téléphone formaté, même footer.
+    const idx = read('../src/pages/index.astro');
+    expect(idx).toContain("import Layout from '../layouts/Layout.astro'");
+    expect(idx).toContain('<Layout');
+    const layout = read('../src/layouts/Layout.astro');
+    expect(layout).toContain('<Header />');
+    expect(layout).toContain('<Footer />');
+  });
 });
 
 describe('teaser garanties (W16)', () => {
