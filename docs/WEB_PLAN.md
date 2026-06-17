@@ -196,6 +196,102 @@ is byte-for-byte untouched as the baseline.
 
 ---
 
+### W2 — Five public city landing pages (Casablanca, Rabat, Marrakech, Tanger, Agadir) — [ ]
+
+Build five **public**, indexed city landing pages — "Installation solaire à Casablanca / à
+Rabat / à Marrakech / à Tanger / à Agadir" — following the existing **"Cinéma du chantier"**
+design and tokens. Each page: a city-specific intro, the **local sunshine-hours figure** (public
+meteo data — already a defensible site claim, no new invented numbers), the service framing, and
+**where a real Taqinor installation exists in or near that city** (Casablanca, El Jadida,
+Nouaceur references already on the site) feature it with its **real kWc/production** and link to
+its case-study page (see W3). Add **LocalBusiness + areaServed** structured data per page. Use
+ONLY facts already published on the site or public meteo data. Each page is **in the sitemap**,
+**linked from the footer and from the relevant segment pages**, and **cross-linked to the
+diagnostic and to the matching case study**.
+
+### W3 — Five public case-study pages (one per real installation) — [ ]
+
+Build five **public**, indexed case-study pages, one per real installation already shown on the
+site — **réf. 468 El Jadida 17,04 kWc**, **réf. 400 Casablanca 11,36 kWc**, **réf. 236 El Jadida
+5,68 kWc**, **réf. 134 Casablanca 5,68 kWc**, **réf. NC-10/25 Nouaceur 3,72 kWc** — built
+entirely from facts already published (kWc, measured production, equipment, city, date) — invent
+nothing. Each page: the context, the **roof/sizing logic in plain language**, the **equipment
+posed**, and the **measured result from Deye Cloud**, using the existing real photos. Indexed, in
+the sitemap, **linked from the homepage evidence gallery, the fiches chantier, the relevant city
+page, and résidentiel/professionnel**. Add appropriate structured data (**Article or
+CreativeWork**).
+
+### W4 — Public "Pourquoi Taqinor" page — [ ]
+
+Build a **public**, indexed "Pourquoi Taqinor" page that consolidates the differentiators already
+expressed across the site — engineering-led sizing (l'étude d'abord), real measured monitoring via
+Deye Cloud, full **loi 82-21** conformity handled end to end, tier-1 equipment only, evidence over
+promises. Introduce **no new claims or figures**; only restate and structure what the site already
+says. In the sitemap, **linked from the homepage and segment pages**.
+
+### W5 — Dedicated public /faq page — [ ]
+
+Build a dedicated **public**, indexed `/faq` page expanding the current homepage FAQ, covering
+ONLY topics whose answers are already established on the site or in confirmed repo data: pricing
+logic and ordres de grandeur, loi 82-21 regimes, Article 33 régularisation,
+batteries/autoconsommation, garanties (from the equipment warranty table), délais and process,
+monitoring/SAV. **Do NOT add questions about financing, bank products, incentives or taxes** (those
+facts are not verified). Emit **FAQPage structured data** for the full set with **no duplicate or
+conflicting FAQPage markup against the homepage**. In the sitemap, **linked from the footer and
+nav**.
+
+### W6 — Public guides/ressources hub at /guides + three seed articles — [ ]
+
+Build a **public** guides/ressources hub at `/guides` plus three seed articles drawn STRICTLY from
+facts already published on the site or confirmed repo data, with **NO new figures and NO
+tariff/cost claims** (the site's electricity-tariff basis is being aligned separately): (1) "Loi
+82-21 expliquée simplement" from the loi-82-21 page, (2) "Faut-il des batteries ?" from the
+existing FAQ answer, (3) "Onduleur hybride ou onduleur réseau ?" from the équipement page. Clean
+editorial layout matching the design, **Article structured data**, indexed, in the sitemap. Add one
+**"Guides" entry to the top nav** and link the hub from the footer. **Note in the report** that the
+editorial calendar and any tariff/cost articles are pending Meryem's copy and the site-wide tariff
+alignment.
+
+### W7 — Public MRE section/page — [ ]
+
+Build a **public**, indexed MRE page — "Vous êtes Marocain·e à l'étranger ? Nous installons et
+suivons l'installation de votre villa au Maroc, à distance, de l'étude au monitoring" — using ONLY
+the site's existing positioning and its WhatsApp-first, remote-diagnostic reality; **no new factual
+claims**. In the sitemap, **linked from résidentiel and the footer**.
+
+### W8 — Public "Nos garanties / engagements" page — [ ]
+
+Build a **public**, indexed "Nos garanties / engagements" page that turns the existing equipment
+warranty table into a reassurance page: the **12-year product / 25-year ≥84,8% performance /
+10-year inverter & battery / 20-year structure / 2-year workmanship** figures already on the site,
+plus the existing "monitoring Deye Cloud, SAV proactif, accès client" commitment. **Do NOT invent
+any response-time SLA or underperformance policy.** In the sitemap, **linked from équipement and
+the segment pages**.
+
+### W9 — Sitewide internal linking + BreadcrumbList structured data — [ ]
+
+Improve internal linking across all public pages and add **BreadcrumbList** structured data
+sitewide: cross-link **équipement ↔ résidentiel/professionnel**, **loi-82-21 ↔
+regularization-article-33 ↔ professionnel**, and the new **city pages ↔ case studies ↔ segment
+pages**. **Purely additive; touch no lead-flow code.**
+
+### W10 — Format displayed phone number in header & footer — [ ]
+
+Format the **displayed** phone number in the header and footer as **+212 6 61 85 04 10** for
+readability. The **`tel:` link target stays unchanged** (display-only change).
+
+---
+
+**ACROSS W2–W10 (founder's cross-cutting constraints):** no invented facts — every figure traces
+to what's already published on the site or confirmed repo data; **no new dependencies**; the **live
+lead form and its data flow untouched**; **one self-merged PR per task** per the protected-main
+convention; **Lighthouse held on every page**; and a plain-language report listing the new public
+URLs to click. NOTE: these are **public, indexed** pages (a deliberate exception to the preview-lab
+"build everything private / noindex" standing rule for this batch — the founder asked for live
+public pages), but the **live lead form and its data flow must stay byte-for-byte unchanged**.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
