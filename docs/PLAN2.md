@@ -199,6 +199,21 @@ once at the very end — **no per-task merge**. All the HOW TO RUN and STANDING 
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — Vérification A1–A4 + C1 (signalés « ne marchent pas » par le
+  fondateur) : DIAGNOSTIC = les deux fonctionnalités sont DÉJÀ complètes et
+  correctes sur `main` (livrées le 17/06 via le lot dev-os, jamais reverties).
+  Chaîne d'acceptation : champs `Devis.date_acceptation/accepte_par_nom/
+  option_acceptee` présents, endpoint `accepter`, `SigneDialog` câblé au
+  kanban + édition d'étape, option autoritative en aval (échéancier/chantier),
+  actions en ligne facture/chantier — 21 tests `test_acceptation`/`test_options`
+  exécutés et VERTS. Menu iPhone : `.sidebar-nav` défile (`min-height:0` +
+  `overflow-y:auto`), sidebar bornée 100dvh, tiroir mobile avec insets safe-area
+  HAUT et BAS, `viewport-fit=cover` présent. Aucune reconstruction. Seul ajout :
+  un garde-fou de non-régression du menu (`menu.layout.test.mjs`, branché à la CI
+  frontend-lint) qui verrouille ces invariants CSS/HTML — il ÉCHOUE si l'on
+  retire `min-height:0` ou le `padding-bottom: env(safe-area-inset-bottom)`.
+  Cause probable du « ne marche pas » côté fondateur : build PWA installé en
+  cache (mises à jour livrées le même jour) → réinstaller / vider le cache.
 - 2026-06-17 — D5: logique de devis éditable + versionnée (cœur). Les paramètres
   implicites du générateur sont désormais modifiables dans Paramètres → Avancé
   (carte « Logique de devis (avancé) ») et amorcés EXACTEMENT sur les constantes
