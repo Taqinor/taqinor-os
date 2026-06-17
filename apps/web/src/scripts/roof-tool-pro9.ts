@@ -83,6 +83,7 @@ import {
   type Obstacle,
 } from '../lib/obstacles';
 import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
+import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 
 interface InitOptions {
   maptilerKey: string;
@@ -90,6 +91,10 @@ interface InitOptions {
   reducedMotion: boolean;
   initialQuery?: string;
   onReady?: () => void;
+  // Sélecteur « type de toit » créé EAGERLY par le script de page : il détient les
+  // puces `[data-rooftype]` (câblées dès le chargement, donc le bouton « Toit en
+  // pente » répond avant ce boot). On honore son choix initial puis on s'abonne.
+  roofType?: RoofTypeSelect;
 }
 
 const GOLD = '#f3cc66';
@@ -2157,9 +2162,20 @@ export function initRoofToolPro8(opts: InitOptions): void {
     matrixFilter = (e.target as HTMLSelectElement).value;
     paintComparison();
   });
-  document.querySelectorAll<HTMLButtonElement>('[data-rooftype]').forEach((b) => {
-    b.addEventListener('click', () => setRoofType(b.dataset.rooftype as RoofType));
-  });
+  // Les puces `[data-rooftype]` sont détenues par le contrôleur EAGER
+  // (createRoofTypeSelect, dans le script de page) : il bascule `aria-pressed` sur
+  // chaque puce dès le chargement — bien avant ce boot lourd — et nous notifie. On
+  // honore d'abord un choix « pente » fait avant le boot, puis on s'abonne aux
+  // changements pour appliquer les effets 3D + cerveau (setRoofType). Repli défensif
+  // (aucun contrôleur fourni) : on auto-câble comme avant.
+  if (opts.roofType) {
+    setRoofType(opts.roofType.get());
+    opts.roofType.subscribe(setRoofType);
+  } else {
+    document.querySelectorAll<HTMLButtonElement>('[data-rooftype]').forEach((b) => {
+      b.addEventListener('click', () => setRoofType(b.dataset.rooftype as RoofType));
+    });
+  }
   const syncPitchChips = () => {
     document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
       b.setAttribute('aria-pressed', String(Number(b.dataset.pitch) === Math.round(pitchDeg)));
