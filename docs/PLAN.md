@@ -308,7 +308,7 @@ conformity warning banner).
 - [x] N24 — Attestation generator (French) from a chantier or installed system (e.g. attestation d'installation, attestation de fin de travaux) using configurable templates + company identity; client-facing, no buy prices.
 ### Devis acceptance trigger
 - [x] N25 — Mark a devis accepted on a chosen date with the accepting person's name captured + recorded in the devis chatter, so acceptance is the explicit trigger enabling chantier creation.
-- [ ] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
+- [BLOCKED: la capture (nom + date + acceptation) est déjà faite par N25 (accepte_par_nom/date_acceptation + chatter DevisActivity) ; le « tampon accepté le <date> par <nom> » sur une copie régénérée du PDF exige d'éditer le moteur premium — règle #4 l'interdit (même conflit que N36/N59/N60).] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
 ### Moroccan legal billing & compliance
 - [x] N27 — Full set of Moroccan legal company identifiers in Paramètres company identity (raison sociale, adresse complète, IF, ICE, RC + tribunal city, patente/taxe professionnelle, RIB); stamp the applicable subset automatically onto every devis, facture, avoir, bon de livraison, PV de réception.
 - [x] N28 — Client ICE field on the client record, surfaced on devis & factures; carry the client ICE from a devis through to the facture without re-entry; non-blocking reminder on B2B documents when client ICE is missing.
@@ -624,3 +624,9 @@ Tracked here so they aren't lost:
   désactivé par défaut → rien ne change) ; la récompense par défaut pré-remplit
   chaque nouveau parrainage. Écran CRM → Parrainage (liste, création,
   changement de statut, tableau de bord cartes). Tests backend.
+- 2026-06-17 — N26 marqué [BLOCKED] : la capture d'acceptation (nom + date)
+  existe déjà via N25 ; le tampon « accepté le <date> par <nom> » sur le PDF
+  régénéré exige d'éditer le moteur premium (règle #4) → bloqué, comme
+  N36/N59/N60. Restent CONSTRUCTIBLES pour une prochaine passe : N51, N52,
+  N58, N74, N75, N97 (+ N102 doc finale). Lot de cette session : N84, N62
+  (déjà présent), N99, N66, N46, N47, N98.
