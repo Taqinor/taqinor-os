@@ -316,6 +316,67 @@ def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
     return obj
 
 
+# ── N18 — Valorisation du stock par emplacement (coût moyen d'achat) ──────────
+# Coût moyen pondéré issu de l'historique d'achat (réceptions de BCF) ; à défaut
+# le prix d'achat catalogue. Valorisation = quantité par emplacement × coût
+# moyen. INTERNE uniquement (les prix d'achat ne sont jamais client-facing).
+
+def average_cost(produit):
+    """Coût moyen d'achat pondéré d'un produit, depuis l'historique des
+    réceptions de bons de commande fournisseur ; repli sur le prix d'achat
+    catalogue si aucun achat reçu. INTERNE."""
+    from .models import LigneBonCommandeFournisseur
+    lignes = LigneBonCommandeFournisseur.objects.filter(
+        produit=produit, quantite_recue__gt=0).values_list(
+        'quantite_recue', 'prix_achat_unitaire')
+    total_q, total_v = 0, Decimal('0')
+    for q, pu in lignes:
+        total_q += q
+        total_v += q * (pu or Decimal('0'))
+    if total_q:
+        return (total_v / total_q).quantize(Decimal('0.01'))
+    return produit.prix_achat or Decimal('0')
+
+
+def stock_valuation_by_location(company):
+    """Valorisation du stock par emplacement au coût moyen d'achat (N18).
+
+    Renvoie {par_emplacement:[{emplacement_id, emplacement_nom, is_principal,
+    quantite, valeur}], total, lignes:[{produit_id, sku, designation,
+    emplacement_nom, quantite, cout_moyen, valeur}]}. INTERNE — ne jamais
+    exposer dans un contexte client."""
+    from .models import Produit, EmplacementStock
+    ensure_emplacements(company)
+    emplacements = list(EmplacementStock.objects.filter(
+        company=company, archived=False))
+    totals = {e.id: {'emplacement_id': e.id, 'emplacement_nom': e.nom,
+                     'is_principal': e.is_principal, 'quantite': 0,
+                     'valeur': Decimal('0')} for e in emplacements}
+    lignes = []
+    grand_total = Decimal('0')
+    produits = (Produit.objects.filter(company=company, is_archived=False)
+                .prefetch_related('stocks_emplacement'))
+    for p in produits:
+        cout = average_cost(p)
+        for b in stock_breakdown(p):
+            if b['quantite'] == 0:
+                continue
+            valeur = (cout * b['quantite']).quantize(Decimal('0.01'))
+            t = totals.get(b['emplacement_id'])
+            if t is not None:
+                t['quantite'] += b['quantite']
+                t['valeur'] += valeur
+            grand_total += valeur
+            lignes.append({
+                'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+                'emplacement_nom': b['emplacement_nom'],
+                'quantite': b['quantite'], 'cout_moyen': cout, 'valeur': valeur,
+            })
+    lignes.sort(key=lambda x: (x['designation'].lower(), x['emplacement_nom']))
+    return {'par_emplacement': list(totals.values()),
+            'total': grand_total, 'lignes': lignes}
+
+
 def compute_besoin_materiel(installation):
     """Agrège les besoins matériel d'un chantier depuis son devis source.
 

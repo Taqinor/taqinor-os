@@ -98,6 +98,74 @@ function InventaireModal({ produits, onClose, onDone }) {
   )
 }
 
+// ── N18 — Valorisation du stock par emplacement (coût moyen d'achat, INTERNE) ──
+function ValorisationModal({ onClose }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    stockApi.valorisation()
+      .then((r) => setData(r.data))
+      .catch(() => setError('Échec du chargement de la valorisation.'))
+  }, [])
+  const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Valorisation du stock par emplacement</h3>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p className="gen-hint" style={{ marginTop: 0 }}>
+            Valeur au coût moyen d'achat (historique des réceptions, sinon prix
+            d'achat catalogue). Donnée interne — jamais sur un document client.
+          </p>
+          {error && <div className="form-error-box" role="alert">{error}</div>}
+          {!data && !error && <p>Chargement…</p>}
+          {data && (
+            <>
+              <div className="table-wrap" style={{ marginBottom: '1rem' }}>
+                <table className="data-table">
+                  <thead><tr><th>Emplacement</th><th>Quantité</th><th>Valeur</th></tr></thead>
+                  <tbody>
+                    {data.par_emplacement.map((t) => (
+                      <tr key={t.emplacement_id}>
+                        <td>{t.emplacement_nom}{t.is_principal ? ' (principal)' : ''}</td>
+                        <td>{t.quantite}</td>
+                        <td>{fmt(t.valeur)} DH</td>
+                      </tr>
+                    ))}
+                    <tr><td><strong>Total</strong></td><td></td><td><strong>{fmt(data.total)} DH</strong></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="table-wrap" style={{ maxHeight: 320, overflow: 'auto' }}>
+                <table className="data-table">
+                  <thead><tr><th>Produit</th><th>Emplacement</th><th>Qté</th><th>Coût moyen</th><th>Valeur</th></tr></thead>
+                  <tbody>
+                    {data.lignes.map((l, i) => (
+                      <tr key={`${l.produit_id}-${l.emplacement_nom}-${i}`}>
+                        <td>{l.designation}</td>
+                        <td>{l.emplacement_nom}</td>
+                        <td>{l.quantite}</td>
+                        <td>{fmt(l.cout_moyen)} DH</td>
+                        <td>{fmt(l.valeur)} DH</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── N15 — Transfert de stock entre emplacements (dépôt principal / camionnette) ──
 // Le total du produit ne change jamais : un transfert ne fait que déplacer la
 // quantité d'un emplacement vers un autre. Gestion d'emplacements inline (admin).
@@ -488,6 +556,7 @@ export default function StockList() {
   const [showImport, setShowImport] = useState(false)
   const [showInventaire, setShowInventaire] = useState(false)
   const [showTransfert, setShowTransfert] = useState(false)
+  const [showValorisation, setShowValorisation] = useState(false)
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
@@ -663,6 +732,12 @@ export default function StockList() {
               🧮 Inventaire
             </button>
           )}
+          {role === 'admin' && (
+            <button className="btn btn-sm btn-outline" onClick={() => setShowValorisation(true)}
+                    title="Valorisation du stock par emplacement (coût moyen, interne)">
+              💰 Valorisation
+            </button>
+          )}
           {canWrite && (
             <button className="btn btn-sm btn-outline" onClick={() => setShowTransfert(true)}
                     title="Transférer du stock entre emplacements (dépôt / camionnette)">
@@ -699,6 +774,10 @@ export default function StockList() {
         <TransfertModal produits={produits} isAdmin={role === 'admin'}
                         onClose={() => setShowTransfert(false)}
                         onDone={() => dispatch(fetchProduits())} />
+      )}
+
+      {showValorisation && (
+        <ValorisationModal onClose={() => setShowValorisation(false)} />
       )}
 
       {archiveNotif && (

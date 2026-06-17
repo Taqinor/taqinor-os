@@ -32,6 +32,8 @@ const stockApi = {
   bulkProduits: (payload) => api.post('/stock/produits/bulk/', payload),
   // N16 — inventaire physique : comptage par produit → ajustement de stock.
   inventaire: (payload) => api.post('/stock/produits/inventaire/', payload),
+  // N18 — valorisation du stock par emplacement (coût moyen, INTERNE/admin).
+  valorisation: () => api.get('/stock/produits/valorisation/'),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // N15 — Stock multi-emplacements (dépôt principal + camionnette …).
