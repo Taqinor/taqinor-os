@@ -139,6 +139,15 @@ here unchanged — this file only adds tasks.
   **required for merge**. NOTE for whoever executes this later: this introduces
   Playwright (a new dev/test dependency) and a new CI job — Reda has already approved
   both, so proceed without pausing to re-ask.
+  _(2026-06-17 — SKIP (blocage environnemental, pas d'approbation). E1–E16 exigent un
+  stack COMPLET qui tourne (frontend + Django + Postgres + MinIO) pour ÉCRIRE puis
+  PROUVER VERTES les specs Playwright avant de rendre le job « requis pour merge ».
+  Dans cette session le démon Docker est arrêté et Django n'est pas installé en local,
+  donc impossible de monter le stack et de vérifier ne serait-ce qu'une spec. Livrer 16
+  specs non vérifiées en job CI REQUIS rendrait sciemment la CI rouge — contraire à la
+  règle « CI must pass » et à « vérifier avant de livrer ». À exécuter là où le stack
+  tourne (serveur, ou Docker dispo) pour authorer + prouver vertes les specs avant de
+  marquer le job requis. E2–E16 dépendent de E1, donc laissés `[ ]` aussi.)_
 
 - [ ] **E2 — Login is the app entry point.** A valid login lands in the app; an
   invalid login is rejected.
