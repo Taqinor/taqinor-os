@@ -72,7 +72,7 @@ here unchanged — this file only adds tasks.
 
 ### Group D — Paramètres: split + far more editable settings (all in one pass)
 
-- [ ] **D1 — Reorganize Paramètres into sections/tabs by domain.** Split the single long
+- [x] **D1 — Reorganize Paramètres into sections/tabs by domain.** Split the single long
   Paramètres page into tabs/sections: **Société & identité · Leads · Clients · Devis &
   Factures · Stock · Équipe & rôles · Messages & relances · Avancé**. Keep **every existing
   setting working** (no setting dropped or broken). **No horizontal overflow on phones.**
@@ -166,6 +166,19 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — D1: Paramètres réorganisés en onglets. La longue page unique est
+  désormais une barre d'onglets par domaine : Société & identité · Leads ·
+  Clients · Devis & Factures · Stock · Équipe & rôles · Messages & relances ·
+  Avancé. Chaque réglage existant est conservé tel quel (identité/légal/ICE/logo/
+  signature/couleur dans Société ; responsable défaut + étiquettes/motifs + canaux
+  dans Leads ; échéancier/validité/pompage/préfixes + TVA dans Devis & Factures ;
+  marques + catégories + fournisseurs dans Stock ; niveaux de relance + messages
+  WhatsApp dans Messages & relances ; hypothèses ROI/seuils + types d'intervention
+  + checklist chantier + champs personnalisés dans Avancé). Un seul formulaire
+  couvre tous les onglets, donc « Enregistrer » sauve le profil complet quel que
+  soit l'onglet ouvert. La barre d'onglets défile horizontalement sur téléphone
+  (aucun débordement de page). Les onglets Clients et Équipe & rôles portent une
+  note (réglages à venir / gestion via Administration). Lint + build verts.
 - 2026-06-17 — C1: menu coupé sur iPhone réparé. Cause : `.sidebar-nav`
   (`flex:1; overflow-y:auto`) n'avait pas `min-height:0` — un enfant flex ne
   rétrécit pas sous la hauteur de son contenu, donc le défilement ne

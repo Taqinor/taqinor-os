@@ -1,3 +1,31 @@
+/* Barre d'onglets (D1) : défilable horizontalement sur téléphone — la barre
+   scrolle à l'intérieur, la page ne déborde jamais. */
+.pe-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 1.25rem;
+  scrollbar-width: thin;
+}
+.pe-tab {
+  flex: 0 0 auto;
+  padding: 9px 14px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pe-tab:hover { color: #1d4ed8; }
+.pe-tab--active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+
 /* Grilles responsives de la page Paramètres : multi-colonnes au bureau,
    une seule colonne sur téléphone (plus de débordement horizontal). */
 .pe-main {
