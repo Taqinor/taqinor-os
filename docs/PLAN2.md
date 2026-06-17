@@ -86,6 +86,19 @@ here unchanged — this file only adds tasks.
   - **editable warranty texts per product/category**, seeded from the current texts.
   These print through the **existing vendored quote engine** — do **not** edit the premium
   PDF pages; feed the engine new fields (rule #4).
+  _(2026-06-17 — STOP-AND-ASK : conflit avec une règle non-négociable. Le moteur premium
+  `apps/ventes/quote_engine/generate_devis_premium.py` CODE EN DUR la validité « 30 jours »,
+  le bloc RIB, les conditions générales et l'identité légale (ce ne sont pas des champs de
+  données — ce sont des littéraux dans le gabarit). Les imprimer depuis les Paramètres exige
+  de modifier ces pages premium, ce que la règle #4 / la règle permanente « ne jamais éditer
+  les pages premium » interdit. « Feed the engine new fields » suppose que le moteur consomme
+  ces champs, ce qui n'est pas le cas. Décision du founder requise : (a) autoriser un câblage
+  minimal des littéraux vers des champs `data` AVEC valeurs par défaut identiques (sortie PDF
+  inchangée tant que rien n'est édité), ou (b) accepter que CGV/validité/RIB restent figés
+  dans le moteur. Idem N36 / N60 / N67 (mêmes littéraux premium). Laissé `[ ]` ; D3 et D5
+  restent constructibles. Note : le client ICE (N28) et les défauts acompte (N34) /
+  responsable existent déjà ; la validité est déjà éditable dans Paramètres → Devis & Factures
+  mais le PDF affiche « 30 jours » figé.)_
 
 - [ ] **D3 — Per-document numbering configuration.** Add per-document-type numbering config
   (**prefix, padding width, yearly-reset**) per document type, **keeping sequences gap-free
