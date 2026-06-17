@@ -204,6 +204,96 @@ class MouvementStock(models.Model):
         return f"{self.type_mouvement} | {self.produit.nom} | {self.quantite}"
 
 
+class EmplacementStock(models.Model):
+    """N15 — Emplacement de stock (dépôt principal, camionnette, dépôt secondaire…).
+
+    Le stock TOTAL d'un produit reste `Produit.quantite_stock` (canonique,
+    inchangé : réceptions, ventes, inventaire continuent de l'alimenter). Cette
+    couche se contente de VENTILER ce total entre emplacements. L'emplacement
+    PRINCIPAL détient le reste (total − somme des autres emplacements), si bien
+    que tout le stock existant est par défaut au dépôt principal et que le
+    comportement actuel est strictement inchangé. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='emplacements_stock')
+    nom = models.CharField(max_length=100)
+    is_principal = models.BooleanField(
+        default=False,
+        help_text='Le dépôt principal détient le stock non ventilé (un seul '
+                  'par société).')
+    ordre = models.PositiveSmallIntegerField(default=100)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = 'Emplacement de stock'
+        verbose_name_plural = 'Emplacements de stock'
+        unique_together = [('company', 'nom')]
+        ordering = ['-is_principal', 'ordre', 'nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class StockEmplacement(models.Model):
+    """Quantité d'un produit dans un emplacement NON principal.
+
+    La quantité de l'emplacement principal n'est jamais stockée : elle est
+    DÉRIVÉE (total − somme des emplacements non principaux) pour que le total
+    canonique et la ventilation ne puissent pas diverger.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='stocks_emplacement')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, related_name='stocks_emplacement')
+    emplacement = models.ForeignKey(
+        EmplacementStock, on_delete=models.CASCADE, related_name='stocks')
+    quantite = models.IntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Stock par emplacement"
+        verbose_name_plural = "Stocks par emplacement"
+        unique_together = [('produit', 'emplacement')]
+
+    def __str__(self):
+        return f'{self.produit_id} @ {self.emplacement_id} = {self.quantite}'
+
+
+class TransfertStock(models.Model):
+    """Le « transfer record » de N15 : déplace une quantité d'un produit d'un
+    emplacement source vers un emplacement destination.
+
+    Ne modifie JAMAIS le total `Produit.quantite_stock` — seule la ventilation
+    par emplacement change. Tracé complet (qui / quand)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='transferts_stock')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT, related_name='transferts')
+    source = models.ForeignKey(
+        EmplacementStock, on_delete=models.PROTECT,
+        related_name='transferts_sortants')
+    destination = models.ForeignKey(
+        EmplacementStock, on_delete=models.PROTECT,
+        related_name='transferts_entrants')
+    quantite = models.PositiveIntegerField()
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='transferts_stock')
+    date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Transfert de stock'
+        verbose_name_plural = 'Transferts de stock'
+        ordering = ['-date']
+
+    def __str__(self):
+        return (f'{self.produit_id}: {self.quantite} '
+                f'{self.source_id}→{self.destination_id}')
+
+
 class BonCommandeFournisseur(models.Model):
     """Bon de commande FOURNISSEUR (achat / approvisionnement) — N12.
 

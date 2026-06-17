@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
+    EmplacementStock, TransfertStock,
 )
 
 
@@ -94,6 +95,33 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_derniere_date_mouvement(self, obj):
         val = getattr(obj, 'derniere_date_mouvement', None)
         return val.isoformat() if val else None
+
+
+class EmplacementStockSerializer(serializers.ModelSerializer):
+    """N15 — emplacement de stock. `company` est posé côté serveur."""
+
+    class Meta:
+        model = EmplacementStock
+        fields = ['id', 'nom', 'is_principal', 'ordre', 'archived']
+        read_only_fields = ['is_principal']
+
+
+class TransfertStockSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    source_nom = serializers.CharField(source='source.nom', read_only=True)
+    destination_nom = serializers.CharField(
+        source='destination.nom', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True)
+
+    class Meta:
+        model = TransfertStock
+        fields = [
+            'id', 'produit', 'produit_nom', 'source', 'source_nom',
+            'destination', 'destination_nom', 'quantite', 'note',
+            'created_by_username', 'date',
+        ]
+        read_only_fields = ['created_by_username', 'date']
 
 
 class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):

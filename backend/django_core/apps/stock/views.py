@@ -8,7 +8,7 @@ from authentication.mixins import TenantMixin
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur,
+    BonCommandeFournisseur, EmplacementStock, TransfertStock,
 )
 from .serializers import (
     ProduitSerializer,
@@ -17,6 +17,8 @@ from .serializers import (
     MouvementStockSerializer,
     MarqueSerializer,
     BonCommandeFournisseurSerializer,
+    EmplacementStockSerializer,
+    TransfertStockSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -141,6 +143,15 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         produits = (Produit.objects.filter(company=request.user.company, id__in=ids)
                     .select_related('categorie').order_by('nom'))
         return export_products_xlsx(produits)
+
+    @action(detail=True, methods=['get'], url_path='emplacements',
+            permission_classes=[IsAnyRole])
+    def emplacements(self, request, *args, **kwargs):
+        """N15 — ventilation du stock de ce produit par emplacement (le dépôt
+        principal détient le reste = total − somme des autres)."""
+        from .services import stock_breakdown
+        produit = self.get_object()
+        return Response(stock_breakdown(produit))
 
     @action(detail=True, methods=['patch'], url_path='unarchive')
     def unarchive(self, request, *args, **kwargs):
@@ -310,6 +321,82 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         )
         produit.quantite_stock = qte_apres
         produit.save(update_fields=['quantite_stock'])
+
+
+class EmplacementStockViewSet(TenantMixin, viewsets.ModelViewSet):
+    """N15 — emplacements de stock (dépôt principal + camionnette amorcés au
+    premier accès). Lecture tout rôle, écriture admin. Le principal ne peut être
+    ni supprimé ni archivé ; un emplacement détenant du stock ne peut pas être
+    supprimé (transférez d'abord)."""
+    queryset = EmplacementStock.objects.all()
+    serializer_class = EmplacementStockSerializer
+    ordering = ['-is_principal', 'ordre', 'nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        from .services import ensure_emplacements
+        if request.user.company_id:
+            ensure_emplacements(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def _holds_stock(self, emplacement):
+        return emplacement.stocks.filter(quantite__gt=0).exists()
+
+    def destroy(self, request, *args, **kwargs):
+        emp = self.get_object()
+        if emp.is_principal:
+            return Response(
+                {'detail': 'Le dépôt principal ne peut pas être supprimé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if self._holds_stock(emp):
+            return Response(
+                {'detail': 'Cet emplacement détient du stock — transférez-le '
+                           'avant de le supprimer.'},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
+
+class TransfertStockViewSet(TenantMixin, viewsets.ModelViewSet):
+    """N15 — transferts de stock entre emplacements (le « transfer record »).
+
+    Lecture seule + création. La création passe par le service `transfer_stock`
+    (validation + atomicité), jamais par un save direct. Le total
+    `Produit.quantite_stock` n'est jamais modifié par un transfert."""
+    queryset = TransfertStock.objects.select_related(
+        'produit', 'source', 'destination', 'created_by').all()
+    serializer_class = TransfertStockSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['produit__nom', 'note']
+    ordering_fields = ['date', 'quantite']
+    ordering = ['-date']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        if self.action == 'create':
+            return [HasPermissionOrLegacy('stock_mouvement')()]
+        return [IsAdminRole()]
+
+    def create(self, request, *args, **kwargs):
+        from .services import transfer_stock
+        try:
+            transfert = transfer_stock(
+                company=request.user.company, user=request.user,
+                produit_id=request.data.get('produit'),
+                source_id=request.data.get('source'),
+                destination_id=request.data.get('destination'),
+                quantite=request.data.get('quantite'),
+                note=request.data.get('note') or '')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(transfert).data,
+                        status=status.HTTP_201_CREATED)
 
 
 class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):

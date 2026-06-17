@@ -164,6 +164,126 @@ def apply_inventory_count(*, company, user, motif, lignes):
     return result
 
 
+# ── N15 — Stock multi-emplacements (dépôt principal + camionnette …) ─────────
+# Le total `Produit.quantite_stock` reste canonique et inchangé ; cette couche
+# ventile ce total entre emplacements. L'emplacement PRINCIPAL détient le reste
+# (total − somme des non principaux), donc tout le stock existant est par défaut
+# au dépôt principal et le comportement actuel ne change pas.
+
+def ensure_emplacements(company):
+    """Crée le dépôt principal + la camionnette si la société n'a encore aucun
+    emplacement (idempotent, additif). Renvoie l'emplacement principal."""
+    from .models import EmplacementStock
+    if company is None:
+        return None
+    qs = EmplacementStock.objects.filter(company=company)
+    if not qs.exists():
+        EmplacementStock.objects.create(
+            company=company, nom='Dépôt principal', is_principal=True, ordre=0)
+        EmplacementStock.objects.create(
+            company=company, nom='Camionnette', is_principal=False, ordre=10)
+    return qs.filter(is_principal=True).first()
+
+
+def stock_breakdown(produit):
+    """Ventilation du stock d'un produit par emplacement (non archivés).
+
+    Renvoie [{emplacement_id, emplacement_nom, is_principal, quantite}] — le
+    principal détient total − somme(non principaux)."""
+    from .models import EmplacementStock
+    company = produit.company
+    ensure_emplacements(company)
+    emplacements = list(EmplacementStock.objects.filter(
+        company=company, archived=False))
+    records = {se.emplacement_id: se.quantite
+               for se in produit.stocks_emplacement.all()}
+    autres = sum(records.get(e.id, 0)
+                 for e in emplacements if not e.is_principal)
+    out = []
+    for e in emplacements:
+        qte = (produit.quantite_stock - autres) if e.is_principal \
+            else records.get(e.id, 0)
+        out.append({
+            'emplacement_id': e.id,
+            'emplacement_nom': e.nom,
+            'is_principal': e.is_principal,
+            'quantite': qte,
+        })
+    return out
+
+
+def transfer_stock(*, company, user, produit_id, source_id, destination_id,
+                   quantite, note=''):
+    """Transfère `quantite` d'un produit de l'emplacement source vers la
+    destination. Crée un TransfertStock (le « transfer record »). Ne change
+    JAMAIS le total `Produit.quantite_stock`. Lève ValueError si invalide."""
+    from django.db import transaction
+    from .models import (
+        Produit, EmplacementStock, StockEmplacement, TransfertStock)
+
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+    if str(source_id) == str(destination_id):
+        raise ValueError('La source et la destination doivent être différentes.')
+
+    with transaction.atomic():
+        produit = Produit.objects.select_for_update().filter(
+            id=produit_id, company=company).first()
+        if produit is None:
+            raise ValueError('Produit introuvable dans cette société.')
+        ensure_emplacements(company)
+        emps = {e.id: e for e in EmplacementStock.objects.filter(
+            company=company, archived=False)}
+        try:
+            source = emps[int(source_id)]
+            destination = emps[int(destination_id)]
+        except (KeyError, TypeError, ValueError):
+            raise ValueError('Emplacement introuvable dans cette société.')
+
+        records = {se.emplacement_id: se for se in
+                   produit.stocks_emplacement.select_for_update()}
+        non_principal_sum = sum(
+            se.quantite for eid, se in records.items()
+            if eid in emps and not emps[eid].is_principal)
+
+        def current_qty(emp):
+            if emp.is_principal:
+                return produit.quantite_stock - non_principal_sum
+            se = records.get(emp.id)
+            return se.quantite if se else 0
+
+        if quantite > current_qty(source):
+            raise ValueError(
+                f'Quantité insuffisante à « {source.nom} » '
+                f'({current_qty(source)} disponible).')
+
+        if not source.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=produit, emplacement=source,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite -= quantite
+            se.save(update_fields=['quantite'])
+        if not destination.is_principal:
+            se, _ = StockEmplacement.objects.get_or_create(
+                produit=produit, emplacement=destination,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite += quantite
+            se.save(update_fields=['quantite'])
+
+        transfert = TransfertStock.objects.create(
+            company=company, produit=produit, source=source,
+            destination=destination, quantite=quantite,
+            note=(note or '').strip(), created_by=user)
+    logger.info('TRANSFERT %d × produit=%s %s→%s par user=%s (company=%s)',
+                quantite, produit_id, source_id, destination_id,
+                getattr(user, 'username', '?'), company.id)
+    return transfert
+
+
 def compute_besoin_materiel(installation):
     """Agrège les besoins matériel d'un chantier depuis son devis source.
 

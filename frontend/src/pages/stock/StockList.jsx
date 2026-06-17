@@ -18,6 +18,7 @@ import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
+import { validateTransfert, totalVentile } from '../../features/stock/emplacements'
 
 // ── N16 — Inventaire physique : comptage par produit → ajustement de stock ──
 function InventaireModal({ produits, onClose, onDone }) {
@@ -91,6 +92,208 @@ function InventaireModal({ produits, onClose, onDone }) {
           <button type="button" className="btn btn-primary" disabled={saving} onClick={submit}>
             {saving ? 'Enregistrement…' : 'Valider l\'inventaire'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── N15 — Transfert de stock entre emplacements (dépôt principal / camionnette) ──
+// Le total du produit ne change jamais : un transfert ne fait que déplacer la
+// quantité d'un emplacement vers un autre. Gestion d'emplacements inline (admin).
+function TransfertModal({ produits, isAdmin, onClose, onDone }) {
+  const [emplacements, setEmplacements] = useState([])
+  const [produitId, setProduitId] = useState('')
+  const [breakdown, setBreakdown] = useState([])
+  const [source, setSource] = useState('')
+  const [destination, setDestination] = useState('')
+  const [quantite, setQuantite] = useState('')
+  const [note, setNote] = useState('')
+  const [transferts, setTransferts] = useState([])
+  const [newEmp, setNewEmp] = useState('')
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const rows = (produits ?? []).filter((p) => !p.is_archived)
+
+  // setState arrive dans les callbacks .then (jamais synchrone dans l'effet).
+  const loadEmplacements = () => stockApi.getEmplacements()
+    .then((r) => setEmplacements(r.data?.results ?? r.data ?? [])).catch(() => {})
+  const loadTransferts = () => stockApi.getTransferts({ ordering: '-date' })
+    .then((r) => setTransferts((r.data?.results ?? r.data ?? []).slice(0, 8)))
+    .catch(() => {})
+  useEffect(() => { loadEmplacements(); loadTransferts() }, [])
+
+  const loadBreakdown = (pid) => {
+    if (!pid) { setBreakdown([]); return Promise.resolve() }
+    return stockApi.getProduitEmplacements(pid)
+      .then((r) => setBreakdown(r.data ?? [])).catch(() => {})
+  }
+  const onPickProduit = (pid) => { setProduitId(pid); setError(null); loadBreakdown(pid) }
+
+  const submit = async () => {
+    const msg = validateTransfert({ breakdown, source, destination, quantite })
+    if (!produitId) { setError('Choisissez un produit.'); return }
+    if (msg) { setError(msg); return }
+    setSaving(true); setError(null)
+    try {
+      await stockApi.createTransfert({
+        produit: produitId, source, destination,
+        quantite: parseInt(quantite, 10), note,
+      })
+      await loadBreakdown(produitId)
+      await loadTransferts()
+      setQuantite(''); setNote('')
+      onDone?.()
+    } catch (err) {
+      setError(err.response?.data?.detail ?? 'Échec du transfert.')
+    } finally { setSaving(false) }
+  }
+
+  const addEmplacement = async () => {
+    const nom = newEmp.trim()
+    if (!nom) return
+    try {
+      await stockApi.saveEmplacement(null, { nom })
+      setNewEmp('')
+      await loadEmplacements()
+    } catch (err) {
+      setError(err.response?.data?.detail ?? "Échec de l'ajout d'emplacement.")
+    }
+  }
+  const removeEmplacement = async (id) => {
+    try { await stockApi.deleteEmplacement(id); await loadEmplacements() }
+    catch (err) { setError(err.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+
+  const empOptions = emplacements.filter((e) => !e.archived)
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Transférer du stock entre emplacements</h3>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p className="gen-hint" style={{ marginTop: 0 }}>
+            Déplacez une quantité d'un emplacement à un autre (ex. dépôt principal →
+            camionnette). Le stock total du produit ne change pas — seule la
+            répartition change.
+          </p>
+
+          <div className="form-group">
+            <label className="form-label">Produit</label>
+            <select className="form-control" value={produitId}
+                    onChange={(e) => onPickProduit(e.target.value)}>
+              <option value="">— Choisir un produit —</option>
+              {rows.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock {p.quantite_stock}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {produitId && (
+            <div className="table-wrap" style={{ marginBottom: '0.75rem' }}>
+              <table className="data-table">
+                <thead><tr><th>Emplacement</th><th>Quantité</th></tr></thead>
+                <tbody>
+                  {breakdown.map((b) => (
+                    <tr key={b.emplacement_id}>
+                      <td>{b.emplacement_nom}{b.is_principal ? ' (principal)' : ''}</td>
+                      <td>{b.quantite}</td>
+                    </tr>
+                  ))}
+                  <tr><td><strong>Total</strong></td><td><strong>{totalVentile(breakdown)}</strong></td></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ flex: '1 1 160px' }}>
+              <label className="form-label">De</label>
+              <select className="form-control" value={source}
+                      onChange={(e) => setSource(e.target.value)}>
+                <option value="">— Source —</option>
+                {empOptions.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: '1 1 160px' }}>
+              <label className="form-label">Vers</label>
+              <select className="form-control" value={destination}
+                      onChange={(e) => setDestination(e.target.value)}>
+                <option value="">— Destination —</option>
+                {empOptions.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: '0 0 110px' }}>
+              <label className="form-label">Quantité</label>
+              <input type="number" min="1" className="form-control" value={quantite}
+                     onChange={(e) => setQuantite(e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Note (optionnel)</label>
+            <input className="form-control" value={note}
+                   onChange={(e) => setNote(e.target.value)}
+                   placeholder="Ex. chargement chantier Casablanca" />
+          </div>
+
+          {error && <div className="form-error-box" role="alert">{error}</div>}
+
+          <div className="modal-footer" style={{ padding: '0.5rem 0', borderTop: 'none' }}>
+            <button type="button" className="btn btn-primary" disabled={saving} onClick={submit}>
+              {saving ? 'Transfert…' : 'Transférer'}
+            </button>
+          </div>
+
+          {transferts.length > 0 && (
+            <>
+              <h4 style={{ marginBottom: '0.25rem' }}>Derniers transferts</h4>
+              <div className="table-wrap" style={{ maxHeight: 180, overflow: 'auto' }}>
+                <table className="data-table">
+                  <thead><tr><th>Produit</th><th>De → Vers</th><th>Qté</th></tr></thead>
+                  <tbody>
+                    {transferts.map((t) => (
+                      <tr key={t.id}>
+                        <td>{t.produit_nom}</td>
+                        <td>{t.source_nom} → {t.destination_nom}</td>
+                        <td>{t.quantite}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {isAdmin && (
+            <details style={{ marginTop: '0.75rem' }}>
+              <summary>Gérer les emplacements</summary>
+              <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 0' }}>
+                <input className="form-control" value={newEmp}
+                       onChange={(e) => setNewEmp(e.target.value)}
+                       placeholder="Nouvel emplacement (ex. Camionnette 2)" />
+                <button type="button" className="btn btn-sm btn-outline" onClick={addEmplacement}>
+                  Ajouter
+                </button>
+              </div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {emplacements.map((e) => (
+                  <li key={e.id} style={{ display: 'flex', justifyContent: 'space-between',
+                                          padding: '0.25rem 0' }}>
+                    <span>{e.nom}{e.is_principal ? ' (principal)' : ''}</span>
+                    {!e.is_principal && (
+                      <button type="button" className="btn btn-sm btn-outline"
+                              onClick={() => removeEmplacement(e.id)}>Supprimer</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       </div>
     </div>
@@ -284,6 +487,7 @@ export default function StockList() {
   const [bulkMsg, setBulkMsg]     = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [showInventaire, setShowInventaire] = useState(false)
+  const [showTransfert, setShowTransfert] = useState(false)
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
@@ -459,6 +663,12 @@ export default function StockList() {
               🧮 Inventaire
             </button>
           )}
+          {canWrite && (
+            <button className="btn btn-sm btn-outline" onClick={() => setShowTransfert(true)}
+                    title="Transférer du stock entre emplacements (dépôt / camionnette)">
+              🚚 Transférer
+            </button>
+          )}
           <button className="btn btn-sm btn-outline" onClick={exportFiltered}>
             ⬇ Exporter Excel
           </button>
@@ -483,6 +693,12 @@ export default function StockList() {
       {showInventaire && (
         <InventaireModal produits={filtered} onClose={() => setShowInventaire(false)}
                          onDone={() => dispatch(fetchProduits())} />
+      )}
+
+      {showTransfert && (
+        <TransfertModal produits={produits} isAdmin={role === 'admin'}
+                        onClose={() => setShowTransfert(false)}
+                        onDone={() => dispatch(fetchProduits())} />
       )}
 
       {archiveNotif && (

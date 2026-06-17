@@ -34,6 +34,17 @@ const stockApi = {
   inventaire: (payload) => api.post('/stock/produits/inventaire/', payload),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
+  // N15 — Stock multi-emplacements (dépôt principal + camionnette …).
+  // Le total produit reste inchangé ; un transfert ne fait que ventiler.
+  getEmplacements: () => api.get('/stock/emplacements/'),
+  saveEmplacement: (id, data) => id
+    ? api.patch(`/stock/emplacements/${id}/`, data)
+    : api.post('/stock/emplacements/', data),
+  deleteEmplacement: (id) => api.delete(`/stock/emplacements/${id}/`),
+  getProduitEmplacements: (id) => api.get(`/stock/produits/${id}/emplacements/`),
+  getTransferts: (params) => api.get('/stock/transferts/', { params }),
+  createTransfert: (data) => api.post('/stock/transferts/', data),
+
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
   getMarques: () => api.get('/stock/marques/'),
   saveMarque: (id, data) => id
