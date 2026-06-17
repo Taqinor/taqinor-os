@@ -16,7 +16,7 @@ RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — this file only
 
 ### Group A — Devis acceptance, wired to Signé, facture & chantier (core unblock)
 
-- [ ] **A1 — "Marquer comme accepté" control on a devis.** Add the status control that's
+- [x] **A1 — "Marquer comme accepté" control on a devis.** Add the status control that's
   currently missing directly on a devis. Accepting records **which option the client chose**
   (Sans batterie / Avec batterie), the **acceptance date**, and **who accepted**, written to
   the devis/lead **Historique** (chatter). Add the small devis fields needed to store these
@@ -160,4 +160,9 @@ RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — this file only
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
-- *(none yet — appended as Group A–D tasks land)*
+- 2026-06-17 — A1: accepting a devis now records the option the client chose
+  (Sans batterie / Avec batterie) alongside the date and accepter name, logged in
+  the devis chatter. Two-option devis require an explicit choice; single-option
+  devis infer it. New additive field `Devis.option_acceptee` (blank by default →
+  behaviour unchanged until used); the « ✓ Accepter » button asks for the option
+  on two-option devis and shows it once accepted. CI green, shipped to main.
