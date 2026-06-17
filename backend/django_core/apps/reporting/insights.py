@@ -467,7 +467,7 @@ def analytics(request):
     rows = [[s['mois'], s['kwc']] for s in kwc_series]
     x = _maybe_xlsx(
         request, 'analytics-kwc.xlsx',
-        ['Mois', 'kWc installés'], rows, 'kWc / mois')
+        ['Mois', 'kWc installés'], rows, 'kWc par mois')
     if x:
         return x
 
