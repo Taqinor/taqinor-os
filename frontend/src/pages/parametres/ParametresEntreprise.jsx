@@ -393,6 +393,8 @@ export default function ParametresEntreprise() {
     remise_max_pct: '',
     commission_mode: 'off',
     commission_valeur: '',
+    referral_enabled: false,
+    referral_reward: '',
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -638,6 +640,8 @@ export default function ParametresEntreprise() {
       remise_max_pct: profile.remise_max_pct ?? '',
       commission_mode: profile.commission_mode ?? 'off',
       commission_valeur: profile.commission_valeur ?? '',
+      referral_enabled: profile.referral_enabled ?? false,
+      referral_reward: profile.referral_reward ?? '',
     })
   }, [profile])
 
@@ -718,6 +722,8 @@ export default function ParametresEntreprise() {
       remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
       commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(form.commission_mode) ? form.commission_mode : 'off',
       commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
+      referral_enabled: !!form.referral_enabled,
+      referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
     }
     dispatch(saveProfile(payload))
   }
@@ -1271,6 +1277,21 @@ export default function ParametresEntreprise() {
                     </option>
                   ))}
                 </select>
+              </Field>
+              <p style={{ margin: '0.9rem 0 0.4rem', fontSize: 12.5, color: '#64748b' }}>
+                Programme de parrainage : récompense par défaut pré-remplie sur
+                chaque nouveau parrainage (écran CRM → Parrainage).
+              </p>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8 }}>
+                <input type="checkbox" name="referral_enabled"
+                       checked={!!form.referral_enabled}
+                       onChange={e => setForm(f => ({ ...f, referral_enabled: e.target.checked }))} />
+                Activer le programme de parrainage
+              </label>
+              <Field label="Récompense de parrainage par défaut (DH)">
+                <input style={inputBase} type="number" min="0" step="any"
+                       name="referral_reward" value={form.referral_reward}
+                       onChange={set} />
               </Field>
             </div>
 

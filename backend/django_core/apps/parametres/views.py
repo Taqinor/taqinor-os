@@ -51,6 +51,8 @@ _PROFILE_AUDIT_FIELDS = {
     'remise_max_pct': 'Limite de remise (%)',
     'commission_mode': 'Commission — mode',
     'commission_valeur': 'Commission — valeur',
+    'referral_enabled': 'Parrainage activé',
+    'referral_reward': 'Parrainage — récompense par défaut',
 }
 
 

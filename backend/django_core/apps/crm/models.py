@@ -454,3 +454,46 @@ class MotifPerte(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class Parrainage(models.Model):
+    """N98 — parrainage : un client (parrain) recommande un prospect (filleul).
+
+    Le filleul peut être un lead non encore converti et/ou un client. La
+    récompense (configurable, défaut en Paramètres) est versée une fois le
+    parrainage « converti ». Additif, borné société.
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        CONVERTI = 'converti', 'Converti'
+        RECOMPENSE_VERSEE = 'recompense_versee', 'Récompense versée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='parrainages')
+    parrain = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='parrainages_donnes')
+    filleul_lead = models.ForeignKey(
+        'crm.Lead', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='parrainages')
+    filleul_client = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='parrainages_recus')
+    filleul_nom = models.CharField(max_length=200, blank=True, default='')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    recompense = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_creation']
+        verbose_name = 'Parrainage'
+
+    def __str__(self):
+        return f'Parrainage #{self.pk} (parrain {self.parrain_id})'

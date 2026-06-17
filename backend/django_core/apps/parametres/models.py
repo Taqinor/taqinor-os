@@ -141,6 +141,11 @@ class CompanyProfile(models.Model):
     commission_mode = models.CharField(max_length=10, default='off')
     commission_valeur = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # N98 — programme de parrainage : activation + récompense par défaut (pré-
+    # remplit un nouveau parrainage). Désactivé par défaut → rien ne change.
+    referral_enabled = models.BooleanField(default=False)
+    referral_reward = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Profil entreprise'
