@@ -92,6 +92,29 @@ class Command(BaseCommand):
         # Create per-company system roles and attach them to the users
         call_command('init_roles')
 
+        # Default activity types + follow-up levels. New companies get these
+        # from RegisterCompanyView; seed_demo creates the company directly and
+        # would otherwise leave the activities/relances screens unusable
+        # (empty type dropdown, no levels). Idempotent.
+        from apps.records.models import ActivityType
+        from apps.ventes.models import FollowupLevel
+        for nom, icone, ordre, delai in [
+            ('Appel', '📞', 10, 0), ('Email', '✉️', 20, 0),
+            ('Réunion', '👥', 30, 0), ('Relance', '📅', 40, 3),
+            ('À faire', '✔️', 50, 0),
+        ]:
+            ActivityType.objects.get_or_create(
+                company=company, nom=nom,
+                defaults={'icone': icone, 'ordre': ordre,
+                          'delai_defaut_jours': delai, 'est_systeme': True})
+        for ordre, nom, delai in [
+            (1, 'Rappel courtois', 7), (2, 'Relance', 15),
+            (3, 'Relance ferme', 30),
+        ]:
+            FollowupLevel.objects.get_or_create(
+                company=company, ordre=ordre,
+                defaults={'nom': nom, 'delai_jours': delai})
+
         # ── Stock ──────────────────────────────────────────────────────
         cat_panneaux = Categorie.objects.create(
             company=company, nom='Panneaux solaires',

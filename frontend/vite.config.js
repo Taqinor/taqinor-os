@@ -4,6 +4,20 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
+// ── E2E (Playwright) ───────────────────────────────────────────────────────
+// Two env-gated hooks let the Playwright suite drive the REAL built app on a
+// single origin (so the httpOnly auth cookies behave exactly as in prod behind
+// nginx) without dragging in the whole docker stack. Neither hook changes a
+// normal `vite build` / `vite preview`:
+//   • VITE_E2E=1   → drop the service worker from the build (the PWA shell-cache
+//                    only adds flakiness to browser tests; the app logic is
+//                    identical with it off).
+//   • E2E_PROXY=1  → `vite preview` reverse-proxies /api/django + /static to the
+//                    Django backend, mirroring nginx's same-origin routing.
+const E2E_BUILD = process.env.VITE_E2E === '1'
+const E2E_PROXY = process.env.E2E_PROXY === '1'
+const E2E_API_TARGET = process.env.E2E_API_TARGET || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -13,6 +27,8 @@ export default defineConfig({
     // SW personnalisé (injectManifest) pour servir une page hors-ligne brandée.
     // On NE met JAMAIS l'API en cache : seul le shell de l'app est précaché.
     VitePWA({
+      // E2E builds ship without the service worker (see note above).
+      disable: E2E_BUILD,
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
@@ -64,5 +80,17 @@ export default defineConfig({
       usePolling: true,
       interval: 500,
     },
+  },
+  // `vite preview` is what the E2E suite serves the built app from. With
+  // E2E_PROXY=1 it forwards the same-origin API paths to Django, so the browser
+  // sees one origin (localhost) exactly like nginx does in production. Without
+  // the flag this block is inert, so a normal `npm run preview` is unchanged.
+  preview: {
+    proxy: E2E_PROXY
+      ? {
+          '/api/django': { target: E2E_API_TARGET, changeOrigin: true },
+          '/static': { target: E2E_API_TARGET, changeOrigin: true },
+        }
+      : undefined,
   },
 })
