@@ -308,7 +308,7 @@ conformity warning banner).
 - [x] N24 — Attestation generator (French) from a chantier or installed system (e.g. attestation d'installation, attestation de fin de travaux) using configurable templates + company identity; client-facing, no buy prices.
 ### Devis acceptance trigger
 - [x] N25 — Mark a devis accepted on a chosen date with the accepting person's name captured + recorded in the devis chatter, so acceptance is the explicit trigger enabling chantier creation.
-- [ ] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
+- [BLOCKED: la capture (nom + date + acceptation) est déjà faite par N25 (accepte_par_nom/date_acceptation + chatter DevisActivity) ; le « tampon accepté le <date> par <nom> » sur une copie régénérée du PDF exige d'éditer le moteur premium — règle #4 l'interdit (même conflit que N36/N59/N60).] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
 ### Moroccan legal billing & compliance
 - [x] N27 — Full set of Moroccan legal company identifiers in Paramètres company identity (raison sociale, adresse complète, IF, ICE, RC + tribunal city, patente/taxe professionnelle, RIB); stamp the applicable subset automatically onto every devis, facture, avoir, bon de livraison, PV de réception.
 - [x] N28 — Client ICE field on the client record, surfaced on devis & factures; carry the client ICE from a devis through to the facture without re-entry; non-blocking reminder on B2B documents when client ICE is missing.
@@ -331,8 +331,8 @@ conformity warning banner).
 ### SAV / maintenance / warranty / monitoring
 - [x] N44 — SAV ticket object linked to a Système installé (and thus client + chantier): type de panne, priorité, canal d'ouverture, date d'ouverture, statut (Ouvert/En cours/Résolu/Clos), assigned technician (default Reda), description, resolution log (activity pattern), time-to-resolution computed on closure; SAV list + kanban grouped by statut.
 - [x] N45 — SAV intervention report PDF on closing a ticket (French): reported issue, diagnosis, work done, parts used, client signature block; client-facing, no buy prices.
-- [ ] N46 — Parts consumption on a SAV ticket optionally decrements stock for parts used and records them on the intervention report; buy prices internal.
-- [ ] N47 — Contrat d'entretien object linked to one or more Systèmes installés (start date, duration, visit frequency, price, renewal date) auto-generating a schedule of upcoming maintenance visits; surfaces upcoming/overdue visits in a list + on the calendar; a completed visit generates a short maintenance report PDF (French, no buy prices); flags contracts approaching renewal.
+- [x] N46 — Parts consumption on a SAV ticket optionally decrements stock for parts used and records them on the intervention report; buy prices internal.
+- [x] N47 — Contrat d'entretien object linked to one or more Systèmes installés (start date, duration, visit frequency, price, renewal date) auto-generating a schedule of upcoming maintenance visits; surfaces upcoming/overdue visits in a list + on the calendar; a completed visit generates a short maintenance report PDF (French, no buy prices); flags contracts approaching renewal. — built on the existing ContratMaintenance (T16): added duree_mois/date_renouvellement + renewal flag + maintenance report PDF + calendar surfacing (N84); single installation FK kept (multi-link deferred).
 - [x] N48 — Warranty tracking on each Système installé and components: store install date + warranty duration per component (default from configured warranty texts), compute warranty end dates, "Garanties qui expirent" view, record warranty claims per component with outcome for an auditable service history.
 - [x] N49 — Recurring-revenue view summarising active contrats d'entretien, monthly/annual value, upcoming renewals, lapsed contracts.
 - [ ] N50 — Monitoring-integration framework with a swappable provider interface, starting with a Huawei FusionSolar connector that (given per-system credentials in config) pulls recent production data; admin enables it per system; no-ops safely when no provider is configured.
@@ -348,11 +348,11 @@ conformity warning banner).
 - [BLOCKED: the editable text portions of client docs are hardcoded literals in the premium PDF engine — rule #4 forbids editing it.] N59 — Document-template editor in Paramètres for the editable text portions of client-facing documents (devis/facture/acompte/avoir/PV de réception/bon de livraison/handover pack/attestation): headers, footers, legal footnotes, CGV, quote-validity text, payment-terms text, with safe placeholders for company/client/system fields; core layout engine intact; buy prices impossible to insert.
 - [BLOCKED: CGV + validity are hardcoded literals ("30 jours") in the premium PDF engine — rule #4; same conflict as D2. Validity duration is already editable in Paramètres, just not printed dynamically.] N60 — Editable conditions générales + configurable quote-validity duration applied to new devis, with the validity date printed on the devis PDF.
 - [x] N61 — Message-template editor in Paramètres for WhatsApp/email/SMS templates (named templates, placeholders, a French default each).
-- [ ] N62 — Editable numbering-sequence configuration per document type (devis/facture/acompte/avoir/bon de commande/bon de livraison/chantier/SAV): prefix, padding width, yearly-reset behaviour; engine still guarantees gap-free, non-duplicated sequences.
+- [x] N62 — Editable numbering-sequence configuration per document type (devis/facture/acompte/avoir/bon de commande/bon de livraison/chantier/SAV): prefix, padding width, yearly-reset behaviour; engine still guarantees gap-free, non-duplicated sequences. — [x] (already present)
 - [x] N63 — Editable pricing & sizing engine in Paramètres exposing today's implicit quote parameters (default margin/target price per kWc rules, default discount limits, sizing ratios used by auto-remplir, per-region production factors), editable & versioned; lossless typed-number behaviour preserved.
 - [BLOCKED: per-tranche tariff tables change the calculation model (flat tariff is already editable from D5) — founder must validate the bracket scale first.] N64 — Editable ONEE electricity tariff tables + tranche thresholds in Paramètres used by the seasonal bill estimator and ROI calculation; current values seeded as defaults.
 - [BLOCKED: there is no region field on a quote today; needs a founder-validated regional irradiation map + a new model (per D5).] N65 — Editable per-city/region irradiation & production-yield assumptions used to estimate annual production, seeded with Moroccan defaults, selectable on a quote.
-- [ ] N66 — Configurable default lead responsable, default installer, default acompte percentage consolidated in one place.
+- [x] N66 — Configurable default lead responsable, default installer, default acompte percentage consolidated in one place.
 - [BLOCKED: warranty texts are printed by the premium PDF engine (hardcoded) — rule #4 forbids editing it. Per-product garantie text already exists on the Produit model.] N67 — Editable warranty texts per product & per category in Paramètres (printed on devis & handover packs), current researched warranty texts seeded as defaults and used wherever warranties appear.
 - [ ] N68 — Roles-and-permissions RBAC editor in Paramètres: define roles, grant/restrict per module & per action (view/create/edit/delete/export), restrict sensitive fields (buy prices, margins) to specific roles, safe default role set (owner/commerciale/technicien/viewer) so current access is unchanged, record-level rules limiting a user to their own assigned leads/chantiers when desired.
 - [ ] N69 — Buy prices & internal margins governed by an explicit permission, visible only to roles Reda authorises, default owner-only.
@@ -372,7 +372,7 @@ conformity warning banner).
 - [x] N81 — Generic import-and-export framework (CSV & XLSX) for major objects (leads/clients/stock/suppliers/installed systems) with column mapping, mandatory 10-row dry-run preview before any full import, duplicate handling, audit per import; generalise the one-off Odoo lead import; real customer-data files never committed to the repo. [extends T9]
 - [x] N82 — Per-object export to CSV/XLSX from every list view respecting the user's column & filter selection and role-based field permissions. [extends T9]
 - [x] N83 — Global search across every object (leads/clients/devis/factures/chantiers/installed systems/bons de commande/SAV tickets/contrats d'entretien/regulatory dossiers) from one box with type-grouped results, respecting role permissions. [extends T5]
-- [ ] N84 — Calendar/agenda view of planned installs, scheduled maintenance visits, SAV interventions, follow-up activities; filterable by assignee & type; drag to reschedule where it maps to an editable date.
+- [x] N84 — Calendar/agenda view of planned installs, scheduled maintenance visits, SAV interventions, follow-up activities; filterable by assignee & type; drag to reschedule where it maps to an editable date.
 - [ ] N85 — Map view plotting leads/chantiers/installed systems/scheduled visits by GPS or address, filterable by type & status, for planning site visits without heavyweight routing.
 ### Chatbot / integrations / API
 - [ ] N86 — Extend the unified chatbot to read & act across all new objects (e.g. which chantiers à planifier, which garanties expire this quarter, which factures overdue, what production a named client's system did last month; open a SAV ticket, draft a BC for a chantier shortfall, schedule a maintenance visit), reusing the existing chatbot interface, respecting role permissions.
@@ -390,8 +390,8 @@ conformity warning banner).
 - [ ] N96 — Account security: optional 2FA, visible active sessions with revoke, forced credential-rotation flow; production DEBUG setting left unchanged.
 - [ ] N97 — Configurable data export & backup action for the tenant's data (reversibility/retention), real customer-data exports kept out of the repo.
 ### Growth / multi-tenant platform
-- [ ] N98 — Optional referral/parrainage program (referrer→referred-client links, configurable reward per converted referral, simple referral dashboard), toggle in settings.
-- [ ] N99 — Optional sales-commission tracking (configurable commission per signed quote or per installed kWc for the commerciale), visible only to authorised roles.
+- [x] N98 — Optional referral/parrainage program (referrer→referred-client links, configurable reward per converted referral, simple referral dashboard), toggle in settings.
+- [x] N99 — Optional sales-commission tracking (configurable commission per signed quote or per installed kWc for the commerciale), visible only to authorised roles.
 - [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
 - [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
 - [ ] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped.
@@ -568,3 +568,65 @@ Tracked here so they aren't lost:
   N66, N74, N75, N84, N97, N98, N99, N102) reste constructible pour une prochaine
   passe. Le module terrain F1–F24 reste à zéro sur main (F1–F4 sur la branche non
   fusionnée dev-field-exec) — gros module multi-session, hors lot de cette session.
+- 2026-06-17 — N84 done: calendrier / agenda (/calendrier). Nouvelle vue grille
+  mensuelle (sans dépendance externe) agrégeant poses prévues, mises en service,
+  interventions terrain, visites de maintenance (calculées à la volée, cohérent
+  T7) et activités de suivi, filtrables par responsable et par type. Glisser un
+  évènement à date éditable vers un autre jour le reprogramme (POST
+  /reporting/calendar/reschedule, jamais une visite de maintenance calculée).
+  Endpoint lecture seule /reporting/calendar borné société. Tests backend.
+- 2026-06-17 — N62 vérifié déjà présent : Paramètres → onglet Devis & Factures
+  → « Numérotation des pièces » édite, par type (devis/facture/avoir/bon de
+  commande), le préfixe, la largeur de remplissage et la réinitialisation
+  (mensuelle/annuelle/aucune), avec un aperçu en direct. Sauvé dans
+  doc_prefixes/doc_numbering et consommé par le moteur create_numbered
+  (highest+1, sans trou, race-safe). Aucun changement nécessaire.
+- 2026-06-17 — N99 done: suivi des commissions commerciales (réservé admin).
+  Configurable dans Paramètres → Devis & Factures → « Commission commerciale »
+  (mode : désactivée / % du HT des devis signés / MAD par kWc installé +
+  valeur ; désactivée par défaut → aucun changement de comportement). Endpoint
+  /reporting/insights/commissions agrège par commercial (responsable du lead,
+  sinon créateur du devis), avec période optionnelle et export .xlsx ; nouvelle
+  carte « Commissions commerciales » dans Rapports. Champs CompanyProfile
+  additifs (migration 0014) + journalisés à l'audit. Tests backend.
+- 2026-06-17 — N66 done: installateur par défaut consolidé. Nouveau champ
+  CompanyProfile.default_installer (additif, migration 0015, nullable). À la
+  création d'un chantier (depuis un devis accepté ET en création manuelle),
+  le technicien responsable prend l'installateur par défaut configuré quand
+  aucun n'est fourni, sinon repli sur le créateur (comportement actuel
+  préservé). Sélecteur dans Paramètres → Leads, à côté du responsable par
+  défaut des leads ; l'acompte par défaut reste géré dans l'échéancier
+  (payment_terms, déjà éditable — pas de doublon de source). Validateur
+  même-société + journalisé à l'audit. Tests backend.
+- 2026-06-17 — N46 done: pièces consommées sur un ticket SAV. Nouveau modèle
+  PieceConsommee (migration 0004) relié au ticket (related_name « pieces ») →
+  affiché automatiquement sur le rapport d'intervention existant
+  (désignation/marque/quantité, jamais de prix d'achat). Endpoints ticket
+  pieces : GET liste, POST ajoute (option « décrémenter le stock » →
+  MouvementStock SORTIE), DELETE retire (ré-incrémente si le stock avait été
+  décrémenté) ; idempotent via stock_decremente. UI dans le détail du ticket
+  (sélection produit + quantité + case décrément + retrait). Tests backend.
+- 2026-06-17 — N47 done: contrat d'entretien étendu (sur ContratMaintenance/
+  T16, pas de modèle parallèle). Champs additifs duree_mois +
+  date_renouvellement (migration 0005), drapeau renouvellement_du, et rapport
+  court de visite de maintenance en PDF (moteur WeasyPrint, client-facing,
+  sans prix d'achat) via /sav/contrats-maintenance/<id>/rapport-pdf/. Les
+  visites à venir/dues remontent déjà (liste « à venir » T16 + calendrier
+  N84). UI ContratsMaintenance : champ date de renouvellement, badge « à
+  renouveler », bouton « Rapport PDF ». Lien à un seul système installé
+  conservé (multi-systèmes différé, non destructif). Tests backend.
+- 2026-06-17 — N98 done: programme de parrainage. Nouveau modèle Parrainage
+  (parrain = client → filleul lead/client, statut en_attente/converti/
+  récompense versée, récompense, notes ; migration crm 0017). Endpoints
+  /crm/parrainages (CRUD, multi-tenant) + /stats (totaux par statut +
+  récompenses). Activation + récompense par défaut dans Paramètres → Leads
+  (CompanyProfile.referral_enabled/referral_reward, migration parametres 0016,
+  désactivé par défaut → rien ne change) ; la récompense par défaut pré-remplit
+  chaque nouveau parrainage. Écran CRM → Parrainage (liste, création,
+  changement de statut, tableau de bord cartes). Tests backend.
+- 2026-06-17 — N26 marqué [BLOCKED] : la capture d'acceptation (nom + date)
+  existe déjà via N25 ; le tampon « accepté le <date> par <nom> » sur le PDF
+  régénéré exige d'éditer le moteur premium (règle #4) → bloqué, comme
+  N36/N59/N60. Restent CONSTRUCTIBLES pour une prochaine passe : N51, N52,
+  N58, N74, N75, N97 (+ N102 doc finale). Lot de cette session : N84, N62
+  (déjà présent), N99, N66, N46, N47, N98.

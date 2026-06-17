@@ -2,10 +2,11 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from .models import Client, Lead, LeadTag, MotifPerte, Canal
+from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
+    ParrainageSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -488,3 +489,55 @@ class CanalViewSet(TenantMixin, viewsets.ModelViewSet):
                            "plutôt que de le supprimer."},
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
+
+
+class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
+
+    À la création, la récompense est pré-remplie depuis Paramètres
+    (referral_reward) quand elle n'est pas fournie. ?stats=1 ajoute un petit
+    tableau de bord (totaux par statut + récompenses)."""
+    queryset = Parrainage.objects.select_related(
+        'parrain', 'filleul_lead', 'filleul_client').all()
+    serializer_class = ParrainageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['stats']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        extra = {'created_by': self.request.user}
+        if serializer.validated_data.get('recompense') in (None, ''):
+            try:
+                from apps.parametres.models import CompanyProfile
+                prof = CompanyProfile.get(company)
+                if prof and prof.referral_reward is not None:
+                    extra['recompense'] = prof.referral_reward
+            except Exception:
+                pass
+        serializer.save(**extra)
+
+    @action(detail=False, methods=['get'], url_path='stats',
+            permission_classes=[IsAnyRole])
+    def stats(self, request):
+        """Tableau de bord parrainage : compte par statut + récompenses."""
+        from decimal import Decimal
+        qs = self.get_queryset()
+        total = qs.count()
+        par_statut = {}
+        rec_total = Decimal('0')
+        rec_versee = Decimal('0')
+        for p in qs:
+            par_statut[p.statut] = par_statut.get(p.statut, 0) + 1
+            if p.recompense:
+                rec_total += p.recompense
+                if p.statut == Parrainage.Statut.RECOMPENSE_VERSEE:
+                    rec_versee += p.recompense
+        return Response({
+            'total': total,
+            'par_statut': par_statut,
+            'recompenses_total': str(rec_total),
+            'recompenses_versees': str(rec_versee),
+        })

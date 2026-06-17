@@ -114,6 +114,39 @@ class TestCreateFromDevis(TestCase):
         self.assertTrue(any(a.kind == 'creation' for a in acts))
 
 
+class TestDefaultInstaller(TestCase):
+    """N66 — installateur par défaut configuré en Paramètres."""
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='cht_creator', password='x', role_legacy='responsable',
+            company=self.company)
+        self.installer = User.objects.create_user(
+            username='cht_installer', password='x', role_legacy='normal',
+            company=self.company)
+        self.api = auth(self.user)
+
+    def test_default_installer_used_when_configured(self):
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(self.company)
+        prof.default_installer = self.installer
+        prof.save(update_fields=['default_installer'])
+        devis, _, _ = make_accepted_devis(self.company)
+        r = self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['technicien_responsable'], self.installer.id)
+
+    def test_falls_back_to_creator_without_default(self):
+        devis, _, _ = make_accepted_devis(self.company)
+        r = self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['technicien_responsable'], self.user.id)
+
+
 class TestStatusAndMES(TestCase):
     def setUp(self):
         self.company = make_company()

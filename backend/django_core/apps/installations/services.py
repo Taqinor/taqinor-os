@@ -11,6 +11,23 @@ from .models import (
     Installation, ChecklistEtapeModele, ChantierChecklistItem,
 )
 
+
+def default_installer_for(company):
+    """Installateur (technicien) par défaut configuré pour la société (N66).
+
+    Renvoie l'utilisateur paramétré dans CompanyProfile.default_installer, ou
+    None si rien n'est configuré (comportement actuel : repli sur le créateur).
+    """
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        return prof.default_installer if prof else None
+    except Exception:
+        return None
+
+
 # Étapes de checklist d'exécution par défaut (N4). `capture_serie` marque les
 # étapes où l'on relève des n° de série (N9). Toutes « système » (protégées).
 DEFAULT_CHECKLIST_ETAPES = [
@@ -131,10 +148,12 @@ def create_installation_from_devis(devis, user, company):
     regime_suggere = suggest_for_company(
         _puissance_from(devis, lead), company)
 
-    # Installateur par défaut : le créateur du chantier (à défaut, None).
-    # « Signé » est le 1er jalon de l'entonnoir N1 ; la date de signature
-    # reprend la date d'acceptation du devis quand elle existe.
+    # Installateur par défaut (N66) : celui configuré en Paramètres, sinon le
+    # créateur du chantier (comportement actuel). « Signé » est le 1er jalon de
+    # l'entonnoir N1 ; la date de signature reprend la date d'acceptation du
+    # devis quand elle existe.
     date_signature = getattr(devis, 'date_acceptation', None) or None
+    installer = default_installer_for(company) or user
 
     def _create(ref):
         return Installation.objects.create(
@@ -155,7 +174,7 @@ def create_installation_from_devis(devis, user, company):
             statut=Installation.Statut.SIGNE,
             date_signature=date_signature,
             bom=_freeze_bom(devis),
-            technicien_responsable=user,
+            technicien_responsable=installer,
             created_by=user,
         )
 

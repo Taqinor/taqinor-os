@@ -63,6 +63,7 @@ export function Component() {
   const [audit, setAudit] = useState(null)
   const [jobCosting, setJobCosting] = useState(null)
   const [analytics, setAnalytics] = useState(null)
+  const [commissions, setCommissions] = useState(null)
 
   useEffect(() => {
     reportingApi.salesReport().then(r => setSales(r.data)).catch(() => {})
@@ -73,6 +74,8 @@ export function Component() {
     // Réservé owner/responsable — un refus (403) laisse simplement la carte vide.
     reportingApi.jobCosting().then(r => setJobCosting(r.data)).catch(() => {})
     reportingApi.analytics().then(r => setAnalytics(r.data)).catch(() => {})
+    // N99 — réservé admin ; un refus (403) laisse la carte vide.
+    reportingApi.commissions().then(r => setCommissions(r.data)).catch(() => {})
   }, [])
 
   const exportInsight = (slug) => () => reportingApi.insightXlsx(slug)
@@ -200,6 +203,30 @@ export function Component() {
             ) : (
               <p style={{ color: '#94a3b8', fontSize: 13 }}>Aucune donnée.</p>
             )}
+          </>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Commissions commerciales"
+                   note="(interne — visible admin ; configuré dans Paramètres)"
+                   onExport={commissions?.enabled
+                     ? exportInsight('commissions') : undefined}>
+        {commissions && !commissions.enabled && (
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>
+            Commissions désactivées. Activez-les dans Paramètres → Devis &
+            Factures → Commission commerciale.
+          </p>
+        )}
+        {commissions && commissions.enabled && (
+          <>
+            <p style={{ fontSize: 13 }}>
+              Total commissions : <strong>{fmt(commissions.total)} DH</strong>
+            </p>
+            <Table headers={['Commercial', 'Devis signés',
+                             commissions.base_label, 'Commission (DH)']}
+                   rows={commissions.rows.map(r => [
+                     r.commercial, r.count, fmt(r.base), fmt(r.commission),
+                   ])} />
           </>
         )}
       </InsightCard>

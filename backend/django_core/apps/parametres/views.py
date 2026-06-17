@@ -34,6 +34,7 @@ _PROFILE_AUDIT_FIELDS = {
     'banque': 'Banque',
     'couleur_principale': 'Couleur principale',
     'responsable_defaut_leads': 'Responsable par défaut des leads',
+    'default_installer': 'Installateur par défaut',
     'payment_terms': 'Échéancier de paiement',
     'quote_validity_days': 'Validité du devis (jours)',
     'agricole_pump_hours': 'Heures de pompage par défaut',
@@ -48,6 +49,10 @@ _PROFILE_AUDIT_FIELDS = {
     'panneaux_par_900mad': 'Panneaux par tranche de 900 MAD',
     'prix_cible_kwc_defaut': 'Prix cible /kWc par défaut',
     'remise_max_pct': 'Limite de remise (%)',
+    'commission_mode': 'Commission — mode',
+    'commission_valeur': 'Commission — valeur',
+    'referral_enabled': 'Parrainage activé',
+    'referral_reward': 'Parrainage — récompense par défaut',
 }
 
 

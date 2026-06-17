@@ -166,9 +166,18 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
-        serializer.instance.created_by = self.request.user
-        serializer.instance.save(update_fields=['created_by'])
-        activity.log_creation(serializer.instance, self.request.user)
+        inst = serializer.instance
+        inst.created_by = self.request.user
+        fields = ['created_by']
+        # N66 — installateur par défaut configuré, si aucun n'a été fourni.
+        if not inst.technicien_responsable_id:
+            from .services import default_installer_for
+            default = default_installer_for(inst.company)
+            if default is not None:
+                inst.technicien_responsable = default
+                fields.append('technicien_responsable')
+        inst.save(update_fields=fields)
+        activity.log_creation(inst, self.request.user)
 
     def perform_update(self, serializer):
         old = Installation.objects.get(pk=serializer.instance.pk)

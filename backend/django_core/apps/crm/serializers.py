@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Client, Lead, LeadActivity
+from .models import Client, Lead, LeadActivity, Parrainage
 from .devis_auto import champs_manquants, message_manquants
 
 
@@ -196,4 +196,42 @@ class CanalSerializer(serializers.ModelSerializer):
         if self.instance and self.instance.protege and value != self.instance.cle:
             raise serializers.ValidationError(
                 "La clé d'un canal protégé ne peut pas être modifiée.")
+        return value
+
+
+class ParrainageSerializer(serializers.ModelSerializer):
+    """N98 — parrainage. Société posée côté serveur ; parrain/filleul vérifiés
+    appartenir à la même société (multi-tenant)."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    parrain_nom = serializers.CharField(
+        source='parrain.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Parrainage
+        fields = [
+            'id', 'company', 'parrain', 'parrain_nom', 'filleul_lead',
+            'filleul_client', 'filleul_nom', 'statut', 'statut_display',
+            'recompense', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def _same_company(self, obj):
+        req = self.context.get('request')
+        return not (obj and req and obj.company_id != req.user.company_id)
+
+    def validate_parrain(self, value):
+        if not self._same_company(value):
+            raise serializers.ValidationError('Client inconnu.')
+        return value
+
+    def validate_filleul_client(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Client inconnu.')
+        return value
+
+    def validate_filleul_lead(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Lead inconnu.')
         return value

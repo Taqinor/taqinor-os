@@ -53,6 +53,14 @@ const crmApi = {
   getCanaux: () => api.get('/crm/canaux/'),
   saveCanal: (id, data) => id ? api.patch(`/crm/canaux/${id}/`, data) : api.post('/crm/canaux/', data),
   deleteCanal: (id) => api.delete(`/crm/canaux/${id}/`),
+
+  // N98 — parrainage / programme de recommandation.
+  getParrainages: (params) => api.get('/crm/parrainages/', { params }),
+  saveParrainage: (id, data) => id
+    ? api.patch(`/crm/parrainages/${id}/`, data)
+    : api.post('/crm/parrainages/', data),
+  deleteParrainage: (id) => api.delete(`/crm/parrainages/${id}/`),
+  parrainageStats: () => api.get('/crm/parrainages/stats/'),
 }
 
 export default crmApi

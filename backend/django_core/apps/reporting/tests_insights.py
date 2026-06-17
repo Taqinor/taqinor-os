@@ -19,6 +19,7 @@ from apps.installations.models import Installation
 from apps.sav.models import ContratMaintenance
 from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
 from apps.stock.models import Produit
+from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
 
@@ -198,3 +199,53 @@ class TestAnalytics(InsightsBase):
         x = self.api.get(f'{BASE}/analytics/?export=xlsx')
         body = b''.join(x.streaming_content) if x.streaming else x.content
         self.assertTrue(body.startswith(b'PK'))
+
+
+class TestCommissions(InsightsBase):
+    def _set_commission(self, mode, valeur):
+        prof = CompanyProfile.get(self.company)
+        prof.commission_mode = mode
+        prof.commission_valeur = valeur
+        prof.save(update_fields=['commission_mode', 'commission_valeur'])
+
+    def test_disabled_by_default(self):
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['enabled'])
+
+    def test_pct_devis_per_commercial(self):
+        self._set_commission('pct_devis', Decimal('5'))
+        commercial = User.objects.create_user(
+            username='comm1', password='x', role_legacy='responsable',
+            company=self.company)
+        client = Client.objects.create(company=self.company, nom='C1')
+        lead = Lead.objects.create(
+            company=self.company, nom='L1', stage='NEW', owner=commercial)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='CM-1',
+            prix_vente=Decimal('1000'), quantite_stock=0)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-CM1', client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE,
+            date_acceptation=date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='P',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['enabled'])
+        self.assertEqual(len(resp.data['rows']), 1)
+        row = resp.data['rows'][0]
+        self.assertEqual(row['commercial'], 'comm1')
+        # 5 % de 10×1000 = 500.
+        self.assertEqual(Decimal(row['commission']), Decimal('500'))
+
+    def test_admin_gated(self):
+        resp_user = User.objects.create_user(
+            username='cm_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
+        resp = api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 403)

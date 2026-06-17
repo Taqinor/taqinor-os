@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 
-from .models import Equipement, Ticket, TicketActivity
+from .models import Equipement, Ticket, TicketActivity, PieceConsommee
 
 # Fenêtre « garantie expirant bientôt » (jours).
 EXPIRING_SOON_DAYS = 90
@@ -66,6 +66,24 @@ class TicketActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+class PieceConsommeeSerializer(serializers.ModelSerializer):
+    """N46 — pièce consommée (lecture). Aucun prix d'achat exposé côté client."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True, default=None)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
+
+    class Meta:
+        model = PieceConsommee
+        fields = [
+            'id', 'produit', 'produit_nom', 'produit_marque', 'produit_sku',
+            'quantite', 'stock_decremente', 'date_creation',
+        ]
+        read_only_fields = ['stock_decremente', 'date_creation']
 
 
 class TicketInterventionSerializer(serializers.Serializer):

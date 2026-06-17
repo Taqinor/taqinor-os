@@ -60,6 +60,16 @@ class CompanyProfile(models.Model):
         blank=True,
         related_name='+',
     )
+    # N66 — installateur (technicien) assigné par défaut aux NOUVEAUX chantiers
+    # quand aucun n'est choisi. NULL = comportement actuel (le créateur du
+    # chantier en est le technicien responsable). Additif.
+    default_installer = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
 
     # ── Paramètres métier éditables (2026-06) — ADDITIFS ──
     # Chacun a pour défaut la valeur codée en dur aujourd'hui : tant que le
@@ -123,6 +133,19 @@ class CompanyProfile(models.Model):
         max_digits=8, decimal_places=2, default=Decimal('11'))
     seuil_regime_anre_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('1000'))
+    # ── Commission commerciale (N99) — additif, désactivé par défaut. Mode
+    # 'off' (aucune commission, comportement inchangé), 'pct_devis' (% du HT
+    # des devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus
+    # des devis signés). `commission_valeur` porte le % ou le montant/kWc selon
+    # le mode. Donnée sensible : exposée aux seuls rôles autorisés (admin).
+    commission_mode = models.CharField(max_length=10, default='off')
+    commission_valeur = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    # N98 — programme de parrainage : activation + récompense par défaut (pré-
+    # remplit un nouveau parrainage). Désactivé par défaut → rien ne change.
+    referral_enabled = models.BooleanField(default=False)
+    referral_reward = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Profil entreprise'

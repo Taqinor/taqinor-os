@@ -4,6 +4,9 @@ Aucun planificateur : on matérialise les visites dues quand l'utilisateur
 consulte la liste « à venir » / déclenche la génération. Idempotent — on avance
 `derniere_visite` à la date de la visite générée pour ne pas dupliquer.
 """
+from datetime import date as _date
+
+from django.http import HttpResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -12,6 +15,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 from .models import ContratMaintenance, Ticket
+from .pdf import rapport_maintenance_pdf
 from .serializers_maintenance import ContratMaintenanceSerializer
 
 
@@ -69,3 +73,22 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         n = generer_visites_dues(request.user.company, request.user)
         return Response({'ok': True, 'tickets_generes': n},
                         status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='rapport-pdf',
+            permission_classes=[IsResponsableOrAdmin])
+    def rapport_pdf(self, request, pk=None):
+        """N47 — rapport court de visite de maintenance (PDF, client-facing).
+
+        Sans prix d'achat. ?date=AAAA-MM-JJ pour la date de visite (défaut :
+        dernière visite enregistrée)."""
+        contrat = self.get_object()
+        raw = (request.query_params.get('date') or '').strip()
+        try:
+            visite = _date.fromisoformat(raw) if raw else None
+        except ValueError:
+            visite = None
+        pdf_bytes = rapport_maintenance_pdf(contrat, visite)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="maintenance-contrat-{contrat.pk}.pdf"')
+        return resp

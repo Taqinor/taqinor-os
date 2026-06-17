@@ -20,6 +20,9 @@ const reportingApi = {
   auditLog: (params) => api.get('/reporting/insights/audit-log/', { params }),
   jobCosting: () => api.get('/reporting/insights/job-costing/'),
   analytics: () => api.get('/reporting/insights/analytics/'),
+  // N99 — commissions commerciales (admin). Période optionnelle ?from=&to=.
+  commissions: (params) =>
+    api.get('/reporting/insights/commissions/', { params }),
   // Export xlsx d'un insight donné (recurring-revenue, audit-log, analytics).
   insightXlsx: (slug, params) =>
     api.get(`/reporting/insights/${slug}/`,
@@ -27,6 +30,10 @@ const reportingApi = {
   // N32 — Archive documentaire (lecture seule) par client / par chantier.
   getArchiveClient: (id) => api.get(`/reporting/archive/client/${id}/`),
   getArchiveChantier: (id) => api.get(`/reporting/archive/chantier/${id}/`),
+  // N84 — Calendrier / agenda. Fenêtre ?from=&to=, filtres ?assignee=&types=.
+  getCalendar: (params) => api.get('/reporting/calendar/', { params }),
+  rescheduleCalendar: (payload) =>
+    api.post('/reporting/calendar/reschedule/', payload),
 }
 
 export default reportingApi

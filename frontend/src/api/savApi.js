@@ -21,6 +21,11 @@ const savApi = {
   reactiverTicket: (id) => api.post(`/sav/tickets/${id}/reactiver/`),
   // N45 — rapport d'intervention (PDF régénéré à la demande, sans prix d'achat).
   rapportPdf: (id) => api.get(`/sav/tickets/${id}/rapport-pdf/`, { responseType: 'blob' }),
+  // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).
+  getTicketPieces: (id) => api.get(`/sav/tickets/${id}/pieces/`),
+  addTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces/`, body),
+  removeTicketPiece: (id, pieceId) =>
+    api.delete(`/sav/tickets/${id}/pieces/${pieceId}/`),
 
   // T16 — contrats de maintenance.
   getContrats: (params) => api.get('/sav/contrats-maintenance/', { params }),
@@ -29,6 +34,10 @@ const savApi = {
     : api.post('/sav/contrats-maintenance/', data),
   deleteContrat: (id) => api.delete(`/sav/contrats-maintenance/${id}/`),
   genererVisitesDues: () => api.post('/sav/contrats-maintenance/generer-dus/'),
+  // N47 — rapport court de visite de maintenance (PDF, sans prix d'achat).
+  maintenanceRapportPdf: (id) =>
+    api.get(`/sav/contrats-maintenance/${id}/rapport-pdf/`,
+      { responseType: 'blob' }),
 }
 
 export default savApi

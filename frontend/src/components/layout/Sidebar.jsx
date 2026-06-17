@@ -67,8 +67,10 @@ const NAV_SECTIONS = [
     label: 'CRM',
     items: [
       { to: '/activites',            label: 'Mes activités',    icon: I.agenda,       roles: ['normal','responsable','admin'] },
+      { to: '/calendrier',           label: 'Calendrier',       icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          icon: I.clients,      roles: ['normal','responsable','admin'] },
       { to: '/crm/leads',            label: 'Leads',            icon: I.leads,        roles: ['normal','responsable','admin'] },
+      { to: '/crm/parrainage',       label: 'Parrainage',       icon: I.clients,      roles: ['normal','responsable','admin'] },
     ],
   },
   {

@@ -374,6 +374,7 @@ export default function ParametresEntreprise() {
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
     responsable_defaut_leads: '',
+    default_installer: '',
     payment_terms: DEFAULT_PAYMENT_TERMS,
     quote_validity_days: 30,
     agricole_pump_hours: 7,
@@ -390,6 +391,10 @@ export default function ParametresEntreprise() {
     panneaux_par_900mad: 8,
     prix_cible_kwc_defaut: '',
     remise_max_pct: '',
+    commission_mode: 'off',
+    commission_valeur: '',
+    referral_enabled: false,
+    referral_reward: '',
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -614,6 +619,7 @@ export default function ParametresEntreprise() {
       cnss:              profile.cnss              ?? '',
       couleur_principale: profile.couleur_principale ?? '#1d4ed8',
       responsable_defaut_leads: profile.responsable_defaut_leads ?? '',
+      default_installer: profile.default_installer ?? '',
       payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}) },
       quote_validity_days: profile.quote_validity_days ?? 30,
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
@@ -632,6 +638,10 @@ export default function ParametresEntreprise() {
       panneaux_par_900mad: profile.panneaux_par_900mad ?? 8,
       prix_cible_kwc_defaut: profile.prix_cible_kwc_defaut ?? '',
       remise_max_pct: profile.remise_max_pct ?? '',
+      commission_mode: profile.commission_mode ?? 'off',
+      commission_valeur: profile.commission_valeur ?? '',
+      referral_enabled: profile.referral_enabled ?? false,
+      referral_reward: profile.referral_reward ?? '',
     })
   }, [profile])
 
@@ -693,6 +703,8 @@ export default function ParametresEntreprise() {
       ...form,
       responsable_defaut_leads: form.responsable_defaut_leads === ''
         ? null : form.responsable_defaut_leads,
+      default_installer: form.default_installer === ''
+        ? null : form.default_installer,
       payment_terms: pt,
       doc_numbering: dn,
       quote_validity_days: Number(form.quote_validity_days) || 30,
@@ -708,6 +720,10 @@ export default function ParametresEntreprise() {
       panneaux_par_900mad: Number(form.panneaux_par_900mad) || 8,
       prix_cible_kwc_defaut: form.prix_cible_kwc_defaut === '' ? null : Number(form.prix_cible_kwc_defaut),
       remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
+      commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(form.commission_mode) ? form.commission_mode : 'off',
+      commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
+      referral_enabled: !!form.referral_enabled,
+      referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
     }
     dispatch(saveProfile(payload))
   }
@@ -1246,6 +1262,37 @@ export default function ParametresEntreprise() {
                   ))}
                 </select>
               </Field>
+              <p style={{ margin: '0.9rem 0 0.4rem', fontSize: 12.5, color: '#64748b' }}>
+                Installateur (technicien) assigné automatiquement aux nouveaux
+                chantiers quand aucun n'est choisi. Laisser vide = le créateur
+                du chantier (comportement actuel).
+              </p>
+              <Field label="Installateur par défaut des nouveaux chantiers">
+                <select style={inputBase} name="default_installer"
+                        value={form.default_installer ?? ''} onChange={set}>
+                  <option value="">— Aucun (créateur du chantier) —</option>
+                  {assignables.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.username}{u.poste ? ` — ${u.poste}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <p style={{ margin: '0.9rem 0 0.4rem', fontSize: 12.5, color: '#64748b' }}>
+                Programme de parrainage : récompense par défaut pré-remplie sur
+                chaque nouveau parrainage (écran CRM → Parrainage).
+              </p>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8 }}>
+                <input type="checkbox" name="referral_enabled"
+                       checked={!!form.referral_enabled}
+                       onChange={e => setForm(f => ({ ...f, referral_enabled: e.target.checked }))} />
+                Activer le programme de parrainage
+              </label>
+              <Field label="Récompense de parrainage par défaut (DH)">
+                <input style={inputBase} type="number" min="0" step="any"
+                       name="referral_reward" value={form.referral_reward}
+                       onChange={set} />
+              </Field>
             </div>
 
             {cardTagsMotifs}
@@ -1340,6 +1387,31 @@ export default function ParametresEntreprise() {
                 « Annuelle » chaque année, « Continue » ne repart jamais. La
                 numérotation reste sans trou et sans collision.
               </p>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '1rem 0 0.4rem' }}>
+                Commission commerciale
+              </div>
+              <p style={{ margin: '0 0 0.7rem', fontSize: 11.5, color: '#94a3b8' }}>
+                Désactivée par défaut. Calculée sur les devis signés, par
+                commercial (responsable du lead, sinon créateur). Visible des
+                seuls admins dans Rapports → Commissions commerciales.
+              </p>
+              <div className="pe-grid-2">
+                <Field label="Mode">
+                  <select style={inputBase} name="commission_mode"
+                          value={form.commission_mode} onChange={set}>
+                    <option value="off">Désactivée</option>
+                    <option value="pct_devis">% du HT des devis signés</option>
+                    <option value="par_kwc">MAD par kWc installé</option>
+                  </select>
+                </Field>
+                <Field label={form.commission_mode === 'par_kwc'
+                  ? 'Valeur (MAD/kWc)' : 'Valeur (%)'}>
+                  <input style={inputBase} type="number" min="0" step="any"
+                         name="commission_valeur" value={form.commission_valeur}
+                         onChange={set}
+                         disabled={form.commission_mode === 'off'} />
+                </Field>
+              </div>
             </div>
 
             {/* TVA / Taxes (réglage légal/comptable) */}

@@ -34,6 +34,8 @@ const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
 const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
+const CalendarPage = lazy(() => import('../pages/CalendarPage'))
+const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
@@ -80,6 +82,8 @@ const router = createBrowserRouter([
   { path: '/crm', loader: authLoader, element: <WithLayout><ClientList /></WithLayout> },
   { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadsPage /></WithLayout> },
   { path: '/activites', loader: authLoader, element: <WithLayout><MesActivitesPage /></WithLayout> },
+  { path: '/calendrier', loader: authLoader, element: <WithLayout><CalendarPage /></WithLayout> },
+  { path: '/crm/parrainage', loader: authLoader, element: <WithLayout><ParrainagePage /></WithLayout> },
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },

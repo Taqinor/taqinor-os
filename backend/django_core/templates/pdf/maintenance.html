@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 13px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 14px 16px; width: 48%; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+    .meta-row { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+    .meta-item { background: #f0fdf4; border-radius: 4px; padding: 8px 14px; min-width: 110px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+    .section { margin-bottom: 20px; }
+    .section-title { font-size: 13px; font-weight: bold; color: {{ couleur_principale }}; border-bottom: 2px solid {{ couleur_principale }}; padding-bottom: 4px; margin-bottom: 8px; }
+    .section-body { font-size: 12px; line-height: 1.8; color: #444; white-space: pre-wrap; }
+    .check-line { border-bottom: 1px dashed #cbd5e1; height: 26px; margin-bottom: 4px; }
+    .signature-section { display: flex; justify-content: space-between; margin-top: 50px; gap: 30px; }
+    .signature-block { width: 45%; }
+    .signature-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .signature-box { border: 1px solid #cbd5e1; border-radius: 6px; height: 90px; }
+    .signature-name { margin-top: 6px; font-size: 11px; color: #555; }
+    .footer { margin-top: 36px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">RAPPORT DE MAINTENANCE</div>
+      <div class="doc-ref">Contrat n° {{ contrat.pk }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="partie-block">
+      <div class="partie-label">Prestataire</div>
+      <div class="partie-nom">{{ entreprise_nom }}</div>
+      <div class="partie-detail">{% if entreprise_adresse %}{{ entreprise_adresse }}{% endif %}</div>
+    </div>
+    <div class="partie-block">
+      <div class="partie-label">Client</div>
+      <div class="partie-nom">{{ client_nom }}</div>
+      <div class="partie-detail">
+        {% if client and client.telephone %}{{ client.telephone }}<br />{% endif %}
+        {% if client and client.email %}{{ client.email }}<br />{% endif %}
+        {% if installation_reference %}Système : {{ installation_reference }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Date de visite</strong>
+      <span>{{ visite_date.strftime('%d/%m/%Y') if visite_date else '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Périodicité</strong>
+      <span>{{ periodicite_label }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Prochaine visite</strong>
+      <span>{{ prochaine_visite.strftime('%d/%m/%Y') if prochaine_visite else '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Renouvellement</strong>
+      <span>{{ date_renouvellement.strftime('%d/%m/%Y') if date_renouvellement else '—' }}</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Travaux de maintenance réalisés</div>
+    <div class="check-line"></div>
+    <div class="check-line"></div>
+    <div class="check-line"></div>
+    <div class="check-line"></div>
+  </div>
+
+  {% if contrat.notes %}
+  <div class="section">
+    <div class="section-title">Notes du contrat</div>
+    <div class="section-body">{{ contrat.notes }}</div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="section-title">Observations</div>
+    <div class="check-line"></div>
+    <div class="check-line"></div>
+  </div>
+
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">Le technicien</div>
+      <div class="signature-box"></div>
+    </div>
+    <div class="signature-block">
+      <div class="signature-label">Le client (bon pour accord)</div>
+      <div class="signature-box"></div>
+      <div class="signature-name">{{ client_nom }}</div>
+    </div>
+  </div>
+
+  <div class="footer">{{ entreprise_nom }}{% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}</div>
+
+</div>
+</body>
+</html>
