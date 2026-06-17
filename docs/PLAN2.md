@@ -103,6 +103,59 @@ RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — this file only
   typed-number behaviour (form `noValidate`, inputs `step="any"` — guarded by tests). Keep
   `solar.js` classification keywords aligned with `quote_engine/builder.py`.
 
+### Group E — End-to-end (E2E) browser test suite covering every screen flow
+
+- [ ] **E1 — Playwright + required CI job.** Add Playwright to the frontend and a new
+  CI job that runs the E2E specs headless against a throwaway test database with MinIO
+  (reuse the existing test stack; never touch production data). Make this E2E job
+  **required for merge**. NOTE for whoever executes this later: this introduces
+  Playwright (a new dev/test dependency) and a new CI job — Reda has already approved
+  both, so proceed without pausing to re-ask.
+
+- [ ] **E2 — Login is the app entry point.** A valid login lands in the app; an
+  invalid login is rejected.
+
+- [ ] **E3 — Lead lifecycle.** Create a lead, confirm it appears in the list and on
+  the kanban, open it.
+
+- [ ] **E4 — Devis from a lead.** From a lead, generate a devis (automatic and
+  modifiable), confirm the PDF preview actually renders (no broken-file icon), the new
+  devis appears in that lead's devis list, and download works.
+
+- [ ] **E5 — Inline bill editing.** Inline bill editing on a lead saves and reflects
+  correctly.
+
+- [ ] **E6 — Lead reassignment.** Reassignment works both from the lead view and from
+  a kanban card.
+
+- [ ] **E7 — Stage transitions.** Moving a lead between stages works, including into
+  Signé.
+
+- [ ] **E8 — Employee management.** Create/edit an employee, upload a photo, and reach
+  the password-reset action.
+
+- [ ] **E9 — Typed activities.** Log an activity and see it in the cockpit view.
+
+- [ ] **E10 — File attachments.** Attach a file to a record, confirm the upload
+  succeeds and the file can be opened/downloaded afterward.
+
+- [ ] **E11 — Duplicate detection.** The doublons view renders and merging a cluster
+  completes.
+
+- [ ] **E12 — Credit notes (avoirs).** An avoir can be created from a posted invoice.
+
+- [ ] **E13 — Payment follow-ups & receivables.** Payment follow-ups, aged
+  receivables, and a customer statement all render.
+
+- [ ] **E14 — Paramètres.** Paramètres pages load, and changing a setting saves and is
+  reflected.
+
+- [ ] **E15 — Cross-cutting health.** Assert no broken images and no uncaught console
+  errors on the key pages.
+
+- [ ] **E16 — Mobile pass.** Run a subset at iPhone viewport width asserting no
+  horizontal overflow and that the full navigation menu is reachable.
+
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
