@@ -476,7 +476,7 @@ the report, note that two optional enhancements remain for owner sign-off:** a p
 founder-story paragraph and naming the founder's industry background — **neither added without
 approval**.
 
-### W14 — Reframe réalisations away from a small project count (recency framing) — [ ]
+### W14 — Reframe réalisations away from a small project count (recency framing) — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -776,3 +776,14 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   TWO OPTIONAL enhancements remain for owner sign-off (NOT added without approval): a personal
   founder-story paragraph, and naming the founder's industry background. Auto-deploys via Cloudflare
   on push to main. URL to open: `/à-propos`.
+- 2026-06-17 — W14 done (recency reframing): the réalisations page no longer reads as a fixed total.
+  `/realisations` heading is now « Nos dernières réalisations » (kicker « Réalisations récentes »)
+  and LEADS with the substantial dimensions already true — 43,48 kWc installés · 3 villes (calculées
+  depuis `realisations.ts`, jamais en dur) · chantiers visitables sur demande. The homepage evidence
+  gallery heading changed from « Nos installations, telles quelles » to « Nos dernières réalisations »
+  (kicker « Réalisations récentes »). All 5 case studies kept (none removed). Sitewide sweep for
+  « N projets/installations/chantiers/réalisations » phrasing found nothing that frames the work as a
+  small fixed total: the only count is the VideoChantier label « 30 secondes de chantier — 3
+  installations réelles », which is scoped to the 30-second montage's content (3 sites filmed), not a
+  portfolio total, so left accurate. 584 web tests green. Public/indexed pages only; lead form
+  untouched. URLs to open: `/realisations` and `/` (gallery section).

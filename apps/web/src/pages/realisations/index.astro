@@ -14,6 +14,9 @@ import { REALISATIONS } from '../../lib/realisations';
 
 const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
 const totalLabel = total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// On met en avant des dimensions substantielles (puissance, villes, chantiers
+// visitables) plutôt qu'un total fixe de projets (cadrage W14, « récence »).
+const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 ---
 
 <Layout
@@ -29,13 +32,27 @@ const totalLabel = total.toLocaleString('fr-FR', { minimumFractionDigits: 2, max
 
     <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Pièces du dossier · {totalLabel} installés</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Nos installations, telles quelles</h1>
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Réalisations récentes</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Nos dernières réalisations</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Des chantiers réels, à voir sur demande — Casablanca, El Jadida, Nouaceur. Chaque étude
           de cas reprend la puissance posée, le matériel et, quand elle est mesurée, la production
           suivie sur Deye Cloud. Rien d'ajouté, rien d'effacé.
         </p>
+        <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
+          <div>
+            <dt class="tech-label text-lune-faint">Puissance installée</dt>
+            <dd class="fig lum text-3xl">{totalLabel}</dd>
+          </div>
+          <div>
+            <dt class="tech-label text-lune-faint">Villes</dt>
+            <dd class="fig lum text-3xl">{villesCount}</dd>
+          </div>
+          <div>
+            <dt class="tech-label text-lune-faint">Chantiers</dt>
+            <dd class="font-display text-2xl font-bold text-white">visitables sur demande</dd>
+          </div>
+        </dl>
       </div>
     </section>
 
