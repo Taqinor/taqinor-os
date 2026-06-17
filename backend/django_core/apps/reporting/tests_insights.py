@@ -116,7 +116,7 @@ class TestJobCosting(InsightsBase):
         LigneDevis.objects.create(
             devis=devis, produit=produit, designation='Panneau',
             quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
-        chantier = Installation.objects.create(
+        Installation.objects.create(
             company=self.company, reference='CH-J1', client=client,
             devis=devis, statut=Installation.Statut.RECEPTIONNE,
             date_reception=date.today(),
