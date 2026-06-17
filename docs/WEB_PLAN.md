@@ -663,6 +663,101 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
 
 ---
 
+### W22 — Estimator brain v6: TRUE sloped-plane pitched-roof render (flush, no racks) + full optimizer matrix actually DISPLAYED — [ ]
+
+> Added 2026-06-17 via "add to web plan". **This is ONE task = ONE new private preview route =
+> ONE self-merged PR.** Do **NOT** split it into multiple routes or PRs, and do **NOT** leave
+> half of it for a later run — **both fixes below ship together on a single new route.**
+> **READ FIRST:** find the **highest existing `/preview/toiture-3d-pro-N` in the actual code**
+> (the handoff says **pro-8** but **confirm from the repo, do not trust that number**), **clone
+> it to the next number in sequence** as the new route, and leave **every prior preview
+> byte-for-byte intact** as the baseline. **Before changing anything, read the current
+> `estimatorBrain.ts`, the preview page, and its lazy-loaded 3D script** to see exactly how
+> pitched/tiled roofs and the optimizer table are implemented today — **do not assume** — and
+> **in the report state plainly what you found wrong** for each of the two problems below.
+
+**FIX 1 — Pitched/tiled roofs must render as an actual SLOPED roof with panels mounted FLUSH on
+the slope, NOT a flat roof with tilted racks.** The current build is wrong: on a non-flat roof it
+keeps the flat-roof layout and just sets the rack tilt equal to the roof slope, so the 3D still
+shows a horizontal roof with panels standing on triangular metal frames — that is a flat-roof
+ballasted install, not a pitched-roof install. Correct it so that, when the roof type is
+pitched/tiled:
+- **(a)** the **3D ROOF SURFACE itself is an inclined plane** — tilted by the chosen roof pitch
+  and rotated to the chosen facing direction — with the **traced satellite photo textured onto
+  that inclined surface** (a horizontal roof plane is wrong whenever pitch > 0);
+- **(b)** **panels lie FLUSH and COPLANAR on that inclined surface** — same plane and same
+  surface-normal as the roof — raised only a **small fixed offset** (a few centimetres,
+  representing low rails/standoffs) above the roof plane along its normal;
+- **(c)** there are **NO triangular racks and NO standing tilt frames** anywhere in the
+  pitched-roof scene — that triangular-frame geometry is a **flat-roof-only** thing and must be
+  made **conditional on roof type**;
+- **(d)** **NO inter-row spacing gaps** — because every panel shares the roof's plane no row
+  shades the next, so **tile the plane densely**, limited only by usable area, the
+  edge/ridge/eave setback, and the obstacle keep-outs (portrait vs landscape by whichever fits
+  more).
+
+The **flat-roof path stays byte-for-byte unchanged** (its tilted racks, tilt/azimuth sweep, and
+winter-solstice inter-row spacing all preserved). Because the build agent **cannot see the
+rendered map** (the MapTiler/Mapbox keys live in Cloudflare), **anchor this entirely to
+code-checkable geometry and pin it with tests** — do not reason about how it looks: assert that
+for a pitched roof the **roof-plane normal is the (pitch, facing) normal and is NOT the vertical
+up-vector when pitch > 0**; that **every panel's normal equals the roof-plane normal within
+tolerance (coplanar)**; that **every panel sits at the same constant small standoff above the
+plane** (not varying heights that would imply racks); that **no triangular-rack mesh is
+instantiated when roof type is pitched**; and that **every panel corner projects inside the
+traced polygon and onto the inclined plane**. Pitched production stays **PVGIS at the single
+(pitch, facing) pair, mountingplace = "building"**, as already specified.
+
+**FIX 2 — The optimizer must search AND DISPLAY the full configuration matrix for flat roofs, not
+pick from ~6 fixed layouts.** Today the comparison table shows roughly six named configs and
+recommends the best of those, which misses the true optimum (it usually lies between the named
+rows) and hides most of the option space from the client. Replace the fixed set with a **genuine
+dense sweep**, pricing production for every candidate plane from **PVGIS at the roof's EXACT
+GPS**: sweep **tilt in 5° steps from 0° up to ~35°**; sweep **azimuth across true south (0°), the
+roof-aligned bearing, and a span around south (about south ±45° in ~15° steps) plus the dedicated
+east–west back-to-back tent mode**; each of those in **both portrait and landscape**; keeping the
+existing **shade-free winter-solstice row spacing** so production stays honest (lower tilt already
+yields tighter shade-free spacing and therefore more panels — that count-vs-tilt trade-off is
+exactly what the sweep must surface). For every combination compute **panels fitted** (existing
+packing + footprint bound), **kWc**, **kWh/an (PVGIS)**, **% of the bill covered**, and the
+**savings band**. The **RECOMMENDED choice is the genuine maximum over the WHOLE sweep**, judged
+on **total annual kWh and match-to-need** (respecting the **needed-panel cap** throughout — never
+overfill a roomy roof, surplus is uncompensated in Morocco), shown as **its own clearly-labelled
+row ("Optimum calculé — inclinaison X°, orientation Y, portrait/paysage") badged "Recommandé"**,
+with a one-line plain-language reason it beats the standard configs. Then make the comparison
+table **actually SHOW the full matrix instead of six rows**: render **every evaluated
+configuration in a browsable, sortable table** (sortable at least by **kWh/an, by panel count,
+and by % of bill covered**; **grouped or filterable by orientation/layout** so the long list
+stays readable **on a phone**), with the **recommended row pinned and highlighted**. Keep PVGIS
+fast and inside its rate limits: **specific yield (kWh per kWc per year) per (tilt, azimuth) is
+independent of system size, so query it once per plane per location and scale by kWc**; use a
+**coarse-then-fine sweep** (coarse grid to find the basin, refine around the best); **cache per
+rounded location + plane**; **reuse across the table and across toggles**; **degrade gracefully to
+the engine's in-house solar-geometry estimate (labelled "estimé")** if PVGIS is unreachable.
+**Note in the report — do NOT build it this pass — that inter-row spacing / ground-coverage-ratio
+could become a further optimization axis later, but only with a proper row-to-row self-shading
+production model the engine does not yet have** (PVGIS prices a single plane, not row
+self-shading), so shipping tighter-than-shade-free spacing now would mean un-modelled shading and
+is **deliberately deferred** to keep every number honest.
+
+**Standing rules for this task:** touch **only `apps/web`**; the **new route stays private**
+(noindex, not in nav, excluded from sitemap, unlinked); the **live public site and the live lead
+form and its entire data flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI)
+stay **byte-for-byte unchanged**; **no new dependencies** (PVGIS, MapLibre, Mapbox, Three.js are
+already in the stack); **reduced-motion respected and zero layout shift**; every figure traces to
+**PVGIS, confirmed tariff/physics, or sound logic** (no invented numbers, savings never exceed
+avoidable energy cost, impossible counts blocked by the footprint bound); **one self-merged PR to
+protected main** (the accepted path — don't flag it); **full Vitest suite green with the
+pitched-roof geometry tests and the optimizer-sweep tests above added**; **Lighthouse held**.
+**Plain-language report only** (no diffs or hashes): the new preview URL to open; what you found
+wrong in the current pitched-roof code and the current optimizer/table and what each now does;
+confirmation the live site and lead flow are untouched; and the single thing to confirm on the
+phone — that **on a pitched roof the 3D shows a sloped roof with panels lying flat against the
+slope (no triangles, no row gaps)**, and that the **flat-roof comparison table now lists the full
+set of layouts with the true optimum badged**.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
