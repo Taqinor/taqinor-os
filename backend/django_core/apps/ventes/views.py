@@ -175,16 +175,56 @@ class DevisViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # A1 — option retenue (« Sans batterie » / « Avec batterie »). Pour un
+        # devis à deux options, l'option est obligatoire ; pour un devis à
+        # option unique, elle est déduite du scénario du document.
+        option, err = self._resolve_accepted_option(devis, request.data)
+        if err is not None:
+            return Response({'detail': err},
+                            status=status.HTTP_400_BAD_REQUEST)
         ancien = devis.statut
         devis.statut = Devis.Statut.ACCEPTE
         devis.date_acceptation = date_acc
         devis.accepte_par_nom = nom[:150]
+        devis.option_acceptee = option
         devis.save(update_fields=[
-            'statut', 'date_acceptation', 'accepte_par_nom'])
-        activity.log_devis_acceptance(devis, request.user, nom, date_acc)
+            'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
+        activity.log_devis_acceptance(
+            devis, request.user, nom, date_acc, option)
         avancer_stage_pour_devis(devis, ancien, devis.statut, request.user)
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
+
+    @staticmethod
+    def _resolve_accepted_option(devis, data):
+        """A1 — détermine l'option retenue à l'acceptation.
+
+        Renvoie ``(option, None)`` en cas de succès ou ``('', message)`` en cas
+        d'erreur. Un devis à deux options exige un choix explicite et valide ;
+        un devis à option unique déduit l'option de son scénario (jamais
+        d'échec : une liste libre / un pompage retombe sur « sans_batterie »).
+        """
+        valid = {c.value for c in Devis.OptionAcceptee}
+        option = (data.get('option') or '').strip()
+        if option and option not in valid:
+            return '', ("Option invalide (attendu « sans_batterie » ou "
+                        "« avec_batterie »).")
+        try:
+            from .quote_engine.builder import build_quote_data
+            qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
+            nb_options = qd.get('nb_options', 1)
+            scenario = qd.get('scenario', '')
+        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+            nb_options, scenario = 1, ''
+        if nb_options == 2 and not option:
+            return '', ("Ce devis comporte deux options — précisez celle "
+                        "choisie par le client (« sans_batterie » ou "
+                        "« avec_batterie »).")
+        if not option:
+            option = (Devis.OptionAcceptee.AVEC_BATTERIE
+                      if scenario == 'Avec batterie'
+                      else Devis.OptionAcceptee.SANS_BATTERIE)
+        return option, None
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])

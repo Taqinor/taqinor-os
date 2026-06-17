@@ -63,6 +63,18 @@ class Devis(models.Model):
     date_acceptation = models.DateField(null=True, blank=True)
     accepte_par_nom = models.CharField(max_length=150, blank=True, default='')
 
+    # ── Option retenue à l'acceptation (A1) — additif. Pour un devis à deux
+    # options (« Sans batterie » / « Avec batterie »), enregistre laquelle le
+    # client a choisie ; vide pour un devis à option unique. Cette valeur est
+    # autoritative en aval (facture & chantier — A3). N'invente aucun nouveau
+    # statut : le devis reste « accepté », on note seulement l'option.
+    class OptionAcceptee(models.TextChoices):
+        SANS_BATTERIE = 'sans_batterie', 'Sans batterie'
+        AVEC_BATTERIE = 'avec_batterie', 'Avec batterie'
+
+    option_acceptee = models.CharField(
+        max_length=20, choices=OptionAcceptee.choices, blank=True, default='')
+
     # ── Multi-marchés (2026-06) — additif, tout optionnel ──
     class ModeInstallation(models.TextChoices):
         RESIDENTIEL = 'residentiel', 'Résidentiel'

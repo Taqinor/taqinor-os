@@ -375,6 +375,12 @@ export default function DevisList() {
                   <span className="badge" style={{ background: meta.bg, color: meta.color }}>
                     {meta.label}
                   </span>
+                  {d.statut === 'accepte' && d.option_acceptee && (
+                    <div style={{ fontSize: '0.68rem', color: '#15803d', marginTop: 3 }}>
+                      Option : {d.option_acceptee === 'avec_batterie'
+                        ? 'Avec batterie' : 'Sans batterie'}
+                    </div>
+                  )}
                 </td>
                 <td>
                   <div className="actions-cell">
@@ -447,8 +453,18 @@ export default function DevisList() {
                     {d.statut === 'envoye' && (
                       <button
                         className="btn btn-sm btn-primary"
-                        title="Marquer accepté (date + nom) — déclenche la création du chantier"
+                        title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
                         onClick={() => {
+                          // A1 — pour un devis à deux options, demander
+                          // l'option retenue (Sans / Avec batterie) AVANT le
+                          // reste. « OK » = Avec batterie, « Annuler » = Sans.
+                          let option = ''
+                          if (d.nb_options === 2) {
+                            const avec = window.confirm(
+                              `Devis ${d.reference} — option choisie par le client ?\n\n`
+                              + '« OK » = Avec batterie\n« Annuler » = Sans batterie')
+                            option = avec ? 'avec_batterie' : 'sans_batterie'
+                          }
                           const nom = window.prompt(
                             `Devis ${d.reference} — nom de la personne qui accepte :`, '')
                           if (nom === null) return
@@ -456,7 +472,7 @@ export default function DevisList() {
                             "Date d'acceptation (AAAA-MM-JJ) :",
                             new Date().toISOString().slice(0, 10))
                           if (date === null) return
-                          ventesApi.accepterDevis(d.id, { nom, date })
+                          ventesApi.accepterDevis(d.id, { nom, date, option })
                             .then(() => dispatch(fetchDevis()))
                             .catch(err => alert(
                               err?.response?.data?.detail ?? 'Acceptation impossible.'))
