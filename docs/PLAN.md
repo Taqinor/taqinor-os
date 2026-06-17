@@ -391,7 +391,7 @@ conformity warning banner).
 - [ ] N97 — Configurable data export & backup action for the tenant's data (reversibility/retention), real customer-data exports kept out of the repo.
 ### Growth / multi-tenant platform
 - [ ] N98 — Optional referral/parrainage program (referrer→referred-client links, configurable reward per converted referral, simple referral dashboard), toggle in settings.
-- [ ] N99 — Optional sales-commission tracking (configurable commission per signed quote or per installed kWc for the commerciale), visible only to authorised roles.
+- [x] N99 — Optional sales-commission tracking (configurable commission per signed quote or per installed kWc for the commerciale), visible only to authorised roles.
 - [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
 - [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
 - [ ] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped.
@@ -581,3 +581,11 @@ Tracked here so they aren't lost:
   (mensuelle/annuelle/aucune), avec un aperçu en direct. Sauvé dans
   doc_prefixes/doc_numbering et consommé par le moteur create_numbered
   (highest+1, sans trou, race-safe). Aucun changement nécessaire.
+- 2026-06-17 — N99 done: suivi des commissions commerciales (réservé admin).
+  Configurable dans Paramètres → Devis & Factures → « Commission commerciale »
+  (mode : désactivée / % du HT des devis signés / MAD par kWc installé +
+  valeur ; désactivée par défaut → aucun changement de comportement). Endpoint
+  /reporting/insights/commissions agrège par commercial (responsable du lead,
+  sinon créateur du devis), avec période optionnelle et export .xlsx ; nouvelle
+  carte « Commissions commerciales » dans Rapports. Champs CompanyProfile
+  additifs (migration 0014) + journalisés à l'audit. Tests backend.
