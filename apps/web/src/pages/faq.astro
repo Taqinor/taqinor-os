@@ -1,0 +1,108 @@
+---
+/**
+ * FAQ publique étendue (W5). Toutes les réponses proviennent de faits DÉJÀ
+ * établis sur le site (accueil, résidentiel, professionnel, équipement,
+ * loi-82-21, article-33). AUCUNE question sur le financement, les produits
+ * bancaires, les aides ou la fiscalité (non vérifiés). Le composant Faq émet
+ * UN SEUL bloc FAQPage, aligné sur les questions rendues — pas de doublon avec
+ * la FAQ courte de l'accueil (page distincte).
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import Faq from '../components/Faq.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+
+// Réponses strictement dérivées du contenu publié du site.
+const faq = [
+  // — Prix & ordres de grandeur —
+  {
+    q: 'Combien coûte une installation solaire résidentielle ?',
+    a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le diagnostic en ligne vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.',
+  },
+  {
+    q: 'Comment est calculé le prix d’une installation ?',
+    a: 'À titre d’ordre de grandeur — jamais un devis : pour une villa avec une facture d’environ 2 000 MAD par mois, une installation de 6 kWc représente un investissement de l’ordre de 60 000 à 75 000 MAD. Le chiffrage exact dépend de la toiture et du matériel, et il est établi après visite technique.',
+  },
+  {
+    q: 'À partir de quelle facture le solaire est-il intéressant ?',
+    a: 'En dessous d’environ 1 000 MAD par mois, le retour sur investissement dépasse généralement 7 ans — nous vous le dirons honnêtement. Au-delà de 10 000 MAD par mois, votre profil relève d’une étude dédiée (voir la page Professionnel).',
+  },
+  // — Loi 82-21 —
+  {
+    q: 'Que dit la loi 82-21 pour les particuliers ?',
+    a: 'En basse tension, une installation de moins de 11 kW relève du régime de déclaration : une formalité préalable, pas une autorisation. Taqinor prépare et dépose la déclaration pour vous.',
+  },
+  {
+    q: 'Quels sont les trois régimes de la loi 82-21 ?',
+    a: 'Déclaration : moins de 11 kW en basse tension, ou site isolé non raccordé. Accord de raccordement : du seuil de déclaration jusqu’à 5 MW (basse ou moyenne tension). Autorisation : 5 MW et plus (moyenne, haute ou très haute tension). Le décret 2-25-100 est en vigueur depuis le 9 juin 2026.',
+  },
+  // — Article 33 —
+  {
+    q: 'Mon installation existante n’est pas déclarée. Que faire ?',
+    a: 'L’Article 33 de la loi 82-21 ouvre une fenêtre de régularisation de 18 mois pour les installations existantes, ouverte depuis le 9 juin 2026 : déposez maintenant. Voir la page Régularisation pour la procédure en 5 étapes.',
+  },
+  {
+    q: 'Que risque une installation non régularisée ?',
+    a: 'Une installation existante non régularisée est en situation irrégulière au regard de la loi 82-21. Les sanctions prévues vont d’amendes (de 2 000 à 5 000 MAD pour exploitation sans la déclaration requise ; de 100 000 à 1 000 000 MAD sans accord de raccordement ou autorisation) jusqu’à la mise en demeure, l’arrêt de l’installation ou sa déconnexion du réseau.',
+  },
+  // — Batteries / autoconsommation —
+  {
+    q: 'Faut-il des batteries ?',
+    a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.',
+  },
+  // — Garanties —
+  {
+    q: 'Quelles sont les garanties ?',
+    a: 'Panneaux : 12 ans de garantie produit et 25 ans de garantie de performance (≥ 84,8 % de la puissance initiale). Onduleurs (Deye, Huawei) et batteries Dyness LFP : 10 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Voir la page Nos garanties.',
+  },
+  {
+    q: 'Combien de temps durent les panneaux ?',
+    a: 'Les panneaux sont garantis en performance sur 25 ans (généralement ≥ 84,8 % de la puissance initiale à 25 ans). Les onduleurs se remplacent typiquement une fois sur la durée de vie de l’installation.',
+  },
+  // — Délais & process —
+  {
+    q: 'Comment se passe une installation, étape par étape ?',
+    a: 'En trois temps : 1) un diagnostic en 60 secondes qui vous donne une fourchette immédiate ; 2) un échange WhatsApp direct avec l’équipe technique, photos de toiture à l’appui ; 3) une visite technique, une étude complète gratuite, puis le devis. Pas de centre d’appels, pas de relances.',
+  },
+  // — Monitoring / SAV —
+  {
+    q: 'Comment suivez-vous la production après l’installation ?',
+    a: 'Chaque installation est équipée d’un dongle WiFi/Ethernet et supervisée sur Deye Cloud : production en temps réel, alertes automatiques, historiques. Le client reçoit son accès personnel via l’application mobile, et Taqinor surveille l’ensemble du parc pour un SAV proactif.',
+  },
+];
+---
+
+<Layout
+  title="Questions fréquentes sur le solaire au Maroc | Taqinor"
+  description="Prix et ordres de grandeur, loi 82-21 et ses 3 régimes, régularisation Article 33, batteries, garanties, déroulé d'une installation et monitoring Deye Cloud : les réponses Taqinor, en clair."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Questions fréquentes' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">FAQ</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Vos questions, nos réponses</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Tout ce que nos clients demandent avant de se lancer : prix et ordres de grandeur, loi
+          82-21, régularisation, batteries, garanties, délais et suivi. Une question de plus ?
+          <a href="/contact" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Écrivez-nous.</a>
+        </p>
+      </div>
+    </section>
+
+    <div class="v2-seam" aria-hidden="true"></div>
+    <Faq items={faq} heading="Questions fréquentes" />
+
+    <CtaBand title="Une dernière question ? Une étude gratuite y répond." href="/contact#simulateur" seam={false} />
+
+    <StickyCta />
+  </div>
+</Layout>

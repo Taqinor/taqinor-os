@@ -2,6 +2,7 @@
 import Logo from './Logo.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import { CITIES } from '../lib/realisations';
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
 ---
@@ -26,18 +27,37 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations s
         <li><a href="/résidentiel" class="transition-colors hover:text-white">Résidentiel</a></li>
         <li><a href="/professionnel" class="transition-colors hover:text-white">Professionnel</a></li>
         <li><a href="/équipement" class="transition-colors hover:text-white">Équipement</a></li>
+        <li><a href="/garanties" class="transition-colors hover:text-white">Nos garanties</a></li>
         <li><a href="/loi-82-21" class="transition-colors hover:text-white">Loi 82-21</a></li>
         <li><a href="/regularization-article-33" class="transition-colors hover:text-white">Régularisation Article 33</a></li>
         <li><a href="/contact" class="transition-colors hover:text-white">Contact</a></li>
+      </ul>
+      <h2 class="tech-label mb-4 mt-6 text-brass-300">Ressources</h2>
+      <ul class="space-y-2 text-sm">
+        <li><a href="/realisations" class="transition-colors hover:text-white">Réalisations</a></li>
+        <li><a href="/pourquoi-taqinor" class="transition-colors hover:text-white">Pourquoi Taqinor</a></li>
+        <li><a href="/guides" class="transition-colors hover:text-white">Guides</a></li>
+        <li><a href="/faq" class="transition-colors hover:text-white">FAQ</a></li>
+        <li><a href="/marocains-du-monde" class="transition-colors hover:text-white">Marocains du monde</a></li>
       </ul>
     </div>
     <div>
       <h2 class="tech-label mb-4 text-brass-300">Contact</h2>
       <ul class="space-y-2 text-sm">
-        <li><a href={`tel:${NAP.phone}`} class="transition-colors hover:text-white">{NAP.phoneDisplay}</a></li>
+        <li><a href={`tel:${NAP.phone}`} class="transition-colors hover:text-white">{NAP.phoneDisplayIntl}</a></li>
         <li><a href={`mailto:${NAP.email}`} class="transition-colors hover:text-white">{NAP.email}</a></li>
         <li><a href={wa} rel="noopener" class="transition-colors hover:text-white">WhatsApp</a></li>
         <li class="text-lune-soft">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
+      </ul>
+    </div>
+  </div>
+  <div class="border-t border-white/10 px-4 py-6">
+    <div class="mx-auto max-w-6xl">
+      <h2 class="tech-label mb-3 text-brass-300">Installation solaire par ville</h2>
+      <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-lune-soft">
+        {CITIES.map((c) => (
+          <li><a href={`/installation-solaire-${c.slug}`} class="transition-colors hover:text-white">Installation solaire {c.intro}</a></li>
+        ))}
       </ul>
     </div>
   </div>

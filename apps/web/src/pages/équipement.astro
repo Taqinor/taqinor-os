@@ -10,6 +10,7 @@
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
@@ -41,6 +42,8 @@ const warranties = [
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Équipement' }]} />
 
     <section class="px-4 py-20 text-white sm:py-28">
       <div class="mx-auto max-w-6xl">
@@ -133,6 +136,11 @@ const warranties = [
           Le choix final du matériel dépend du dimensionnement : c'est l'étude qui détermine
           l'équipement, jamais l'inverse.
         </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="/garanties" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Nos garanties →</a>
+          <a href="/résidentiel" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Solaire résidentiel →</a>
+          <a href="/professionnel" class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Solaire professionnel →</a>
+        </div>
       </div>
     </section>
 

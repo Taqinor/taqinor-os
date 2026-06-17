@@ -9,8 +9,9 @@
 export const NAP = {
   name: 'Taqinor', // pas de suffixe SARL — aligné GBP
   url: 'https://taqinor.ma',
-  phone: '+212661850410', // NAP_PHONE : affichage, JSON-LD, liens tel: — PERMANENT (GBP)
-  phoneDisplay: '0661850410', // identique au GBP — ne pas reformater
+  phone: '+212661850410', // NAP_PHONE : JSON-LD, liens tel: — PERMANENT (GBP), jamais reformaté
+  phoneDisplay: '0661850410', // format GBP exact (pages contact / mentions légales) — ne pas reformater
+  phoneDisplayIntl: '+212 6 61 85 04 10', // affichage lisible en-tête + pied de page (W10) ; même numéro, lien tel: inchangé
   email: 'contact@taqinor.com', // adresse GBP confirmée par le propriétaire (2026-06-13)
   // Zone de service (pas d'adresse postale physique — mode service-area)
   serviceArea: ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Maroc'],

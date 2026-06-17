@@ -10,6 +10,7 @@
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
@@ -42,6 +43,8 @@ const sanctions = [
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Régularisation Article 33' }]} />
 
     <section class="px-4 py-20 text-white sm:py-28">
       <div class="mx-auto max-w-6xl">
@@ -95,6 +98,11 @@ const sanctions = [
             <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
           </div>
         ))}
+      </div>
+
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Les 3 régimes de la loi 82-21 →</a>
+        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Régularisation d'un site professionnel →</a>
       </div>
     </section>
 

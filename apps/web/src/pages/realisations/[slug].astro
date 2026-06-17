@@ -1,0 +1,192 @@
+---
+/**
+ * Étude de cas — une page par installation réelle (W3). Données 100 % issues
+ * de `src/lib/realisations.ts` (elles-mêmes reprises des pages publiques
+ * existantes) : aucun chiffre inventé. La carte production est OMISE quand la
+ * production mesurée n'est pas publiée (ex. Nouaceur). Page publique, indexée.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Picture from '../../components/Picture.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { REALISATIONS, CITIES } from '../../lib/realisations';
+import { NAP } from '../../lib/nap';
+
+export function getStaticPaths() {
+  return REALISATIONS.map((r) => ({ params: { slug: r.slug }, props: { r } }));
+}
+
+const { r } = Astro.props;
+
+// La ville-page correspondante (si la ville est dans la zone de service couverte).
+const cityPage = CITIES.find((c) => c.name === r.ville);
+const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/résidentiel';
+const segmentLabel = r.segment === 'professionnel' ? 'Professionnel' : 'Résidentiel';
+const ogSlug = r.segment === 'professionnel' ? 'professionnel' : 'residentiel';
+
+const hero = r.photos[0];
+const rest = r.photos.slice(1);
+const heroLargest = Math.max(...hero.widths);
+const heroImg = new URL(`/photos/${hero.name}-${heroLargest}.webp`, Astro.site).href;
+
+const equipment = [
+  { label: 'Panneaux', value: r.panneaux },
+  { label: 'Onduleur', value: r.onduleur },
+  { label: 'Stockage', value: r.batterie },
+].filter((e) => e.value);
+
+const title = `Installation solaire ${r.kwc} à ${r.ville} — étude de cas réf. ${r.ref} | Taqinor`;
+const description = r.production
+  ? `Installation solaire de ${r.kwc} à ${r.ville} (${r.date}) : ${r.panneaux}, production mesurée ${r.production} suivie sur Deye Cloud. Le matériel posé et la logique de dimensionnement, en clair.`
+  : `Installation solaire de ${r.kwc} à ${r.ville} (${r.date}) : ${r.panneaux}. Le matériel posé et la logique de dimensionnement Taqinor, en clair.`;
+
+const articleJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: `Installation solaire ${r.kwc} à ${r.ville} — réf. ${r.ref}`,
+  description: r.resume,
+  image: heroImg,
+  about: { '@type': 'Thing', name: 'Installation solaire photovoltaïque' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: new URL(Astro.url.pathname, Astro.site).href,
+};
+---
+
+<Layout title={title} description={description} ogSlug={ogSlug}>
+  <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb
+      items={[
+        { label: 'Accueil', href: '/' },
+        { label: 'Réalisations', href: '/realisations' },
+        { label: `${r.ville} · ${r.kwc}` },
+      ]}
+    />
+
+    <!-- ACTE I — la photo de chantier est la lumière -->
+    <section class="relative isolate mt-6 overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <Picture name={hero.name} alt={hero.alt} widths={hero.widths} ratio={hero.ratio} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
+      </div>
+      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Réf. {r.ref} · {r.ville} · {r.date}</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
+          {r.kwc} d'installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}
+        </h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{r.resume}</p>
+      </div>
+    </section>
+
+    <!-- Chiffres-clés — uniquement ce qui est publié -->
+    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">Puissance installée</dt>
+        </div>
+        {r.production && (
+          <div class="v2-rise" style="--v2-i:1">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{r.production}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Production mesurée — Deye Cloud</dt>
+          </div>
+        )}
+        <div class="v2-rise" style="--v2-i:2">
+          <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">Panneaux posés</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:3">
+          <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
+        </div>
+      </dl>
+    </section>
+
+    <!-- Le dimensionnement, en clair -->
+    <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">La logique de dimensionnement</p>
+      <h2 class="display v2-section-title mt-5 text-white">Pourquoi {r.kwc}, et pas un kit standard</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Chez Taqinor, c'est l'étude qui décide du matériel, jamais l'inverse. La puissance
+        retenue part de la consommation réelle du site et de la toiture — surface utile,
+        orientation, ombrage — pour couvrir l'essentiel de la facture sans surdimensionner.
+        {r.batterie
+          ? ' Le stockage a été ajouté pour la part de consommation hors production solaire.'
+          : ' Le dimensionnement privilégie l’autoconsommation directe de la production de jour.'}
+      </p>
+      {r.production && (
+        <p class="v2-lead mt-4 text-lune-soft">
+          La production annoncée n'est pas une promesse commerciale : <strong class="text-lune">{r.production}</strong>
+          sont mesurés en continu via le monitoring Deye Cloud, dont le client garde l'accès.
+        </p>
+      )}
+    </section>
+
+    <!-- Le matériel posé -->
+    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Le matériel posé</p>
+        <h2 class="display v2-section-title mt-5 text-white">Ce qui est réellement sur le toit</h2>
+        <div class="mt-8 border-t-2 border-brass-400/60" data-stagger>
+          {equipment.map((e, i) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
+              <span class="tech-label text-lune-faint">{e.label}</span>
+              <span class="text-right font-display text-base font-bold text-white">{e.value}</span>
+            </div>
+          ))}
+        </div>
+        <p class="mt-5 text-sm text-lune-soft">
+          Marques tier-1 sourcées via des distributeurs officiels au Maroc — garanties locales
+          activables. <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir tout l'équipement →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- Galerie chantier -->
+    {rest.length > 0 && (
+      <section class="px-4 py-20 sm:py-24">
+        <div class="mx-auto max-w-6xl">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Pièces du dossier</p>
+          <h2 class="display v2-section-title mt-5 text-white">Le chantier, tel quel</h2>
+          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger>
+            {rest.map((p, i) => (
+              <figure class="v2-rise cine-card group relative overflow-hidden" style={`--v2-i:${i}`}>
+                <Picture name={p.name} alt={p.alt} widths={p.widths} ratio={p.ratio} sizes="(min-width: 640px) 50vw, 100vw"
+                  class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- Liens contextuels -->
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
+        {cityPage && (
+          <a href={`/installation-solaire-${cityPage.slug}`} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+            Installation solaire {cityPage.intro} →
+          </a>
+        )}
+        <a href={segmentHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+          Solaire {segmentLabel.toLowerCase()} →
+        </a>
+        <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+          Toutes nos réalisations →
+        </a>
+      </div>
+    </section>
+
+    <CtaBand title={`Une étude comme celle de ${r.ville}, pour votre toiture.`} href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -196,7 +196,7 @@ is byte-for-byte untouched as the baseline.
 
 ---
 
-### W2 — Five public city landing pages (Casablanca, Rabat, Marrakech, Tanger, Agadir) — [ ]
+### W2 — Five public city landing pages (Casablanca, Rabat, Marrakech, Tanger, Agadir) — [x]
 
 Build five **public**, indexed city landing pages — "Installation solaire à Casablanca / à
 Rabat / à Marrakech / à Tanger / à Agadir" — following the existing **"Cinéma du chantier"**
@@ -209,7 +209,7 @@ ONLY facts already published on the site or public meteo data. Each page is **in
 **linked from the footer and from the relevant segment pages**, and **cross-linked to the
 diagnostic and to the matching case study**.
 
-### W3 — Five public case-study pages (one per real installation) — [ ]
+### W3 — Five public case-study pages (one per real installation) — [x]
 
 Build five **public**, indexed case-study pages, one per real installation already shown on the
 site — **réf. 468 El Jadida 17,04 kWc**, **réf. 400 Casablanca 11,36 kWc**, **réf. 236 El Jadida
@@ -221,7 +221,7 @@ the sitemap, **linked from the homepage evidence gallery, the fiches chantier, t
 page, and résidentiel/professionnel**. Add appropriate structured data (**Article or
 CreativeWork**).
 
-### W4 — Public "Pourquoi Taqinor" page — [ ]
+### W4 — Public "Pourquoi Taqinor" page — [x]
 
 Build a **public**, indexed "Pourquoi Taqinor" page that consolidates the differentiators already
 expressed across the site — engineering-led sizing (l'étude d'abord), real measured monitoring via
@@ -229,7 +229,7 @@ Deye Cloud, full **loi 82-21** conformity handled end to end, tier-1 equipment o
 promises. Introduce **no new claims or figures**; only restate and structure what the site already
 says. In the sitemap, **linked from the homepage and segment pages**.
 
-### W5 — Dedicated public /faq page — [ ]
+### W5 — Dedicated public /faq page — [x]
 
 Build a dedicated **public**, indexed `/faq` page expanding the current homepage FAQ, covering
 ONLY topics whose answers are already established on the site or in confirmed repo data: pricing
@@ -240,7 +240,7 @@ facts are not verified). Emit **FAQPage structured data** for the full set with 
 conflicting FAQPage markup against the homepage**. In the sitemap, **linked from the footer and
 nav**.
 
-### W6 — Public guides/ressources hub at /guides + three seed articles — [ ]
+### W6 — Public guides/ressources hub at /guides + three seed articles — [x]
 
 Build a **public** guides/ressources hub at `/guides` plus three seed articles drawn STRICTLY from
 facts already published on the site or confirmed repo data, with **NO new figures and NO
@@ -252,14 +252,14 @@ editorial layout matching the design, **Article structured data**, indexed, in t
 editorial calendar and any tariff/cost articles are pending Meryem's copy and the site-wide tariff
 alignment.
 
-### W7 — Public MRE section/page — [ ]
+### W7 — Public MRE section/page — [x]
 
 Build a **public**, indexed MRE page — "Vous êtes Marocain·e à l'étranger ? Nous installons et
 suivons l'installation de votre villa au Maroc, à distance, de l'étude au monitoring" — using ONLY
 the site's existing positioning and its WhatsApp-first, remote-diagnostic reality; **no new factual
 claims**. In the sitemap, **linked from résidentiel and the footer**.
 
-### W8 — Public "Nos garanties / engagements" page — [ ]
+### W8 — Public "Nos garanties / engagements" page — [x]
 
 Build a **public**, indexed "Nos garanties / engagements" page that turns the existing equipment
 warranty table into a reassurance page: the **12-year product / 25-year ≥84,8% performance /
@@ -268,14 +268,14 @@ plus the existing "monitoring Deye Cloud, SAV proactif, accès client" commitmen
 any response-time SLA or underperformance policy.** In the sitemap, **linked from équipement and
 the segment pages**.
 
-### W9 — Sitewide internal linking + BreadcrumbList structured data — [ ]
+### W9 — Sitewide internal linking + BreadcrumbList structured data — [x]
 
 Improve internal linking across all public pages and add **BreadcrumbList** structured data
 sitewide: cross-link **équipement ↔ résidentiel/professionnel**, **loi-82-21 ↔
 regularization-article-33 ↔ professionnel**, and the new **city pages ↔ case studies ↔ segment
 pages**. **Purely additive; touch no lead-flow code.**
 
-### W10 — Format displayed phone number in header & footer — [ ]
+### W10 — Format displayed phone number in header & footer — [x]
 
 Format the **displayed** phone number in the header and footer as **+212 6 61 85 04 10** for
 readability. The **`tel:` link target stays unchanged** (display-only change).
@@ -333,3 +333,22 @@ public pages), but the **live lead form and its data flow must stay byte-for-byt
   plan. The autopilot's thin `docs/PLAN-web.md` / `PLAN-web2.md` (an autopilot shakedown that
   added then removed a homepage marker on 2026-06-16) were folded here and removed; the website
   autopilot commands in `CLAUDE.md` now point at `WEB_PLAN.md` / `WEB_PLAN2.md` / `WEB_PLAN.running`.
+- 2026-06-17 — W2–W10 done (SEO public-pages batch, one PR): shipped a public, indexed set —
+  5 city landing pages (`/installation-solaire-{casablanca,rabat,marrakech,tanger,agadir}`),
+  5 case studies + a `/realisations` hub, `/faq`, `/guides` + 3 articles, `/pourquoi-taqinor`,
+  `/marocains-du-monde` (MRE), `/garanties`. All facts trace to what the site already publishes
+  (centralised in `src/lib/realisations.ts`); nothing invented — Nouaceur shows no production
+  figure (none published) and réf. 134 shows no inverter/battery (not published); city sunshine
+  hours are flagged as indicative public météo data (`CITY_PAGES_NOTES.md`); only Casablanca
+  claims a local chantier, the other 4 cities stay honest ("nearest chantiers"). Structured data:
+  Service+areaServed (city pages), Article (case studies + guides), one FAQPage (via the existing
+  `Faq` component, no homepage conflict), and a new `Breadcrumb` component emitting BreadcrumbList
+  sitewide. W9 internal-linking: homepage gallery + fiches → case studies, équipement↔segments/
+  garanties, loi-82-21↔article-33↔professionnel, footer expanded (Ressources + per-city links),
+  Guides + FAQ added to nav (Régularisation stays reachable via the always-on Article 33 ribbon +
+  footer). W10: header/footer display "+212 6 61 85 04 10" via a new `phoneDisplayIntl`; the `tel:`
+  target and JSON-LD phone (`NAP.phone`) are unchanged. Lead form + `/api/simulate` byte-for-byte
+  untouched. `astro build` clean (all routes prerendered, sitemap regenerated); 537 web tests green
+  (updated `elevation.test.ts` 9→14 top-level pages, added `tests/seo-pages.test.ts`). Auto-deploys
+  via Cloudflare on merge to main. PENDING (report): the guides editorial calendar and any
+  tariff/cost articles await Meryem's copy + the site-wide tariff alignment ([[WG2]]).

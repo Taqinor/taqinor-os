@@ -1,0 +1,210 @@
+---
+/**
+ * Pages ville (W2) — une page indexée par ville de la zone de service
+ * (Casablanca, Rabat, Marrakech, Tanger, Agadir). Données 100 % issues du site
+ * (réalisations) ou de données météo publiques indicatives (ensoleillement) —
+ * voir CITY_PAGES_NOTES.md. Aucun chantier n'est revendiqué là où il n'en
+ * existe pas (`hasLocalInstall: false` → cadre honnête « zone couverte +
+ * chantiers les plus proches »). Page publique, indexée.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import Picture from '../components/Picture.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+import { CITIES, REALISATIONS, realisationByRef } from '../lib/realisations';
+import { NAP } from '../lib/nap';
+
+export function getStaticPaths() {
+  return CITIES.map((c) => ({ params: { city: c.slug }, props: { c } }));
+}
+
+const { c } = Astro.props;
+
+const featured = c.featuredRefs.map((ref) => realisationByRef(ref)).filter(Boolean);
+const inCity = featured.filter((r) => r!.ville === c.name);
+const nearby = featured.filter((r) => r!.ville !== c.name);
+// Pour une ville sans chantier local : on montre les chantiers réels les plus
+// proches (région Casablanca-Settat), clairement étiquetés comme tels.
+const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
+
+const title = `Installation solaire ${c.intro} — étude, pose et loi 82-21 | Taqinor`;
+const description = c.hasLocalInstall
+  ? `Installation solaire ${c.intro} : dimensionnement par l'ingénierie sur votre facture, pose et déclaration loi 82-21. Chantiers réels mesurés à ${c.name} et dans la région — production suivie sur Deye Cloud.`
+  : `Installation solaire ${c.intro} : Taqinor intervient ${c.intro} et partout au Maroc. Étude gratuite dimensionnée sur votre facture, pose, monitoring Deye Cloud et conformité loi 82-21.`;
+
+const serviceJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  serviceType: 'Installation solaire photovoltaïque',
+  name: `Installation solaire ${c.intro}`,
+  areaServed: { '@type': 'City', name: c.name },
+  provider: {
+    '@type': 'LocalBusiness',
+    name: NAP.name,
+    url: NAP.url,
+    telephone: NAP.phone,
+    email: NAP.email,
+    areaServed: NAP.serviceArea.map((n) => (n === 'Maroc' ? { '@type': 'Country', name: n } : { '@type': 'City', name: n })),
+  },
+};
+
+// Hero : la 1re photo d'un chantier en ville si elle existe ; sinon une photo
+// de marque neutre (crépuscule résidentiel, sans ville identifiable) — jamais
+// une photo qui laisserait croire à un chantier local là où il n'y en a pas.
+const neutralHero = { name: 'crepuscule-penthouse', widths: [1600, 1024, 640], ratio: 4 / 3 };
+const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
+---
+
+<Layout title={title} description={description} ogSlug="accueil">
+  <script type="application/ld+json" set:html={JSON.stringify(serviceJsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: `Installation solaire ${c.intro}` }]} />
+
+    <!-- ACTE I -->
+    <section class="relative isolate mt-6 overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <Picture name={heroPhoto.name} alt="" widths={heroPhoto.widths} ratio={heroPhoto.ratio} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/25"></div>
+      </div>
+      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Zone d'intervention · {c.name}</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">Installation solaire {c.intro}</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Taqinor conçoit, pose et déclare des installations solaires {c.intro} et partout au
+          Maroc. Le dimensionnement part de votre facture réelle — c'est l'étude qui décide du
+          matériel, jamais l'inverse.
+        </p>
+      </div>
+    </section>
+
+    <!-- Ensoleillement + cadre service -->
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Potentiel solaire</p>
+          <p class="fig lum mt-4 text-5xl sm:text-6xl">{c.sunshineHours} <span class="text-2xl">h/an</span></p>
+          <p class="tech-label mt-2 text-lune-faint">Ensoleillement annuel indicatif · {c.name}</p>
+          <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
+            Donnée météo publique, à titre indicatif. Le potentiel d'une toiture {c.intro} est
+            réel ; la production effective dépend toujours de l'orientation, de l'ombrage et de la
+            surface utile — c'est l'objet de l'étude.
+          </p>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
+          <div class="v2-rise" style="--v2-i:0">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            <dt class="tech-label mt-2 text-lune-faint">De la facture couverte</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:1">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>3–7 ans</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>25 ans</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:3">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Simple déclaration loi 82-21</dt>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- Chantiers : réels en ville, sinon les plus proches -->
+    {inCity.length > 0 && (
+      <section class="px-4 py-20 sm:py-28">
+        <div class="mx-auto max-w-6xl">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Nos chantiers · {c.name}</p>
+          <h2 class="display v2-section-title mt-5 text-white">Des installations réelles {c.intro}</h2>
+          <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+            {inCity.map((r, i) => (
+              <a href={`/realisations/${r!.slug}`} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
+                <Picture name={r!.photos[0].name} alt={r!.photos[0].alt} widths={r!.photos[0].widths} ratio={r!.photos[0].ratio}
+                  sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
+                  <span class="fig block text-2xl text-white">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>
+                  <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>
+                  <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Voir l'étude de cas →</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {nearby.length > 0 && (
+      <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+        <div class="mx-auto max-w-6xl">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Dans la région</p>
+          <h2 class="display v2-section-title mt-5 text-white">D'autres chantiers en région de {c.name}</h2>
+          <div class="mt-8 flex flex-wrap gap-3">
+            {nearby.map((r) => (
+              <a href={`/realisations/${r!.slug}`} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+                {r!.ville} · {r!.kwc} →
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {!c.hasLocalInstall && (
+      <section class="px-4 py-20 sm:py-28">
+        <div class="mx-auto max-w-3xl">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Votre ville est couverte</p>
+          <h2 class="display v2-section-title mt-5 text-white">Nous intervenons {c.intro} — et nos chantiers parlent pour nous</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            {c.name} fait partie de notre zone d'intervention. Nos installations déjà en service
+            les plus proches se trouvent en région de Casablanca — mêmes méthodes d'étude, même
+            matériel tier-1, même monitoring Deye Cloud. Voici nos chantiers les plus proches :
+          </p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            {closest.map((r) => (
+              <a href={`/realisations/${r.slug}`} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+                {r.ville} · {r.kwc} →
+              </a>
+            ))}
+            <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              Toutes nos réalisations →
+            </a>
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- Cadre service -->
+    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <h3 class="display text-xl text-white">L'étude d'abord</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Le dimensionnement part de votre facture et de votre toiture {c.intro} — pas d'un kit standard. Chaque étude est validée par le fondateur, docteur-ingénieur.</p>
+        </div>
+        <div class="v2-rise" style="--v2-i:1">
+          <h3 class="display text-xl text-white">Production mesurée</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Monitoring Deye Cloud sur chaque installation, avec accès client inclus : la production se mesure, elle ne se promet pas.</p>
+        </div>
+        <div class="v2-rise" style="--v2-i:2">
+          <h3 class="display text-xl text-white">Conforme loi 82-21</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Déclaration ou régularisation : nous préparons et déposons le dossier. <a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a></p>
+        </div>
+      </div>
+      <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
+        <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire résidentiel →</a>
+        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire professionnel →</a>
+      </div>
+    </section>
+
+    <CtaBand title={`Votre toiture ${c.intro} mérite une étude sérieuse.`} href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

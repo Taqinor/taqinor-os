@@ -30,9 +30,9 @@ const heroSub =
 // vraies citations clients AUTORISÉES arrivent, ajouter `quote` + `name`
 // (initiales) par fiche et rétablir un <blockquote> dans la section.
 const cases = [
-  { kwc: '17,04 kWc', lieu: 'El Jadida · avril 2026', production: '21 406 kWh/an', materiel: '24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness' },
-  { kwc: '11,36 kWc', lieu: 'Casablanca · avril 2026', production: '14 271 kWh/an', materiel: '16 × Canadian Solar 710 Wc · Deye 10 kW · 10 kWh Dyness' },
-  { kwc: '5,68 kWc', lieu: 'El Jadida · mars 2026', production: '7 135 kWh/an', materiel: '8 × Canadian Solar 710 Wc · Deye 5 kW · 5 kWh Dyness' },
+  { kwc: '17,04 kWc', lieu: 'El Jadida · avril 2026', production: '21 406 kWh/an', materiel: '24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness', slug: 'el-jadida-17-kwc' },
+  { kwc: '11,36 kWc', lieu: 'Casablanca · avril 2026', production: '14 271 kWh/an', materiel: '16 × Canadian Solar 710 Wc · Deye 10 kW · 10 kWh Dyness', slug: 'casablanca-11-kwc' },
+  { kwc: '5,68 kWc', lieu: 'El Jadida · mars 2026', production: '7 135 kWh/an', materiel: '8 × Canadian Solar 710 Wc · Deye 5 kW · 5 kWh Dyness', slug: 'el-jadida-6-kwc' },
 ];
 
 // PLACEHOLDER(MERYEM) : FAQ provisoire.
@@ -45,14 +45,14 @@ const faq = [
 ];
 
 const gallery = [
-  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/an', type: '24 × Canadian Solar 710 Wc · Deye 15 kW' },
-  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: null, type: 'Fin de chantier · équipe Taqinor' },
-  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/an', type: '16 × Canadian Solar 710 Wc · Deye 10 kW' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '11,36 kWc', prod: null, type: 'Production mesurée — Deye Cloud' },
-  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: '8 × Canadian Solar 710 Wc · Deye 5 kW' },
-  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: 'Pose en cours · 8 × Canadian Solar 710 Wc' },
-  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Pose des rails · 6 × JA Solar' },
-  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Entretien du champ · 6 × JA Solar' },
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/an', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: null, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/an', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '11,36 kWc', prod: null, type: 'Production mesurée — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
 ---
 
@@ -194,16 +194,16 @@ const gallery = [
             rien d'ajouté, rien d'effacé.
           </p>
         </div>
-        <div class="mt-12 columns-1 gap-5 sm:columns-2 md:columns-3 [&>figure]:mb-5 [&>figure]:break-inside-avoid">
+        <div class="mt-12 columns-1 gap-5 sm:columns-2 md:columns-3 [&>a]:mb-5 [&>a]:block [&>a]:break-inside-avoid">
           {gallery.map((g) => (
-            <figure class="v2-rise cine-card group relative overflow-hidden">
+            <a href={`/realisations/${g.slug}`} class="v2-rise cine-card group relative block overflow-hidden">
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={g.ratio} sizes="(min-width: 768px) 33vw, 50vw"
                 class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-              <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
                 <span class="tech-label block text-brass-300">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
                 <span class="mt-0.5 block text-xs text-lune">{g.type}</span>
-              </figcaption>
-            </figure>
+              </div>
+            </a>
           ))}
         </div>
       </div>
@@ -241,7 +241,7 @@ const gallery = [
         <h2 class="display v2-section-title mt-5 text-white">Ils produisent déjà leur électricité</h2>
         <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
           {cases.map((c, i) => (
-            <figure class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <a href={`/realisations/${c.slug}`} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
               <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <span class="fig lum text-3xl" data-tally>{c.kwc}</span>
                 <span class="tech-label text-lune-faint">{c.lieu}</span>
@@ -250,9 +250,11 @@ const gallery = [
                 Production : <span class="fig text-base text-brass-300" data-tally>{c.production}</span>
                 <span class="mt-1 block text-xs text-lune-faint">{c.materiel}</span>
               </p>
-            </figure>
+              <span class="mt-4 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Voir l'étude de cas →</span>
+            </a>
           ))}
         </div>
+        <a href="/realisations" class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Toutes nos réalisations →</a>
       </div>
     </section>
 

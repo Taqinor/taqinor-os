@@ -10,6 +10,7 @@
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
 import DiagnosticForm from '../components/DiagnosticForm.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
@@ -49,6 +50,8 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Professionnel' }]} />
 
     <!-- ACTE I — le couchant industriel plein cadre -->
     <section class="relative isolate overflow-hidden text-white">
@@ -171,9 +174,14 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
             d'<strong class="text-lune">autorisation</strong>. Taqinor constitue le dossier technique et suit la
             procédure jusqu'à la mise en service.
           </p>
-          <a href="/loi-82-21" class="mt-8 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            Identifier mon régime en 3 questions
-          </a>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href="/loi-82-21" class="inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              Identifier mon régime en 3 questions
+            </a>
+            <a href="/équipement" class="inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              Voir l'équipement posé
+            </a>
+          </div>
         </div>
       </div>
     </section>
