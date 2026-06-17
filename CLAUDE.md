@@ -216,6 +216,13 @@ Anything typed after the command is extra detail for that run.
 - Database migrations a task needs (additive) are approved. New external
   dependencies, auth or cost changes, deleted state, or brand-new architecture
   are stop-and-ask (condition 3) — skip those and list them.
+- **Refresh the code map when structure changed.** If the run added or changed any
+  backend models, API endpoints, frontend routes or features, or the service/module
+  structure, regenerate `docs/CODEMAP.md` from the actual source (re-derive the
+  facts and update its `Generated from commit` header), then commit it on `dev`
+  before the final merge. This is cheap and idempotent: SKIP it entirely on
+  docs-only runs and on any run that touched none of those — when nothing structural
+  moved, do not regenerate.
 - When the run stops, get the four required CI checks green over the whole batch,
   then self-merge `dev` → `main` exactly once (a single merge commit). This merge
   auto-deploys to api.taqinor.ma; never run a deploy command.
