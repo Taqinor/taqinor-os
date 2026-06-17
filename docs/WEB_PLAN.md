@@ -1025,7 +1025,7 @@ solar-geometry estimate (labelled **"estimé"**) if PVGIS is unreachable.
 
 ---
 
-### W35 — Estimator brain: the SAME live optimizer for PITCHED/tiled roofs (flush coplanar, no tilt axis, orientation fixed) — [ ]
+### W35 — Estimator brain: the SAME live optimizer for PITCHED/tiled roofs (flush coplanar, no tilt axis, orientation fixed) — [x]
 
 > Added 2026-06-17 via "add to web plan". Build on a **further NEW private preview route cloned from the
 > flat-optimizer route just built in W34** (**next number in sequence**, every prior route left
@@ -1402,3 +1402,31 @@ highest-generation combination, then change a second and watch the rest re-optim
   `PUBLIC_MAPBOX_TOKEN`). PHONE-ONLY to confirm (build can't render the map): trace a roof, change one
   option and watch every other option re-optimise live to the highest-generation combination. URL to
   open: `/preview/toiture-3d-pro-10`.
+- 2026-06-18 — W35 done (estimator brain v8 — SAME live optimizer for PITCHED/tiled roofs): new private
+  `/preview/toiture-3d-pro-11` (noindex, sitemap-excluded, unlinked, lazy-loaded), a clone of pro-10 on
+  a NEW pure engine `src/lib/estimatorBrainV8.ts` that COMPOSES on V2 + V3 (`packFlushPlane`) without
+  editing them (pro-3..pro-10 byte-for-byte intact — proven by a test). The pitched roof now gets the
+  IDENTICAL live constrained optimizer as the flat roof (W34), with exactly two physics-forced
+  differences: (1) NO tilt axis — a flush panel's tilt EQUALS the roof pitch; (2) orientation is fixed
+  to « aligné toit » — a flush panel can't face true-south or form east-west tents, so plein-sud / E-O
+  are omitted. The FREE axes in pitched mode are therefore pose (portrait/paysage), roof-edge margin
+  (garder/pleine rive) and the panneaux-nécessaires target: locking one holds it and re-solves the rest
+  live to maximise generation; locks accumulate; re-clicking a locked value re-floats it; « Réinitialiser »
+  releases all; each group shows its « Recommandé » value (the freed-axis optimum with the other locks
+  held). Production = placed × kWc × the PVGIS specific yield at the single (pitch, facing) pair for the
+  exact GPS, pose `mountingplace='building'` (flush panels run hotter → honest slight de-rate), shared
+  cache, graceful « estimé » table fallback. A north-facing slope places zero panels (honest, flagged).
+  The flush COPLANAR layout and the pitched 3D (inclined deck, no racks, no inter-row gaps) are byte-for-
+  byte the pro-9/V6 model — unchanged. The flat-roof path (W34/V7) is untouched and still live. The page
+  now shows the pose + marge controls in BOTH modes (they're the pitched free axes), with the flat-only
+  orientation/tilt/azimuth controls hidden in pitched (#rp9-flat-only); a small pitched comparison table
+  (pose × marge, ≤4 rows) reuses the matrix table with the optimum badged, and the flat matrix paint is
+  guarded off in pitched. 781 web tests green (new `estimatorBrainV8.test.ts` 12 cases: no tilt/orientation
+  axis, lock-holds-while-others-reoptimize, accumulating locks + reset, per-axis recommended = freed
+  optimum, generation = placed×kWc×PVGIS(building) with the cap never exceeded, graceful fallback, north-
+  facing → zero, flush layout unchanged; plus `estimatorPreviewPro11.test.ts` route/wiring guards;
+  `roof-preview.test.ts` heavy-import lists updated for pro-11). `astro build` clean (pro-11 generated,
+  confirmed ABSENT from the sitemap, noindex). Live site + lead form byte-for-byte untouched; map key
+  read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`). PHONE-ONLY to confirm (build can't render
+  the map): trace a pitched roof, watch the panels lie flush on the slope, then change the pose/marge and
+  watch the rest re-optimise live. URL to open: `/preview/toiture-3d-pro-11`.
