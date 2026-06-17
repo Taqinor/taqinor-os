@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 const pagesDir = fileURLToPath(new URL('../src/pages', import.meta.url));
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
-// Les 7 pages élevées (les 2 pages légales restent volontairement sobres).
+// Les pages élevées (les 2 pages légales restent volontairement sobres).
+// Inclut le lot SEO public (W2–W8) : pages ville, FAQ, garanties, pourquoi,
+// MRE — toutes indexées et montant le moteur d'élévation.
 const ELEVATED = [
   'index',
   'contact',
@@ -19,6 +21,11 @@ const ELEVATED = [
   'regularization-article-33',
   'résidentiel',
   'équipement',
+  'faq',
+  'garanties',
+  'pourquoi-taqinor',
+  'marocains-du-monde',
+  'installation-solaire-[city]',
 ];
 
 describe('élévation — pages publiques', () => {
@@ -54,7 +61,11 @@ describe('prévisualisations supprimées', () => {
     expect(existsSync(`${pagesDir}/v2`)).toBe(false);
     expect(existsSync(`${pagesDir}/v3`)).toBe(false);
     const slugs = readdirSync(pagesDir).filter((f) => f.endsWith('.astro'));
-    expect(slugs.length).toBe(9); // 7 élevées + 2 légales
+    // 9 d'origine (7 élevées + 2 légales) + 5 du lot SEO public top-level
+    // (installation-solaire-[city], faq, garanties, pourquoi-taqinor,
+    // marocains-du-monde). Les études de cas et guides vivent en sous-dossier
+    // (realisations/, guides/) et ne comptent pas ici.
+    expect(slugs.length).toBe(14);
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {

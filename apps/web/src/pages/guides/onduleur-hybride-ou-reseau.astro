@@ -1,0 +1,82 @@
+---
+/**
+ * Guide (W6) — Onduleur hybride ou onduleur réseau ? Reprend en langage clair
+ * la page équipement (Deye hybride vs Huawei SUN2000 réseau). AUCUN chiffre
+ * hors des gammes déjà publiées (5–30 kW), pas de claim tarif/coût.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Onduleur hybride ou onduleur réseau ?',
+  description: 'Onduleur hybride Deye ou onduleur réseau Huawei : la différence tient à une question simple — stockez-vous l’énergie, oui ou non ?',
+  about: { '@type': 'Thing', name: 'Onduleurs solaires' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Onduleur hybride ou onduleur réseau ? | Taqinor"
+  description="Onduleur hybride Deye (avec stockage, continuité de service) ou onduleur réseau Huawei SUN2000 (autoconsommation sans batterie) : comment se fait le choix, expliqué simplement."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Onduleur hybride ou réseau ?' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
+      <h1 class="display v2-page-title mt-5 text-white">Onduleur hybride ou onduleur réseau ?</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        L’onduleur est le cœur d’une installation solaire : c’est lui qui transforme le courant
+        des panneaux en courant utilisable. Le choix entre <strong class="text-lune">hybride</strong>
+        et <strong class="text-lune">réseau</strong> tient en réalité à une seule question :
+        stockez-vous l’énergie, oui ou non ?
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">L’onduleur hybride (Deye)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les onduleurs hybrides Deye (monophasés et triphasés, de 5 à 30 kW) gèrent à la fois les
+        panneaux et une batterie, avec une gestion de batterie CAN BMS intégrée. C’est le choix
+        quand on veut stocker l’énergie produite en journée — pour la consommation du soir ou la
+        continuité de service.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">L’onduleur réseau (Huawei SUN2000)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les onduleurs réseau Huawei SUN2000 (de type string) sont conçus pour l’autoconsommation
+        sans stockage, du résidentiel aux toitures tertiaires. C’est le choix quand la
+        consommation est surtout diurne et qu’une batterie ne se justifie pas.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Comment on choisit</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le choix de l’onduleur découle directement de la décision sur le stockage — et donc de
+        votre profil de consommation. Comme pour le reste de l’installation, c’est l’étude qui
+        tranche, jamais un kit imposé.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Faut-il des batteries ? →</a>
+        <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Hybride ou réseau ? L’étude gratuite choisit pour de bon." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

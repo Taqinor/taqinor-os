@@ -1,0 +1,98 @@
+---
+/**
+ * Guide (W6) — Loi 82-21 expliquée simplement. Reprend en langage clair le
+ * contenu de regime.ts et de la page loi-82-21. AUCUN chiffre hors des seuils
+ * de la loi elle-même (11 kW, 5 MW) et de la date (9 juin 2026). Pas de
+ * claim tarif/coût.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Loi 82-21 expliquée simplement',
+  description: 'Les trois régimes de l’autoproduction d’électricité au Maroc (déclaration, accord de raccordement, autorisation) expliqués en langage clair.',
+  about: { '@type': 'Thing', name: 'Loi 82-21 — autoproduction d’énergie électrique' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+const regimes = [
+  {
+    n: '01',
+    title: 'Déclaration',
+    body: 'Pour les installations de moins de 11 kW raccordées en basse tension, ou les installations non raccordées au réseau (sites isolés). Une simple déclaration préalable suffit avant la mise en service — pas une autorisation. C’est le cas de la grande majorité des villas.',
+  },
+  {
+    n: '02',
+    title: 'Accord de raccordement',
+    body: 'Pour les installations raccordées au réseau, du seuil de déclaration jusqu’à 5 MW, en basse ou moyenne tension. Un accord de raccordement avec le gestionnaire de réseau est requis avant la mise en service. C’est le cas typique des sites professionnels.',
+  },
+  {
+    n: '03',
+    title: 'Autorisation',
+    body: 'Pour les installations de 5 MW et plus, raccordées en moyenne, haute ou très haute tension. Une autorisation préalable est exigée avant tout démarrage des travaux.',
+  },
+];
+---
+
+<Layout
+  title="Loi 82-21 expliquée simplement — les 3 régimes | Taqinor"
+  description="Déclaration, accord de raccordement ou autorisation ? Les trois régimes de la loi 82-21 sur l'autoproduction d'électricité au Maroc, expliqués en langage clair — et comment savoir lequel vous concerne."
+  ogSlug="loi-82-21"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Loi 82-21 expliquée simplement' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Loi 82-21</p>
+      <h1 class="display v2-page-title mt-5 text-white">Loi 82-21 expliquée simplement</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        La loi 82-21 sur l’autoproduction d’énergie électrique et son décret d’application
+        2-25-100 sont en vigueur depuis le 9 juin 2026. Depuis cette date, toute installation
+        d’autoproduction — nouvelle ou existante — relève de l’un des trois régimes ci-dessous,
+        selon sa puissance et son raccordement. Voici lequel vous concerne, sans jargon.
+      </p>
+
+      <div class="mt-12 grid gap-6" data-stagger>
+        {regimes.map((r, i) => (
+          <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
+            <span class="fig lum text-4xl" aria-hidden="true">{r.n}</span>
+            <div>
+              <h2 class="display text-xl text-white">{r.title}</h2>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h2 class="display v2-section-title mt-14 text-white">Et si mon installation existe déjà ?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        L’Article 33 de la loi ouvre une fenêtre de régularisation de 18 mois pour les
+        installations existantes, ouverte depuis le 9 juin 2026. Une installation régularisée est
+        sécurisée juridiquement ; une installation non régularisée est en situation irrégulière.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identifier mon régime en 3 questions →</a>
+        <a href="/regularization-article-33" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Régulariser mon installation →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

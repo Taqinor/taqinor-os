@@ -10,6 +10,7 @@
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
 import DiagnosticForm from '../components/DiagnosticForm.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
@@ -48,6 +49,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Résidentiel' }]} />
 
     <!-- ACTE I — le crépuscule plein cadre : la photo est la lumière -->
     <section class="relative isolate overflow-hidden text-white">
@@ -162,6 +165,15 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
             </figcaption>
           </figure>
         </div>
+      </div>
+    </section>
+
+    <!-- Liens contextuels -->
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
+        <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations résidentielles →</a>
+        <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">L'équipement posé →</a>
+        <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos garanties →</a>
       </div>
     </section>
 
