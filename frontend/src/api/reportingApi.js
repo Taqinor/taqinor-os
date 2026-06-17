@@ -27,6 +27,10 @@ const reportingApi = {
   // N32 — Archive documentaire (lecture seule) par client / par chantier.
   getArchiveClient: (id) => api.get(`/reporting/archive/client/${id}/`),
   getArchiveChantier: (id) => api.get(`/reporting/archive/chantier/${id}/`),
+  // N84 — Calendrier / agenda. Fenêtre ?from=&to=, filtres ?assignee=&types=.
+  getCalendar: (params) => api.get('/reporting/calendar/', { params }),
+  rescheduleCalendar: (payload) =>
+    api.post('/reporting/calendar/reschedule/', payload),
 }
 
 export default reportingApi

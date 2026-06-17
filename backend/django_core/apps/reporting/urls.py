@@ -7,11 +7,15 @@ from .insights import (
     recurring_revenue, audit_log, job_costing, analytics,
 )
 from .archive import archive_client, archive_chantier
+from .calendar import calendar_events, calendar_reschedule
 
 urlpatterns = [
     path('dashboard/', dashboard, name='reporting-dashboard'),
     path('search/', global_search, name='global-search'),
     path('notifications/', notifications, name='in-app-notifications'),
+    path('calendar/', calendar_events, name='reporting-calendar'),
+    path('calendar/reschedule/', calendar_reschedule,
+         name='reporting-calendar-reschedule'),
     path('pipeline/', pipeline, name='reporting-pipeline'),
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
