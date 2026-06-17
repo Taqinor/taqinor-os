@@ -135,70 +135,89 @@ once at the very end — **no per-task merge**. All the HOW TO RUN and STANDING 
 
 ### Group E — End-to-end (E2E) browser test suite covering every screen flow
 
-- [ ] **E1 — Playwright + required CI job.** Add Playwright to the frontend and a new
+- [x] **E1 — Playwright + required CI job.** Add Playwright to the frontend and a new
   CI job that runs the E2E specs headless against a throwaway test database with MinIO
   (reuse the existing test stack; never touch production data). Make this E2E job
   **required for merge**. NOTE for whoever executes this later: this introduces
   Playwright (a new dev/test dependency) and a new CI job — Reda has already approved
   both, so proceed without pausing to re-ask.
-  _(2026-06-17 — SKIP (blocage environnemental, pas d'approbation). E1–E16 exigent un
-  stack COMPLET qui tourne (frontend + Django + Postgres + MinIO) pour ÉCRIRE puis
-  PROUVER VERTES les specs Playwright avant de rendre le job « requis pour merge ».
-  Dans cette session le démon Docker est arrêté et Django n'est pas installé en local,
-  donc impossible de monter le stack et de vérifier ne serait-ce qu'une spec. Livrer 16
-  specs non vérifiées en job CI REQUIS rendrait sciemment la CI rouge — contraire à la
-  règle « CI must pass » et à « vérifier avant de livrer ». À exécuter là où le stack
-  tourne (serveur, ou Docker dispo) pour authorer + prouver vertes les specs avant de
-  marquer le job requis. E2–E16 dépendent de E1, donc laissés `[ ]` aussi.)_
+  _(2026-06-17 — DONE. The prior SKIP was environmental: the local Docker daemon
+  was down. Resolved by building on the CI runner itself — the new `e2e` GitHub
+  Actions job spins up the SAME throwaway stack backend-tests uses (Postgres+pgvector,
+  Redis, MinIO), serves the real built app via `vite preview` proxying same-origin to
+  Django, seeds throwaway data (`seed_demo` + `seed_catalogue`), and runs all 18 specs
+  headless — proven green over five iterations before merge. The job is added to the
+  required status checks.)_
 
-- [ ] **E2 — Login is the app entry point.** A valid login lands in the app; an
+- [x] **E2 — Login is the app entry point.** A valid login lands in the app; an
   invalid login is rejected.
 
-- [ ] **E3 — Lead lifecycle.** Create a lead, confirm it appears in the list and on
+- [x] **E3 — Lead lifecycle.** Create a lead, confirm it appears in the list and on
   the kanban, open it.
 
-- [ ] **E4 — Devis from a lead.** From a lead, generate a devis (automatic and
+- [x] **E4 — Devis from a lead.** From a lead, generate a devis (automatic and
   modifiable), confirm the PDF preview actually renders (no broken-file icon), the new
   devis appears in that lead's devis list, and download works.
 
-- [ ] **E5 — Inline bill editing.** Inline bill editing on a lead saves and reflects
+- [x] **E5 — Inline bill editing.** Inline bill editing on a lead saves and reflects
   correctly.
 
-- [ ] **E6 — Lead reassignment.** Reassignment works both from the lead view and from
+- [x] **E6 — Lead reassignment.** Reassignment works both from the lead view and from
   a kanban card.
 
-- [ ] **E7 — Stage transitions.** Moving a lead between stages works, including into
+- [x] **E7 — Stage transitions.** Moving a lead between stages works, including into
   Signé.
 
-- [ ] **E8 — Employee management.** Create/edit an employee, upload a photo, and reach
+- [x] **E8 — Employee management.** Create/edit an employee, upload a photo, and reach
   the password-reset action.
 
-- [ ] **E9 — Typed activities.** Log an activity and see it in the cockpit view.
+- [x] **E9 — Typed activities.** Log an activity and see it in the cockpit view.
 
-- [ ] **E10 — File attachments.** Attach a file to a record, confirm the upload
+- [x] **E10 — File attachments.** Attach a file to a record, confirm the upload
   succeeds and the file can be opened/downloaded afterward.
 
-- [ ] **E11 — Duplicate detection.** The doublons view renders and merging a cluster
+- [x] **E11 — Duplicate detection.** The doublons view renders and merging a cluster
   completes.
 
-- [ ] **E12 — Credit notes (avoirs).** An avoir can be created from a posted invoice.
+- [x] **E12 — Credit notes (avoirs).** An avoir can be created from a posted invoice.
 
-- [ ] **E13 — Payment follow-ups & receivables.** Payment follow-ups, aged
+- [x] **E13 — Payment follow-ups & receivables.** Payment follow-ups, aged
   receivables, and a customer statement all render.
 
-- [ ] **E14 — Paramètres.** Paramètres pages load, and changing a setting saves and is
+- [x] **E14 — Paramètres.** Paramètres pages load, and changing a setting saves and is
   reflected.
 
-- [ ] **E15 — Cross-cutting health.** Assert no broken images and no uncaught console
+- [x] **E15 — Cross-cutting health.** Assert no broken images and no uncaught console
   errors on the key pages.
 
-- [ ] **E16 — Mobile pass.** Run a subset at iPhone viewport width asserting no
+- [x] **E16 — Mobile pass.** Run a subset at iPhone viewport width asserting no
   horizontal overflow and that the full navigation menu is reachable.
 
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — E1–E16: end-to-end Playwright browser suite shipped and proven
+  green in CI (all 18 specs). E1 = a new required `e2e` GitHub Actions job that
+  reuses the same throwaway stack as backend-tests (Postgres+pgvector, Redis,
+  MinIO — never production), seeds throwaway data (`seed_demo` + `seed_catalogue`),
+  builds the real app and serves it via `vite preview` proxying same-origin to
+  Django, then runs headless. Specs cover: login valid/invalid (E2); lead
+  lifecycle list+kanban+open (E3); auto+modifiable devis from a lead with the PDF
+  preview actually rendering on canvas and a working download (E4); inline bill
+  edit (E5); reassignment from a kanban card and the lead view (E6); stage moves
+  incl. the Signé acceptance dialog (E7); employee create/edit + photo upload +
+  password-reset (E8); typed activity → cockpit (E9); file attachment round-trip
+  (E10); doublons merge (E11); avoir from a posted invoice (E12); relances /
+  balance âgée / customer statement (E13); paramètres save (E14); broken-image /
+  console-error health on key pages (E15); iPhone-width no-overflow + reachable
+  nav (E16). The first runs doubled as an audit and surfaced ONE real app bug,
+  fixed in scope: the leads pipeline blanked to a full-page loader on every
+  background refetch, tearing down any open lead modal / inline devis preview
+  mid-action (so the auto-devis preview never rendered and an inline bill edit
+  looked like it didn't save) — now it only blanks on the first load. Also made
+  the demo seed complete (default activity types + follow-up levels), which real
+  signups already get. No known-failures; nothing skipped.
 - 2026-06-17 — Vérification A1–A4 + C1 (signalés « ne marchent pas » par le
   fondateur) : DIAGNOSTIC = les deux fonctionnalités sont DÉJÀ complètes et
   correctes sur `main` (livrées le 17/06 via le lot dev-os, jamais reverties).
