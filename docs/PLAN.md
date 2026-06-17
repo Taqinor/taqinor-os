@@ -348,7 +348,7 @@ conformity warning banner).
 - [BLOCKED: the editable text portions of client docs are hardcoded literals in the premium PDF engine — rule #4 forbids editing it.] N59 — Document-template editor in Paramètres for the editable text portions of client-facing documents (devis/facture/acompte/avoir/PV de réception/bon de livraison/handover pack/attestation): headers, footers, legal footnotes, CGV, quote-validity text, payment-terms text, with safe placeholders for company/client/system fields; core layout engine intact; buy prices impossible to insert.
 - [BLOCKED: CGV + validity are hardcoded literals ("30 jours") in the premium PDF engine — rule #4; same conflict as D2. Validity duration is already editable in Paramètres, just not printed dynamically.] N60 — Editable conditions générales + configurable quote-validity duration applied to new devis, with the validity date printed on the devis PDF.
 - [x] N61 — Message-template editor in Paramètres for WhatsApp/email/SMS templates (named templates, placeholders, a French default each).
-- [ ] N62 — Editable numbering-sequence configuration per document type (devis/facture/acompte/avoir/bon de commande/bon de livraison/chantier/SAV): prefix, padding width, yearly-reset behaviour; engine still guarantees gap-free, non-duplicated sequences.
+- [x] N62 — Editable numbering-sequence configuration per document type (devis/facture/acompte/avoir/bon de commande/bon de livraison/chantier/SAV): prefix, padding width, yearly-reset behaviour; engine still guarantees gap-free, non-duplicated sequences. — [x] (already present)
 - [x] N63 — Editable pricing & sizing engine in Paramètres exposing today's implicit quote parameters (default margin/target price per kWc rules, default discount limits, sizing ratios used by auto-remplir, per-region production factors), editable & versioned; lossless typed-number behaviour preserved.
 - [BLOCKED: per-tranche tariff tables change the calculation model (flat tariff is already editable from D5) — founder must validate the bracket scale first.] N64 — Editable ONEE electricity tariff tables + tranche thresholds in Paramètres used by the seasonal bill estimator and ROI calculation; current values seeded as defaults.
 - [BLOCKED: there is no region field on a quote today; needs a founder-validated regional irradiation map + a new model (per D5).] N65 — Editable per-city/region irradiation & production-yield assumptions used to estimate annual production, seeded with Moroccan defaults, selectable on a quote.
@@ -575,3 +575,9 @@ Tracked here so they aren't lost:
   évènement à date éditable vers un autre jour le reprogramme (POST
   /reporting/calendar/reschedule, jamais une visite de maintenance calculée).
   Endpoint lecture seule /reporting/calendar borné société. Tests backend.
+- 2026-06-17 — N62 vérifié déjà présent : Paramètres → onglet Devis & Factures
+  → « Numérotation des pièces » édite, par type (devis/facture/avoir/bon de
+  commande), le préfixe, la largeur de remplissage et la réinitialisation
+  (mensuelle/annuelle/aucune), avec un aperçu en direct. Sauvé dans
+  doc_prefixes/doc_numbering et consommé par le moteur create_numbered
+  (highest+1, sans trou, race-safe). Aucun changement nécessaire.
