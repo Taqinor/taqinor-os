@@ -22,16 +22,20 @@ import {
   COPLANAR_TOL,
   PITCHED_FLUSH_STANDOFF_M,
   acrossUnit,
+  coarseTiltGrid,
   dot3,
   eaveUpSlopeCoord,
   facingUnit,
   fineGridMatrixV6,
   flushPanelCenterAt,
+  flushPanelCorners,
   flushPanelPose,
   matrixGroupKey,
   matrixTiltGrid,
   pitchedDeckZ,
+  pvgisCoarsePairs,
   pvgisMatrixCandidatePairs,
+  pvgisRefinePairs,
   roofPlaneNormal,
   signedDistanceToPlane,
   sortMatrix,
@@ -40,7 +44,9 @@ import {
   type YieldFn,
 } from '../src/lib/estimatorBrainV6';
 import { optimalSouthTiltDeg } from '../src/lib/estimatorBrainV2';
-import type { LngLat } from '../src/lib/roof';
+import { packFlushPlane } from '../src/lib/estimatorBrainV3';
+import { PANEL2_LONG_M, PANEL2_SHORT_M } from '../src/lib/roofPro2';
+import { pointInPolygon, type LngLat } from '../src/lib/roof';
 
 const LAT = 33.59;
 
@@ -199,6 +205,53 @@ describe('V6 FIX 1 — surface de toit inclinée + helper de rendu cohérent', (
   });
 });
 
+describe('V6 FIX 1 — chaque COIN de panneau se projette SUR le plan incliné et DANS le tracé', () => {
+  const pitch = 30;
+  const facing = 180;
+  const baseZ = 6;
+
+  it('les 4 coins d\'un panneau affleurant sont coplanaires, posés SUR le plan (même standoff)', () => {
+    // demi-dimensions dans le plan : portrait = grand côté dans la pente.
+    const halfUp = PANEL2_LONG_M / 2;
+    const halfAcross = PANEL2_SHORT_M / 2;
+    for (const [up, across] of [
+      [0, 0],
+      [4, 2],
+      [9, -3],
+    ]) {
+      const corners = flushPanelCorners(up, across, halfUp, halfAcross, baseZ, pitch, facing);
+      expect(corners).toHaveLength(4);
+      for (const c of corners) {
+        // « sur le plan incliné » = distance signée au plan == standoff (coplanaire,
+        // pas un coin qui plonge ou se dresse — donc pas de châssis).
+        expect(signedDistanceToPlane(c, baseZ, pitch, facing)).toBeCloseTo(PITCHED_FLUSH_STANDOFF_M, 9);
+      }
+    }
+  });
+
+  it('chaque coin de chaque panneau PACKÉ se projette DANS le polygone tracé', () => {
+    // Vrai pavage affleurant (V3) sur un toit carré en pente, avec retrait de rive →
+    // les empreintes (longueur·cos pente × largeur) sont strictement intérieures.
+    const side = 16;
+    const ring = squareRing(side);
+    const pack = packFlushPlane({ ring, pitchDeg: pitch, facingAzimuthDeg: facing }, { setbackM: 0.5 });
+    expect(pack.portrait.count).toBeGreaterThan(0);
+    const us = upSlopeUnit(facing); // axe de pente (profondeur d'empreinte)
+    const ac = acrossUnit(facing); // axe travers (largeur)
+    const halfDepth = (PANEL2_LONG_M * Math.cos((pitch * Math.PI) / 180)) / 2;
+    const halfAcross = PANEL2_SHORT_M / 2;
+    for (const p of pack.portrait.panels) {
+      for (const su of [1, -1]) {
+        for (const sa of [1, -1]) {
+          const x = p.cx + su * halfDepth * us.x + sa * halfAcross * ac.x;
+          const y = p.cy + su * halfDepth * us.y + sa * halfAcross * ac.y;
+          expect(pointInPolygon([x, y], pack.ringENU)).toBe(true);
+        }
+      }
+    }
+  });
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // FIX 2 — la matrice complète balayée ET renvoyée pour affichage
 // ════════════════════════════════════════════════════════════════════════════════
@@ -224,6 +277,40 @@ describe('V6 FIX 2 — grille d\'inclinaison & balayage d\'azimut', () => {
     for (const a of [-45, 0, 45]) expect(aspects).toContain(a); // span sud réellement interrogé
     const turned = pvgisMatrixCandidatePairs(LAT, 235);
     expect(turned.length).toBeGreaterThan(flat.length); // l'axe aligné ajoute des aspects
+  });
+
+  it('COARSE-THEN-FINE : la phase grossière est un sous-ensemble STRICT du balayage complet', () => {
+    const coarse = pvgisCoarsePairs(LAT, 180);
+    const full = pvgisMatrixCandidatePairs(LAT, 180);
+    const key = (p: { tiltDeg: number; aspect: number }) => `${p.tiltDeg}|${p.aspect}`;
+    const fullSet = new Set(full.map(key));
+    // grille grossière ⊂ grille complète (mêmes aspects, inclinaisons grossières + E-O).
+    for (const p of coarse) expect(fullSet.has(key(p))).toBe(true);
+    expect(coarse.length).toBeLessThan(full.length); // strictement plus rapide
+    // la grille grossière d'inclinaison est plus courte que la fine.
+    expect(coarseTiltGrid(LAT).length).toBeLessThan(matrixTiltGrid(LAT).length);
+  });
+
+  it('COARSE-THEN-FINE : le raffinement cible la grille FINE autour de l\'aspect gagnant', () => {
+    // gagnant à l'aspect 0 (plein sud) → raffine les aspects voisins (−15..+15) sur
+    // TOUTE la grille fine d'inclinaison, et n'inclut pas les aspects lointains (±45).
+    const refine = pvgisRefinePairs(LAT, 180, 0);
+    const aspects = new Set(refine.map((p) => p.aspect));
+    expect(aspects.has(0)).toBe(true);
+    expect([...aspects].every((a) => Math.abs(a) <= 16)).toBe(true); // proche de la base
+    expect(aspects.has(45)).toBe(false); // les aspects lointains restent « estimé »
+    // au moins toutes les inclinaisons fines à l'aspect gagnant sont raffinées.
+    const tiltsAt0 = refine.filter((p) => p.aspect === 0).map((p) => p.tiltDeg).sort((a, b) => a - b);
+    expect(tiltsAt0).toEqual(matrixTiltGrid(LAT));
+  });
+
+  it('COARSE-THEN-FINE : coarse ∪ refine couvre le voisinage de la base (résolution fine au pic)', () => {
+    const coarse = pvgisCoarsePairs(LAT, 180);
+    const refine = pvgisRefinePairs(LAT, 180, 0);
+    const key = (p: { tiltDeg: number; aspect: number }) => `${p.tiltDeg}|${p.aspect}`;
+    const union = new Set([...coarse, ...refine].map(key));
+    // chaque inclinaison fine à l'aspect 0 est résolue par PVGIS (coarse ou refine).
+    for (const t of matrixTiltGrid(LAT)) expect(union.has(`${t}|0`)).toBe(true);
   });
 });
 

@@ -197,6 +197,42 @@ export function flushPanelPose(
   };
 }
 
+/**
+ * Les 4 COINS d'un panneau affleurant, repérés par le centre (amont, travers) et ses
+ * demi-dimensions DANS LE PLAN (demi-longueur amont, demi-largeur travers). Chaque coin
+ * passe par `flushPanelPose` → il est posé SUR le plan incliné au MÊME standoff que le
+ * centre (le panneau est plat dans le plan : tous les coins sont coplanaires, « sur le
+ * plan incliné »). Sert au test « chaque coin se projette sur le plan incliné ».
+ */
+export function flushPanelCorners(
+  upOffsetM: number,
+  acrossOffsetM: number,
+  halfUpM: number,
+  halfAcrossM: number,
+  baseZ: number,
+  pitchDeg: number,
+  facingAzimuthDeg: number,
+  standoffM: number = PITCHED_FLUSH_STANDOFF_M,
+): Vec3[] {
+  const combos: [number, number][] = [
+    [1, 1],
+    [1, -1],
+    [-1, -1],
+    [-1, 1],
+  ];
+  return combos.map(
+    ([su, sa]) =>
+      flushPanelPose(
+        upOffsetM + su * halfUpM,
+        acrossOffsetM + sa * halfAcrossM,
+        baseZ,
+        pitchDeg,
+        facingAzimuthDeg,
+        standoffM,
+      ).center,
+  );
+}
+
 /** Produit scalaire de deux Vec3. */
 export function dot3(a: Vec3, b: Vec3): number {
   return a.x * b.x + a.y * b.y + a.z * b.z;
@@ -563,6 +599,62 @@ export function pvgisMatrixCandidatePairs(
     add(t, base - 90);
     add(t, base + 90);
   }
+  return [...out.values()];
+}
+
+// ── Balayage PVGIS COARSE-THEN-FINE (rapide, dans les limites de débit) ───────────
+// Le rendement spécifique est indépendant de la taille → on l'interroge UNE fois par
+// (tilt, aspect). Pour rester rapide et poli avec PVGIS, on procède en deux temps :
+// 1) une grille GROSSIÈRE d'inclinaisons (tous les aspects) pour trouver la BASE ;
+// 2) un RAFFINEMENT (grille fine complète) autour de l'aspect gagnant. Les cellules
+//    non interrogées retombent gracieusement sur l'estimation maison (« estimé »).
+
+/** Grille GROSSIÈRE d'inclinaisons (0/15/30° + optimum), bornée [0, 35]. */
+export function coarseTiltGrid(latitudeDeg: number): number[] {
+  const base = [0, 15, 30];
+  const opt = optimalSouthTiltDeg(latitudeDeg);
+  const set = new Set(base);
+  if (opt >= 0 && opt <= 35) set.add(opt);
+  return [...set].sort((a, b) => a - b);
+}
+
+/** PHASE 1 — couples (tilt°, aspect) GROSSIERS : tous les aspects candidats, mais
+ *  seulement les inclinaisons grossières → trouve la base sans saturer PVGIS. */
+export function pvgisCoarsePairs(
+  latitudeDeg: number,
+  roofAz: number,
+): { tiltDeg: number; aspect: number }[] {
+  const out = new Map<string, { tiltDeg: number; aspect: number }>();
+  const add = (t: number, a: number) => out.set(`${t}|${round1(a)}`, { tiltDeg: t, aspect: round1(a) });
+  const tilts = coarseTiltGrid(latitudeDeg);
+  const southAzes = uniqueAz([...southSpanAzimuths(), norm360(roofAz)]);
+  for (const az of southAzes) for (const t of tilts) add(t, az - 180);
+  // L'Est-Ouest n'a que 3 inclinaisons : on les couvre toutes dès la phase grossière.
+  const ewAzes = uniqueAz([90, norm360(roofAz - 90)]);
+  for (const az of ewAzes) for (const t of EW_TILTS) {
+    const base = az - 90;
+    add(t, base - 90);
+    add(t, base + 90);
+  }
+  return [...out.values()];
+}
+
+/** PHASE 2 — couples (tilt°, aspect) de RAFFINEMENT : la grille FINE complète aux
+ *  aspects voisins (± un pas) de l'aspect gagnant trouvé en phase 1, pour résoudre
+ *  précisément l'inclinaison optimale dans la base. Les aspects loin de la base
+ *  gardent leurs cellules fines en « estimé » (volontaire). */
+export function pvgisRefinePairs(
+  latitudeDeg: number,
+  roofAz: number,
+  winnerAspectDeg: number,
+): { tiltDeg: number; aspect: number }[] {
+  const out = new Map<string, { tiltDeg: number; aspect: number }>();
+  const add = (t: number, a: number) => out.set(`${t}|${round1(a)}`, { tiltDeg: t, aspect: round1(a) });
+  const tilts = matrixTiltGrid(latitudeDeg); // grille FINE complète
+  const wa = round1(winnerAspectDeg);
+  const southAspects = uniqueAz([...southSpanAzimuths(), norm360(roofAz)]).map((az) => round1(az - 180));
+  const near = southAspects.filter((a) => Math.abs(a - wa) <= SOUTH_SPAN_STEP_DEG + 0.5);
+  for (const a of near) for (const t of tilts) add(t, a);
   return [...out.values()];
 }
 

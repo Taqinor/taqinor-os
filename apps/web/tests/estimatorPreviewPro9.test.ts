@@ -80,12 +80,18 @@ describe('pro-9 — FIX 2 : la MATRICE complète est balayée ET affichée (tria
 
   it('le script balaie et affiche la matrice V6 (plus les ~6 lignes V4)', () => {
     expect(script).toContain('fineGridMatrixV6(');
-    expect(script).toContain('pvgisMatrixCandidatePairs(');
     expect(script).toContain('sortMatrix(');
     expect(script).toContain('matrixGroupKey(');
     // le tableau 6-lignes V4 (fineGridOptimum / pvgisCandidatePairs) n'est plus utilisé.
     expect(script).not.toContain('fineGridOptimum');
     expect(script).not.toContain('pvgisCandidatePairs(');
+  });
+
+  it('la production PVGIS est balayée en COARSE-THEN-FINE (rapide, dans les limites)', () => {
+    expect(script).toContain('pvgisCoarsePairs(');
+    expect(script).toContain('pvgisRefinePairs(');
+    // phase grossière d'abord, puis raffinement autour de l'aspect gagnant.
+    expect(script.indexOf('pvgisCoarsePairs(')).toBeLessThan(script.indexOf('pvgisRefinePairs('));
   });
 
   it('la page expose des en-têtes triables + un filtre par orientation', () => {

@@ -65,7 +65,8 @@ import {
   flushPanelCenterAt,
   matrixGroupKey,
   pitchedDeckZ,
-  pvgisMatrixCandidatePairs,
+  pvgisCoarsePairs,
+  pvgisRefinePairs,
   sortMatrix,
   type MatrixEvalV6,
   type MatrixSortKey,
@@ -1627,18 +1628,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
   }
 
-  // V6 — la MATRICE complète notée sur le rendement PVGIS du GPS EXACT : on préfetch
-  // les couples (tilt, aspect) que le balayage interrogera (cache partagé, réutilisé
-  // entre réglages), puis fineGridMatrixV6 avec la source PVGIS injectée (repli table).
-  async function computeMatrixPvgis() {
-    if (!closed || vertices.length < 3 || roofType !== 'flat') return;
-    const token = ++matrixToken;
-    const ring: LngLat[] = [...vertices];
-    const bill = monthlyBill();
-    const roofAz = roofDominantAzimuthDeg(ring);
-    const pairs = pvgisMatrixCandidatePairs(centroidLat, roofAz);
-    await Promise.all(pairs.map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));
-    if (token !== matrixToken) return; // un tracé/réglage plus récent a pris la main
+  // V6 — la MATRICE complète notée sur le rendement PVGIS du GPS EXACT, en
+  // COARSE-THEN-FINE pour rester rapide et dans les limites de débit PVGIS : le
+  // rendement spécifique est interrogé UNE fois par (tilt, aspect), mis en cache et
+  // réutilisé (cache partagé v4YieldCache). Phase 1 = grille grossière (tous aspects)
+  // → trouve la base ; phase 2 = grille fine autour de l'aspect gagnant. Les cellules
+  // non interrogées retombent gracieusement sur l'estimation maison (« estimé »).
+  const buildMatrix = (ring: LngLat[], bill: number) => {
     const yieldFn = (tiltDeg: number, aspect: number): number | null => {
       const v = v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
@@ -1646,6 +1642,24 @@ export function initRoofToolPro8(opts: InitOptions): void {
     matrixResult = fineGridMatrixV6(ring, centroidLat, bill, obstructionRings(), { yieldFn });
     paintComparison();
     renderMatrixOptimumCard();
+  };
+
+  async function computeMatrixPvgis() {
+    if (!closed || vertices.length < 3 || roofType !== 'flat') return;
+    const token = ++matrixToken;
+    const ring: LngLat[] = [...vertices];
+    const bill = monthlyBill();
+    const roofAz = roofDominantAzimuthDeg(ring);
+    // Phase 1 — GROSSIÈRE : tous les aspects, inclinaisons grossières → la base.
+    await Promise.all(pvgisCoarsePairs(centroidLat, roofAz).map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));
+    if (token !== matrixToken) return; // un tracé/réglage plus récent a pris la main
+    buildMatrix(ring, bill);
+    // Phase 2 — FINE : on raffine la grille fine complète autour de l'aspect gagnant.
+    const refine = pvgisRefinePairs(centroidLat, roofAz, matrixResult ? matrixResult.winner.aspect : 0);
+    if (!refine.length) return;
+    await Promise.all(refine.map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));
+    if (token !== matrixToken) return;
+    buildMatrix(ring, bill);
   }
 
   /** Carte « Optimum calculé » alimentée par le VRAI maximum de la matrice. */
