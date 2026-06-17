@@ -352,7 +352,7 @@ conformity warning banner).
 - [x] N63 — Editable pricing & sizing engine in Paramètres exposing today's implicit quote parameters (default margin/target price per kWc rules, default discount limits, sizing ratios used by auto-remplir, per-region production factors), editable & versioned; lossless typed-number behaviour preserved.
 - [BLOCKED: per-tranche tariff tables change the calculation model (flat tariff is already editable from D5) — founder must validate the bracket scale first.] N64 — Editable ONEE electricity tariff tables + tranche thresholds in Paramètres used by the seasonal bill estimator and ROI calculation; current values seeded as defaults.
 - [BLOCKED: there is no region field on a quote today; needs a founder-validated regional irradiation map + a new model (per D5).] N65 — Editable per-city/region irradiation & production-yield assumptions used to estimate annual production, seeded with Moroccan defaults, selectable on a quote.
-- [ ] N66 — Configurable default lead responsable, default installer, default acompte percentage consolidated in one place.
+- [x] N66 — Configurable default lead responsable, default installer, default acompte percentage consolidated in one place.
 - [BLOCKED: warranty texts are printed by the premium PDF engine (hardcoded) — rule #4 forbids editing it. Per-product garantie text already exists on the Produit model.] N67 — Editable warranty texts per product & per category in Paramètres (printed on devis & handover packs), current researched warranty texts seeded as defaults and used wherever warranties appear.
 - [ ] N68 — Roles-and-permissions RBAC editor in Paramètres: define roles, grant/restrict per module & per action (view/create/edit/delete/export), restrict sensitive fields (buy prices, margins) to specific roles, safe default role set (owner/commerciale/technicien/viewer) so current access is unchanged, record-level rules limiting a user to their own assigned leads/chantiers when desired.
 - [ ] N69 — Buy prices & internal margins governed by an explicit permission, visible only to roles Reda authorises, default owner-only.
@@ -589,3 +589,12 @@ Tracked here so they aren't lost:
   sinon créateur du devis), avec période optionnelle et export .xlsx ; nouvelle
   carte « Commissions commerciales » dans Rapports. Champs CompanyProfile
   additifs (migration 0014) + journalisés à l'audit. Tests backend.
+- 2026-06-17 — N66 done: installateur par défaut consolidé. Nouveau champ
+  CompanyProfile.default_installer (additif, migration 0015, nullable). À la
+  création d'un chantier (depuis un devis accepté ET en création manuelle),
+  le technicien responsable prend l'installateur par défaut configuré quand
+  aucun n'est fourni, sinon repli sur le créateur (comportement actuel
+  préservé). Sélecteur dans Paramètres → Leads, à côté du responsable par
+  défaut des leads ; l'acompte par défaut reste géré dans l'échéancier
+  (payment_terms, déjà éditable — pas de doublon de source). Validateur
+  même-société + journalisé à l'audit. Tests backend.
