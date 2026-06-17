@@ -1,0 +1,94 @@
+// Shared helpers + constants for the Taqinor OS E2E suite.
+// Selectors mirror the REAL components (no data-testids exist in the app, so we
+// lean on visible text, placeholders, stable CSS classes and ARIA roles).
+import { expect } from '@playwright/test'
+
+// Seeded by `manage.py seed_demo` (company "TAQINOR Démo"). Throwaway only.
+export const ADMIN = { username: 'demo_admin', password: 'Demo@2026!' }
+export const SECOND_USER = 'demo_resp'
+
+export const AUTH_FILE = 'e2e/.auth/admin.json'
+
+export const STAGE_LABELS = {
+  NEW: 'Nouveau',
+  CONTACTED: 'Contacté',
+  QUOTE_SENT: 'Devis envoyé',
+  FOLLOW_UP: 'Relance',
+  SIGNED: 'Signé',
+  COLD: 'Froid',
+}
+
+// Unique-ish suffix so created records never collide across specs/reruns.
+let _seq = 0
+export function uniq(prefix) {
+  _seq += 1
+  return `${prefix} ${Date.now().toString(36)}${_seq}`
+}
+
+// ── Auth ────────────────────────────────────────────────────────────────────
+export async function uiLogin(page, { username, password } = ADMIN) {
+  await page.goto('/login')
+  await page.getByPlaceholder('Entrez votre identifiant').fill(username)
+  await page.locator('input[type="password"]').fill(password)
+  await page.getByRole('button', { name: 'Se connecter →' }).click()
+}
+
+// ── Leads ─────────────────────────────────────────────────────────────────
+export async function gotoLeads(page) {
+  await page.goto('/crm/leads')
+  await expect(page.getByRole('button', { name: '+ Nouveau lead' })).toBeVisible()
+}
+
+// view: 'kanban' | 'liste'
+export async function setLeadsView(page, view) {
+  const label = view === 'liste' ? 'Vue liste' : 'Vue kanban'
+  await page.getByRole('button', { name: label }).click()
+}
+
+const leadModal = (page) => page.locator('.modal.modal-xl')
+
+// Create a lead through the modal. Returns its display name (its nom).
+// `facture` (winter bill, MAD) makes the lead "devis-ready" for residential.
+export async function createLead(page, { nom, facture } = {}) {
+  const name = nom || uniq('Lead E2E')
+  await page.getByRole('button', { name: '+ Nouveau lead' }).click()
+  const modal = leadModal(page)
+  await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
+  // Nom = the first .form-control input (Contact section, required field).
+  await modal.locator('input.form-control').first().fill(name)
+  if (facture != null) {
+    await modal.getByPlaceholder('ex: 650').fill(String(facture))
+  }
+  await modal.getByRole('button', { name: 'Créer le lead' }).click()
+  await expect(leadModal(page)).toHaveCount(0)
+  return name
+}
+
+// Open a lead (works from kanban card or list row) into the edit modal.
+export async function openLead(page, name) {
+  const card = page.locator('article.kb-card', { hasText: name })
+  const row = page.locator('tr.lv-row', { hasText: name })
+  if (await card.count()) {
+    await card.first().click()
+  } else {
+    await row.first().click()
+  }
+  await expect(leadModal(page).locator('.modal-title')).toContainText('Lead —')
+}
+
+export async function closeLeadModal(page) {
+  await leadModal(page).locator('.modal-close').first().click()
+  await expect(leadModal(page)).toHaveCount(0)
+}
+
+// Generate the automatic devis from an already-open lead edit modal and wait for
+// the PDF preview to actually render (no broken-file fallback).
+export async function generateAutoDevis(page) {
+  const modal = leadModal(page)
+  const autoBtn = modal.getByRole('button', { name: '⚡ Devis automatique' })
+  await expect(autoBtn).toBeEnabled()
+  await autoBtn.click()
+  // The inline panel renders the PDF on <canvas> via pdf.js.
+  await expect(page.locator('.ldp-pdf-area canvas').first()).toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('.ldp-fallback')).toHaveCount(0)
+}
