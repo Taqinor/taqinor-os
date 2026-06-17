@@ -1,10 +1,13 @@
-# Taqinor OS — Build Plan & Progress (overflow queue, PLAN2)
+# Taqinor OS — Build Plan & Progress (priority queue, PLAN2)
 
-This is the **overflow queue**. A run that finishes every `[ ]` task in `docs/PLAN.md`
-continues here and works through every `[ ]` task in this file the same way (verify it
-isn't already built, build it completely with tests, obey every STANDING RULE in `PLAN.md`,
-CI green, self-merge `dev` → `main`, tick it `[x]`, append a DONE LOG line). All the HOW TO
-RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — this file only adds tasks.
+> **This queue is drained BEFORE `docs/PLAN.md`.** A run works every pending `[ ]` task here first, and only falls through to `docs/PLAN.md` once this file has none left.
+
+This is the **priority queue**, worked **before** `docs/PLAN.md`. A run drains every `[ ]` task
+in this file FIRST — the same way (verify it isn't already built, build it completely with
+tests, obey every STANDING RULE in `PLAN.md`, CI green, self-merge `dev` → `main`, tick it
+`[x]`, append a DONE LOG line) — and only once this file has no pending `[ ]` task left does it
+fall through to `docs/PLAN.md`. All the HOW TO RUN and STANDING RULES in `docs/PLAN.md` apply
+here unchanged — this file only adds tasks.
 
 > Added 2026-06-17 while the field-execution batch (PLAN.md F1–F24) was running on
 > `dev-field-exec`. Per the founder's "add to plan" convention, new tasks go here while a
