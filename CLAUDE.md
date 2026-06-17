@@ -49,9 +49,12 @@ repo yet, the rule still applies to any future integration.
 
 ## Repo facts
 
-- All work lands as a single direct push to `main` (`git push origin main`) —
-  no feature branches, no pull requests, no worktrees. `main` is revertable:
-  if a push breaks something, `git revert` restores the previous state.
+- A run lands its whole batch as a single self-merge of `dev` → `main` (one merge
+  commit, history preserved, 0 approvals). Work happens on a `dev` branch cut from
+  an up-to-date `main`; independent tasks are built in parallel by subagents, each
+  in its own isolated git worktree, so two tasks never edit the same files at once.
+  The four required CI checks gate the merge and `main` stays revertable: if a merge
+  breaks something, `git revert` restores the previous state.
 - Backend: Django at `backend/django_core` (apps: authentication, stock, crm,
   ventes, reporting, parametres, roles, contact) + FastAPI AI service at
   `backend/fastapi_ia` (OCR via Zhipu AI, natural-language SQL agent via
@@ -149,26 +152,32 @@ repo yet, the rule still applies to any future integration.
 
 ## Workflow
 
-These rules govern HOW work gets done and landed. They replace the old
-branch / pull-request / merge ceremony entirely.
+These rules govern HOW work gets done and landed.
 
 - **Fewest steps.** Default to the fewest steps that do exactly what was asked.
   Never add ceremony. Never do extra or adjacent work that wasn't requested —
   don't go resolve unrelated gated items, don't restructure neighboring files,
   don't create files nobody asked for.
-- **One session, one direct push to main.** All work happens in one session and
-  lands as a single direct push to `main`: run any relevant tests, then
-  `git push origin main`. No feature branches, no pull requests, no self-merge,
-  no admin-merge, no auto-merge, no worktrees — ever.
-- **Safety model: main is revertable.** If a push breaks something, `git revert`
-  restores the previous state. Do not add branch-protection gates, PR review, or
-  approval steps. Revert is the only safety net, by the operator's explicit
-  choice.
+- **One run, one self-merge to main.** All work happens in one session on a `dev`
+  branch cut from an up-to-date `main`. Independent tasks (and independent groups
+  of tasks) are built in parallel by subagents, each in its own isolated git
+  worktree, so two tasks never edit the same files at once; tasks that depend on
+  each other, or that touch the same files, run in sequence — derive this ownership
+  from the real code, not from guesses. Each task is committed to `dev` the moment
+  it lands. At the end CI runs once over the whole batch; when the four required
+  checks are green the run self-merges `dev` → `main` exactly once (a single merge
+  commit, history preserved, 0 approvals), which auto-deploys the whole batch.
+  There is no per-task merge, no admin-merge bypass, and no deploy command.
+- **Safety model: CI gate + revertable main.** The four required checks
+  (backend-lint, backend-tests with MinIO, frontend-lint, stage-names) gate every
+  merge with 0 approvals, and `main` stays revertable: if a merge breaks something,
+  `git revert` restores the previous state. Keep this branch protection exactly as
+  configured — do not loosen, bypass, or add approval steps to it.
 - **Touch only the named files.** Only edit the files explicitly named in the
   request. Asked to change two files means change exactly those two. Never
   create alternate or fallback files.
-- **Several commands in one request** are all handled in the one session and the
-  one push to main — never split across multiple pushes or PRs.
+- **Several commands in one request** are all handled in the one session and land
+  in the one self-merge to `main` — never split across multiple merges or sessions.
 
 ### "work on the plan"
 Anything typed after the command is extra detail for that run.
@@ -176,38 +185,46 @@ Anything typed after the command is extra detail for that run.
   ever one session at a time.
 - Read it fully and verify real repo state.
 - **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just
-  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE, in order, one
-  after another, in the SAME session. For each task: build it completely with
-  tests, get CI green, land it (commit the finished task, tick it `[x]`, add one
-  dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to the next unchecked
-  `[ ]` task**. Keep looping until a stop condition below is hit. This per-task
-  build-and-checkoff is the existing correct mechanic and is repeated for every
-  task; it does NOT end the run after the first task.
+  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE. Build independent
+  tasks (and independent groups of tasks) IN PARALLEL with subagents, each in its
+  own isolated git worktree so two tasks never edit the same files at once; run
+  tasks that depend on each other, or that touch the same files, in sequence —
+  derive this ownership from the real code, not from guesses. For each task: build
+  it completely with tests, then land it (commit the finished task to `dev`, tick
+  it `[x]`, add one dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to
+  the next unchecked `[ ]` task**. CI runs once at the end over the whole batch
+  (see below), not per task. Keep looping until a stop condition below is hit. This
+  build-and-checkoff is repeated for every task; it does NOT end the run after the
+  first task.
 - **A run stops ONLY when one of these is true — nothing else licenses
   stopping:**
-  1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
+  1. **Queue drained** — no buildable unchecked `[ ]` tasks remain in the BUILD
+     QUEUE.
   2. **Usage/length cap hit** — stopping here is fine; the plan is idempotent, so
-     re-firing "work on the plan" resumes from the still-unchecked tasks.
+     re-firing "work on the plan" resumes from the first still-unchecked task.
   3. **A task hits a genuine stop-and-ask condition** — a new external
      dependency, a schema/destructive migration, an auth or cost change, a
-     deleted state file, or a brand-new architectural component. SKIP that ONE
-     task (leave it `[ ]` with a one-line note of why) and CONTINUE the remaining
-     tasks. A single stop-and-ask task must NEVER halt the whole run.
-- **There is no "one task per session" / "stop after one task" limit.** Any such
-  wording anywhere — including older lines in `docs/PLAN.md` or `docs/WEB_PLAN.md`
-  — is overridden by this rule: keep going until the queue is drained or a
-  cap/limit above stops you. Do not invent a stop after the first task.
+     deleted state file, a brand-new architectural component, or a conflict with a
+     non-negotiable rule. Mark it `[BLOCKED: <reason>]`, move it to GATED, and
+     CONTINUE the remaining tasks. A single blocked task must NEVER halt the whole
+     run.
+- **There is no "one task per session" / "stop after one task" / "merge per task"
+  limit.** Any such wording anywhere — including older lines in `docs/PLAN.md`,
+  `docs/PLAN2.md`, or `docs/WEB_PLAN.md` — is overridden by this rule: keep going
+  until the queue is drained or a cap/limit above stops you. Do not invent a stop
+  after the first task, and do not merge after each task.
 - Database migrations a task needs (additive) are approved. New external
   dependencies, auth or cost changes, deleted state, or brand-new architecture
   are stop-and-ask (condition 3) — skip those and list them.
-- When the run stops, run any relevant tests, then `git push origin main`. This
-  push auto-deploys to api.taqinor.ma; never run a deploy command.
-- Report in plain language: every task that shipped, and what was skipped and
-  why.
+- When the run stops, get the four required CI checks green over the whole batch,
+  then self-merge `dev` → `main` exactly once (a single merge commit). This merge
+  auto-deploys to api.taqinor.ma; never run a deploy command.
+- Report once, in plain language: every task that shipped, and what was skipped
+  and why.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE (there is no
-  PLAN2.md), then `git push origin main`. Confirm in one line.
+  PLAN2.md), then commit on `dev` and self-merge to `main`. Confirm in one line.
 
 ### "work on the web plan"
 The website autopilot stays strictly inside `apps/web/**` plus its own
@@ -217,13 +234,17 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
 - Read it fully and verify real repo state. Scope: edit ONLY `apps/web/**` and
   the `docs/WEB_PLAN*` files. NEVER touch anything outside apps/web.
 - **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just
-  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE, in order, one
-  after another, in the SAME session. For each task: build it completely with
-  tests, get CI green, land it (commit the finished task, tick it `[x]`, add one
-  dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to the next unchecked
-  `[ ]` task**. Keep looping until a stop condition below is hit. This per-task
-  build-and-checkoff is the existing correct mechanic and is repeated for every
-  task; it does NOT end the run after the first task.
+  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE. Build independent
+  tasks (and independent groups of tasks) IN PARALLEL with subagents, each in its
+  own isolated git worktree so two tasks never edit the same files at once; run
+  tasks that depend on each other, or that touch the same files, in sequence —
+  derive this ownership from the real code, not from guesses. For each task: build
+  it completely with tests, then land it (commit the finished task to `dev`, tick
+  it `[x]`, add one dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to
+  the next unchecked `[ ]` task**. CI runs once at the end over the whole batch
+  (see below), not per task. Keep looping until a stop condition below is hit. This
+  build-and-checkoff is repeated for every task; it does NOT end the run after the
+  first task.
 - **A run stops ONLY when one of these is true — nothing else licenses
   stopping:**
   1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
@@ -235,22 +256,24 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
      SKIP that ONE task (leave it `[ ]` with a one-line note of why) and CONTINUE
      the remaining tasks. A single stop-and-ask task must NEVER halt the whole
      run.
-- **There is no "one task per session" / "stop after one task" limit** — and this
-  rule explicitly OVERRIDES any contrary wording in `docs/WEB_PLAN.md` itself
-  (e.g. "exactly one task… and stops", "Do not start the next task", "One session
-  = one task"). Keep going until the queue is drained or a cap/limit above stops
-  you. Do not invent a stop after the first task.
+- **There is no "one task per session" / "stop after one task" / "merge per task"
+  limit** — and this rule explicitly OVERRIDES any contrary wording in
+  `docs/WEB_PLAN.md` itself (e.g. "exactly one task… and stops", "Do not start the
+  next task", "One session = one task"). Keep going until the queue is drained or a
+  cap/limit above stops you. Do not invent a stop after the first task, and do not
+  merge after each task.
 - Pre-approved: anything website-safe a task plainly needs. Stop-and-ask
   (condition 3 — skip and list): new external dependencies, auth or cost changes,
   deleted state files, brand-new architecture, anything touching the form's lead
   data flow, anything outside apps/web.
-- When the run stops, run any relevant tests, then `git push origin main` — this
-  auto-deploys the site via Cloudflare on push; never run a deploy command.
+- When the run stops, get CI green over the whole batch, then self-merge `dev` →
+  `main` exactly once (a single merge commit) — this auto-deploys the site via
+  Cloudflare on merge; never run a deploy command.
 - Report in plain language (no diffs, no commit hashes): every task that shipped,
   what was skipped and why, and the exact preview URLs or live changes Reda can
   click.
 
 ### "add to web plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no
-  WEB_PLAN2.md), then `git push origin main`. Confirm in one line which file you
-  appended to.
+  WEB_PLAN2.md), then commit on `dev` and self-merge to `main`. Confirm in one line
+  which file you appended to.
