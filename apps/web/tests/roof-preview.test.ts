@@ -64,6 +64,7 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
       'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool-pro4.ts',
       'src/scripts/roof-tool-pro5.ts',
+      'src/scripts/roof-tool-pro6.ts',
       'src/scripts/roof-tool.ts',
     ]);
   });
@@ -272,6 +273,7 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
       'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool-pro4.ts',
       'src/scripts/roof-tool-pro5.ts',
+      'src/scripts/roof-tool-pro6.ts',
     ]);
   });
 

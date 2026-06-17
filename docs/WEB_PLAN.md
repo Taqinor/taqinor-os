@@ -360,7 +360,7 @@ lead flow is untouched**, and the **three worked-test values passing**.
 
 ---
 
-### W12 — Estimator brain v3: full-search optimum, "Optimum" button with constrained re-opt, pitched/tuile roof model + roof-type toggle — [ ]
+### W12 — Estimator brain v3: full-search optimum, "Optimum" button with constrained re-opt, pitched/tuile roof model + roof-type toggle — [x]
 
 > Added 2026-06-17 via "add to web plan". Build as the **next brain session** on a **NEW
 > private preview route cloned from the current latest preview**. **READ FIRST:** confirm
@@ -541,3 +541,25 @@ lead flow untouched; and exactly what to check on the phone.
   data flow byte-for-byte untouched. 543 web tests green; `astro build` clean. Resolves the régie
   half of [[WG2]] — Lydec/Redal/Amendis exact grids stay gated until a real bill per city. Auto-deploys
   via Cloudflare on push to main.
+- 2026-06-17 — W12 done (estimator brain v3): new private `/preview/toiture-3d-pro-6` (noindex,
+  sitemap-excluded, unlinked), built as a clone of pro-5 on a NEW pure engine `src/lib/estimatorBrainV3.ts`
+  that COMPOSES on V2 without editing it (pro-3/4/5 byte-for-byte intact). Three additions, all tested
+  (`tests/estimatorBrainV3.test.ts`, 22 cases + `tests/estimatorPreviewPro6.test.ts`): (1) FULL-SEARCH
+  OPTIMUM — the "Optimum" button computes the true winner over the whole cartesian product (family ×
+  fine tilt 5°→opt × azimuth {plein sud, aligné toit} × portrait/paysage × margin keep/remove), each
+  capped at the bill-derived need, scored on placed energy; the rich search space is decoupled from the
+  clean comparison table; proven never worse than V2's reco. (2) CONSTRAINED RE-OPT — pinning one
+  control (e.g. tilt 15°, or forced Est-Ouest) holds it and re-solves every other; the "Recommandé"
+  badges stay the GLOBAL optimum regardless of what's pinned. (3) PITCHED/TUILE ROOF MODEL — a roof-type
+  toggle "Toit plat (défaut) / Toit en pente"; in pitched mode panels mount FLUSH (no solar row gap,
+  edge-to-edge minus a 0,15 m maintenance gap → packs strictly more than a flat roof of the same area),
+  array tilt = roof pitch and azimuth = roof facing, both IMPOSED/read-only ("imposé par la toiture",
+  never swept), pitch + facing are USER-SUPPLIED (not measurable on Moroccan top-down imagery), production
+  per plane from PVGIS at the real tilt+azimuth, multi-plane ready with north-facing planes skipped/flagged.
+  Needed-panel cap, savings cap and "size to need" hold in both modes. FLAT path is byte-identical to pro-5
+  (same `recommend(...)` call; the 3D `flush` flag defaults false; guarded by tests). No new dependencies
+  (Three.js + existing PVGIS + in-house math). 581 web tests green; `astro build` clean; `tsc --noEmit`
+  0 errors; pro-6 confirmed absent from the sitemap. PHONE-ONLY to confirm (build can't render the map):
+  the flush 3D visual (schematic — building stays a flat volume, only panels carry the pitch), satellite
+  alignment, touch ergonomics. Preview URL to open: `/preview/toiture-3d-pro-6`. Auto-deploys via
+  Cloudflare on push to main.
