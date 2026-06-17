@@ -221,13 +221,16 @@ class TestCommissions(InsightsBase):
         client = Client.objects.create(company=self.company, nom='C1')
         lead = Lead.objects.create(
             company=self.company, nom='L1', stage='NEW', owner=commercial)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='CM-1',
+            prix_vente=Decimal('1000'), quantite_stock=0)
         devis = Devis.objects.create(
             company=self.company, reference='DEV-CM1', client=client,
             lead=lead, statut=Devis.Statut.ACCEPTE,
             date_acceptation=date.today())
         LigneDevis.objects.create(
-            devis=devis, designation='P', quantite=Decimal('10'),
-            prix_unitaire=Decimal('1000'))
+            devis=devis, produit=produit, designation='P',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
         resp = self.api.get(f'{BASE}/commissions/')
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['enabled'])
