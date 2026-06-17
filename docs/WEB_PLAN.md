@@ -360,6 +360,101 @@ lead flow is untouched**, and the **three worked-test values passing**.
 
 ---
 
+### W12 — Estimator brain v3: full-search optimum, "Optimum" button with constrained re-opt, pitched/tuile roof model + roof-type toggle — [ ]
+
+> Added 2026-06-17 via "add to web plan". Build as the **next brain session** on a **NEW
+> private preview route cloned from the current latest preview**. **READ FIRST:** confirm
+> `/preview/toiture-3d-pro-5` is the latest, then read the actual `estimatorBrainV2.ts` engine
+> code and the pro-5 page to see exactly which option groups, comparison table, azimuth/tilt/
+> margin controls and obstacle handling already exist — **do NOT assume from notes**. Name the
+> new route the next **`/preview/toiture-3d-pro-6`** and **leave pro-5 untouched as the
+> baseline**. Everything stays **private** (noindex, not in nav, excluded from sitemap,
+> unlinked). Use subagents for context room if needed but ship **ONE self-merged PR** (no waves,
+> no GitHub tracking). The live public site and the live lead form (1 000 MAD threshold,
+> consent, WhatsApp deeplink, webhook, CAPI) stay **byte-identical** — the estimator only
+> pre-fills the existing flow.
+
+**Do:**
+
+1. **Fix "the optimum is wrong because the table tries too few combinations."** Widen the
+   **search space** the recommendation is computed over: sweep **tilt** over a fine range (not
+   2–3 presets), sweep **azimuth** (roof-aligned vs true-south — **compose with the already-
+   shipped azimuth work, don't duplicate it**), evaluate **both portrait and paysage**, and
+   evaluate **roof-edge margin on vs off** — every combination scored on **total kWh and
+   match-to-need**, capped at the **needed-panel count**, with all existing physical bounds
+   holding. **Decouple the SEARCH SPACE (now rich) from the DISPLAYED comparison table** (keep
+   it clean and legible: the recommended config plus a few honest alternatives, not fifty rows).
+   The recommended/optimum config must be the **true winner of the full search**, not merely the
+   best of the few visible table rows.
+
+2. **Add an "Optimum" button with constrained re-optimization.** Clicking Optimum with **nothing
+   pinned** resets **ALL controls** to the globally recommended configuration (the one the brain
+   already computes as "Recommandé"). Key behaviour: if the user has manually changed **one
+   control** (e.g. tilt 15°, or forced Est-Ouest), clicking Optimum **HOLDS that one pinned
+   choice** and **re-solves every OTHER control** (orientation, layout, azimuth, margin, panel
+   count) to the best config given that pin — then **re-renders the 3D** and recomputes kWc,
+   kWh/an, % of bill, and the savings band **through the existing engine**. Each option group
+   **keeps showing which option is "Recommandé"** regardless of what is currently selected, so
+   the user always sees they picked one but another is recommended. **No invented numbers;
+   surplus beyond self-consumption stays valued at 0** (no LV net-billing in Morocco).
+
+3. **Support pitched / tiled-roof (tuile) villas, not only flat roofs.** Today the estimator
+   models a flat roof (panels on tilted ballasted racks with winter-solstice row spacing). Add a
+   **SECOND roof model** for sloped/tuile roofs where panels mount **FLUSH on the slope**.
+   Research note (verified): pitch CANNOT be measured from Moroccan imagery (top-down satellite
+   only; no aerial flights, no usable Street View — Aurora/Project Sunroof rely on LiDAR + HD
+   aerial photogrammetry and otherwise fall back to user-drawn roof + manual slope), so **pitch
+   must be user-supplied**. Build pitched mode as: the user traces the roof plane on the
+   satellite map as now, then **sets the slope angle** for that plane (a control with sensible
+   Moroccan tuile presets, e.g. **~15° / ~22° / ~30°, adjustable**) and **indicates the plane's
+   facing / down-slope direction** so its azimuth is known. Pitched-mode physics must be exact:
+   panels lie flush → **array TILT EQUALS the roof pitch** and **array AZIMUTH EQUALS the roof
+   facing**, both **imposed by the roof, shown read-only ("imposé par la toiture"), NOT chosen
+   and NOT swept** by the optimizer; coplanar panels on one plane **do NOT self-shade → NO
+   inter-row spacing within a plane** (tile edge-to-edge minus a small maintenance/fire-access
+   gap) — this packs far more panels than a flat roof of the same area, and the engine must
+   reflect that, **not reuse the flat-roof row pitch**. **Production per plane comes from PVGIS
+   at that plane's real tilt+azimuth** (PVGIS already in stack — this makes the sloped numbers
+   honest). **Ideally allow more than one plane** (e.g. two-sided roof), placing panels only on
+   worthwhile planes and **honestly flagging/skipping a north-facing slope**. The needed-panel
+   cap, the savings cap, and "size to need not to roof" all apply identically.
+
+4. **Add the roof-type toggle (the "tile button").** A clear control switching the estimator
+   between **"Toit plat"** (existing flat-roof model, unchanged, **default**) and **"Toit en
+   pente / tuiles"** (the new flush model). Switching mode shows the controls that apply and
+   hides/disables those that don't (in pitched mode tilt and azimuth become read-only
+   roof-imposed values; flat-roof tent/rack options that don't apply are disabled). The
+   **flat-roof path must stay byte-identical to pro-5** when "Toit plat" is selected (**guard
+   with a test**). The Optimum button (item 2) works in both modes: in flat mode it sweeps the
+   full space; in pitched mode (tilt/azimuth fixed by the roof) "optimum" is **which planes to
+   use and how many panels** (sized to need, capped), plus layout where it still has freedom.
+
+**Verification honesty:** the build agent cannot render the interactive map locally
+(MapTiler/Mapbox keys live in Cloudflare), so **anchor every geometry/visual change to
+code-checkable invariants** (flush panels coplanar with the plane; tilt == pitch and
+azimuth == facing in pitched mode; zero row gap within a plane; every panel footprint inside the
+plane polygon; Σ footprints ≤ usable area; flat-roof path unchanged) and **state clearly in the
+report what only the owner's phone can confirm** on the rendered map.
+
+**Keep every standing estimator rule** (see STANDING RULES): respect the needed-panel cap (never
+overfill a roomy roof — surplus is uncompensated in Morocco); no invented numbers (every figure
+traces to PVGIS, confirmed tariff/physics, or sound logic; savings never exceed avoidable energy
+cost; impossible counts blocked by the footprint bound); build private (noindex, not in nav,
+excluded from sitemap, unlinked); **no new dependencies** (Three.js geometry + existing PVGIS +
+the in-house solar math cover this — if you genuinely think you need a new dependency, **STOP and
+leave a note** rather than adding one); **one self-merged PR**; **live public site and lead form
+unchanged**.
+
+**Plain-language report (no diffs):** the new `/preview/toiture-3d-pro-6` URL with pro-5
+preserved; how the Optimum button behaves with nothing pinned vs with one control pinned (a
+worked example); what the search space now covers and why the optimum is now the true winner; how
+pitched/tuile mode works, what the user enters (slope + facing) and why pitch is asked for rather
+than measured; a worked sloped-roof example (a south-facing ~30° plane: panel count, kWc, kWh/an
+vs the same roof treated flat); confirmation the flat-roof path is unchanged and the live site +
+lead flow untouched; and exactly what to check on the phone.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
