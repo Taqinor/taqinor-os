@@ -7,39 +7,49 @@ This file is the **single source of truth** for the public website (`apps/web`, 
 backend) and explicitly excludes `apps/web`. Anything touching the Astro site or a
 `/preview/*` route is planned here, not there.
 
-Each session does **exactly one task**, ticks it off *in this file*, commits, lets the
-push deploy itself, and stops. The next session reads this file and continues. Nothing
-relies on the agent's own memory — the file on disk is the memory.
+A run drains the **whole** BUILD QUEUE — every unchecked task, never just one — ticking each
+off *in this file* and committing it to `dev` as it lands, then self-merges `dev` → `main`
+exactly once at the end and lets that merge deploy itself. The next session reads this file and
+continues. Nothing relies on the agent's own memory — the file on disk is the memory.
 
 ---
 
 ## HOW TO RUN (read this every session)
 
 1. **Read this whole file.**
-2. In **BUILD QUEUE** below, find the **first task marked `[ ]`** (not `[x]`, not
-   `[SKIP]`, not `[BLOCKED]`). Ignore the GATED and MANUAL sections entirely.
-3. **Verify it isn't already built.** Inspect the actual repo and the deployed preview.
-   If the task already exists and works, mark it `[x] (already present)`, add a line to
-   the DONE LOG, commit this file, and move on to the next `[ ]` task — repeat this verify
-   step.
-4. **Build only that one task, completely, with tests.** Obey every STANDING RULE below.
-5. **CI must pass** (lint, the `apps/web` vitest suite, the preview/privacy guards). When
-   green: self-merge `dev` → `main` (merge commit, history preserved).
+2. **Drain the WHOLE BUILD QUEUE — never just one task.** Process EVERY unchecked `[ ]` task
+   (not `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and MANUAL sections entirely.
+   Build independent tasks (and independent groups of tasks) **in parallel with subagents, each
+   in its own isolated git worktree** so two never edit the same files at once; run tasks that
+   depend on each other, or that touch the same files, in sequence. Scope stays strictly inside
+   `apps/web/**` and the `docs/WEB_PLAN*` files.
+3. **Verify each task isn't already built — never trust these ticks or prior reports.** Inspect
+   the actual route and the deployed preview. If a task already exists and works, mark it
+   `[x] (already present)`, add a line to the DONE LOG, and move on to the next `[ ]` task.
+4. **Build each task completely, with tests, and land it to `dev` the moment it's done.** Obey
+   every STANDING RULE below. As each task finishes: commit it to `dev`, flip it to `[x]`, and
+   append one dated plain-language line to the DONE LOG — so an interrupted run never loses
+   finished work and re-firing resumes from the first still-unchecked task. Then **immediately
+   continue to the next `[ ]` task. Do NOT merge after each task.**
+5. **CI runs ONCE at the end, over the whole batch** (lint, the `apps/web` vitest suite, the
+   preview/privacy guards, plus the four required checks). When green, **self-merge `dev` →
+   `main` exactly once** (a single merge commit, history preserved, 0 approvals).
 6. **Deploy is automatic.** The public site **auto-deploys via Cloudflare Workers Builds
    on every push/merge to `main`** — that IS the deploy. **You never run `wrangler deploy`,
    and you never ask for a Cloudflare API token** (the old one is dead and deleted). Worker
    secrets and Cloudflare dashboard variables (e.g. `PUBLIC_MAPTILER_KEY`,
    `LEAD_WEBHOOK_URL`, `LEAD_WEBHOOK_SECRET`) are **dashboard-only** — changing one is a
    manual step for the founder; list it under MANUAL, never block on it silently.
-7. **Update this file on `main`:** flip the task to `[x]`, append one plain-language line
-   (with today's date) to the DONE LOG, and commit.
-8. **STOP and report** in plain language only — no diffs, no commit hashes: which task, what
-   changed, the exact private preview URL to open, and what (if anything) the founder must
-   set in the Cloudflare dashboard. **Do not start the next task.** One task per session.
-9. **If a task hits a blocker** (it would need a paid/external dependency that isn't
-   pre-approved, a new Cloudflare secret the founder hasn't set, or a real taste/promotion
-   decision): do **not** guess and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`,
-   move it to GATED, pick the **next** `[ ]` task instead, and note the block in your report.
+7. **Skip-and-note blockers, never stall.** If a task hits a blocker (a paid/external
+   dependency that isn't pre-approved, a new Cloudflare secret the founder hasn't set, anything
+   touching the public site or the lead form, or a real taste/promotion decision): do **not**
+   guess and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to GATED, and
+   continue with the remaining tasks. A single blocked task must never halt the run.
+8. **STOP only when** the BUILD QUEUE is drained, a usage/length cap pauses the run (fine — the
+   plan is idempotent; re-firing resumes from the first still-unchecked task), or every
+   remaining task is blocked. Then **report once**, in plain language only — no diffs, no commit
+   hashes: every task that shipped, what was skipped and why, the exact private preview URLs to
+   open, and what (if anything) the founder must set in the Cloudflare dashboard.
 
 **Run from anywhere — web or phone.** Because `main` auto-deploys itself through Cloudflare,
 a task can be run from Claude Code on the web or the phone with no PC involved.
@@ -48,8 +58,9 @@ a task can be run from Claude Code on the web or the phone with no PC involved.
 
 ## STANDING RULES (every web task obeys these)
 
-- **One session = one task, one self-merged PR.** Many subagents inside the session are
-  fine; multiple sessions or multiple PRs are not.
+- **One run = the whole BUILD QUEUE, one self-merged PR at the end.** Many subagents inside the
+  session (each in its own git worktree) are fine; the run self-merges `dev` → `main` exactly
+  once when CI is green — no per-task merge. Multiple sessions or multiple PRs are not wanted.
 - **Verify against real code first. Never trust prior reports.** Inspect the actual route
   and the deployed preview before assuming anything is present or correct.
 - **The live public site and the lead form stay unchanged.** Preview work must never alter
@@ -183,8 +194,7 @@ is missing — do not rebuild** parts that already exist.
 needed-panel cap (never overfill a roomy roof — surplus is uncompensated in Morocco); no
 invented numbers (every figure traces to PVGIS, confirmed tariff/physics, or sound logic;
 savings never exceed avoidable energy cost; impossible counts blocked by the footprint
-bound); build private (noindex, not in nav, excluded from the sitemap, unlinked); one
-self-merged PR; the **live public site and lead form unchanged**.
+bound); build private (noindex, not in nav, excluded from the sitemap, unlinked); lands in the run's single end-of-batch self-merge (no per-task PR); the **live public site and lead form unchanged**.
 
 **Acceptance:** open the new `/preview/toiture-3d-pro-N` → trace a slightly-off-south roof and
 see the array follow the real edges with more panels and an honest per-config PVGIS yield; every
@@ -284,7 +294,7 @@ readability. The **`tel:` link target stays unchanged** (display-only change).
 
 **ACROSS W2–W10 (founder's cross-cutting constraints):** no invented facts — every figure traces
 to what's already published on the site or confirmed repo data; **no new dependencies**; the **live
-lead form and its data flow untouched**; **one self-merged PR per task** per the protected-main
+lead form and its data flow untouched**; these tasks **land in the run's single end-of-batch self-merge — no per-task PR** per the protected-main
 convention; **Lighthouse held on every page**; and a plain-language report listing the new public
 URLs to click. NOTE: these are **public, indexed** pages (a deliberate exception to the preview-lab
 "build everything private / noindex" standing rule for this batch — the founder asked for live
@@ -352,7 +362,7 @@ public pages), but the **live lead form and its data flow must stay byte-for-byt
 **Standing rules (this task):** touch **only `apps/web`**; the **live lead form and its entire
 data flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) **unchanged**; the
 estimator **preview routes stay private** (noindex, not in nav, excluded from sitemap,
-unlinked); **no new dependencies**; **one self-merged PR** to main; **Lighthouse held**.
+unlinked); **no new dependencies**; **lands in the run's single self-merge to main**; **Lighthouse held**.
 **Plain-language report:** the exact **old→new** rates and boundaries now in the estimator,
 what the per-city structure looks like and that **all cities currently use the conservative
 régie barème**, which **public figures changed** (with page paths), confirmation the **live
@@ -369,7 +379,7 @@ lead flow is untouched**, and the **three worked-test values passing**.
 > margin controls and obstacle handling already exist — **do NOT assume from notes**. Name the
 > new route the next **`/preview/toiture-3d-pro-6`** and **leave pro-5 untouched as the
 > baseline**. Everything stays **private** (noindex, not in nav, excluded from sitemap,
-> unlinked). Use subagents for context room if needed but ship **ONE self-merged PR** (no waves,
+> unlinked). Use subagents for context room if needed but land it in the run's **single self-merge** (no waves,
 > no GitHub tracking). The live public site and the live lead form (1 000 MAD threshold,
 > consent, WhatsApp deeplink, webhook, CAPI) stay **byte-identical** — the estimator only
 > pre-fills the existing flow.
@@ -442,7 +452,7 @@ traces to PVGIS, confirmed tariff/physics, or sound logic; savings never exceed 
 cost; impossible counts blocked by the footprint bound); build private (noindex, not in nav,
 excluded from sitemap, unlinked); **no new dependencies** (Three.js geometry + existing PVGIS +
 the in-house solar math cover this — if you genuinely think you need a new dependency, **STOP and
-leave a note** rather than adding one); **one self-merged PR**; **live public site and lead form
+leave a note** rather than adding one); **lands in the run's single self-merge**; **live public site and lead form
 unchanged**.
 
 **Plain-language report (no diffs):** the new `/preview/toiture-3d-pro-6` URL with pro-5
@@ -541,7 +551,7 @@ incentives or taxes** (those facts are not verified).
 to what is already published, confirmed repo data, or public meteo data; **no new dependencies**;
 the **live lead form and its entire data flow** (1 000 MAD threshold, consent, WhatsApp deeplink,
 webhook, CAPI) **untouched**; the **estimator preview routes stay private** (noindex, not in nav,
-excluded from sitemap, unlinked); **one self-merged PR per task** per the protected-main
+excluded from sitemap, unlinked); these tasks **land in the run's single end-of-batch self-merge — no per-task PR** per the protected-main
 convention; **Lighthouse held on every page**. Plain-language report listing **every new and
 changed public URL to click**, plus confirmation the **live lead flow is untouched**. NOTE: like
 W2–W10 these are **public, indexed** pages (the deliberate exception to the preview-lab
@@ -637,7 +647,7 @@ slopes, each its own facing) are **deliberately out of this version**.
 tariff/physics, or sound logic** — **no invented numbers**, savings never exceed the avoidable energy
 cost, impossible panel counts stay blocked by the **footprint bound**; the **needed-panel cap** is
 always respected; **no new dependencies** (PVGIS, MapLibre, Mapbox, Three.js are already in the
-stack); **each task is its own self-merged PR to protected main** (the accepted path — don't flag
+stack); these tasks **land in the run's single end-of-batch self-merge to protected main — no per-task PR** (the accepted path — don't flag
 it); **touch only `apps/web`**; **every new route stays private** (noindex, not in nav, excluded from
 sitemap, unlinked); the **live public site and the live lead form and its entire data flow** (1 000
 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**;
