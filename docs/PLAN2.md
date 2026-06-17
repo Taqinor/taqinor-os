@@ -97,6 +97,9 @@ here unchanged — this file only adds tasks.
   a **safe default role set** (owner / commerciale / technicien / viewer) so **current access
   is unchanged**. Add **record-level scoping where feasible**. Margins/buy-price
   (`Produit.prix_achat`) must remain generator-only and never reach any PDF/client output.
+  _(2026-06-17 — STOP-AND-ASK : changement d'autorisations/RBAC = nouvelle
+  architecture, aligné sur le GATED G4 de PLAN.md ; laissé `[ ]`, à traiter sur
+  décision du founder. D1–D3 et D5 restent constructibles.)_
 
 - [ ] **D5 — Avancé: editable + versioned quote logic.** Make the implicit quote logic
   **editable and versioned**: margin / target price per kWc, discount limits, auto-remplir
