@@ -9,46 +9,54 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
 ## HOW TO RUN (read this every session)
 
 1. **Read this whole file.**
-2. **Check `docs/PLAN2.md` FIRST.** If it exists and has any pending `[ ]` task that isn't
-   gated/blocked, this run works **that** file's BUILD QUEUE to completion first — following
-   PLAN2.md's own rules, which are the same as this file's — before touching this one. Only
-   when `docs/PLAN2.md` has no pending buildable task left do you work this file: in **BUILD
-   QUEUE** below, find the **first task marked `[ ]`** (not `[x]`, not `[SKIP]`, not
-   `[BLOCKED]`). Ignore the GATED and MANUAL sections entirely.
-3. **Verify it isn't already built.** Inspect the actual repo and the deployed app. If the
-   task already exists and works, mark it `[x] (already present)`, add a line to the DONE
-   LOG, commit this file, and move on to the next `[ ]` task — repeat this verify step.
-4. **Build only that one task, completely, with tests.** Obey every STANDING RULE below.
-5. **CI must pass** (lint, tests run 3×, stage-name check, PDF page-count guardrails) and
-   **the CI must include MinIO** so PDF tests actually run. If green: self-merge `dev` →
-   `main` (merge commit, history preserved). **Merging to `main` now AUTO-DEPLOYS to
-   api.taqinor.ma on its own** — the production server polls `main` about once a minute and
-   runs the full deploy (rebuild + migrations + role sync + nginx/Caddy reload + the
-   mandatory PDF pre-warm). A pure docs/markdown change (e.g. ticking this file) skips the
-   rebuild. **You do not run any deploy command.** `powershell -File scripts\deploy-prod.ps1`
-   still works as a **manual fallback** from a PC if ever needed.
-6. **Update this file on `main`:** flip the task to `[x]`, append one plain-language line
-   (with today's date) to the DONE LOG, and commit the updated file (this commit auto-syncs
-   to the server without a rebuild).
-7. **STOP and report** in plain language only — no diffs, no commit hashes: which task, what
-   changed, exactly what Reda must click/type (with menu paths), and confirm the auto-deploy
-   shipped it (the server records each deploy in its own log). Continue to the next `[ ]` task. Do not stop until every task in `docs/PLAN2.md` (if it exists) — then every task in this file — is `[x]`, `[SKIP]`, or `[BLOCKED]`.
-8. **If a task hits a blocker** (it would need a destructive migration, a paid/external
-   dependency that isn't pre-approved, an auth change, or a real decision): do **not** guess
-   and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to the GATED section,
-   pick the **next** `[ ]` task instead, and note the block in your report.
+2. **Drain the WHOLE queue, PLAN2 first — never just one task.** Check `docs/PLAN2.md` FIRST:
+   work through EVERY pending `[ ]` task there that isn't gated/blocked — following PLAN2.md's
+   own rules, which are the same as this file's — then drain this file's **BUILD QUEUE** the
+   same way. Process EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`);
+   ignore the GATED and MANUAL sections entirely. Build independent tasks (and independent
+   groups of tasks) **in parallel with subagents, each in its own isolated git worktree** so
+   two never edit the same files at once; run tasks that depend on each other, or that touch
+   the same files, in sequence — derive this ownership from the real code, not from guesses.
+3. **Verify each task isn't already built — never trust these ticks or prior reports.**
+   Inspect the actual repo and the deployed app. If a task already exists and works, mark it
+   `[x] (already present)`, add a line to the DONE LOG, and move on to the next `[ ]` task.
+4. **Build each task completely, with tests, and land it to `dev` the moment it's done.** Obey
+   every STANDING RULE below. As each task finishes: commit it to `dev`, flip it to `[x]`, and
+   append one dated plain-language line to the DONE LOG — so an interrupted run never loses
+   finished work and re-firing resumes from the first still-unchecked task. Then **immediately
+   continue to the next `[ ]` task. Do NOT merge after each task.**
+5. **CI runs ONCE at the end, over the whole batch.** The four required checks must pass:
+   backend-lint, backend-tests **with MinIO** (so PDF/storage tests actually run, including the
+   PDF page-count guardrails), frontend-lint, and the stage-name check. When all four are
+   green, **self-merge `dev` → `main` exactly once** (a single merge commit, history preserved,
+   0 approvals). **Merging to `main` AUTO-DEPLOYS to api.taqinor.ma on its own** — the
+   production server polls `main` about once a minute and runs the full deploy (rebuild +
+   migrations + role sync + nginx/Caddy reload + the mandatory PDF pre-warm). **You do not run
+   any deploy command.** `powershell -File scripts\deploy-prod.ps1` still works as a **manual
+   fallback** from a PC if ever needed.
+6. **Skip-and-note blockers, never stall.** If a task hits a blocker (a destructive migration,
+   a paid/external dependency that isn't pre-approved, an auth or cost change, a brand-new
+   architectural component, a conflict with a non-negotiable rule, or a real decision): do
+   **not** guess and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to the
+   GATED section, and continue with the remaining tasks. A single blocked task must never halt
+   the run.
+7. **STOP only when** the queue is drained (no buildable `[ ]` task remains in `docs/PLAN2.md`
+   then this file), a usage/length cap pauses the run (fine — the plan is idempotent;
+   re-firing resumes from the first still-unchecked task), or every remaining task is blocked.
+   Then **report once**, in plain language only — no diffs, no commit hashes: every task that
+   shipped, what was skipped and why, and exactly what Reda must click/type (with menu paths).
 
 **Run from anywhere — web or phone.** Because `main` auto-deploys itself, a task can be run
 from Claude Code on the web or from the phone with no PC involved. **One-line starter** to
 paste into a fresh cloud session:
 
-> Read `docs/PLAN.md` top to bottom. **First** work through EVERY `[ ]` task in `docs/PLAN2.md` (if it exists), **then** do the same for this file's BUILD QUEUE — in order: verify each isn't already built, build it with tests, tick it `[x]`, add a dated DONE LOG line. Get CI fully green (with MinIO) and self-merge `dev` → `main` (this auto-deploys — do not run any deploy command). Report in plain language. Do not stop after one task.
+> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task — **first** `docs/PLAN2.md` (if it exists), **then** this file's BUILD QUEUE. For each: verify it isn't already built, build it with tests, commit it to `dev`, tick it `[x]`, add a dated DONE LOG line, then continue to the next — build independent tasks in parallel (subagents in their own git worktrees) and coupled tasks in sequence. Skip-and-note any blocker (`[BLOCKED: reason]` → GATED) and keep going. At the very end, get the four required CI checks green over the whole batch (with MinIO) and self-merge `dev` → `main` exactly once (this auto-deploys — do not run any deploy command). Report once, in plain language. Do not stop after one task and do not merge per task.
 
 ---
 
 ## STANDING RULES (every task obeys these)
 
-- **One run = the whole queue, not one task.** Give each independent task its own subagent in its own git worktree so each subagent's context stays small and focused; run tasks that depend on or overlap each other in sequence. Never stop after a single task. (Human-review PRs are still not wanted — the run self-merges its own green work.)
+- **One run = the whole queue, not one task.** Give each independent task its own subagent in its own git worktree so each subagent's context stays small and focused and two tasks never edit the same files at once; run tasks that depend on or overlap each other in sequence. Never stop after a single task. CI runs **once** over the whole batch and the run self-merges `dev` → `main` **exactly once** — no per-task merge. (Human-review PRs are still not wanted — the run self-merges its own green work.)
 - **Verify against real code first. Never trust prior reports.** (Round 1 reported a preview
   fix that was never real, because that session's CI was silently broken.)
 - **Additive only.** New tables / nullable columns / new defaults. **Never** a destructive
