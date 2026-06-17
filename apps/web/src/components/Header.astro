@@ -1,16 +1,49 @@
 ---
+/**
+ * En-tête partagé — UNE seule nav sur TOUT le site, accueil compris (W28).
+ * Navigation principale : Solutions (déroulant), Réalisations, Équipement,
+ * Ressources (déroulant), À propos — + CTA « Diagnostic gratuit » et téléphone.
+ *
+ * Les deux déclencheurs de menu déroulant SONT de vrais liens (Solutions →
+ * /nos-solutions, Ressources → /guides) : sans JS, le menu reste atteignable
+ * (survol souris + focus clavier via CSS, et le lien parent mène au hub). Avec
+ * JS : ArrowDown ouvre et focalise le 1er item, Échap referme et rend le focus
+ * au déclencheur, aria-expanded reflète l'état. Loi 82-21 (explainer) sort du
+ * menu de 1er niveau → vit dans Ressources + le pied de page + les liens
+ * contextuels (jamais en nav primaire).
+ */
 import Logo from './Logo.astro';
 import { NAP } from '../lib/nap';
 
-const links = [
+// Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
+const solutions = [
   { href: '/résidentiel', label: 'Résidentiel' },
   { href: '/professionnel', label: 'Professionnel' },
-  { href: '/équipement', label: 'Équipement' },
-  { href: '/loi-82-21', label: 'Loi 82-21' },
-  { href: '/à-propos', label: 'À propos' },
+  { href: '/pompage-solaire', label: 'Pompage solaire' },
+  { href: '/batteries-stockage', label: 'Batteries & stockage' },
+  { href: '/maintenance-monitoring', label: 'Maintenance & monitoring' },
+  { href: '/regularization-article-33', label: 'Régularisation Loi 82-21' },
+];
+
+// Ressources — le déclencheur pointe vers /guides (repli sans-JS).
+const ressources = [
   { href: '/guides', label: 'Guides' },
   { href: '/faq', label: 'FAQ' },
+  { href: '/loi-82-21', label: 'Loi 82-21 expliquée' },
+  { href: '/pourquoi-taqinor', label: 'Pourquoi Taqinor' },
+  { href: '/financement', label: 'Financement & rentabilité' },
+  { href: '/marocains-du-monde', label: 'Marocains du monde' },
 ];
+
+const linkBase =
+  'group/link relative text-sm font-medium text-lune-soft transition-colors hover:text-white';
+const underline =
+  'absolute -bottom-1 left-0 h-0.5 w-0 bg-brass-400 transition-all duration-200 group-hover/link:w-full';
+// Classes de révélation du panneau : survol, focus clavier OU classe .is-open (JS).
+const menuReveal =
+  'invisible translate-y-1 opacity-0 transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-[.is-open]:visible group-[.is-open]:translate-y-0 group-[.is-open]:opacity-100';
+const itemClass =
+  'block px-3 py-2 text-sm text-lune-soft transition-colors hover:bg-white/5 hover:text-white focus:bg-white/5 focus:text-white focus:outline-none';
 ---
 
 <header class="sticky top-0 z-50 border-b border-white/10 bg-nuit/90 backdrop-blur">
@@ -19,12 +52,53 @@ const links = [
       <Logo size={24} theme="dark" />
     </a>
     <nav class="hidden items-center gap-7 lg:flex" aria-label="Navigation principale">
-      {links.map((l) => (
+      <!-- Solutions (déroulant) -->
+      <div class="dropdown group relative" data-dropdown>
         <a
-          href={l.href}
-          class="group relative text-sm font-medium text-lune-soft transition-colors hover:text-white"
-        >{l.label}<span class="absolute -bottom-1 left-0 h-0.5 w-0 bg-brass-400 transition-all duration-200 group-hover:w-full"></span></a>
-      ))}
+          href="/nos-solutions"
+          class={`flex items-center gap-1 ${linkBase}`}
+          data-dropdown-trigger
+          aria-haspopup="true"
+          aria-expanded="false"
+        >Solutions
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="opacity-70"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <span class={underline}></span>
+        </a>
+        <div class={`absolute left-0 top-full z-50 pt-3 ${menuReveal}`}>
+          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label="Solutions">
+            <li role="none"><a href="/nos-solutions" role="menuitem" class={`${itemClass} font-semibold text-white`}>Toutes nos solutions</a></li>
+            {solutions.map((s) => (
+              <li role="none"><a href={s.href} role="menuitem" class={itemClass}>{s.label}</a></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <a href="/realisations" class={linkBase}>Réalisations<span class={underline}></span></a>
+      <a href="/équipement" class={linkBase}>Équipement<span class={underline}></span></a>
+
+      <!-- Ressources (déroulant) -->
+      <div class="dropdown group relative" data-dropdown>
+        <a
+          href="/guides"
+          class={`flex items-center gap-1 ${linkBase}`}
+          data-dropdown-trigger
+          aria-haspopup="true"
+          aria-expanded="false"
+        >Ressources
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="opacity-70"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <span class={underline}></span>
+        </a>
+        <div class={`absolute left-0 top-full z-50 pt-3 ${menuReveal}`}>
+          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label="Ressources">
+            {ressources.map((r) => (
+              <li role="none"><a href={r.href} role="menuitem" class={itemClass}>{r.label}</a></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <a href="/à-propos" class={linkBase}>À propos<span class={underline}></span></a>
     </nav>
     <div class="flex items-center gap-3">
       <a
@@ -54,21 +128,69 @@ const links = [
     </div>
   </div>
   <nav id="mobile-menu" class="hidden border-t border-white/10 bg-nuit px-4 py-4 lg:hidden" aria-label="Navigation mobile">
-    <ul class="flex flex-col gap-4">
-      {links.map((l) => (
-        <li><a href={l.href} class="block font-display text-base font-bold text-white">{l.label}</a></li>
-      ))}
-      <li><a href={`tel:${NAP.phone}`} class="block text-sm font-semibold text-lune-soft">📞 {NAP.phoneDisplayIntl}</a></li>
-      <li><a href="/contact" class="mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">Contact & étude gratuite</a></li>
-    </ul>
+    <div class="flex flex-col gap-5">
+      <div>
+        <a href="/nos-solutions" class="tech-label block text-brass-300">Solutions</a>
+        <ul class="mt-2 flex flex-col gap-2 border-l border-white/10 pl-3">
+          {solutions.map((s) => (
+            <li><a href={s.href} class="block text-base font-semibold text-white">{s.label}</a></li>
+          ))}
+        </ul>
+      </div>
+      <ul class="flex flex-col gap-3">
+        <li><a href="/realisations" class="block font-display text-base font-bold text-white">Réalisations</a></li>
+        <li><a href="/équipement" class="block font-display text-base font-bold text-white">Équipement</a></li>
+        <li><a href="/à-propos" class="block font-display text-base font-bold text-white">À propos</a></li>
+      </ul>
+      <div>
+        <a href="/guides" class="tech-label block text-brass-300">Ressources</a>
+        <ul class="mt-2 flex flex-col gap-2 border-l border-white/10 pl-3">
+          {ressources.map((r) => (
+            <li><a href={r.href} class="block text-base font-semibold text-white">{r.label}</a></li>
+          ))}
+        </ul>
+      </div>
+      <ul class="flex flex-col gap-3 border-t border-white/10 pt-4">
+        <li><a href={`tel:${NAP.phone}`} class="block text-sm font-semibold text-lune-soft">📞 {NAP.phoneDisplayIntl}</a></li>
+        <li><a href="/contact" class="mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">Diagnostic gratuit</a></li>
+      </ul>
+    </div>
   </nav>
 </header>
 
 <script>
+  // Menu mobile (inchangé).
   const toggle = document.getElementById('menu-toggle');
   const menu = document.getElementById('mobile-menu');
   toggle?.addEventListener('click', () => {
     const open = menu?.classList.toggle('hidden') === false;
     toggle.setAttribute('aria-expanded', String(open));
+  });
+
+  // Déroulants desktop — amélioration progressive (survol + focus marchent déjà
+  // en CSS pur ; ce script ajoute ArrowDown/Échap et aria-expanded).
+  document.querySelectorAll<HTMLElement>('[data-dropdown]').forEach((dd) => {
+    const trigger = dd.querySelector<HTMLElement>('[data-dropdown-trigger]');
+    const items = Array.from(dd.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    if (!trigger) return;
+    const open = () => { dd.classList.add('is-open'); trigger.setAttribute('aria-expanded', 'true'); };
+    const close = () => { dd.classList.remove('is-open'); trigger.setAttribute('aria-expanded', 'false'); };
+
+    dd.addEventListener('mouseenter', open);
+    dd.addEventListener('mouseleave', close);
+    dd.addEventListener('focusout', (e) => {
+      if (!dd.contains((e as FocusEvent).relatedTarget as Node | null)) close();
+    });
+
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); open(); items[0]?.focus(); }
+    });
+
+    dd.addEventListener('keydown', (e) => {
+      const idx = items.indexOf(document.activeElement as HTMLElement);
+      if (e.key === 'Escape') { close(); trigger.focus(); }
+      else if (e.key === 'ArrowDown' && idx > -1) { e.preventDefault(); items[Math.min(idx + 1, items.length - 1)]?.focus(); }
+      else if (e.key === 'ArrowUp' && idx > -1) { e.preventDefault(); (idx === 0 ? trigger : items[idx - 1])?.focus(); }
+    });
   });
 </script>

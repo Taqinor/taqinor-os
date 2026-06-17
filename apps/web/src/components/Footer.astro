@@ -1,10 +1,44 @@
 ---
+/**
+ * Pied de page partagé — UN seul pied identique sur TOUT le site (W29).
+ * La liste « Services » (texte non cliquable) est remplacée par une colonne
+ * « Solutions » de VRAIS liens. Colonnes : Solutions · Ressources ·
+ * « Installation solaire par ville » · Contact · ligne légale. On ne lie que
+ * des pages qui existent réellement.
+ */
 import Logo from './Logo.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { CITIES } from '../lib/realisations';
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
+
+// Colonne Solutions — VRAIS liens vers chaque service (W29).
+const solutions = [
+  { href: '/résidentiel', label: 'Résidentiel' },
+  { href: '/professionnel', label: 'Professionnel' },
+  { href: '/pompage-solaire', label: 'Pompage solaire' },
+  { href: '/batteries-stockage', label: 'Batteries & stockage' },
+  { href: '/maintenance-monitoring', label: 'Maintenance & monitoring' },
+  { href: '/regularization-article-33', label: 'Régularisation Loi 82-21' },
+];
+
+// Colonne Ressources (W29) + équipement & garanties (pages existantes liées
+// ailleurs sur le site, conservées ici pour le maillage).
+const ressources = [
+  { href: '/realisations', label: 'Réalisations' },
+  { href: '/guides', label: 'Guides' },
+  { href: '/faq', label: 'FAQ' },
+  { href: '/loi-82-21', label: 'Loi 82-21 expliquée' },
+  { href: '/pourquoi-taqinor', label: 'Pourquoi Taqinor' },
+  { href: '/financement', label: 'Financement & rentabilité' },
+  { href: '/marocains-du-monde', label: 'Marocains du monde' },
+  { href: '/à-propos', label: 'À propos' },
+  { href: '/équipement', label: 'Équipement' },
+  { href: '/garanties', label: 'Nos garanties' },
+];
+
+const linkClass = 'transition-colors hover:text-white';
 ---
 
 <footer class="border-t border-white/10 bg-nuit text-lune">
@@ -16,38 +50,25 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations s
       </p>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-brass-300">Services</h2>
+      <h2 class="tech-label mb-4 text-brass-300">Solutions</h2>
       <ul class="space-y-2 text-sm">
-        {NAP.services.map((s) => <li>{s}</li>)}
+        {solutions.map((s) => <li><a href={s.href} class={linkClass}>{s.label}</a></li>)}
+        <li><a href="/nos-solutions" class={linkClass}>Toutes nos solutions</a></li>
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-brass-300">Pages</h2>
+      <h2 class="tech-label mb-4 text-brass-300">Ressources</h2>
       <ul class="space-y-2 text-sm">
-        <li><a href="/résidentiel" class="transition-colors hover:text-white">Résidentiel</a></li>
-        <li><a href="/professionnel" class="transition-colors hover:text-white">Professionnel</a></li>
-        <li><a href="/équipement" class="transition-colors hover:text-white">Équipement</a></li>
-        <li><a href="/garanties" class="transition-colors hover:text-white">Nos garanties</a></li>
-        <li><a href="/loi-82-21" class="transition-colors hover:text-white">Loi 82-21</a></li>
-        <li><a href="/regularization-article-33" class="transition-colors hover:text-white">Régularisation Article 33</a></li>
-        <li><a href="/contact" class="transition-colors hover:text-white">Contact</a></li>
-      </ul>
-      <h2 class="tech-label mb-4 mt-6 text-brass-300">Ressources</h2>
-      <ul class="space-y-2 text-sm">
-        <li><a href="/realisations" class="transition-colors hover:text-white">Réalisations</a></li>
-        <li><a href="/à-propos" class="transition-colors hover:text-white">À propos</a></li>
-        <li><a href="/pourquoi-taqinor" class="transition-colors hover:text-white">Pourquoi Taqinor</a></li>
-        <li><a href="/guides" class="transition-colors hover:text-white">Guides</a></li>
-        <li><a href="/faq" class="transition-colors hover:text-white">FAQ</a></li>
-        <li><a href="/marocains-du-monde" class="transition-colors hover:text-white">Marocains du monde</a></li>
+        {ressources.map((r) => <li><a href={r.href} class={linkClass}>{r.label}</a></li>)}
+        <li><a href="/contact" class={linkClass}>Contact</a></li>
       </ul>
     </div>
     <div>
       <h2 class="tech-label mb-4 text-brass-300">Contact</h2>
       <ul class="space-y-2 text-sm">
-        <li><a href={`tel:${NAP.phone}`} class="transition-colors hover:text-white">{NAP.phoneDisplayIntl}</a></li>
-        <li><a href={`mailto:${NAP.email}`} class="transition-colors hover:text-white">{NAP.email}</a></li>
-        <li><a href={wa} rel="noopener" class="transition-colors hover:text-white">WhatsApp</a></li>
+        <li><a href={`tel:${NAP.phone}`} class={linkClass}>{NAP.phoneDisplayIntl}</a></li>
+        <li><a href={`mailto:${NAP.email}`} class={linkClass}>{NAP.email}</a></li>
+        <li><a href={wa} rel="noopener" class={linkClass}>WhatsApp</a></li>
         <li class="text-lune-soft">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
       </ul>
     </div>
@@ -57,7 +78,7 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations s
       <h2 class="tech-label mb-3 text-brass-300">Installation solaire par ville</h2>
       <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-lune-soft">
         {CITIES.map((c) => (
-          <li><a href={`/installation-solaire-${c.slug}`} class="transition-colors hover:text-white">Installation solaire {c.intro}</a></li>
+          <li><a href={`/installation-solaire-${c.slug}`} class={linkClass}>Installation solaire {c.intro}</a></li>
         ))}
       </ul>
     </div>

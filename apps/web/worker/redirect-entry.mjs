@@ -4,12 +4,14 @@
  * Ce fichier est committé dans apps/web/worker/ et COPIÉ dans dist/server/
  * par le hook astro:build:done (astro.config.mjs), qui pointe aussi le
  * wrangler.json généré vers cette entrée et active run_worker_first sur les
- * routes HTML. Rôle unique : 301 canonique workers.dev → taqinor.ma, le
- * reste passe à l'app Astro inchangé.
+ * routes HTML. Rôles : 301 canonique workers.dev → taqinor.ma ; et (W33)
+ * forcer la revalidation des documents HTML pour qu'un déploiement ne serve
+ * jamais une page périmée. Le reste passe à l'app Astro inchangé.
  */
 import astro from './entry.mjs';
 import { canonicalTarget } from './canonical.mjs';
 import { pathRedirect, trailingSlashRedirect } from './redirects.mjs';
+import { applyHtmlCacheControl } from './cache.mjs';
 
 export default {
   async fetch(request, env, ctx) {
@@ -42,6 +44,9 @@ export default {
         headers: { location: slash.target, 'cache-control': 'public, max-age=3600' },
       });
     }
-    return astro.fetch(request, env, ctx);
+    // 4) App Astro. Les documents HTML sont forcés à se revalider (W33) ;
+    //    /api/* et toute réponse non-HTML repartent inchangés.
+    const response = await astro.fetch(request, env, ctx);
+    return applyHtmlCacheControl(request, response);
   },
 };
