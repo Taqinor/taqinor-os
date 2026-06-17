@@ -27,7 +27,11 @@ authoritative):
 - F3 Intervention spine — built + committed on dev-field-exec (extended existing model: statut
   state machine, équipe M2M, camionnette, +SAV/Visite types, InterventionActivity chatter,
   historique/noter endpoints). Frontend none yet. Backend py_compile-clean, tests UNVALIDATED.
-- F4 Intervention list + kanban (frontend) — next.
+- F4 Intervention list + kanban — built + committed on dev-field-exec (page /interventions,
+  kanban+liste, drag-to-change-status, équipe reassignment). Lint+build+tests green.
+- F5 Liste de préparation — next (matériel from chantier BOM + outils from selected kit;
+  chargé checkboxes; "Tout est chargé" gate before À préparer→Prête/En route; manquant →
+  Besoin matériel + draft BC; reuse existing stock reservation).
 
 *** RUN PAUSED — EXTERNAL BLOCKER (2026-06-17): GitHub Actions CI is disabled org-wide. ***
 Every CI job fails in seconds with "The job was not started because recent account payments
