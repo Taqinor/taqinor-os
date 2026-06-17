@@ -141,8 +141,22 @@ describe('données structurées', () => {
     // double bloc FAQPage sur la page (on cible le marqueur JSON-LD, pas le
     // mot « FAQPage » qui apparaît dans le commentaire d'en-tête).
     expect(src).not.toContain("'@type': 'FAQPage'");
+    // /faq utilise le composant SANS désactiver le schéma → il porte le FAQPage.
+    expect(src).not.toContain('schema={false}');
     // Et le composant Faq, lui, émet bien le FAQPage.
     expect(read('../src/components/Faq.astro')).toContain("'@type': 'FAQPage'");
+  });
+
+  it('hygiène FAQPage : l’accueil ne duplique PAS le FAQPage de /faq (W19)', () => {
+    const faqCmp = read('../src/components/Faq.astro');
+    // Le composant ne rend le JSON-LD que si `schema` est vrai (gardé).
+    expect(faqCmp).toMatch(/\{schema && <script type="application\/ld\+json"/);
+    // L'accueil réutilise l'accordéon mais coupe le schéma → un seul FAQPage
+    // (sur /faq) pour ces questions qui se recoupent.
+    const idx = read('../src/pages/index.astro');
+    expect(idx).toMatch(/<Faq items=\{faq\} schema=\{false\}/);
+    // L'accueil n'émet aucun FAQPage inline non plus.
+    expect(idx).not.toContain("'@type': 'FAQPage'");
   });
 });
 

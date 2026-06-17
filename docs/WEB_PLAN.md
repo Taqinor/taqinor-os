@@ -526,7 +526,7 @@ Tighten internal linking from the homepage into the new pages: **link the homepa
 and the homepage fiches chantier through to `/realisations` and to the matching individual
 case-study pages.** **Purely additive; touch no lead-flow code.**
 
-### W19 — FAQ schema hygiene (no duplicate FAQPage) + clean /faq — [ ]
+### W19 — FAQ schema hygiene (no duplicate FAQPage) + clean /faq — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -820,3 +820,13 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   reach the hub AND every individual case study. Purely additive — no lead-flow code touched. Guard
   test added (≥ 2 hub links; both template case-study links; every réalisation slug referenced). 589
   web tests green. URL to open: `/` (gallery + fiches sections).
+- 2026-06-17 — W19 done (FAQ schema hygiene): the homepage short FAQ and the dedicated `/faq` page
+  share the same `Faq` component and several questions overlap, so BOTH were emitting a FAQPage
+  JSON-LD — a cross-page duplicate. Added a `schema` prop to `Faq.astro` (default true) that gates the
+  JSON-LD; the homepage now renders `<Faq items={faq} schema={false} />` (keeps the visual accordion,
+  drops the schema), leaving `/faq` as the SINGLE owner of the FAQPage structured data. `/faq` is
+  already comprehensive (13 Q&A: prix/ordres de grandeur, loi 82-21 + 3 régimes, Article 33,
+  batteries, garanties, délais/process, monitoring) with NO financing/bank/incentive/tax questions —
+  no expansion needed, reads cleanly. Tests extended (component gates the script; homepage passes
+  schema={false} and emits no inline FAQPage; /faq keeps it). 590 web tests green; `astro build`
+  clean. URLs: `/` (FAQ accordion, no FAQPage now) and `/faq` (sole FAQPage).

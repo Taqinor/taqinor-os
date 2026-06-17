@@ -7,8 +7,16 @@
 interface Props {
   items: { q: string; a: string }[];
   heading?: string;
+  /**
+   * Émettre le JSON-LD FAQPage (défaut true). Une seule page du site doit
+   * porter le FAQPage pour ces questions — la page dédiée `/faq`. L'accueil
+   * réutilise le MÊME composant pour l'accordéon visuel mais passe
+   * `schema={false}` afin d'éviter un FAQPage en double / concurrent sur des
+   * questions qui se recoupent (hygiène données structurées, W19).
+   */
+  schema?: boolean;
 }
-const { items, heading = 'Questions fréquentes' } = Astro.props;
+const { items, heading = 'Questions fréquentes', schema = true } = Astro.props;
 
 // JSON-LD FAQPage — strictement aligné sur les questions rendues ci-dessous
 const faqJsonLd = {
@@ -22,7 +30,7 @@ const faqJsonLd = {
 };
 ---
 
-<script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />
+{schema && <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />}
 
 <section class="bg-blanc-azur px-4 py-16 text-encre">
   <div class="mx-auto max-w-3xl">

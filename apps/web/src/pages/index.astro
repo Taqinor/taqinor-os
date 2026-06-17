@@ -279,7 +279,9 @@ const gallery = [
       </aside>
     </DiagnosticForm>
 
-    <Faq items={faq} />
+    <!-- FAQ courte de l'accueil : accordéon visuel SANS JSON-LD FAQPage —
+         la page dédiée /faq est la seule à porter le FAQPage (hygiène W19). -->
+    <Faq items={faq} schema={false} />
 
     <StickyCta />
   </div>
