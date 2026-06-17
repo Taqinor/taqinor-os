@@ -194,8 +194,7 @@ is missing — do not rebuild** parts that already exist.
 needed-panel cap (never overfill a roomy roof — surplus is uncompensated in Morocco); no
 invented numbers (every figure traces to PVGIS, confirmed tariff/physics, or sound logic;
 savings never exceed avoidable energy cost; impossible counts blocked by the footprint
-bound); build private (noindex, not in nav, excluded from the sitemap, unlinked); one
-self-merged PR; the **live public site and lead form unchanged**.
+bound); build private (noindex, not in nav, excluded from the sitemap, unlinked); lands in the run's single end-of-batch self-merge (no per-task PR); the **live public site and lead form unchanged**.
 
 **Acceptance:** open the new `/preview/toiture-3d-pro-N` → trace a slightly-off-south roof and
 see the array follow the real edges with more panels and an honest per-config PVGIS yield; every
@@ -648,7 +647,7 @@ slopes, each its own facing) are **deliberately out of this version**.
 tariff/physics, or sound logic** — **no invented numbers**, savings never exceed the avoidable energy
 cost, impossible panel counts stay blocked by the **footprint bound**; the **needed-panel cap** is
 always respected; **no new dependencies** (PVGIS, MapLibre, Mapbox, Three.js are already in the
-stack); **each task is its own self-merged PR to protected main** (the accepted path — don't flag
+stack); these tasks **land in the run's single end-of-batch self-merge to protected main — no per-task PR** (the accepted path — don't flag
 it); **touch only `apps/web`**; **every new route stays private** (noindex, not in nav, excluded from
 sitemap, unlinked); the **live public site and the live lead form and its entire data flow** (1 000
 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**;
