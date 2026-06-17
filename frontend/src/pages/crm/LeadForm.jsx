@@ -3,6 +3,8 @@ import { useDispatch } from 'react-redux'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
+import ventesApi from '../../api/ventesApi'
+import installationsApi from '../../api/installationsApi'
 import Avatar from '../../components/Avatar'
 import AssigneePicker from '../../components/AssigneePicker'
 import '../../components/assigneepicker.css'
@@ -317,6 +319,43 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     crmApi.getLead(lead.id)
       .then(r => setLiveLead(r.data)).catch(() => {})
     onSaved?.()
+  }
+
+  // ── A4 — actions en ligne après acceptation d'un devis ──
+  // « Générer la facture » : échéancier acompte → matériel → solde sur clics
+  // répétés (moteur inchangé, nourri de l'option acceptée — A3). « Créer le
+  // chantier » : pré-rempli depuis l'option acceptée, jamais en double (le
+  // backend renvoie le chantier existant). On rafraîchit la fiche après.
+  const [devisActionBusy, setDevisActionBusy] = useState(null)
+  const [devisActionMsg, setDevisActionMsg] = useState(null)
+
+  const genererFactureDevis = async (d) => {
+    setDevisActionBusy(`f-${d.id}`)
+    setDevisActionMsg(null)
+    try {
+      const res = await ventesApi.genererFacture(d.id)
+      const f = res.data
+      setDevisActionMsg(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
+      refreshLead()
+    } catch (err) {
+      setDevisActionMsg(err?.response?.data?.detail ?? 'Génération de facture impossible.')
+    } finally {
+      setDevisActionBusy(null)
+    }
+  }
+
+  const creerChantierDevis = async (d) => {
+    setDevisActionBusy(`c-${d.id}`)
+    setDevisActionMsg(null)
+    try {
+      const res = await installationsApi.createFromDevis(d.id)
+      setDevisActionMsg(`Chantier ${res.data.reference} prêt.`)
+      refreshLead()
+    } catch (err) {
+      setDevisActionMsg(err?.response?.data?.detail ?? 'Création du chantier impossible.')
+    } finally {
+      setDevisActionBusy(null)
+    }
   }
 
   // ── Édition inline de la facture (enregistre CE seul champ) ──
@@ -721,9 +760,14 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                         </span>
                       )}
                     </div>
+                    {devisActionMsg && (
+                      <p className="gen-hint" role="status" style={{ margin: '4px 0' }}>
+                        {devisActionMsg}
+                      </p>
+                    )}
                     <table className="lines-table">
                       <thead>
-                        <tr><th></th><th>Référence</th><th>Statut</th><th className="col-num">Total TTC</th><th>Créé le</th><th></th></tr>
+                        <tr><th></th><th>Référence</th><th>Statut</th><th className="col-num">Total TTC</th><th>Créé le</th><th>Actions</th></tr>
                       </thead>
                       <tbody>
                         {liveLead.devis.map(d => (
@@ -743,7 +787,35 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                               {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} DH
                             </td>
                             <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
-                            <td className="ta-right">📄 PDF</td>
+                            <td className="ta-right">
+                              <div className="lead-devis-actions">
+                                {d.statut === 'accepte' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline"
+                                      disabled={devisActionBusy === `f-${d.id}`}
+                                      onClick={e => { e.stopPropagation(); genererFactureDevis(d) }}>
+                                      {devisActionBusy === `f-${d.id}` ? '…' : '🧾 Générer la facture'}
+                                    </button>
+                                    {d.chantier ? (
+                                      <span className="gen-hint" title="Chantier déjà créé">
+                                        🏗 {d.chantier.reference}
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline"
+                                        disabled={devisActionBusy === `c-${d.id}`}
+                                        onClick={e => { e.stopPropagation(); creerChantierDevis(d) }}>
+                                        {devisActionBusy === `c-${d.id}` ? '…' : '🏗 Créer le chantier'}
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                <span className="lead-devis-pdf-hint">📄 PDF</span>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

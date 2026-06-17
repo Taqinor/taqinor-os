@@ -138,6 +138,16 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_devis(self, obj):
         # Devis « empilés » sur le lead, du plus récent au plus ancien.
+        # A4 — on expose le chantier lié (s'il existe) et l'option acceptée pour
+        # que la fiche lead propose en ligne « Générer la facture » et « Créer le
+        # chantier » (sans doublon) après acceptation. Une seule requête
+        # Installation pour tous les devis du lead.
+        from apps.installations.models import Installation
+        rows = list(obj.devis.order_by('-date_creation'))
+        chantiers = {
+            i.devis_id: {'id': i.id, 'reference': i.reference, 'statut': i.statut}
+            for i in Installation.objects.filter(devis__in=rows)
+        }
         return [
             {
                 'id': d.id,
@@ -145,8 +155,10 @@ class LeadSerializer(serializers.ModelSerializer):
                 'statut': d.statut,
                 'total_ttc': str(d.total_ttc),
                 'date_creation': d.date_creation.isoformat(),
+                'option_acceptee': d.option_acceptee,
+                'chantier': chantiers.get(d.id),
             }
-            for d in obj.devis.order_by('-date_creation')
+            for d in rows
         ]
 
 

@@ -192,6 +192,28 @@ class TestDevisAcceptation(TestCase):
         ids = {row['id'] for row in rows}
         self.assertEqual(ids, {da.id})
 
+    # ── A4 — la fiche lead expose chantier + option sur ses devis ────────────
+
+    def test_lead_devis_exposes_chantier_and_option(self):
+        """Après acceptation + création du chantier, le devis du lead porte son
+        chantier (anti-doublon dans l'UI) et l'option retenue."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead A4', stage='QUOTE_SENT')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0060',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+        self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                      {'nom': 'Client', 'date': '2026-06-10'}, format='json')
+        self.api.post('/api/django/installations/chantiers/creer-depuis-devis/',
+                      {'devis': devis.id}, format='json')
+        r = self.api.get(f'/api/django/crm/leads/{lead.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        row = [d for d in r.data['devis'] if d['id'] == devis.id][0]
+        self.assertEqual(row['option_acceptee'], 'sans_batterie')
+        self.assertIsNotNone(row['chantier'])
+        self.assertTrue(row['chantier']['reference'])
+
     def test_invalid_option_rejected(self):
         """Une option inconnue est refusée (400) avant tout changement."""
         devis = self._devis_deux_options(num=23)

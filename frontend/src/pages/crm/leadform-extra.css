@@ -62,3 +62,13 @@
 }
 .lead-devis-menu-item:hover:not(:disabled) { background: #f1f5f9; }
 .lead-devis-menu-item:disabled { color: #94a3b8; cursor: not-allowed; }
+
+/* A4 — actions en ligne sur les devis d'un lead (facture / chantier). */
+.lead-devis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.lead-devis-pdf-hint { color: #64748b; white-space: nowrap; }

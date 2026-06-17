@@ -41,7 +41,7 @@ here unchanged — this file only adds tasks.
   batterie", included if "Avec batterie"). Totals and TVA must be correct **to the centime**
   for that option (reuse the existing reference/total utilities; never recompute by hand).
 
-- [ ] **A4 — Inline next actions after acceptance.** After a devis is accepted, surface both
+- [x] **A4 — Inline next actions after acceptance.** After a devis is accepted, surface both
   next actions inline on the lead/devis:
   - **"Générer la facture"** — acompte → matériel → solde on repeat clicks, **unchanged**
     behaviour (do not alter the existing échéancier engine, only feed it the accepted option).
@@ -163,6 +163,15 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — A4: actions en ligne après acceptation, directement sur la
+  fiche lead (section Devis). Un devis « accepté » affiche « 🧾 Générer la
+  facture » (échéancier acompte → matériel → solde sur clics répétés, moteur
+  inchangé, nourri de l'option acceptée via A3) et « 🏗 Créer le chantier »
+  pré-rempli de l'option acceptée ; si un chantier existe déjà pour ce devis,
+  le bouton est remplacé par son numéro (anti-doublon, garanti aussi côté
+  serveur). Le serializer du lead expose désormais le chantier lié + l'option
+  par devis (une seule requête). Test : la fiche lead porte chantier + option
+  après acceptation/création.
 - 2026-06-17 — A3: l'option acceptée est désormais autoritative en aval. Un
   nouvel utilitaire (apps/ventes/utils/options.py) réutilise EXACTEMENT le
   découpage du moteur de devis (réseau vs hybride+batterie) pour ne garder que
