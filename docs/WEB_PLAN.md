@@ -549,6 +549,110 @@ W2–W10 these are **public, indexed** pages (the deliberate exception to the pr
 
 ---
 
+### W20 — Estimator brain v4: PVGIS as production source of truth + fine-grid TRUE-optimum search (flat roofs) — [ ]
+
+> Added 2026-06-17 via "add to web plan". Build as the **next brain session** on a **NEW private
+> preview route cloned from the latest existing `/preview/toiture-3d-pro-N`** — **read the repo
+> first to find the highest N (the current v6)** and name the new route the **next number in
+> sequence**, leaving every prior preview **byte-for-byte intact** as a baseline.
+
+The fix: **make PVGIS the production source of truth and recommend the TRUE optimum** instead of the
+best of a few table rows. **First read the current `estimatorBrain.ts` (and `estimatorBrainV2.ts`/
+`estimatorBrainV3.ts`) and wherever production is computed to see what's actually there — don't
+assume.** Today the brain compares a small fixed set (~6 configs) and recommends the best of those,
+which misses the real optimum because it usually lies **between or outside** those discrete rows.
+
+**Do (flat roofs):**
+
+1. Replace the fixed-set pick with a **genuine search**: query PVGIS at the roof's **EXACT GPS** to
+   get the specific yield (**kWh per kWc per year**) for each candidate plane, and **sweep a fine
+   grid** — **tilt in small steps (about 5° up to ~35°)**, **azimuth** including **true south**, the
+   **roof-aligned bearing**, and **east–west tents**, each in **portrait and landscape** — then
+   recommend the **genuine maximum**.
+2. Compare configs on **total annual kWh and on match-to-need, NOT on panel count** (per-panel yield
+   drops as orientation moves off the optimum, and PVGIS captures that), and **respect the existing
+   needed-panel cap throughout** (never overfill a roomy roof — surplus is uncompensated in Morocco).
+3. **Keep the comparison table** for transparency with **PVGIS-honest numbers per standard config**,
+   but the **RECOMMENDED choice is whatever the full search found**: when the optimum is not one of
+   the standard rows, show it as **its own clearly-labelled row** ("Optimum calculé — inclinaison X°,
+   orientation Y") with its exact tilt/azimuth/layout, **badge it "Recommandé"**, and give a
+   **one-line plain-language reason** it beats the standard configs (e.g. fits N panels and covers
+   100 % of the need where plein-sud 30° fits fewer and covers W %).
+
+**PVGIS specifics to get right:** use the **v5_2 PVcalc/seriescalc API already in the stack**; the
+azimuth parameter (**"aspect"**) convention is **SOUTH = 0°, EAST = −90°, WEST = +90°,
+NORTH = 180°** (map the roof's compass facing to this correctly — **a wrong sign silently corrupts
+production**); use **mountingplace = "free"** for flat-roof racked panels; and
+**optimalangles=1 / optimalinclination=1** can anchor the per-location optimum in a single call.
+
+**Keep it fast and inside PVGIS rate limits:** query **specific yield per (tilt, azimuth) per
+location only** (it's independent of system size — **scale by kWc afterwards**), use a
+**coarse-then-fine sweep** (coarse grid to find the basin, then refine around the best) instead of a
+uniform fine grid, **cache** results **per rounded location + config**, and **reuse** them across the
+comparison table and across orientation/layout toggles. **Degrade gracefully** to the engine's
+existing in-house solar-geometry estimate (**labelled "estimé"**) if PVGIS is unreachable.
+
+### W21 — Estimator brain v5: pitched/tiled-roof support, flush coplanar layout, roof-type chosen FIRST — [ ]
+
+> Added 2026-06-17 via "add to web plan". Build on a **further NEW preview route cloned from the
+> optimizer route just built in W20** (**next number in sequence**, all prior routes left intact).
+
+Add support for **non-flat pitched/tiled roofs with a flush-mounted layout, chosen BEFORE tracing.**
+
+**Do:**
+
+1. **Add a roof-type step that comes FIRST**, before the area/roof trace: **flat terrace vs
+   pitched/tiled roof**. **Flat keeps the W20 optimizer behaviour unchanged** (racks, tilt/azimuth
+   sweep, inter-row spacing).
+2. **Pitched/tiled is a fundamentally different layout:** panels lie **FLAT against the roof slope
+   (flush / coplanar)**, not on tilted racks — the **panel tilt EQUALS the roof pitch** and the
+   **azimuth EQUALS the way the roof faces**, so **there is nothing to optimize, the roof gives
+   both**. **Ask the client the roof pitch** with sensible presets (e.g. **15° / 22° / 30° / 45°**)
+   and an adjustable default, and let them **set/confirm the slope's facing direction using the
+   existing map compass** (a 2D satellite trace can't tell which way a roof slopes, so the client
+   indicates it).
+3. **No inter-row spacing on pitched roofs:** because every panel shares the roof's plane, no row
+   shades the next — **drop the winter-solstice row pitch entirely** on pitched roofs and **tile the
+   plane densely**, limited only by the **usable area, the existing edge/ridge/eave setback, and the
+   obstacle keep-outs** (portrait vs landscape still by whichever fits more).
+4. **Production for a pitched roof comes from PVGIS at that single (pitch, facing) pair for the exact
+   GPS**, using **mountingplace = "building"** (flush panels run hotter with less rear ventilation —
+   this honestly and slightly lowers yield and correctly reflects an off-south or off-optimal-tilt
+   roof).
+5. **3D:** render the pitched roof as the **inclined plane defined by the chosen pitch and facing**,
+   with the panels lying **FLUSH on that plane** (no triangular racks, no standing frames), keeping
+   the roof's **traced satellite photo on the inclined surface** as today. The build agent **cannot
+   see the rendered map** (map keys live in Cloudflare), so **anchor this to code-checkable
+   geometry** — **every panel coplanar with the roof plane, every panel corner inside the traced
+   polygon and on that plane** — rather than to how it looks; final visual alignment is confirmed on
+   the phone.
+
+**Scope for this version:** a **SINGLE primary roof plane** (one pitch, one facing), which covers
+mono-pitch roofs and the best slope of a multi-slope roof; **multi-plane gable/hip roofs** (two-plus
+slopes, each its own facing) are **deliberately out of this version**.
+
+---
+
+**ACROSS W20–W21 (founder's cross-cutting constraints):** every figure traces to **PVGIS, confirmed
+tariff/physics, or sound logic** — **no invented numbers**, savings never exceed the avoidable energy
+cost, impossible panel counts stay blocked by the **footprint bound**; the **needed-panel cap** is
+always respected; **no new dependencies** (PVGIS, MapLibre, Mapbox, Three.js are already in the
+stack); **each task is its own self-merged PR to protected main** (the accepted path — don't flag
+it); **touch only `apps/web`**; **every new route stays private** (noindex, not in nav, excluded from
+sitemap, unlinked); the **live public site and the live lead form and its entire data flow** (1 000
+MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**;
+**reduced-motion respected and zero layout shift**. **Tests:** full Vitest suite green with **added
+tests** for the optimizer picking the true maximum over the sweep, the **PVGIS azimuth-sign
+mapping**, **graceful PVGIS fallback**, the **flat-vs-pitched branch**, and **pitched-roof layout
+using no inter-row gap while flat-roof spacing is unchanged**; **Lighthouse held**. **Plain-language
+report only** (no diffs or hashes): the new preview URLs to click, what changed for flat roofs
+(fine-grid optimizer via PVGIS at the exact GPS, true optimum shown as its own row when it isn't a
+standard config) and for pitched roofs (the roof-type-first step and the flush coplanar layout),
+confirmation the live site and lead flow are untouched, and the one thing to confirm on the phone —
+that the pitched-roof 3D shows panels lying flat on the slope and correctly aligned.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
