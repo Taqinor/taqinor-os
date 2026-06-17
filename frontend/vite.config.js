@@ -16,7 +16,13 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
-      registerType: 'autoUpdate', // skipWaiting + clientsClaim dans sw.js
+      // 'prompt' (et NON 'autoUpdate') : un SW fraîchement installé NE prend
+      // PAS la main ni ne recharge la page pendant le tout premier chargement
+      // (la course skipWaiting/clientsClaim + auto-reload provoquait des
+      // rechargements à froid « il faut rafraîchir plusieurs fois » — C2). La
+      // mise à jour se fait via le toast « Nouvelle version — Actualiser »
+      // (UpdateToast → updateServiceWorker(true) → message SKIP_WAITING).
+      registerType: 'prompt',
       injectRegister: false, // l'enregistrement passe par useRegisterSW (React)
       includeAssets: [
         'favicon.svg', 'favicon.ico', 'favicon-16.png', 'favicon-32.png',

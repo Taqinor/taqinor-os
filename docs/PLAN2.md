@@ -60,12 +60,12 @@ here unchanged — this file only adds tasks.
 
 ### Group C — Bug: navigation menu
 
-- [ ] **C1 — iPhone: menu items cut off / unreachable.** The last menu item(s) are cut off
+- [x] **C1 — iPhone: menu items cut off / unreachable.** The last menu item(s) are cut off
   and unreachable on iPhone. Make the **whole menu scrollable** and **fully visible inside
   the iOS safe area**, in **both the installed (PWA) app and Safari**. **Verify on real
   iPhone widths** — do **not** assume the earlier responsive/safe-area work covered it.
 
-- [ ] **C2 — Desktop: cold first-load flakiness.** Fix the cold first-load flakiness (needing
+- [x] **C2 — Desktop: cold first-load flakiness.** Fix the cold first-load flakiness (needing
   several refreshes) so a **single load works reliably** on desktop. (Related to the
   no-store + PWA service-worker behaviour — investigate the SW/first-paint race rather than
   guessing.)
@@ -163,6 +163,24 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — C1: menu coupé sur iPhone réparé. Cause : `.sidebar-nav`
+  (`flex:1; overflow-y:auto`) n'avait pas `min-height:0` — un enfant flex ne
+  rétrécit pas sous la hauteur de son contenu, donc le défilement ne
+  s'enclenchait jamais et les derniers liens + la déconnexion étaient coupés
+  (sidebar `overflow:hidden`). Ajout de `min-height:0` (+ inertie tactile iOS)
+  et hauteur de la sidebar bornée au viewport (`height:100dvh; position:sticky`)
+  pour que la navigation défile à l'intérieur, insets iOS déjà gérés. Validé au
+  build ; vérif finale sur iPhone réel (PWA + Safari) côté Reda recommandée.
+- 2026-06-17 — C2: rechargements à froid répétés (bureau) corrigés. Cause :
+  le service worker appelait `skipWaiting()` + `clientsClaim()` au démarrage et
+  `registerType:'autoUpdate'` rechargeait sur `controllerchange` → au tout
+  premier chargement (sans contrôleur préalable), le SW fraîchement installé
+  prenait la main et déclenchait un rechargement en pleine charge. Passage au
+  schéma `prompt` sans course : le SW ne saute l'attente que sur message
+  SKIP_WAITING (clic « Actualiser » du toast déjà présent), ne prend jamais la
+  main pendant le 1er chargement. Compromis assumé : la mise à jour se confirme
+  via le toast (au lieu d'un rechargement auto), mais le 1er chargement est
+  désormais fiable. SW recompilé au build.
 - 2026-06-17 — B1: pièces jointes réparées de bout en bout. Cause racine : le
   serializer renvoyait une URL présignée MinIO pointant vers l'hôte INTERNE
   (`minio:9000`), injoignable depuis le navigateur → icône fichier cassé (même

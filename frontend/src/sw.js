@@ -1,18 +1,27 @@
 // Service worker Taqinor OS (injectManifest / vite-plugin-pwa).
 // Objectifs :
 //   - précacher le SHELL de l'app (chargement instantané, ouverture hors ligne)
-//   - se mettre à jour tout seul (skipWaiting + clientsClaim) : pas de hard
-//     refresh manuel pour Reda/Meryem
+//   - se mettre à jour SUR DEMANDE (toast « Nouvelle version — Actualiser ») :
+//     on n'appelle PAS skipWaiting/clientsClaim au démarrage, pour ne JAMAIS
+//     prendre la main ni recharger pendant le tout premier chargement (cette
+//     course provoquait les rechargements à froid répétés — C2). On ne saute
+//     l'attente que lorsque l'app le demande (message SKIP_WAITING).
 //   - servir une page hors-ligne BRANDÉE en dernier recours
 //   - ne JAMAIS mettre l'API (/api/...) en cache (l'app reste connectée)
 import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching'
-import { clientsClaim } from 'workbox-core'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
 
-// Mise à jour immédiate : le nouveau SW prend la main sans attendre.
-self.skipWaiting()
-clientsClaim()
 cleanupOutdatedCaches()
+
+// Saute l'attente UNIQUEMENT quand l'utilisateur clique « Actualiser » dans le
+// toast (vite-plugin-pwa poste ce message via updateServiceWorker(true)). Pas
+// de skipWaiting au démarrage → pas de prise de contrôle pendant le 1er
+// chargement, donc plus de course de rechargement à froid.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
 
 // Précache du shell (liste injectée à la build par vite-plugin-pwa).
 precacheAndRoute(self.__WB_MANIFEST || [])
