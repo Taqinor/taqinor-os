@@ -16,6 +16,7 @@ import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
+import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import { localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 
@@ -185,6 +186,9 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         </div>
       </div>
     </section>
+
+    <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
+    <GarantiesTeaser />
 
     <!-- ACTE FINAL — la salle blanche -->
     <DiagnosticForm heading="Diagnostic pour votre site professionnel" />

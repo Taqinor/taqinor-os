@@ -1,0 +1,49 @@
+---
+/**
+ * Teaser de réassurance « garanties » (W16) — bloc compact repris UNIQUEMENT
+ * des chiffres déjà publiés sur /garanties : 12 ans produit, 25 ans de
+ * performance (≥ 84,8 %), 10 ans onduleur & batterie, 20 ans structure, 2 ans
+ * main-d'œuvre, + monitoring Deye Cloud avec accès client. AUCUN délai de
+ * réponse (SLA) ni politique de sous-performance inventés. Renvoie vers
+ * /garanties. Pensé pour les sections sombres (accueil, résidentiel,
+ * professionnel) ; `seam` ajoute une bordure haute si la section précédente est
+ * elle aussi sombre.
+ */
+interface Props {
+  /** Bordure haute de séparation (défaut true). */
+  seam?: boolean;
+}
+const { seam = true } = Astro.props;
+
+// Chiffres STRICTEMENT identiques au tableau de /garanties (source publiée).
+const items = [
+  { years: '12 ans', label: 'Produit panneaux' },
+  { years: '25 ans', label: 'Performance ≥ 84,8 %' },
+  { years: '10 ans', label: 'Onduleur & batterie' },
+  { years: '20 ans', label: 'Structure acier' },
+  { years: '2 ans', label: 'Main-d’œuvre Taqinor' },
+];
+---
+
+<section class={`px-4 py-16 sm:py-20${seam ? ' border-t border-white/10' : ''}`}>
+  <div class="mx-auto max-w-6xl">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div class="v2-rise">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Garanties écrites</p>
+        <h2 class="display v2-section-title mt-5 text-white">De 2 à 25 ans, noir sur blanc</h2>
+      </div>
+      <p class="v2-rise max-w-sm text-sm leading-relaxed text-lune-soft">
+        Et un monitoring Deye Cloud avec accès client inclus sur chaque installation.
+        <a href="/garanties" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir toutes nos garanties →</a>
+      </p>
+    </div>
+    <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5" data-stagger>
+      {items.map((it, i) => (
+        <div class="v2-rise" style={`--v2-i:${i}`}>
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{it.years}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{it.label}</dt>
+        </div>
+      ))}
+    </dl>
+  </div>
+</section>

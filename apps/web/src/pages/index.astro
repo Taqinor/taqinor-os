@@ -16,6 +16,7 @@ import Picture from '../components/Picture.astro';
 import VideoChantier from '../components/VideoChantier.astro';
 import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
+import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
@@ -257,6 +258,9 @@ const gallery = [
         <a href="/realisations" class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Toutes nos réalisations →</a>
       </div>
     </section>
+
+    <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
+    <GarantiesTeaser />
 
     <!-- ACTE FINAL — la salle blanche : le diagnostic respire -->
     <DiagnosticForm>

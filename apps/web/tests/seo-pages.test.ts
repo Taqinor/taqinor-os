@@ -180,3 +180,32 @@ describe('maillage & téléphone (W9 / W10)', () => {
     }
   });
 });
+
+describe('teaser garanties (W16)', () => {
+  const teaser = read('../src/components/GarantiesTeaser.astro');
+  // Corps rendu uniquement (hors commentaire de tête entre les barrières ---),
+  // pour que les gardes « rien d'inventé » ne matchent pas la docstring.
+  const body = teaser.split('---').slice(2).join('---');
+
+  it('reprend les chiffres déjà publiés sur /garanties et y renvoie', () => {
+    for (const fig of ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans']) {
+      expect(teaser, fig).toContain(fig);
+    }
+    expect(teaser).toContain('84,8');
+    expect(body).toContain('Deye Cloud');
+    expect(body).toContain('href="/garanties"');
+  });
+
+  it('n’invente aucun SLA ni politique de sous-performance (corps rendu)', () => {
+    // Aucun délai de réponse / SLA inventé ne doit apparaître dans le rendu.
+    expect(body).not.toMatch(/\bSLA\b/i);
+    expect(body).not.toMatch(/sous\s*-?\s*performance/i);
+    expect(body).not.toMatch(/délai de réponse|sous \d+ ?h|24 ?h|48 ?h|7 ?j/i);
+  });
+
+  it('est présent sur l’accueil, le résidentiel et le professionnel', () => {
+    for (const p of ['index', 'résidentiel', 'professionnel']) {
+      expect(read(`../src/pages/${p}.astro`), p).toContain('GarantiesTeaser');
+    }
+  });
+});

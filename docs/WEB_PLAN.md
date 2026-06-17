@@ -498,7 +498,7 @@ meteo figures only — invent no numbers; if an accurate public figure for a cit
 keep an honest shared framing** rather than invent. **Keep the « à titre indicatif » honesty and
 the existing « nos chantiers les plus proches » handling** for cities without a local install.
 
-### W16 — Guarantees reassurance teaser on homepage + résidentiel + professionnel — [ ]
+### W16 — Guarantees reassurance teaser on homepage + résidentiel + professionnel — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -797,3 +797,11 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   schema text, which is correctly national, not per-city). A test already pins the « ≈ » indicative
   prefix per city. Nothing to build. URLs to open: `/installation-solaire-agadir` (≈ 3 400) vs
   `/installation-solaire-tanger` (≈ 2 800).
+- 2026-06-17 — W16 done (garanties reassurance teaser): new shared component
+  `src/components/GarantiesTeaser.astro` showing a compact strip of the figures ALREADY on /garanties
+  (12 ans produit · 25 ans ≥ 84,8 % · 10 ans onduleur & batterie · 20 ans structure · 2 ans
+  main-d'œuvre) plus « monitoring Deye Cloud avec accès client inclus », linking to `/garanties`.
+  Placed near the conversion point (just before the diagnostic) on the homepage, résidentiel and
+  professionnel. NO invented SLA / underperformance policy (guarded by a test that scopes the
+  negative checks to the rendered body, not the docstring). 587 web tests green. Lead form untouched.
+  URLs to open: `/`, `/résidentiel`, `/professionnel` (scroll to the « Garanties écrites » strip).
