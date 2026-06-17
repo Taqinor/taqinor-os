@@ -315,6 +315,59 @@ export interface PackOptions {
   setbackM?: number;
   /** Dégagement autour des obstacles (m). Défaut OBSTACLE_CLEARANCE_M. */
   clearanceM?: number;
+  /**
+   * Azimut d'empilement des rangées (degrés, 0=N, 90=E, 180=S, 270=O). Par défaut
+   * l'azimut canonique de la famille (Sud=180, Est-Ouest=90). En le forçant à
+   * l'azimut réel des arêtes du toit (roofDominantAzimuthDeg), les rangées SUIVENT
+   * le toit au lieu d'être plein sud — sur un toit tourné, ça pave bien plus de
+   * panneaux. La production est alors calculée à l'aspect correspondant (le
+   * rendement par panneau baisse honnêtement à mesure qu'on s'écarte du sud).
+   */
+  azimuthDeg?: number;
+}
+
+/**
+ * Azimut de FACE (degrés, 0=N, 90=E, 180=S, 270=O) le plus proche du sud qu'on
+ * obtient en alignant les rangées sur les vraies arêtes du toit. On prend l'arête
+ * la plus longue (le grand côté donne le sens des rangées), puis la perpendiculaire
+ * orientée vers l'hémisphère sud. Toit aligné nord-sud/est-ouest → 180° (plein sud).
+ * PUR (testé) : c'est de la géométrie, jamais une donnée inventée.
+ */
+export function roofDominantAzimuthDeg(ring: LngLat[]): number {
+  if (!Array.isArray(ring) || ring.length < 3) return 180;
+  let olng = 0;
+  let olat = 0;
+  for (const [lng, lat] of ring) {
+    olng += lng;
+    olat += lat;
+  }
+  olng /= ring.length;
+  olat /= ring.length;
+  const cosLat = Math.cos(olat * DEG2RAD);
+  const pts = ring.map(
+    ([lng, lat]) => [(lng - olng) * DEG2M * cosLat, (lat - olat) * DEG2M] as [number, number],
+  );
+  let bestLen = -1;
+  let dirE = 1;
+  let dirN = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const de = pts[i][0] - pts[j][0];
+    const dn = pts[i][1] - pts[j][1];
+    const len = de * de + dn * dn;
+    if (len > bestLen) {
+      bestLen = len;
+      dirE = de;
+      dirN = dn;
+    }
+  }
+  // Rotation du toit modulo 90° : les arêtes d'un toit rectangulaire viennent par
+  // paires perpendiculaires, donc la grille du toit est définie à 90° près. On
+  // ramène cette rotation dans (−45°, 45°] et on la fait pivoter le plein sud. Un
+  // toit aligné (ou carré, peu importe l'arête « la plus longue ») → 0° → 180°.
+  const edgeAz = (Math.atan2(dirE, dirN) / DEG2RAD + 360) % 360;
+  let theta = edgeAz % 90;
+  if (theta > 45) theta -= 90;
+  return 180 + theta;
 }
 
 /**
@@ -473,8 +526,18 @@ function packCells(
   // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
   // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
   // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
+  // Une cellule tient si chaque coin est dans le toit (ou pile sur la rive, à
+  // EDGE_EPS près) ET à au moins `setbackM` du bord. La tolérance « pile sur la
+  // rive » rend le retrait nul (marge retirée) non dégénéré : sans elle, un coin
+  // exactement sur la frontière échoue pointInPolygon et toute la rangée de rive
+  // serait perdue → « retirer la marge » donnerait paradoxalement MOINS de
+  // panneaux. À retrait positif, la 2nde condition rejette de toute façon les
+  // coins de rive, donc ce relâchement n'agit qu'à retrait ≈ 0.
   const cellInside = (corners: [number, number][]): boolean =>
-    corners.every((c) => pointInPolygon(c, ringENU) && distToBoundary(c, ringENU) >= setbackM - EDGE_EPS_M);
+    corners.every((c) => {
+      const d = distToBoundary(c, ringENU);
+      return (pointInPolygon(c, ringENU) || d <= EDGE_EPS_M) && d >= setbackM - EDGE_EPS_M;
+    });
 
   const panels: PackedPanel[] = [];
   for (let r = 0; r < rows; r++) {
@@ -503,7 +566,7 @@ function packCells(
 /** Pave le toit pour une config donnée, en portrait ET paysage, garde le meilleur. */
 export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOptions): PackResult {
   const areaM2 = geodesicAreaM2(ring);
-  const azimuthDeg = familyAzimuthDeg(opts.family);
+  const azimuthDeg = opts.azimuthDeg ?? familyAzimuthDeg(opts.family);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   const tiltDeg = opts.tiltDeg;
@@ -637,6 +700,8 @@ export interface ConfigResult {
   id: string;
   family: ConfigFamily;
   tiltDeg: number;
+  /** Azimut de face réel (180 = plein sud ; ≠180 = aligné sur un toit tourné). */
+  azimuthDeg: number;
   label: string;
   panelOrientation: 'portrait' | 'landscape';
   count: number;
@@ -651,23 +716,39 @@ export interface ConfigResult {
 }
 
 /** Production annuelle (kWh, face avant) pour une puissance donnée selon la
- * famille/inclinaison. E-O = somme des sous-champs Est (−90°) et Ouest (+90°). */
+ * famille/inclinaison. E-O = somme des sous-champs Est (base−90°) et Ouest
+ * (base+90°). `aspectDeg` = écart au sud de la FACE (Sud) ou du faîte (E-O) :
+ * 0 par défaut (plein sud / faîte nord-sud), non nul quand l'array suit un toit
+ * tourné — le rendement par panneau baisse alors d'après la vraie table PVGIS. */
 export function productionKwh(
   latitudeDeg: number,
   family: ConfigFamily,
   tiltDeg: number,
   kwc: number,
+  aspectDeg = 0,
 ): number {
   if (family === 'eastwest') {
-    const yE = specificYield(latitudeDeg, tiltDeg, -90);
-    const yW = specificYield(latitudeDeg, tiltDeg, 90);
+    const yE = specificYield(latitudeDeg, tiltDeg, aspectDeg - 90);
+    const yW = specificYield(latitudeDeg, tiltDeg, aspectDeg + 90);
     return (kwc / 2) * yE + (kwc / 2) * yW;
   }
-  return kwc * specificYield(latitudeDeg, tiltDeg, 0);
+  return kwc * specificYield(latitudeDeg, tiltDeg, aspectDeg);
 }
 
-function gridAnnualKwh(grid: PanelGrid, family: ConfigFamily, tiltDeg: number, latitudeDeg: number): number {
-  return productionKwh(latitudeDeg, family, tiltDeg, grid.kwc);
+/** Aspect PVGIS (écart au sud) d'un pavage selon sa famille et son azimut réel :
+ * Sud → azimut−180 (180=plein sud→0) ; E-O → azimut−90 (90=faîte N-S→0). */
+export function aspectForAzimuth(family: ConfigFamily, azimuthDeg: number): number {
+  return family === 'eastwest' ? azimuthDeg - 90 : azimuthDeg - 180;
+}
+
+function gridAnnualKwh(
+  grid: PanelGrid,
+  family: ConfigFamily,
+  tiltDeg: number,
+  latitudeDeg: number,
+  azimuthDeg = familyAzimuthDeg(family),
+): number {
+  return productionKwh(latitudeDeg, family, tiltDeg, grid.kwc, aspectForAzimuth(family, azimuthDeg));
 }
 
 function buildConfigResult(
@@ -679,13 +760,14 @@ function buildConfigResult(
   latitudeDeg: number,
   consumptionKwh: number,
 ): ConfigResult {
-  const annualKwh = gridAnnualKwh(grid, pack.family, pack.tiltDeg, latitudeDeg);
+  const annualKwh = gridAnnualKwh(grid, pack.family, pack.tiltDeg, latitudeDeg, pack.azimuthDeg);
   const bifGain = pack.family === 'eastwest' || pack.tiltDeg < 12 ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
   const savings = annualSavingsMad(annualKwh, consumptionKwh);
   return {
     id,
     family: pack.family,
     tiltDeg: pack.tiltDeg,
+    azimuthDeg: pack.azimuthDeg,
     label,
     panelOrientation: grid.panelOrientation,
     count: grid.count,
@@ -701,6 +783,21 @@ function buildConfigResult(
 }
 
 // — Recommandation —
+
+/** Choix recommandé, GROUPE par GROUPE, calculé indépendamment de toute sélection
+ * de l'utilisateur (recommend() est pur). L'UI s'en sert pour poser un badge
+ * « Recommandé » sur la bonne option de chaque groupe, qui reste correct même si
+ * l'utilisateur choisit une autre option. `azimuthDeg` est le choix du groupe
+ * AZIMUT pour l'array sud (180 = plein sud, sinon aligné toit) — distinct de la
+ * famille recommandée (qui peut être Est-Ouest). `margin`: garder ou retirer la
+ * marge de rive. */
+export interface RecommendedOptions {
+  family: ConfigFamily;
+  panelOrientation: 'portrait' | 'landscape';
+  tiltDeg: number;
+  azimuthDeg: number;
+  margin: 'keep' | 'remove';
+}
 
 export interface Recommendation {
   targetAnnualKwh: number;
@@ -729,6 +826,13 @@ export interface Recommendation {
   /** Perte de rendement PAR PANNEAU de l'inclinaison plate vs l'optimal (% ; 0 si
    * l'optimal est gardé). */
   flatterTiltYieldLossPct: number;
+  // — W1 : azimut réel, marge de rive, options recommandées par groupe —
+  /** Azimut de face qu'on obtient en alignant les rangées sur les arêtes du toit. */
+  roofAlignedAzimuthDeg: number;
+  /** Marge de rive (m) utilisée pour CE calcul (reflète le toggle marge de l'UI). */
+  setbackM: number;
+  /** Recommandation calculée par groupe d'options (badges « Recommandé »). */
+  recommendedOptions: RecommendedOptions;
 }
 
 interface ConfigSpec {
@@ -737,6 +841,19 @@ interface ConfigSpec {
   tiltDeg: number;
   label: string;
   notes: string;
+}
+
+export interface RecommendOptions {
+  /** Marge de rive (m). Défaut PERIMETER_SETBACK_M (marge active). 0 = pleine rive. */
+  setbackM?: number;
+  /**
+   * Active le balayage d'azimut « aligné toit » (W1, route pro-5). Par DÉFAUT
+   * `false` : `recommend()` reste alors STRICTEMENT identique au moteur d'origine
+   * (familles Sud/Est-Ouest plein sud uniquement) — c'est ce qui garantit que
+   * pro-4, qui n'opte pas, ne change PAS de comportement. pro-5 passe `true` pour
+   * autoriser une config alignée sur les arêtes du toit à remporter la reco.
+   */
+  enableRoofAligned?: boolean;
 }
 
 /**
@@ -771,6 +888,8 @@ const EW_SWEEP_TILTS = [10, 15] as const;
 export interface CappedEval {
   family: ConfigFamily;
   tiltDeg: number;
+  /** Azimut de face réel du pavage (180 = plein sud ; ≠180 = aligné toit). */
+  azimuthDeg: number;
   pack: PackResult;
   grid: PanelGrid;
   /** Ce qui tient réellement (avant plafond besoin). */
@@ -783,6 +902,13 @@ export interface CappedEval {
   perPanelYield: number;
 }
 
+/** Options de pavage capé : azimut forcé (suit le toit) + marge de rive.
+ * Défauts = azimut canonique de la famille + marge active → rétro-compatible. */
+interface CappedOpts {
+  azimuthDeg?: number;
+  setbackM?: number;
+}
+
 function evalCapped(
   ring: LngLat[],
   latitudeDeg: number,
@@ -790,17 +916,27 @@ function evalCapped(
   tiltDeg: number,
   needed: number,
   obstructions: LngLat[][],
+  capOpts: CappedOpts = {},
 ): CappedEval {
-  const pack = packConfig(ring, latitudeDeg, { family, tiltDeg, obstructions });
+  const azimuthDeg = capOpts.azimuthDeg ?? familyAzimuthDeg(family);
+  const pack = packConfig(ring, latitudeDeg, {
+    family,
+    tiltDeg,
+    azimuthDeg,
+    obstructions,
+    setbackM: capOpts.setbackM,
+  });
   const grid = pack.best;
   const fitCount = grid.count;
   const placedCount = needed > 0 ? Math.min(needed, fitCount) : fitCount;
   const kwc = (placedCount * PANEL2_WATT) / 1000;
-  const placedAnnualKwh = productionKwh(latitudeDeg, family, tiltDeg, kwc);
+  // Aspect réel (écart au sud) : le rendement par panneau baisse honnêtement hors-sud.
+  const aspect = aspectForAzimuth(family, pack.azimuthDeg);
+  const placedAnnualKwh = productionKwh(latitudeDeg, family, tiltDeg, kwc, aspect);
   const perPanelYield = family === 'eastwest'
-    ? (specificYield(latitudeDeg, tiltDeg, -90) + specificYield(latitudeDeg, tiltDeg, 90)) / 2
-    : specificYield(latitudeDeg, tiltDeg, 0);
-  return { family, tiltDeg, pack, grid, fitCount, placedCount, placedAnnualKwh, perPanelYield };
+    ? (specificYield(latitudeDeg, tiltDeg, aspect - 90) + specificYield(latitudeDeg, tiltDeg, aspect + 90)) / 2
+    : specificYield(latitudeDeg, tiltDeg, aspect);
+  return { family, tiltDeg, azimuthDeg: pack.azimuthDeg, pack, grid, fitCount, placedCount, placedAnnualKwh, perPanelYield };
 }
 
 /** Vrai si `a` est une MEILLEURE reco que `b` : plus de production POSÉE ; à
@@ -830,16 +966,18 @@ export function tiltSweepSouth(
   latitudeDeg: number,
   needed: number,
   obstructions: LngLat[][] = [],
+  capOpts: CappedOpts = {},
 ): { best: CappedEval; maxRoofEnergyTiltDeg: number; maxRoofEnergyKwh: number } {
   const optTilt = optimalSouthTiltDeg(latitudeDeg);
+  const azimuthDeg = capOpts.azimuthDeg ?? familyAzimuthDeg('south');
   let best: CappedEval | null = null;
   let maxRoofEnergyKwh = -1;
   let maxRoofEnergyTiltDeg = optTilt;
   for (let t = TILT_SWEEP_MIN; t <= optTilt; t += TILT_SWEEP_STEP) {
-    const e = evalCapped(ring, latitudeDeg, 'south', t, needed, obstructions);
+    const e = evalCapped(ring, latitudeDeg, 'south', t, needed, obstructions, capOpts);
     if (!best || betterCapped(e, best)) best = e;
     // Énergie totale NON capée (info « max sur ce toit ») : départage plus plat.
-    const fullKwh = gridAnnualKwh(e.grid, 'south', t, latitudeDeg);
+    const fullKwh = gridAnnualKwh(e.grid, 'south', t, latitudeDeg, azimuthDeg);
     if (fullKwh > maxRoofEnergyKwh + EVAL_EPS || (Math.abs(fullKwh - maxRoofEnergyKwh) <= EVAL_EPS && t < maxRoofEnergyTiltDeg)) {
       maxRoofEnergyKwh = fullKwh;
       maxRoofEnergyTiltDeg = t;
@@ -847,7 +985,7 @@ export function tiltSweepSouth(
   }
   // Garantit l'optimal exact dans le balayage même si (optTilt − MIN) % STEP ≠ 0.
   if (!best || best.tiltDeg !== optTilt) {
-    const e = evalCapped(ring, latitudeDeg, 'south', optTilt, needed, obstructions);
+    const e = evalCapped(ring, latitudeDeg, 'south', optTilt, needed, obstructions, capOpts);
     if (!best || betterCapped(e, best)) best = e;
   }
   return { best: best!, maxRoofEnergyTiltDeg, maxRoofEnergyKwh: Math.max(0, maxRoofEnergyKwh) };
@@ -859,10 +997,11 @@ function bestEastWest(
   latitudeDeg: number,
   needed: number,
   obstructions: LngLat[][],
+  capOpts: CappedOpts = {},
 ): CappedEval {
   let best: CappedEval | null = null;
   for (const t of EW_SWEEP_TILTS) {
-    const e = evalCapped(ring, latitudeDeg, 'eastwest', t, needed, obstructions);
+    const e = evalCapped(ring, latitudeDeg, 'eastwest', t, needed, obstructions, capOpts);
     if (!best || betterCapped(e, best)) best = e;
   }
   return best!;
@@ -883,6 +1022,7 @@ function configResultFromCapped(
     id,
     family: e.family,
     tiltDeg: e.tiltDeg,
+    azimuthDeg: e.azimuthDeg,
     label,
     panelOrientation: e.grid.panelOrientation,
     count: e.placedCount,
@@ -903,15 +1043,29 @@ export function recommend(
   latitudeDeg: number,
   monthlyBillMad: number,
   obstructions: LngLat[][] = [],
+  options: RecommendOptions = {},
 ): Recommendation {
   const target = billToAnnualKwh(monthlyBillMad);
   const annualBillMad = billMAD(target / 12) * 12; // facture énergie modélisée
   const effectiveRateMadPerKwh = target > 0 ? annualBillMad / target : 0;
   const optTilt = optimalSouthTiltDeg(latitudeDeg);
   const needed = neededPanelsForTarget(target, latitudeDeg);
+  const defaultSetbackM = PERIMETER_SETBACK_M;
+  const setbackM = options.setbackM ?? defaultSetbackM;
+
+  // Azimut réel des arêtes du toit. Un toit franchement tourné (> 2° du sud) ouvre
+  // un candidat « aligné toit » qui suit ses arêtes au lieu d'être plein sud.
+  const roofAz = roofDominantAzimuthDeg(ring);
+  const offSouthDeg = ((roofAz - 180 + 540) % 360) - 180;
+  const offSouthRounded = Math.round(Math.abs(offSouthDeg));
+  // Opt-in (pro-5) ET toit franchement tourné. Sans l'opt-in, roofAligned reste
+  // false → aucun candidat aligné, recommandation identique au moteur d'origine
+  // (pro-4 inchangé). `roofAlignedAzimuthDeg` reste exposé pour info.
+  const roofAligned = options.enableRoofAligned === true && Math.abs(offSouthDeg) >= 2;
 
   // Comparatif FIXE (compte RAW = ce qui tient ; l'écran re-plafonne au besoin
-  // LIVE via placedFor — inchangé vs pro-3).
+  // LIVE via placedFor — inchangé vs pro-3). À setback courant pour refléter le
+  // toggle marge de l'UI.
   const specs: ConfigSpec[] = [
     { id: 'south-opt', family: 'south', tiltDeg: optTilt, label: `Sud ${optTilt}° (optimal)`, notes: 'Meilleur rendement par panneau, rangées larges.' },
     { id: 'south-15', family: 'south', tiltDeg: 15, label: 'Sud 15°', notes: 'Plus de panneaux, rendement/kWc légèrement moindre.' },
@@ -922,28 +1076,46 @@ export function recommend(
 
   const comparison: ConfigResult[] = [];
   for (const spec of specs) {
-    const pack = packConfig(ring, latitudeDeg, { family: spec.family, tiltDeg: spec.tiltDeg, obstructions });
+    const pack = packConfig(ring, latitudeDeg, { family: spec.family, tiltDeg: spec.tiltDeg, obstructions, setbackM });
     comparison.push(buildConfigResult(spec.id, spec.label, spec.notes, pack, pack.best, latitudeDeg, target));
   }
 
   // — Balayage capé : meilleur Sud (inclinaison libre) vs meilleur Est-Ouest. —
-  const sweep = tiltSweepSouth(ring, latitudeDeg, needed, obstructions);
+  const sweep = tiltSweepSouth(ring, latitudeDeg, needed, obstructions, { setbackM });
   const southBest = sweep.best;
-  const ewBest = bestEastWest(ring, latitudeDeg, needed, obstructions);
+  const ewBest = bestEastWest(ring, latitudeDeg, needed, obstructions, { setbackM });
   // Référence « Sud à l'optimal » (pour le toit-limité + le message d'honnêteté).
   const optEval = southBest.tiltDeg === optTilt
     ? southBest
-    : evalCapped(ring, latitudeDeg, 'south', optTilt, needed, obstructions);
+    : evalCapped(ring, latitudeDeg, 'south', optTilt, needed, obstructions, { setbackM });
 
   const roofLimited = needed > 0 && optEval.fitCount < needed;
 
+  // — Candidat ALIGNÉ TOIT : balayage Sud aux arêtes du toit. On ne le consulte QUE
+  //   quand le plein sud standard NE COUVRE PAS le besoin (densifier) ou pour
+  //   maximiser l'énergie totale (plafond toit) — jamais quand le sud suffit déjà
+  //   dans le cap « besoin ». Sur un toit aligné (carré/orthogonal), roofAligned est
+  //   faux → ce bloc est inerte et la reco reste octet pour octet celle de la V2.
+  const standardWinner = betterCapped(ewBest, southBest) ? ewBest : southBest;
+  const standardMeetsNeed = needed > 0 && standardWinner.placedCount >= needed;
+  let alignedBest: CappedEval | null = null;
+  if (roofAligned && !standardMeetsNeed) {
+    alignedBest = tiltSweepSouth(ring, latitudeDeg, needed, obstructions, { setbackM, azimuthDeg: roofAz }).best;
+  }
+
   // L'E-O ne gagne que s'il pose STRICTEMENT plus de production utile (départage
-  // `betterCapped` : sinon on garde le Sud, plus simple et meilleur rendement).
-  const winner = betterCapped(ewBest, southBest) ? ewBest : southBest;
+  // `betterCapped` : sinon on garde le Sud, plus simple et meilleur rendement). Le
+  // candidat aligné-toit n'entre en lice que lorsqu'il existe (toit tourné non
+  // couvert au standard) et qu'il pose strictement plus que le standard.
+  let winner = standardWinner;
+  if (alignedBest && betterCapped(alignedBest, winner)) winner = alignedBest;
 
   // « Inclinaison plus plate retenue » ne décrit QUE le cas où la reco est un Sud
-  // aplati sous l'optimal qui loge plus de panneaux (toit limité).
+  // PLEIN (azimut 180) aplati sous l'optimal qui loge plus de panneaux (toit
+  // limité). Un Sud ALIGNÉ-TOIT gagne pour une autre raison (l'azimut, pas
+  // l'inclinaison) — il ne déclenche pas ce message.
   const flatterTiltChosen = winner.family === 'south'
+    && winner.azimuthDeg === 180
     && winner.tiltDeg < optTilt - EVAL_EPS
     && winner.placedCount > optEval.placedCount;
   const flatterTiltExtraEnergyPct = flatterTiltChosen && optEval.placedAnnualKwh > 0
@@ -953,6 +1125,9 @@ export function recommend(
     ? (1 - winner.perPanelYield / optEval.perPanelYield) * 100
     : 0;
 
+  // Un Sud dont l'azimut suit les arêtes (≠ 180) gagne pour une raison distincte.
+  const winnerAligned = winner.family === 'south' && winner.azimuthDeg !== 180;
+
   // Identité d'affichage : on réutilise un id du comparatif quand l'angle coïncide,
   // sinon on insère une ligne « reco » dédiée pour que le tableau porte le ✓.
   let id: string;
@@ -960,6 +1135,9 @@ export function recommend(
   if (winner.family === 'eastwest') {
     id = winner.tiltDeg === 15 ? 'ew-15' : 'ew-10';
     label = `Est-Ouest ${winner.tiltDeg}°`;
+  } else if (winnerAligned) {
+    id = 'south-aligned-reco';
+    label = `Sud aligné toit ${winner.tiltDeg}°`;
   } else if (winner.tiltDeg === optTilt) {
     id = 'south-opt';
     label = `Sud ${winner.tiltDeg}° (optimal)`;
@@ -981,6 +1159,8 @@ export function recommend(
     notes = roofLimited
       ? `Ce toit ne loge pas tout le besoin plein sud ; en Est-Ouest dos à dos on densifie au maximum — ~${Math.round(winner.placedAnnualKwh)} kWh/an, soit ~${winnerPct} % de votre consommation.`
       : `L'Est-Ouest dos à dos maximise la production sur ce toit (onduleur double-MPPT requis).`;
+  } else if (winnerAligned) {
+    notes = `Le plein sud ne suffit pas sur ce toit tourné ; aligner les rangées sur les arêtes (≈${offSouthRounded}° du sud) loge plus de panneaux — ~${Math.round(winner.placedAnnualKwh)} kWh/an, soit ~${winnerPct} % de votre consommation.`;
   } else if (flatterTiltChosen) {
     notes = `Incliné à ~${winner.tiltDeg}° (au lieu de ~${optTilt}° optimal) pour faire tenir plus de panneaux : +${Math.round(flatterTiltExtraEnergyPct)} % de production totale malgré ~${Math.round(flatterTiltYieldLossPct)} % de rendement par panneau en moins — c'est le meilleur choix sur ce toit limité.`;
   } else if (roofLimited) {
@@ -991,12 +1171,60 @@ export function recommend(
 
   const recommended = configResultFromCapped(id, label, notes, winner, target);
 
-  // Insère la ligne « reco » dans le comparatif si son angle n'y figure pas déjà
-  // (Sud à un angle balayé non listé) — pour que le ✓ s'affiche.
-  if (id === 'south-reco') {
-    const pack = packConfig(ring, latitudeDeg, { family: 'south', tiltDeg: winner.tiltDeg, obstructions });
+  // Insère la ligne « reco » dans le comparatif si son id n'y figure pas déjà
+  // (Sud à un angle balayé non listé, ou Sud aligné-toit) — pour que le ✓ s'affiche.
+  if (id === 'south-reco' || id === 'south-aligned-reco') {
+    const pack = packConfig(ring, latitudeDeg, {
+      family: 'south',
+      tiltDeg: winner.tiltDeg,
+      azimuthDeg: winner.azimuthDeg,
+      obstructions,
+      setbackM,
+    });
     comparison.push(buildConfigResult(id, `${label} (recommandé)`, notes, pack, pack.best, latitudeDeg, target));
   }
+
+  // — Groupe AZIMUT : plein sud par défaut ; aligné-toit seulement si la config
+  //   recommandée est elle-même alignée, OU (toit limité) si l'array sud aligné
+  //   produit plus d'énergie totale que le plein sud. Jamais un azimut inventé :
+  //   azimuthRec ∈ {180, roofAz}.
+  let azimuthRec = 180;
+  if (winnerAligned) {
+    azimuthRec = winner.azimuthDeg;
+  } else if (roofAligned && roofLimited) {
+    const alignedFull = gridAnnualKwh(
+      packConfig(ring, latitudeDeg, { family: 'south', tiltDeg: optTilt, azimuthDeg: roofAz, obstructions, setbackM }).best,
+      'south',
+      optTilt,
+      latitudeDeg,
+      roofAz,
+    );
+    const southFull = gridAnnualKwh(optEval.grid, 'south', optTilt, latitudeDeg, 180);
+    if (alignedFull > southFull + EVAL_EPS) azimuthRec = roofAz;
+  }
+
+  // — Groupe MARGE : garder si le besoin est DÉJÀ atteint avec la marge en place ;
+  //   la retirer (récupérer la rive) seulement sinon. Question posée À MARGE ACTIVE,
+  //   indépendamment de la marge affichée par l'UI.
+  const metAtDefaultMargin =
+    setbackM === defaultSetbackM
+      ? !roofLimited
+      : (() => {
+          const need = needed;
+          const s = tiltSweepSouth(ring, latitudeDeg, need, obstructions, { setbackM: defaultSetbackM }).best;
+          const e = bestEastWest(ring, latitudeDeg, need, obstructions, { setbackM: defaultSetbackM });
+          const w = betterCapped(e, s) ? e : s;
+          return need > 0 && w.placedCount >= need;
+        })();
+  const marginRec: 'keep' | 'remove' = metAtDefaultMargin ? 'keep' : 'remove';
+
+  const recommendedOptions: RecommendedOptions = {
+    family: recommended.family,
+    panelOrientation: recommended.panelOrientation,
+    tiltDeg: recommended.tiltDeg,
+    azimuthDeg: azimuthRec,
+    margin: marginRec,
+  };
 
   return {
     targetAnnualKwh: target,
@@ -1013,5 +1241,8 @@ export function recommend(
     flatterTiltChosen,
     flatterTiltExtraEnergyPct,
     flatterTiltYieldLossPct,
+    roofAlignedAzimuthDeg: roofAz,
+    setbackM,
+    recommendedOptions,
   };
 }

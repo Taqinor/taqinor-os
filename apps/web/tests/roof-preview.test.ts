@@ -54,15 +54,16 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
       .filter((f) => importsMaplibre(readFileSync(f, 'utf-8')))
       .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
       .sort();
-    // Les SIX outils (2D + 3D volumes + 3D racks + 3D haute fidélité + estimateur
-    // facture pro-3 + pro-4 cerveau V2), et eux seuls, importent MapLibre — tous
-    // chargés à la demande.
+    // Les outils (2D + 3D volumes + 3D racks + 3D haute fidélité + estimateur
+    // facture pro-3 + pro-4 cerveau V2 + pro-5 W1), et eux seuls, importent
+    // MapLibre — tous chargés à la demande.
     expect(offenders).toEqual([
       'src/scripts/roof-tool-3d.ts',
       'src/scripts/roof-tool-pro.ts',
       'src/scripts/roof-tool-pro2.ts',
       'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool-pro4.ts',
+      'src/scripts/roof-tool-pro5.ts',
       'src/scripts/roof-tool.ts',
     ]);
   });
@@ -270,6 +271,7 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
       'src/scripts/roof-tool-pro2.ts',
       'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool-pro4.ts',
+      'src/scripts/roof-tool-pro5.ts',
     ]);
   });
 
