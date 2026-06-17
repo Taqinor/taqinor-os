@@ -49,7 +49,7 @@ class TestRegimeOnChantierCreation(TestCase):
 
     def test_creation_sets_suggested_regime(self):
         # make_accepted_devis → etude_params puissance 7.2 kWc → déclaration.
-        devis = make_accepted_devis(self.company)
+        devis, _client, _lead = make_accepted_devis(self.company)
         inst, created = create_installation_from_devis(
             devis, self.user, self.company)
         self.assertTrue(created)
@@ -85,7 +85,8 @@ class TestRegimeSuggestionEndpoint(TestCase):
         self.assertEqual(r3.data['code'], 'autorisation_anre')
 
     def test_serializer_exposes_regime_suggere(self):
-        devis = make_accepted_devis(self.company, with_lead=False)
+        devis, _client, _lead = make_accepted_devis(
+            self.company, with_lead=False)
         devis.etude_params = {'puissance_kwc': 250}
         devis.save()
         inst, _ = create_installation_from_devis(devis, self.user, self.company)
