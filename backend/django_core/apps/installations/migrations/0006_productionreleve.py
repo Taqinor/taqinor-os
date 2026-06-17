@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("authentication", "0001_initial"),
+        ("authentication", "0007_mark_owner_protected"),
         ("installations", "0005_installation_art33_regularisation_and_more"),
     ]
 
@@ -34,6 +34,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="productionreleve",
-            index=models.Index(fields=["company", "installation"], name="installatio_company_e6a3d8_idx"),
+            index=models.Index(fields=["company", "installation"], name="installatio_company_3c77a7_idx"),
         ),
     ]
