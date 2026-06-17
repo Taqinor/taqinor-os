@@ -152,7 +152,7 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
-            'historique', 'besoin_materiel', 'checklist',
+            'historique', 'besoin_materiel', 'checklist', 'regime_suggestion',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -211,6 +211,24 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='regime-suggestion',
+            permission_classes=[IsAnyRole])
+    def regime_suggestion(self, request):
+        """N43 — régime loi 82-21 suggéré pour une puissance (kWc), via les
+        seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable."""
+        from .regime import suggest_for_company, regime_thresholds
+        from .models import Installation
+        kwc = request.query_params.get('kwc')
+        company = request.user.company
+        code = suggest_for_company(kwc, company)
+        label = dict(Installation.Regime8221.choices).get(code, code)
+        seuil_decl, seuil_anre = regime_thresholds(company)
+        return Response({
+            'code': code, 'label': label,
+            'seuil_declaration_kwc': seuil_decl,
+            'seuil_anre_kwc': seuil_anre,
+        })
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])

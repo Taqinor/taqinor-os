@@ -503,6 +503,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <option value="accord_raccordement">Accord de raccordement</option>
                   <option value="autorisation_anre">Autorisation ANRE (&gt; 1 MW)</option>
                 </select>
+                {current?.regime_suggere?.code
+                  && current.regime_suggere.code !== 'non_concerne'
+                  && current.regime_suggere.code !== fields.regime_8221 && (
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                    Suggéré : <strong>{current.regime_suggere.label}</strong>{' '}
+                    <button type="button" className="btn btn-xs btn-outline"
+                            onClick={() => set('regime_8221', current.regime_suggere.code)}>
+                      Appliquer
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Statut du dossier</label>

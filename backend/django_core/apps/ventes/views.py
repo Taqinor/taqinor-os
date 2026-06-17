@@ -556,7 +556,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
-            'relancer', 'exclure_relance', 'whatsapp',
+            'relancer', 'exclure_relance', 'whatsapp', 'ubl',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
