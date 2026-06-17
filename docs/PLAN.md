@@ -372,7 +372,7 @@ conformity warning banner).
 - [x] N81 — Generic import-and-export framework (CSV & XLSX) for major objects (leads/clients/stock/suppliers/installed systems) with column mapping, mandatory 10-row dry-run preview before any full import, duplicate handling, audit per import; generalise the one-off Odoo lead import; real customer-data files never committed to the repo. [extends T9]
 - [x] N82 — Per-object export to CSV/XLSX from every list view respecting the user's column & filter selection and role-based field permissions. [extends T9]
 - [x] N83 — Global search across every object (leads/clients/devis/factures/chantiers/installed systems/bons de commande/SAV tickets/contrats d'entretien/regulatory dossiers) from one box with type-grouped results, respecting role permissions. [extends T5]
-- [ ] N84 — Calendar/agenda view of planned installs, scheduled maintenance visits, SAV interventions, follow-up activities; filterable by assignee & type; drag to reschedule where it maps to an editable date.
+- [x] N84 — Calendar/agenda view of planned installs, scheduled maintenance visits, SAV interventions, follow-up activities; filterable by assignee & type; drag to reschedule where it maps to an editable date.
 - [ ] N85 — Map view plotting leads/chantiers/installed systems/scheduled visits by GPS or address, filterable by type & status, for planning site visits without heavyweight routing.
 ### Chatbot / integrations / API
 - [ ] N86 — Extend the unified chatbot to read & act across all new objects (e.g. which chantiers à planifier, which garanties expire this quarter, which factures overdue, what production a named client's system did last month; open a SAV ticket, draft a BC for a chantier shortfall, schedule a maintenance visit), reusing the existing chatbot interface, respecting role permissions.
@@ -568,3 +568,10 @@ Tracked here so they aren't lost:
   N66, N74, N75, N84, N97, N98, N99, N102) reste constructible pour une prochaine
   passe. Le module terrain F1–F24 reste à zéro sur main (F1–F4 sur la branche non
   fusionnée dev-field-exec) — gros module multi-session, hors lot de cette session.
+- 2026-06-17 — N84 done: calendrier / agenda (/calendrier). Nouvelle vue grille
+  mensuelle (sans dépendance externe) agrégeant poses prévues, mises en service,
+  interventions terrain, visites de maintenance (calculées à la volée, cohérent
+  T7) et activités de suivi, filtrables par responsable et par type. Glisser un
+  évènement à date éditable vers un autre jour le reprogramme (POST
+  /reporting/calendar/reschedule, jamais une visite de maintenance calculée).
+  Endpoint lecture seule /reporting/calendar borné société. Tests backend.
