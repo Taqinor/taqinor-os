@@ -592,7 +592,7 @@ uniform fine grid, **cache** results **per rounded location + config**, and **re
 comparison table and across orientation/layout toggles. **Degrade gracefully** to the engine's
 existing in-house solar-geometry estimate (**labelled "estimé"**) if PVGIS is unreachable.
 
-### W21 — Estimator brain v5: pitched/tiled-roof support, flush coplanar layout, roof-type chosen FIRST — [ ]
+### W21 — Estimator brain v5: pitched/tiled-roof support, flush coplanar layout, roof-type chosen FIRST — [x]
 
 > Added 2026-06-17 via "add to web plan". Build on a **further NEW preview route cloned from the
 > optimizer route just built in W20** (**next number in sequence**, all prior routes left intact).
@@ -819,6 +819,28 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   clean (pro-7 generated, confirmed ABSENT from the sitemap). Method recorded in `BRAIN_V4_NOTES.md`.
   Lead form/data flow byte-for-byte untouched. PHONE-ONLY to confirm (build can't render the map): the
   satellite/3D rendering and the on-map optimum row. URL to open: `/preview/toiture-3d-pro-7`.
+- 2026-06-17 — W21 done (estimator brain v5 — pitched/tiled roof, roof-type chosen FIRST): new private
+  `/preview/toiture-3d-pro-8` (noindex, sitemap-excluded, unlinked, lazy-loaded), a clone of pro-7 on a
+  NEW small pure engine `src/lib/estimatorBrainV5.ts` composing on V3/V4 without editing them
+  (pro-3..pro-7 byte-for-byte intact — proven by tests). Deltas: (1) ROOF-TYPE STEP FIRST — « Toit plat
+  / Toit en pente (tuiles) » is now Étape 2, BEFORE the address + trace (chips share `data-rooftype`
+  with the config panel, both wired); flat keeps the W20/V4 fine-grid PVGIS optimizer byte-identical.
+  (2) Pitched stays the V3 flush-coplanar model (panels FLAT on the slope, tilt = pitch, azimuth =
+  facing, both IMPOSED, no inter-row spacing) with the pitch USER-SUPPLIED (presets now 15/22/30/**45**°
+  + 5–45° slider) and facing confirmed on the map compass. (3) PITCHED PRODUCTION = PVGIS source of
+  truth at the single (pitch, facing) pair, pose `mountingplace='building'` (flush panels run hotter →
+  honest slight de-rate), queried via `/api/roof-yield` (one leg, kWc=1, cached per pitch|facing,
+  scaled by kWc), with graceful fallback to the committed table labelled « estimé » — coverage + savings
+  recomputed consistently from the PVGIS figure. Single primary plane (multi-plane deliberately out of
+  scope). No new dependencies. 629 web tests green (V5 engine: 45° preset, `building` mounting, one-leg
+  PVGIS at (pitch, facing) with boussole→aspect sign; pro-8 route/preview guards: roof-type-before-trace
+  ordering, 45° chip, PVGIS-building wiring, baselines + `roof-yield` `building` default preserved) +
+  `astro build` clean (pro-8 generated, confirmed ABSENT from the sitemap). Method in `BRAIN_V5_NOTES.md`.
+  Lead form/data flow byte-for-byte untouched. PHONE-ONLY to confirm (build can't render the map): the
+  flush panels lie flat on the slope and align with the satellite roof. CODE-CHECKABLE invariant met
+  (panels coplanar at tilt=pitch); the further visual of an INCLINED TEXTURED roof DECK (vs the current
+  flat schematic building volume) is the remaining on-phone visual polish, noted honestly. URL to open:
+  `/preview/toiture-3d-pro-8`.
 - 2026-06-17 — W16 done (garanties reassurance teaser): new shared component
   `src/components/GarantiesTeaser.astro` showing a compact strip of the figures ALREADY on /garanties
   (12 ans produit · 25 ans ≥ 84,8 % · 10 ans onduleur & batterie · 20 ans structure · 2 ans
