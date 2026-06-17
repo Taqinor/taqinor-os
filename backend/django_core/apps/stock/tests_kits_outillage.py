@@ -16,6 +16,14 @@ User = get_user_model()
 BASE = '/api/django/stock/kits-outillage/'
 
 
+def rows(resp):
+    """Lignes d'une réponse liste (paginée ou non)."""
+    data = resp.data
+    if isinstance(data, dict) and 'results' in data:
+        return data['results']
+    return data
+
+
 class KitBase(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
@@ -37,7 +45,7 @@ class TestKitSeeding(KitBase):
     def test_list_seeds_three_default_kits(self):
         resp = self.api.get(BASE)
         self.assertEqual(resp.status_code, 200, resp.data)
-        noms = [k['nom'] for k in resp.data]
+        noms = [k['nom'] for k in rows(resp)]
         self.assertIn('Kit pose structure', noms)
         self.assertIn('Kit raccordement électrique', noms)
         self.assertIn('Kit mise en service', noms)
@@ -101,4 +109,4 @@ class TestKitCrud(KitBase):
     def test_list_is_company_scoped(self):
         KitOutillage.objects.create(company=self.other, nom='Étranger')
         resp = self.api.get(BASE)
-        self.assertNotIn('Étranger', [k['nom'] for k in resp.data])
+        self.assertNotIn('Étranger', [k['nom'] for k in rows(resp)])

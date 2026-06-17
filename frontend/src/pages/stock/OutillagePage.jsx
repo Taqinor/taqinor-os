@@ -44,7 +44,7 @@ export default function OutillagePage() {
   // synchrone dans le corps de l'effet — règle react-hooks/set-state-in-effect).
   const reload = () =>
     stockApi.getOutillage()
-      .then(r => { setList(r.data); setError(null) })
+      .then(r => { setList(r.data?.results ?? r.data ?? []); setError(null) })
       .catch(e => setError(e?.response?.data ?? e.message))
       .finally(() => setLoading(false))
   useEffect(() => { reload() }, [])

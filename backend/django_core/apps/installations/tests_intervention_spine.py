@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
-from apps.installations.models import Installation, Intervention, InterventionActivity
+from apps.installations.models import Installation, Intervention
 from authentication.models import Company
 
 User = get_user_model()

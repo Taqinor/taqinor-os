@@ -16,6 +16,14 @@ User = get_user_model()
 BASE = '/api/django/stock/outillage/'
 
 
+def rows(resp):
+    """Lignes d'une réponse liste (paginée ou non)."""
+    data = resp.data
+    if isinstance(data, dict) and 'results' in data:
+        return data['results']
+    return data
+
+
 class OutillageBase(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
@@ -49,7 +57,7 @@ class TestOutillageCrud(OutillageBase):
         Outillage.objects.create(company=self.other, nom='Pas à moi')
         resp = self.api.get(BASE)
         self.assertEqual(resp.status_code, 200)
-        noms = [r['nom'] for r in resp.data]
+        noms = [r['nom'] for r in rows(resp)]
         self.assertIn('À moi', noms)
         self.assertNotIn('Pas à moi', noms)
 
@@ -61,9 +69,9 @@ class TestOutillageCrud(OutillageBase):
             company=self.company, nom='En réparation',
             emplacement='camionnette', statut='en_reparation')
         r1 = self.api.get(BASE, {'emplacement': 'depot'})
-        self.assertEqual([r['nom'] for r in r1.data], ['Au dépôt'])
+        self.assertEqual([r['nom'] for r in rows(r1)], ['Au dépôt'])
         r2 = self.api.get(BASE, {'statut': 'en_reparation'})
-        self.assertEqual([r['nom'] for r in r2.data], ['En réparation'])
+        self.assertEqual([r['nom'] for r in rows(r2)], ['En réparation'])
 
     def test_asset_tag_unique_per_company(self):
         Outillage.objects.create(
