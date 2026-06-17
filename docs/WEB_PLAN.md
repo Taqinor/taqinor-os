@@ -292,7 +292,7 @@ public pages), but the **live lead form and its data flow must stay byte-for-byt
 
 ---
 
-### W11 — Correct the residential electricity tariff (régie ONEE barème) in the estimator + public figures — [ ]
+### W11 — Correct the residential electricity tariff (régie ONEE barème) in the estimator + public figures — [x]
 
 > Added 2026-06-17 via "add to web plan". This **resolves WG2** (tariff harmonization): the
 > founder has supplied the verified June 2026 régie figures, so this is no longer gated.
@@ -422,3 +422,27 @@ lead flow is untouched**, and the **three worked-test values passing**.
   (updated `elevation.test.ts` 9→14 top-level pages, added `tests/seo-pages.test.ts`). Auto-deploys
   via Cloudflare on merge to main. PENDING (report): the guides editorial calendar and any
   tariff/cost articles await Meryem's copy + the site-wide tariff alignment ([[WG2]]).
+- 2026-06-17 — W11 done (régie ONEE tariff correction): replaced the estimator's old (too-high)
+  selective grid with the founder's verified June-2026 RÉGIE barème, prix consommateur TTC (TVA
+  20 % already in the rates). OLD→NEW rates: progressive 0,90→**0,9010** (0–100) and 1,07→**1,0732**
+  (101–150); selective 1,07→**1,0732** (151–210), 1,18→**1,1676** (211–310), 1,45→**1,3817**
+  (311–510), and **1,66→1,5958** (>510 — the 1,66 was the force-motrice rate, not domestic).
+  Boundaries stay at the effective 210/310/510 (nominal 200/300/500 + the built-in 10 kWh tolerance).
+  Corrected identically in both engines (`estimatorBrain.ts` for pro-3 and `estimatorBrainV2.ts` for
+  pro-4/pro-5). Added a per-city tariff structure (`TariffGrid`, `REGIE_TARIFF`, `TARIFF_BY_CITY`,
+  `tariffForCity`) wired through `recommend(..., city)` / `recommend(..., {city})`: Casablanca, Rabat
+  and Tanger are explicit map entries **all currently equal to the régie barème** (conservative
+  default that slightly under-states savings in the three ex-délégataire cities — the safe side),
+  each carrying an inline comment with the known real-bill premium (Casa ≈ +10,5 %, Tanger dearest,
+  Rabat closest to the barème) for a future calibration once a real bill per city exists. Public
+  figures aligned to the same régie basis: `résidentiel` 25-year illustration now "de l'ordre de
+  12 000 à 16 000 MAD/an (barème régie ONEE)" instead of the old "≈18 000" (which exceeded the
+  avoidable-energy-cost cap; the "4–6 ans" payback still holds), `billRange.ts` ROI-band note
+  updated, and the pro-3/4/5 footnotes now read "barème régie ONEE (sélectif, TTC)" instead of the
+  stale "1,4 MAD/kWh". Three worked test values pinned and green (≈135 MAD→≈141 kWh/mo progressive;
+  ≈480 MAD→≈347 kWh/mo on 311–510; ≈1 480 MAD→≈927 kWh/mo ≈11 100 kWh/yr on >510) plus selective-jump
+  and bill→kWh-convergence assertions and a city-map test. Tariff basis recorded in
+  `ESTIMATOR_BRAIN_NOTES.md` §4. Preview routes stay private (noindex, sitemap-excluded); lead form +
+  data flow byte-for-byte untouched. 543 web tests green; `astro build` clean. Resolves the régie
+  half of [[WG2]] — Lydec/Redal/Amendis exact grids stay gated until a real bill per city. Auto-deploys
+  via Cloudflare on push to main.

@@ -66,33 +66,92 @@ export const OBSTACLE_CLEARANCE_M = 0.3;
 /** Côté de l'échantillonnage du recouvrement obstacle∩toit (surface utile). */
 const OVERLAP_SAMPLES = 110;
 
-// ===== Modèle de facturation ONEE/Lydec — BT « usage domestique » (2026) =====
-// Coût de l'ÉNERGIE uniquement (les tranches au kWh). Les frais fixes (TPPAN,
-// redevances, taxes d'abonnement) ne sont PAS modélisés : invariants au solaire,
-// ils s'annulent dans le calcul d'économies. CALIBRATION exacte (HT vs TTC, frais
-// fixes) = un seul ajustement de ce bloc, à valider sur une vraie facture Lydec.
-/** Tranches PROGRESSIVES (≤ 150 kWh/mois) : chaque tranche à son tarif. */
-const ONEE_PROGRESSIVE = [
-  { upToKwh: 100, rate: 0.9 },
-  { upToKwh: 150, rate: 1.07 },
-];
-/** Tranches SÉLECTIVES (> 150 kWh/mois) : TOUTE la conso au tarif de SA tranche. */
-const ONEE_SELECTIVE = [
-  { upToKwh: 200, rate: 1.07 },
-  { upToKwh: 300, rate: 1.18 },
-  { upToKwh: 500, rate: 1.45 },
-  { upToKwh: Infinity, rate: 1.66 },
-];
-const ONEE_SELECTIVE_THRESHOLD_KWH = 150; // au-delà → facturation sélective
-const ONEE_BOUNDARY_TOLERANCE_KWH = 10; // tolérance de tranche (on n'entre qu'à +10 kWh)
+// ===== Modèle de facturation — barème RÉGIE ONEE « usage domestique » (juin 2026) =====
+// Coût de l'ÉNERGIE uniquement (les tranches au kWh). Prix CONSOMMATEUR TTC : la
+// TVA 20 % est DÉJÀ incluse dans ces taux — ne JAMAIS rajouter de TVA par-dessus.
+// Les frais fixes (TPPAN, redevances, taxes d'abonnement) ne sont PAS modélisés :
+// invariants au solaire, ils s'annulent dans le calcul d'économies.
+//
+// DEUX RÉGIMES au Maroc : le barème RÉGIE/gouvernement (Marrakech, Agadir, El Jadida
+// et toutes les zones ONEE/régie) et des grilles contractuelles plus chères dans les
+// trois villes ex-délégataires (Casablanca/Lydec, Rabat/Redal, Tanger/Amendis).
+// POUR L'INSTANT toutes les villes utilisent le barème RÉGIE (défaut conservateur) —
+// voir TARIFF_BY_CITY et ESTIMATOR_BRAIN_NOTES.md.
+
+export interface TariffTranche {
+  upToKwh: number;
+  rate: number;
+}
+export interface TariffGrid {
+  /** Tranches PROGRESSIVES (≤ seuil) : chaque tranche facturée à son propre tarif. */
+  progressive: TariffTranche[];
+  /** Tranches SÉLECTIVES (> seuil) : TOUTE la conso au tarif de SA tranche. */
+  selective: TariffTranche[];
+  /** Conso mensuelle (kWh) au-delà de laquelle on bascule en facturation sélective. */
+  selectiveThresholdKwh: number;
+  /** Tolérance de tranche (kWh) : on n'entre dans la tranche suivante qu'à +tolérance. */
+  boundaryToleranceKwh: number;
+}
+
+/**
+ * Barème RÉGIE ONEE « usage domestique » — prix consommateur TTC (TVA 20 % DÉJÀ
+ * incluse), juin 2026, fourni et vérifié par le fondateur :
+ *  - ≤ 150 kWh/mois → PROGRESSIF : 0–100 = 0,9010 ; 101–150 = 1,0732.
+ *  - > 150 kWh/mois → SÉLECTIF (toute la conso au tarif de sa tranche) :
+ *    151–210 = 1,0732 ; 211–310 = 1,1676 ; 311–510 = 1,3817 ; > 510 = 1,5958.
+ * Les bornes nominales 200/300/500 + la tolérance de 10 kWh donnent les bornes
+ * EFFECTIVES 210/310/510 (un client n'entre dans la tranche supérieure qu'à +10 kWh).
+ * Remplace l'ancienne grille trop haute (201–300=1,18 ; 301–500=1,45 ; >500=1,66 —
+ * 1,66 était le tarif FORCE-MOTRICE, pas le domestique).
+ */
+export const REGIE_TARIFF: TariffGrid = {
+  progressive: [
+    { upToKwh: 100, rate: 0.901 },
+    { upToKwh: 150, rate: 1.0732 },
+  ],
+  selective: [
+    { upToKwh: 200, rate: 1.0732 }, // effectif 151–210
+    { upToKwh: 300, rate: 1.1676 }, // effectif 211–310
+    { upToKwh: 500, rate: 1.3817 }, // effectif 311–510
+    { upToKwh: Infinity, rate: 1.5958 }, // > 510
+  ],
+  selectiveThresholdKwh: 150,
+  boundaryToleranceKwh: 10,
+};
+
+/**
+ * Grille tarifaire par ville. POUR L'INSTANT chaque ville est égalée au barème RÉGIE
+ * (défaut conservateur) : cela SOUS-estime légèrement les économies dans les trois
+ * villes ex-délégataires — la posture SÛRE, jamais l'inverse. Les grilles
+ * délégataires EXACTES attendent une vraie facture récente par ville.
+ */
+export const TARIFF_BY_CITY: Record<string, TariffGrid> = {
+  // Casablanca/Lydec — la prime réelle sur le haut de grille ≈ +10,5 % (relevés HT :
+  // 1,0220 pour 151–210 · 1,1119 pour 211–310 · 1,5193 pour > 510). Égalée au barème
+  // régie POUR L'INSTANT (grille exacte en attente d'une vraie facture Lydec).
+  Casablanca: REGIE_TARIFF,
+  // Rabat/Redal — la MOINS chère des trois (au plus proche du barème régie). Égalée
+  // au barème régie pour l'instant.
+  Rabat: REGIE_TARIFF,
+  // Tanger/Amendis — la PLUS chère des trois. Égalée au barème régie pour l'instant
+  // (grille exacte en attente d'une vraie facture Amendis).
+  Tanger: REGIE_TARIFF,
+};
+
+/** Grille tarifaire à appliquer pour une ville (défaut : barème RÉGIE conservateur). */
+export function tariffForCity(city?: string): TariffGrid {
+  if (city && Object.prototype.hasOwnProperty.call(TARIFF_BY_CITY, city)) return TARIFF_BY_CITY[city];
+  return REGIE_TARIFF;
+}
+
 /** Part autoconsommée réellement alignée dans le temps (borne basse de la fourchette). */
 const SELF_CONSUMPTION_TIMING_LOW = 0.75;
 
-/** Coût progressif (≤ 150 kWh) — somme des tranches à leur tarif. */
-function progressiveBillMAD(monthlyKwh: number): number {
+/** Coût progressif (≤ seuil) — somme des tranches à leur tarif. */
+function progressiveBillMAD(monthlyKwh: number, grid: TariffGrid = REGIE_TARIFF): number {
   let cost = 0;
   let prev = 0;
-  for (const b of ONEE_PROGRESSIVE) {
+  for (const b of grid.progressive) {
     const upper = Math.min(monthlyKwh, b.upToKwh);
     if (upper > prev) cost += (upper - prev) * b.rate;
     prev = b.upToKwh;
@@ -102,26 +161,26 @@ function progressiveBillMAD(monthlyKwh: number): number {
 }
 
 /**
- * Facture ÉNERGIE mensuelle (MAD) pour une conso mensuelle (kWh), grille ONEE BT
- * domestique : progressive ≤ 150 kWh, sinon SÉLECTIVE (toute la conso au tarif de sa
- * tranche, tolérance de 10 kWh à la borne). Monotone non-décroissante par
- * construction (les tarifs montent à chaque tranche), garantie au raccord
- * progressif→sélectif par un plancher.
+ * Facture ÉNERGIE mensuelle (MAD) pour une conso mensuelle (kWh), barème `grid`
+ * (défaut : RÉGIE) : progressive ≤ seuil, sinon SÉLECTIVE (toute la conso au tarif de
+ * sa tranche, tolérance de bord). Monotone non-décroissante par construction (les
+ * tarifs montent à chaque tranche), garantie au raccord progressif→sélectif par un
+ * plancher.
  */
-export function billMAD(monthlyKwh: number): number {
+export function billMAD(monthlyKwh: number, grid: TariffGrid = REGIE_TARIFF): number {
   if (!Number.isFinite(monthlyKwh) || monthlyKwh <= 0) return 0;
   const k = monthlyKwh;
-  if (k <= ONEE_SELECTIVE_THRESHOLD_KWH) return progressiveBillMAD(k);
-  let rate = ONEE_SELECTIVE[ONEE_SELECTIVE.length - 1].rate;
-  for (const b of ONEE_SELECTIVE) {
-    if (k <= b.upToKwh + ONEE_BOUNDARY_TOLERANCE_KWH) {
+  if (k <= grid.selectiveThresholdKwh) return progressiveBillMAD(k, grid);
+  let rate = grid.selective[grid.selective.length - 1].rate;
+  for (const b of grid.selective) {
+    if (k <= b.upToKwh + grid.boundaryToleranceKwh) {
       rate = b.rate;
       break;
     }
   }
-  // Plancher au seuil : un client juste au-dessus de 150 kWh ne paie jamais moins
-  // que la facture progressive de 150 kWh.
-  return Math.max(k * rate, progressiveBillMAD(ONEE_SELECTIVE_THRESHOLD_KWH));
+  // Plancher au seuil : un client juste au-dessus du seuil ne paie jamais moins que
+  // la facture progressive au seuil.
+  return Math.max(k * rate, progressiveBillMAD(grid.selectiveThresholdKwh, grid));
 }
 
 // — Bifacial : JAMAIS dans le chiffre de tête (face avant uniquement). —
@@ -266,14 +325,14 @@ export function optimalSouthTiltDeg(latitudeDeg: number): number {
  * tarif effectif de la tranche haute (donc beaucoup moins de kWh qu'un diviseur
  * moyen plat) — c'est le bon comportement sélectif.
  */
-export function billToAnnualKwh(monthlyBillMad: number): number {
+export function billToAnnualKwh(monthlyBillMad: number, grid: TariffGrid = REGIE_TARIFF): number {
   if (!Number.isFinite(monthlyBillMad) || monthlyBillMad <= 0) return 0;
   let lo = 0;
   let hi = 1000;
-  while (billMAD(hi) < monthlyBillMad && hi < 1e6) hi *= 2;
+  while (billMAD(hi, grid) < monthlyBillMad && hi < 1e6) hi *= 2;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
-    if (billMAD(mid) < monthlyBillMad) lo = mid;
+    if (billMAD(mid, grid) < monthlyBillMad) lo = mid;
     else hi = mid;
   }
   return ((lo + hi) / 2) * 12;
@@ -291,14 +350,15 @@ export function billToAnnualKwh(monthlyBillMad: number): number {
 export function annualSavingsMad(
   productionKwhYr: number,
   consumptionKwhYr: number,
+  grid: TariffGrid = REGIE_TARIFF,
 ): { low: number; high: number } {
   const consMo = Math.max(0, consumptionKwhYr) / 12;
   const prodMo = Math.max(0, productionKwhYr) / 12;
   const selfHi = Math.min(prodMo, consMo);
   const selfLo = SELF_CONSUMPTION_TIMING_LOW * selfHi;
-  const billCons = billMAD(consMo);
-  const high = (billCons - billMAD(consMo - selfHi)) * 12;
-  const low = (billCons - billMAD(consMo - selfLo)) * 12;
+  const billCons = billMAD(consMo, grid);
+  const high = (billCons - billMAD(consMo - selfHi, grid)) * 12;
+  const low = (billCons - billMAD(consMo - selfLo, grid)) * 12;
   return { low: Math.max(0, low), high: Math.max(0, high) };
 }
 
@@ -759,10 +819,11 @@ function buildConfigResult(
   grid: PanelGrid,
   latitudeDeg: number,
   consumptionKwh: number,
+  tariff: TariffGrid = REGIE_TARIFF,
 ): ConfigResult {
   const annualKwh = gridAnnualKwh(grid, pack.family, pack.tiltDeg, latitudeDeg, pack.azimuthDeg);
   const bifGain = pack.family === 'eastwest' || pack.tiltDeg < 12 ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
-  const savings = annualSavingsMad(annualKwh, consumptionKwh);
+  const savings = annualSavingsMad(annualKwh, consumptionKwh, tariff);
   return {
     id,
     family: pack.family,
@@ -854,6 +915,9 @@ export interface RecommendOptions {
    * autoriser une config alignée sur les arêtes du toit à remporter la reco.
    */
   enableRoofAligned?: boolean;
+  /** Ville du toit : sélectionne le barème tarifaire (défaut : RÉGIE conservateur ;
+   * toutes les villes y sont égalées pour l'instant — voir TARIFF_BY_CITY). */
+  city?: string;
 }
 
 /**
@@ -1013,11 +1077,12 @@ function configResultFromCapped(
   notes: string,
   e: CappedEval,
   target: number,
+  tariff: TariffGrid = REGIE_TARIFF,
 ): ConfigResult {
   const annualKwh = e.placedAnnualKwh;
   const kwc = (e.placedCount * PANEL2_WATT) / 1000;
   const bifGain = e.family === 'eastwest' || e.tiltDeg < 12 ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
-  const savings = annualSavingsMad(annualKwh, target);
+  const savings = annualSavingsMad(annualKwh, target, tariff);
   return {
     id,
     family: e.family,
@@ -1045,8 +1110,11 @@ export function recommend(
   obstructions: LngLat[][] = [],
   options: RecommendOptions = {},
 ): Recommendation {
-  const target = billToAnnualKwh(monthlyBillMad);
-  const annualBillMad = billMAD(target / 12) * 12; // facture énergie modélisée
+  // Barème tarifaire selon la ville (défaut : RÉGIE conservateur ; toutes les villes
+  // y sont égalées pour l'instant — voir TARIFF_BY_CITY).
+  const grid = tariffForCity(options.city);
+  const target = billToAnnualKwh(monthlyBillMad, grid);
+  const annualBillMad = billMAD(target / 12, grid) * 12; // facture énergie modélisée
   const effectiveRateMadPerKwh = target > 0 ? annualBillMad / target : 0;
   const optTilt = optimalSouthTiltDeg(latitudeDeg);
   const needed = neededPanelsForTarget(target, latitudeDeg);
@@ -1077,7 +1145,7 @@ export function recommend(
   const comparison: ConfigResult[] = [];
   for (const spec of specs) {
     const pack = packConfig(ring, latitudeDeg, { family: spec.family, tiltDeg: spec.tiltDeg, obstructions, setbackM });
-    comparison.push(buildConfigResult(spec.id, spec.label, spec.notes, pack, pack.best, latitudeDeg, target));
+    comparison.push(buildConfigResult(spec.id, spec.label, spec.notes, pack, pack.best, latitudeDeg, target, grid));
   }
 
   // — Balayage capé : meilleur Sud (inclinaison libre) vs meilleur Est-Ouest. —
@@ -1169,7 +1237,7 @@ export function recommend(
     notes = `${winner.tiltDeg}° plein sud est l'angle optimal pour votre latitude et couvre votre consommation — aucun compromis ; il reste de la place sur le toit.`;
   }
 
-  const recommended = configResultFromCapped(id, label, notes, winner, target);
+  const recommended = configResultFromCapped(id, label, notes, winner, target, grid);
 
   // Insère la ligne « reco » dans le comparatif si son id n'y figure pas déjà
   // (Sud à un angle balayé non listé, ou Sud aligné-toit) — pour que le ✓ s'affiche.
@@ -1181,7 +1249,7 @@ export function recommend(
       obstructions,
       setbackM,
     });
-    comparison.push(buildConfigResult(id, `${label} (recommandé)`, notes, pack, pack.best, latitudeDeg, target));
+    comparison.push(buildConfigResult(id, `${label} (recommandé)`, notes, pack, pack.best, latitudeDeg, target, grid));
   }
 
   // — Groupe AZIMUT : plein sud par défaut ; aligné-toit seulement si la config

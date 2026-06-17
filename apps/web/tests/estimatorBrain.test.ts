@@ -17,6 +17,9 @@ import {
   billMAD,
   DESIGN_SOLAR_HOUR,
   PANEL2_WATT,
+  REGIE_TARIFF,
+  TARIFF_BY_CITY,
+  tariffForCity,
 } from '../src/lib/estimatorBrain';
 import { type LngLat } from '../src/lib/roof';
 
@@ -97,17 +100,30 @@ describe('specificYield — productible depuis la table committée', () => {
   });
 });
 
-describe('billMAD — modèle ONEE BT domestique (progressif ≤150, sélectif au-delà)', () => {
-  it('progressif sous 150 kWh : 100×0,90 + 50×1,07 = 143,5 MAD à 150 kWh', () => {
-    expect(billMAD(100)).toBeCloseTo(90, 2);
-    expect(billMAD(150)).toBeCloseTo(143.5, 2);
+describe('billMAD — barème RÉGIE ONEE TTC (progressif ≤150, sélectif au-delà)', () => {
+  it('progressif sous 150 kWh : 100×0,9010 + 50×1,0732 = 143,76 MAD à 150 kWh', () => {
+    expect(billMAD(100)).toBeCloseTo(90.1, 2);
+    expect(billMAD(150)).toBeCloseTo(100 * 0.901 + 50 * 1.0732, 2);
   });
 
-  it('sélectif au-delà de 150 : TOUTE la conso au tarif de sa tranche', () => {
-    // 250 kWh → tranche 201–300 (1,18) sur tout : 250×1,18 = 295.
-    expect(billMAD(250)).toBeCloseTo(250 * 1.18, 2);
-    // 600 kWh → tranche >500 (1,66) : 600×1,66 = 996.
-    expect(billMAD(600)).toBeCloseTo(600 * 1.66, 2);
+  it('sélectif au-delà de 150 : TOUTE la conso au tarif RÉGIE de sa tranche', () => {
+    // 250 kWh → tranche 211–310 (1,1676) sur tout.
+    expect(billMAD(250)).toBeCloseTo(250 * 1.1676, 2);
+    // 400 kWh → tranche 311–510 (1,3817) sur tout.
+    expect(billMAD(400)).toBeCloseTo(400 * 1.3817, 2);
+    // 600 kWh → tranche >510 (1,5958) sur tout (et NON l’ancien 1,66 force-motrice).
+    expect(billMAD(600)).toBeCloseTo(600 * 1.5958, 2);
+  });
+
+  it('sauts sélectifs aux bornes effectives 210/310/510 (tolérance 10 kWh incluse)', () => {
+    // ≤ 210 reste tranche basse ; 211 saute à la tranche supérieure ; idem 310→311, 510→511.
+    expect(billMAD(211)).toBeGreaterThan(billMAD(210));
+    expect(billMAD(311)).toBeGreaterThan(billMAD(310));
+    expect(billMAD(511)).toBeGreaterThan(billMAD(510));
+    // la borne elle-même (210/310/510) est encore facturée au tarif de sa tranche.
+    expect(billMAD(210)).toBeCloseTo(210 * 1.0732, 2);
+    expect(billMAD(310)).toBeCloseTo(310 * 1.1676, 2);
+    expect(billMAD(510)).toBeCloseTo(510 * 1.3817, 2);
   });
 
   it('est MONOTONE non-décroissante (y compris aux bornes de tranche)', () => {
@@ -119,21 +135,34 @@ describe('billMAD — modèle ONEE BT domestique (progressif ≤150, sélectif a
     }
   });
 
-  it('un client à 501 kWh ne paie jamais moins qu’à 500 (garantie de bord)', () => {
-    expect(billMAD(501)).toBeGreaterThanOrEqual(billMAD(500));
+  it('un client à 511 kWh ne paie jamais moins qu’à 510 (garantie de bord)', () => {
+    expect(billMAD(511)).toBeGreaterThanOrEqual(billMAD(510));
   });
 });
 
-describe('billToAnnualKwh — inversion numérique du modèle sélectif', () => {
-  it('1 500 MAD/mois → ~10 000–11 000 kWh/an (PAS ~15 385 de l’ancien diviseur plat)', () => {
-    const kwh = billToAnnualKwh(1500);
-    expect(kwh).toBeGreaterThanOrEqual(10000);
-    expect(kwh).toBeLessThanOrEqual(11000);
+describe('billToAnnualKwh — inversion numérique du barème RÉGIE (valeurs W11)', () => {
+  it('~135 MAD/mois → ~141 kWh/mois (tranche PROGRESSIVE)', () => {
+    const perMonth = billToAnnualKwh(135) / 12;
+    expect(perMonth).toBeGreaterThanOrEqual(140);
+    expect(perMonth).toBeLessThanOrEqual(143);
   });
-  it('inverse billMAD pour des factures atteignables (la facturation sélective a des sauts)', () => {
+  it('~480 MAD/mois → ~347 kWh/mois (tranche sélective 311–510 = 1,3817)', () => {
+    expect(billToAnnualKwh(480) / 12).toBeCloseTo(347, 0);
+  });
+  it('~1 480 MAD/mois → ~927 kWh/mois (~11 100 kWh/an, tranche >510 = 1,5958)', () => {
+    expect(billToAnnualKwh(1480) / 12).toBeCloseTo(927, 0);
+    expect(billToAnnualKwh(1480)).toBeGreaterThanOrEqual(10900);
+    expect(billToAnnualKwh(1480)).toBeLessThanOrEqual(11300);
+  });
+  it('inverse billMAD pour des factures atteignables, même à travers les sauts sélectifs', () => {
     // 1 500 et 2 500 tombent dans la tranche haute (continue) → inversion exacte.
     expect(billMAD(billToAnnualKwh(1500) / 12)).toBeCloseTo(1500, 0);
     expect(billMAD(billToAnnualKwh(2500) / 12)).toBeCloseTo(2500, 0);
+    // factures encadrant les bornes 210/310/510 : l’inversion converge (pas d’oscillation).
+    for (const bill of [225, 247, 362, 430, 705, 815]) {
+      expect(Number.isFinite(billToAnnualKwh(bill))).toBe(true);
+      expect(billToAnnualKwh(bill)).toBeGreaterThan(0);
+    }
   });
   it('croît avec la facture', () => {
     expect(billToAnnualKwh(3000)).toBeGreaterThan(billToAnnualKwh(1000));
@@ -517,12 +546,40 @@ describe('FIX 3 — un seul modèle ONEE sélectif (plus de tarif moyen/marginal
   it('la conso vient de l’inversion du modèle sélectif ; facture énergie exposée', () => {
     const bill = 1500;
     const rec = recommend(squareRing(40), 33.59, bill);
-    expect(rec.targetAnnualKwh).toBeGreaterThanOrEqual(10000);
-    expect(rec.targetAnnualKwh).toBeLessThanOrEqual(11000);
+    expect(rec.targetAnnualKwh).toBeGreaterThanOrEqual(10800);
+    expect(rec.targetAnnualKwh).toBeLessThanOrEqual(11500);
     // facture énergie modélisée ≈ facture saisie × 12, tarif effectif cohérent.
     expect(rec.annualBillMad).toBeCloseTo(bill * 12, -2);
     expect(rec.effectiveRateMadPerKwh).toBeGreaterThan(1.5); // grosse facture → tranche haute
-    expect(rec.effectiveRateMadPerKwh).toBeLessThanOrEqual(1.67); // ≈ 1,66 (tranche >500)
+    expect(rec.effectiveRateMadPerKwh).toBeLessThanOrEqual(1.6); // ≈ 1,5958 (tranche RÉGIE >510)
+  });
+});
+
+describe('W11 — grille tarifaire par ville (toutes égalées au barème RÉGIE pour l’instant)', () => {
+  it('tariffForCity : ville connue ou inconnue → barème RÉGIE conservateur', () => {
+    expect(tariffForCity()).toBe(REGIE_TARIFF);
+    expect(tariffForCity('Marrakech')).toBe(REGIE_TARIFF); // zone régie
+    expect(tariffForCity('Casablanca')).toBe(REGIE_TARIFF); // délégataire, égalé pour l’instant
+    expect(tariffForCity('Rabat')).toBe(REGIE_TARIFF);
+    expect(tariffForCity('Tanger')).toBe(REGIE_TARIFF);
+  });
+
+  it('les trois villes délégataires sont des entrées explicites du map (futur calibrage)', () => {
+    for (const city of ['Casablanca', 'Rabat', 'Tanger']) {
+      expect(Object.prototype.hasOwnProperty.call(TARIFF_BY_CITY, city)).toBe(true);
+      expect(TARIFF_BY_CITY[city]).toBe(REGIE_TARIFF);
+    }
+  });
+
+  it('recommend(..., city) donne le MÊME résultat pour toute ville (barème unique aujourd’hui)', () => {
+    const ring = squareRing(20);
+    const base = recommend(ring, 33.59, 2500);
+    for (const city of ['Casablanca', 'Rabat', 'Tanger', 'Marrakech', undefined]) {
+      const rec = recommend(ring, 33.59, 2500, [], city);
+      expect(rec.targetAnnualKwh).toBe(base.targetAnnualKwh);
+      expect(rec.recommended.savingsHigh).toBe(base.recommended.savingsHigh);
+      expect(rec.annualBillMad).toBe(base.annualBillMad);
+    }
   });
 });
 

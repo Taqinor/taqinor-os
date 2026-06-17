@@ -30,7 +30,8 @@ export function billRangeLabel(id: BillRangeId): string {
 /**
  * Bande préliminaire kWc + ROI — fallback local quand SIMULATOR_API_URL
  * n'est pas configurée. Jamais un devis : une fourchette indicative.
- * Hypothèses : ~1,4 MAD/kWh moyen, ~1 600 kWh/kWc/an au Maroc.
+ * Hypothèses : barème régie ONEE (tranche effective ≈ 1,38–1,60 MAD/kWh selon la
+ * consommation, base partagée avec l'estimateur), ~1 600 kWh/kWc/an au Maroc.
  */
 export interface EstimateBand {
   kwcMin: number;

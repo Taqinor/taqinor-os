@@ -98,35 +98,57 @@ toit plat marocain), mais le compte paysage est toujours montré.
 - Bande de cohérence Casablanca sud-optimal : la table donne ≈1 650 kWh/kWc/an
   (dans la fourchette 1 650–1 900 après pertes ; bas de fourchette, normal).
 
-## 4. Facture → énergie → économies (UN modèle ONEE sélectif, correctif 2026-06)
+## 4. Facture → énergie → économies (barème RÉGIE ONEE TTC, corrigé W11 2026-06-17)
 
-**Les deux tarifs plats (1,17 / 1,5958) sont SUPPRIMÉS**, remplacés par UNE fonction
-`billMAD(monthlyKwh)` — coût ÉNERGIE de la grille ONEE/Lydec BT « usage domestique »
-(bloc de config unique dans `estimatorBrain.ts`) :
+Une seule fonction `billMAD(monthlyKwh, grid?)` — coût ÉNERGIE de la grille `grid`
+(défaut **`REGIE_TARIFF`**), bloc de config unique dans `estimatorBrain.ts` (copié à
+l'identique dans `estimatorBrainV2.ts`).
 
-- **≤ 150 kWh/mois — progressif** : 0,90 sur les 100 premiers kWh + 1,07 sur 101–150.
+**Barème RÉGIE ONEE « usage domestique », prix consommateur TTC (TVA 20 % DÉJÀ incluse
+— ne JAMAIS rajouter de TVA par-dessus), juin 2026, fourni et vérifié par le fondateur :**
+
+- **≤ 150 kWh/mois — progressif** : 0,9010 sur les 100 premiers kWh + 1,0732 sur 101–150.
 - **> 150 kWh/mois — sélectif** (TOUTE la conso au tarif de sa tranche) :
-  151–200 → 1,07 · 201–300 → 1,18 · 301–500 → 1,45 · > 500 → 1,66 MAD/kWh.
-  Tolérance de tranche 10 kWh ; **garantie de monotonie** (un client à 501 kWh ne paie
-  jamais moins qu'à 500). Frais fixes (TPPAN, redevances) NON modélisés : invariants au
-  solaire, ils s'annulent dans les économies.
+  151–210 → 1,0732 · 211–310 → 1,1676 · 311–510 → 1,3817 · > 510 → 1,5958 MAD/kWh.
+- **Bornes effectives 210/310/510** : la **tolérance de 10 kWh** intégrée
+  (`boundaryToleranceKwh`) décale les bornes nominales 200/300/500 → 210/310/510 (on
+  n'entre dans la tranche supérieure qu'à +10 kWh).
+- **Garantie de monotonie** (un client à 511 kWh ne paie jamais moins qu'à 510). Frais
+  fixes (TPPAN, redevances) NON modélisés : invariants au solaire, ils s'annulent dans
+  les économies.
+
+> **Correctif W11.** L'ancienne grille sélective (201–300 = 1,18 ; 301–500 = 1,45 ;
+> > 500 = **1,66**) était trop haute : **1,66 était le tarif FORCE-MOTRICE, pas le
+> domestique**. Le bill→conso et la logique d'économies sont **inchangés** ; seules les
+> tranches/bornes ont été corrigées.
+
+- **Deux régimes au Maroc.** Le barème **RÉGIE/gouvernement** ci-dessus (Marrakech,
+  Agadir, El Jadida et toutes les zones ONEE/régie) **et** des grilles contractuelles
+  plus chères dans les trois villes **ex-délégataires** (Casablanca/Lydec,
+  Rabat/Redal, Tanger/Amendis). `TARIFF_BY_CITY` mappe chaque ville à sa grille et
+  `tariffForCity(city)` la résout. **POUR L'INSTANT toutes les villes (y compris les
+  trois délégataires, entrées explicites du map) sont égalées au barème RÉGIE** — défaut
+  **conservateur** qui sous-estime légèrement les économies en zone délégataire (jamais
+  l'inverse). Primes réelles connues à caler plus tard (commentées dans le code) :
+  Casablanca ≈ **+10,5 %** sur le haut de grille, Tanger la **plus chère**, Rabat la
+  **moins chère**. Les grilles délégataires **exactes attendent une vraie facture
+  récente par ville** (gate WG2 partiellement résolu).
 
 - **Facture → conso annuelle** : on **inverse numériquement** `billMAD` (recherche
-  binaire), ×12. Pour une grosse facture, ceci donne naturellement le tarif effectif
-  de la tranche haute → bien moins de kWh que l'ancien diviseur plat 1,17.
-  *Ex. 1 500 MAD/mois → ~10 850 kWh/an (et non ~15 385).*
+  binaire), ×12. Pour une grosse facture, ceci donne le tarif effectif de la tranche
+  haute. *Valeurs pinées (tests) : ~135 MAD/mois → ~141 kWh/mois (progressif) ;
+  ~480 MAD/mois → ~347 kWh/mois (311–510) ; ~1 480 MAD/mois → ~927 kWh/mois
+  (~11 100 kWh/an, > 510).*
 - **Économies/an = [ billMAD(conso) − billMAD(conso − autoconsommé) ] × 12** — la vraie
   réduction de la facture énergie. Plafond **automatique et plus serré** : ≤
   billMAD(conso) (le coût énergie évitable), jamais au-delà. Surplus au-delà de la
   conso = 0 (pas de net-billing BT clair au Maroc — conservateur). Fourchette basse
   = 75 % (alignement temporel réel de l'autoconsommation).
 
-> ⚠️ **À CONFIRMER PAR REDA contre une vraie facture Lydec/ONEE.** La grille
-> (tranches au kWh) et le traitement HT-vs-TTC + frais fixes se calibrent en un seul
-> bloc (`ONEE_PROGRESSIVE` / `ONEE_SELECTIVE` dans `estimatorBrain.ts`). Sources :
-> kherba.com/tarifs, globalpetrolprices.com (Maroc). Ce preview privé chiffre
-> volontairement différemment de l'ancien 1,4 MAD/kWh du reste du site — à harmoniser
-> si Reda valide.
+> ⚠️ **Délégataires à caler sur une vraie facture.** Le barème régie est confirmé ; les
+> grilles Lydec/Redal/Amendis exactes se déposeront dans `TARIFF_BY_CITY` en un seul
+> endroit dès qu'une vraie facture récente par ville sera disponible. Le reste du site
+> (résidentiel/professionnel) partage désormais ce **barème régie** comme base.
 
 ## 5. Bifacial
 
