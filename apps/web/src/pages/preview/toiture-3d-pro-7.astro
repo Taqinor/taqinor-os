@@ -1,0 +1,589 @@
+---
+/**
+ * PAGE PRIVÉE DE PRÉVISUALISATION — /preview/toiture-3d-pro-7 (noindex, hors nav,
+ * exclue du sitemap, non liée). COPIE de pro-6 (laissée intacte comme baseline)
+ * branchée sur le CERVEAU V4 (src/lib/estimatorBrainV4.ts) : PVGIS devient la
+ * SOURCE DE VÉRITÉ DE LA PRODUCTION. L'optimum n'est plus le meilleur de quelques
+ * lignes mais le VRAI maximum d'une grille fine (inclinaison ~5°→35°, azimut
+ * plein-sud / aligné-toit / Est-Ouest, portrait/paysage, marge), chaque config
+ * notée sur le rendement spécifique PVGIS lu au GPS EXACT du toit (repli table
+ * committée « estimé » si PVGIS est injoignable). Quand l'optimum n'est pas une
+ * config standard, il s'affiche comme SA PROPRE LIGNE « Optimum calculé », badgée
+ * « Recommandé », avec une raison en une phrase.
+ *
+ * À comparer avec pro-6 (cerveau V3) et les previews existantes, laissées intactes.
+ * Le site et le formulaire en production restent inchangés : cette page ne fait que
+ * PRÉ-REMPLIR le diagnostic enrichi (jamais poster de lead).
+ *
+ * Three.js + MapLibre + le cerveau sont chargés PARESSEUSEMENT (import() dynamique
+ * de src/scripts/roof-tool-pro7.ts) : aucune autre page ne les télécharge. Sans clé
+ * MapTiler, sans WebGL ou sans JS : repli gracieux. Voir
+ * apps/web/BRAIN_V4_NOTES.md et apps/web/SOLAR_3D_PRO2_NOTES.md.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import DiagnosticFormEnriched from '../../components/DiagnosticFormEnriched.astro';
+
+const inputClass =
+  'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+const chipClass =
+  'rp7-chip border border-white/20 px-3.5 py-2 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300';
+---
+
+<Layout
+  title="Prévisualisation privée — estimateur solaire piloté par la facture | Taqinor"
+  description="Page de travail privée, non indexée."
+  noindex={true}
+>
+  <div class="v2">
+    <V2Enhance />
+
+    <section class="border-b border-white/10 bg-nuit-800 px-4 py-14 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label rule-brass text-brass-300">Prévisualisation privée · cerveau facture → calepinage · non publiée</p>
+        <h1 class="display v2-page-title mt-5 max-w-[24ch] text-white">
+          Votre facture décide de l'angle, des rangées et du nombre de panneaux
+        </h1>
+        <p class="v2-lead mt-6 max-w-2xl text-lune-soft">
+          Cerveau V4 — <strong class="text-white">PVGIS source de vérité</strong>. Indiquez
+          votre facture, tracez votre toit : l'outil interroge PVGIS au GPS EXACT de votre
+          toiture pour le rendement de chaque inclinaison/azimut, balaie une
+          <strong class="text-white">grille fine</strong> (≈ 5°→35°, plein-sud / aligné-toit /
+          Est-Ouest, portrait/paysage, marge) et retient le <strong class="text-white">vrai
+          optimum</strong>, plafonné à votre besoin. Quand cet optimum n'est pas une config
+          standard, il apparaît comme <strong class="text-white">sa propre ligne « Optimum
+          calculé »</strong>, badgée « Recommandé ». Le bouton <strong class="text-white">« Optimum »</strong>
+          cale tous les contrôles dessus. PVGIS injoignable → repli table committée (« estimé »),
+          jamais d'erreur. Le toggle <strong class="text-white">« Toit plat / Toit en pente »</strong>
+          reste disponible. Le site et le formulaire en production restent inchangés.
+        </p>
+        <p class="mt-4 text-sm text-lune-faint">
+          Estimation indicative, jamais un devis. Comparer les versions :
+          <a href="/preview/toiture" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">2D</a> ·
+          <a href="/preview/toiture-3d" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D volumes</a> ·
+          <a href="/preview/toiture-3d-pro" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D racks</a> ·
+          <a href="/preview/toiture-3d-pro-2" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D pro-2</a> ·
+          <a href="/preview/toiture-3d-pro-3" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D pro-3</a> ·
+          <a href="/preview/toiture-3d-pro-4" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D pro-4</a> ·
+          <a href="/preview/toiture-3d-pro-5" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D pro-5</a> ·
+          <a href="/preview/toiture-3d-pro-6" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">3D pro-6</a> ·
+          <a href="#simulateur" class="text-brass-300 underline underline-offset-2 hover:text-brass-400">diagnostic</a>.
+        </p>
+      </div>
+    </section>
+
+    <section class="bg-nuit px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <!-- ÉTAPE FACTURE — d'abord, dans la voix du site -->
+        <div class="cine-card mb-8 p-6">
+          <p class="tech-label rule-brass text-brass-300">Étape 1 · votre facture</p>
+          <label for="rp7-bill" class="mt-3 block max-w-xl text-lune-soft">
+            Quelle est votre <strong class="text-white">facture d'électricité moyenne par mois</strong> ?
+            On en déduit votre consommation annuelle pour dimensionner l'installation.
+          </label>
+          <div class="mt-3 flex flex-wrap items-center gap-3">
+            <div class="relative">
+              <input id="rp7-bill" name="bill" type="text" inputmode="decimal" step="any"
+                placeholder="ex. 1 500" class={`${inputClass} max-w-[12rem] pr-12`} />
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-lune-faint">MAD</span>
+            </div>
+            <span class="text-xs text-lune-faint">≈ <span id="rp7-bill-kwh" class="fig">—</span> par an</span>
+          </div>
+        </div>
+
+        <ol class="mb-10 grid gap-4 sm:grid-cols-3">
+          <li class="border-l-2 border-brass-400/60 pl-4 text-sm text-lune-soft">
+            <span class="tech-label block text-brass-300">Étape 2</span>
+            <strong class="mt-1 block text-white">Votre adresse</strong>
+            La carte zoome sur votre maison en vue satellite.
+          </li>
+          <li class="border-l-2 border-brass-400/60 pl-4 text-sm text-lune-soft">
+            <span class="tech-label block text-brass-300">Étape 3</span>
+            <strong class="mt-1 block text-white">Tracez le toit</strong>
+            Cliquez les coins ; double-cliquez (ou « Terminer ») pour lancer le calcul.
+          </li>
+          <li class="border-l-2 border-brass-400/60 pl-4 text-sm text-lune-soft">
+            <span class="tech-label block text-brass-300">Étape 4</span>
+            <strong class="mt-1 block text-white">Comparez et choisissez</strong>
+            Sud ou Est-Ouest, l'angle, portrait ou paysage — la 3D se met à jour.
+          </li>
+        </ol>
+
+        <div id="rp7-fallback" hidden class="cine-card mb-8 border-l-4 border-alert-300 p-6">
+          <p class="font-semibold text-white">Vue 3D momentanément indisponible</p>
+          <p class="mt-2 text-sm text-lune-soft">
+            La 3D n'est pas accessible sur cet appareil (carte graphique, clé ou JavaScript).
+            Essayez <a href="/preview/toiture" class="text-brass-300 underline underline-offset-2">la version 2D</a>
+            ou obtenez votre étude directement — <a href="#simulateur" class="text-brass-300 underline underline-offset-2">le diagnostic en 60 secondes</a>.
+          </p>
+        </div>
+
+        <div id="rp7-stage" class="grid gap-6 lg:grid-cols-[1.5fr_1fr] lg:items-start">
+          <div class="cine-card overflow-hidden">
+            <form id="rp7-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
+              <label for="rp7-address" class="sr-only">Votre adresse</label>
+              <input id="rp7-address" name="address" type="text" autocomplete="street-address"
+                placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+              <button type="submit"
+                class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+                Localiser mon toit
+              </button>
+            </form>
+
+            <div id="rp7-map" class="rp7-map" role="application" aria-label="Carte satellite 3D pour tracer votre toiture">
+              <div class="rp7-compass" aria-hidden="true">
+                <div id="rp7-compass-arrow" class="rp7-compass-arrow">
+                  <span class="rp7-compass-n">N</span>
+                  <span class="rp7-compass-s">S</span>
+                </div>
+              </div>
+              <div id="rp7-map-placeholder" class="rp7-map-placeholder">
+                <p class="text-sm text-lune-soft">
+                  Saisissez votre adresse ci-dessus pour afficher la vue satellite, ou
+                </p>
+                <button type="button" id="rp7-open"
+                  class="mt-3 border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10">
+                  ouvrir la carte sans adresse
+                </button>
+                <noscript>
+                  <p class="mt-3 text-sm text-lune-faint">
+                    Cet outil nécessite JavaScript. <a href="/preview/toiture" class="text-brass-300 underline">Version 2D</a> ·
+                    <a href="#simulateur" class="text-brass-300 underline">diagnostic classique →</a>
+                  </p>
+                </noscript>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
+              <button type="button" id="rp7-finish" disabled
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                Terminer le tracé
+              </button>
+              <button type="button" id="rp7-clear"
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
+                Effacer
+              </button>
+              <!-- Surface tracée — emplacement réservé (hauteur constante, zéro CLS) -->
+              <p id="rp7-area" class="ml-auto min-w-0 text-sm text-lune-faint" aria-live="polite">
+                <span>Surface du toit&nbsp;: </span><span id="rp7-area-value" class="fig text-white">—</span>
+              </p>
+            </div>
+
+            <!-- Contrôles de configuration — la 3D + le cerveau recalculent à chaque clic -->
+            <div id="rp7-config" hidden class="space-y-4 border-t border-white/10 bg-nuit-800 p-4">
+              <!-- V3 — Type de toit : plat (modèle existant, défaut) ou en pente /
+                   tuiles (pose affleurante, inclinaison + azimut imposés par le toit). -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Type de toit</span>
+                <button type="button" data-rooftype="flat" class={chipClass} aria-pressed="true">Toit plat</button>
+                <button type="button" data-rooftype="pitched" class={chipClass} aria-pressed="false">Toit en pente / tuiles</button>
+              </div>
+              <!-- V3 — Optimum : cale tous les contrôles sur le VRAI meilleur compromis
+                   (recherche pleine). Une option épinglée est tenue ; le reste se re-résout. -->
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="rp7-optimum"
+                  class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                  ⚡ Optimum
+                </button>
+                <span id="rp7-optimum-note" class="min-w-0 flex-1 text-xs leading-relaxed text-lune-faint">
+                  Cale tout sur le meilleur compromis calculé. Épinglez une option d'abord pour la garder.
+                </span>
+              </div>
+
+              <!-- Contrôles TOIT PLAT (masqués en mode pente) -->
+              <div id="rp7-flat-controls" class="space-y-4">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Orientation</span>
+                <button type="button" data-family="south" class={chipClass} aria-pressed="true">Plein sud<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+                <button type="button" data-family="eastwest" class={chipClass} aria-pressed="false">Est-Ouest<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Inclinaison</span>
+                <button type="button" data-tilt="reco" class={chipClass} aria-pressed="true">Recommandé<span class="rp7-reco-badge" hidden> ✓</span></button>
+                <button type="button" data-tilt="29" class={chipClass} aria-pressed="false">29°<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+                <button type="button" data-tilt="15" class={chipClass} aria-pressed="false">15°<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+                <button type="button" data-tilt="10" class={chipClass} aria-pressed="false">10°<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+              </div>
+              <!-- V2 : curseur d'inclinaison fin (mobile-first). Le cerveau peut
+                   recommander une inclinaison plus plate sur un toit limité ; ici on
+                   explore librement de 5° à 35°. -->
+              <div class="flex items-center gap-3">
+                <label for="rp7-tilt-range" class="tech-label shrink-0 text-lune-faint">Inclinaison fine</label>
+                <input
+                  id="rp7-tilt-range"
+                  type="range"
+                  min="5"
+                  max="35"
+                  step="1"
+                  value="29"
+                  class="h-2 w-full min-w-0 flex-1 cursor-pointer accent-brass-400"
+                  aria-label="Inclinaison des panneaux en degrés"
+                />
+                <span id="rp7-tilt-value" class="w-16 shrink-0 text-right text-sm font-semibold text-brass-300">29° · reco</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Panneaux</span>
+                <button type="button" data-orient="auto" class={chipClass} aria-pressed="true">Auto</button>
+                <button type="button" data-orient="portrait" class={chipClass} aria-pressed="false">Portrait<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+                <button type="button" data-orient="landscape" class={chipClass} aria-pressed="false">Paysage<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+              </div>
+              <!-- W1 — Azimut : caché sur un toit aligné (aucun choix réel) ; visible
+                   sur un toit tourné, où aligner les rangées sur les arêtes loge
+                   plus de panneaux. -->
+              <div id="rp7-azimuth-group" hidden class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Azimut</span>
+                <button type="button" data-azimuth="south" class={chipClass} aria-pressed="true">Plein sud<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+                <button type="button" data-azimuth="aligned" class={chipClass} aria-pressed="false">Aligné toit<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+              </div>
+              <!-- W1 — Marge de rive : garder (0,5 m) ou pleine rive (0 m). -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Marge de rive</span>
+                <button type="button" data-margin="keep" class={chipClass} aria-pressed="true">Garder la marge<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+                <button type="button" data-margin="remove" class={chipClass} aria-pressed="false">Pleine rive<span class="rp7-reco-badge" hidden> ✓ Recommandé</span></button>
+              </div>
+              </div><!-- /rp7-flat-controls -->
+
+              <!-- Contrôles TOIT EN PENTE / TUILES (masqués en mode plat). La pente
+                   et la face sont SAISIES (non mesurables sur l'imagerie marocaine) ;
+                   elles IMPOSENT l'inclinaison et l'azimut de l'array (lecture seule). -->
+              <div id="rp7-pitched-controls" hidden class="space-y-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="tech-label mr-1 text-lune-faint">Pente du toit</span>
+                  <button type="button" data-pitch="15" class={chipClass} aria-pressed="false">~15°</button>
+                  <button type="button" data-pitch="22" class={chipClass} aria-pressed="true">~22°</button>
+                  <button type="button" data-pitch="30" class={chipClass} aria-pressed="false">~30°</button>
+                </div>
+                <div class="flex items-center gap-3">
+                  <label for="rp7-pitch-range" class="tech-label shrink-0 text-lune-faint">Pente fine</label>
+                  <input id="rp7-pitch-range" type="range" min="5" max="45" step="1" value="22"
+                    class="h-2 w-full min-w-0 flex-1 cursor-pointer accent-brass-400"
+                    aria-label="Pente du toit en degrés" />
+                  <span id="rp7-pitch-value" class="w-12 shrink-0 text-right text-sm font-semibold text-brass-300">22°</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="tech-label mr-1 text-lune-faint">Face du pan</span>
+                  <button type="button" data-facing="180" class={chipClass} aria-pressed="true">Sud</button>
+                  <button type="button" data-facing="135" class={chipClass} aria-pressed="false">Sud-Est</button>
+                  <button type="button" data-facing="225" class={chipClass} aria-pressed="false">Sud-Ouest</button>
+                  <button type="button" data-facing="90" class={chipClass} aria-pressed="false">Est</button>
+                  <button type="button" data-facing="270" class={chipClass} aria-pressed="false">Ouest</button>
+                </div>
+                <p class="border border-white/10 bg-nuit-900/40 p-3 text-xs leading-relaxed text-lune-faint">
+                  Pose affleurante (panneaux à plat sur les tuiles, sans rangées espacées).
+                  <span class="text-lune-soft">Inclinaison = pente du toit · Azimut = face du pan</span>
+                  — <strong class="text-white">imposés par la toiture</strong>, non modifiables.
+                  La production vient de PVGIS à ces valeurs réelles. La pente est saisie
+                  (non mesurable sur l'imagerie satellite marocaine).
+                </p>
+                <p id="rp7-pitched-note" class="min-h-[1.25rem] text-xs leading-relaxed text-lune-soft" aria-live="polite"></p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="tech-label mr-1 text-lune-faint">Obstacles</span>
+                <button type="button" id="rp7-obstacle" class={chipClass}>Ajouter un obstacle (cheminée…)</button>
+                <button type="button" id="rp7-obstacle-clear" class={chipClass}>Tout effacer</button>
+              </div>
+              <p class="text-xs leading-relaxed text-lune-faint">
+                Marquez les obstacles (climatiseur, cheminée, lanterneau, citerne…) —
+                on n'y posera pas de panneaux. Glissez sur le toit pour dessiner un
+                rectangle ; touchez-le pour le redimensionner. Un dégagement de
+                0,3 m est réservé tout autour.
+              </p>
+
+              <!-- Panneau d'édition d'un obstacle sélectionné (tactile) -->
+              <div id="rp7-obs-edit" hidden class="border border-white/15 bg-nuit-900/40 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="tech-label text-brass-300">Obstacle sélectionné</span>
+                  <button type="button" id="rp7-obs-delete"
+                    class="border border-alert-300/60 px-3 py-2 text-sm font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">
+                    × Supprimer
+                  </button>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <label class="block text-sm text-lune-soft">
+                    Longueur (m)
+                    <input id="rp7-obs-length" type="text" inputmode="decimal" step="any"
+                      class={`${inputClass} mt-1`} />
+                  </label>
+                  <label class="block text-sm text-lune-soft">
+                    Largeur (m)
+                    <input id="rp7-obs-width" type="text" inputmode="decimal" step="any"
+                      class={`${inputClass} mt-1`} />
+                  </label>
+                </div>
+                <div class="mt-3 flex items-center gap-3">
+                  <span class="tech-label text-lune-faint">Taille</span>
+                  <button type="button" id="rp7-obs-minus" aria-label="Réduire l'obstacle"
+                    class="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">−</button>
+                  <button type="button" id="rp7-obs-plus" aria-label="Agrandir l'obstacle"
+                    class="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">+</button>
+                  <span id="rp7-obs-dims" class="fig text-sm text-lune-soft">—</span>
+                </div>
+              </div>
+            </div>
+
+            <p id="rp7-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
+              Indiquez votre facture, puis cherchez votre adresse pour commencer.
+            </p>
+          </div>
+
+          <!-- RECOMMANDATION + COMPARATIF — largeurs réservées (zéro CLS) -->
+          <div id="rp7-results" class="rp7-results cine-card p-6">
+            <p class="tech-label rule-brass text-brass-300">Recommandation</p>
+            <p id="rp7-reco-title" class="fig mt-4 text-2xl text-brass-300 sm:text-3xl">—</p>
+
+            <!-- Plafond « panneaux nécessaires » — éditable, jamais dépassé quelle
+                 que soit l'orientation. Emplacement réservé (la carte réserve déjà
+                 520px) → aucun saut de mise en page. -->
+            <div class="mt-5 border border-white/10 bg-nuit-800/60 p-4">
+              <label for="rp7-need-input" class="tech-label text-lune-faint">Panneaux nécessaires</label>
+              <div class="mt-2 flex items-center gap-3">
+                <button type="button" id="rp7-need-minus" aria-label="Un panneau de moins"
+                  class="h-11 w-11 flex-none border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">−</button>
+                <input id="rp7-need-input" type="text" inputmode="numeric" autocomplete="off"
+                  aria-label="Nombre de panneaux nécessaires" value="—" disabled
+                  class="fig h-11 w-20 border border-white/20 bg-nuit-900 text-center text-2xl text-white outline-none focus:border-brass-400 disabled:opacity-50" />
+                <button type="button" id="rp7-need-plus" aria-label="Un panneau de plus"
+                  class="h-11 w-11 flex-none border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">+</button>
+              </div>
+              <p id="rp7-need-note" class="mt-2 min-h-[1.5rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
+            </div>
+
+            <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-6">
+              <div>
+                <dd id="rp7-reco-kwc" class="fig text-2xl text-white sm:text-3xl">—</dd>
+                <dt class="tech-label mt-1 text-lune-faint">Puissance</dt>
+              </div>
+              <div>
+                <dd id="rp7-reco-panels" class="fig text-2xl text-white sm:text-3xl">—</dd>
+                <dt class="tech-label mt-1 text-lune-faint">Panneaux</dt>
+              </div>
+              <div>
+                <dd id="rp7-reco-prod" class="fig text-xl text-white sm:text-2xl">—</dd>
+                <dt class="tech-label mt-1 text-lune-faint">Production estimée</dt>
+              </div>
+              <div>
+                <dd id="rp7-reco-cover" class="fig text-xl text-white sm:text-2xl">—</dd>
+                <dt class="tech-label mt-1 text-lune-faint">Couverture facture</dt>
+              </div>
+            </dl>
+            <div class="mt-5 border-t border-white/10 pt-5">
+              <dd id="rp7-reco-savings" class="fig text-xl text-brass-300 sm:text-2xl">—</dd>
+              <dt class="tech-label mt-1 text-lune-faint">Économies estimées</dt>
+            </div>
+            <p id="rp7-reco-why" class="mt-5 min-h-[3.5rem] text-xs leading-relaxed text-lune-soft">
+              Indiquez votre facture et tracez votre toit pour voir la recommandation.
+            </p>
+            <p id="rp7-reco-bifacial" class="mt-2 text-xs leading-relaxed text-lune-faint/80"></p>
+            <p id="rp7-maxline" class="mt-3 text-xs leading-relaxed text-lune-faint"></p>
+
+            <button type="button" id="rp7-cta" hidden
+              class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+              Recevoir mon étude sur WhatsApp
+            </button>
+          </div>
+        </div>
+
+        <!-- V4 — OPTIMUM CALCULÉ : le vrai gagnant de la grille fine (production
+             PVGIS au GPS exact). Sa PROPRE ligne quand ce n'est pas une config
+             standard ; badgée « Recommandé », avec la raison et la source. -->
+        <div id="rp7-optimum-card" hidden class="cine-card mt-6 border-l-4 border-brass-400 p-5">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="tech-label text-brass-300">
+              Optimum calculé <span class="rp7-reco-badge">✓ Recommandé</span>
+            </p>
+            <p class="text-xs text-lune-faint">
+              Production : <span id="rp7-optimum-source" class="font-semibold text-lune-soft">—</span>
+            </p>
+          </div>
+          <p id="rp7-optimum-label" class="fig mt-3 text-lg text-white sm:text-xl">—</p>
+          <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+            <div><dd id="rp7-optimum-kwc" class="fig text-lg text-white">—</dd><dt class="tech-label mt-0.5 text-lune-faint">kWc</dt></div>
+            <div><dd id="rp7-optimum-panels" class="fig text-lg text-white">—</dd><dt class="tech-label mt-0.5 text-lune-faint">Panneaux</dt></div>
+            <div><dd id="rp7-optimum-prod" class="fig text-lg text-white">—</dd><dt class="tech-label mt-0.5 text-lune-faint">kWh/an</dt></div>
+            <div><dd id="rp7-optimum-cover" class="fig text-lg text-brass-300">—</dd><dt class="tech-label mt-0.5 text-lune-faint">% facture</dt></div>
+          </dl>
+          <p id="rp7-optimum-why" class="mt-3 text-xs leading-relaxed text-lune-soft">—</p>
+          <button type="button" id="rp7-optimum-apply"
+            class="mt-4 border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+            Appliquer cet optimum
+          </button>
+        </div>
+
+        <!-- COMPARATIF complet -->
+        <div id="rp7-compare-wrap" hidden class="cine-card mt-6 overflow-x-auto p-0">
+          <table class="w-full min-w-[640px] text-left text-sm">
+            <caption class="px-5 pt-5 text-left tech-label text-brass-300">Toutes les configurations sur CE toit</caption>
+            <thead class="text-lune-faint">
+              <tr class="border-b border-white/10">
+                <th class="px-5 py-3 font-semibold">Configuration</th>
+                <th class="px-5 py-3 text-right font-semibold">Panneaux</th>
+                <th class="px-5 py-3 text-right font-semibold">kWc</th>
+                <th class="px-5 py-3 text-right font-semibold">kWh/an</th>
+                <th class="px-5 py-3 text-right font-semibold">% facture</th>
+                <th class="px-5 py-3 text-right font-semibold">Économies/an</th>
+              </tr>
+            </thead>
+            <tbody id="rp7-compare" class="text-lune-soft"></tbody>
+          </table>
+          <p class="px-5 pb-5 pt-2 text-xs text-lune-faint">
+            Cliquez une ligne pour la voir en 3D. Chiffres face avant (monoface), pas un devis.
+          </p>
+        </div>
+
+        <p class="mt-6 text-xs text-lune-faint">
+          Modèle panneau : Canadian Solar TOPBiHiKu7 CS7N-690-720TB-AG (720 W, 2384 × 1303 × 33 mm,
+          bifacial double-verre, 132 demi-cellules). Productible PVGIS (Commission européenne) /
+          table committée par latitude. Base facture→énergie : barème régie ONEE (sélectif, TTC), aligné avec le reste du site.
+        </p>
+      </div>
+    </section>
+
+    <DiagnosticFormEnriched heading="Recevez votre étude détaillée" />
+  </div>
+</Layout>
+
+<style>
+  /* W1 — Marqueur « Recommandé » calculé par le cerveau, posé sur la bonne option
+     de chaque groupe — reste correct même si l'utilisateur a choisi une autre. */
+  .rp7-reco-badge {
+    margin-left: 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-brass-300, #f3cc66);
+    letter-spacing: 0.02em;
+  }
+  .rp7-map {
+    position: relative;
+    width: 100%;
+    height: 60vh;
+    min-height: 360px;
+    background: var(--color-nuit-700);
+  }
+  @media (min-width: 1024px) {
+    .rp7-map { height: 560px; }
+  }
+  .rp7-map-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+  }
+  /* Largeur réservée : la recommandation ne provoque aucun saut de mise en page. */
+  .rp7-results { min-height: 520px; }
+  .rp7-results--ready { border-color: rgb(243 204 102 / 0.25); }
+  .rp7-map :global(.maplibregl-map) { position: absolute; inset: 0; }
+
+  .rp7-chip[aria-pressed='true'] {
+    border-color: var(--color-brass-400, #e8b54a);
+    color: var(--color-brass-300, #f3cc66);
+    background: rgb(243 204 102 / 0.08);
+  }
+  #rp7-compare tr { border-bottom: 1px solid rgb(255 255 255 / 0.06); cursor: pointer; }
+  #rp7-compare tr:hover { background: rgb(255 255 255 / 0.04); }
+  #rp7-compare tr[data-active='true'] { background: rgb(243 204 102 / 0.10); }
+  #rp7-compare td { padding: 0.75rem 1.25rem; }
+  #rp7-compare td.num { text-align: right; font-variant-numeric: lining-nums tabular-nums; }
+
+  .rp7-compass {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 2;
+    width: 52px;
+    height: 52px;
+    border-radius: 9999px;
+    background: rgb(7 11 29 / 0.72);
+    border: 1px solid rgb(214 219 233 / 0.25);
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+  }
+  .rp7-compass-arrow {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    font: 700 0.7rem/1 var(--font-sans, sans-serif);
+    transition: transform 120ms linear;
+  }
+  .rp7-compass-n { color: var(--color-brass-300, #f3cc66); }
+  .rp7-compass-s { color: var(--color-lune-soft, #adb5cd); }
+  @media (prefers-reduced-motion: reduce) {
+    .rp7-compass-arrow { transition: none; }
+  }
+</style>
+
+<script>
+  // Activation paresseuse : MapLibre + Three.js + le cerveau ne sont téléchargés
+  // qu'au premier geste réel. La clé publique MapTiler est lue via /api/roof-config.
+  const fallback = document.getElementById('rp7-fallback');
+  const stage = document.getElementById('rp7-stage');
+  const searchForm = document.getElementById('rp7-search') as HTMLFormElement | null;
+  const addressEl = document.getElementById('rp7-address') as HTMLInputElement | null;
+  const openBtn = document.getElementById('rp7-open');
+  const placeholder = document.getElementById('rp7-map-placeholder');
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let started = false;
+  let key = '';
+  let mapboxToken = '';
+
+  function showFallback() {
+    if (fallback) fallback.hidden = false;
+    if (stage) stage.hidden = true;
+  }
+
+  async function boot(initialQuery?: string) {
+    if (started || !key) return;
+    started = true;
+    let mapCreated = false;
+    try {
+      const mod = await import('../../scripts/roof-tool-pro7.ts');
+      placeholder?.remove();
+      mod.initRoofToolPro7({
+        maptilerKey: key,
+        mapboxToken: mapboxToken || undefined,
+        reducedMotion,
+        initialQuery,
+        onReady: () => {
+          mapCreated = true;
+        },
+      });
+    } catch {
+      if (!mapCreated) {
+        started = false;
+        showFallback();
+      }
+    }
+  }
+
+  (async () => {
+    try {
+      const res = await fetch('/api/roof-config');
+      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
+      if (!cfg.available || !cfg.maptilerKey) {
+        showFallback();
+        return;
+      }
+      key = cfg.maptilerKey;
+      // Token Mapbox facultatif : présent → imagerie satellite plus nette ;
+      // absent → repli transparent sur le style hybride MapTiler.
+      mapboxToken = cfg.mapboxToken || '';
+      searchForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        boot(addressEl?.value.trim() || undefined);
+      });
+      openBtn?.addEventListener('click', () => boot());
+    } catch {
+      showFallback();
+    }
+  })();
+</script>

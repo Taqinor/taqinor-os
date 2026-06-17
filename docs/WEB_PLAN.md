@@ -549,7 +549,7 @@ W2–W10 these are **public, indexed** pages (the deliberate exception to the pr
 
 ---
 
-### W20 — Estimator brain v4: PVGIS as production source of truth + fine-grid TRUE-optimum search (flat roofs) — [ ]
+### W20 — Estimator brain v4: PVGIS as production source of truth + fine-grid TRUE-optimum search (flat roofs) — [x]
 
 > Added 2026-06-17 via "add to web plan". Build as the **next brain session** on a **NEW private
 > preview route cloned from the latest existing `/preview/toiture-3d-pro-N`** — **read the repo
@@ -797,6 +797,28 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   schema text, which is correctly national, not per-city). A test already pins the « ≈ » indicative
   prefix per city. Nothing to build. URLs to open: `/installation-solaire-agadir` (≈ 3 400) vs
   `/installation-solaire-tanger` (≈ 2 800).
+- 2026-06-17 — W20 done (estimator brain v4 — PVGIS source of truth + fine-grid TRUE optimum, flat
+  roofs): new private `/preview/toiture-3d-pro-7` (noindex, sitemap-excluded, unlinked, lazy-loaded),
+  a clone of pro-6 on a NEW pure engine `src/lib/estimatorBrainV4.ts` that COMPOSES on V2/V3 without
+  editing them (pro-3/4/5/6 byte-for-byte intact — proven by tests). What changed: the recommended
+  optimum is no longer the best of a few table rows but the TRUE maximum of a fine grid (tilt ≈ 5°→35°
+  in 5° steps + the table-optimal tilt, azimuth {plein-sud, aligné-toit, Est-Ouest}, portrait/paysage,
+  marge keep/remove), each config capped at the bill-derived need and scored on PLACED energy. Each
+  candidate is now scored on the SPECIFIC YIELD (kWh/kWc/an) read from PVGIS at the roof's EXACT GPS —
+  queried once per (tilt, aspect) via the existing `/api/roof-yield` proxy with kWc=1, cached and
+  reused across toggles, scaled by kWc afterwards. PVGIS aspect convention enforced (Sud=0, Est=−90,
+  Ouest=+90, Nord=180 via `aspectFromCompass`); flat-roof racked panels now request
+  `mountingplace='free'` (added as an OPTIONAL param to `roofEstimate`/`roof-yield`, default
+  `'building'` → pro-3/4/5/6 unchanged). When the optimum isn't a standard config it shows as its OWN
+  labelled row « Optimum calculé — inclinaison X°, orientation Y », badged « Recommandé », with a
+  one-line reason and the source (PVGIS · GPS exact / estimé · table committée); the « Optimum » button
+  applies it. PVGIS unreachable for a (tilt, aspect) → graceful fallback to the committed yield table,
+  labelled « estimé », never an error. The comparison table is kept. No new dependencies. 613 web
+  tests green (engine tests: aspect-sign mapping, optimum = true max over the sweep, PVGIS moves the
+  winning tilt vs table-only, graceful fallback, candidate pairs; route/preview guards) + `astro build`
+  clean (pro-7 generated, confirmed ABSENT from the sitemap). Method recorded in `BRAIN_V4_NOTES.md`.
+  Lead form/data flow byte-for-byte untouched. PHONE-ONLY to confirm (build can't render the map): the
+  satellite/3D rendering and the on-map optimum row. URL to open: `/preview/toiture-3d-pro-7`.
 - 2026-06-17 — W16 done (garanties reassurance teaser): new shared component
   `src/components/GarantiesTeaser.astro` showing a compact strip of the figures ALREADY on /garanties
   (12 ans produit · 25 ans ≥ 84,8 % · 10 ans onduleur & batterie · 20 ans structure · 2 ans

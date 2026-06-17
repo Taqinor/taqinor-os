@@ -72,6 +72,7 @@ export async function fetchPvgisAnnualKwhAtTilt(
   aspect: number,
   tilt: number,
   fetchFn: typeof fetch = fetch,
+  mountingplace: 'building' | 'free' = 'building',
 ): Promise<number | null> {
   if (!Number.isFinite(kwc) || kwc <= 0) return null;
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
@@ -86,7 +87,10 @@ export async function fetchPvgisAnnualKwhAtTilt(
     angle: String(tilt),
     aspect: String(aspect),
     pvtechchoice: 'crystSi',
-    mountingplace: 'building',
+    // 'building' (pose intégrée, moins ventilée) par défaut — inchangé pour
+    // pro-3/4/5/6 ; 'free' (panneaux sur racks aérés) pour le toit PLAT de pro-7,
+    // PVGIS comme source de vérité (W20).
+    mountingplace,
     outputformat: 'json',
   });
 

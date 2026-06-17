@@ -55,9 +55,13 @@ export const POST: APIRoute = async ({ request }) => {
   if (!legs.length) return json({ ok: false, error: 'aucune jambe valide' }, 400);
   if (legs.length > 4) return json({ ok: false, error: 'trop de jambes' }, 400);
 
+  // Pose : 'building' par défaut (inchangé pour pro-3/4/5/6) ; 'free' pour le toit
+  // PLAT racké de pro-7 (W20). Toute autre valeur retombe sur 'building'.
+  const mountingplace = body.mountingplace === 'free' ? 'free' : 'building';
+
   let total = 0;
   for (const leg of legs) {
-    const e = await fetchPvgisAnnualKwhAtTilt(lat, lon, leg.kwc, leg.aspect, leg.tiltDeg, fetch);
+    const e = await fetchPvgisAnnualKwhAtTilt(lat, lon, leg.kwc, leg.aspect, leg.tiltDeg, fetch, mountingplace);
     if (e === null) return json({ ok: true, annualKwh: null, source: 'estimate' }); // repli table côté page
     total += e;
   }
