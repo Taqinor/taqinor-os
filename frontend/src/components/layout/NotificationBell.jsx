@@ -1,14 +1,30 @@
-// T5 — cloche de notifications in-app (aucun email). Agrège, à la volée :
-// activités en retard, garanties expirant sous 90 j, factures impayées/en
-// retard. Compte + liste cliquable. Périmètre société côté serveur.
+// T5 + N75 — cloche de notifications in-app (aucun email). Moteur unifié,
+// calculé à la volée côté serveur, borné société : activités en retard,
+// garanties expirantes, factures impayées, chantiers à planifier/poser,
+// visites de maintenance dues, tickets SAV ouverts, stock bas. Chaque type
+// respecte la préférence in-app de l'utilisateur (panneau ⚙). L'envoi sortant
+// WhatsApp/email/SMS reste gated (G1/G2/G9).
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../../api/reportingApi'
 import './notificationbell.css'
 
+// Catégorie → titre + route d'ouverture. L'ordre fixe l'affichage.
+const CATEGORIES = [
+  { key: 'activites_en_retard', title: '⏰ Activités en retard', route: () => '/crm/leads' },
+  { key: 'chantiers_a_planifier', title: '🏗 Chantiers à planifier', route: () => '/chantiers' },
+  { key: 'maintenance_due', title: '🔧 Maintenance due', route: () => '/sav/contrats' },
+  { key: 'tickets_ouverts', title: '🎫 Tickets SAV ouverts', route: () => '/sav' },
+  { key: 'garanties_expirantes', title: '🛡 Garanties (≤ 90 j)', route: () => '/equipements' },
+  { key: 'factures_impayees', title: '💸 Factures impayées', route: () => '/ventes/factures' },
+  { key: 'stock_bas', title: '📦 Stock bas', route: () => '/stock' },
+]
+
 export default function NotificationBell() {
   const [data, setData] = useState(null)
   const [open, setOpen] = useState(false)
+  const [showPrefs, setShowPrefs] = useState(false)
+  const [prefs, setPrefs] = useState([])
   const ref = useRef(null)
   const navigate = useNavigate()
 
@@ -27,11 +43,26 @@ export default function NotificationBell() {
 
   useEffect(() => {
     const onDoc = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false); setShowPrefs(false)
+      }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
+
+  const openPrefs = () => {
+    reportingApi.getNotificationPreferences()
+      .then((r) => setPrefs(r.data.preferences ?? []))
+      .catch(() => setPrefs([]))
+    setShowPrefs(true)
+  }
+
+  const togglePref = (eventType, current) => {
+    reportingApi.setNotificationPreference(eventType, !current)
+      .then((r) => { setPrefs(r.data.preferences ?? []); load() })
+      .catch(() => {})
+  }
 
   const total = data?.total ?? 0
   const goto = (path) => { navigate(path); setOpen(false) }
@@ -49,47 +80,46 @@ export default function NotificationBell() {
       </button>
       {open && (
         <div className="nb-panel">
-          {!data || total === 0 ? (
+          <div className="nb-head">
+            <span>Notifications</span>
+            <button type="button" className="nb-prefs-btn"
+                    aria-label="Préférences de notification"
+                    onClick={() => (showPrefs ? setShowPrefs(false) : openPrefs())}>⚙</button>
+          </div>
+          {showPrefs ? (
+            <div className="nb-group">
+              <div className="nb-group-title">Afficher dans la cloche</div>
+              {prefs.map((p) => (
+                <label key={p.event_type} className="nb-pref-row">
+                  <input type="checkbox" checked={!!p.in_app}
+                         onChange={() => togglePref(p.event_type, p.in_app)} />
+                  <span>{p.label}</span>
+                </label>
+              ))}
+            </div>
+          ) : !data || total === 0 ? (
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
-            <>
-              {data.activites_en_retard.length > 0 && (
-                <div className="nb-group">
-                  <div className="nb-group-title">⏰ Activités en retard</div>
-                  {data.activites_en_retard.map((a) => (
-                    <button key={`act-${a.id}`} type="button" className="nb-item"
-                            onClick={() => goto(a.lead_id ? `/crm/leads?lead=${a.lead_id}` : '/crm/leads')}>
-                      <span>{a.label}</span>
-                      {a.date && <span className="nb-item-date">{a.date}</span>}
+            CATEGORIES.map((cat) => {
+              const items = data[cat.key] ?? []
+              if (items.length === 0) return null
+              return (
+                <div className="nb-group" key={cat.key}>
+                  <div className="nb-group-title">{cat.title}</div>
+                  {items.map((it) => (
+                    <button key={`${cat.key}-${it.id}`} type="button" className="nb-item"
+                            onClick={() => goto(
+                              cat.key === 'activites_en_retard' && it.lead_id
+                                ? `/crm/leads?lead=${it.lead_id}` : cat.route(it))}>
+                      <span className={it.overdue ? 'nb-overdue' : undefined}>{it.label}</span>
+                      {(it.date || it.sublabel) && (
+                        <span className="nb-item-date">{it.date || it.sublabel}</span>
+                      )}
                     </button>
                   ))}
                 </div>
-              )}
-              {data.garanties_expirantes.length > 0 && (
-                <div className="nb-group">
-                  <div className="nb-group-title">🛡 Garanties (≤ 90 j)</div>
-                  {data.garanties_expirantes.map((e) => (
-                    <button key={`gar-${e.id}`} type="button" className="nb-item"
-                            onClick={() => goto('/equipements')}>
-                      <span>{e.label}</span>
-                      {e.date && <span className="nb-item-date">{e.date}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {data.factures_impayees.length > 0 && (
-                <div className="nb-group">
-                  <div className="nb-group-title">💸 Factures impayées</div>
-                  {data.factures_impayees.map((f) => (
-                    <button key={`fac-${f.id}`} type="button" className="nb-item"
-                            onClick={() => goto('/ventes/factures')}>
-                      <span className={f.overdue ? 'nb-overdue' : undefined}>{f.label}</span>
-                      <span className="nb-item-date">{f.sublabel}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
+              )
+            })
           )}
         </div>
       )}

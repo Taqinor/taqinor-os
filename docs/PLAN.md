@@ -362,7 +362,7 @@ conformity warning banner).
 - [ ] N73 — Simple approval-step capability in the automation engine so selected actions (e.g. a discount above a configurable threshold) require owner approval before proceeding.
 - [ ] N74 — Chantier/onboarding checklists fully configurable as named workflow templates in Paramètres, selected automatically by type d'installation.
 ### Notifications / dashboards / analytics
-- [ ] N75 — Unified notification engine: in-app + (where configured) WhatsApp/email/SMS for key events (new lead assigned, devis accepted, chantier due to install, facture overdue, warranty expiring, maintenance visit due, stock low, SAV ticket opened/breaching target); per-user & per-event preferences in settings; in-app notification centre; reuse planned templates/channels.
+- [x] N75 — Unified notification engine: in-app + (where configured) WhatsApp/email/SMS for key events (new lead assigned, devis accepted, chantier due to install, facture overdue, warranty expiring, maintenance visit due, stock low, SAV ticket opened/breaching target); per-user & per-event preferences in settings; in-app notification centre; reuse planned templates/channels. _(in-app livré ; envoi sortant WhatsApp/email/SMS reste gated G1/G2/G9)_
 - [BLOCKED: scheduled daily/weekly digest delivery needs a scheduler (G9, gated). On-demand summary data is now available via the N49/N80 insights endpoints.] N76 — Daily & weekly digest notification for Reda & Meryem (jobs to plan, quotes awaiting acceptance, overdue payments, due maintenance, open SAV), in-app and optionally WhatsApp/email.
 - [x] N77 — Tableau de bord home view (French): pipeline value/count by stage, close rate by canal & source, signed kWc & revenue for current month/quarter, chantiers by status, aged-receivables summary (existing follow-up data), active maintenance contracts + upcoming renewals, open SAV count; plain cards + simple charts.
 - [x] N78 — Job costing per chantier: realised margin from captured buy prices vs invoiced amounts; margin-per-job + margin-by-period views visible only to authorised roles.
@@ -668,3 +668,18 @@ Tracked here so they aren't lost:
   Aucun planificateur (cohérent T7/T16). Tests backend (seuil off = jamais
   signalé, seuil on = signalé, auto-ticket créé une seule fois, pas de ticket
   si désactivé) ; flake8 + lint front verts.
+- 2026-06-17 — N75 done (canal in-app ; sortant WhatsApp/email/SMS reste gated
+  G1/G2/G9). Moteur de notifications in-app UNIFIÉ : l'endpoint
+  /reporting/notifications/ couvre désormais 7 types d'évènements calculés à la
+  volée et bornés société — activités en retard, garanties expirantes (≤90 j),
+  factures impayées, chantiers à planifier/poser (≤14 j), visites de
+  maintenance dues (cf. T16, sans planificateur), tickets SAV ouverts, stock
+  bas (≤ seuil d'alerte). Préférences PAR UTILISATEUR ET PAR ÉVÈNEMENT : nouveau
+  modèle NotificationPreference (app reporting, migration 0001) + endpoint
+  /reporting/notification-preferences/ (GET liste, POST upsert borné aux types
+  connus + à l'utilisateur). Défaut = tout activé → comportement historique
+  inchangé ; un type désactivé n'est ni compté ni listé. La cloche affiche les
+  7 catégories + un panneau ⚙ pour activer/désactiver chaque type. Tests
+  backend (nouvelles catégories présentes/comptées, préférence désactive une
+  catégorie, liste des préférences, type inconnu rejeté) ; flake8 + lint front
+  verts.

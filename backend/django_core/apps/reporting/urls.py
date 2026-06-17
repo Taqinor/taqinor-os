@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import dashboard
-from .search import global_search, notifications
+from .search import global_search, notifications, notification_preferences
 from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
 from .insights import (
@@ -14,6 +14,8 @@ urlpatterns = [
     path('dashboard/', dashboard, name='reporting-dashboard'),
     path('search/', global_search, name='global-search'),
     path('notifications/', notifications, name='in-app-notifications'),
+    path('notification-preferences/', notification_preferences,
+         name='notification-preferences'),
     path('calendar/', calendar_events, name='reporting-calendar'),
     path('calendar/reschedule/', calendar_reschedule,
          name='reporting-calendar-reschedule'),

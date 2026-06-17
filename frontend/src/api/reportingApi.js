@@ -5,8 +5,14 @@ const reportingApi = {
   getDashboard: () => api.get('/reporting/dashboard/'),
   // Recherche transverse : ?q=<terme> → résultats groupés par type.
   search: (q) => api.get('/reporting/search/', { params: { q } }),
-  // Cloche de notifications (activités en retard, garanties, impayés).
+  // Cloche de notifications (activités en retard, garanties, impayés…).
   getNotifications: () => api.get('/reporting/notifications/'),
+  // N75 — préférences in-app par type d'évènement (par utilisateur).
+  getNotificationPreferences: () =>
+    api.get('/reporting/notification-preferences/'),
+  setNotificationPreference: (eventType, inApp) =>
+    api.post('/reporting/notification-preferences/',
+      { event_type: eventType, in_app: inApp }),
   // Tableau de bord valeur du pipeline (par étape, prévision, devis, pertes).
   getPipeline: () => api.get('/reporting/pipeline/'),
   // Hub Rapports (T13/T14/T15) — ventes, stock, service.
