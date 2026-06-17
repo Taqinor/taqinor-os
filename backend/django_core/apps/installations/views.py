@@ -11,11 +11,13 @@ from django.utils import timezone
 from . import activity
 from .models import (
     Installation, Intervention, TypeIntervention, ChecklistEtapeModele,
+    InterventionActivity,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
     InstallationActivitySerializer, TypeInterventionSerializer,
     ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
+    InterventionActivitySerializer,
 )
 from .services import (
     create_installation_from_devis, seed_checklist_etapes,
@@ -472,29 +474,40 @@ class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
+def _log_intervention(interv, user, *, kind, **kw):
+    return InterventionActivity.objects.create(
+        company=interv.company, intervention=interv, user=user, kind=kind, **kw)
+
+
 class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Ordres de travail rattachés à un chantier. Scopés à la société."""
+    """F3 — interventions (sorties chantier) rattachées à un chantier. Scopées
+    à la société. Le `statut` de l'intervention est une machine à états PROPRE :
+    le changer ne touche JAMAIS le statut du chantier ni le pipeline lead."""
     queryset = Intervention.objects.select_related(
-        'installation', 'technicien').all()
+        'installation', 'technicien').prefetch_related('equipe').all()
     serializer_class = InterventionSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation']
+    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation', 'statut']
     ordering = ['-date_prevue']
 
     def get_queryset(self):
         qs = super().get_queryset()
-        installation = self.request.query_params.get('installation')
-        ticket = self.request.query_params.get('ticket')
+        params = self.request.query_params
+        installation = params.get('installation')
+        ticket = params.get('ticket')
+        statut = params.get('statut')
         if installation:
             qs = qs.filter(installation_id=installation)
         if ticket:
             qs = qs.filter(ticket_id=ticket)
+        if statut:
+            qs = qs.filter(statut=statut)
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + ['noter']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsResponsableOrAdmin()]
@@ -511,10 +524,52 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         # Tenant safety : le ticket SAV lié doit aussi appartenir à la société.
         if ticket is not None and ticket.company_id != company.id:
             raise ValidationError({'ticket': 'Ticket inconnu.'})
-        serializer.save(company=company, created_by=self.request.user)
-        # Trace l'ajout d'intervention dans le chatter du chantier.
+        interv = serializer.save(company=company, created_by=self.request.user)
+        # F3 — défaut d'équipe = l'installeur du chantier, posé côté serveur si
+        # aucune équipe fournie.
+        if installation is not None and not interv.equipe.exists():
+            installer = installation.technicien_responsable
+            if installer is not None:
+                interv.equipe.add(installer)
+        # Chatter de l'intervention (création) + trace dans le chatter chantier.
+        _log_intervention(
+            interv, self.request.user,
+            kind=InterventionActivity.Kind.CREATION,
+            body=f"Intervention créée : {interv.get_type_intervention_display()}")
         if installation is not None:
             activity.log_note(
                 installation, self.request.user,
                 f"Intervention ajoutée : "
-                f"{serializer.instance.get_type_intervention_display()}")
+                f"{interv.get_type_intervention_display()}")
+
+    def perform_update(self, serializer):
+        # Capture l'ancien statut pour tracer un changement dans le chatter —
+        # SANS jamais toucher le statut du chantier ni le pipeline lead.
+        old_statut = serializer.instance.statut
+        interv = serializer.save(company=self.request.user.company)
+        if interv.statut != old_statut:
+            choices = dict(Intervention.Statut.choices)
+            _log_intervention(
+                interv, self.request.user,
+                kind=InterventionActivity.Kind.MODIFICATION,
+                field='statut', field_label='Statut',
+                old_value=choices.get(old_statut, old_statut),
+                new_value=choices.get(interv.statut, interv.statut))
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        interv = self.get_object()
+        qs = interv.activites.select_related('user').all()
+        return Response(InterventionActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        interv = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'detail': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = _log_intervention(
+            interv, request.user, kind=InterventionActivity.Kind.NOTE, body=body)
+        return Response(InterventionActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)

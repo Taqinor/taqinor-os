@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     Installation, Intervention, InstallationActivity, TypeIntervention,
-    ChecklistEtapeModele, ChantierChecklistItem,
+    ChecklistEtapeModele, ChantierChecklistItem, InterventionActivity,
 )
 
 
@@ -68,7 +68,23 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
 class InterventionSerializer(serializers.ModelSerializer):
     type_intervention_display = serializers.CharField(
         source='get_type_intervention_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
     technicien_nom = serializers.SerializerMethodField()
+    equipe_noms = serializers.SerializerMethodField()
+    # F3 — données tirées du chantier (lecture seule, jamais dupliquées) :
+    # client, devis, ville et GPS du site viennent de l'Installation liée.
+    client_nom = serializers.SerializerMethodField()
+    devis_reference = serializers.CharField(
+        source='installation.devis.reference', read_only=True, default=None)
+    site_ville = serializers.CharField(
+        source='installation.site_ville', read_only=True, default=None)
+    gps_lat = serializers.DecimalField(
+        source='installation.gps_lat', max_digits=9, decimal_places=6,
+        read_only=True, default=None)
+    gps_lng = serializers.DecimalField(
+        source='installation.gps_lng', max_digits=9, decimal_places=6,
+        read_only=True, default=None)
 
     class Meta:
         model = Intervention
@@ -78,6 +94,26 @@ class InterventionSerializer(serializers.ModelSerializer):
 
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien, 'username', None)
+
+    def get_equipe_noms(self, obj):
+        return [getattr(u, 'username', None) for u in obj.equipe.all()]
+
+    def get_client_nom(self, obj):
+        client = getattr(obj.installation, 'client', None)
+        if not client:
+            return None
+        return f"{client.prenom or ''} {client.nom or ''}".strip() or None
+
+
+class InterventionActivitySerializer(serializers.ModelSerializer):
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        model = InterventionActivity
+        fields = ['id', 'kind', 'field', 'field_label', 'old_value',
+                  'new_value', 'body', 'user_nom', 'created_at']
+        read_only_fields = fields
 
 
 class InstallationSerializer(serializers.ModelSerializer):

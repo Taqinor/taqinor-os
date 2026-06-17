@@ -246,6 +246,20 @@ class Intervention(models.Model):
         MISE_EN_SERVICE = 'mise_en_service', 'Mise en service'
         CONTROLE = 'controle', 'Contrôle'
         DEPANNAGE = 'depannage', 'Dépannage'
+        # F3 — types « sortie chantier » de Reda (additif aux anciens).
+        SAV = 'sav', 'SAV'
+        VISITE = 'visite', 'Visite'
+
+    class Statut(models.TextChoices):
+        # F3 — machine à états PROPRE à l'intervention. Elle ne lit ni n'écrit
+        # JAMAIS le statut du chantier (Installation.statut) ni le pipeline
+        # lead (STAGES.py) — couche entièrement séparée.
+        A_PREPARER = 'a_preparer', 'À préparer'
+        PRETE = 'prete', 'Prête'
+        EN_ROUTE = 'en_route', 'En route'
+        SUR_SITE = 'sur_site', 'Sur site'
+        TERMINEE = 'terminee', 'Terminée'
+        VALIDEE = 'validee', 'Validée'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -263,12 +277,25 @@ class Intervention(models.Model):
         null=True, blank=True, related_name='interventions',
     )
     type_intervention = models.CharField(max_length=20, choices=Type.choices)
+    # F3 — statut propre (machine à états séparée). Défaut « À préparer ».
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.A_PREPARER,
+    )
     date_prevue = models.DateField(null=True, blank=True)
     date_realisee = models.DateField(null=True, blank=True)
     technicien = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='interventions',
     )
+    # F3 — équipe assignée (un ou plusieurs employés ; défaut = l'installeur
+    # du chantier, posé côté serveur). `technicien` reste pour la compat.
+    equipe = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='interventions_equipe',
+    )
+    # F3 — camionnette assignée. Pas de modèle véhicule dans le repo : libellé
+    # libre (additif). Cohérent avec l'emplacement « camionnette » de l'outillage.
+    camionnette = models.CharField(max_length=80, blank=True, default='')
     compte_rendu = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -283,6 +310,42 @@ class Intervention(models.Model):
 
     def __str__(self):
         return f"{self.get_type_intervention_display()} — {self.installation_id}"
+
+
+class InterventionActivity(models.Model):
+    """F3 — chatter d'une intervention (même patron que InstallationActivity).
+    Entrées automatiques (création + changements de statut) et notes manuelles ;
+    l'utilisateur et la société sont toujours posés côté serveur."""
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='intervention_activities',
+    )
+    intervention = models.ForeignKey(
+        Intervention, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='intervention_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité intervention'
+        verbose_name_plural = 'Activités intervention'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['intervention', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.intervention_id} {self.kind} {self.field or ''}".strip()
 
 
 class InstallationActivity(models.Model):
