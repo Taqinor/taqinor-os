@@ -49,7 +49,13 @@ class DevisViewSet(viewsets.ModelViewSet):
     ).prefetch_related('lignes').all()
 
     def get_queryset(self):
-        return _company_qs(super().get_queryset(), self.request.user)
+        qs = _company_qs(super().get_queryset(), self.request.user)
+        # Filtre optionnel ?lead=<id> — utilisé par le dialogue « Signé » (A2)
+        # pour lister les devis d'un lead. Borné à la société par _company_qs.
+        lead_id = self.request.query_params.get('lead')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:

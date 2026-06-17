@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
-import { filterLeads, EMPTY_FILTERS, archivedParam } from '../../../features/crm/stages'
+import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../../../features/crm/stages'
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
@@ -14,6 +14,7 @@ import FilterBar from './FilterBar'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
+import SigneDialog from './SigneDialog'
 import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
@@ -80,6 +81,8 @@ export default function LeadsPage() {
   // Changement d'étape optimiste avec retour-arrière.
   const [busyLeadId, setBusyLeadId] = useState(null)
   const [stageError, setStageError] = useState(null)
+  // A2 — lead en attente de confirmation « Signé » (choix du devis + option).
+  const [signeLead, setSigneLead] = useState(null)
 
   // ── Sélection multiple (actions en masse, T3) ───────────────────────────
   const [selected, setSelected] = useState(() => new Set())
@@ -207,13 +210,26 @@ export default function LeadsPage() {
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
   // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
   // Renvoie la promesse pour qu'InlineEdit restaure la valeur si ça échoue.
-  const onInlineSave = (lead, field, value) =>
-    dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
+  const onInlineSave = (lead, field, value) => {
+    // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
+    // (choix du devis + option) au lieu de modifier l'étape directement.
+    if (field === 'stage' && value === CONVERSION_STAGE) {
+      setSigneLead(lead)
+      return Promise.resolve()
+    }
+    return dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
       .unwrap()
       .then(() => { refetch() })
+  }
 
   const changeStage = async (lead, newStage) => {
     if (!lead || lead.stage === newStage) return
+    // A2 — déplacer un lead dans « Signé » exige de choisir le devis accepté
+    // et l'option : on ouvre le dialogue au lieu de déplacer l'étape.
+    if (newStage === CONVERSION_STAGE) {
+      setSigneLead(lead)
+      return
+    }
     const prev = lead.stage
     setBusyLeadId(lead.id)
     dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
@@ -337,6 +353,14 @@ export default function LeadsPage() {
           target="leads"
           onClose={() => setShowImport(false)}
           onDone={refetch}
+        />
+      )}
+
+      {signeLead && (
+        <SigneDialog
+          lead={signeLead}
+          onClose={() => { setSigneLead(null); refetch() }}
+          onConfirmed={() => { setSigneLead(null); refetch() }}
         />
       )}
     </div>

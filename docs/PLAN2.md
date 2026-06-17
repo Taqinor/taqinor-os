@@ -27,7 +27,7 @@ here unchanged — this file only adds tasks.
   (`brouillon`/`envoye`/`accepte`/`refuse`/`expire`) — this sets `accepte` and records the
   option + metadata; it does not invent a new status layer.
 
-- [ ] **A2 — Moving a lead into Signé prompts for the accepted devis + option.** When a lead
+- [x] **A2 — Moving a lead into Signé prompts for the accepted devis + option.** When a lead
   is moved into the **Signé** stage (kanban drag or stage control), open a short dialog to
   pick **which of the lead's devis was accepted** and **which option** (Sans batterie / Avec
   batterie); confirming marks that devis accepted (reusing A1). If the lead has **no devis**,
@@ -163,6 +163,15 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — A2: déplacer un lead dans « Signé » (glisser-déposer kanban ou
+  édition en place de l'étape) ouvre désormais un dialogue qui demande QUEL
+  devis du lead a été accepté et, pour un devis à deux options, laquelle
+  (Sans batterie / Avec batterie). Confirmer marque ce devis « accepté »
+  (réutilise A1) ce qui fait avancer le lead en Signé côté serveur. Si le lead
+  n'a aucun devis, un message invite à en créer/choisir un d'abord et l'étape
+  n'est PAS modifiée — aucun devis inventé. Nouveau filtre serveur
+  GET /ventes/devis/?lead=<id> (borné à la société) + composant SigneDialog.
+  L'étape du funnel (STAGES.py) et le statut du document restent séparés.
 - 2026-06-17 — A1: accepting a devis now records the option the client chose
   (Sans batterie / Avec batterie) alongside the date and accepter name, logged in
   the devis chatter. Two-option devis require an explicit choice; single-option

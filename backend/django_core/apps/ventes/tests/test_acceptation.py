@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm.models import Client
+from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, DevisActivity, LigneDevis
 
@@ -171,6 +171,26 @@ class TestDevisAcceptation(TestCase):
         self.assertEqual(devis.option_acceptee, 'avec_batterie')
         act = DevisActivity.objects.filter(devis=devis).first()
         self.assertIn('Avec batterie', act.body)
+
+    # ── A2 — filtre ?lead= (dialogue « Signé » liste les devis du lead) ──────
+
+    def test_devis_filtered_by_lead(self):
+        """GET /ventes/devis/?lead=<id> ne renvoie que les devis de ce lead."""
+        lead_a = Lead.objects.create(
+            company=self.company, nom='Lead A', stage='QUOTE_SENT')
+        lead_b = Lead.objects.create(
+            company=self.company, nom='Lead B', stage='QUOTE_SENT')
+        da = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0030',
+            client=self.client_obj, lead=lead_a, taux_tva=Decimal('20'))
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0031',
+            client=self.client_obj, lead=lead_b, taux_tva=Decimal('20'))
+        r = self.api.get(f'/api/django/ventes/devis/?lead={lead_a.id}')
+        self.assertEqual(r.status_code, 200, r.data)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        ids = {row['id'] for row in rows}
+        self.assertEqual(ids, {da.id})
 
     def test_invalid_option_rejected(self):
         """Une option inconnue est refusée (400) avant tout changement."""

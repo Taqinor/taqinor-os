@@ -12,6 +12,11 @@ export const PIPELINE_STAGES = [
   'COLD',
 ]
 
+// Étape de conversion (miroir de STAGES.py CONVERSION_STAGE) : ENTRER dans
+// cette étape correspond à un devis accepté. Constante scalaire — pas une
+// nouvelle liste d'étapes (check_stages.py ne contrôle que les listes).
+export const CONVERSION_STAGE = 'SIGNED'
+
 export const STAGE_LABELS = {
   NEW: 'Nouveau',
   CONTACTED: 'Contacté',
