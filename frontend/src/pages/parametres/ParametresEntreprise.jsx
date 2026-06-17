@@ -390,6 +390,8 @@ export default function ParametresEntreprise() {
     panneaux_par_900mad: 8,
     prix_cible_kwc_defaut: '',
     remise_max_pct: '',
+    commission_mode: 'off',
+    commission_valeur: '',
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -632,6 +634,8 @@ export default function ParametresEntreprise() {
       panneaux_par_900mad: profile.panneaux_par_900mad ?? 8,
       prix_cible_kwc_defaut: profile.prix_cible_kwc_defaut ?? '',
       remise_max_pct: profile.remise_max_pct ?? '',
+      commission_mode: profile.commission_mode ?? 'off',
+      commission_valeur: profile.commission_valeur ?? '',
     })
   }, [profile])
 
@@ -708,6 +712,8 @@ export default function ParametresEntreprise() {
       panneaux_par_900mad: Number(form.panneaux_par_900mad) || 8,
       prix_cible_kwc_defaut: form.prix_cible_kwc_defaut === '' ? null : Number(form.prix_cible_kwc_defaut),
       remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
+      commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(form.commission_mode) ? form.commission_mode : 'off',
+      commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
     }
     dispatch(saveProfile(payload))
   }
@@ -1340,6 +1346,31 @@ export default function ParametresEntreprise() {
                 « Annuelle » chaque année, « Continue » ne repart jamais. La
                 numérotation reste sans trou et sans collision.
               </p>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '1rem 0 0.4rem' }}>
+                Commission commerciale
+              </div>
+              <p style={{ margin: '0 0 0.7rem', fontSize: 11.5, color: '#94a3b8' }}>
+                Désactivée par défaut. Calculée sur les devis signés, par
+                commercial (responsable du lead, sinon créateur). Visible des
+                seuls admins dans Rapports → Commissions commerciales.
+              </p>
+              <div className="pe-grid-2">
+                <Field label="Mode">
+                  <select style={inputBase} name="commission_mode"
+                          value={form.commission_mode} onChange={set}>
+                    <option value="off">Désactivée</option>
+                    <option value="pct_devis">% du HT des devis signés</option>
+                    <option value="par_kwc">MAD par kWc installé</option>
+                  </select>
+                </Field>
+                <Field label={form.commission_mode === 'par_kwc'
+                  ? 'Valeur (MAD/kWc)' : 'Valeur (%)'}>
+                  <input style={inputBase} type="number" min="0" step="any"
+                         name="commission_valeur" value={form.commission_valeur}
+                         onChange={set}
+                         disabled={form.commission_mode === 'off'} />
+                </Field>
+              </div>
             </div>
 
             {/* TVA / Taxes (réglage légal/comptable) */}

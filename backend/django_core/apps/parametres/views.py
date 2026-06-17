@@ -48,6 +48,8 @@ _PROFILE_AUDIT_FIELDS = {
     'panneaux_par_900mad': 'Panneaux par tranche de 900 MAD',
     'prix_cible_kwc_defaut': 'Prix cible /kWc par défaut',
     'remise_max_pct': 'Limite de remise (%)',
+    'commission_mode': 'Commission — mode',
+    'commission_valeur': 'Commission — valeur',
 }
 
 

@@ -123,6 +123,14 @@ class CompanyProfile(models.Model):
         max_digits=8, decimal_places=2, default=Decimal('11'))
     seuil_regime_anre_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('1000'))
+    # ── Commission commerciale (N99) — additif, désactivé par défaut. Mode
+    # 'off' (aucune commission, comportement inchangé), 'pct_devis' (% du HT
+    # des devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus
+    # des devis signés). `commission_valeur` porte le % ou le montant/kWc selon
+    # le mode. Donnée sensible : exposée aux seuls rôles autorisés (admin).
+    commission_mode = models.CharField(max_length=10, default='off')
+    commission_valeur = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Profil entreprise'

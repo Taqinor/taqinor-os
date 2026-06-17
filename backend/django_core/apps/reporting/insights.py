@@ -43,6 +43,14 @@ def _maybe_xlsx(request, filename, headers, rows, title):
     return None
 
 
+def _qdate(value):
+    """Parse une date ?from=/?to= au format ISO, ou None."""
+    try:
+        return date.fromisoformat((value or '').strip())
+    except (ValueError, TypeError):
+        return None
+
+
 # Facteur mensuel-équivalent par périodicité de contrat. On lit la table
 # `MONTHS` du modèle (mois entre deux visites) et on convertit en part de mois.
 def _monthly_factor(periodicite):
@@ -477,4 +485,97 @@ def analytics(request):
         'avg_days_signature_to_commissioning': _avg(sign_to_commission_days),
         'signature_to_commissioning_count': len(sign_to_commission_days),
         'kwc_by_month': kwc_series,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def commissions(request):
+    """N99 — commissions commerciales (ADMIN UNIQUEMENT, donnée sensible).
+
+    Configurable dans Paramètres (mode + valeur) : 'pct_devis' (% du HT des
+    devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus des
+    devis signés). Désactivé par défaut (mode 'off') → aucune commission. Le
+    commercial = le responsable du lead du devis, sinon son créateur. Période
+    optionnelle sur la date d'acceptation : ?from=&to=.
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+    from apps.parametres.models import CompanyProfile
+    from apps.ventes.models import Devis
+    from apps.installations.models import Installation
+
+    profile = CompanyProfile.get(getattr(request.user, 'company', None))
+    mode = getattr(profile, 'commission_mode', 'off') or 'off'
+    valeur = profile.commission_valeur
+    if mode not in ('pct_devis', 'par_kwc') or valeur is None:
+        return Response({
+            'enabled': False, 'mode': mode,
+            'valeur': str(valeur) if valeur is not None else None,
+            'rows': [], 'total': '0',
+        })
+    valeur = Decimal(valeur)
+
+    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+              .select_related('lead', 'lead__owner', 'created_by')
+              .prefetch_related('lignes'))
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+    if start:
+        signed = signed.filter(date_acceptation__gte=start)
+    if end:
+        signed = signed.filter(date_acceptation__lte=end)
+
+    # kWc installé par devis (chemin devis→chantier), si mode par_kwc.
+    kwc_by_devis = defaultdict(Decimal)
+    if mode == 'par_kwc':
+        insts = (Installation.objects.filter(**co)
+                 .exclude(devis__isnull=True)
+                 .values_list('devis_id', 'puissance_installee_kwc'))
+        for devis_id, kwc in insts:
+            if kwc:
+                kwc_by_devis[devis_id] += Decimal(kwc)
+
+    agg = {}
+    for d in signed:
+        if d.lead_id and d.lead and d.lead.owner_id:
+            owner = d.lead.owner
+        else:
+            owner = d.created_by
+        uid = owner.id if owner else 0
+        slot = agg.setdefault(uid, {
+            'commercial': _username(owner) or '—', 'base': Decimal('0'),
+            'commission': Decimal('0'), 'count': 0})
+        slot['count'] += 1
+        if mode == 'pct_devis':
+            base = Decimal(d.total_ht)
+            slot['base'] += base
+            slot['commission'] += base * valeur / Decimal('100')
+        else:
+            kwc = kwc_by_devis.get(d.id, Decimal('0'))
+            slot['base'] += kwc
+            slot['commission'] += kwc * valeur
+
+    rows = sorted(agg.values(),
+                  key=lambda r: r['commission'], reverse=True)
+    out = [{
+        'commercial': r['commercial'], 'count': r['count'],
+        'base': str(r['base']), 'commission': str(r['commission']),
+    } for r in rows]
+    total = sum((r['commission'] for r in rows), Decimal('0'))
+    base_label = 'HT signé' if mode == 'pct_devis' else 'kWc installé'
+
+    x = _maybe_xlsx(
+        request, 'commissions.xlsx',
+        ['Commercial', 'Devis signés', base_label, 'Commission'],
+        [[r['commercial'], r['count'], r['base'], r['commission']]
+         for r in out],
+        'Commissions')
+    if x:
+        return x
+
+    return Response({
+        'enabled': True, 'mode': mode, 'valeur': str(valeur),
+        'base_label': base_label, 'rows': out, 'total': str(total),
     })

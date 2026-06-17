@@ -4,7 +4,7 @@ from .search import global_search, notifications
 from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
 from .insights import (
-    recurring_revenue, audit_log, job_costing, analytics,
+    recurring_revenue, audit_log, job_costing, analytics, commissions,
 )
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
@@ -25,6 +25,7 @@ urlpatterns = [
     path('insights/audit-log/', audit_log, name='insights-audit-log'),
     path('insights/job-costing/', job_costing, name='insights-job-costing'),
     path('insights/analytics/', analytics, name='insights-analytics'),
+    path('insights/commissions/', commissions, name='insights-commissions'),
     path('archive/client/<int:pk>/', archive_client,
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,

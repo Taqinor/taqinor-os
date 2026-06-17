@@ -20,6 +20,9 @@ const reportingApi = {
   auditLog: (params) => api.get('/reporting/insights/audit-log/', { params }),
   jobCosting: () => api.get('/reporting/insights/job-costing/'),
   analytics: () => api.get('/reporting/insights/analytics/'),
+  // N99 — commissions commerciales (admin). Période optionnelle ?from=&to=.
+  commissions: (params) =>
+    api.get('/reporting/insights/commissions/', { params }),
   // Export xlsx d'un insight donné (recurring-revenue, audit-log, analytics).
   insightXlsx: (slug, params) =>
     api.get(`/reporting/insights/${slug}/`,
