@@ -292,13 +292,83 @@ public pages), but the **live lead form and its data flow must stay byte-for-byt
 
 ---
 
+### W11 — Correct the residential electricity tariff (régie ONEE barème) in the estimator + public figures — [ ]
+
+> Added 2026-06-17 via "add to web plan". This **resolves WG2** (tariff harmonization): the
+> founder has supplied the verified June 2026 régie figures, so this is no longer gated.
+> Activate **only the régie barème** below — no delegataire numbers ship yet.
+
+**Do:**
+
+1. **Correct the régie barème in the estimator.** First **read the current `estimatorBrain.ts`
+   and anywhere else the tariff is defined** to see what's actually there — don't assume. The
+   correct régie **"usage domestique"** grid, **consumer prices TTC (VAT 20 % already
+   included — do NOT add VAT on top)**, is:
+   - **0–100 kWh = 0,9010**; **101–150 = 1,0732** — these two billed **progressively** (each
+     tranche at its own rate) **when monthly consumption ≤ 150 kWh**;
+   - then **SELECTIVE billing when monthly consumption > 150 kWh** (the **whole month** billed
+     at the single band's rate): **151–210 = 1,0732**; **211–310 = 1,1676**;
+     **311–510 = 1,3817**; **> 510 = 1,5958**.
+   - Band boundaries carry a **built-in 10 kWh tolerance**, so use **210 / 310 / 510** (not
+     200/300/500).
+   - This **replaces** the previous values where 201–300 was 1,18, 301–500 was 1,45 and >500
+     was 1,66 (those upper rates were too high — 1,66 was the **force-motrice** rate, not
+     domestic). **Keep** the existing bill→consumption inversion and savings logic; just feed
+     it these corrected rates and boundaries.
+
+2. **Make the tariff grid city-dependent** (a small per-city map keyed by city) because
+   Morocco has two regimes: the **régie/government barème** (Marrakech, Agadir, El Jadida and
+   all ONEE/régie areas) and **higher contractual grids** in the three ex-délégataire cities
+   (Casablanca/Lydec, Rabat/Redal, Tanger/Amendis). **For now set EVERY city to the régie
+   barème above** as the conservative default — this under-states savings slightly in the
+   three délégataire cities, which is the **safe** posture (never the reverse). Add
+   **Casablanca, Rabat, Tanger** as explicit entries **equal to the régie barème for now**,
+   each with an **inline comment** documenting the known real-bill premium so a future session
+   can drop in the exact grid: Casablanca/Lydec ≈ **+10,5 %** on the upper bands (real-bill HT
+   1,0220 for 151–210, 1,1119 for 211–310, 1,5193 for >510); Tanger/Amendis the **most
+   expensive**; Rabat/Redal the **least** (closest to the barème); exact full grids await one
+   real recent bill per city. **Do not invent or ship any délégataire number beyond this** —
+   only the verified régie barème is active.
+
+3. **Unit tests** pinning the corrected régie model (energy portion, régie barème): a
+   **~480 MAD** energy bill ⇒ **~347 kWh/month** (311–510 band); a **~1 480 MAD** energy bill
+   ⇒ **~927 kWh/month / ~11 100 kWh/year** (>510 band); a **~135 MAD** energy bill ⇒
+   **~141 kWh/month** (progressive). Also assert the **selective jumps** across boundaries
+   (210→211, 310→311, 510→511) and that the **bill→kWh inversion still converges** across
+   those jumps.
+
+4. **Record the tariff basis** in `ESTIMATOR_BRAIN_NOTES.md` (documentation only): the régie
+   barème numbers, the **VAT-20 %/TTC** basis, the **10 kWh tolerance** boundaries, the
+   **two-regime (régie vs délégataire)** reality, and that délégataire exact grids are
+   **pending real-bill calibration**.
+
+5. **Align the public site.** Find **every place** the résidentiel and professionnel pages
+   (and any ROI/savings illustration) use a flat **~1,4 MAD/kWh** and align them to this
+   **régie selective barème**, so the public figures and the estimator share the same correct
+   basis. **Keep** the existing "ordres de grandeur — jamais un devis" framing and the honest
+   MAD ranges — this is an **accuracy correction**, not a redesign. Use the **régie barème**
+   (the conservative basis) for public illustrative figures.
+
+**Standing rules (this task):** touch **only `apps/web`**; the **live lead form and its entire
+data flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) **unchanged**; the
+estimator **preview routes stay private** (noindex, not in nav, excluded from sitemap,
+unlinked); **no new dependencies**; **one self-merged PR** to main; **Lighthouse held**.
+**Plain-language report:** the exact **old→new** rates and boundaries now in the estimator,
+what the per-city structure looks like and that **all cities currently use the conservative
+régie barème**, which **public figures changed** (with page paths), confirmation the **live
+lead flow is untouched**, and the **three worked-test values passing**.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
   website is a **taste + business decision** — never an unattended run. The founder decides
   which preview, when, and how it links into the public funnel.
-- **WG2 — Harmonize the tariff model.** The brain's selective ONEE grid vs. the legacy site
-  `1,4 MAD/kWh` must be reconciled **against a real Lydec/ONEE bill** before either changes.
+- **WG2 — Harmonize the tariff model. — [RESOLVED 2026-06-17 → see W11 in BUILD QUEUE]** The
+  founder supplied the verified June 2026 régie barème, so this is now an active build task
+  (W11), not gated. Délégataire (Lydec/Redal/Amendis) exact grids still await a real bill per
+  city — those numbers remain gated until then.
 - **WG3 — Any new paid API or npm dependency** beyond PVGIS / what `apps/web` already ships.
 
 ---
