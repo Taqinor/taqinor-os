@@ -227,6 +227,21 @@ Anything typed after the command is extra detail for that run.
   fingerprint) fails CI and cannot merge. This is cheap and idempotent: SKIP it
   entirely on docs-only runs and on any run that touched none of those — when
   nothing structural moved, do not regenerate.
+- **Refresh the plan-status section whenever task states change — in the SAME
+  commit as the tick.** The moment a run ticks a task `[x]`, marks one `[BLOCKED]`,
+  or adds/removes a task in `docs/PLAN.md` or `docs/PLAN2.md`, regenerate §10 "Plan
+  status" of `docs/CODEMAP.md` from the plan files (paste
+  `python scripts/codemap_fingerprint.py --print-plan-status` into the section and
+  refresh its cross-check-vs-`main` notes + the `Generated from commit` stamp), then
+  run `python scripts/codemap_fingerprint.py --write` so the stored
+  `Plan fingerprint:` updates together with the section — and stage all of it in the
+  **same commit** as the task tick so the tick and the status refresh land
+  atomically. The required `stage-names` CI job re-runs that script in `--check`
+  mode, so a tick/add/remove that does not refresh §10 (and its plan fingerprint)
+  fails CI and cannot merge. Unlike the structure fingerprint, this is NOT
+  skippable on docs-only runs: ticking a task IS a plan-state change. (Editing only
+  a `[BLOCKED]` reason's wording, reordering the lists, or appending a DONE LOG line
+  does not move the plan fingerprint, so it needs no refresh.)
 - When the run stops, get the four required CI checks green over the whole batch,
   then self-merge `dev` → `main` exactly once (a single merge commit). This merge
   auto-deploys to api.taqinor.ma; never run a deploy command.
@@ -234,8 +249,11 @@ Anything typed after the command is extra detail for that run.
   and why.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
-- Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE (there is no
-  PLAN2.md), then commit on `dev` and self-merge to `main`. Confirm in one line.
+- Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE, then refresh §10
+  "Plan status" of `docs/CODEMAP.md` and re-run
+  `python scripts/codemap_fingerprint.py --write` in the same commit (adding a task
+  moves the plan fingerprint, so the `stage-names` check fails otherwise), then
+  commit on `dev` and self-merge to `main`. Confirm in one line.
 
 ### "work on the web plan"
 The website autopilot stays strictly inside `apps/web/**` plus its own
