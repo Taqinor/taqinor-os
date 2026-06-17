@@ -21,10 +21,33 @@ import {
   specificYield,
   productionKwh,
   billMAD,
+  roofDominantAzimuthDeg,
   PANEL2_WATT,
   TILT_SWEEP_MIN,
 } from '../src/lib/estimatorBrainV2';
 import { type LngLat } from '../src/lib/roof';
+
+const DEG = Math.PI / 180;
+// Rectangle de `wEW` m (est-ouest) × `hNS` m (nord-sud), TOURNÉ de `rotDeg`
+// (sens horaire vu du ciel), centré sur (lng0, lat0). Sert à tester l'alignement
+// de l'array sur les vraies arêtes d'un toit qui n'est pas plein sud.
+function rotatedRect(wEW: number, hNS: number, rotDeg: number, lng0 = -7.62, lat0 = 33.59): LngLat[] {
+  const cosLat = Math.cos(lat0 * DEG);
+  const c = Math.cos(rotDeg * DEG);
+  const s = Math.sin(rotDeg * DEG);
+  // coins en mètres (x=est, y=nord) avant rotation
+  const corners: [number, number][] = [
+    [-wEW / 2, -hNS / 2],
+    [wEW / 2, -hNS / 2],
+    [wEW / 2, hNS / 2],
+    [-wEW / 2, hNS / 2],
+  ];
+  return corners.map(([x, y]) => {
+    const xr = x * c - y * s;
+    const yr = x * s + y * c;
+    return [lng0 + xr / (111320 * cosLat), lat0 + yr / 111320] as LngLat;
+  });
+}
 
 function squareRing(side: number, lng0 = -7.62, lat0 = 33.59): LngLat[] {
   const dLat = side / 111320;
@@ -324,5 +347,129 @@ describe('Recommendation V2 — champs exposés', () => {
       expect(rec.flatterTiltExtraEnergyPct).toBe(0);
       expect(rec.flatterTiltYieldLossPct).toBe(0);
     }
+  });
+});
+
+// ═══════════ W1 — AZIMUT RÉEL, ALIGNEMENT TOIT, MARGE, OPTIONS RECOMMANDÉES ═══════════
+
+describe('W1 roofDominantAzimuthDeg — orientation réelle des arêtes du toit', () => {
+  it('un toit aligné nord-sud/est-ouest donne plein sud (≈180°)', () => {
+    expect(roofDominantAzimuthDeg(squareRing(20))).toBeCloseTo(180, 0);
+    // rectangle aligné : grand côté E-O → les rangées suivent E-O → face plein sud
+    expect(roofDominantAzimuthDeg(rotatedRect(30, 10, 0))).toBeCloseTo(180, 0);
+  });
+
+  it('un toit tourné de 15° donne un azimut à ~15° du sud (suit les arêtes)', () => {
+    const az = roofDominantAzimuthDeg(rotatedRect(30, 10, 15));
+    expect(Math.abs(az - 180)).toBeGreaterThan(8);
+    expect(Math.abs(az - 180)).toBeLessThan(22);
+  });
+
+  it('reste toujours dans l’hémisphère sud du toit (90°–270°)', () => {
+    for (const rot of [-40, -20, 5, 25, 50, 80]) {
+      const az = roofDominantAzimuthDeg(rotatedRect(28, 12, rot));
+      expect(az).toBeGreaterThan(90);
+      expect(az).toBeLessThan(270);
+    }
+  });
+});
+
+describe('W1 packConfig — azimut paramétrable, l’array suit les arêtes du toit', () => {
+  it('azimut par défaut : sud=180°, est-ouest=90° (rétro-compatible)', () => {
+    const ring = squareRing(24);
+    expect(packConfig(ring, LAT, { family: 'south', tiltDeg: 29 }).azimuthDeg).toBe(180);
+    expect(packConfig(ring, LAT, { family: 'eastwest', tiltDeg: 10 }).azimuthDeg).toBe(90);
+  });
+
+  it('sur un toit tourné, l’array aligné sur le toit loge ≥ panneaux que plein sud forcé', () => {
+    // toit long et étroit, nettement tourné : suivre les arêtes pave bien mieux
+    // que forcer des rangées plein sud (qui gaspillent les coins).
+    const roof = rotatedRect(30, 9, 28);
+    const roofAz = roofDominantAzimuthDeg(roof);
+    const aligned = packConfig(roof, LAT, { family: 'south', tiltDeg: 12, azimuthDeg: roofAz });
+    const forcedSouth = packConfig(roof, LAT, { family: 'south', tiltDeg: 12, azimuthDeg: 180 });
+    expect(aligned.best.count).toBeGreaterThan(forcedSouth.best.count);
+  });
+
+  it('Σ empreintes ≤ surface utile reste vrai à un azimut quelconque', () => {
+    const roof = rotatedRect(28, 14, 22);
+    const p = packConfig(roof, LAT, { family: 'south', tiltDeg: 15, azimuthDeg: roofDominantAzimuthDeg(roof) });
+    for (const grid of [p.portrait, p.landscape]) {
+      expect(grid.count * grid.footprintPerPanelM2).toBeLessThanOrEqual(p.usableAreaM2 + 1e-6);
+    }
+  });
+});
+
+describe('W1 production — le rendement/panneau baisse honnêtement hors du sud', () => {
+  it('plein sud (aspect 0) rend plus par kWc qu’un array décalé de 20°', () => {
+    const south = productionKwh(LAT, 'south', 29, 10, 0); // aspect 0 = sud
+    const off20 = productionKwh(LAT, 'south', 29, 10, -20); // 20° à l’est du sud
+    expect(off20).toBeLessThan(south);
+    expect(off20).toBeGreaterThan(0.9 * south); // léger, pas catastrophique à 20°
+  });
+
+  it('sans aspect explicite, le sud vaut aspect 0 (rétro-compatible)', () => {
+    expect(productionKwh(LAT, 'south', 29, 10)).toBeCloseTo(productionKwh(LAT, 'south', 29, 10, 0), 6);
+  });
+});
+
+describe('W1 recommend — marge (setback) paramétrable et balayage d’azimut', () => {
+  it('retirer la marge (setback 0) loge ≥ panneaux que la marge par défaut', () => {
+    const ring = squareRing(16);
+    const withMargin = recommend(ring, LAT, 4000);
+    const noMargin = recommend(ring, LAT, 4000, [], { setbackM: 0 });
+    expect(noMargin.recommended.roofMaxCount).toBeGreaterThanOrEqual(withMargin.recommended.roofMaxCount);
+  });
+
+  it('grand toit + petite facture (besoin atteint au sud) → on GARDE le plein sud et la marge', () => {
+    const rec = recommend(squareRing(40), LAT, 1000);
+    expect(rec.recommendedOptions.azimuthDeg).toBe(180); // pas de balayage : le sud suffit
+    expect(rec.recommendedOptions.margin).toBe('keep'); // besoin atteint avec la marge
+  });
+
+  it('toit tourné, limité, besoin NON atteint → on peut suivre les arêtes ET retirer la marge', () => {
+    const roof = rotatedRect(13, 11, 25);
+    const rec = recommend(roof, LAT, 9000); // grosse facture, petit toit tourné
+    expect(rec.roofLimited).toBe(true);
+    expect(rec.recommendedOptions.margin).toBe('remove'); // besoin non atteint → récupérer la rive
+    // l’azimut recommandé est soit plein sud soit aligné toit, jamais inventé
+    const roofAz = roofDominantAzimuthDeg(roof);
+    expect([180, roofAz]).toContainEqual(rec.recommendedOptions.azimuthDeg);
+  });
+
+  it('GARDE-FOU pro-4 : sans opt-in l’aligné-toit ne gagne JAMAIS (moteur identique à l’origine)', () => {
+    // Toit tourné, limité : c’est le cas où l’aligné-toit logerait plus de panneaux.
+    const roof = rotatedRect(13, 11, 25);
+    const roofAz = roofDominantAzimuthDeg(roof);
+    // pro-4 (aucune option) : le gagnant reste plein sud (azimut 180), comme avant W1.
+    const base = recommend(roof, LAT, 9000);
+    expect(base.recommended.azimuthDeg).toBe(180);
+    // pro-5 (opt-in) : l’aligné-toit PEUT gagner et loge strictement plus de panneaux.
+    const opted = recommend(roof, LAT, 9000, [], { enableRoofAligned: true });
+    expect(opted.recommended.azimuthDeg).toBe(roofAz);
+    expect(opted.recommended.count).toBeGreaterThan(base.recommended.count);
+  });
+});
+
+describe('W1 recommendedOptions — une recommandation calculée par groupe, indépendante du choix', () => {
+  it('expose famille, orientation, inclinaison, azimut et marge, cohérents avec la config recommandée', () => {
+    const rec = recommend(squareRing(24), LAT, 2500);
+    const o = rec.recommendedOptions;
+    expect(['south', 'eastwest']).toContain(o.family);
+    expect(['portrait', 'landscape']).toContain(o.panelOrientation);
+    expect(o.tiltDeg).toBeGreaterThan(0);
+    expect(o.azimuthDeg).toBeGreaterThan(90);
+    expect(o.azimuthDeg).toBeLessThan(270);
+    expect(['keep', 'remove']).toContain(o.margin);
+    // cohérence : l’option recommandée DÉCRIT la config recommandée
+    expect(o.family).toBe(rec.recommended.family);
+    expect(o.tiltDeg).toBe(rec.recommended.tiltDeg);
+    expect(o.panelOrientation).toBe(rec.recommended.panelOrientation);
+  });
+
+  it('ne dépend d’aucune sélection utilisateur : recommend() est pur (mêmes entrées → même reco)', () => {
+    const a = recommend(squareRing(24), LAT, 2500).recommendedOptions;
+    const b = recommend(squareRing(24), LAT, 2500).recommendedOptions;
+    expect(b).toEqual(a);
   });
 });
