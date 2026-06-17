@@ -103,6 +103,9 @@ class InstallationSerializer(serializers.ModelSerializer):
     lead_nom = serializers.SerializerMethodField()
     interventions = InterventionSerializer(many=True, read_only=True)
     nb_interventions = serializers.SerializerMethodField()
+    # N43 — régime loi 82-21 suggéré pour la puissance du chantier (seuils
+    # éditables). Lecture seule : un repère, le champ regime_8221 reste maître.
+    regime_suggere = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -122,6 +125,12 @@ class InstallationSerializer(serializers.ModelSerializer):
 
     def get_statut_canonique(self, obj):
         return Installation.canonical_statut(obj.statut)
+
+    def get_regime_suggere(self, obj):
+        from .regime import suggest_for_company
+        code = suggest_for_company(obj.puissance_installee_kwc, obj.company)
+        label = dict(Installation.Regime8221.choices).get(code, code)
+        return {'code': code, 'label': label}
 
     def get_est_parc(self, obj):
         # Système installé = chantier réceptionné (ou clôturé) et toujours

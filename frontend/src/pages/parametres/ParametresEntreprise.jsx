@@ -355,6 +355,8 @@ export default function ParametresEntreprise() {
     onee_tarif_kwh: 1.75,
     productible_kwh_kwc: 1600,
     discount_approval_threshold: '',
+    seuil_regime_declaration_kwc: 11,
+    seuil_regime_anre_kwc: 1000,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -588,6 +590,8 @@ export default function ParametresEntreprise() {
       onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
       productible_kwh_kwc: profile.productible_kwh_kwc ?? 1600,
       discount_approval_threshold: profile.discount_approval_threshold ?? '',
+      seuil_regime_declaration_kwc: profile.seuil_regime_declaration_kwc ?? 11,
+      seuil_regime_anre_kwc: profile.seuil_regime_anre_kwc ?? 1000,
     })
   }, [profile])
 
@@ -631,6 +635,8 @@ export default function ParametresEntreprise() {
       onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
       productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
       discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
+      seuil_regime_declaration_kwc: Number(form.seuil_regime_declaration_kwc) || 11,
+      seuil_regime_anre_kwc: Number(form.seuil_regime_anre_kwc) || 1000,
     }
     dispatch(saveProfile(payload))
   }
@@ -917,7 +923,22 @@ export default function ParametresEntreprise() {
                        name="discount_approval_threshold" placeholder="vide = désactivé"
                        value={form.discount_approval_threshold} onChange={set} />
               </Field>
+              <Field label="Seuil régime « Déclaration » (kWc)">
+                <input style={inputBase} type="number" min="0" step="0.01"
+                       name="seuil_regime_declaration_kwc"
+                       value={form.seuil_regime_declaration_kwc} onChange={set} />
+              </Field>
+              <Field label="Seuil régime « Autorisation ANRE » (kWc)">
+                <input style={inputBase} type="number" min="0" step="0.01"
+                       name="seuil_regime_anre_kwc"
+                       value={form.seuil_regime_anre_kwc} onChange={set} />
+              </Field>
             </div>
+            <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
+              Seuils loi 82-21 proposés à la création d'un chantier (régime
+              suggéré, modifiable) : sous le 1er seuil = Déclaration, entre les
+              deux = Accord de raccordement, au-dessus du 2nd = Autorisation ANRE.
+            </p>
             <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
               Au-delà de ce seuil de remise, un devis exige l'approbation d'un
               administrateur avant l'envoi. Vide = désactivé (défaut).

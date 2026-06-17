@@ -119,6 +119,13 @@ def create_installation_from_devis(devis, user, company):
     if raccordement not in set(Installation.Raccordement.values):
         raccordement = None
 
+    # N43 — régime loi 82-21 proposé comme DÉFAUT MODIFIABLE depuis la
+    # puissance (seuils éditables en Paramètres). Reste 'non_concerne' si la
+    # puissance est inconnue ; l'utilisateur peut toujours le changer ensuite.
+    from .regime import suggest_for_company
+    regime_suggere = suggest_for_company(
+        _puissance_from(devis, lead), company)
+
     # Installateur par défaut : le créateur du chantier (à défaut, None).
     # « Signé » est le 1er jalon de l'entonnoir N1 ; la date de signature
     # reprend la date d'acceptation du devis quand elle existe.
@@ -139,6 +146,7 @@ def create_installation_from_devis(devis, user, company):
             puissance_installee_kwc=_puissance_from(devis, lead),
             raccordement=raccordement,
             type_installation=type_install,
+            regime_8221=regime_suggere,
             statut=Installation.Statut.SIGNE,
             date_signature=date_signature,
             bom=_freeze_bom(devis),

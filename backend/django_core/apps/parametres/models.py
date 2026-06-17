@@ -94,6 +94,12 @@ class CompanyProfile(models.Model):
     # tant qu'il n'est pas renseigné, aucun devis n'exige d'approbation.
     discount_approval_threshold = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
+    # ── Seuils de régime loi 82-21 (N43) — kWc, éditables. Défauts = cadre
+    # marocain standard : déclaration < 11 kWc, autorisation ANRE > 1 MW.
+    seuil_regime_declaration_kwc = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('11'))
+    seuil_regime_anre_kwc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('1000'))
 
     class Meta:
         verbose_name = 'Profil entreprise'

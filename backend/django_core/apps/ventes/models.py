@@ -57,6 +57,11 @@ class Devis(models.Model):
     fichier_pdf = models.CharField(
         max_length=500, blank=True, null=True
     )
+    # ── Acceptation explicite (N25) — additif. Date choisie + nom de la
+    # personne qui accepte, consignés dans le chatter du devis. C'est le
+    # déclencheur officiel de la création d'un chantier (devis « accepté »).
+    date_acceptation = models.DateField(null=True, blank=True)
+    accepte_par_nom = models.CharField(max_length=150, blank=True, default='')
 
     # ── Multi-marchés (2026-06) — additif, tout optionnel ──
     class ModeInstallation(models.TextChoices):
@@ -157,6 +162,43 @@ class LigneDevis(models.Model):
     def taux_tva_effectif(self):
         """Taux réellement appliqué : celui de la ligne, sinon celui du devis."""
         return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
+
+
+class DevisActivity(models.Model):
+    """Chatter d'un devis (N25) — même patron que InstallationActivity.
+
+    Notes manuelles + événements (acceptation). Utilisateur et société posés
+    côté serveur, jamais lus du corps de la requête."""
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='devis_activities')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='devis_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité devis'
+        verbose_name_plural = 'Activités devis'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['devis', '-created_at'],
+                                name='ventes_devisact_idx')]
+
+    def __str__(self):
+        return f"{self.devis_id} {self.kind} {self.field or ''}".strip()
 
 
 class BonCommande(models.Model):
@@ -321,6 +363,11 @@ class Facture(models.Model):
         related_name='factures_creees',
     )
     fichier_pdf = models.CharField(
+        max_length=500, blank=True, null=True
+    )
+    # ── Export structuré UBL 2.1 (N38) — clé MinIO du dernier XML généré.
+    # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
+    fichier_ubl = models.CharField(
         max_length=500, blank=True, null=True
     )
 

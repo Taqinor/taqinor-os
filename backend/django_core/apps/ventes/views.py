@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -19,6 +20,7 @@ from .serializers import (
     PaiementSerializer,
     AvoirSerializer,
     RelanceLogSerializer,
+    DevisActivitySerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -55,11 +57,11 @@ class DevisViewSet(viewsets.ModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture', 'reviser',
+            'generer_facture', 'reviser', 'accepter', 'noter',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -153,6 +155,58 @@ class DevisViewSet(viewsets.ModelViewSet):
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='accepter',
+            permission_classes=[IsResponsableOrAdmin])
+    def accepter(self, request, pk=None):
+        """N25 — marque le devis « accepté » à une date choisie, en capturant le
+        nom de la personne qui accepte ; l'acceptation est consignée dans le
+        chatter du devis et avance le funnel CRM (→ SIGNED). C'est le
+        déclencheur explicite de la création d'un chantier."""
+        from datetime import date as _date
+        from . import activity
+        from apps.crm.services import avancer_stage_pour_devis
+        devis = self.get_object()
+        nom = (request.data.get('nom') or '').strip()
+        date_str = (request.data.get('date') or '').strip()
+        try:
+            date_acc = _date.fromisoformat(date_str) if date_str \
+                else timezone.now().date()
+        except ValueError:
+            return Response({'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ancien = devis.statut
+        devis.statut = Devis.Statut.ACCEPTE
+        devis.date_acceptation = date_acc
+        devis.accepte_par_nom = nom[:150]
+        devis.save(update_fields=[
+            'statut', 'date_acceptation', 'accepte_par_nom'])
+        activity.log_devis_acceptance(devis, request.user, nom, date_acc)
+        avancer_stage_pour_devis(devis, ancien, devis.statut, request.user)
+        return Response(
+            DevisSerializer(devis, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
+    def historique(self, request, pk=None):
+        """Chatter du devis (notes + acceptation)."""
+        devis = self.get_object()
+        return Response(
+            DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def noter(self, request, pk=None):
+        """Ajoute une note manuelle au chatter du devis."""
+        from . import activity
+        devis = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'detail': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = activity.log_devis_note(devis, request.user, body)
+        return Response(DevisActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
 
     def _guard_discount_approval(self, devis, ancien, nouveau, remise):
         """T17 — bloque le passage en « envoyé » si la remise dépasse le seuil
@@ -556,7 +610,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
-            'relancer', 'exclure_relance', 'whatsapp',
+            'relancer', 'exclure_relance', 'whatsapp', 'ubl',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -713,6 +767,28 @@ class FactureViewSet(viewsets.ModelViewSet):
         filename = f'{facture.reference}.pdf'
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"'
+        )
+        return response
+
+    @action(detail=True, methods=['get'], url_path='ubl',
+            permission_classes=[IsResponsableOrAdmin])
+    def ubl(self, request, pk=None):
+        """N38 — aperçu BROUILLON UBL 2.1 de la facture (XML téléchargeable).
+
+        Génère le XML à la volée, le dépose en local (MinIO, best-effort) et le
+        renvoie. Aucun appel externe, aucune transmission DGI."""
+        facture = self.get_object()
+        from apps.parametres.models import CompanyProfile
+        from .utils.ubl import build_ubl_xml, store_ubl_xml
+        profile = CompanyProfile.get(company=facture.company)
+        xml_str = build_ubl_xml(facture, profile)
+        key = store_ubl_xml(facture, xml_str)
+        if key and facture.fichier_ubl != key:
+            facture.fichier_ubl = key
+            facture.save(update_fields=['fichier_ubl'])
+        response = HttpResponse(xml_str, content_type='application/xml')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{facture.reference}-ubl.xml"'
         )
         return response
 
