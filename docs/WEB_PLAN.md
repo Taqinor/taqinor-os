@@ -967,6 +967,130 @@ the `/` cache once in Cloudflare).
 
 ---
 
+### W34 — Estimator brain: LIVE constrained optimizer for FLAT roofs (re-solves on every option change, accumulating locks) — [ ]
+
+> Added 2026-06-17 via "add to web plan". Build as the **next brain session** on a **NEW private preview
+> route cloned from the latest existing `/preview/toiture-3d-pro-N`** — **read the repo first to find the
+> highest N (the current latest)** and name the new route the **next number in sequence**, leaving every
+> prior preview **byte-for-byte intact** as a baseline.
+
+**Read first (do NOT assume — report what is actually there):** the latest `/preview/toiture-3d-pro-N`,
+`estimatorBrain.ts` (and the V2..V6 engines), the preview page, wherever production/PVGIS is computed, and
+wherever the option controls (orientation/azimuth, tilt, layout portrait/paysage, margin/setback,
+panneaux nécessaires) are wired. In particular establish **whether production already comes from PVGIS at
+the exact GPS or from a generic factor**, and **how the current "Recommandé" is currently chosen**.
+
+**The fix:** today the optimizer recommends the best of a few preset rows and does NOT re-solve when the
+user changes an option. Replace it with a **live constrained search**. Treat each user-facing option as an
+**axis**: orientation/azimuth (plein sud, alignée toit = the roof-aligned bearing, est-ouest tents, and any
+south±offset already present), tilt (a fine grid 0–35°), layout (portrait/paysage), the roof-edge
+margin/setback (keep/remove), and the panneaux-nécessaires target.
+
+1. **Default state: every axis AUTO** — the optimizer shows the **global optimum** with each axis at its
+   best value, each marked **"Recommandé"**.
+2. **Locking:** when the user explicitly sets a value on any axis, **LOCK that axis** to that value
+   ("votre choix") and **IMMEDIATELY re-solve** over all still-AUTO axes — holding every locked axis fixed
+   — to **maximize total annual generation**, then update the displayed option values, the 3D, and **every
+   result** (nombre de panneaux, kWc, kWh/an, % de la facture couverte, fourchette d'économies).
+3. **Locks ACCUMULATE:** a second lock floats only the remaining AUTO axes holding BOTH; a third locks a
+   third; and so on. Setting a new value on an already-locked axis just updates that lock.
+4. **"Réinitialiser"** clears ALL locks at once (back to the global optimum); plus a way to **return a
+   single axis to AUTO** (e.g. tapping its Recommandé/Auto state re-floats just that axis).
+5. **"Highest generation" defined precisely:** panels placed × kWc per panel × the **PVGIS specific yield
+   (kWh per kWc per year) at the roof's exact GPS** for that combination's tilt and azimuth — **NEVER a
+   generic factor** — where **panels placed = min(needed, what physically fits that layout)**, so the
+   **needed-panel cap is ALWAYS respected** (never overfill a roomy roof — surplus is uncompensated in
+   Morocco). On a roof that meets the need every config places the needed count → optimum lands on the
+   highest-yield orientation/tilt (plein sud at the optimal tilt); on a roof-limited roof the optimizer
+   trades density against per-panel yield to maximize total kWh.
+6. **Per-axis "Recommandé":** for EVERY axis (locked or not) show which value is "Recommandé" = the value
+   that axis **would take if it were freed while the other current locks are held**, so when the user locks
+   a sub-optimal value they SEE the recommended value and the generation it costs them (keeps the existing
+   rule that the brain always shows the recommended option in each group even when the user chose another).
+7. **Keep the comparison table** for transparency with PVGIS-honest numbers per standard config, the
+   recommended row badged "Recommandé" — shown as its own **"Optimum calculé — inclinaison X°, orientation
+   Y"** row with a one-line plain-language reason when the optimum is not a standard row.
+
+**PVGIS specifics (verify against current PVGIS docs, not memory):** use the **v5_2 PVcalc/seriescalc API
+already in the stack**; the azimuth parameter (**"aspect"**) convention is **SOUTH = 0°, EAST = −90°,
+WEST = +90°, NORTH = 180°** (map the roof's compass facing correctly — a wrong sign silently corrupts every
+number); use **mountingplace = "free"** for flat-roof racked panels; **optimalangles=1 /
+optimalinclination=1** can anchor the per-location optimum in one call. **Fast + inside rate limits:**
+specific yield is independent of system size, so query per (tilt, azimuth) per location and scale by kWc
+afterwards; use a **coarse-then-fine** tilt sweep (coarse grid to find the basin, then refine around the
+best) not a uniform fine grid; **cache** results **per rounded location + config** and reuse them across
+the table, across every lock/unlock, and across the per-axis "what if freed" computations, so re-solving on
+each option change is **instant with no lag**. **Degrade gracefully** to the engine's existing in-house
+solar-geometry estimate (labelled **"estimé"**) if PVGIS is unreachable.
+
+---
+
+### W35 — Estimator brain: the SAME live optimizer for PITCHED/tiled roofs (flush coplanar, no tilt axis, orientation fixed) — [ ]
+
+> Added 2026-06-17 via "add to web plan". Build on a **further NEW private preview route cloned from the
+> flat-optimizer route just built in W34** (**next number in sequence**, every prior route left
+> byte-for-byte intact).
+
+**Read first:** confirm the **pitched flush layout** and the **roof-type-first step** are present on the
+route you clone, and **PRESERVE that layout and 3D exactly** (panels lying flush and coplanar on the
+inclined roof plane, no triangular racks, no inter-row gaps). This task **ADDS the optimizer/options; it
+does NOT rebuild the pitched layout.**
+
+Make the pitched optimizer **identical to the flat one (W34)** — same live constrained re-solve, same
+accumulate-locks + Réinitialiser, same per-axis "Recommandé" badge, same "highest generation" definition,
+same needed-panel cap — with exactly **two physics-forced differences**:
+
+1. **NO tilt axis** — a flush panel's tilt EQUALS the roof pitch fixed by the roof; show the tilt as
+   roof-determined, never as an optimizable option.
+2. **Orientation locked to "alignée toit"** — a flush panel cannot be turned to true-south or into
+   east-west tents, so plein-sud and est-ouest are **physically impossible here and must be omitted** (not
+   offered, or shown as non applicable); "alignée toit" is the roof-determined orientation, not a user
+   choice.
+
+The **free axes** the optimizer floats on a pitched roof are therefore **layout (portrait/paysage), the
+roof-edge margin/setback (keep/remove), and the panneaux-nécessaires target** — the user locks any of these
+and the optimizer re-solves the rest exactly as on the flat roof, with the per-group recommended value
+shown. **Production** for a pitched roof comes from **PVGIS at the single fixed (pitch, facing) pair for the
+exact GPS** using **mountingplace = "building"** (flush panels run hotter with less rear ventilation → a
+slightly lower yield, correct for an off-south or off-optimal-tilt roof). Keep the comparison table over
+the pitched free space with the recommended row badged. Everything else — caching, graceful PVGIS fallback
+labelled "estimé", the cap, the honesty rules — is **identical to the flat optimizer**.
+
+---
+
+**ACROSS W34–W35 (founder's cross-cutting constraints):** every figure traces to **PVGIS, confirmed
+tariff/physics, or sound logic — no invented numbers**; savings never exceed the avoidable energy cost;
+impossible panel counts stay blocked by the **footprint bound** (Σ panel footprints ≤ usable area); the
+**needed-panel cap is always respected**. **No new dependencies** (PVGIS, MapLibre, Mapbox, Three.js are
+already in the stack). **Touch only `apps/web`.** Every new route stays **private** (noindex, not in nav,
+excluded from the sitemap, unlinked) and every prior preview route is left **byte-for-byte intact** as a
+baseline. The **live public site and the live lead form and its entire data flow** (1 000 MAD threshold,
+consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**. Each task is its **own
+self-merged PR to protected main** (the accepted path — don't flag it). **Reduced-motion respected, zero
+layout shift, Lighthouse held.** Because the build agent cannot render the map (the map keys live in
+Cloudflare), **anchor every claim to code-checkable logic and tests** rather than to how it looks.
+
+**Tests — full Vitest suite green with added tests for:** the flat optimizer returning the true maximum
+over the full sweep; locking an axis holds it while only the still-AUTO axes re-optimize; locks accumulate
+across successive picks and Réinitialiser clearing all of them; the per-group recommended value equalling
+the freed-axis optimum given the other current locks; the PVGIS azimuth-sign mapping (S=0 / E=−90 / W=+90 /
+N=180); generation = placed × kWc × PVGIS yield with placed = min(needed, fits) and the cap never exceeded;
+graceful PVGIS fallback; and for the pitched route that there is no tilt axis, orientation is fixed to
+alignée toit, only the free axes re-optimize, production uses mountingplace="building", and the flush
+coplanar layout is unchanged (every panel normal = the roof-plane normal, every panel corner inside the
+traced polygon). **Lighthouse held.**
+
+**Plain-language report only** (no diffs or hashes): the **two new preview URLs** to open; what changed for
+the FLAT optimizer (it now re-solves the optimum live on every option change, locks accumulate,
+Réinitialiser resets, generation maximized within the cap from PVGIS at the exact GPS, recommended value
+shown in every group); what the PITCHED optimizer does (the same, minus the tilt axis and with orientation
+fixed to alignée toit); confirmation the live public site and the lead flow are untouched; **which map env
+var each new route reads** (`PUBLIC_MAPBOX_TOKEN` / `PUBLIC_MAPTILER_KEY`); and the one thing to check on
+the phone — trace a roof, change one option and watch every other option re-optimize live to the
+highest-generation combination, then change a second and watch the rest re-optimize holding both.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
