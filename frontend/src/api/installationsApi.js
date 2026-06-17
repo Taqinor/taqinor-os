@@ -26,6 +26,13 @@ const installationsApi = {
     : api.post('/installations/checklist-etapes/', data),
   deleteChecklistEtape: (id) => api.delete(`/installations/checklist-etapes/${id}/`),
 
+  // N51/N52 — relevés de production (saisie manuelle) + synthèse perf.
+  getProduction: (id) => api.get(`/installations/chantiers/${id}/production/`),
+  addProduction: (id, data) =>
+    api.post(`/installations/chantiers/${id}/production/`, data),
+  deleteProduction: (id, releveId) =>
+    api.post(`/installations/chantiers/${id}/supprimer-production/`, { releve: releveId }),
+
   // N13 — besoin matériel (lecture seule) + création d'un BCF brouillon.
   besoinMateriel: (id) => api.get(`/installations/chantiers/${id}/besoin-materiel/`),
   commanderBesoin: (id, fournisseurId) =>

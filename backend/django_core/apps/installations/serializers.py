@@ -2,8 +2,31 @@ from rest_framework import serializers
 
 from .models import (
     Installation, Intervention, InstallationActivity, TypeIntervention,
-    ChecklistEtapeModele, ChantierChecklistItem,
+    ChecklistEtapeModele, ChantierChecklistItem, ProductionReleve,
 )
+
+
+class ProductionReleveSerializer(serializers.ModelSerializer):
+    """N51 — relevé de production (saisie manuelle / monitoring)."""
+    source_label = serializers.CharField(
+        source='get_source_display', read_only=True)
+    nb_jours = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ProductionReleve
+        fields = [
+            'id', 'periode_debut', 'periode_fin', 'kwh_produit', 'source',
+            'source_label', 'note', 'nb_jours', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        debut = attrs.get('periode_debut')
+        fin = attrs.get('periode_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'periode_fin': 'La fin doit être après le début.'})
+        return attrs
 
 
 class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):

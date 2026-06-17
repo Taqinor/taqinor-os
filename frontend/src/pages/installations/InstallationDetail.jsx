@@ -15,6 +15,7 @@ import {
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierPhotos from './ChantierPhotos'
+import ChantierProduction from './ChantierProduction'
 import { garantieLabel, garantieColor } from '../../features/sav/equipement'
 import {
   TICKET_TYPES,
@@ -557,6 +558,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Photos & fichiers avant/pendant/après (N5) ── */}
           <ChantierPhotos installationId={id} />
+
+          {/* ── Production : suivi + sous-performance (N51/N52) ── */}
+          <ChantierProduction installationId={id} onChanged={refreshInstallation} />
 
           {/* ── Interventions ── */}
           <div className="form-section">

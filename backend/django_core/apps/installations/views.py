@@ -11,15 +11,17 @@ from django.utils import timezone
 from . import activity
 from .models import (
     Installation, Intervention, TypeIntervention, ChecklistEtapeModele,
+    ProductionReleve,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
     InstallationActivitySerializer, TypeInterventionSerializer,
     ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
+    ProductionReleveSerializer,
 )
 from .services import (
     create_installation_from_devis, seed_checklist_etapes,
-    ensure_checklist_items,
+    ensure_checklist_items, production_summary,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -155,9 +157,15 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'historique', 'besoin_materiel', 'checklist', 'regime_suggestion',
         ]:
             return [IsAnyRole()]
+        elif self.action == 'production':
+            # Lecture pour tous, ajout d'un relevé pour responsable/admin.
+            if self.request.method == 'POST':
+                return [IsResponsableOrAdmin()]
+            return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
+            'supprimer_production',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -452,6 +460,52 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             bon, context={'request': request}).data
         data['nb_lignes'] = nb
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'], url_path='production')
+    def production(self, request, pk=None):
+        """N51 — relevés de production d'un système installé.
+
+        GET  → relevés récents + synthèse (total relevé / attendu / % perf,
+                calculée à la volée). C'est le repli MANUEL : aucun monitoring
+                requis (N50 reste gated).
+        POST → ajoute un relevé (saisie manuelle par défaut). Corps :
+                {periode_debut, periode_fin, kwh_produit, note?}.
+        """
+        inst = self.get_object()
+        if request.method == 'POST':
+            serializer = ProductionReleveSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            releve = serializer.save(
+                company=inst.company, installation=inst,
+                source=ProductionReleve.Source.MANUEL,
+                created_by=request.user)
+            activity.log_note(
+                inst, request.user,
+                f"Relevé de production ajouté : {releve.kwh_produit} kWh "
+                f"({releve.periode_debut} → {releve.periode_fin})")
+            return Response(
+                ProductionReleveSerializer(releve).data,
+                status=status.HTTP_201_CREATED)
+        releves = inst.releves_production.all()
+        return Response({
+            'installation': inst.id,
+            'reference': inst.reference,
+            'releves': ProductionReleveSerializer(releves, many=True).data,
+            'summary': production_summary(inst),
+        })
+
+    @action(detail=True, methods=['post'], url_path='supprimer-production')
+    def supprimer_production(self, request, pk=None):
+        """Supprime un relevé de production. Corps : {releve: <id>}."""
+        inst = self.get_object()
+        releve = inst.releves_production.filter(
+            id=request.data.get('releve')).first()
+        if releve is None:
+            return Response({'detail': 'Relevé inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        releve.delete()
+        return Response({'installation': inst.id,
+                         'summary': production_summary(inst)})
 
 
 class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):

@@ -349,6 +349,56 @@ class ChecklistEtapeModele(models.Model):
         return self.libelle
 
 
+class ProductionReleve(models.Model):
+    """N51 — relevé de production d'un système installé (parc).
+
+    Saisie MANUELLE par défaut : c'est le repli quand aucun monitoring n'est
+    configuré (N50 reste gated, externe). `source` permet à un futur connecteur
+    monitoring d'alimenter exactement les mêmes relevés sans changer ce modèle.
+    Chaque relevé couvre une période (début→fin) et porte les kWh produits ;
+    la production attendue se compare à la volée (kWc × productible × jours).
+    Additif, scopé société.
+    """
+    class Source(models.TextChoices):
+        MANUEL = 'manuel', 'Saisie manuelle'
+        MONITORING = 'monitoring', 'Monitoring'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='releves_production')
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE,
+        related_name='releves_production')
+    periode_debut = models.DateField()
+    periode_fin = models.DateField()
+    kwh_produit = models.DecimalField(max_digits=12, decimal_places=2)
+    source = models.CharField(
+        max_length=12, choices=Source.choices, default=Source.MANUEL)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='releves_production')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relevé de production'
+        verbose_name_plural = 'Relevés de production'
+        ordering = ['-periode_debut', '-id']
+        indexes = [
+            models.Index(fields=['company', 'installation']),
+        ]
+
+    def __str__(self):
+        return f"{self.installation_id} · {self.periode_debut} · {self.kwh_produit} kWh"
+
+    @property
+    def nb_jours(self):
+        """Nombre de jours couverts par la période (inclusif), minimum 1."""
+        if not (self.periode_debut and self.periode_fin):
+            return 1
+        return max(1, (self.periode_fin - self.periode_debut).days + 1)
+
+
 class ChantierChecklistItem(models.Model):
     """N4 — état d'une étape de checklist POUR un chantier donné : fait / par
     qui / quand. Le pourcentage d'avancement du chantier en dérive. Créés

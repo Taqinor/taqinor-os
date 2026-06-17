@@ -6,10 +6,65 @@ puissance (depuis l'étude du devis sinon la taille souhaitée du lead),
 raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
+from decimal import Decimal, InvalidOperation
+
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistEtapeModele, ChantierChecklistItem,
 )
+
+
+def _productible_for(company):
+    """Productible annuel (kWh/kWc) configuré en Paramètres, sinon 1600."""
+    default = Decimal('1600')
+    if company is None:
+        return default
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        val = getattr(prof, 'productible_kwh_kwc', None) if prof else None
+        return Decimal(str(val)) if val else default
+    except Exception:
+        return default
+
+
+def expected_production_kwh(installation, nb_jours):
+    """Production ATTENDUE (kWh) d'un système sur `nb_jours`, calculée à la
+    volée : puissance kWc × productible annuel × jours / 365. Renvoie None si la
+    puissance installée est inconnue (impossible de comparer)."""
+    kwc = installation.puissance_installee_kwc
+    if not kwc or not nb_jours:
+        return None
+    try:
+        kwc = Decimal(str(kwc))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    productible = _productible_for(installation.company)
+    return kwc * productible * Decimal(nb_jours) / Decimal('365')
+
+
+def production_summary(installation):
+    """N51 — synthèse de production d'un système : total relevé, total attendu
+    (somme période par période) et ratio de performance global (% du attendu),
+    calculés à la volée. `performance_pct` est None si rien n'est comparable."""
+    releves = list(installation.releves_production.all())
+    total_kwh = sum((r.kwh_produit for r in releves), Decimal('0'))
+    total_attendu = Decimal('0')
+    has_expected = False
+    for r in releves:
+        att = expected_production_kwh(installation, r.nb_jours)
+        if att is not None:
+            total_attendu += att
+            has_expected = True
+    performance_pct = None
+    if has_expected and total_attendu > 0:
+        performance_pct = round(float(total_kwh / total_attendu * 100), 1)
+    return {
+        'nb_releves': len(releves),
+        'total_kwh': float(total_kwh),
+        'total_attendu_kwh': float(round(total_attendu, 1)) if has_expected else None,
+        'performance_pct': performance_pct,
+    }
 
 
 def default_installer_for(company):

@@ -336,7 +336,7 @@ conformity warning banner).
 - [x] N48 — Warranty tracking on each Système installé and components: store install date + warranty duration per component (default from configured warranty texts), compute warranty end dates, "Garanties qui expirent" view, record warranty claims per component with outcome for an auditable service history.
 - [x] N49 — Recurring-revenue view summarising active contrats d'entretien, monthly/annual value, upcoming renewals, lapsed contracts.
 - [ ] N50 — Monitoring-integration framework with a swappable provider interface, starting with a Huawei FusionSolar connector that (given per-system credentials in config) pulls recent production data; admin enables it per system; no-ops safely when no provider is configured.
-- [ ] N51 — Per-installed-system production view showing recent yield pulled by the monitoring framework when configured, with a manual-entry fallback.
+- [x] N51 — Per-installed-system production view showing recent yield pulled by the monitoring framework when configured, with a manual-entry fallback.
 - [ ] N52 — Configurable under-performance rule that (when monitoring data exists) flags a system producing below an expected threshold and optionally auto-creates a SAV ticket; threshold + auto-ticket behaviour editable in Paramètres.
 - [BLOCKED: needs production data from the monitoring framework (N50, gated — external service/credentials).] N53 — Client energy-yield report PDF (French): a system's production over a period, estimated bill savings, CO2 avoided; client-facing, no buy prices.
 ### Editability layer (Paramètres hub)
@@ -641,3 +641,16 @@ Tracked here so they aren't lost:
   téléchargement. Produit à la volée, aucun fichier client commité, aucun
   appel externe, aucun planificateur. Tests backend (scoping société, xlsx
   valide ouvrable, 403 pour non-admin) ; lint front + flake8 verts.
+- 2026-06-17 — N51 done: suivi de production par système installé, avec repli
+  MANUEL (aucun monitoring requis ; N50 reste gated). Nouveau modèle
+  ProductionReleve (période début→fin, kWh produit, source manuel/monitoring,
+  scopé société ; migration installations 0006). Endpoints sur le chantier :
+  GET/POST /installations/chantiers/<id>/production/ (liste + synthèse / ajout
+  d'un relevé, source forcée « manuel » côté serveur) et POST
+  .../supprimer-production/. La synthèse calcule à la volée le total relevé, la
+  production ATTENDUE (kWc × productible Paramètres × jours/365) et le % de
+  performance. Nouvelle carte « ⚡ Production (suivi) » dans la fiche chantier :
+  synthèse + liste des relevés + saisie manuelle (step=any, jamais de rejet de
+  nombre). Additif ; tests backend (ajout/synthèse, pas d'attendu sans kWc,
+  suppression, période invalide refusée, scoping société) ; flake8 + lint
+  front verts.
