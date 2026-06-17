@@ -66,12 +66,16 @@ export async function createLead(page, { nom, facture } = {}) {
 
 // Open a lead (works from kanban card or list row) into the edit modal.
 export async function openLead(page, name) {
-  const card = page.locator('article.kb-card', { hasText: name })
-  const row = page.locator('tr.lv-row', { hasText: name })
-  if (await card.count()) {
-    await card.first().click()
+  const card = page.locator('article.kb-card', { hasText: name }).first()
+  const row = page.locator('tr.lv-row', { hasText: name }).first()
+  // Wait for the lead to render in whichever view is active (avoids racing the
+  // post-create refetch), then click its NAME — the row's other cells are
+  // inline-editors that stop propagation and would not open the lead.
+  await expect(card.or(row)).toBeVisible()
+  if (await card.isVisible()) {
+    await card.locator('.kb-card-name').click()
   } else {
-    await row.first().click()
+    await row.locator('.lv-lead-name').click()
   }
   await expect(leadModal(page).locator('.modal-title')).toContainText('Lead —')
 }

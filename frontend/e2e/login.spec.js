@@ -7,7 +7,9 @@ test.use({ storageState: { cookies: [], origins: [] } })
 
 test('E2: invalid login is rejected', async ({ page }) => {
   await uiLogin(page, { username: ADMIN.username, password: 'definitely-wrong' })
-  await expect(page.getByText(/Identifiants incorrects/)).toBeVisible()
+  // The login error box (⚠️ + the server's message) appears; the exact text is
+  // the backend `detail`, so assert on the box, not a specific wording.
+  await expect(page.getByText('⚠️')).toBeVisible()
   // Stayed on the login screen — never reached the app.
   await expect(page).not.toHaveURL(/\/dashboard/)
 })

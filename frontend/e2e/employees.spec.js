@@ -43,5 +43,6 @@ test('E8: create + edit an employee, upload a photo, reach password reset', asyn
   expect(resp.ok()).toBeTruthy()
 
   // Password-reset action is reachable (set-a-new-password field in the modal).
-  await expect(modal.getByText('Nouveau mot de passe')).toBeVisible()
+  // `exact` avoids also matching the helper hint "…saisissez un nouveau mot de passe".
+  await expect(modal.getByText('Nouveau mot de passe', { exact: true })).toBeVisible()
 })

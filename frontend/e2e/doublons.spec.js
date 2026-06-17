@@ -28,5 +28,8 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
 
   page.on('dialog', (d) => d.accept()) // confirm the merge
   await cluster.getByRole('button', { name: /Fusionner le groupe/ }).click()
-  await expect(panel.locator('.dbl-cluster-done')).toContainText('Groupe fusionné')
+  // A successful merge archives the absorbed leads, so the panel reloads and the
+  // duplicate cluster disappears (the inline "Groupe fusionné" badge is only
+  // shown transiently before that reload). A failed merge would keep it.
+  await expect(panel.locator('.dbl-cluster', { hasText: name })).toHaveCount(0)
 })
