@@ -46,6 +46,13 @@ const stockApi = {
   updateOutil: (id, data) => api.patch(`/stock/outillage/${id}/`, data),
   deleteOutil: (id) => api.delete(`/stock/outillage/${id}/`),
 
+  // Kits d'outillage (modèles réutilisables — F2, éditables dans Paramètres).
+  getKitsOutillage: () => api.get('/stock/kits-outillage/'),
+  saveKitOutillage: (id, data) => id
+    ? api.patch(`/stock/kits-outillage/${id}/`, data)
+    : api.post('/stock/kits-outillage/', data),
+  deleteKitOutillage: (id) => api.delete(`/stock/kits-outillage/${id}/`),
+
   // Bons de commande FOURNISSEUR (achats — N11). Les prix d'achat sont INTERNES.
   getBonsCommandeFournisseur: (params) =>
     api.get('/stock/bons-commande-fournisseur/', { params }),

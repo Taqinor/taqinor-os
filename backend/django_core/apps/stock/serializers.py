@@ -2,7 +2,52 @@ from rest_framework import serializers
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur, Outillage,
+    KitOutillage, KitOutillageItem,
 )
+
+
+class KitOutillageItemSerializer(serializers.ModelSerializer):
+    outil_nom = serializers.CharField(source='outil.nom', read_only=True)
+
+    class Meta:
+        model = KitOutillageItem
+        fields = ['id', 'outil', 'outil_nom', 'ordre']
+
+
+class KitOutillageSerializer(serializers.ModelSerializer):
+    items = KitOutillageItemSerializer(many=True, required=False)
+
+    class Meta:
+        model = KitOutillage
+        exclude = ['company']  # company posée côté serveur (TenantMixin).
+        read_only_fields = ['date_creation', 'protege']
+
+    def _set_items(self, kit, items):
+        """Remplace la liste d'outils du kit, en validant l'appartenance
+        société de chaque outil (sécurité multi-tenant)."""
+        company = kit.company
+        kit.items.all().delete()
+        for i, item in enumerate(items or []):
+            outil = item['outil']
+            if outil.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'items': 'Outil inconnu pour cette société.'})
+            KitOutillageItem.objects.create(
+                kit=kit, outil=outil, ordre=item.get('ordre', i))
+
+    def create(self, validated_data):
+        items = validated_data.pop('items', None)
+        kit = super().create(validated_data)
+        if items is not None:
+            self._set_items(kit, items)
+        return kit
+
+    def update(self, instance, validated_data):
+        items = validated_data.pop('items', None)
+        kit = super().update(instance, validated_data)
+        if items is not None:
+            self._set_items(kit, items)
+        return kit
 
 
 class OutillageSerializer(serializers.ModelSerializer):

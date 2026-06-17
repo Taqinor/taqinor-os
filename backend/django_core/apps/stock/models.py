@@ -370,3 +370,53 @@ class Outillage(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class KitOutillage(models.Model):
+    """F2 — Kit d'outillage : modèle nommé et réutilisable (éditable dans
+    Paramètres comme tout autre référentiel : ajout / renommage / réordre /
+    désactivation). Une liste ORDONNÉE d'outils tirés du catalogue Outillage,
+    sélectionnable par type d'intervention. `type_intervention` est la CLÉ
+    texte d'un `installations.TypeIntervention` (référence souple, pas de FK
+    inter-app). Désactiver (`actif=False`) le retire des nouvelles sélections
+    sans rien changer aux interventions passées (cohérent N57). Additif."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='kits_outillage',
+    )
+    nom = models.CharField(max_length=120)
+    # Clé du type d'intervention auquel ce kit s'applique (vide = tous types).
+    type_intervention = models.CharField(max_length=40, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    # Verrouille un kit système (seedé) contre la suppression — désactivable.
+    protege = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        verbose_name = "Kit d'outillage"
+        verbose_name_plural = "Kits d'outillage"
+
+    def __str__(self):
+        return self.nom
+
+
+class KitOutillageItem(models.Model):
+    """Une ligne ordonnée d'un kit : un outil du catalogue Outillage."""
+    kit = models.ForeignKey(
+        KitOutillage, on_delete=models.CASCADE, related_name='items',
+    )
+    outil = models.ForeignKey(
+        Outillage, on_delete=models.PROTECT, related_name='kit_items',
+    )
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        unique_together = [('kit', 'outil')]
+        verbose_name = "Outil du kit"
+        verbose_name_plural = "Outils du kit"
+
+    def __str__(self):
+        return f'{self.kit_id} · {self.outil_id}'

@@ -22,7 +22,11 @@ PROGRESS (this file is a convenience pointer; the [x] ticks in docs/PLAN.md on d
 authoritative):
 - F1 Outillage catalogue — built + committed + pushed on dev-field-exec; frontend builds +
   lints green locally, backend py_compile-clean, backend tests written but UNVALIDATED.
-- F2 Kits d'outillage — next (not started).
+- F2 Kits d'outillage — built + committed on dev-field-exec; frontend builds+lints green,
+  backend py_compile-clean, backend tests written but UNVALIDATED.
+- F3 Intervention (sortie chantier) spine — next. NOTE: a thin `installations.Intervention`
+  ("Ordre de travail") already exists → EXTEND it (statut state machine, équipe M2M, camionnette,
+  GPS arrival/depart stamps, chatter), do NOT create a parallel model.
 
 *** RUN PAUSED — EXTERNAL BLOCKER (2026-06-17): GitHub Actions CI is disabled org-wide. ***
 Every CI job fails in seconds with "The job was not started because recent account payments

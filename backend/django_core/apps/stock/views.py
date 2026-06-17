@@ -8,7 +8,7 @@ from authentication.mixins import TenantMixin
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, Outillage,
+    BonCommandeFournisseur, Outillage, KitOutillage,
 )
 from .serializers import (
     ProduitSerializer,
@@ -18,6 +18,7 @@ from .serializers import (
     MarqueSerializer,
     BonCommandeFournisseurSerializer,
     OutillageSerializer,
+    KitOutillageSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -287,6 +288,54 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+# F2 — kits d'outillage seedés par défaut (noms seuls ; le founder y ajoute
+# ses outils). Protégés contre la suppression, mais désactivables.
+_DEFAULT_KITS_OUTILLAGE = [
+    'Kit pose structure',
+    'Kit raccordement électrique',
+    'Kit mise en service',
+]
+
+
+def seed_kits_outillage(company):
+    if company is None or KitOutillage.objects.filter(company=company).exists():
+        return
+    for i, nom in enumerate(_DEFAULT_KITS_OUTILLAGE):
+        KitOutillage.objects.get_or_create(
+            company=company, nom=nom,
+            defaults={'ordre': i, 'protege': True})
+
+
+class KitOutillageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """F2 — kits d'outillage (Paramètres). Liste ordonnée d'outils par kit,
+    sélectionnable par type d'intervention. Lecture tout rôle, écriture admin.
+    Un kit protégé (système) se désactive (`actif=False`) plutôt que de se
+    supprimer ; la désactivation préserve les références historiques (N57)."""
+    queryset = KitOutillage.objects.prefetch_related('items__outil').all()
+    serializer_class = KitOutillageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'nom', 'date_creation']
+    ordering = ['ordre', 'nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            seed_kits_outillage(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        kit = self.get_object()
+        if kit.protege:
+            return Response(
+                {'detail': "Ce kit est protégé — désactivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 class MouvementStockViewSet(viewsets.ModelViewSet):

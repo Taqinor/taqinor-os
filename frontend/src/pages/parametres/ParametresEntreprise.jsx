@@ -17,6 +17,7 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
+import KitsOutillageSection from './KitsOutillageSection'
 import './parametres.css'
 
 // Défauts métier — miroir des valeurs codées en dur côté serveur. Affichés
@@ -1080,6 +1081,9 @@ export default function ParametresEntreprise() {
                       style={{ border: 'none', background: '#2563eb', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>＋</button>
             </div>
           </div>
+
+          {/* Outillage — Kits (F2) */}
+          <KitsOutillageSection />
 
           {/* Stock — Marques (liste gérée) */}
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }}>
