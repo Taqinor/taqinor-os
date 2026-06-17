@@ -79,6 +79,12 @@ describe('pages publiques SEO — indexées et dans le sitemap', () => {
     '/marocains-du-monde',
     '/garanties',
     '/à-propos',
+    // Lot IA/contenu W23–W30.
+    '/pompage-solaire',
+    '/batteries-stockage',
+    '/maintenance-monitoring',
+    '/financement',
+    '/nos-solutions',
   ];
   for (const r of publicRoutes) {
     it(`${r} n’est pas exclue du sitemap`, () => {
@@ -99,6 +105,12 @@ describe('pages publiques SEO — indexées et dans le sitemap', () => {
     '../src/pages/marocains-du-monde.astro',
     '../src/pages/garanties.astro',
     '../src/pages/à-propos.astro',
+    // Lot IA/contenu W23–W30.
+    '../src/pages/pompage-solaire.astro',
+    '../src/pages/batteries-stockage.astro',
+    '../src/pages/maintenance-monitoring.astro',
+    '../src/pages/financement.astro',
+    '../src/pages/nos-solutions.astro',
   ];
   for (const f of files) {
     it(`${f} est publique (pas de noindex) et monte l’élévation`, () => {
@@ -163,8 +175,10 @@ describe('données structurées', () => {
 describe('maillage & téléphone (W9 / W10)', () => {
   it('le pied de page lie les nouvelles pages et les villes', () => {
     const f = read('../src/components/Footer.astro');
+    // Forme-agnostique : les liens du pied vivent dans des tableaux rendus en
+    // boucle (href: '/x'), pas forcément en attribut littéral href="/x".
     for (const href of ['/realisations', '/guides', '/faq', '/garanties', '/pourquoi-taqinor', '/marocains-du-monde', '/à-propos']) {
-      expect(f, href).toContain(`href="${href}"`);
+      expect(f, href).toContain(href);
     }
     expect(f).toContain('installation-solaire-');
   });

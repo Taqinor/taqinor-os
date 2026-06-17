@@ -758,7 +758,7 @@ set of layouts with the true optimum badged**.
 
 ---
 
-### W23 — Public "Pompage solaire" service page (`/pompage-solaire`) — [ ]
+### W23 — Public "Pompage solaire" service page (`/pompage-solaire`) — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -778,7 +778,7 @@ sitemap**, and (once the nav/footer tasks below run) in the **Solutions dropdown
 Solutions column**, the **Nos solutions hub**, and a **homepage Solutions card**; **cross-linked to
 the diagnostic and to équipement**.
 
-### W24 — Public "Batteries & stockage" service page — [ ]
+### W24 — Public "Batteries & stockage" service page — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -792,7 +792,7 @@ pays and when it does not, sized to the consumption profile, decided in the étu
 sitemap**, and to be wired into the Solutions dropdown, footer, hub and homepage cards (tasks below);
 **cross-linked to équipement, résidentiel, and the diagnostic**.
 
-### W25 — Public "Maintenance & monitoring" / SAV page — [ ]
+### W25 — Public "Maintenance & monitoring" / SAV page — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -806,7 +806,7 @@ screenshots** are added — leave a clean placeholder spot but **ship from verif
 **Indexed, in the sitemap**, to be wired into Solutions dropdown/footer/hub/homepage (tasks below);
 **cross-linked to garanties and équipement**.
 
-### W26 — Public "Financement & rentabilité" page (`/financement`) — [ ]
+### W26 — Public "Financement & rentabilité" page (`/financement`) — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -825,7 +825,7 @@ calculation for the client's own bill**. **No invented numbers** — reuse only 
 figures already published on résidentiel/professionnel. **Indexed, in the sitemap**, linked from the
 **Ressources dropdown and footer**, and **cross-linked from résidentiel and professionnel**.
 
-### W27 — Upgrade "À propos" with the approved founder pedigree + reconcile with "Pourquoi Taqinor" — [ ]
+### W27 — Upgrade "À propos" with the approved founder pedigree + reconcile with "Pourquoi Taqinor" — [x]
 
 > Added 2026-06-17 via "add to web plan". **Builds on W13**, which created `/à-propos` and deliberately
 > deferred naming the founder's industry background pending owner sign-off — that sign-off is now given.
@@ -842,7 +842,7 @@ loi 82-21 conformity end to end, tier-1 equipment only, evidence over promises);
 don't duplicate and are cross-linked**. **À propos goes in the primary nav; Pourquoi Taqinor goes in
 the Ressources dropdown** and is **linked from the segment pages**.
 
-### W28 — One shared header + footer on EVERY page (incl. homepage) + new primary nav with Solutions/Ressources dropdowns — [ ]
+### W28 — One shared header + footer on EVERY page (incl. homepage) + new primary nav with Solutions/Ressources dropdowns — [x]
 
 > Added 2026-06-17 via "add to web plan". This is **information architecture, not a redesign**.
 
@@ -874,7 +874,7 @@ the **Ressources trigger can link to the Guides hub**). **Keep the existing "Cin
 tokens, Archivo/Hanken type and night-blue palette.** **Apply the new header and footer identically
 across all pages and confirm the homepage matches the sub-pages exactly.**
 
-### W29 — Reconcile the footer site-wide + turn the footer "Services" list into REAL links — [ ]
+### W29 — Reconcile the footer site-wide + turn the footer "Services" list into REAL links — [x]
 
 > Added 2026-06-17 via "add to web plan". Pairs with W28 (shared footer).
 
@@ -892,7 +892,7 @@ these columns:
 
 **Only link pages that actually exist — no invented links.**
 
-### W30 — Public "Nos solutions" overview/hub page (`/nos-solutions`) — [ ]
+### W30 — Public "Nos solutions" overview/hub page (`/nos-solutions`) — [x]
 
 > Added 2026-06-17 via "add to web plan". The Solutions dropdown (W28) points to this as its parent and
 > no-JS fallback.
@@ -905,7 +905,7 @@ monitoring, Régularisation Loi 82-21**. **Use only positioning and facts alread
 claims or figures.** Clean editorial layout matching the design, **indexed, in the sitemap, linked from
 the header (Solutions parent) and footer**.
 
-### W31 — Add a "Nos solutions" section to the homepage — [ ]
+### W31 — Add a "Nos solutions" section to the homepage — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -916,7 +916,7 @@ language, **placed sensibly in the current homepage flow** (e.g. extending the e
 métiers"** segment block). **Use only existing positioning — no new claims.** **Keep the homepage's
 Lighthouse and zero-CLS intact.**
 
-### W32 — Verify & complete breadcrumbs + internal linking across all public pages — [ ]
+### W32 — Verify & complete breadcrumbs + internal linking across all public pages — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -927,7 +927,7 @@ Article 33 ↔ professionnel**, the **5 city pages ↔ their matching case studi
 and the **new Solutions/Pompage/Batteries/Maintenance/Financement pages ↔ équipement and the
 diagnostic**. **Purely additive; touch no lead-flow code.**
 
-### W33 — Fix cache-on-deploy so the homepage & all HTML never serve a stale version after a deploy — [ ]
+### W33 — Fix cache-on-deploy so the homepage & all HTML never serve a stale version after a deploy — [x]
 
 > Added 2026-06-17 via "add to web plan". Touches the Worker/Cloudflare cache headers only — keep
 > `/api/*` and the lead pipeline byte-for-byte unchanged. If the only safe fix needs a NEW Cloudflare
@@ -1206,3 +1206,47 @@ the `/` cache once in Cloudflare).
   (span azimuth included). 666 web tests green (new `estimatorBrainV6.test.ts` +
   `estimatorPreviewPro9.test.ts`); `astro build` clean. Live site + lead form untouched; map key
   read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`). URL: `/preview/toiture-3d-pro-9`.
+- 2026-06-17 — W23–W33 done (IA + content pass, one batch). Five NEW public/indexed pages, all on
+  the « Cinéma du chantier » design, every fact traced to what the site already publishes (nothing
+  invented): **`/pompage-solaire`** (W23 — new service framed as a CAPABILITY, zero Taqinor pumping
+  projects/photos/figures; the verified VAT exemption stated for agricultural pumping only and
+  explicitly NOT for rooftop residential PV; débit/HMT/forage/besoins method + Service JSON-LD),
+  **`/batteries-stockage`** (W24 — Dyness LFP facts reused verbatim from /équipement: DL5.0C, 5 kWh
+  modular to 15 kWh+, 6 000+ cycles 90 % DoD, CAN BMS Deye, 10-year warranty; diurnal vs nocturnal
+  reasoning from the existing guide; real 15/10/5 kWh installs already published), **`/maintenance-
+  monitoring`** (W25 — Deye Cloud + SAV proactif + dossier technique from /garanties; NO invented
+  SLA/response time; an honest styled placeholder card for future anonymised dashboard captures),
+  **`/financement`** (W26 — rentabilité-first and strictly honest: 3–7 ans payback / 25 ans / 60–90 %
+  / barème ONEE reused; Taqinor is NOT a lender, no residential subsidy, NO residential VAT
+  exemption, no bank/rate/product named; the étude computes the client's own ROI), and
+  **`/nos-solutions`** (W30 — hub listing the 6 solutions, CollectionPage JSON-LD, parent + no-JS
+  fallback of the Solutions dropdown). W27: `/à-propos` now names the owner-approved founder pedigree
+  (docteur-ingénieur, 10+ ans R&D chez Huawei, Ericsson et STMicroelectronics) + a short honest
+  « pourquoi un ingénieur lance le solaire » narrative (no invented projects/dates/titles), kept
+  DISTINCT from and cross-linked both ways with `/pourquoi-taqinor`. W28: ONE shared Header on every
+  page (homepage already inherits it via Layout) with a new primary nav — **Solutions ▾, Réalisations,
+  Équipement, Ressources ▾, À propos** + Diagnostic CTA + +212 6 61 85 04 10. Solutions ▾ = Résidentiel,
+  Professionnel, Pompage solaire, Batteries & stockage, Maintenance & monitoring, Régularisation Loi
+  82-21 (trigger → /nos-solutions); Ressources ▾ = Guides, FAQ, Loi 82-21 expliquée, Pourquoi Taqinor,
+  Financement & rentabilité, Marocains du monde (trigger → /guides). The Loi 82-21 explainer LEFT the
+  top nav (still live + indexed + in sitemap; reached via Ressources, footer, and contextual links).
+  Dropdowns are accessible: real-link triggers (no-JS fallback), CSS hover + focus-within reveal,
+  ArrowDown opens/focuses, Escape closes, ARIA roles/aria-haspopup/aria-expanded. W29: ONE footer
+  everywhere — the old non-clickable « Services » text replaced by a **Solutions** column of REAL links
+  + a **Ressources** column (réalisations, guides, faq, loi-82-21 expliquée, pourquoi, financement,
+  MRE, à-propos, équipement, garanties) + the 5 city links + Contact + legal. W31: a « Nos solutions »
+  card section on the homepage (text cards, zero new images → zero CLS) linking the 6 solutions + the
+  hub. W32: breadcrumbs confirmed sitewide (all new pages carry Breadcrumb/BreadcrumbList; homepage is
+  root), and contextual cross-links completed (segment pages → Pourquoi Taqinor + the new
+  solution/finance pages; loi-82-21 ↔ régularisation ↔ professionnel and city ↔ case-studies ↔ segments
+  already present). W33: cache-on-deploy fixed — a pure `worker/cache.mjs` forces HTML documents to
+  revalidate (`public, max-age=0, must-revalidate`) in the production Worker, so a deploy is reflected
+  on `/` without a manual purge, while hashed assets (served asset-first, excluded from the Worker)
+  keep their long immutable cache and `/api/*` JSON is byte-for-byte untouched. 706 web tests green
+  (added `tests/cache.test.ts` + `tests/ia-nav.test.ts`; updated elevation count 15→20 and seo-pages);
+  `astro build` clean (5 new pages prerendered + in the sitemap, preview routes still excluded,
+  `cache.mjs` copied into dist/server and wired into redirect-entry). Live lead form + its entire data
+  flow byte-for-byte untouched; estimator preview routes stay private. MANUAL (founder, one-time):
+  optionally purge the `/` cache once in the Cloudflare dashboard after this deploy; subsequent deploys
+  self-refresh. URLs to open: `/pompage-solaire`, `/batteries-stockage`, `/maintenance-monitoring`,
+  `/financement`, `/nos-solutions`, `/à-propos`, `/` (new Solutions section + nav/footer).

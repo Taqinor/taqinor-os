@@ -1,0 +1,121 @@
+---
+/**
+ * Hub « Nos solutions » (W30). Vue d'ensemble de l'offre Taqinor : page parent
+ * du futur menu déroulant Solutions, repli sans-JS de ce menu, et page
+ * d'atterrissage SEO. Chaque solution est listée avec une description courte et
+ * honnête, construite UNIQUEMENT à partir du positionnement déjà présent sur le
+ * site — AUCUN chiffre ni claim nouveau.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+
+const solutions = [
+  {
+    href: '/résidentiel',
+    title: 'Solaire résidentiel',
+    summary:
+      'Installation solaire pour villa ou appartement, dimensionnée sur votre facture réelle. Déclaration loi 82-21 incluse.',
+  },
+  {
+    href: '/professionnel',
+    title: 'Solaire professionnel & industriel',
+    summary:
+      'Toitures de hangars, industries, hôtels, cliniques : réduction du poste électricité, moyenne tension et conformité loi 82-21.',
+  },
+  {
+    href: '/pompage-solaire',
+    title: 'Pompage solaire',
+    summary:
+      'Pompage agricole et irrigation au fil du soleil, souvent sans batteries, dimensionné sur le besoin réel.',
+  },
+  {
+    href: '/batteries-stockage',
+    title: 'Batteries & stockage',
+    summary:
+      'Stockage LFP pour la consommation nocturne ou la continuité de service — quand l’étude le justifie.',
+  },
+  {
+    href: '/maintenance-monitoring',
+    title: 'Maintenance & monitoring',
+    summary:
+      'Supervision Deye Cloud avec accès client, SAV proactif et dossier technique — après la pose.',
+  },
+  {
+    href: '/regularization-article-33',
+    title: 'Régularisation Loi 82-21',
+    summary:
+      'Mise en conformité des installations existantes via l’Article 33.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Nos solutions solaires — Taqinor',
+  hasPart: solutions.map((s) => ({
+    '@type': 'Service',
+    name: s.title,
+    url: new URL(s.href, Astro.site).href,
+  })),
+};
+---
+
+<Layout
+  title="Nos solutions solaires au Maroc | Taqinor"
+  description="Toute l'offre solaire Taqinor en un coup d'œil : résidentiel, professionnel & industriel, pompage solaire, batteries & stockage, maintenance & monitoring, et régularisation loi 82-21. Une étude décide de chaque installation."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Nos solutions' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Nos solutions</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Une offre solaire pour chaque besoin</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          De la villa au hangar industriel, du pompage agricole à la régularisation d’une
+          installation existante : chaque solution part de votre situation réelle, et c’est
+          l’étude qui décide du matériel. Voici l’ensemble de ce que nous faisons.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
+        {solutions.map((s, i) => (
+          <a href={s.href} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <p class="tech-label text-brass-300">Solution</p>
+            <h2 class="display mt-2 text-xl text-white" set:html={s.title.replace('&', '&amp;')} />
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>
+            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Découvrir →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-3xl text-center">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Par où commencer</p>
+        <h2 class="display v2-section-title mt-5 text-white">Pas sûr de la solution qu’il vous faut ?</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Vous n’avez pas à choisir seul. Décrivez votre situation et votre consommation : le
+          diagnostic gratuit identifie la solution adaptée et le régime loi 82-21 qui vous
+          concerne — sans engagement.
+        </p>
+        <a href="/contact#simulateur" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Lancer mon diagnostic gratuit</a>
+      </div>
+    </section>
+
+    <CtaBand title="Une solution adaptée commence par une étude gratuite." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>
