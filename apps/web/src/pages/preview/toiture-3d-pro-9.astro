@@ -584,12 +584,21 @@ const chipClass =
 <script>
   // Activation paresseuse : MapLibre + Three.js + le cerveau ne sont téléchargés
   // qu'au premier geste réel. La clé publique MapTiler est lue via /api/roof-config.
+  // createRoofTypeSelect est minuscule et sans dépendance lourde — l'importer ici
+  // ne déclenche AUCUN chargement de Three.js/MapLibre.
+  import { createRoofTypeSelect } from '../../lib/roofTypeSelect';
+
   const fallback = document.getElementById('rp9-fallback');
   const stage = document.getElementById('rp9-stage');
   const searchForm = document.getElementById('rp9-search') as HTMLFormElement | null;
   const addressEl = document.getElementById('rp9-address') as HTMLInputElement | null;
   const openBtn = document.getElementById('rp9-open');
   const placeholder = document.getElementById('rp9-map-placeholder');
+
+  // Puces « type de toit » CÂBLÉES DÈS LE CHARGEMENT (avant tout boot de la carte) :
+  // l'Étape 2 demande le choix d'abord, donc « Toit plat » / « Toit en pente »
+  // doivent répondre à l'instant. L'outil 3D, une fois booté, s'abonne via initRoofTool.
+  const roofTypeSelect = createRoofTypeSelect(document);
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let started = false;
@@ -613,6 +622,7 @@ const chipClass =
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         initialQuery,
+        roofType: roofTypeSelect,
         onReady: () => {
           mapCreated = true;
         },
