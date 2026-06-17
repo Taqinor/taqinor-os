@@ -1,7 +1,7 @@
 # Taqinor OS — Build Plan & Progress
 
 This file is the **single source of truth** for the Taqinor OS build backlog and the
-**memory between Claude Code sessions**. Each run works through EVERY unchecked task in this file from top to bottom — not just one — ticking each off in this file as it lands, then does the same for `docs/PLAN2.md` if that file exists, and only stops when both queues are clear (or a usage limit pauses it, in which case re-running resumes from the next unchecked task). The next session reads this file and
+**memory between Claude Code sessions**. Each run first works through EVERY unchecked task in `docs/PLAN2.md` (if that file exists) from top to bottom — not just one — ticking each off as it lands, then does the same for this file, and only stops when both queues are clear (or a usage limit pauses it, in which case re-running resumes from the next unchecked task). The next session reads this file and
 continues. Nothing relies on the agent's own memory — the file on disk is the memory.
 
 ---
@@ -9,8 +9,12 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
 ## HOW TO RUN (read this every session)
 
 1. **Read this whole file.**
-2. In **BUILD QUEUE** below, find the **first task marked `[ ]`** (not `[x]`, not `[SKIP]`,
-   not `[BLOCKED]`). Ignore the GATED and MANUAL sections entirely.
+2. **Check `docs/PLAN2.md` FIRST.** If it exists and has any pending `[ ]` task that isn't
+   gated/blocked, this run works **that** file's BUILD QUEUE to completion first — following
+   PLAN2.md's own rules, which are the same as this file's — before touching this one. Only
+   when `docs/PLAN2.md` has no pending buildable task left do you work this file: in **BUILD
+   QUEUE** below, find the **first task marked `[ ]`** (not `[x]`, not `[SKIP]`, not
+   `[BLOCKED]`). Ignore the GATED and MANUAL sections entirely.
 3. **Verify it isn't already built.** Inspect the actual repo and the deployed app. If the
    task already exists and works, mark it `[x] (already present)`, add a line to the DONE
    LOG, commit this file, and move on to the next `[ ]` task — repeat this verify step.
@@ -28,7 +32,7 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
    to the server without a rebuild).
 7. **STOP and report** in plain language only — no diffs, no commit hashes: which task, what
    changed, exactly what Reda must click/type (with menu paths), and confirm the auto-deploy
-   shipped it (the server records each deploy in its own log). Continue to the next `[ ]` task. Do not stop until every task in this file — then every task in `docs/PLAN2.md`, if it exists — is `[x]`, `[SKIP]`, or `[BLOCKED]`.
+   shipped it (the server records each deploy in its own log). Continue to the next `[ ]` task. Do not stop until every task in `docs/PLAN2.md` (if it exists) — then every task in this file — is `[x]`, `[SKIP]`, or `[BLOCKED]`.
 8. **If a task hits a blocker** (it would need a destructive migration, a paid/external
    dependency that isn't pre-approved, an auth change, or a real decision): do **not** guess
    and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to the GATED section,
@@ -38,7 +42,7 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
 from Claude Code on the web or from the phone with no PC involved. **One-line starter** to
 paste into a fresh cloud session:
 
-> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task in the BUILD QUEUE in order: verify each isn't already built, build it with tests, tick it `[x]`, add a dated DONE LOG line. Then do the same for `docs/PLAN2.md` if it exists. Get CI fully green (with MinIO) and self-merge `dev` → `main` (this auto-deploys — do not run any deploy command). Report in plain language. Do not stop after one task.
+> Read `docs/PLAN.md` top to bottom. **First** work through EVERY `[ ]` task in `docs/PLAN2.md` (if it exists), **then** do the same for this file's BUILD QUEUE — in order: verify each isn't already built, build it with tests, tick it `[x]`, add a dated DONE LOG line. Get CI fully green (with MinIO) and self-merge `dev` → `main` (this auto-deploys — do not run any deploy command). Report in plain language. Do not stop after one task.
 
 ---
 
