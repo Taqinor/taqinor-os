@@ -758,6 +758,215 @@ set of layouts with the true optimum badged**.
 
 ---
 
+### W23 — Public "Pompage solaire" service page (`/pompage-solaire`) — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Build a **public**, indexed "Pompage solaire" service page (SEO slug, e.g. `/pompage-solaire`) — this
+is a **NEW service** Taqinor now offers (agricultural/irrigation solar pumping), so frame it as a
+**service capability, NOT as installed evidence**. **Taqinor has no pompage installations yet, so
+invent NO Taqinor pompage projects, photos, or production figures.** Write technically accurate
+solar-pumping content: how solar pumping works for irrigation and agriculture (panels driving a pump,
+**often direct-drive without batteries**, sized to the well depth, **débit / hauteur manométrique
+(HMT)** and the crop's water needs, with a **controller/variateur**); the **engineer-led approach
+(l'étude d'abord applied to pumping — sized to the real need)**; and **the one genuine fiscal
+advantage that is verified and current: solar water-pumping systems benefit from a general VAT
+exemption in Morocco covering the pump and the panels** — state it plainly and honestly as an
+advantage for agricultural pumping, but **do NOT extend this claim to rooftop residential PV, where it
+does not apply**. Match the existing **"Cinéma du chantier"** design and tokens. **Indexed, in the
+sitemap**, and (once the nav/footer tasks below run) in the **Solutions dropdown**, the **footer
+Solutions column**, the **Nos solutions hub**, and a **homepage Solutions card**; **cross-linked to
+the diagnostic and to équipement**.
+
+### W24 — Public "Batteries & stockage" service page — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Build a **public**, indexed "Batteries & stockage" service page (SEO slug matching repo conventions)
+**strictly from facts already on the site**: the role of storage in autoconsommation (the existing FAQ
+already explains batteries are justified for **night-time consumption or continuité de service**, and
+that **direct daytime autoconsommation is often the better investment**), and the storage hardware
+already posed on `/équipement` and the fiches chantier (**Dyness LFP** and the kWh figures already
+shown). **Invent no capacities, prices, or specs not already published.** Engineer voice: when storage
+pays and when it does not, sized to the consumption profile, decided in the étude. **Indexed, in the
+sitemap**, and to be wired into the Solutions dropdown, footer, hub and homepage cards (tasks below);
+**cross-linked to équipement, résidentiel, and the diagnostic**.
+
+### W25 — Public "Maintenance & monitoring" / SAV page — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Build a **public**, indexed "Maintenance & monitoring" / SAV page (slug matching repo conventions)
+**from facts already on the site**: the **Deye Cloud monitoring with client access included on every
+installation** (already stated across the site) and the **engagements already on `/garanties`**. Frame
+it as the **post-installation promise** — production suivie en temps réel, accès client, SAV. **Do NOT
+invent any response-time SLA, intervention delay, or underperformance policy not already published.**
+**Note in the report** that this page gets stronger once real **anonymised Deye Cloud dashboard
+screenshots** are added — leave a clean placeholder spot but **ship from verified facts now**.
+**Indexed, in the sitemap**, to be wired into Solutions dropdown/footer/hub/homepage (tasks below);
+**cross-linked to garanties and équipement**.
+
+### W26 — Public "Financement & rentabilité" page (`/financement`) — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Build a **public**, indexed "Financement & rentabilité" page (slug, e.g. `/financement`) framed
+**RENTABILITÉ-FIRST and strictly honest** — its job is to reassure an **80 000 MAD** buyer, not to
+over-promise. Lead with the investment framing already supported on the site: a well-sized
+installation **self-finances in roughly 3 to 7 years** through the avoided electricity cost (**régie
+ONEE barème**), and the panels are **guaranteed in performance over 25 years**, so the years after
+payback are near-free electricity. **Be transparent and honest:** Taqinor is **not a lender**; there
+is **no special residential subsidy**; clients typically pay **cash or via ordinary bank consumer
+credit**; for businesses, **green financing lines for renewable-energy projects exist in Morocco**
+(state this **generally** — **do NOT name a bank partner Taqinor does not have, do NOT quote any
+interest rate, TAEG, or product name, and do NOT claim a residential VAT exemption, which does not
+apply to a complete turnkey installation**). Make clear the **étude includes the precise ROI
+calculation for the client's own bill**. **No invented numbers** — reuse only the ROI logic and
+figures already published on résidentiel/professionnel. **Indexed, in the sitemap**, linked from the
+**Ressources dropdown and footer**, and **cross-linked from résidentiel and professionnel**.
+
+### W27 — Upgrade "À propos" with the approved founder pedigree + reconcile with "Pourquoi Taqinor" — [ ]
+
+> Added 2026-06-17 via "add to web plan". **Builds on W13**, which created `/à-propos` and deliberately
+> deferred naming the founder's industry background pending owner sign-off — that sign-off is now given.
+
+First **check whether `/à-propos` exists in the repo** (it does — built in W13). Build or update it to
+name the founder's **real, owner-approved background — a docteur-ingénieur with 10+ years of R&D
+experience at Huawei, Ericsson and STMicroelectronics** — plus a short, honest founder narrative
+explaining **why an engineer started a solar company** and the conviction behind **"l'étude d'abord"**
+(chaque étude validée par le fondateur). **Write only verified facts:** name those three employers and
+the doctorate/R&D background, but **invent NO specific projects, dates, titles, team sizes, or personal
+anecdotes** (the narrative can be refined by Reda/Meryem later). Keep **`/pourquoi-taqinor`** as the
+distinct **differentiator** page (engineering-led sizing, real measured monitoring via Deye Cloud, full
+loi 82-21 conformity end to end, tier-1 equipment only, evidence over promises); **ensure the two pages
+don't duplicate and are cross-linked**. **À propos goes in the primary nav; Pourquoi Taqinor goes in
+the Ressources dropdown** and is **linked from the segment pages**.
+
+### W28 — One shared header + footer on EVERY page (incl. homepage) + new primary nav with Solutions/Ressources dropdowns — [ ]
+
+> Added 2026-06-17 via "add to web plan". This is **information architecture, not a redesign**.
+
+Restructure the **entire site navigation into ONE shared header and footer used by EVERY page including
+the homepage**. First **read the current header/footer components and confirm which pages use them**:
+the homepage `/` is currently serving an **older nav** (Résidentiel · Professionnel · Équipement · Loi
+82-21 · Régularisation, unspaced phone, bare footer) while the sub-pages already show Guides · FAQ, the
+spaced phone, and a fuller footer — so the homepage either uses a separate/hardcoded header/footer or is
+served stale; **make the homepage render the EXACT same shared Header and Footer as every other page**
+so the whole site has one identical nav and footer.
+
+The **new primary navigation** is: **Solutions (a dropdown), Réalisations, Équipement, Ressources (a
+dropdown), À propos** — plus the existing **"Diagnostic gratuit"** CTA button and the phone shown as
+**+212 6 61 85 04 10**.
+- The **Solutions** dropdown contains, in this order: **Résidentiel, Professionnel, Pompage solaire,
+  Batteries & stockage, Maintenance & monitoring, Régularisation Loi 82-21** (the existing
+  `/regularization-article-33` page).
+- The **Ressources** dropdown contains: **Guides, FAQ, Loi 82-21 expliquée** (the existing `/loi-82-21`
+  page), **Pourquoi Taqinor, Financement & rentabilité, Marocains du monde**.
+- **REMOVE the Loi 82-21 explainer (`/loi-82-21`) from the top-level menu** — it stays a **live page,
+  indexed and in the sitemap**, now reached **only from the Ressources dropdown, the footer, and
+  contextual in-body links** (from the régularisation page, professionnel, and résidentiel), **never
+  from the top nav**.
+
+**Dropdowns must be fully accessible:** keyboard-operable (focusable trigger, Escape closes, tab/arrow
+through items, correct ARIA), work on touch with a tap on mobile, and **degrade gracefully so if JS
+fails the items are still reachable** (the **Solutions trigger also links to the Nos solutions hub**;
+the **Ressources trigger can link to the Guides hub**). **Keep the existing "Cinéma du chantier" design,
+tokens, Archivo/Hanken type and night-blue palette.** **Apply the new header and footer identically
+across all pages and confirm the homepage matches the sub-pages exactly.**
+
+### W29 — Reconcile the footer site-wide + turn the footer "Services" list into REAL links — [ ]
+
+> Added 2026-06-17 via "add to web plan". Pairs with W28 (shared footer).
+
+Reconcile the footer **site-wide** so every page shows **one identical footer**, and turn the footer
+**"Services" list into REAL links**. Today that section is **plain non-clickable text** and the
+**homepage footer is missing sections the sub-pages have**. Make the footer identical everywhere with
+these columns:
+- **Solutions** — linking each service to its page: **Résidentiel, Professionnel, Pompage solaire,
+  Batteries & stockage, Maintenance & monitoring, Régularisation Loi 82-21**;
+- **Ressources** — **Réalisations, Guides, FAQ, Loi 82-21 expliquée, Pourquoi Taqinor, Financement &
+  rentabilité, Marocains du monde, À propos**;
+- **"Installation solaire par ville"** — the **5 city pages**;
+- **Contact** — spaced phone **+212 6 61 85 04 10**, email, WhatsApp, zone d'intervention;
+- the **legal line** (mentions-légales, confidentialité).
+
+**Only link pages that actually exist — no invented links.**
+
+### W30 — Public "Nos solutions" overview/hub page (`/nos-solutions`) — [ ]
+
+> Added 2026-06-17 via "add to web plan". The Solutions dropdown (W28) points to this as its parent and
+> no-JS fallback.
+
+Build a **public**, indexed "Nos solutions" overview/hub page (slug e.g. `/nos-solutions`) that the
+**Solutions dropdown points to as its parent** and that **doubles as an SEO landing page and the no-JS
+fallback for the dropdown**. List each solution with a short description and a link: **Solaire
+résidentiel, Solaire professionnel/industriel, Pompage solaire, Batteries & stockage, Maintenance &
+monitoring, Régularisation Loi 82-21**. **Use only positioning and facts already on the site — no new
+claims or figures.** Clean editorial layout matching the design, **indexed, in the sitemap, linked from
+the header (Solutions parent) and footer**.
+
+### W31 — Add a "Nos solutions" section to the homepage — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Add a **"Nos solutions" section to the homepage** so services are visible on the **most-visited page**,
+not only in the menu: a clean set of **cards** linking to **Résidentiel, Professionnel, Pompage solaire,
+Batteries & stockage, Maintenance & monitoring, and Régularisation Loi 82-21**, in the existing design
+language, **placed sensibly in the current homepage flow** (e.g. extending the existing **"Deux
+métiers"** segment block). **Use only existing positioning — no new claims.** **Keep the homepage's
+Lighthouse and zero-CLS intact.**
+
+### W32 — Verify & complete breadcrumbs + internal linking across all public pages — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Verify and complete **breadcrumbs and internal linking** across all public pages: **confirm
+BreadcrumbList structured data sitewide (add where missing)**, and ensure **contextual in-body
+cross-links** between **équipement ↔ résidentiel/professionnel**, **loi-82-21 expliquée ↔ régularisation
+Article 33 ↔ professionnel**, the **5 city pages ↔ their matching case studies ↔ the segment pages**,
+and the **new Solutions/Pompage/Batteries/Maintenance/Financement pages ↔ équipement and the
+diagnostic**. **Purely additive; touch no lead-flow code.**
+
+### W33 — Fix cache-on-deploy so the homepage & all HTML never serve a stale version after a deploy — [ ]
+
+> Added 2026-06-17 via "add to web plan". Touches the Worker/Cloudflare cache headers only — keep
+> `/api/*` and the lead pipeline byte-for-byte unchanged. If the only safe fix needs a NEW Cloudflare
+> dashboard step the founder must set, mark `[BLOCKED]` and list it under MANUAL rather than guessing.
+
+Fix the cache-on-deploy behaviour so the **homepage and all HTML never serve a stale old version after a
+deploy** — this is why the homepage currently lags the rest of the site. **Read how the Worker /
+Cloudflare Workers Builds setup currently sets cache headers on HTML responses** and make HTML pages
+**revalidate on each deploy** (an appropriate `Cache-Control` on HTML so the edge does not serve a stale
+document, **or** a cache rule excluding HTML, **or** a purge-on-deploy step — **whatever fits the
+existing setup**), while **leaving long-cache on hashed static assets (CSS/JS/fonts/images) untouched**
+for performance. **Do not change any other Worker behaviour; keep `/api/*` and the lead pipeline exactly
+as they are.** **In the report, state exactly what changed and confirm a fresh deploy now reflects on
+`/` without a manual purge** (and note the one-time manual Cloudflare cache purge the founder does by
+hand, if any).
+
+---
+
+**ACROSS W23–W33 (founder's cross-cutting constraints):** this is an **information-architecture and
+content pass on the EXISTING site** — **do NOT rebuild pages that already exist** (réalisations,
+garanties, pourquoi-taqinor, marocains-du-monde, guides, faq, the 5 city pages, and the segment pages
+all already exist — **read the repo and surface/restructure them, never recreate them**). **No invented
+facts anywhere:** pompage has no Taqinor installations so **no fabricated pompage projects or figures**;
+financing **names no bank partner, quotes no rate, and claims no residential tax exemption**; every
+other figure **traces to what is already published or confirmed repo data**. **No new dependencies.
+Touch only `apps/web`.** The **live lead form and its entire data flow** (1 000 MAD threshold, consent,
+WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**. The **private estimator preview
+routes stay private** (noindex, not in nav, excluded from sitemap, unlinked). These tasks **land in the
+run's single end-of-batch self-merge to protected main** (the accepted path — don't flag it).
+**Lighthouse held on every page (97–100), reduced-motion respected, zero layout shift.** **Plain-language
+report only** (no diffs or hashes): the new nav and footer exactly as a visitor now sees them,
+confirmation the homepage matches the sub-pages, the full list of pages now reachable from the menu,
+confirmation the Loi 82-21 explainer is **still live and indexed but out of the top nav** (and where it
+is now linked), the **URLs of the new Pompage / Batteries / Maintenance / Financement / Nos solutions
+pages**, confirmation the live lead form is untouched, and **the one thing Reda does by hand** (purge
+the `/` cache once in Cloudflare).
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
