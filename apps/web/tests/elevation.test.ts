@@ -25,6 +25,7 @@ const ELEVATED = [
   'garanties',
   'pourquoi-taqinor',
   'marocains-du-monde',
+  'à-propos',
   'installation-solaire-[city]',
 ];
 
@@ -63,9 +64,9 @@ describe('prévisualisations supprimées', () => {
     const slugs = readdirSync(pagesDir).filter((f) => f.endsWith('.astro'));
     // 9 d'origine (7 élevées + 2 légales) + 5 du lot SEO public top-level
     // (installation-solaire-[city], faq, garanties, pourquoi-taqinor,
-    // marocains-du-monde). Les études de cas et guides vivent en sous-dossier
-    // (realisations/, guides/) et ne comptent pas ici.
-    expect(slugs.length).toBe(14);
+    // marocains-du-monde) + 1 (à-propos, W13). Les études de cas et guides
+    // vivent en sous-dossier (realisations/, guides/) et ne comptent pas ici.
+    expect(slugs.length).toBe(15);
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {

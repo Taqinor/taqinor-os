@@ -455,7 +455,7 @@ lead flow untouched; and exactly what to check on the phone.
 
 ---
 
-### W13 — Public "À propos / Notre approche" page (founder + method) — [ ]
+### W13 — Public "À propos / Notre approche" page (founder + method) — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -761,3 +761,18 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   the flush 3D visual (schematic — building stays a flat volume, only panels carry the pitch), satellite
   alignment, touch ergonomics. Preview URL to open: `/preview/toiture-3d-pro-6`. Auto-deploys via
   Cloudflare on push to main.
+- 2026-06-17 — W13 done (À propos / Notre approche): new public, indexed page at `/à-propos`
+  (accented-slug convention, like `/résidentiel` / `/équipement`), centred on the FOUNDER and the
+  METHOD, built strictly from facts already published on the site (docteur-ingénieur, 10+ ans R&D,
+  chaque étude validée personnellement, « l'étude d'abord, le chantier ensuite », production mesurée
+  Deye Cloud, conformité loi 82-21 de bout en bout, matériel tier-1, chantiers visitables). No
+  invented biography/motivation, no former employer named, no bracketed placeholders — reads complete
+  from published facts. Kept DISTINCT from `/pourquoi-taqinor` (the founder's standards + a 4-step
+  method, with a clear renvoi to Pourquoi for the differentiator list). Added to the top nav and the
+  footer (Ressources), cross-linked to `/pourquoi-taqinor`, `/realisations` and the diagnostic
+  (`/contact#simulateur`). Indexed + in the sitemap (no noindex, not under /preview/). Tests updated:
+  elevation top-level page count 14→15 + à-propos added to the ELEVATED list, and seo-pages public
+  files/routes + nav/footer link checks extended. 584 web tests green. Lead form/data flow untouched.
+  TWO OPTIONAL enhancements remain for owner sign-off (NOT added without approval): a personal
+  founder-story paragraph, and naming the founder's industry background. Auto-deploys via Cloudflare
+  on push to main. URL to open: `/à-propos`.

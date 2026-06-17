@@ -78,6 +78,7 @@ describe('pages publiques SEO — indexées et dans le sitemap', () => {
     '/pourquoi-taqinor',
     '/marocains-du-monde',
     '/garanties',
+    '/à-propos',
   ];
   for (const r of publicRoutes) {
     it(`${r} n’est pas exclue du sitemap`, () => {
@@ -97,6 +98,7 @@ describe('pages publiques SEO — indexées et dans le sitemap', () => {
     '../src/pages/pourquoi-taqinor.astro',
     '../src/pages/marocains-du-monde.astro',
     '../src/pages/garanties.astro',
+    '../src/pages/à-propos.astro',
   ];
   for (const f of files) {
     it(`${f} est publique (pas de noindex) et monte l’élévation`, () => {
@@ -147,16 +149,17 @@ describe('données structurées', () => {
 describe('maillage & téléphone (W9 / W10)', () => {
   it('le pied de page lie les nouvelles pages et les villes', () => {
     const f = read('../src/components/Footer.astro');
-    for (const href of ['/realisations', '/guides', '/faq', '/garanties', '/pourquoi-taqinor', '/marocains-du-monde']) {
+    for (const href of ['/realisations', '/guides', '/faq', '/garanties', '/pourquoi-taqinor', '/marocains-du-monde', '/à-propos']) {
       expect(f, href).toContain(`href="${href}"`);
     }
     expect(f).toContain('installation-solaire-');
   });
 
-  it('la nav d’en-tête contient Guides et FAQ', () => {
+  it('la nav d’en-tête contient Guides, FAQ et À propos', () => {
     const h = read('../src/components/Header.astro');
     expect(h).toContain("/guides");
     expect(h).toContain("/faq");
+    expect(h).toContain("/à-propos");
   });
 
   it('téléphone affiché reformaté (W10) ; cible tel: et JSON-LD inchangées', () => {
