@@ -487,7 +487,7 @@ evidence-section heading** to a **recency framing** such as « Nos dernières r�
 installés · 3 villes · chantiers visitables)** rather than anything that reads as a fixed total.
 **Sweep all pages and remove any remaining phrasing that frames the work as exactly N projects.**
 
-### W15 — Per-city annual sunshine-hours figures on the five city landing pages — [ ]
+### W15 — Per-city annual sunshine-hours figures on the five city landing pages — [x] (already present)
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -787,3 +787,13 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   installations réelles », which is scoped to the 30-second montage's content (3 sites filmed), not a
   portfolio total, so left accurate. 584 web tests green. Public/indexed pages only; lead form
   untouched. URLs to open: `/realisations` and `/` (gallery section).
+- 2026-06-17 — W15 verified ALREADY PRESENT (no code change needed). The five city pages already
+  render their OWN per-city sunshine figure via `c.sunshineHours` (Casablanca ≈ 2 950, Rabat ≈ 2 900,
+  Marrakech ≈ 3 000, Tanger ≈ 2 800, Agadir ≈ 3 400) — these are differentiated public climate
+  normals set during the W2 batch, documented in `CITY_PAGES_NOTES.md`, each shown with the honest
+  « ≈ » prefix + « Ensoleillement annuel indicatif » framing, and the « nos chantiers les plus
+  proches » handling already covers cities without a local install. No page uses a shared « ≈ 3 000 »
+  across all cities (the only national « 2 800 à 3 400 h » framing lives in the diagnostic copy and
+  schema text, which is correctly national, not per-city). A test already pins the « ≈ » indicative
+  prefix per city. Nothing to build. URLs to open: `/installation-solaire-agadir` (≈ 3 400) vs
+  `/installation-solaire-tanger` (≈ 2 800).
