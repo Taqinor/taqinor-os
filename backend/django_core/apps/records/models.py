@@ -19,6 +19,8 @@ ALLOWED_TARGETS = {
     ('crm', 'client'),
     ('installations', 'installation'),
     ('sav', 'ticket'),
+    # F1 — photo optionnelle d'un outil (outillage durable).
+    ('stock', 'outillage'),
 }
 
 

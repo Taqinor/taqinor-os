@@ -1,0 +1,24 @@
+RUN: field-execution & outillage module (F1–F24)
+Started: 2026-06-17
+Work branch: dev-field-exec  (do ALL work here; main untouched until the whole module is built)
+
+PACED RUN — resume model (per Reda's instruction, overrides the generic "a batch is already
+running, stop" rule for THIS run only):
+- This is one logical "work on the plan" run that spans MULTIPLE fires because it paces against
+  the usage window. Re-firing "work on the plan" RESUMES on dev-field-exec from the first
+  unchecked F-task — it does NOT start a second batch and must NOT refuse.
+- Each fire: checkout dev-field-exec, read docs/PLAN.md (the ticks on dev-field-exec are the
+  source of truth for progress), build the next [ ] F-task(s) with tests, commit + tick each on
+  dev-field-exec.
+- Do NOT merge dev-field-exec → main until ALL buildable F-tasks (F1–F23) are integrated and CI
+  is fully green (with MinIO). Only then open one PR and self-merge (the founder's "one session,
+  one merge, never split into review PRs" constraint).
+- Module constraints: STAGES.py untouched & never runtime-editable; Intervention.statut is its own
+  state machine (never touches STAGES.py or chantier status); no buy prices on any client-facing
+  doc; voice/OCR/AI-QA add no credential/cost by default and no-op until configured (transcription
+  left unconfigured); all photos/voice/GPS = real data kept off the repo; DEBUG unchanged.
+
+PROGRESS (this file is a convenience pointer; the [x] ticks in docs/PLAN.md on dev-field-exec are
+authoritative):
+- F1 Outillage catalogue — DONE (committed on dev-field-exec; awaiting CI validation)
+- F2 Kits d'outillage — next

@@ -15,6 +15,7 @@ const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: 
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
 const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance').then(m => ({ default: m.Component })))
 const StockList = lazy(() => import('../pages/stock/StockList'))
+const OutillagePage = lazy(() => import('../pages/stock/OutillagePage'))
 const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
 const BonsCommandeFournisseur = lazy(() => import('../pages/stock/BonsCommandeFournisseur'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
 
   // Stock
   { path: '/stock', loader: authLoader, element: <WithLayout><StockList /></WithLayout> },
+  { path: '/stock/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
   { path: '/stock/mouvements', loader: authLoader, element: <WithLayout><MouvementsPage /></WithLayout> },
   { path: '/stock/bons-commande-fournisseur', loader: authLoader, element: <WithLayout><BonsCommandeFournisseur /></WithLayout> },
   { path: '/stock/ocr-import', loader: authLoader, element: <WithLayout><OcrStockImport /></WithLayout> },

@@ -8,7 +8,7 @@ from authentication.mixins import TenantMixin
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur,
+    BonCommandeFournisseur, Outillage,
 )
 from .serializers import (
     ProduitSerializer,
@@ -17,6 +17,7 @@ from .serializers import (
     MouvementStockSerializer,
     MarqueSerializer,
     BonCommandeFournisseurSerializer,
+    OutillageSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -254,6 +255,38 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+
+class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """F1 — catalogue Outillage (équipement durable), séparé des SKU stock.
+    Filtre par emplacement et statut. Jamais mêlé aux mouvements de stock
+    ni aux documents client."""
+    queryset = Outillage.objects.all()
+    serializer_class = OutillageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'categorie', 'asset_tag', 'numero_serie']
+    ordering_fields = ['nom', 'categorie', 'emplacement', 'statut',
+                       'date_achat', 'date_creation']
+    ordering = ['nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS:
+            return [HasPermissionOrLegacy('stock_modifier')()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        emplacement = self.request.query_params.get('emplacement')
+        statut = self.request.query_params.get('statut')
+        if emplacement:
+            qs = qs.filter(emplacement=emplacement)
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
 
 
 class MouvementStockViewSet(viewsets.ModelViewSet):

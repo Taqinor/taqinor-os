@@ -1,8 +1,35 @@
 from rest_framework import serializers
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, LigneBonCommandeFournisseur,
+    BonCommandeFournisseur, LigneBonCommandeFournisseur, Outillage,
 )
+
+
+class OutillageSerializer(serializers.ModelSerializer):
+    emplacement_label = serializers.CharField(
+        source='get_emplacement_display', read_only=True)
+    statut_label = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Outillage
+        # `company` est posée côté serveur (TenantMixin) — jamais lue du corps.
+        exclude = ['company']
+        read_only_fields = ['date_creation']
+
+    def validate_asset_tag(self, value):
+        value = (value or '').strip()
+        if not value:
+            return ''
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        qs = Outillage.objects.filter(company=company, asset_tag=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Cette étiquette (asset tag) est déjà utilisée.")
+        return value
 
 
 class MarqueSerializer(serializers.ModelSerializer):

@@ -311,3 +311,62 @@ class LigneBonCommandeFournisseur(models.Model):
     @property
     def total_achat(self):
         return self.quantite * self.prix_achat_unitaire
+
+
+class Outillage(models.Model):
+    """F1 — Outillage (équipement durable) : outils réutilisables suivis à
+    travers dépôt / camionnette / chantier. COMPLÈTEMENT SÉPARÉ des SKU Stock
+    consommables (`Produit`) : un outil n'est jamais vendable, jamais consommé,
+    jamais sur un document client. Photo optionnelle via la pièce jointe
+    générique (`records.Attachment`, cible `('stock','outillage')`). Additif."""
+
+    class Emplacement(models.TextChoices):
+        # Emplacements stock existants au sens métier (dépôt + camionnette) ;
+        # le stock multi-emplacements (N15) n'existe pas encore comme modèle,
+        # donc on porte l'emplacement directement sur l'outil. « En
+        # intervention » = sorti sur un chantier.
+        DEPOT = 'depot', 'Dépôt'
+        CAMIONNETTE = 'camionnette', 'Camionnette'
+        EN_INTERVENTION = 'en_intervention', 'En intervention'
+
+    class Statut(models.TextChoices):
+        DISPONIBLE = 'disponible', 'Disponible'
+        EN_INTERVENTION = 'en_intervention', 'En intervention'
+        EN_REPARATION = 'en_reparation', 'En réparation'
+        PERDU = 'perdu', 'Perdu'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='outillages',
+    )
+    nom = models.CharField(max_length=150)
+    categorie = models.CharField(max_length=80, blank=True, default='')
+    # Étiquette d'inventaire (asset tag) — unique par société quand renseignée.
+    asset_tag = models.CharField(max_length=60, blank=True, default='')
+    numero_serie = models.CharField(max_length=120, blank=True, default='')
+    emplacement = models.CharField(
+        max_length=20, choices=Emplacement.choices,
+        default=Emplacement.DEPOT,
+    )
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.DISPONIBLE,
+    )
+    date_achat = models.DateField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Outil (outillage)'
+        verbose_name_plural = 'Outillage'
+        ordering = ['nom', 'id']
+        constraints = [
+            # asset_tag unique par société, mais on autorise plusieurs vides.
+            models.UniqueConstraint(
+                fields=['company', 'asset_tag'],
+                condition=~models.Q(asset_tag=''),
+                name='uniq_outillage_asset_tag_per_company',
+            ),
+        ]
+
+    def __str__(self):
+        return self.nom

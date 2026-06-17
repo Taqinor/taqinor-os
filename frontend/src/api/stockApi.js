@@ -40,6 +40,12 @@ const stockApi = {
     ? api.patch(`/stock/marques/${id}/`, data) : api.post('/stock/marques/', data),
   deleteMarque: (id) => api.delete(`/stock/marques/${id}/`),
 
+  // Outillage (équipement durable — F1). Séparé des SKU vendables.
+  getOutillage: (params) => api.get('/stock/outillage/', { params }),
+  createOutil: (data) => api.post('/stock/outillage/', data),
+  updateOutil: (id, data) => api.patch(`/stock/outillage/${id}/`, data),
+  deleteOutil: (id) => api.delete(`/stock/outillage/${id}/`),
+
   // Bons de commande FOURNISSEUR (achats — N11). Les prix d'achat sont INTERNES.
   getBonsCommandeFournisseur: (params) =>
     api.get('/stock/bons-commande-fournisseur/', { params }),

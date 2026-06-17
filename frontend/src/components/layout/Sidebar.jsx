@@ -17,6 +17,7 @@ const I = {
   dashboard:    <Ic><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Ic>,
   produits:     <Ic><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></Ic>,
   mouvements:   <Ic><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></Ic>,
+  outillage:    <Ic><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></Ic>,
   ocr_import:   <Ic><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></Ic>,
   clients:      <Ic><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Ic>,
   leads:        <Ic><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></Ic>,
@@ -58,6 +59,7 @@ const NAV_SECTIONS = [
     label: 'STOCK',
     items: [
       { to: '/stock',                label: 'Produits',         icon: I.produits,     roles: ['normal','responsable','admin'] },
+      { to: '/stock/outillage',      label: 'Outillage',        icon: I.outillage,    roles: ['normal','responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       icon: I.mouvements,   roles: ['normal','responsable','admin'] },
       { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', icon: I.bons_cmd, roles: ['responsable','admin'] },
       { to: '/stock/ocr-import',     label: 'Import OCR',       icon: I.ocr_import,   roles: ['responsable','admin'] },
