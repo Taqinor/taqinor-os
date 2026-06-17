@@ -390,7 +390,7 @@ conformity warning banner).
 - [ ] N96 — Account security: optional 2FA, visible active sessions with revoke, forced credential-rotation flow; production DEBUG setting left unchanged.
 - [ ] N97 — Configurable data export & backup action for the tenant's data (reversibility/retention), real customer-data exports kept out of the repo.
 ### Growth / multi-tenant platform
-- [ ] N98 — Optional referral/parrainage program (referrer→referred-client links, configurable reward per converted referral, simple referral dashboard), toggle in settings.
+- [x] N98 — Optional referral/parrainage program (referrer→referred-client links, configurable reward per converted referral, simple referral dashboard), toggle in settings.
 - [x] N99 — Optional sales-commission tracking (configurable commission per signed quote or per installed kWc for the commerciale), visible only to authorised roles.
 - [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
 - [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
@@ -615,3 +615,12 @@ Tracked here so they aren't lost:
   N84). UI ContratsMaintenance : champ date de renouvellement, badge « à
   renouveler », bouton « Rapport PDF ». Lien à un seul système installé
   conservé (multi-systèmes différé, non destructif). Tests backend.
+- 2026-06-17 — N98 done: programme de parrainage. Nouveau modèle Parrainage
+  (parrain = client → filleul lead/client, statut en_attente/converti/
+  récompense versée, récompense, notes ; migration crm 0017). Endpoints
+  /crm/parrainages (CRUD, multi-tenant) + /stats (totaux par statut +
+  récompenses). Activation + récompense par défaut dans Paramètres → Leads
+  (CompanyProfile.referral_enabled/referral_reward, migration parametres 0016,
+  désactivé par défaut → rien ne change) ; la récompense par défaut pré-remplit
+  chaque nouveau parrainage. Écran CRM → Parrainage (liste, création,
+  changement de statut, tableau de bord cartes). Tests backend.
