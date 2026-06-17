@@ -50,7 +50,7 @@ here unchanged — this file only adds tasks.
 
 ### Group B — Bug: file attachments
 
-- [ ] **B1 — Fix file attachments end-to-end (and the broken devis-PDF icon).** Attaching a
+- [x] **B1 — Fix file attachments end-to-end (and the broken devis-PDF icon).** Attaching a
   file to a **lead / client / chantier / SAV ticket** is broken on **both** the upload side
   and the **open/download** side — fix both. This is **likely the same root cause** as the
   broken-file icon on new devis PDFs (storage link not reachable from the browser — MinIO/
@@ -163,6 +163,18 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — B1: pièces jointes réparées de bout en bout. Cause racine : le
+  serializer renvoyait une URL présignée MinIO pointant vers l'hôte INTERNE
+  (`minio:9000`), injoignable depuis le navigateur → icône fichier cassé (même
+  cause que l'ancien aperçu PDF). Correctif : un nouveau proxy Django MÊME
+  ORIGINE (GET /records/attachments/<id>/download/) relaie les octets,
+  authentifié par le cookie, servi « inline » (PDF/images s'ouvrent dans le
+  navigateur) ; le champ `url` pointe désormais vers ce proxy. Bénéficie aussi
+  à la galerie photos chantier (avant/pendant/après) et à toute pièce jointe
+  (lead/client/chantier/SAV). Le PDF du devis passait déjà par un flux Django
+  (T1), donc aucune URL MinIO brute n'y subsiste. Tests : aller-retour
+  upload → URL même origine → téléchargement (octets + Content-Type) + 404
+  propre si l'objet manque.
 - 2026-06-17 — A4: actions en ligne après acceptation, directement sur la
   fiche lead (section Devis). Un devis « accepté » affiche « 🧾 Générer la
   facture » (échéancier acompte → matériel → solde sur clics répétés, moteur

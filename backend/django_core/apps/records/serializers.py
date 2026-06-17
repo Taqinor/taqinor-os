@@ -4,7 +4,6 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
 from .models import Activity, ActivityType, Attachment, ALLOWED_TARGETS
-from .storage import presign_attachment
 
 
 def resolve_target(model_label, object_id, company):
@@ -108,4 +107,8 @@ class AttachmentSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_url(self, obj):
-        return presign_attachment(obj.file_key)
+        # B1 — endpoint Django MÊME ORIGINE (chemin relatif résolu contre
+        # l'origine courante : nginx → Django). Le cookie d'auth est envoyé
+        # automatiquement. On ne renvoie plus l'URL présignée MinIO, dont
+        # l'hôte interne n'est pas joignable depuis le navigateur.
+        return f'/api/django/records/attachments/{obj.id}/download/'

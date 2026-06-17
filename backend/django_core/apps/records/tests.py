@@ -157,6 +157,51 @@ class TestAttachments(TestCase):
             self.assertEqual(d2.status_code, 204)
         self.assertFalse(Attachment.objects.filter(id=att_id).exists())
 
+    def test_download_via_same_origin_endpoint(self):
+        """B1 — l'URL servie est l'endpoint Django MÊME ORIGINE (pas une URL
+        MinIO interne) et le téléchargement renvoie bien les octets + le type."""
+        from io import BytesIO
+        pdf = b'%PDF-1.4\n%%EOF\n'
+
+        def fake_store(file):
+            return ({'file_key': 'attachments/rt.pdf', 'filename': 'rt.pdf',
+                     'size': len(pdf), 'mime': 'application/pdf'}, None)
+
+        with mock.patch('apps.records.views.store_attachment',
+                        side_effect=fake_store):
+            up = BytesIO(pdf)
+            up.name = 'rt.pdf'
+            resp = self.api.post('/api/django/records/attachments/', {
+                'model': 'crm.lead', 'id': self.lead.id, 'file': up,
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        att_id = resp.data['id']
+        # L'URL n'est PAS une URL MinIO : c'est le proxy Django même origine.
+        self.assertEqual(
+            resp.data['url'],
+            f'/api/django/records/attachments/{att_id}/download/')
+        # Le proxy renvoie les octets stockés avec le bon Content-Type.
+        with mock.patch('apps.records.views.fetch_attachment',
+                        return_value=(pdf, None)):
+            dl = self.api.get(
+                f'/api/django/records/attachments/{att_id}/download/')
+        self.assertEqual(dl.status_code, 200)
+        self.assertEqual(dl['Content-Type'], 'application/pdf')
+        self.assertEqual(dl.content, pdf)
+
+    def test_download_missing_object_returns_404(self):
+        """Objet introuvable → 404 propre (jamais d'icône cassée silencieuse)."""
+        att = Attachment.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, uploaded_by=self.user,
+            file_key='attachments/none.pdf', filename='none.pdf',
+            size=1, mime='application/pdf')
+        with mock.patch('apps.records.views.fetch_attachment',
+                        return_value=(None, 'Fichier introuvable.')):
+            dl = self.api.get(
+                f'/api/django/records/attachments/{att.id}/download/')
+        self.assertEqual(dl.status_code, 404)
+
 
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType

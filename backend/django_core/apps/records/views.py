@@ -4,6 +4,7 @@ Tout est scopé société côté serveur. Lecture : tout rôle. Écriture d'acti
 et ajout de pièces jointes : Responsable (Commerciale) ou Admin. Suppression de
 pièce jointe et gestion des types d'activité : Admin.
 """
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
@@ -21,7 +22,7 @@ from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
     resolve_target,
 )
-from .storage import delete_attachment, store_attachment
+from .storage import delete_attachment, fetch_attachment, store_attachment
 
 
 def _company(request):
@@ -184,7 +185,7 @@ class AttachmentViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser]
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
+        if self.action in ('list', 'retrieve', 'download'):
             return [IsAnyRole()]
         if self.action == 'destroy':
             return [IsAdminRole()]
@@ -228,6 +229,23 @@ class AttachmentViewSet(viewsets.ModelViewSet):
             uploaded_by=request.user, phase=phase, **meta)
         return Response(AttachmentSerializer(att).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='download')
+    def download(self, request, pk=None):
+        """B1 — relaie le fichier via Django (MÊME ORIGINE), authentifié par le
+        cookie, au lieu d'une URL présignée pointant vers l'hôte interne MinIO
+        (injoignable depuis le navigateur → icône fichier cassé). Sert en
+        ligne (inline) pour que PDF et images s'ouvrent dans le navigateur."""
+        att = self.get_object()  # déjà borné à la société par get_queryset
+        data, err = fetch_attachment(att.file_key)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(
+            data, content_type=att.mime or 'application/octet-stream')
+        safe_name = (att.filename or 'fichier').replace('"', '')
+        resp['Content-Disposition'] = f'inline; filename="{safe_name}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
 
     def perform_destroy(self, instance):
         delete_attachment(instance.file_key)

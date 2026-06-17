@@ -55,8 +55,29 @@ def store_attachment(file):
     }, None
 
 
+def fetch_attachment(key):
+    """Récupère les octets de l'objet stocké. (data, None) ou (None, message).
+
+    B1 — sert de source au proxy de téléchargement Django (même origine) : le
+    navigateur ne peut pas joindre l'hôte INTERNE d'une URL présignée MinIO, on
+    relaie donc le contenu via Django.
+    """
+    if not key:
+        return None, 'Fichier introuvable.'
+    try:
+        client = get_minio_client()
+        obj = client.get_object(Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
+        return obj['Body'].read(), None
+    except Exception:
+        return None, 'Fichier introuvable.'
+
+
 def presign_attachment(key):
-    """URL présignée (1 h) de téléchargement, ou None."""
+    """URL présignée (1 h) de téléchargement, ou None.
+
+    NOTE : pointe vers l'hôte INTERNE MinIO — injoignable depuis le navigateur.
+    Conservé pour un usage interne/serveur uniquement ; les clients passent par
+    le proxy Django (voir fetch_attachment + AttachmentViewSet.download)."""
     if not key:
         return None
     try:
