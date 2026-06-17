@@ -34,6 +34,7 @@ _PROFILE_AUDIT_FIELDS = {
     'banque': 'Banque',
     'couleur_principale': 'Couleur principale',
     'responsable_defaut_leads': 'Responsable par défaut des leads',
+    'default_installer': 'Installateur par défaut',
     'payment_terms': 'Échéancier de paiement',
     'quote_validity_days': 'Validité du devis (jours)',
     'agricole_pump_hours': 'Heures de pompage par défaut',

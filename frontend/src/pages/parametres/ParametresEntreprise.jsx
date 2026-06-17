@@ -374,6 +374,7 @@ export default function ParametresEntreprise() {
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
     responsable_defaut_leads: '',
+    default_installer: '',
     payment_terms: DEFAULT_PAYMENT_TERMS,
     quote_validity_days: 30,
     agricole_pump_hours: 7,
@@ -616,6 +617,7 @@ export default function ParametresEntreprise() {
       cnss:              profile.cnss              ?? '',
       couleur_principale: profile.couleur_principale ?? '#1d4ed8',
       responsable_defaut_leads: profile.responsable_defaut_leads ?? '',
+      default_installer: profile.default_installer ?? '',
       payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}) },
       quote_validity_days: profile.quote_validity_days ?? 30,
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
@@ -697,6 +699,8 @@ export default function ParametresEntreprise() {
       ...form,
       responsable_defaut_leads: form.responsable_defaut_leads === ''
         ? null : form.responsable_defaut_leads,
+      default_installer: form.default_installer === ''
+        ? null : form.default_installer,
       payment_terms: pt,
       doc_numbering: dn,
       quote_validity_days: Number(form.quote_validity_days) || 30,
@@ -1245,6 +1249,22 @@ export default function ParametresEntreprise() {
                         value={form.responsable_defaut_leads ?? ''} onChange={set}
                         onFocus={onFocus} onBlur={onBlur}>
                   <option value="">— Aucun (laisser non assigné) —</option>
+                  {assignables.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.username}{u.poste ? ` — ${u.poste}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <p style={{ margin: '0.9rem 0 0.4rem', fontSize: 12.5, color: '#64748b' }}>
+                Installateur (technicien) assigné automatiquement aux nouveaux
+                chantiers quand aucun n'est choisi. Laisser vide = le créateur
+                du chantier (comportement actuel).
+              </p>
+              <Field label="Installateur par défaut des nouveaux chantiers">
+                <select style={inputBase} name="default_installer"
+                        value={form.default_installer ?? ''} onChange={set}>
+                  <option value="">— Aucun (créateur du chantier) —</option>
                   {assignables.map(u => (
                     <option key={u.id} value={u.id}>
                       {u.username}{u.poste ? ` — ${u.poste}` : ''}

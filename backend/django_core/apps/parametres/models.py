@@ -60,6 +60,16 @@ class CompanyProfile(models.Model):
         blank=True,
         related_name='+',
     )
+    # N66 — installateur (technicien) assigné par défaut aux NOUVEAUX chantiers
+    # quand aucun n'est choisi. NULL = comportement actuel (le créateur du
+    # chantier en est le technicien responsable). Additif.
+    default_installer = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
 
     # ── Paramètres métier éditables (2026-06) — ADDITIFS ──
     # Chacun a pour défaut la valeur codée en dur aujourd'hui : tant que le

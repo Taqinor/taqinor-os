@@ -19,6 +19,9 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     responsable_defaut_leads_nom = serializers.CharField(
         source='responsable_defaut_leads.username', read_only=True
     )
+    default_installer_nom = serializers.CharField(
+        source='default_installer.username', read_only=True
+    )
 
     class Meta:
         model = CompanyProfile
@@ -27,6 +30,13 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
 
     def validate_responsable_defaut_leads(self, value):
         # Le responsable par défaut doit appartenir à la même société.
+        request = self.context.get('request')
+        if value and request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
+
+    def validate_default_installer(self, value):
+        # L'installateur par défaut doit appartenir à la même société.
         request = self.context.get('request')
         if value and request and value.company_id != request.user.company_id:
             raise serializers.ValidationError('Utilisateur inconnu.')
