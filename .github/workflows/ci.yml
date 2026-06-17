@@ -116,6 +116,8 @@ jobs:
           python-version: '3.12'
       - name: Check pipeline stage names against STAGES.py
         run: python scripts/check_stages.py
+      - name: Check CODEMAP structural fingerprint
+        run: python scripts/codemap_fingerprint.py --check
 
   web-build-test:
     runs-on: ubuntu-latest

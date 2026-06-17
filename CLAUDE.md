@@ -219,10 +219,14 @@ Anything typed after the command is extra detail for that run.
 - **Refresh the code map when structure changed.** If the run added or changed any
   backend models, API endpoints, frontend routes or features, or the service/module
   structure, regenerate `docs/CODEMAP.md` from the actual source (re-derive the
-  facts and update its `Generated from commit` header), then commit it on `dev`
-  before the final merge. This is cheap and idempotent: SKIP it entirely on
-  docs-only runs and on any run that touched none of those — when nothing structural
-  moved, do not regenerate.
+  facts and update its `Generated from commit` header), then run
+  `python scripts/codemap_fingerprint.py --write` so the stored
+  `Structure fingerprint:` updates together with the map, then commit both on `dev`
+  before the final merge. The required `stage-names` CI job re-runs that script in
+  `--check` mode, so a structural change that does not refresh the map (and its
+  fingerprint) fails CI and cannot merge. This is cheap and idempotent: SKIP it
+  entirely on docs-only runs and on any run that touched none of those — when
+  nothing structural moved, do not regenerate.
 - When the run stops, get the four required CI checks green over the whole batch,
   then self-merge `dev` → `main` exactly once (a single merge commit). This merge
   auto-deploys to api.taqinor.ma; never run a deploy command.
