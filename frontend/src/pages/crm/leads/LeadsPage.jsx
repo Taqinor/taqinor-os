@@ -243,7 +243,10 @@ export default function LeadsPage() {
     }
   }
 
-  if (leadsLoading) return <p className="page-loading">Chargement des leads...</p>
+  // Only blank the page on the FIRST load. A background refetch (after saving a
+  // bill, generating a devis, changing a stage…) must NOT unmount the page —
+  // doing so tore down any open lead modal / inline devis preview mid-action.
+  if (leadsLoading && leads.length === 0) return <p className="page-loading">Chargement des leads...</p>
   if (error) return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
 
   const viewProps = {
