@@ -455,6 +455,100 @@ lead flow untouched; and exactly what to check on the phone.
 
 ---
 
+### W13 — Public "À propos / Notre approche" page (founder + method) — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Build a **public**, indexed "À propos / Notre approche" page, following the repo's
+**accented-slug convention** for the URL (e.g. `/à-propos`), presenting the **founder** and the
+**method**, built **STRICTLY from facts already published on the site**: docteur-ingénieur, plus
+de 10 ans d'expertise R&D, chaque étude validée personnellement par le fondateur, la méthode
+« l'étude d'abord, le chantier ensuite », production mesurée sur Deye Cloud, conformité loi 82-21
+de bout en bout, matériel tier-1 uniquement, chantiers réels visitables. **Do NOT invent any
+personal biography, motivation, or backstory, and do NOT name any former employer or company** —
+only restate and structure what the site already states. **No bracketed placeholders:** the page
+must read complete and honest from the published facts alone. Frame it around the founder's
+**standards and method** (not a fictional life story), and keep it **DISTINCT from
+`/pourquoi-taqinor`** (which lists differentiators) — this page centers the **founder and the
+method**, do not duplicate that page. **Indexed, in the sitemap, added to the top nav and the
+footer**, and **cross-linked to `/pourquoi-taqinor`, `/realisations`, and the diagnostic**. **In
+the report, note that two optional enhancements remain for owner sign-off:** a personal
+founder-story paragraph and naming the founder's industry background — **neither added without
+approval**.
+
+### W14 — Reframe réalisations away from a small project count (recency framing) — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Reframe the réalisations presentation so it **never anchors on a small project count**. **Keep all
+five case studies (remove none)**, but change the **réalisations page heading** and the **homepage
+evidence-section heading** to a **recency framing** such as « Nos dernières réalisations » /
+« Réalisations récentes », and **lead with the substantial dimensions already true (43,48 kWc
+installés · 3 villes · chantiers visitables)** rather than anything that reads as a fixed total.
+**Sweep all pages and remove any remaining phrasing that frames the work as exactly N projects.**
+
+### W15 — Per-city annual sunshine-hours figures on the five city landing pages — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Give each of the **five city landing pages its own accurate annual sunshine-hours figure** from
+**public meteorological data** for that specific city (Casablanca, Rabat, Marrakech, Tanger,
+Agadir), instead of the shared « ≈ 3 000 h/an » currently used on all of them. **Use real public
+meteo figures only — invent no numbers; if an accurate public figure for a city can't be sourced,
+keep an honest shared framing** rather than invent. **Keep the « à titre indicatif » honesty and
+the existing « nos chantiers les plus proches » handling** for cities without a local install.
+
+### W16 — Guarantees reassurance teaser on homepage + résidentiel + professionnel — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Surface the existing guarantees as a **short reassurance teaser on the homepage and on the
+résidentiel and professionnel pages** — a brief block built **only from the figures already on the
+`/garanties` page** (12 ans produit, 25 ans ≥ 84,8 % performance, 10 ans onduleur & batterie,
+20 ans structure, 2 ans main-d'œuvre, monitoring Deye Cloud avec accès client) that **links to
+`/garanties`**. **Invent no new SLA or underperformance policy.**
+
+### W17 — Verify (and if needed fix) the homepage shares the site header & footer — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+**Verify the homepage uses the same shared header and footer as the rest of the site:** the updated
+nav (with **Guides** and **FAQ**), the formatted phone **+212 6 61 85 04 10**, and the full footer
+(**Ressources** + « **Installation solaire par ville** » sections). **If the homepage is not
+inheriting the shared layout, fix it** so it matches every other page. **If it already matches,
+confirm that in the report.**
+
+### W18 — Tighten homepage internal linking into /realisations & case studies — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Tighten internal linking from the homepage into the new pages: **link the homepage evidence gallery
+and the homepage fiches chantier through to `/realisations` and to the matching individual
+case-study pages.** **Purely additive; touch no lead-flow code.**
+
+### W19 — FAQ schema hygiene (no duplicate FAQPage) + clean /faq — [ ]
+
+> Added 2026-06-17 via "add to web plan".
+
+Check FAQ schema hygiene: ensure **no duplicate or conflicting FAQPage structured data** between
+the homepage FAQ and the `/faq` page, and that **`/faq` reads cleanly**. **Expand `/faq` only from
+answers already established on the site** if it is thin — **add no questions about financing, banks,
+incentives or taxes** (those facts are not verified).
+
+---
+
+**ACROSS W13–W19 (founder's cross-cutting constraints):** no invented facts — every figure traces
+to what is already published, confirmed repo data, or public meteo data; **no new dependencies**;
+the **live lead form and its entire data flow** (1 000 MAD threshold, consent, WhatsApp deeplink,
+webhook, CAPI) **untouched**; the **estimator preview routes stay private** (noindex, not in nav,
+excluded from sitemap, unlinked); **one self-merged PR per task** per the protected-main
+convention; **Lighthouse held on every page**. Plain-language report listing **every new and
+changed public URL to click**, plus confirmation the **live lead flow is untouched**. NOTE: like
+W2–W10 these are **public, indexed** pages (the deliberate exception to the preview-lab
+"build everything private / noindex" standing rule).
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
