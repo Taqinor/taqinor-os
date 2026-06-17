@@ -20,5 +20,18 @@ running, stop" rule for THIS run only):
 
 PROGRESS (this file is a convenience pointer; the [x] ticks in docs/PLAN.md on dev-field-exec are
 authoritative):
-- F1 Outillage catalogue — DONE (committed on dev-field-exec; awaiting CI validation)
-- F2 Kits d'outillage — next
+- F1 Outillage catalogue — built + committed + pushed on dev-field-exec; frontend builds +
+  lints green locally, backend py_compile-clean, backend tests written but UNVALIDATED.
+- F2 Kits d'outillage — next (not started).
+
+*** RUN PAUSED — EXTERNAL BLOCKER (2026-06-17): GitHub Actions CI is disabled org-wide. ***
+Every CI job fails in seconds with "The job was not started because recent account payments
+have failed or your spending limit needs to be increased" (run 27660225930). PRs #129/#130
+merged earlier today before the cap was hit; the repeated 5-min backend-test runs exhausted
+the org's Actions minutes/spend.
+CONSEQUENCE: F1's backend tests cannot run (no local Postgres either), and the module cannot
+be merged to main on green CI (the completion gate). This is a FOUNDER DASHBOARD TASK:
+GitHub org → Settings → Billing & plans → fix payment / raise the Actions spending limit.
+RESUME after billing is fixed: re-fire "work on the plan" → it checks out dev-field-exec,
+lets CI validate F1, then continues building F2 → F23, and merges once the whole module is
+green. Do NOT merge dev-field-exec to main until CI is restored and green.
