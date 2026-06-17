@@ -76,6 +76,12 @@ class CompanyProfile(models.Model):
     # Préfixes de numérotation des pièces : {devis,facture,avoir,bon_commande}.
     # NULL = repli sur les préfixes historiques (DEV/FAC/AVO/BC).
     doc_prefixes = models.JSONField(null=True, blank=True)
+    # Numérotation par type de pièce (D3) : largeur de remplissage + période de
+    # réinitialisation. Forme {key: {padding:int, reset:'monthly'|'yearly'|'none'}}.
+    # NULL/clé absente = défaut historique (padding 4, reset mensuel) → la
+    # numérotation reste strictement identique tant que rien n'est édité. Le
+    # préfixe lui-même reste dans doc_prefixes (inchangé).
+    doc_numbering = models.JSONField(null=True, blank=True)
     # Taux de TVA (réforme marocaine) — éditables, défauts historiques.
     tva_standard = models.DecimalField(
         max_digits=5, decimal_places=2, default=20)

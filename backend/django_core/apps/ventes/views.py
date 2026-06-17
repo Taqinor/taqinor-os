@@ -28,7 +28,7 @@ from authentication.permissions import (
     IsAdminRole,
 )
 from .utils.references import create_with_reference
-from .utils.company_settings import doc_prefix
+from .utils.company_settings import create_numbered
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -96,8 +96,8 @@ class DevisViewSet(viewsets.ModelViewSet):
                     {'client': 'Un client ou un lead est requis.'})
             client = resolve_client_for_lead(lead)
 
-        create_with_reference(
-            Devis, doc_prefix(company, 'devis'), company,
+        create_numbered(
+            Devis, company, 'devis',
             lambda ref: serializer.save(
                 reference=ref,
                 client=client,
@@ -148,7 +148,7 @@ class DevisViewSet(viewsets.ModelViewSet):
                 version_parent=root, is_active=True)
             return new_devis['obj']
 
-        create_with_reference(Devis, doc_prefix(company, 'devis'), company, _save)
+        create_numbered(Devis, company, 'devis', _save)
         nd = new_devis['obj']
         for ligne in old.lignes.all():
             LigneDevis.objects.create(
@@ -407,8 +407,8 @@ class DevisViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         company = request.user.company
-        bc = create_with_reference(
-            BonCommande, doc_prefix(company, 'bon_commande'), company,
+        bc = create_numbered(
+            BonCommande, company, 'bon_commande',
             lambda ref: BonCommande.objects.create(
                 reference=ref,
                 devis=devis,
@@ -500,8 +500,8 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         company = self.request.user.company
-        create_with_reference(
-            BonCommande, doc_prefix(company, 'bon_commande'), company,
+        create_numbered(
+            BonCommande, company, 'bon_commande',
             lambda ref: serializer.save(reference=ref, company=company),
         )
 
@@ -621,8 +621,8 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
 
         # create_with_reference runs _create_facture inside a transaction, so
         # the facture and its copied lines stay atomic like before.
-        facture = create_with_reference(
-            Facture, doc_prefix(company, 'facture'), company, _create_facture)
+        facture = create_numbered(
+            Facture, company, 'facture', _create_facture)
         return Response(
             FactureSerializer(facture).data,
             status=status.HTTP_201_CREATED,
@@ -667,8 +667,8 @@ class FactureViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         company = self.request.user.company
-        create_with_reference(
-            Facture, doc_prefix(company, 'facture'), company,
+        create_numbered(
+            Facture, company, 'facture',
             lambda ref: serializer.save(
                 created_by=self.request.user,
                 reference=ref,
@@ -929,8 +929,8 @@ class FactureViewSet(viewsets.ModelViewSet):
                         'montant_ht', 'montant_tva', 'montant_ttc'])
             return avoir
 
-        avoir = create_with_reference(
-            Avoir, doc_prefix(company, 'avoir'), company, _create)
+        avoir = create_numbered(
+            Avoir, company, 'avoir', _create)
         try:
             from .utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)

@@ -100,7 +100,7 @@ here unchanged — this file only adds tasks.
   responsable existent déjà ; la validité est déjà éditable dans Paramètres → Devis & Factures
   mais le PDF affiche « 30 jours » figé.)_
 
-- [ ] **D3 — Per-document numbering configuration.** Add per-document-type numbering config
+- [x] **D3 — Per-document numbering configuration.** Add per-document-type numbering config
   (**prefix, padding width, yearly-reset**) per document type, **keeping sequences gap-free
   and race-safe** (reuse `apps/ventes/utils/references.py` — NEVER count()+1), **seeded to
   current behaviour** so existing numbering is unchanged until edited.
@@ -179,7 +179,22 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
-- 2026-06-17 — D1: Paramètres réorganisés en onglets. La longue page unique est
+- 2026-06-17 — D3: numérotation des pièces configurable par type. Dans Paramètres
+  → Devis & Factures, chaque type (devis/facture/avoir/bon de commande) a
+  désormais : préfixe (déjà existant), largeur de remplissage (nombre de
+  chiffres) et période de réinitialisation — Mensuelle (défaut, comportement
+  actuel DEV-202606-0001), Annuelle (DEV-2026-0001) ou Continue (DEV-0001, ne
+  repart jamais), avec un aperçu en direct du prochain numéro. Nouveau champ
+  additif `CompanyProfile.doc_numbering` (migration 0012) ; les défauts (4
+  chiffres, mensuel) reproduisent EXACTEMENT l'ancien numéro tant que rien n'est
+  édité. La génération reste sans trou et sans collision : `references.py`
+  garde le plus-haut-utilisé+1 + retry de course, étendu par deux paramètres
+  optionnels (padding/period) ; un nouveau helper `create_numbered` centralise
+  préfixe+largeur+période et tous les points de création ventes (devis, facture,
+  avoir, bon de commande, échéancier) l'utilisent. Les numéros déjà émis ne
+  changent jamais. Tests cœur ajoutés (padding/annuel/continu + résolution de
+  config + repli) ; flake8 + lint front + build verts (suite Django complète en
+  CI). La longue page unique est
   désormais une barre d'onglets par domaine : Société & identité · Leads ·
   Clients · Devis & Factures · Stock · Équipe & rôles · Messages & relances ·
   Avancé. Chaque réglage existant est conservé tel quel (identité/légal/ICE/logo/

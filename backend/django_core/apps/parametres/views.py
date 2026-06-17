@@ -38,6 +38,7 @@ _PROFILE_AUDIT_FIELDS = {
     'quote_validity_days': 'Validité du devis (jours)',
     'agricole_pump_hours': 'Heures de pompage par défaut',
     'doc_prefixes': 'Préfixes de numérotation',
+    'doc_numbering': 'Numérotation (largeur / réinitialisation)',
     'tva_standard': 'TVA standard',
     'tva_panneaux': 'TVA panneaux',
     'onee_tarif_kwh': 'Tarif ONEE (kWh)',

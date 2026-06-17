@@ -153,9 +153,11 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             company=company,
         )
 
-    from apps.ventes.utils.company_settings import doc_prefix
+    from apps.ventes.utils.company_settings import numbering_config
+    cfg = numbering_config(company, 'facture')
     return create_with_reference(
-        Facture, doc_prefix(company, 'facture'), company, _create)
+        Facture, cfg['prefix'], company, _create,
+        padding=cfg['padding'], period=cfg['period'])
 
 
 def solde_devis(devis):

@@ -23,6 +23,7 @@ from apps.ventes.utils.references import next_reference, create_with_reference
 User = get_user_model()
 
 MONTH = timezone.now().strftime('%Y%m')
+YEAR = timezone.now().strftime('%Y')
 
 
 def make_company(slug='test-ref-co'):
@@ -93,6 +94,80 @@ class TestNextReference(TestCase):
             next_reference(BonCommande, 'BC', self.company), f'BC-{MONTH}-0001')
         self.assertEqual(
             next_reference(Facture, 'FAC', self.company), f'FAC-{MONTH}-0001')
+
+
+class TestNumberingOptions(TestCase):
+    """D3 — padding width + reset period are configurable; defaults unchanged."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+
+    def test_default_keywords_match_historical(self):
+        # Explicit defaults must produce the exact historical monthly/4-pad form.
+        self.assertEqual(
+            next_reference(Devis, 'DEV', self.company, padding=4, period='monthly'),
+            f'DEV-{MONTH}-0001')
+
+    def test_custom_padding(self):
+        self.assertEqual(
+            next_reference(Devis, 'DEV', self.company, padding=6),
+            f'DEV-{MONTH}-000001')
+
+    def test_yearly_period(self):
+        self.assertEqual(
+            next_reference(Devis, 'DEV', self.company, period='yearly'),
+            f'DEV-{YEAR}-0001')
+
+    def test_continuous_period_has_no_date_segment(self):
+        self.assertEqual(
+            next_reference(Devis, 'DEV', self.company, period='none'),
+            'DEV-0001')
+
+    def test_continuous_increments_within_its_own_bucket(self):
+        make_devis(self.company, self.client_obj, 'DEV-0007')
+        self.assertEqual(
+            next_reference(Devis, 'DEV', self.company, period='none'),
+            'DEV-0008')
+
+    def test_yearly_increments_within_its_own_bucket(self):
+        make_devis(self.company, self.client_obj, f'DEV-{YEAR}-0003')
+        self.assertEqual(
+            next_reference(Devis, 'DEV', self.company, period='yearly'),
+            f'DEV-{YEAR}-0004')
+
+
+class TestNumberingConfigResolution(TestCase):
+    """numbering_config merges editable prefix + padding/reset with defaults."""
+
+    def setUp(self):
+        self.company = make_company()
+
+    def test_defaults_when_nothing_edited(self):
+        from apps.ventes.utils.company_settings import numbering_config
+        cfg = numbering_config(self.company, 'devis')
+        self.assertEqual(cfg, {'prefix': 'DEV', 'padding': 4, 'period': 'monthly'})
+
+    def test_reads_edited_padding_and_reset(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.utils.company_settings import numbering_config
+        prof = CompanyProfile.get(company=self.company)
+        prof.doc_prefixes = {'facture': 'FACT'}
+        prof.doc_numbering = {'facture': {'padding': 5, 'reset': 'yearly'}}
+        prof.save(update_fields=['doc_prefixes', 'doc_numbering'])
+        cfg = numbering_config(self.company, 'facture')
+        self.assertEqual(cfg, {'prefix': 'FACT', 'padding': 5, 'period': 'yearly'})
+
+    def test_invalid_reset_falls_back_to_monthly(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.utils.company_settings import numbering_config
+        prof = CompanyProfile.get(company=self.company)
+        prof.doc_numbering = {'devis': {'padding': 0, 'reset': 'weekly'}}
+        prof.save(update_fields=['doc_numbering'])
+        cfg = numbering_config(self.company, 'devis')
+        # padding < 1 clamps to 1; unknown reset falls back to monthly.
+        self.assertEqual(cfg['padding'], 1)
+        self.assertEqual(cfg['period'], 'monthly')
 
 
 class TestCreateWithReferenceRetry(TestCase):

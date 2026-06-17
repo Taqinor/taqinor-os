@@ -27,6 +27,15 @@ const DEFAULT_PAYMENT_TERMS = {
   industriel: { acompte: 50, materiel: 40, solde: 10 },
 }
 const DEFAULT_PREFIXES = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', bon_commande: 'BC' }
+// Numérotation par type (D3) : largeur de remplissage + période de
+// réinitialisation. Défauts = comportement historique (4 chiffres, mensuel).
+const DEFAULT_NUMBERING = {
+  devis: { padding: 4, reset: 'monthly' },
+  facture: { padding: 4, reset: 'monthly' },
+  avoir: { padding: 4, reset: 'monthly' },
+  bon_commande: { padding: 4, reset: 'monthly' },
+}
+const DOC_TYPES = [['devis', 'Devis'], ['facture', 'Facture'], ['avoir', 'Avoir'], ['bon_commande', 'Bon de commande']]
 const MODE_LABELS = { residentiel: 'Résidentiel', agricole: 'Agricole', industriel: 'Industriel / Commercial' }
 
 // ── Onglets de la page Paramètres (D1) ─────────────────────────────────────────
@@ -369,6 +378,7 @@ export default function ParametresEntreprise() {
     quote_validity_days: 30,
     agricole_pump_hours: 7,
     doc_prefixes: DEFAULT_PREFIXES,
+    doc_numbering: DEFAULT_NUMBERING,
     tva_standard: 20,
     tva_panneaux: 10,
     onee_tarif_kwh: 1.75,
@@ -604,6 +614,9 @@ export default function ParametresEntreprise() {
       quote_validity_days: profile.quote_validity_days ?? 30,
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
       doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
+      doc_numbering: Object.fromEntries(Object.keys(DEFAULT_NUMBERING).map(k => [
+        k, { ...DEFAULT_NUMBERING[k], ...((profile.doc_numbering || {})[k] || {}) },
+      ])),
       tva_standard: profile.tva_standard ?? 20,
       tva_panneaux: profile.tva_panneaux ?? 10,
       onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
@@ -629,6 +642,23 @@ export default function ParametresEntreprise() {
       [mode]: { ...p.payment_terms[mode], [key]: val } } }))
   const setPrefix = (key, val) => setForm(p => ({
     ...p, doc_prefixes: { ...p.doc_prefixes, [key]: val } }))
+  const setNumbering = (key, field, val) => setForm(p => ({
+    ...p, doc_numbering: {
+      ...p.doc_numbering,
+      [key]: { ...(p.doc_numbering?.[key] || DEFAULT_NUMBERING[key]), [field]: val },
+    } }))
+  // Aperçu du prochain numéro (côté écran) selon le préfixe/largeur/période.
+  const numberingPreview = (key) => {
+    const px = String(form.doc_prefixes?.[key] || DEFAULT_PREFIXES[key] || key)
+    const pad = Math.max(1, Number(form.doc_numbering?.[key]?.padding) || 4)
+    const reset = form.doc_numbering?.[key]?.reset || 'monthly'
+    const now = new Date()
+    const yyyy = String(now.getFullYear())
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const seg = reset === 'yearly' ? yyyy : reset === 'none' ? '' : `${yyyy}${mm}`
+    const num = '1'.padStart(pad, '0')
+    return seg ? `${px}-${seg}-${num}` : `${px}-${num}`
+  }
 
   const handleSave = (e) => {
     e.preventDefault()
@@ -642,11 +672,21 @@ export default function ParametresEntreprise() {
         solde: Number(t.solde) || 0,
       }
     }
+    // Coercition de la numérotation (D3) : largeur en nombre, période valide.
+    const dn = {}
+    for (const k of Object.keys(form.doc_numbering || {})) {
+      const e = form.doc_numbering[k] || {}
+      dn[k] = {
+        padding: Math.max(1, Number(e.padding) || 4),
+        reset: ['monthly', 'yearly', 'none'].includes(e.reset) ? e.reset : 'monthly',
+      }
+    }
     const payload = {
       ...form,
       responsable_defaut_leads: form.responsable_defaut_leads === ''
         ? null : form.responsable_defaut_leads,
       payment_terms: pt,
+      doc_numbering: dn,
       quote_validity_days: Number(form.quote_validity_days) || 30,
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
       tva_standard: Number(form.tva_standard) || 20,
@@ -1250,19 +1290,43 @@ export default function ParametresEntreprise() {
                 </Field>
               </div>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0.8rem 0 0.4rem' }}>
-                Préfixes de numérotation
+                Numérotation des pièces
               </div>
-              <div className="pe-grid-4">
-                {[['devis', 'Devis'], ['facture', 'Facture'], ['avoir', 'Avoir'], ['bon_commande', 'Bon cmd']].map(([k, lbl]) => (
-                  <div key={k}>
-                    <label style={{ fontSize: 10.5, color: '#64748b' }}>{lbl}</label>
-                    <input style={inputBase} value={form.doc_prefixes?.[k] ?? ''}
-                           onChange={e => setPrefix(k, e.target.value)} />
+              {DOC_TYPES.map(([k, lbl]) => (
+                <div key={k} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>{lbl}</div>
+                  <div className="pe-grid-3">
+                    <div>
+                      <label style={{ fontSize: 10.5, color: '#64748b' }}>Préfixe</label>
+                      <input style={inputBase} value={form.doc_prefixes?.[k] ?? ''}
+                             onChange={e => setPrefix(k, e.target.value)} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10.5, color: '#64748b' }}>Largeur (chiffres)</label>
+                      <input style={inputBase} type="number" min="1" max="10"
+                             value={form.doc_numbering?.[k]?.padding ?? 4}
+                             onChange={e => setNumbering(k, 'padding', e.target.value)} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10.5, color: '#64748b' }}>Réinitialisation</label>
+                      <select style={inputBase} value={form.doc_numbering?.[k]?.reset ?? 'monthly'}
+                              onChange={e => setNumbering(k, 'reset', e.target.value)}>
+                        <option value="monthly">Mensuelle</option>
+                        <option value="yearly">Annuelle</option>
+                        <option value="none">Continue</option>
+                      </select>
+                    </div>
                   </div>
-                ))}
-              </div>
+                  <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' }}>
+                    Aperçu : {numberingPreview(k)}
+                  </div>
+                </div>
+              ))}
               <p style={{ margin: '0.6rem 0 0', fontSize: 11, color: '#94a3b8' }}>
-                Les numéros déjà émis ne changent pas ; seuls les nouveaux suivent ces préfixes.
+                Les numéros déjà émis ne changent pas ; seuls les nouveaux suivent ces
+                réglages. « Mensuelle » repart à 1 chaque mois (comportement actuel),
+                « Annuelle » chaque année, « Continue » ne repart jamais. La
+                numérotation reste sans trou et sans collision.
               </p>
             </div>
 

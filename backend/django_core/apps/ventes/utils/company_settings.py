@@ -50,6 +50,48 @@ def doc_prefix(company, key):
     return DEFAULT_PREFIXES.get(key, key.upper())
 
 
+_VALID_RESET = {'monthly', 'yearly', 'none'}
+
+
+def numbering_config(company, key):
+    """Config de numérotation pour un type de pièce (D3).
+
+    Renvoie {'prefix', 'padding', 'period'} en fusionnant le préfixe éditable
+    (doc_prefixes, inchangé) et la largeur + période de réinitialisation
+    (doc_numbering). Les défauts (padding 4, période 'monthly') reproduisent
+    EXACTEMENT le comportement historique tant que rien n'est édité.
+    """
+    prof = _profile(company)
+    padding, period = 4, 'monthly'
+    cfg = getattr(prof, 'doc_numbering', None) if prof else None
+    if isinstance(cfg, dict):
+        entry = cfg.get(key)
+        if isinstance(entry, dict):
+            try:
+                padding = max(1, int(entry.get('padding', 4)))
+            except (TypeError, ValueError):
+                padding = 4
+            reset = str(entry.get('reset', 'monthly'))
+            if reset in _VALID_RESET:
+                period = reset
+    return {'prefix': doc_prefix(company, key), 'padding': padding,
+            'period': period}
+
+
+def create_numbered(model, company, key, save_fn):
+    """Crée une pièce numérotée selon la config (D3) du type `key`.
+
+    Centralise la résolution préfixe + largeur + période et délègue à
+    `references.create_with_reference` (sans collision, race-safe). Tant que
+    rien n'est édité, identique au comportement historique.
+    """
+    from apps.ventes.utils.references import create_with_reference
+    cfg = numbering_config(company, key)
+    return create_with_reference(
+        model, cfg['prefix'], company, save_fn,
+        padding=cfg['padding'], period=cfg['period'])
+
+
 def tva_standard(company):
     """Taux de TVA standard (défaut 20)."""
     prof = _profile(company)
