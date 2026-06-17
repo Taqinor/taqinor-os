@@ -331,8 +331,8 @@ conformity warning banner).
 ### SAV / maintenance / warranty / monitoring
 - [x] N44 — SAV ticket object linked to a Système installé (and thus client + chantier): type de panne, priorité, canal d'ouverture, date d'ouverture, statut (Ouvert/En cours/Résolu/Clos), assigned technician (default Reda), description, resolution log (activity pattern), time-to-resolution computed on closure; SAV list + kanban grouped by statut.
 - [x] N45 — SAV intervention report PDF on closing a ticket (French): reported issue, diagnosis, work done, parts used, client signature block; client-facing, no buy prices.
-- [ ] N46 — Parts consumption on a SAV ticket optionally decrements stock for parts used and records them on the intervention report; buy prices internal.
-- [ ] N47 — Contrat d'entretien object linked to one or more Systèmes installés (start date, duration, visit frequency, price, renewal date) auto-generating a schedule of upcoming maintenance visits; surfaces upcoming/overdue visits in a list + on the calendar; a completed visit generates a short maintenance report PDF (French, no buy prices); flags contracts approaching renewal.
+- [x] N46 — Parts consumption on a SAV ticket optionally decrements stock for parts used and records them on the intervention report; buy prices internal.
+- [x] N47 — Contrat d'entretien object linked to one or more Systèmes installés (start date, duration, visit frequency, price, renewal date) auto-generating a schedule of upcoming maintenance visits; surfaces upcoming/overdue visits in a list + on the calendar; a completed visit generates a short maintenance report PDF (French, no buy prices); flags contracts approaching renewal. — built on the existing ContratMaintenance (T16): added duree_mois/date_renouvellement + renewal flag + maintenance report PDF + calendar surfacing (N84); single installation FK kept (multi-link deferred).
 - [x] N48 — Warranty tracking on each Système installé and components: store install date + warranty duration per component (default from configured warranty texts), compute warranty end dates, "Garanties qui expirent" view, record warranty claims per component with outcome for an auditable service history.
 - [x] N49 — Recurring-revenue view summarising active contrats d'entretien, monthly/annual value, upcoming renewals, lapsed contracts.
 - [ ] N50 — Monitoring-integration framework with a swappable provider interface, starting with a Huawei FusionSolar connector that (given per-system credentials in config) pulls recent production data; admin enables it per system; no-ops safely when no provider is configured.
@@ -598,3 +598,20 @@ Tracked here so they aren't lost:
   défaut des leads ; l'acompte par défaut reste géré dans l'échéancier
   (payment_terms, déjà éditable — pas de doublon de source). Validateur
   même-société + journalisé à l'audit. Tests backend.
+- 2026-06-17 — N46 done: pièces consommées sur un ticket SAV. Nouveau modèle
+  PieceConsommee (migration 0004) relié au ticket (related_name « pieces ») →
+  affiché automatiquement sur le rapport d'intervention existant
+  (désignation/marque/quantité, jamais de prix d'achat). Endpoints ticket
+  pieces : GET liste, POST ajoute (option « décrémenter le stock » →
+  MouvementStock SORTIE), DELETE retire (ré-incrémente si le stock avait été
+  décrémenté) ; idempotent via stock_decremente. UI dans le détail du ticket
+  (sélection produit + quantité + case décrément + retrait). Tests backend.
+- 2026-06-17 — N47 done: contrat d'entretien étendu (sur ContratMaintenance/
+  T16, pas de modèle parallèle). Champs additifs duree_mois +
+  date_renouvellement (migration 0005), drapeau renouvellement_du, et rapport
+  court de visite de maintenance en PDF (moteur WeasyPrint, client-facing,
+  sans prix d'achat) via /sav/contrats-maintenance/<id>/rapport-pdf/. Les
+  visites à venir/dues remontent déjà (liste « à venir » T16 + calendrier
+  N84). UI ContratsMaintenance : champ date de renouvellement, badge « à
+  renouveler », bouton « Rapport PDF ». Lien à un seul système installé
+  conservé (multi-systèmes différé, non destructif). Tests backend.
