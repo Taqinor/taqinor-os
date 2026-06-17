@@ -172,19 +172,38 @@ branch / pull-request / merge ceremony entirely.
 
 ### "work on the plan"
 Anything typed after the command is extra detail for that run.
-- The active file is `docs/PLAN.md`. There is no PLAN2.md and no `.running` lock
-  — there is only ever one session at a time.
-- Read it fully and verify real repo state. Build every unchecked `[ ]` task.
-  Commit each finished task, tick it `[x]`, add one dated line to a DONE LOG.
-- If a task can't be made to pass, skip it (leave it unticked, note why) and
-  keep going.
-- Database migrations a task needs are approved. New external dependencies, auth
-  or cost changes, deleted state, or brand-new architecture are NOT — skip those
-  and list them.
-- When the buildable tasks are done, run any relevant tests, then
-  `git push origin main`. This push auto-deploys to api.taqinor.ma; never run a
-  deploy command.
-- Report in plain language what shipped and what was skipped.
+- The active file is `docs/PLAN.md`. There is no `.running` lock — there is only
+  ever one session at a time.
+- Read it fully and verify real repo state.
+- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just
+  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE, in order, one
+  after another, in the SAME session. For each task: build it completely with
+  tests, get CI green, land it (commit the finished task, tick it `[x]`, add one
+  dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to the next unchecked
+  `[ ]` task**. Keep looping until a stop condition below is hit. This per-task
+  build-and-checkoff is the existing correct mechanic and is repeated for every
+  task; it does NOT end the run after the first task.
+- **A run stops ONLY when one of these is true — nothing else licenses
+  stopping:**
+  1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
+  2. **Usage/length cap hit** — stopping here is fine; the plan is idempotent, so
+     re-firing "work on the plan" resumes from the still-unchecked tasks.
+  3. **A task hits a genuine stop-and-ask condition** — a new external
+     dependency, a schema/destructive migration, an auth or cost change, a
+     deleted state file, or a brand-new architectural component. SKIP that ONE
+     task (leave it `[ ]` with a one-line note of why) and CONTINUE the remaining
+     tasks. A single stop-and-ask task must NEVER halt the whole run.
+- **There is no "one task per session" / "stop after one task" limit.** Any such
+  wording anywhere — including older lines in `docs/PLAN.md` or `docs/WEB_PLAN.md`
+  — is overridden by this rule: keep going until the queue is drained or a
+  cap/limit above stops you. Do not invent a stop after the first task.
+- Database migrations a task needs (additive) are approved. New external
+  dependencies, auth or cost changes, deleted state, or brand-new architecture
+  are stop-and-ask (condition 3) — skip those and list them.
+- When the run stops, run any relevant tests, then `git push origin main`. This
+  push auto-deploys to api.taqinor.ma; never run a deploy command.
+- Report in plain language: every task that shipped, and what was skipped and
+  why.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE (there is no
@@ -197,19 +216,39 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
   `.running` lock — only ever one session at a time.
 - Read it fully and verify real repo state. Scope: edit ONLY `apps/web/**` and
   the `docs/WEB_PLAN*` files. NEVER touch anything outside apps/web.
-- Build every unchecked `[ ]` task. Commit each finished task, tick it `[x]`,
-  add one dated line to the DONE LOG.
-- If a task can't be made to pass, skip it (leave it unticked, note why) and
-  keep going.
-- Pre-approved: anything website-safe a task plainly needs. NOT pre-approved
-  (skip and list): new external dependencies, auth or cost changes, deleted
-  state files, brand-new architecture, anything touching the form's lead data
-  flow, anything outside apps/web.
-- When the buildable tasks are done, run any relevant tests, then
-  `git push origin main` — this auto-deploys the site via Cloudflare on push;
-  never run a deploy command.
-- Report in plain language (no diffs, no commit hashes): what shipped, what was
-  skipped, and the exact preview URLs or live changes Reda can click.
+- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just
+  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE, in order, one
+  after another, in the SAME session. For each task: build it completely with
+  tests, get CI green, land it (commit the finished task, tick it `[x]`, add one
+  dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to the next unchecked
+  `[ ]` task**. Keep looping until a stop condition below is hit. This per-task
+  build-and-checkoff is the existing correct mechanic and is repeated for every
+  task; it does NOT end the run after the first task.
+- **A run stops ONLY when one of these is true — nothing else licenses
+  stopping:**
+  1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
+  2. **Usage/length cap hit** — stopping here is fine; the plan is idempotent, so
+     re-firing "work on the web plan" resumes from the still-unchecked tasks.
+  3. **A task hits a genuine stop-and-ask condition** — a new external
+     dependency, an auth or cost change, a new Cloudflare secret the founder
+     hasn't set, a deleted state file, or a brand-new architectural component.
+     SKIP that ONE task (leave it `[ ]` with a one-line note of why) and CONTINUE
+     the remaining tasks. A single stop-and-ask task must NEVER halt the whole
+     run.
+- **There is no "one task per session" / "stop after one task" limit** — and this
+  rule explicitly OVERRIDES any contrary wording in `docs/WEB_PLAN.md` itself
+  (e.g. "exactly one task… and stops", "Do not start the next task", "One session
+  = one task"). Keep going until the queue is drained or a cap/limit above stops
+  you. Do not invent a stop after the first task.
+- Pre-approved: anything website-safe a task plainly needs. Stop-and-ask
+  (condition 3 — skip and list): new external dependencies, auth or cost changes,
+  deleted state files, brand-new architecture, anything touching the form's lead
+  data flow, anything outside apps/web.
+- When the run stops, run any relevant tests, then `git push origin main` — this
+  auto-deploys the site via Cloudflare on push; never run a deploy command.
+- Report in plain language (no diffs, no commit hashes): every task that shipped,
+  what was skipped and why, and the exact preview URLs or live changes Reda can
+  click.
 
 ### "add to web plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no
