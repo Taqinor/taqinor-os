@@ -42,6 +42,97 @@ function StatutBadge({ statut }) {
   )
 }
 
+// ── N19 — Modal de retour fournisseur (créé + validé depuis un BCF) ──────────
+// La validation décrémente le stock. Lien automatique vers le BCF d'origine.
+function RetourModal({ bcf, onClose, onDone }) {
+  const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif } }
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const lignes = bcf?.lignes ?? []
+
+  const setLigne = (id, patch) =>
+    setSaisies((s) => ({ ...s, [id]: { ...(s[id] ?? {}), ...patch } }))
+
+  const submit = async () => {
+    setError(null)
+    const payloadLignes = lignes
+      .map((l) => {
+        const s = saisies[l.id] ?? {}
+        const qte = Math.floor(Number(s.qte))
+        return Number.isFinite(qte) && qte > 0
+          ? { produit: l.produit, quantite: qte, motif: s.motif || '' }
+          : null
+      })
+      .filter(Boolean)
+    if (payloadLignes.length === 0) {
+      setError('Saisissez au moins une quantité à retourner.'); return
+    }
+    setBusy(true)
+    try {
+      const r = await stockApi.createRetourFournisseur({
+        fournisseur: bcf.fournisseur, bon_commande: bcf.id,
+        lignes: payloadLignes,
+      })
+      await stockApi.validerRetourFournisseur(r.data.id)
+      onDone?.()
+      onClose()
+      alert('Retour fournisseur enregistré — le stock a été décrémenté.')
+    } catch (err) {
+      setError(err.response?.data?.detail
+        ?? JSON.stringify(err.response?.data ?? err.message))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Retour fournisseur — {bcf.reference}</h3>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p className="gen-hint" style={{ marginTop: 0 }}>
+            Articles défectueux ou erronés. À la validation, le stock est
+            décrémenté. Donnée interne (prix d'achat jamais client-facing).
+          </p>
+          <table className="data-table">
+            <thead>
+              <tr><th>Produit</th><th>Reçu</th><th>À retourner</th><th>Motif</th></tr>
+            </thead>
+            <tbody>
+              {lignes.map((l) => (
+                <tr key={l.id}>
+                  <td>{l.produit_nom}</td>
+                  <td>{l.quantite_recue}</td>
+                  <td>
+                    <input type="number" min="0" className="form-control"
+                           style={{ width: 90 }}
+                           value={saisies[l.id]?.qte ?? ''}
+                           onChange={(e) => setLigne(l.id, { qte: e.target.value })} />
+                  </td>
+                  <td>
+                    <input className="form-control"
+                           value={saisies[l.id]?.motif ?? ''}
+                           placeholder="ex. cassé à la livraison"
+                           onChange={(e) => setLigne(l.id, { motif: e.target.value })} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {error && <div className="form-error-box" role="alert">{error}</div>}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={submit}>
+            {busy ? 'Enregistrement…' : 'Valider le retour'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal de création / consultation / réception d'un BCF ──
 function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const isNew = !bcf?.id
@@ -57,6 +148,7 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [receptions, setReceptions] = useState({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [showRetour, setShowRetour] = useState(false)
 
   const total = useMemo(() => totalAchat(lignes), [lignes])
 
@@ -304,8 +396,18 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
               {busy ? '…' : 'Recevoir les quantités'}
             </button>
           )}
+          {!isNew && (statut === 'recu' || statut === 'envoye') && (
+            <button type="button" className="btn btn-outline" onClick={() => setShowRetour(true)}
+                    title="Retourner des articles défectueux/erronés (décrémente le stock)">
+              ↩ Retour fournisseur
+            </button>
+          )}
         </div>
       </div>
+      {showRetour && (
+        <RetourModal bcf={bcf} onClose={() => setShowRetour(false)}
+                     onDone={() => { onSaved?.() }} />
+      )}
     </div>
   )
 }

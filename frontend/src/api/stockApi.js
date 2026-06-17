@@ -80,6 +80,15 @@ const stockApi = {
     api.post(`/stock/bons-commande-fournisseur/${id}/annuler/`),
   bcfPdf: (id) =>
     api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
+
+  // N19 — retours fournisseur (articles défectueux/erronés). La validation
+  // décrémente le stock. Usage INTERNE (prix d'achat jamais client-facing).
+  getRetoursFournisseur: (params) =>
+    api.get('/stock/retours-fournisseur/', { params }),
+  createRetourFournisseur: (data) =>
+    api.post('/stock/retours-fournisseur/', data),
+  validerRetourFournisseur: (id) =>
+    api.post(`/stock/retours-fournisseur/${id}/valider/`),
 }
 
 export default stockApi

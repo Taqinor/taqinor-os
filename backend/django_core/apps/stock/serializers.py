@@ -3,6 +3,7 @@ from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
     EmplacementStock, TransfertStock, PrixFournisseur,
+    RetourFournisseur, LigneRetourFournisseur,
 )
 
 
@@ -122,6 +123,70 @@ class TransfertStockSerializer(serializers.ModelSerializer):
             'created_by_username', 'date',
         ]
         read_only_fields = ['created_by_username', 'date']
+
+
+class LigneRetourFournisseurSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+
+    class Meta:
+        model = LigneRetourFournisseur
+        fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
+                  'motif']
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('La quantité doit être positive.')
+        return value
+
+
+class RetourFournisseurSerializer(serializers.ModelSerializer):
+    lignes = LigneRetourFournisseurSerializer(many=True)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True)
+
+    class Meta:
+        model = RetourFournisseur
+        fields = [
+            'id', 'reference', 'fournisseur', 'fournisseur_nom', 'bon_commande',
+            'bon_commande_reference', 'statut', 'statut_display', 'motif',
+            'created_by', 'created_by_username', 'date_creation', 'lignes',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by', 'date_creation',
+        ]
+
+    def validate_lignes(self, value):
+        if not value:
+            raise serializers.ValidationError('Au moins une ligne est requise.')
+        return value
+
+    def _validate_company(self, fournisseur, lignes_data):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return
+        if fournisseur is not None and fournisseur.company_id != company.id:
+            raise serializers.ValidationError(
+                {'fournisseur': 'Fournisseur hors de votre entreprise.'})
+        for ligne in lignes_data:
+            if ligne['produit'].company_id != company.id:
+                raise serializers.ValidationError(
+                    {'lignes': 'Produit hors de votre entreprise.'})
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes')
+        self._validate_company(validated_data.get('fournisseur'), lignes_data)
+        retour = RetourFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            LigneRetourFournisseur.objects.create(retour=retour, **ligne)
+        return retour
 
 
 class PrixFournisseurSerializer(serializers.ModelSerializer):

@@ -377,6 +377,40 @@ def stock_valuation_by_location(company):
             'total': grand_total, 'lignes': lignes}
 
 
+# ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
+
+def apply_retour_fournisseur(retour, user):
+    """Valide un retour fournisseur : décrémente le stock (MouvementStock
+    SORTIE) pour chaque ligne, puis passe le retour à « validé ». Lève
+    ValueError si le retour n'est pas en brouillon ou est vide. INTERNE."""
+    from django.db import transaction
+    from .models import RetourFournisseur, MouvementStock
+    if retour.statut != RetourFournisseur.Statut.BROUILLON:
+        raise ValueError('Seul un retour en brouillon peut être validé.')
+    lignes = list(retour.lignes.select_related('produit'))
+    if not lignes:
+        raise ValueError('Le retour ne contient aucune ligne.')
+    with transaction.atomic():
+        for ligne in lignes:
+            produit = ligne.produit
+            produit.refresh_from_db()
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant - ligne.quantite
+            MouvementStock.objects.create(
+                company=retour.company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                quantite=ligne.quantite, quantite_avant=qte_avant,
+                quantite_apres=qte_apres, reference=retour.reference,
+                note=f'Retour fournisseur {retour.reference}'
+                     + (f' — {ligne.motif}' if ligne.motif else ''),
+                created_by=user)
+            produit.quantite_stock = qte_apres
+            produit.save(update_fields=['quantite_stock'])
+        retour.statut = RetourFournisseur.Statut.VALIDE
+        retour.save(update_fields=['statut'])
+    return retour
+
+
 def compute_besoin_materiel(installation):
     """Agrège les besoins matériel d'un chantier depuis son devis source.
 

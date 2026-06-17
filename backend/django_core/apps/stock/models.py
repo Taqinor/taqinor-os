@@ -294,6 +294,65 @@ class TransfertStock(models.Model):
                 f'{self.source_id}→{self.destination_id}')
 
 
+class RetourFournisseur(models.Model):
+    """N19 — retour fournisseur (articles défectueux / erronés).
+
+    À la validation, le stock est DÉCRÉMENTÉ via MouvementStock (type SORTIE),
+    exactement comme partout ailleurs. Peut être lié au bon de commande
+    fournisseur d'origine. Usage INTERNE (prix d'achat jamais client-facing).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='retours_fournisseur')
+    reference = models.CharField(max_length=50)
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.PROTECT, related_name='retours')
+    bon_commande = models.ForeignKey(
+        'BonCommandeFournisseur', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='retours')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    motif = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='retours_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Retour fournisseur'
+        verbose_name_plural = 'Retours fournisseur'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+
+class LigneRetourFournisseur(models.Model):
+    """Ligne d'un retour fournisseur : SKU, quantité retournée, motif."""
+    retour = models.ForeignKey(
+        RetourFournisseur, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT,
+        related_name='lignes_retour_fournisseur')
+    quantite = models.IntegerField()
+    motif = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Ligne de retour fournisseur'
+        verbose_name_plural = 'Lignes de retour fournisseur'
+
+    def __str__(self):
+        return f'{self.produit_id} × {self.quantite}'
+
+
 class PrixFournisseur(models.Model):
     """N17 — prix d'achat d'un produit chez un fournisseur donné.
 
