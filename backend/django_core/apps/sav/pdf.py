@@ -67,3 +67,29 @@ def rapport_intervention_pdf(ticket):
     })
     html = _render_html('sav_intervention.html', context)
     return _html_to_pdf(html)
+
+
+def rapport_maintenance_pdf(contrat, visite_date=None):
+    """N47 — rapport court de visite de maintenance (PDF, à la demande).
+
+    Client-facing : aucun prix d'achat ni marge. ``visite_date`` est la date
+    de la visite (par défaut la dernière visite enregistrée du contrat)."""
+    context = _company_context(company=contrat.company)
+    client = contrat.client
+    periodicite_label = dict(
+        contrat.Periodicite.choices).get(contrat.periodicite,
+                                         contrat.periodicite)
+    context.update({
+        'contrat': contrat,
+        'client': client,
+        'client_nom': (f"{client.nom} {client.prenom or ''}".strip()
+                       if client else ''),
+        'installation_reference': (contrat.installation.reference
+                                   if contrat.installation_id else ''),
+        'visite_date': visite_date or contrat.derniere_visite,
+        'periodicite_label': periodicite_label,
+        'prochaine_visite': contrat.prochaine_visite(),
+        'date_renouvellement': contrat.date_renouvellement,
+    })
+    html = _render_html('maintenance.html', context)
+    return _html_to_pdf(html)

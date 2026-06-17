@@ -86,6 +86,16 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
 
+  // N46 — pièces consommées (le stock peut être décrémenté).
+  const [pieces, setPieces] = useState([])
+  const [produits, setProduits] = useState([])
+  const [pieceForm, setPieceForm] = useState(
+    { produit: '', quantite: '1', decrement: false })
+  const [pieceBusy, setPieceBusy] = useState(false)
+  const loadPieces = () => {
+    savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
+  }
+
   const reloadAll = async () => {
     try {
       const r = await savApi.getTicket(id)
@@ -103,6 +113,9 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   useEffect(() => {
     loadHistorique()
     loadInterventions()
+    loadPieces()
+    api.get('/stock/produits/')
+      .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
     // Équipements du chantier concerné (pour lier l'équipement précis).
     if (current.installation) {
       savApi.getEquipements({ installation: current.installation })
@@ -166,6 +179,27 @@ function TicketDetail({ ticket, onClose, onSaved }) {
       loadInterventions()
       loadHistorique()
     } catch { /* silencieux */ } finally { setIntervBusy(false) }
+  }
+
+  const addPiece = async () => {
+    if (!pieceForm.produit) return
+    setPieceBusy(true)
+    try {
+      await savApi.addTicketPiece(id, {
+        produit: pieceForm.produit,
+        quantite: pieceForm.quantite || '1',
+        decrement: pieceForm.decrement,
+      })
+      setPieceForm({ produit: '', quantite: '1', decrement: false })
+      loadPieces()
+      loadHistorique()
+    } catch { /* silencieux */ } finally { setPieceBusy(false) }
+  }
+  const removePiece = async (pieceId) => {
+    try {
+      await savApi.removeTicketPiece(id, pieceId)
+      loadPieces()
+    } catch { /* silencieux */ }
   }
 
   const annuler = async () => {
@@ -382,6 +416,68 @@ function TicketDetail({ ticket, onClose, onSaved }) {
                         disabled={intervBusy || !interv.type_intervention} onClick={addIntervention}>
                   Ajouter une intervention
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Pièces consommées (N46) ── */}
+          <div className="form-section">
+            <div className="form-section-header">
+              <span className="form-section-title">🔧 Pièces consommées</span>
+            </div>
+            {pieces.length === 0 && (
+              <p className="gen-hint">Aucune pièce enregistrée.</p>
+            )}
+            {pieces.map((p) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center',
+                gap: 8, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <span style={{ flex: 1 }}>
+                  {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''}
+                  {' '}× {p.quantite}
+                  {p.stock_decremente && (
+                    <span className="badge" style={{ marginLeft: 6,
+                      background: '#dbeafe', color: '#1e40af' }}>stock −</span>
+                  )}
+                </span>
+                <button type="button" className="btn btn-sm btn-outline"
+                        onClick={() => removePiece(p.id)}>Retirer</button>
+              </div>
+            ))}
+            <div className="gen-row" style={{ display: 'flex', gap: 8,
+              flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
+              <div className="form-group" style={{ flex: 2, minWidth: 180 }}>
+                <label className="form-label">Produit</label>
+                <select className="form-control" value={pieceForm.produit}
+                        onChange={(e) => setPieceForm((s) => (
+                          { ...s, produit: e.target.value }))}>
+                  <option value="">— Produit —</option>
+                  {produits.map((pr) => (
+                    <option key={pr.id} value={pr.id}>
+                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ width: 90 }}>
+                <label className="form-label">Qté</label>
+                <input className="form-control" type="number" min="0" step="any"
+                       value={pieceForm.quantite}
+                       onChange={(e) => setPieceForm((s) => (
+                         { ...s, quantite: e.target.value }))} />
+              </div>
+              <div className="form-group" style={{ alignSelf: 'center' }}>
+                <label className="form-label" style={{ display: 'flex',
+                  alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={pieceForm.decrement}
+                         onChange={(e) => setPieceForm((s) => (
+                           { ...s, decrement: e.target.checked }))} />
+                  Décrémenter le stock
+                </label>
+              </div>
+              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+                <button type="button" className="btn btn-outline"
+                        disabled={pieceBusy || !pieceForm.produit}
+                        onClick={addPiece}>Ajouter la pièce</button>
               </div>
             </div>
           </div>

@@ -1,5 +1,7 @@
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
@@ -12,11 +14,11 @@ from authentication.permissions import HasPermissionOrLegacy, IsAdminRole
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
-from .models import Equipement, Ticket
+from .models import Equipement, Ticket, PieceConsommee
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
-    EXPIRING_SOON_DAYS,
+    PieceConsommeeSerializer, EXPIRING_SOON_DAYS,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -264,3 +266,81 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="rapport-intervention-{ticket.reference}.pdf"')
         return resp
+
+    @action(detail=True, methods=['get', 'post'], url_path='pieces',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces(self, request, pk=None):
+        """N46 — pièces consommées sur le ticket. GET liste, POST ajoute.
+
+        Sur ajout, `decrement` (vrai) décrémente le stock (MouvementStock
+        SORTIE, jamais en double). Les prix d'achat restent internes : ils
+        n'apparaissent jamais ici ni sur le rapport d'intervention."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.pieces.select_related('produit')
+            return Response(PieceConsommeeSerializer(qs, many=True).data)
+        from apps.stock.models import Produit, MouvementStock
+        try:
+            quantite = Decimal(str(request.data.get('quantite') or '1'))
+        except (InvalidOperation, TypeError):
+            return Response({'detail': 'Quantité invalide.'}, status=400)
+        if quantite <= 0:
+            return Response({'detail': 'Quantité invalide.'}, status=400)
+        try:
+            produit = Produit.objects.get(
+                pk=request.data.get('produit'), company=ticket.company)
+        except (Produit.DoesNotExist, ValueError, TypeError):
+            return Response({'detail': 'Produit inconnu.'}, status=404)
+        decrement = str(request.data.get('decrement') or '') in (
+            '1', 'true', 'True', 'on')
+        with transaction.atomic():
+            piece = PieceConsommee.objects.create(
+                company=ticket.company, ticket=ticket, produit=produit,
+                quantite=quantite, created_by=request.user)
+            if decrement:
+                produit.refresh_from_db()
+                qte_avant = produit.quantite_stock
+                qte_apres = qte_avant - quantite
+                MouvementStock.objects.create(
+                    company=ticket.company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=quantite, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres, reference=ticket.reference,
+                    note=f'Consommation SAV {ticket.reference}',
+                    created_by=request.user)
+                produit.quantite_stock = qte_apres
+                produit.save(update_fields=['quantite_stock'])
+                piece.stock_decremente = True
+                piece.save(update_fields=['stock_decremente'])
+        return Response(
+            PieceConsommeeSerializer(piece).data, status=201)
+
+    @action(detail=True, methods=['delete'],
+            url_path=r'pieces/(?P<piece_id>[^/.]+)',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def supprimer_piece(self, request, pk=None, piece_id=None):
+        """Retire une pièce du ticket ; si le stock avait été décrémenté, le
+        ré-incrémente (MouvementStock ENTRÉE) pour rester cohérent."""
+        ticket = self.get_object()
+        from apps.stock.models import MouvementStock
+        try:
+            piece = ticket.pieces.select_related('produit').get(pk=piece_id)
+        except (PieceConsommee.DoesNotExist, ValueError):
+            return Response({'detail': 'Introuvable.'}, status=404)
+        with transaction.atomic():
+            if piece.stock_decremente:
+                produit = piece.produit
+                produit.refresh_from_db()
+                qte_avant = produit.quantite_stock
+                qte_apres = qte_avant + piece.quantite
+                MouvementStock.objects.create(
+                    company=ticket.company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                    quantite=piece.quantite, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres, reference=ticket.reference,
+                    note=f'Annulation pièce SAV {ticket.reference}',
+                    created_by=request.user)
+                produit.quantite_stock = qte_apres
+                produit.save(update_fields=['quantite_stock'])
+            piece.delete()
+        return Response(status=204)

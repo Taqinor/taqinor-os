@@ -289,6 +289,10 @@ class ContratMaintenance(models.Model):
     prix = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     actif = models.BooleanField(default=True)
     notes = models.TextField(blank=True, null=True)
+    # N47 — durée du contrat (mois) + date de renouvellement explicite. Additif,
+    # tout optionnel : NULL = comportement actuel (contrat sans échéance fixée).
+    duree_mois = models.PositiveIntegerField(null=True, blank=True)
+    date_renouvellement = models.DateField(null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -314,3 +318,42 @@ class ContratMaintenance(models.Model):
     def is_due(self, today=None):
         from datetime import date
         return self.actif and (today or date.today()) >= self.prochaine_visite()
+
+    def renouvellement_du(self, today=None):
+        """True si la date de renouvellement est atteinte (contrat à renouveler)."""
+        from datetime import date
+        if not self.date_renouvellement:
+            return False
+        return self.actif and (today or date.today()) >= self.date_renouvellement
+
+
+class PieceConsommee(models.Model):
+    """N46 — pièce consommée sur un ticket SAV.
+
+    Affichée sur le rapport d'intervention (via `ticket.pieces`) avec
+    seulement désignation/marque/quantité — JAMAIS de prix d'achat ni de marge
+    côté client. Le stock peut être décrémenté à l'enregistrement
+    (MouvementStock SORTIE) ; `stock_decremente` évite tout double mouvement.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='pieces_sav')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='pieces')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT, related_name='pieces_sav')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1)
+    stock_decremente = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Pièce consommée'
+        verbose_name_plural = 'Pièces consommées'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.produit_id} ×{self.quantite} (ticket {self.ticket_id})'
