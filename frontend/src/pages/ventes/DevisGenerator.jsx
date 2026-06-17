@@ -20,7 +20,7 @@ import {
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   isBattery, isHybridInverter, prixParKwc, discountForTarget,
-  computeBuyCost, avecBatterieAvailability, KWH_PRICE,
+  computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
 } from '../../features/ventes/solar'
 
 const MODES = [
@@ -150,6 +150,14 @@ export default function DevisGenerator({
   const [modeInstallation, setModeInstallation] = useState('residentiel')
   const [consoMensuelle, setConsoMensuelle] = useState('')
   const [prixCible, setPrixCible] = useState('')
+  // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
+  // historiques du simulateur, donc le devis est identique tant que rien n'est
+  // édité. kwhPrice/efficiency/panneauxParTranche alimentent les calculs ;
+  // prixCibleDefaut pré-remplit le prix cible ; remiseMax = limite indicative.
+  const [quoteLogic, setQuoteLogic] = useState({
+    kwhPrice: KWH_PRICE, efficiency: EFFICIENCY, panneauxParTranche: 8,
+  })
+  const [remiseMax, setRemiseMax] = useState('')
   // Pompage (agricole)
   const [pompeCv, setPompeCv] = useState('5.5')
   const [pompeType, setPompeType] = useState('immergee')
@@ -207,8 +215,10 @@ export default function DevisGenerator({
       totalSans: dTotals.totalSans,
       totalAvec: dTotals.totalAvec,
       batteryKwh: batteryKwhFromLines(dLines),
+      kwhPrice: quoteLogic.kwhPrice,
+      efficiency: quoteLogic.efficiency,
     })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines])
+  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic])
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -283,7 +293,7 @@ export default function DevisGenerator({
         ? parseFloat(lead.facture_ete) : hiver
       setFHiver(String(lead.facture_hiver))
       setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
-      const suggested = estimerPanneaux(hiver)
+      const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
       if (suggested > 0) setNbPanneaux(String(suggested))
       setMonthly(estimerMois(hiver, ete))
     }
@@ -300,7 +310,7 @@ export default function DevisGenerator({
       // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
       // dupliqué : un seul endroit dimensionne le devis auto.
       const devisId = await createAutoQuote({
-        lead, produits, discountStr, dispatch,
+        lead, produits, discountStr, dispatch, quoteLogic,
       })
       finish(devisId)
     } catch (err) {
@@ -384,6 +394,19 @@ export default function DevisGenerator({
       if (Number.isFinite(heures) && heures > 0) {
         setPompeHeures(String(heures))
       }
+      // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
+      const kwh = parseFloat(data?.onee_tarif_kwh)
+      const rend = parseFloat(data?.rendement_global)
+      const perTr = parseInt(data?.panneaux_par_900mad, 10)
+      setQuoteLogic({
+        kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
+        efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
+        panneauxParTranche: (Number.isFinite(perTr) && perTr > 0) ? perTr : 8,
+      })
+      const cible = parseFloat(data?.prix_cible_kwc_defaut)
+      if (Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
+      const rmax = parseFloat(data?.remise_max_pct)
+      if (Number.isFinite(rmax) && rmax > 0) setRemiseMax(String(rmax))
     }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
   }, [editId])
 
@@ -625,7 +648,7 @@ export default function DevisGenerator({
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
-    || (avgBill > 0 ? Math.round(avgBill / KWH_PRICE) : 0)
+    || (avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
 
   const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0
       && consoKwhDerivee > 0)
@@ -1239,6 +1262,11 @@ export default function DevisGenerator({
                 <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
+                {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
+                  <span style={{ fontSize: 11, color: '#b45309', marginLeft: 6 }}>
+                    ⚠ au-delà de la limite conseillée ({remiseMax} %)
+                  </span>
+                )}
               </div>
               <div className="gen-total-item gen-total-inline">
                 <span className="gen-total-label">TVA</span>

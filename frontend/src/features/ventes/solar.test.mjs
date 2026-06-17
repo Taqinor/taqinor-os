@@ -74,6 +74,17 @@ test('suggestion panneaux : 8 par tranche de 900 MAD hiver', () => {
   assert.equal(estimerPanneaux(1900), 16)
 })
 
+test('D5 — ratio de dimensionnement éditable, défaut inchangé', () => {
+  // Sans argument : exactement le comportement historique (8 par tranche).
+  assert.equal(estimerPanneaux(1900), 16)
+  // Ratio personnalisé : 10 par tranche de 900 MAD.
+  assert.equal(estimerPanneaux(900, 10), 10)
+  assert.equal(estimerPanneaux(1900, 10), 20)
+  // Valeur invalide → repli sur 8 (jamais 0/NaN panneaux).
+  assert.equal(estimerPanneaux(900, 0), 8)
+  assert.equal(estimerPanneaux(900, undefined), 8)
+})
+
 test('formatMoney : toujours arrondi à l\'entier (jamais de partie fractionnaire)', () => {
   // Le séparateur de milliers dépend de l'ICU (espace ou point) — ce qui
   // compte est que la valeur formatée soit l'entier arrondi, sans fraction.
@@ -187,6 +198,26 @@ test('ROI : production GHI × kWc × 0.8', () => {
     assert.ok(Math.abs(roi.eco_avec_monthly[i] - roi.eco_sans_monthly[i] - 600) < 0.001)
   }
   assert.ok(roi.payback_sans > 0 && roi.payback_avec > 0)
+})
+
+test('D5 — tarif ONEE et rendement éditables, défaut strictement inchangé', () => {
+  const base = {
+    kwp: 9.94, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 65040, totalAvec: 103040, batteryKwh: 0,
+  }
+  // Sans override : identique à la version historique (parité).
+  const def = computeROI(base)
+  const sumGhi = GHI.reduce((a, b) => a + b, 0)
+  assert.ok(Math.abs(def.production_annuelle_kwh - sumGhi * 9.94 * 0.8) < 0.1)
+  // Tarif ONEE doublé → économies (sans batterie) doublées exactement.
+  const dbl = computeROI({ ...base, kwhPrice: 3.5 })
+  assert.ok(Math.abs(dbl.eco_annuelle_sans - def.eco_annuelle_sans * 2) < 1)
+  // Rendement réduit de moitié → production de moitié.
+  const half = computeROI({ ...base, efficiency: 0.4 })
+  assert.ok(Math.abs(half.production_annuelle_kwh - def.production_annuelle_kwh / 2) < 0.2)
+  // Override invalide (0/NaN) → repli sur les constantes (parité).
+  const fallback = computeROI({ ...base, kwhPrice: 0, efficiency: -1 })
+  assert.equal(fallback.production_annuelle_kwh, def.production_annuelle_kwh)
 })
 
 test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simulateur', () => {

@@ -52,13 +52,19 @@ export function estimerMois(hiver, ete) {
   return interpolerFactures(hiver, ete).map(v => Math.round(v))
 }
 
-// 8 panneaux par tranche de 900 MAD de facture hiver
-export function estimerPanneaux(factureHiver) {
-  return Math.floor(factureHiver / 900) * 8
+// 8 panneaux par tranche de 900 MAD de facture hiver. Le ratio est éditable
+// (Paramètres → Avancé) ; sans argument il garde le défaut historique (8).
+export function estimerPanneaux(factureHiver, perTranche = 8) {
+  const n = Number(perTranche)
+  return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
 }
 
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
-export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh }) {
+export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency }) {
+  // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
+  // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
+  const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
+  const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
   let bills = [...(factures ?? [])]
   if (bills.length < 12) {
     const last = bills.length ? bills[bills.length - 1] : 500
@@ -73,10 +79,10 @@ export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, b
   let productionAnnuelle = 0
 
   for (let i = 0; i < 12; i++) {
-    const prodKwh = GHI[i] * kwp * EFFICIENCY
+    const prodKwh = GHI[i] * kwp * EFF
     productionAnnuelle += prodKwh
     const selfConsumed = prodKwh * dayPct
-    const ecoSans = selfConsumed * KWH_PRICE
+    const ecoSans = selfConsumed * PRICE
     const ecoAvec = ecoSans + (batteryKwh ?? 0) * 60 // 60 MAD/kWh batterie/mois
     ecoSansMonthly.push(ecoSans)
     ecoAvecMonthly.push(ecoAvec)

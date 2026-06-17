@@ -48,7 +48,10 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  * @param {string}   discountStr  Remise globale en %
  * @param {function} dispatch     Redux dispatch
  */
-export async function createAutoQuote({ lead, produits, discountStr, dispatch }) {
+export async function createAutoQuote({ lead, produits, discountStr, dispatch, quoteLogic }) {
+  // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
+  const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
+  const perTranche = (Number(quoteLogic?.panneauxParTranche) > 0) ? Number(quoteLogic.panneauxParTranche) : 8
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   const extra = {}
   let rows
@@ -73,7 +76,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch })
       pompageSelection(produits, opts), { ...opts, profondeur: '' })
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
-    const panels = estimerPanneaux(hiver) || 8
+    const panels = estimerPanneaux(hiver, perTranche) || 8
     const kwpAuto = panels * 710 / 1000
     rows = autoFillLines(produits, {
       kwp: kwpAuto, panelW: 710, structureType: 'acier',
@@ -85,7 +88,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch })
       const avgAuto = moisAuto
         .reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
       const conso = (parseFloat(lead.conso_mensuelle_kwh) || 0)
-        || (avgAuto > 0 ? Math.round(avgAuto / KWH_PRICE) : 0)
+        || (avgAuto > 0 ? Math.round(avgAuto / kwhPrice) : 0)
       extra.mode_installation = 'industriel'
       extra.etude_params = (kwpAuto > 0 && conso > 0)
         ? computeEtudeIndustrielle({

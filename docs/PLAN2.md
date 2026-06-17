@@ -114,13 +114,22 @@ here unchanged — this file only adds tasks.
   architecture, aligné sur le GATED G4 de PLAN.md ; laissé `[ ]`, à traiter sur
   décision du founder. D1–D3 et D5 restent constructibles.)_
 
-- [ ] **D5 — Avancé: editable + versioned quote logic.** Make the implicit quote logic
+- [x] **D5 — Avancé: editable + versioned quote logic.** Make the implicit quote logic
   **editable and versioned**: margin / target price per kWc, discount limits, auto-remplir
   sizing ratios, per-region production factors, and the **ONEE tariff tables/tranches**.
   **Every value seeded from today's in-code defaults** so default quoting stays **identical**
   until edited. Do **not** touch the PDF templates and do **not** break the lossless
   typed-number behaviour (form `noValidate`, inputs `step="any"` — guarded by tests). Keep
   `solar.js` classification keywords aligned with `quote_engine/builder.py`.
+  _(2026-06-17 — Cœur livré : les paramètres implicites RÉELS d'aujourd'hui sont
+  désormais éditables, audités (versionnés via le journal d'audit N55) et
+  CÂBLÉS dans le générateur, tous amorcés sur les constantes du simulateur (devis
+  identique tant que rien n'est édité). DEUX exemples énumérés sont laissés en
+  raffinement FUTUR car ils n'existent dans aucun code aujourd'hui et changent le
+  MODÈLE de calcul : les tables tarifaires ONEE par tranche (le tarif actuel est
+  un taux plat, désormais éditable) et les facteurs de production PAR RÉGION (il
+  n'y a pas de champ région sur le devis) — à valider avec le founder (barème de
+  tranches + carte régionale).)_
 
 ### Group E — End-to-end (E2E) browser test suite covering every screen flow
 
@@ -179,6 +188,24 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — D5: logique de devis éditable + versionnée (cœur). Les paramètres
+  implicites du générateur sont désormais modifiables dans Paramètres → Avancé
+  (carte « Logique de devis (avancé) ») et amorcés EXACTEMENT sur les constantes
+  du simulateur, donc le devis reste identique tant que rien n'est édité :
+  rendement global (0,8), nb de panneaux par tranche de 900 MAD (8, auto-remplir),
+  prix cible /kWc par défaut (pré-remplit le générateur) et limite de remise
+  conseillée (repère, sans bloquer la saisie). Le tarif ONEE (kWh) — qui était
+  jusqu'ici STOCKÉ mais IGNORÉ par le simulateur — est maintenant réellement
+  câblé : `solar.js computeROI` accepte tarif + rendement, `estimerPanneaux` le
+  ratio, et `DevisGenerator`/`autoQuote` les lisent depuis le profil avec repli
+  sur les constantes. Chaque changement est tracé (journal d'audit N55 =
+  versionnement). Champs additifs sur CompanyProfile (migration 0013). Garde-fou
+  de parité : les 29 tests `solar.test.mjs` passent (défauts strictement
+  inchangés) + nouveaux tests d'override ; la frappe libre (noValidate/step=any)
+  est préservée. Lint + build verts ; flake8 vert (suite Django en CI). RAFFINEMENT
+  FUTUR laissé au founder : tables tarifaires ONEE par tranche (tarif plat
+  aujourd'hui) et facteurs de production par région (pas de champ région) — ils
+  changeraient le modèle de calcul.
 - 2026-06-17 — D3: numérotation des pièces configurable par type. Dans Paramètres
   → Devis & Factures, chaque type (devis/facture/avoir/bon de commande) a
   désormais : préfixe (déjà existant), largeur de remplissage (nombre de

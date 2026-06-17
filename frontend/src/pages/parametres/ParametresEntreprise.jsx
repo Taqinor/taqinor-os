@@ -386,6 +386,10 @@ export default function ParametresEntreprise() {
     discount_approval_threshold: '',
     seuil_regime_declaration_kwc: 11,
     seuil_regime_anre_kwc: 1000,
+    rendement_global: 0.8,
+    panneaux_par_900mad: 8,
+    prix_cible_kwc_defaut: '',
+    remise_max_pct: '',
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -624,6 +628,10 @@ export default function ParametresEntreprise() {
       discount_approval_threshold: profile.discount_approval_threshold ?? '',
       seuil_regime_declaration_kwc: profile.seuil_regime_declaration_kwc ?? 11,
       seuil_regime_anre_kwc: profile.seuil_regime_anre_kwc ?? 1000,
+      rendement_global: profile.rendement_global ?? 0.8,
+      panneaux_par_900mad: profile.panneaux_par_900mad ?? 8,
+      prix_cible_kwc_defaut: profile.prix_cible_kwc_defaut ?? '',
+      remise_max_pct: profile.remise_max_pct ?? '',
     })
   }, [profile])
 
@@ -696,6 +704,10 @@ export default function ParametresEntreprise() {
       discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
       seuil_regime_declaration_kwc: Number(form.seuil_regime_declaration_kwc) || 11,
       seuil_regime_anre_kwc: Number(form.seuil_regime_anre_kwc) || 1000,
+      rendement_global: Number(form.rendement_global) || 0.8,
+      panneaux_par_900mad: Number(form.panneaux_par_900mad) || 8,
+      prix_cible_kwc_defaut: form.prix_cible_kwc_defaut === '' ? null : Number(form.prix_cible_kwc_defaut),
+      remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
     }
     dispatch(saveProfile(payload))
   }
@@ -1511,6 +1523,46 @@ export default function ParametresEntreprise() {
               <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
                 Au-delà de ce seuil de remise, un devis exige l'approbation d'un
                 administrateur avant l'envoi. Vide = désactivé (défaut).
+              </p>
+            </div>
+
+            {/* Logique de devis (avancé) — paramètres implicites du simulateur (D5) */}
+            <div style={cardStyle}>
+              <SectionTitle color="#7c3aed" label="Logique de devis (avancé)" icon={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></>}/>
+              <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+                Paramètres implicites du générateur de devis, rendus modifiables.
+                Les valeurs par défaut reprennent EXACTEMENT les constantes du
+                simulateur — le devis reste identique tant que vous ne les
+                modifiez pas. Chaque changement est tracé (journal d'audit).
+              </p>
+              <div className="pe-grid-2">
+                <Field label="Rendement global (0–1)">
+                  <input style={inputBase} type="number" min="0" max="1" step="0.01"
+                         name="rendement_global" value={form.rendement_global} onChange={set} />
+                </Field>
+                <Field label="Panneaux par tranche de 900 MAD (auto-remplir)">
+                  <input style={inputBase} type="number" min="1" step="1"
+                         name="panneaux_par_900mad" value={form.panneaux_par_900mad} onChange={set} />
+                </Field>
+                <Field label="Prix cible /kWc par défaut (MAD)">
+                  <input style={inputBase} type="number" min="0" step="any"
+                         name="prix_cible_kwc_defaut" placeholder="vide = aucun"
+                         value={form.prix_cible_kwc_defaut} onChange={set} />
+                </Field>
+                <Field label="Limite de remise conseillée (%)">
+                  <input style={inputBase} type="number" min="0" max="100" step="0.01"
+                         name="remise_max_pct" placeholder="vide = aucune"
+                         value={form.remise_max_pct} onChange={set} />
+                </Field>
+              </div>
+              <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
+                Le rendement et le tarif ONEE (ci-dessus) pilotent les économies
+                estimées ; le ratio de dimensionnement pilote la suggestion de
+                panneaux du devis auto ; le prix cible pré-remplit le générateur ;
+                la limite de remise affiche un repère (sans bloquer la saisie).
+                Les tables tarifaires ONEE par tranche et les facteurs de
+                production par région restent un raffinement futur (modèle de
+                calcul à valider avec le founder).
               </p>
             </div>
 

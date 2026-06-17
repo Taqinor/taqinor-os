@@ -96,6 +96,23 @@ class CompanyProfile(models.Model):
     # Productible annuel moyen (kWh par kWc installé) — repère ROI éditable.
     productible_kwh_kwc = models.DecimalField(
         max_digits=7, decimal_places=1, default=Decimal('1600.0'))
+    # ── Logique de devis éditable (D5) — défauts = constantes codées en dur du
+    # simulateur (solar.js EFFICIENCY/estimerPanneaux). Tant qu'elles ne sont
+    # pas éditées, le devis reste STRICTEMENT identique ; le simulateur garde
+    # son repli interne (constantes par défaut).
+    # Rendement global (productible appliqué à la production) — défaut 0.8.
+    rendement_global = models.DecimalField(
+        max_digits=4, decimal_places=3, default=Decimal('0.8'))
+    # Auto-remplir : nombre de panneaux par tranche de 900 MAD (facture hiver).
+    panneaux_par_900mad = models.PositiveSmallIntegerField(default=8)
+    # Prix cible /kWc par défaut (pré-remplit le générateur). NULL/vide = aucun
+    # (comportement actuel : pas de prix cible pré-réglé).
+    prix_cible_kwc_defaut = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    # Limite de remise (%) indicative dans le générateur. NULL/vide = aucune
+    # limite (comportement actuel). Distinct du seuil d'APPROBATION (T17).
+    remise_max_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
     # Seuil d'approbation de remise (%) (T17). NULL/vide = désactivé (défaut) :
     # tant qu'il n'est pas renseigné, aucun devis n'exige d'approbation.
     discount_approval_threshold = models.DecimalField(

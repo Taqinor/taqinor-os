@@ -44,6 +44,10 @@ _PROFILE_AUDIT_FIELDS = {
     'onee_tarif_kwh': 'Tarif ONEE (kWh)',
     'productible_kwh_kwc': 'Productible (kWh/kWc)',
     'discount_approval_threshold': "Seuil d'approbation de remise",
+    'rendement_global': 'Rendement global',
+    'panneaux_par_900mad': 'Panneaux par tranche de 900 MAD',
+    'prix_cible_kwc_defaut': 'Prix cible /kWc par défaut',
+    'remise_max_pct': 'Limite de remise (%)',
 }
 
 
