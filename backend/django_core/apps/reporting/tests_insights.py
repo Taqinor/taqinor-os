@@ -1,0 +1,200 @@
+"""N49/N70/N95/N78/N80 — Insights (revenu récurrent, journal d'audit unifié,
+coût de revient chantier, analytics). Lecture seule, multi-tenant.
+
+Suit le patron de `tests_reports.py` : une société + un utilisateur
+responsable/admin + objets minimaux, puis assertions HTTP 200, forme JSON, et
+isolation par société (la donnée d'une 2e société n'est jamais renvoyée).
+"""
+from datetime import date, timedelta
+from decimal import Decimal
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from authentication.models import Company
+from apps.crm.models import Client, Lead, LeadActivity
+from apps.installations.models import Installation
+from apps.sav.models import ContratMaintenance
+from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
+from apps.stock.models import Produit
+
+User = get_user_model()
+
+BASE = '/api/django/reporting/insights'
+
+
+class InsightsBase(TestCase):
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='ins-co', defaults={'nom': 'Ins Co'})[0]
+        self.other = Company.objects.get_or_create(
+            slug='ins-other', defaults={'nom': 'Ins Other'})[0]
+        self.user = User.objects.create_user(
+            username='ins_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+
+class TestRecurringRevenue(InsightsBase):
+    def test_shape_and_scope(self):
+        client = Client.objects.create(company=self.company, nom='C1')
+        other_client = Client.objects.create(company=self.other, nom='CX')
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='mensuel',
+            date_debut=date.today(), prix=Decimal('1200'), actif=True)
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='annuel',
+            date_debut=date.today(), prix=Decimal('600'), actif=False)
+        ContratMaintenance.objects.create(
+            company=self.other, client=other_client, periodicite='mensuel',
+            date_debut=date.today(), prix=Decimal('9999'), actif=True)
+
+        resp = self.api.get(f'{BASE}/recurring-revenue/')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('monthly_total', 'annual_total', 'active_count',
+                    'lapsed_count', 'upcoming', 'contracts'):
+            self.assertIn(key, resp.data)
+        # Société courante : 1 actif, 1 lapsed ; la 2e société est exclue.
+        self.assertEqual(resp.data['active_count'], 1)
+        self.assertEqual(resp.data['lapsed_count'], 1)
+        # Mensuel 1200/mois → mensuel équivalent 1200, annuel 14400.
+        self.assertEqual(Decimal(resp.data['monthly_total']), Decimal('1200'))
+        self.assertEqual(Decimal(resp.data['annual_total']), Decimal('14400'))
+        # xlsx.
+        x = self.api.get(f'{BASE}/recurring-revenue/?export=xlsx')
+        body = b''.join(x.streaming_content) if x.streaming else x.content
+        self.assertTrue(body.startswith(b'PK'))
+
+
+class TestAuditLog(InsightsBase):
+    def test_unified_feed_and_scope(self):
+        lead = Lead.objects.create(company=self.company, nom='L1', stage='NEW')
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, kind='note',
+            body='Appel passé', user=self.user)
+        # Donnée d'une autre société : doit être exclue.
+        other_lead = Lead.objects.create(
+            company=self.other, nom='LX', stage='NEW')
+        LeadActivity.objects.create(
+            company=self.other, lead=other_lead, kind='note',
+            body='Secret', user=None)
+
+        resp = self.api.get(f'{BASE}/audit-log/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('items', resp.data)
+        self.assertEqual(resp.data['count'], 1)
+        item = resp.data['items'][0]
+        for key in ('date', 'user', 'type', 'type_label', 'object_ref',
+                    'summary'):
+            self.assertIn(key, item)
+        self.assertEqual(item['type'], 'lead')
+        self.assertEqual(item['user'], 'ins_admin')
+
+        # Filtre par type inexistant → flux vide.
+        empty = self.api.get(f'{BASE}/audit-log/?type=parametres')
+        self.assertEqual(empty.data['count'], 0)
+        # xlsx.
+        x = self.api.get(f'{BASE}/audit-log/?export=xlsx')
+        body = b''.join(x.streaming_content) if x.streaming else x.content
+        self.assertTrue(body.startswith(b'PK'))
+
+
+class TestJobCosting(InsightsBase):
+    def test_margin_and_scope(self):
+        client = Client.objects.create(company=self.company, nom='C1')
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='J-1',
+            prix_vente=Decimal('1000'), prix_achat=Decimal('600'),
+            quantite_stock=0)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-J1', client=client,
+            statut=Devis.Statut.ACCEPTE)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
+        chantier = Installation.objects.create(
+            company=self.company, reference='CH-J1', client=client,
+            devis=devis, statut=Installation.Statut.RECEPTIONNE,
+            date_reception=date.today(),
+            puissance_installee_kwc=Decimal('5'))
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-J1', client=client,
+            devis=devis, statut=Facture.Statut.EMISE)
+        LigneFacture.objects.create(
+            facture=facture, produit=produit, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
+
+        # Donnée d'une autre société.
+        other_client = Client.objects.create(company=self.other, nom='CX')
+        Installation.objects.create(
+            company=self.other, reference='CH-X', client=other_client,
+            statut=Installation.Statut.SIGNE)
+
+        resp = self.api.get(f'{BASE}/job-costing/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['internal'])
+        self.assertEqual(len(resp.data['chantiers']), 1)
+        row = resp.data['chantiers'][0]
+        self.assertEqual(row['ref'], 'CH-J1')
+        # Facturé 10×1000 = 10000 ; coût 10×600 = 6000 ; marge 4000.
+        self.assertEqual(Decimal(row['invoiced_ht']), Decimal('10000'))
+        self.assertEqual(Decimal(row['cost_estimate']), Decimal('6000'))
+        self.assertEqual(Decimal(row['margin']), Decimal('4000'))
+        self.assertEqual(row['margin_pct'], 40.0)
+
+    def test_admin_gated(self):
+        """Un responsable non-admin ne peut pas voir le coût de revient."""
+        resp_user = User.objects.create_user(
+            username='ins_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
+        resp = api.get(f'{BASE}/job-costing/')
+        self.assertEqual(resp.status_code, 403)
+
+
+class TestAnalytics(InsightsBase):
+    def test_shape_and_scope(self):
+        client = Client.objects.create(company=self.company, nom='C1')
+        lead = Lead.objects.create(company=self.company, nom='L1', stage='NEW')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-A1', client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE,
+            date_acceptation=date.today())
+        Installation.objects.create(
+            company=self.company, reference='CH-A1', client=client,
+            devis=devis, statut=Installation.Statut.RECEPTIONNE,
+            date_signature=date.today() - timedelta(days=10),
+            date_reception=date.today(),
+            puissance_installee_kwc=Decimal('7.5'))
+
+        # Donnée d'une autre société (chantier avec kWc) — ne doit pas compter.
+        other_client = Client.objects.create(company=self.other, nom='CX')
+        Installation.objects.create(
+            company=self.other, reference='CH-X', client=other_client,
+            statut=Installation.Statut.RECEPTIONNE,
+            date_reception=date.today(),
+            puissance_installee_kwc=Decimal('99'))
+
+        resp = self.api.get(f'{BASE}/analytics/')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('avg_days_lead_to_signature',
+                    'avg_days_signature_to_commissioning',
+                    'kwc_by_month'):
+            self.assertIn(key, resp.data)
+        # signature→mise en service = 10 jours.
+        self.assertEqual(resp.data['avg_days_signature_to_commissioning'], 10)
+        # kWc/mois : un seul mois, 7.5 (la 2e société exclue).
+        self.assertEqual(len(resp.data['kwc_by_month']), 1)
+        self.assertEqual(
+            Decimal(resp.data['kwc_by_month'][0]['kwc']), Decimal('7.5'))
+
+        # xlsx.
+        x = self.api.get(f'{BASE}/analytics/?export=xlsx')
+        body = b''.join(x.streaming_content) if x.streaming else x.content
+        self.assertTrue(body.startswith(b'PK'))

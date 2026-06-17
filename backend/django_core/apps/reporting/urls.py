@@ -3,6 +3,9 @@ from .views import dashboard
 from .search import global_search, notifications
 from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
+from .insights import (
+    recurring_revenue, audit_log, job_costing, analytics,
+)
 from .archive import archive_client, archive_chantier
 
 urlpatterns = [
@@ -13,6 +16,11 @@ urlpatterns = [
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
     path('reports/service/', service_report, name='report-service'),
+    path('insights/recurring-revenue/', recurring_revenue,
+         name='insights-recurring-revenue'),
+    path('insights/audit-log/', audit_log, name='insights-audit-log'),
+    path('insights/job-costing/', job_costing, name='insights-job-costing'),
+    path('insights/analytics/', analytics, name='insights-analytics'),
     path('archive/client/<int:pk>/', archive_client,
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,
