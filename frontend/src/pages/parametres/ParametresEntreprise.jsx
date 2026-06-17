@@ -395,6 +395,8 @@ export default function ParametresEntreprise() {
     commission_valeur: '',
     referral_enabled: false,
     referral_reward: '',
+    seuil_sous_performance_pct: '',
+    auto_ticket_sous_performance: false,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -642,6 +644,8 @@ export default function ParametresEntreprise() {
       commission_valeur: profile.commission_valeur ?? '',
       referral_enabled: profile.referral_enabled ?? false,
       referral_reward: profile.referral_reward ?? '',
+      seuil_sous_performance_pct: profile.seuil_sous_performance_pct ?? '',
+      auto_ticket_sous_performance: profile.auto_ticket_sous_performance ?? false,
     })
   }, [profile])
 
@@ -724,6 +728,8 @@ export default function ParametresEntreprise() {
       commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
       referral_enabled: !!form.referral_enabled,
       referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
+      seuil_sous_performance_pct: form.seuil_sous_performance_pct === '' ? null : Number(form.seuil_sous_performance_pct),
+      auto_ticket_sous_performance: !!form.auto_ticket_sous_performance,
     }
     dispatch(saveProfile(payload))
   }
@@ -1595,6 +1601,34 @@ export default function ParametresEntreprise() {
               <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
                 Au-delà de ce seuil de remise, un devis exige l'approbation d'un
                 administrateur avant l'envoi. Vide = désactivé (défaut).
+              </p>
+            </div>
+
+            {/* N52 — règle de sous-performance (suivi de production) */}
+            <div style={cardStyle}>
+              <SectionTitle color="#b45309" label="Sous-performance (suivi de production)" icon={<><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></>}/>
+              <p style={{ margin: '0 0 0.9rem', fontSize: 11.5, color: '#64748b' }}>
+                Un système installé dont la production relevée passe sous ce % de
+                la production attendue est signalé sur sa fiche. Vide = désactivé
+                (défaut) : aucun système n'est jamais signalé.
+              </p>
+              <div className="pe-grid-2">
+                <Field label="Seuil de sous-performance (%)">
+                  <input style={inputBase} type="number" min="0" max="100" step="0.01"
+                         name="seuil_sous_performance_pct" placeholder="vide = désactivé"
+                         value={form.seuil_sous_performance_pct} onChange={set} />
+                </Field>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8 }}>
+                <input type="checkbox" name="auto_ticket_sous_performance"
+                       checked={!!form.auto_ticket_sous_performance}
+                       onChange={e => setForm(f => ({ ...f, auto_ticket_sous_performance: e.target.checked }))} />
+                Créer automatiquement un ticket SAV en cas de sous-performance
+              </label>
+              <p style={{ margin: '0.5rem 0 0', fontSize: 11, color: '#94a3b8' }}>
+                Le ticket est créé à l'ajout d'un relevé qui fait passer le système
+                sous le seuil (jamais de doublon tant qu'un ticket reste ouvert).
+                Désactivé par défaut.
               </p>
             </div>
 

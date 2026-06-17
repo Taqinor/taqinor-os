@@ -43,10 +43,26 @@ def expected_production_kwh(installation, nb_jours):
     return kwc * productible * Decimal(nb_jours) / Decimal('365')
 
 
+def _sous_performance_seuil(company):
+    """Seuil de sous-performance (%) configuré (N52), ou None si désactivé."""
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        val = getattr(prof, 'seuil_sous_performance_pct', None) if prof else None
+        return float(val) if val not in (None, '') else None
+    except Exception:
+        return None
+
+
 def production_summary(installation):
-    """N51 — synthèse de production d'un système : total relevé, total attendu
-    (somme période par période) et ratio de performance global (% du attendu),
-    calculés à la volée. `performance_pct` est None si rien n'est comparable."""
+    """N51/N52 — synthèse de production d'un système : total relevé, total
+    attendu (somme période par période), ratio de performance global (% du
+    attendu) et — quand un seuil est configuré (N52) — un drapeau de
+    SOUS-PERFORMANCE. Tout est calculé à la volée. `performance_pct` est None
+    si rien n'est comparable ; `sous_performance` est False si le seuil est
+    désactivé (comportement par défaut : aucun système n'est jamais signalé)."""
     releves = list(installation.releves_production.all())
     total_kwh = sum((r.kwh_produit for r in releves), Decimal('0'))
     total_attendu = Decimal('0')
@@ -59,12 +75,67 @@ def production_summary(installation):
     performance_pct = None
     if has_expected and total_attendu > 0:
         performance_pct = round(float(total_kwh / total_attendu * 100), 1)
+
+    seuil = _sous_performance_seuil(installation.company)
+    sous_performance = bool(
+        seuil is not None and performance_pct is not None
+        and performance_pct < seuil)
     return {
         'nb_releves': len(releves),
         'total_kwh': float(total_kwh),
         'total_attendu_kwh': float(round(total_attendu, 1)) if has_expected else None,
         'performance_pct': performance_pct,
+        'seuil_pct': seuil,
+        'sous_performance': sous_performance,
     }
+
+
+# Marqueur reconnaissable d'un ticket de sous-performance (idempotence N52).
+_SOUS_PERF_MARKER = 'Sous-performance détectée'
+
+
+def maybe_create_underperformance_ticket(installation, user):
+    """N52 — crée un ticket SAV préventif quand le système est en
+    sous-performance ET que l'auto-ticket est activé en Paramètres. Idempotent :
+    ne crée jamais un second ticket tant qu'un ticket de sous-performance reste
+    ouvert pour ce chantier. Renvoie le ticket créé, un ticket ouvert existant,
+    ou None. Aucun planificateur : appelé à la volée à l'ajout d'un relevé."""
+    company = installation.company
+    summary = production_summary(installation)
+    if not summary['sous_performance']:
+        return None, False
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        if not (prof and getattr(prof, 'auto_ticket_sous_performance', False)):
+            return None, False
+    except Exception:
+        return None, False
+
+    from apps.sav.models import Ticket
+    existing = Ticket.objects.filter(
+        company=company, installation=installation, annule=False,
+        statut__in=Ticket.OPEN_STATUTS,
+        description__startswith=_SOUS_PERF_MARKER).first()
+    if existing is not None:
+        return existing, False
+
+    from django.utils import timezone
+    perf = summary['performance_pct']
+    seuil = summary['seuil_pct']
+
+    def _save(ref):
+        return Ticket.objects.create(
+            reference=ref, company=company, client=installation.client,
+            installation=installation, type=Ticket.Type.PREVENTIF,
+            statut=Ticket.Statut.NOUVEAU, priorite=Ticket.Priorite.HAUTE,
+            date_ouverture=timezone.localdate(),
+            description=(f"{_SOUS_PERF_MARKER} : performance {perf} % "
+                         f"sous le seuil {seuil} %."),
+            created_by=user)
+
+    ticket = create_with_reference(Ticket, 'SAV', company, _save)
+    return ticket, True
 
 
 def default_installer_for(company):

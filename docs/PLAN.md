@@ -337,7 +337,7 @@ conformity warning banner).
 - [x] N49 — Recurring-revenue view summarising active contrats d'entretien, monthly/annual value, upcoming renewals, lapsed contracts.
 - [ ] N50 — Monitoring-integration framework with a swappable provider interface, starting with a Huawei FusionSolar connector that (given per-system credentials in config) pulls recent production data; admin enables it per system; no-ops safely when no provider is configured.
 - [x] N51 — Per-installed-system production view showing recent yield pulled by the monitoring framework when configured, with a manual-entry fallback.
-- [ ] N52 — Configurable under-performance rule that (when monitoring data exists) flags a system producing below an expected threshold and optionally auto-creates a SAV ticket; threshold + auto-ticket behaviour editable in Paramètres.
+- [x] N52 — Configurable under-performance rule that (when monitoring data exists) flags a system producing below an expected threshold and optionally auto-creates a SAV ticket; threshold + auto-ticket behaviour editable in Paramètres.
 - [BLOCKED: needs production data from the monitoring framework (N50, gated — external service/credentials).] N53 — Client energy-yield report PDF (French): a system's production over a period, estimated bill savings, CO2 avoided; client-facing, no buy prices.
 ### Editability layer (Paramètres hub)
 - [x] N54 — Expand Paramètres into a structured settings hub with grouped sections (company identity & legal identifiers, quote/sizing parameters, TVA & billing, CRM reference data, chantier & checklist defaults, document & message templates, numbering sequences, pricing & tariff tables, warranty texts, roles & permissions, automation rules, notifications), each admin-editable and applied without a deploy; STAGES.py pipeline contract kept out of this surface entirely.
@@ -654,3 +654,17 @@ Tracked here so they aren't lost:
   nombre). Additif ; tests backend (ajout/synthèse, pas d'attendu sans kWc,
   suppression, période invalide refusée, scoping société) ; flake8 + lint
   front verts.
+- 2026-06-17 — N52 done: règle de sous-performance configurable (suivi de
+  production). Deux réglages additifs dans Paramètres → Avancé (migration
+  parametres 0017, désactivés par défaut → comportement inchangé) : « Seuil de
+  sous-performance (%) » (vide = désactivé : aucun système jamais signalé) et
+  « Créer automatiquement un ticket SAV en cas de sous-performance » (off par
+  défaut). La synthèse de production (N51) calcule à la volée le drapeau
+  sous_performance quand la performance % passe sous le seuil ; à l'ajout d'un
+  relevé, si l'auto-ticket est activé, un ticket SAV préventif HAUTE priorité
+  est créé (idempotent — jamais de second ticket tant qu'un ticket de
+  sous-performance reste ouvert pour le chantier ; numérotation race-safe).
+  La fiche chantier affiche le repère rouge + la mention « ticket créé ».
+  Aucun planificateur (cohérent T7/T16). Tests backend (seuil off = jamais
+  signalé, seuil on = signalé, auto-ticket créé une seule fois, pas de ticket
+  si désactivé) ; flake8 + lint front verts.

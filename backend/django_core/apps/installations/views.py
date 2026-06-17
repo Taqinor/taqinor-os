@@ -22,6 +22,7 @@ from .serializers import (
 from .services import (
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, production_summary,
+    maybe_create_underperformance_ticket,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -483,8 +484,20 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                 inst, request.user,
                 f"Relevé de production ajouté : {releve.kwh_produit} kWh "
                 f"({releve.periode_debut} → {releve.periode_fin})")
+            # N52 — règle de sous-performance : un nouveau relevé peut faire
+            # passer le système sous le seuil ; auto-ticket SAV si activé
+            # (idempotent). Calculé à la volée, aucun planificateur.
+            ticket, created = maybe_create_underperformance_ticket(
+                inst, request.user)
+            if created:
+                activity.log_note(
+                    inst, request.user,
+                    f"Sous-performance détectée — ticket SAV {ticket.reference} "
+                    f"créé automatiquement.")
+            summary = production_summary(inst)
+            summary['ticket_cree'] = bool(created)
             return Response(
-                ProductionReleveSerializer(releve).data,
+                {**ProductionReleveSerializer(releve).data, 'summary': summary},
                 status=status.HTTP_201_CREATED)
         releves = inst.releves_production.all()
         return Response({

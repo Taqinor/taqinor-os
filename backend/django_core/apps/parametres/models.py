@@ -146,6 +146,16 @@ class CompanyProfile(models.Model):
     referral_enabled = models.BooleanField(default=False)
     referral_reward = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── N52 — règle de sous-performance (suivi de production). Seuil en % de la
+    # production attendue : un système sous ce % est signalé. NULL/vide =
+    # désactivé (défaut) → aucun système n'est jamais signalé tant que le
+    # founder ne renseigne pas le seuil. `auto_ticket_sous_performance` crée en
+    # plus un ticket SAV préventif quand un relevé fait passer le système sous
+    # le seuil (idempotent — jamais de doublon de ticket ouvert) ; désactivé
+    # par défaut.
+    seuil_sous_performance_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    auto_ticket_sous_performance = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Profil entreprise'

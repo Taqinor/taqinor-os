@@ -91,6 +91,68 @@ class ProductionReleveTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_no_sous_performance_when_threshold_off(self):
+        # Seuil désactivé par défaut → jamais signalé, même très bas.
+        ProductionReleve.objects.create(
+            company=self.company, installation=self.inst,
+            periode_debut=date(2026, 1, 1), periode_fin=date(2026, 1, 31),
+            kwh_produit=Decimal('100'))
+        url = f'/api/django/installations/chantiers/{self.inst.id}/production/'
+        got = self.api.get(url)
+        self.assertFalse(got.data['summary']['sous_performance'])
+
+    def test_sous_performance_flagged_with_threshold(self):
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(self.company)
+        prof.seuil_sous_performance_pct = Decimal('80')
+        prof.save(update_fields=['seuil_sous_performance_pct'])
+        # 100 kWh sur janvier (attendu ≈1359) → ~7 % < 80 % → signalé.
+        ProductionReleve.objects.create(
+            company=self.company, installation=self.inst,
+            periode_debut=date(2026, 1, 1), periode_fin=date(2026, 1, 31),
+            kwh_produit=Decimal('100'))
+        url = f'/api/django/installations/chantiers/{self.inst.id}/production/'
+        got = self.api.get(url)
+        self.assertTrue(got.data['summary']['sous_performance'])
+        self.assertEqual(got.data['summary']['seuil_pct'], 80.0)
+
+    def test_auto_ticket_created_once(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.sav.models import Ticket
+        prof = CompanyProfile.get(self.company)
+        prof.seuil_sous_performance_pct = Decimal('80')
+        prof.auto_ticket_sous_performance = True
+        prof.save(update_fields=['seuil_sous_performance_pct',
+                                 'auto_ticket_sous_performance'])
+        url = f'/api/django/installations/chantiers/{self.inst.id}/production/'
+        # 1er relevé sous le seuil → un ticket SAV est créé.
+        r1 = self.api.post(url, {
+            'periode_debut': '2026-01-01', 'periode_fin': '2026-01-31',
+            'kwh_produit': '100'}, format='json')
+        self.assertEqual(r1.status_code, 201)
+        self.assertTrue(r1.data['summary']['ticket_cree'])
+        self.assertEqual(Ticket.objects.filter(installation=self.inst).count(), 1)
+        # 2e relevé encore sous le seuil → pas de second ticket (idempotent).
+        r2 = self.api.post(url, {
+            'periode_debut': '2026-02-01', 'periode_fin': '2026-02-28',
+            'kwh_produit': '90'}, format='json')
+        self.assertFalse(r2.data['summary']['ticket_cree'])
+        self.assertEqual(Ticket.objects.filter(installation=self.inst).count(), 1)
+
+    def test_no_auto_ticket_when_disabled(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.sav.models import Ticket
+        prof = CompanyProfile.get(self.company)
+        prof.seuil_sous_performance_pct = Decimal('80')  # seuil ON, auto OFF
+        prof.save(update_fields=['seuil_sous_performance_pct'])
+        url = f'/api/django/installations/chantiers/{self.inst.id}/production/'
+        resp = self.api.post(url, {
+            'periode_debut': '2026-01-01', 'periode_fin': '2026-01-31',
+            'kwh_produit': '100'}, format='json')
+        self.assertTrue(resp.data['summary']['sous_performance'])
+        self.assertFalse(resp.data['summary']['ticket_cree'])
+        self.assertEqual(Ticket.objects.filter(installation=self.inst).count(), 0)
+
     def test_scoped_to_company(self):
         other = make_company(slug='prod-other', nom='Autre')
         other_inst = Installation.objects.create(
