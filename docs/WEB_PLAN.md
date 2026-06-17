@@ -663,7 +663,7 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
 
 ---
 
-### W22 — Estimator brain v6: TRUE sloped-plane pitched-roof render (flush, no racks) + full optimizer matrix actually DISPLAYED — [ ]
+### W22 — Estimator brain v6: TRUE sloped-plane pitched-roof render (flush, no racks) + full optimizer matrix actually DISPLAYED — [x]
 
 > Added 2026-06-17 via "add to web plan". **This is ONE task = ONE new private preview route =
 > ONE self-merged PR.** Do **NOT** split it into multiple routes or PRs, and do **NOT** leave
@@ -979,3 +979,21 @@ set of layouts with the true optimum badged**.
   no expansion needed, reads cleanly. Tests extended (component gates the script; homepage passes
   schema={false} and emits no inline FAQPage; /faq keeps it). 590 web tests green; `astro build`
   clean. URLs: `/` (FAQ accordion, no FAQPage now) and `/faq` (sole FAQPage).
+- 2026-06-17 — W22 done (estimator brain v6 — TRUE sloped pitched roof + full optimizer matrix
+  displayed): new private `/preview/toiture-3d-pro-9`, cloned from the highest existing route
+  (pro-8, confirmed from the repo) with pro-3..pro-8 left byte-for-byte intact. New pure module
+  `estimatorBrainV6.ts` (composes on V2/V4/V5, no edits to them). FIX 1 — pitched roofs now render
+  as a real INCLINED PLANE: the roof surface itself tilts (deck vertices lifted via `pitchedDeckZ`,
+  the traced photo stays geo-aligned) and panels lie FLUSH/COPLANAR on it (`flushPanelCenterAt`, a
+  constant small standoff along the plane normal), with NO triangular racks in the pitched scene
+  (kept behind `!flush`) and no inter-row gaps; anchored to code-checkable geometry + tests
+  (normal not vertical when pitch>0, every panel coplanar, constant standoff, up-slope panels
+  physically higher). FIX 2 — the flat-roof optimizer now sweeps AND DISPLAYS the full matrix
+  (`fineGridMatrixV6`): tilt 0→35° in 5°, azimuth south ±45° in 15° + roof-aligned + east-west,
+  portrait/landscape, keep/remove margin, PVGIS specific yield at exact GPS (graceful "estimé"
+  fallback), shade-free winter spacing kept; every evaluated config rendered in a sortable
+  (kWh/an, panels, % bill) and orientation-filterable table with the genuine optimum pinned and
+  badged "Recommandé" — replacing the old ~6 named rows. Row click renders that exact config
+  (span azimuth included). 666 web tests green (new `estimatorBrainV6.test.ts` +
+  `estimatorPreviewPro9.test.ts`); `astro build` clean. Live site + lead form untouched; map key
+  read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`). URL: `/preview/toiture-3d-pro-9`.
