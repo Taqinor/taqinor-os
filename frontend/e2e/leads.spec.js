@@ -30,7 +30,11 @@ test('E5: inline bill editing on a lead saves and reflects', async ({ page }) =>
 
   // The subbar shows "+ Renseigner la facture" until a bill exists.
   await modal.locator('.lead-bill-view').click()
-  await modal.locator('input.lead-bill-input').first().fill('800')
+  const billInput = modal.locator('input.lead-bill-input').first()
+  await billInput.fill('800')
+  // The input is controlled by React state read by the save handler — make sure
+  // that state has committed before saving (else it persists an empty bill).
+  await expect(billInput).toHaveValue('800')
   await modal.getByRole('button', { name: 'Enregistrer' }).click()
 
   // Saved value is shown back, formatted (e.g. "800 MAD").

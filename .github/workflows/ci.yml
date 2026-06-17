@@ -217,6 +217,9 @@ jobs:
         run: |
           python manage.py migrate --noinput
           python manage.py seed_demo
+          # The simulator catalogue (defaults to the seeded `taqinor-demo`
+          # company) is what the auto-devis sizing matches against.
+          python manage.py seed_catalogue
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
