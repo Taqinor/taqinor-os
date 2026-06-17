@@ -1091,6 +1091,175 @@ highest-generation combination, then change a second and watch the rest re-optim
 
 ---
 
+### W36 — Site-voice governance doc (`apps/web/STYLE.md`) + kill the recycled-phrase problem (docs only) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Establish the site's voice as a committed governance doc and kill the recycled-phrase problem.
+First read every public page in `apps/web` and inventory the signature phrases now repeated
+across many pages — at least: "c'est l'étude/le calcul qui décide du matériel, jamais
+l'inverse", "la production se mesure, elle ne se promet pas", "pas d'un kit standard", "l'étude
+d'abord, le chantier ensuite", "chaque étude validée par le fondateur, docteur-ingénieur", the
+identical three-block "L'étude d'abord / Production mesurée / Conforme loi 82-21" trio, and the
+"Votre toiture à [ville] mérite une étude sérieuse" closer — plus any others found. Write
+`apps/web/STYLE.md` defining: the target buyer (an affluent, skeptical, technically-literate
+Moroccan committing 80 000+ MAD to a 25-year, legally-compliant asset, wary of salesy
+installers, wanting proof and an accountable human); the voice (confident engineer's restraint —
+concrete and measured over adjectival; lead with the real number; vary rhythm page to page;
+native idiomatic French; no eco-hype; human/direct/founder-led/monitored, never
+call-center-impersonal); and two hard rules every page and every future session must follow:
+(1) each signature phrase appears AT MOST ONCE across the whole site (ideally only on the
+homepage), every other page expressing the idea in its own fresh words, and CTAs/footer/legal
+lines exempt; (2) every city, segment and service page must carry at least one concrete fact
+specific to that page, never a generic sentence with only the place/topic swapped in. This is
+documentation/governance only — **no page changes in this task**. One self-merged PR.
+
+### W37 — Rewrite the five city pages so no two share a paragraph (city-specific prose) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Rewrite the five city pages (Casablanca, Rabat, Marrakech, Tanger, Agadir) so no two share a
+paragraph and each reads as written about doing solar in THAT city — not a template with the
+name swapped. Read each page first; keep every real figure and the page structure, rewrite only
+the prose. Each city's hero, body and closer must be distinct, drawing local specificity ONLY
+from verified facts: the per-city sunshine figure already on the page, the real Taqinor
+installation in or near that city where one exists (Casablanca, El Jadida, Nouaceur refs — real
+kWc/production), and the city's own context (climate, typical roof, role). You MAY reference the
+local electricity distributor for added specificity ONLY after verifying the currently-correct
+operator for that city against the repo's tariff reference / confirmed data (the operator
+landscape has been reforming) — if it can't be verified as current, use the régime/étude framing
+instead rather than risk a stale name. Replace the identical three-block trio and the "mérite
+une étude sérieuse" closer with city-specific writing. Invent nothing; every figure traces to
+published or confirmed data. Rewrite each page's title and meta-description to be distinct and
+compelling too. One self-merged PR.
+
+### W38 — Rewrite the three core sales pages (résidentiel, professionnel, équipement) to STYLE.md voice — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Rewrite the three core sales pages — résidentiel, professionnel, équipement — to world-class
+craft in the STYLE.md voice. Read each first; keep all real figures, the pricing bands with
+their real refs, the warranty table, and the page structure — rewrite the prose so each page has
+its own rhythm and language, removes every recycled signature phrase (each idea re-expressed
+freshly), and leads with concrete evidence. Équipement especially: make the real posed brands
+(Canadian Solar, JA Solar, Deye, Huawei, Dyness) and the warranty table read as a confident
+technical argument, not a spec dump. Keep "ordres de grandeur — jamais un devis" framing and the
+honest ranges. No invented facts. Refresh each page's title/meta-description. One self-merged PR.
+
+### W39 — Rewrite the service pages (pompage-solaire, batteries-stockage, maintenance-monitoring, financement, nos-solutions) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Rewrite the newer service pages — pompage-solaire, batteries-stockage, maintenance-monitoring,
+financement, nos-solutions — in the STYLE.md voice so each is distinct and genuinely useful, not
+filler. Read each first and rewrite prose only, preserving the verified constraints already baked
+in: pompage stays a service capability with NO fabricated Taqinor pompage projects/figures and
+keeps only the genuine solar-pumping VAT-exemption advantage (not extended to residential PV);
+financement stays rentabilité-first and strictly honest — names no bank partner, quotes no rate,
+claims no residential VAT exemption; batteries and maintenance draw only from facts already on
+the site. Make each read as written by someone who knows the engineering, with varied rhythm and
+zero recycled blurbs. Refresh titles/meta-descriptions. One self-merged PR.
+
+### W40 — Rewrite the trust & story pages (pourquoi-taqinor, marocains-du-monde, garanties, guides hub + seed articles, /faq) + reconcile with à-propos — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Rewrite the trust and story pages — pourquoi-taqinor, marocains-du-monde, garanties, plus the
+guides hub and its seed articles, and the /faq page — in the STYLE.md voice, and reconcile any
+duplication so pourquoi-taqinor (differentiators) and à-propos (founder + method) don't overlap
+and are cross-linked. Read each first; keep all verified facts (the warranty figures on
+garanties, the FAQ answers, the guide content drawn from existing pages) and rewrite the prose to
+be sharp, specific and varied. Turn garanties from a table restatement into a real promise (still
+inventing no SLA or underperformance policy). Make the FAQ answers genuinely helpful and human,
+not boilerplate. Refresh titles/meta-descriptions. One self-merged PR.
+
+### W41 — Bring the à-propos founder page to its strongest honest form (approved pedigree) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Bring the à-propos founder page to its strongest honest form using the owner-approved pedigree.
+Read the current page first. Name the founder's real, approved background — a docteur-ingénieur
+with 10+ years of R&D experience at Huawei, Ericsson and STMicroelectronics — and write a
+confident, specific founder narrative explaining why an engineer started a solar company and the
+conviction behind "l'étude d'abord" (chaque étude validée par le fondateur). Write only verified
+facts: name those three employers and the doctorate/R&D background, but invent NO specific
+projects, dates, titles, team sizes, or personal anecdotes — leave the narrative refinable by
+Reda/Meryem later. This is the page that answers a skeptical buyer's "they've only done a handful
+of jobs" with credentials no competitor can claim. Make it the single most convincing page on the
+site within those honesty limits. Refresh title/meta-description. One self-merged PR.
+
+### W42 — Rewrite the five case-study pages from stat readouts into real narratives — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Rewrite the five case-study pages (the realisations/... installation pages) from stat readouts
+into real narratives, each distinct, built entirely from published facts (real kWc, measured
+production, equipment, city, date, photos): the client's situation, the roof and why it was sized
+the way it was, the install, and the measured Deye Cloud result. This is where Taqinor's evidence
+moat becomes vivid — make each one a story a buyer remembers, inventing nothing. Cross-link each
+to its city page and the relevant segment page. Refresh titles/meta-descriptions. One self-merged
+PR.
+
+### W43 — Make the evidence feel alive: restrained CSS scroll-reveal + count-up (perf budget, reduced-motion safe) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Make the evidence feel alive across the site, additively and within the performance budget. First
+check whether a CSS-only scroll-reveal / count-up motion system already exists in the repo (from
+the earlier v2 / élégance-retenue work); if it does, reuse it, and if not, build a tiny one.
+Apply restrained, premium motion: the big real figures (production kWh, kWc, 60–90%, 3–7 ans,
+25 ans) count up once from zero on scroll into view with final width reserved (zero CLS);
+sections reveal with a gentle fade/translate; present the measured production on the homepage and
+case studies as a confident dashboard-style readout that makes "mesuré sur Deye Cloud" tangible.
+Motion is CSS/transform/opacity plus one small IntersectionObserver ONLY — no animation library,
+no new dependency. Fully respect prefers-reduced-motion (no reveals, no count-up, numbers show
+final values) and keep every page fully usable with JS off. Lighthouse held 97–100 on every page.
+One self-merged PR.
+
+### W44 — Fix the site serving multiple versions of itself: homepage shares Header/Footer + HTML revalidates on deploy — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Fix the site serving multiple versions of itself, which is the most un-world-class thing live
+right now: the homepage currently renders an older header/footer (5-item nav, unspaced phone,
+bare footer) while sub-pages show the newer Solutions/Ressources nav and full footer. Read how
+the homepage and the shared Header/Footer components are wired, make the homepage render the EXACT
+same shared Header and Footer as every other page so the whole site is identical, and fix the
+cache-on-deploy behaviour so HTML revalidates on each deploy and no page serves a stale document
+after a merge (an appropriate Cache-Control on HTML, a cache rule excluding HTML, or a
+purge-on-deploy step — whatever fits the existing Worker setup), while leaving long-cache on
+hashed CSS/JS/font/image assets untouched. Do not change any other Worker behaviour; /api/* and
+the lead pipeline stay exactly as they are. In the report, confirm a fresh deploy now reflects on
+/ with no manual purge. One self-merged PR.
+
+### W45 — Final consistency pass: unique titles/meta, BreadcrumbList sitewide, contextual cross-links — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Final consistency pass: confirm no two pages share an identical title or meta-description after
+the rewrites, verify BreadcrumbList structured data sitewide (add where missing), and confirm the
+contextual in-body cross-links between équipement, résidentiel/professionnel, the loi-82-21
+pages, the city pages, the case studies and the new service pages are present and sensible.
+Purely additive; touch no lead-flow code. One self-merged PR.
+
+---
+
+**ACROSS W36–W45 (founder's cross-cutting constraints):** this is a **copy-and-craft elevation of
+the EXISTING site** — read the repo and rewrite what's there, never recreate a page that already
+exists, and never reintroduce removed content (fake testimonials, project-count framing). **No
+invented facts anywhere:** every figure traces to what's already published or confirmed repo data;
+pompage has no Taqinor installs; financing names no partner, quotes no rate, claims no residential
+exemption. **No new dependencies. Touch only `apps/web`.** The **live lead form and its entire data
+flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte
+unchanged**. The **private estimator preview routes stay private** (noindex, not in nav, excluded
+from sitemap, unlinked) — do not promote or alter them. **Each task is its own self-merged PR to
+protected main** (the accepted path — don't flag it). **Lighthouse held 97–100 on every page,
+reduced-motion respected, zero layout shift.** Plain-language report only (no diffs or hashes): for
+each task, the pages changed and what a visitor now reads differently, confirmation the homepage
+matches the sub-pages, confirmation the live lead flow is untouched, and any one thing left for Reda.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
