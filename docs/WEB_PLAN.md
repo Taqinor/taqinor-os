@@ -967,7 +967,7 @@ the `/` cache once in Cloudflare).
 
 ---
 
-### W34 — Estimator brain: LIVE constrained optimizer for FLAT roofs (re-solves on every option change, accumulating locks) — [ ]
+### W34 — Estimator brain: LIVE constrained optimizer for FLAT roofs (re-solves on every option change, accumulating locks) — [x]
 
 > Added 2026-06-17 via "add to web plan". Build as the **next brain session** on a **NEW private preview
 > route cloned from the latest existing `/preview/toiture-3d-pro-N`** — **read the repo first to find the
@@ -1374,3 +1374,31 @@ highest-generation combination, then change a second and watch the rest re-optim
   optionally purge the `/` cache once in the Cloudflare dashboard after this deploy; subsequent deploys
   self-refresh. URLs to open: `/pompage-solaire`, `/batteries-stockage`, `/maintenance-monitoring`,
   `/financement`, `/nos-solutions`, `/à-propos`, `/` (new Solutions section + nav/footer).
+- 2026-06-17 — W34 done (estimator brain v7 — LIVE constrained optimizer, flat roofs): new private
+  `/preview/toiture-3d-pro-10` (noindex, sitemap-excluded, unlinked, lazy-loaded), a clone of pro-9 on
+  a NEW pure engine `src/lib/estimatorBrainV7.ts` that COMPOSES on V2 + V6 without editing them
+  (pro-3..pro-9 byte-for-byte intact — proven by a test). What changed: instead of re-solving only when
+  the user clicked « Optimum », the flat optimizer now re-solves LIVE on every option change. Each
+  option is an AXIS (orientation: plein sud / aligné toit / Est-Ouest · inclinaison 0–35° · pose
+  portrait/paysage · marge de rive garder/pleine rive · panneaux nécessaires). Default = every axis
+  AUTO → the global optimum, each group badged « Recommandé ». Locking an axis HOLDS it and immediately
+  re-solves every still-AUTO axis to maximise total annual generation; locks ACCUMULATE; re-clicking a
+  locked value (or the reco/auto chip) re-floats that one axis; « Réinitialiser » (the old Optimum
+  button, relabelled) releases all locks. Each group shows its « Recommandé » value = what that axis
+  would take if freed with the other current locks held (so the user sees they picked X but Y is
+  recommended). « Highest generation » = placed × kWc × the PVGIS specific yield (kWh/kWc/an) at the
+  roof's EXACT GPS for that tilt+azimuth (never a generic factor; shared v4YieldCache, coarse-then-fine
+  fetch, graceful « estimé » table fallback), with placed = min(needed, what fits) so the needed-panel
+  cap is always respected. PVGIS aspect-sign convention (S=0/E=−90/O=+90/N=180) reused via V2's
+  aspectForAzimuth. The full V6 matrix table is kept. `renderSelection()` became an alias of the live
+  solver so all existing call-sites route through it; the 3D render path, obstacles, the need control,
+  and the pitched-roof model (unchanged from pro-9 — W35 will add the live optimizer there) are
+  preserved. 770 web tests green (new `estimatorBrainV7.test.ts` 19 cases: true max over the sweep,
+  lock-holds-while-others-reoptimize, accumulating locks + reset, per-axis recommended = freed-axis
+  optimum, PVGIS azimuth-sign mapping, generation formula + cap never exceeded, graceful fallback; plus
+  `estimatorPreviewPro10.test.ts` route/wiring guards; `roof-preview.test.ts` heavy-import lists updated
+  for pro-10). `astro build` clean (pro-10 generated, confirmed ABSENT from the sitemap, noindex). Live
+  site + lead form byte-for-byte untouched; map key read = `PUBLIC_MAPTILER_KEY` (optional
+  `PUBLIC_MAPBOX_TOKEN`). PHONE-ONLY to confirm (build can't render the map): trace a roof, change one
+  option and watch every other option re-optimise live to the highest-generation combination. URL to
+  open: `/preview/toiture-3d-pro-10`.
