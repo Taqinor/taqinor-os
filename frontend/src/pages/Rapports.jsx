@@ -2,11 +2,13 @@
 // SAV). Lecture seule ; chaque rapport est exportable en .xlsx. Données
 // agrégées côté serveur, bornées à la société.
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import reportingApi from '../api/reportingApi'
 import { downloadXlsx } from '../api/importApi'
+import { downloadBlob } from '../utils/downloadBlob'
 
 function Table({ headers, rows }) {
   return (
@@ -64,6 +66,10 @@ export function Component() {
   const [jobCosting, setJobCosting] = useState(null)
   const [analytics, setAnalytics] = useState(null)
   const [commissions, setCommissions] = useState(null)
+  const [backup, setBackup] = useState(null)
+  const [backupBusy, setBackupBusy] = useState(false)
+  const role = useSelector(s => s.auth.role)
+  const isAdmin = role === 'admin'
 
   useEffect(() => {
     reportingApi.salesReport().then(r => setSales(r.data)).catch(() => {})
@@ -76,7 +82,18 @@ export function Component() {
     reportingApi.analytics().then(r => setAnalytics(r.data)).catch(() => {})
     // N99 — réservé admin ; un refus (403) laisse la carte vide.
     reportingApi.commissions().then(r => setCommissions(r.data)).catch(() => {})
+    // N97 — résumé de la sauvegarde (admin) ; un refus (403) laisse la carte vide.
+    reportingApi.backupSummary().then(r => setBackup(r.data)).catch(() => {})
   }, [])
+
+  const onBackupDownload = () => {
+    setBackupBusy(true)
+    reportingApi.backupXlsx()
+      .then(r => downloadBlob(
+        r.data, `sauvegarde-taqinor-${new Date().toISOString().slice(0, 10)}.xlsx`))
+      .catch(() => {})
+      .finally(() => setBackupBusy(false))
+  }
 
   const exportInsight = (slug) => () => reportingApi.insightXlsx(slug)
     .then(r => downloadXlsx(r.data, `${slug}.xlsx`)).catch(() => {})
@@ -84,6 +101,22 @@ export function Component() {
   return (
     <div className="page" style={{ maxWidth: 1100 }}>
       <div className="page-header"><h2>Rapports</h2></div>
+
+      {isAdmin && (
+        <InsightCard title="Sauvegarde des données (export complet)"
+                     note="Administrateur — toutes les données de la société dans un seul fichier Excel (une feuille par objet). Aucun prix d'achat ni marge.">
+          {backup && (
+            <p style={{ fontSize: 13, marginBottom: 12 }}>
+              {Object.entries(backup.feuilles).map(([sheet, n], i, arr) => (
+                <span key={sheet}>{sheet} : <strong>{fmt(n)}</strong>{i < arr.length - 1 ? ' · ' : ''}</span>
+              ))}
+            </p>
+          )}
+          <button className="btn btn-sm btn-primary" onClick={onBackupDownload} disabled={backupBusy}>
+            {backupBusy ? 'Préparation…' : '⬇ Télécharger la sauvegarde (.xlsx)'}
+          </button>
+        </InsightCard>
+      )}
 
       <Card title="Ventes & pipeline" kind="sales">
         {sales && (

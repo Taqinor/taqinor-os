@@ -30,6 +30,9 @@ const reportingApi = {
   // N32 — Archive documentaire (lecture seule) par client / par chantier.
   getArchiveClient: (id) => api.get(`/reporting/archive/client/${id}/`),
   getArchiveChantier: (id) => api.get(`/reporting/archive/chantier/${id}/`),
+  // N97 — Sauvegarde / export complet des données du tenant (admin).
+  backupSummary: () => api.get('/reporting/backup/', { params: { summary: 1 } }),
+  backupXlsx: () => api.get('/reporting/backup/', { responseType: 'blob' }),
   // N84 — Calendrier / agenda. Fenêtre ?from=&to=, filtres ?assignee=&types=.
   getCalendar: (params) => api.get('/reporting/calendar/', { params }),
   rescheduleCalendar: (payload) =>

@@ -8,6 +8,7 @@ from .insights import (
 )
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
+from .backup import data_backup
 
 urlpatterns = [
     path('dashboard/', dashboard, name='reporting-dashboard'),
@@ -26,6 +27,7 @@ urlpatterns = [
     path('insights/job-costing/', job_costing, name='insights-job-costing'),
     path('insights/analytics/', analytics, name='insights-analytics'),
     path('insights/commissions/', commissions, name='insights-commissions'),
+    path('backup/', data_backup, name='reporting-data-backup'),
     path('archive/client/<int:pk>/', archive_client,
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,

@@ -388,7 +388,7 @@ conformity warning banner).
 - [ ] N94 — Translation-management surface in settings so interface strings can be reviewed/adjusted per language without a code change.
 - [x] N95 — Comprehensive audit log across all objects (creates/updates/deletes + key actions, who/when), viewable & filterable by an admin, building the per-object chatter into a system-wide trail. [unified activity feed shipped with N70]
 - [ ] N96 — Account security: optional 2FA, visible active sessions with revoke, forced credential-rotation flow; production DEBUG setting left unchanged.
-- [ ] N97 — Configurable data export & backup action for the tenant's data (reversibility/retention), real customer-data exports kept out of the repo.
+- [x] N97 — Configurable data export & backup action for the tenant's data (reversibility/retention), real customer-data exports kept out of the repo.
 ### Growth / multi-tenant platform
 - [x] N98 — Optional referral/parrainage program (referrer→referred-client links, configurable reward per converted referral, simple referral dashboard), toggle in settings.
 - [x] N99 — Optional sales-commission tracking (configurable commission per signed quote or per installed kWc for the commerciale), visible only to authorised roles.
@@ -630,3 +630,14 @@ Tracked here so they aren't lost:
   N36/N59/N60. Restent CONSTRUCTIBLES pour une prochaine passe : N51, N52,
   N58, N74, N75, N97 (+ N102 doc finale). Lot de cette session : N84, N62
   (déjà présent), N99, N66, N46, N47, N98.
+- 2026-06-17 — N97 done: sauvegarde / export complet des données du tenant
+  (réservé admin). Nouveau GET /reporting/backup/ qui rassemble toutes les
+  données métier de la société dans UN seul classeur Excel (.xlsx), une
+  feuille par objet (Leads, Clients, Produits, Devis, Factures, Chantiers,
+  Équipements, Tickets SAV) — borné société, sans aucun prix d'achat ni marge
+  (jamais de donnée interne). ?summary=1 renvoie un aperçu JSON {feuille:
+  nb_lignes} avant de télécharger. Nouvelle carte « Sauvegarde des données »
+  (admin uniquement) dans Rapports : aperçu des compteurs + bouton de
+  téléchargement. Produit à la volée, aucun fichier client commité, aucun
+  appel externe, aucun planificateur. Tests backend (scoping société, xlsx
+  valide ouvrable, 403 pour non-admin) ; lint front + flake8 verts.
