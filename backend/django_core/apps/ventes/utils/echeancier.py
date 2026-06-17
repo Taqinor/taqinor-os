@@ -57,11 +57,16 @@ def factures_actives(devis):
 
 
 def blended_tva_pct(devis) -> Decimal:
-    """Taux de TVA mélangé du devis (TVA/HT×100), pour l'étiquette du PDF."""
-    ht = Decimal(str(devis.total_ht))
+    """Taux de TVA mélangé du devis (TVA/HT×100), pour l'étiquette du PDF.
+
+    A3 — sur un devis à deux options accepté, le taux est celui de l'option
+    retenue (mêmes lignes que la facture)."""
+    from apps.ventes.utils.options import option_totaux
+    opt = option_totaux(devis)
+    ht = Decimal(str(opt['ht']))
     if ht <= 0:
         return Decimal(str(devis.taux_tva))
-    return _q(Decimal(str(devis.total_tva)) / ht * 100)
+    return _q(Decimal(str(opt['tva'])) / ht * 100)
 
 
 def next_tranche(devis):
@@ -78,9 +83,14 @@ def next_tranche(devis):
     key, pct = schedule[index]
     is_last = index == len(schedule) - 1
 
-    total_ht = Decimal(str(devis.total_ht))
-    total_tva = Decimal(str(devis.total_tva))
-    total_ttc = Decimal(str(devis.total_ttc))
+    # A3 — l'option acceptée est autoritative : on facture UNIQUEMENT les lignes
+    # de l'option retenue (batterie exclue/incluse selon le choix), au centime.
+    # Sans vraie deuxième option, ce sont les totaux complets — inchangé.
+    from apps.ventes.utils.options import option_totaux
+    opt = option_totaux(devis)
+    total_ht = Decimal(str(opt['ht']))
+    total_tva = Decimal(str(opt['tva']))
+    total_ttc = Decimal(str(opt['ttc']))
 
     if is_last:
         # Le solde = reste exact pour que la somme égale le total du devis.
@@ -149,9 +159,13 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
 
 
 def solde_devis(devis):
-    """Solde du devis : total, facturé, payé, restant (Decimals)."""
+    """Solde du devis : total, facturé, payé, restant (Decimals).
+
+    A3 — le total de référence est celui de l'option acceptée (mêmes lignes que
+    les factures de l'échéancier) ; sans vraie deuxième option, total complet."""
+    from apps.ventes.utils.options import option_totaux
     actives = factures_actives(devis)
-    total = Decimal(str(devis.total_ttc))
+    total = Decimal(str(option_totaux(devis)['ttc']))
     facture = sum((Decimal(str(f.total_ttc)) for f in actives), Decimal('0'))
     paye = sum(
         (Decimal(str(p.montant)) for f in actives for p in f.paiements.all()),

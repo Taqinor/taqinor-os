@@ -73,10 +73,15 @@ def _puissance_from(devis, lead):
 def _freeze_bom(devis):
     """Nomenclature gelée depuis les lignes du devis (N1) : composants +
     quantités, pour le résumé système et la base parc. Ignore les lignes
-    libres (sans produit catalogue)."""
+    libres (sans produit catalogue).
+
+    A3 — pour un devis à deux options accepté, ne gèle QUE les lignes de
+    l'option retenue (batterie exclue/incluse selon le choix) ; un devis à
+    option unique garde toutes ses lignes (comportement inchangé)."""
     bom = []
     try:
-        lignes = devis.lignes.select_related('produit')
+        from apps.ventes.utils.options import option_lines
+        lignes = option_lines(devis)
     except Exception:
         return bom
     for ligne in lignes:

@@ -36,7 +36,7 @@ here unchanged — this file only adds tasks.
   and the document status stay **separate layers** (rule #2) — moving to Signé does not
   silently rewrite document statuses beyond the one chosen devis the user confirms.
 
-- [ ] **A3 — The chosen option is authoritative downstream.** The **facture échéancier** and
+- [x] **A3 — The chosen option is authoritative downstream.** The **facture échéancier** and
   the **chantier** use **only the accepted option's lines** (battery lines excluded if "Sans
   batterie", included if "Avec batterie"). Totals and TVA must be correct **to the centime**
   for that option (reuse the existing reference/total utilities; never recompute by hand).
@@ -163,6 +163,17 @@ here unchanged — this file only adds tasks.
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-17 — A3: l'option acceptée est désormais autoritative en aval. Un
+  nouvel utilitaire (apps/ventes/utils/options.py) réutilise EXACTEMENT le
+  découpage du moteur de devis (réseau vs hybride+batterie) pour ne garder que
+  les lignes de l'option retenue ; il ne filtre QUE pour un vrai devis à deux
+  options (option unique / pompage / liste libre → toutes les lignes,
+  comportement inchangé). L'échéancier (facture acompte/matériel/solde) et le
+  solde du devis facturent maintenant les seuls totaux de l'option choisie
+  (au centime, via les mêmes formules que Devis.total_ht/total_tva — jamais de
+  recalcul à la main) ; la nomenclature gelée du chantier (BOM) exclut/inclut la
+  batterie selon le choix. Tests : découpage pur + totaux/échéancier/BOM par
+  option + non-régression d'un devis à option unique.
 - 2026-06-17 — A2: déplacer un lead dans « Signé » (glisser-déposer kanban ou
   édition en place de l'étape) ouvre désormais un dialogue qui demande QUEL
   devis du lead a été accepté et, pour un devis à deux options, laquelle
