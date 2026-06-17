@@ -180,6 +180,20 @@ describe('maillage & téléphone (W9 / W10)', () => {
     }
   });
 
+  it('l’accueil lie la galerie + les fiches vers /realisations et chaque étude de cas (W18)', () => {
+    const idx = read('../src/pages/index.astro');
+    // Lien vers le hub /realisations depuis la galerie ET les fiches (2 blocs).
+    expect((idx.match(/href="\/realisations"/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // Les deux blocs « preuve » lient chaque carte à son étude de cas (liens
+    // construits par template `/realisations/${slug}`).
+    expect(idx).toContain('/realisations/${g.slug}'); // galerie
+    expect(idx).toContain('/realisations/${c.slug}'); // fiches chantier
+    // Chaque étude de cas réelle est référencée par slug sur l’accueil.
+    for (const r of REALISATIONS) {
+      expect(idx, r.slug).toContain(`slug: '${r.slug}'`);
+    }
+  });
+
   it('l’accueil partage le même header/footer que le reste du site (W17)', () => {
     // L'accueil passe par le Layout partagé, qui rend <Header/> + <Footer/> :
     // même nav (Guides, FAQ, À propos), même téléphone formaté, même footer.

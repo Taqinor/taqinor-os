@@ -518,7 +518,7 @@ nav (with **Guides** and **FAQ**), the formatted phone **+212 6 61 85 04 10**, a
 inheriting the shared layout, fix it** so it matches every other page. **If it already matches,
 confirm that in the report.**
 
-### W18 — Tighten homepage internal linking into /realisations & case studies — [ ]
+### W18 — Tighten homepage internal linking into /realisations & case studies — [x]
 
 > Added 2026-06-17 via "add to web plan".
 
@@ -812,3 +812,11 @@ that the pitched-roof 3D shows panels lying flat on the slope and correctly alig
   the full footer (Ressources block + « Installation solaire par ville » section). Locked with a guard
   test (index uses the shared Layout; Layout renders Header + Footer). 588 web tests green. No code
   change to the page was required.
+- 2026-06-17 — W18 done (tighten homepage → réalisations linking): the homepage's two evidence blocks
+  already linked each card to its matching case study (gallery `→ /realisations/${g.slug}`, fiches
+  `→ /realisations/${c.slug}`) and the fiches block had a « Toutes nos réalisations → » hub link; the
+  only gap was that the evidence GALLERY had no hub link. Added a single additive « Voir toutes nos
+  réalisations → » link to `/realisations` at the foot of the gallery, so BOTH evidence sections now
+  reach the hub AND every individual case study. Purely additive — no lead-flow code touched. Guard
+  test added (≥ 2 hub links; both template case-study links; every réalisation slug referenced). 589
+  web tests green. URL to open: `/` (gallery + fiches sections).
