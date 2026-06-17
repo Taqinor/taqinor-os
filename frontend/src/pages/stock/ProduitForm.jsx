@@ -8,6 +8,76 @@ import {
   createCategorie,
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
+import stockApi from '../../api/stockApi'
+
+// N17 — listes de prix multi-fournisseurs par SKU. Le prix d'achat est INTERNE
+// (jamais sur un document client). Le moins cher est proposé en rédigeant un
+// bon de commande. Section éditable seulement en mode édition d'un produit.
+function PrixFournisseursSection({ produitId, fournisseurs }) {
+  const [rows, setRows] = useState([])
+  const [fId, setFId] = useState('')
+  const [prix, setPrix] = useState('')
+  const [error, setError] = useState(null)
+
+  const load = () => stockApi.getProduitPrixFournisseurs(produitId)
+    .then((r) => setRows(r.data ?? [])).catch(() => {})
+  useEffect(() => { load() }, [produitId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const add = () => {
+    setError(null)
+    const p = parseFloat(prix)
+    if (!fId) { setError('Choisissez un fournisseur.'); return }
+    if (!Number.isFinite(p) || p <= 0) { setError('Prix d\'achat invalide.'); return }
+    stockApi.createPrixFournisseur({ produit: produitId, fournisseur: fId, prix_achat: p })
+      .then(() => { setFId(''); setPrix(''); return load() })
+      .catch((e) => setError(e.response?.data?.detail
+        ?? e.response?.data?.fournisseur?.[0] ?? 'Échec de l\'ajout.'))
+  }
+  const remove = (id) => stockApi.deletePrixFournisseur(id).then(load).catch(() => {})
+
+  const sorted = [...rows].sort((a, b) => Number(a.prix_achat) - Number(b.prix_achat))
+  const used = new Set(rows.map((r) => String(r.fournisseur)))
+  const dispo = (fournisseurs ?? []).filter((f) => !used.has(String(f.id)))
+
+  return (
+    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border, #ddd)', paddingTop: '0.75rem' }}>
+      <label className="form-label">Prix fournisseurs (interne)</label>
+      <div className="form-hint" style={{ marginBottom: '0.5rem' }}>
+        Plusieurs fournisseurs possibles ; le moins cher est proposé à la commande.
+        Mis à jour automatiquement à la réception d'un bon de commande.
+      </div>
+      {sorted.length > 0 && (
+        <table className="data-table" style={{ marginBottom: '0.5rem' }}>
+          <thead><tr><th>Fournisseur</th><th>Prix d'achat HT</th><th>Dernier achat</th><th></th></tr></thead>
+          <tbody>
+            {sorted.map((r, i) => (
+              <tr key={r.id}>
+                <td>{r.fournisseur_nom}{i === 0 ? ' ⭐' : ''}</td>
+                <td>{Number(r.prix_achat).toFixed(2)} DH</td>
+                <td>{r.date_dernier_achat || '—'}</td>
+                <td>
+                  <button type="button" className="btn btn-sm btn-outline"
+                          onClick={() => remove(r.id)}>Supprimer</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+        <select className="form-control" value={fId} onChange={(e) => setFId(e.target.value)}>
+          <option value="">— Fournisseur —</option>
+          {dispo.map((f) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+        </select>
+        <input type="number" min="0" step="any" className="form-control"
+               style={{ width: 140 }} placeholder="Prix d'achat HT"
+               value={prix} onChange={(e) => setPrix(e.target.value)} />
+        <button type="button" className="btn btn-sm btn-outline" onClick={add}>Ajouter</button>
+      </div>
+      {error && <div className="form-error-box" role="alert" style={{ marginTop: '0.5rem' }}>{error}</div>}
+    </div>
+  )
+}
 
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
@@ -374,6 +444,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 <div className="form-hint">Pour les panneaux. Optionnel.</div>
               </div>
             </div>
+
+            {isEdit && (
+              <PrixFournisseursSection produitId={produit.id} fournisseurs={fournisseurs} />
+            )}
 
             {errors.submit && <div className="form-error-box">{errors.submit}</div>}
           </div>

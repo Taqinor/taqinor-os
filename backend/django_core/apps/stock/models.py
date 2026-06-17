@@ -294,6 +294,35 @@ class TransfertStock(models.Model):
                 f'{self.source_id}→{self.destination_id}')
 
 
+class PrixFournisseur(models.Model):
+    """N17 — prix d'achat d'un produit chez un fournisseur donné.
+
+    Un produit peut avoir plusieurs fournisseurs avec des prix différents ;
+    on garde le prix d'achat (INTERNE — jamais client-facing) et la date du
+    dernier achat. Sert à proposer le fournisseur le moins cher au moment de
+    rédiger un bon de commande. La date du dernier achat est mise à jour
+    automatiquement à la réception d'un BCF. Additif."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='prix_fournisseurs')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, related_name='prix_fournisseurs')
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.CASCADE, related_name='prix_produits')
+    # Prix d'ACHAT — donnée INTERNE, jamais sur un document client.
+    prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    date_dernier_achat = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Prix fournisseur"
+        verbose_name_plural = "Prix fournisseurs"
+        unique_together = [('produit', 'fournisseur')]
+        ordering = ['prix_achat']
+
+    def __str__(self):
+        return f'{self.produit_id} @ {self.fournisseur_id} = {self.prix_achat}'
+
+
 class BonCommandeFournisseur(models.Model):
     """Bon de commande FOURNISSEUR (achat / approvisionnement) — N12.
 

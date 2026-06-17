@@ -284,13 +284,47 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
     return transfert
 
 
+# ── N17 — Listes de prix multi-fournisseurs par SKU ──────────────────────────
+# Prix d'achat INTERNE par (produit, fournisseur) + date du dernier achat.
+# Sert à proposer le fournisseur le moins cher en rédigeant un bon de commande.
+
+def cheapest_prix_fournisseur(produit):
+    """Renvoie le PrixFournisseur le moins cher (prix > 0) pour ce produit, ou
+    None s'il n'existe aucun prix multi-fournisseur renseigné."""
+    return (produit.prix_fournisseurs.filter(prix_achat__gt=0)
+            .select_related('fournisseur').order_by('prix_achat').first())
+
+
+def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
+    """Upsert du prix d'achat (produit, fournisseur) + date du dernier achat.
+    Appelé à la réception d'un BCF. INTERNE (jamais client-facing)."""
+    from decimal import Decimal
+    from .models import PrixFournisseur
+    if fournisseur is None or produit is None:
+        return None
+    prix = _dec(prix_achat) or Decimal('0')
+    obj, created = PrixFournisseur.objects.get_or_create(
+        produit=produit, fournisseur=fournisseur,
+        defaults={'company': company, 'prix_achat': prix,
+                  'date_dernier_achat': date})
+    if not created:
+        obj.prix_achat = prix
+        obj.date_dernier_achat = date
+        if obj.company_id is None:
+            obj.company = company
+        obj.save(update_fields=['prix_achat', 'date_dernier_achat', 'company'])
+    return obj
+
+
 def compute_besoin_materiel(installation):
     """Agrège les besoins matériel d'un chantier depuis son devis source.
 
     Renvoie une liste de dicts triés par désignation :
       {produit, produit_id, sku, designation, requis, disponible,
-       manque, fournisseur_id, fournisseur_nom}
+       manque, fournisseur_id, fournisseur_nom,
+       fournisseur_min_id, fournisseur_min_nom, prix_achat_min}
     `manque` = max(requis - disponible, 0). Un manque > 0 = pénurie.
+    `fournisseur_min_*` = fournisseur le moins cher (N17), s'il existe.
 
     Les lignes sans produit (libre) sont ignorées : on ne peut pas
     réapprovisionner un article qui n'est pas au catalogue.
@@ -325,6 +359,16 @@ def compute_besoin_materiel(installation):
     out = []
     for entry in besoins.values():
         entry['manque'] = max(entry['requis'] - entry['disponible'], 0)
+        # N17 — fournisseur le moins cher (si une liste de prix existe).
+        cheapest = cheapest_prix_fournisseur(entry['produit'])
+        if cheapest is not None:
+            entry['fournisseur_min_id'] = cheapest.fournisseur_id
+            entry['fournisseur_min_nom'] = cheapest.fournisseur.nom
+            entry['prix_achat_min'] = cheapest.prix_achat
+        else:
+            entry['fournisseur_min_id'] = None
+            entry['fournisseur_min_nom'] = None
+            entry['prix_achat_min'] = None
         out.append(entry)
     out.sort(key=lambda e: e['designation'].lower())
     return out
@@ -369,14 +413,18 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
 
 
 def resolve_fournisseur(company, fournisseur_id, installation):
-    """Choisit le fournisseur du brouillon : explicite, sinon celui du premier
-    produit en pénurie, sinon None (le caller décide quoi en faire)."""
+    """Choisit le fournisseur du brouillon : explicite, sinon (N17) le
+    fournisseur le moins cher du premier produit en pénurie, sinon le
+    fournisseur catalogue de ce produit, sinon None."""
     from .models import Fournisseur
     if fournisseur_id:
         return Fournisseur.objects.filter(
             id=fournisseur_id, company=company).first()
     for b in compute_besoin_materiel(installation):
-        if b['manque'] > 0 and b['fournisseur_id']:
+        if b['manque'] <= 0:
+            continue
+        cible = b.get('fournisseur_min_id') or b.get('fournisseur_id')
+        if cible:
             return Fournisseur.objects.filter(
-                id=b['fournisseur_id'], company=company).first()
+                id=cible, company=company).first()
     return None

@@ -8,7 +8,7 @@ from authentication.mixins import TenantMixin
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
-    BonCommandeFournisseur, EmplacementStock, TransfertStock,
+    BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
 )
 from .serializers import (
     ProduitSerializer,
@@ -19,6 +19,7 @@ from .serializers import (
     BonCommandeFournisseurSerializer,
     EmplacementStockSerializer,
     TransfertStockSerializer,
+    PrixFournisseurSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -143,6 +144,16 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         produits = (Produit.objects.filter(company=request.user.company, id__in=ids)
                     .select_related('categorie').order_by('nom'))
         return export_products_xlsx(produits)
+
+    @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
+            permission_classes=[IsAnyRole])
+    def prix_fournisseurs(self, request, *args, **kwargs):
+        """N17 — liste de prix multi-fournisseurs de ce produit (INTERNE),
+        triée du moins cher au plus cher."""
+        produit = self.get_object()
+        qs = produit.prix_fournisseurs.select_related('fournisseur').order_by(
+            'prix_achat')
+        return Response(PrixFournisseurSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['get'], url_path='emplacements',
             permission_classes=[IsAnyRole])
@@ -321,6 +332,51 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         )
         produit.quantite_stock = qte_apres
         produit.save(update_fields=['quantite_stock'])
+
+
+class PrixFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """N17 — prix d'achat multi-fournisseurs par SKU (INTERNE). Lecture tout
+    rôle, écriture stock_modifier. `company` posé serveur ; produit/fournisseur
+    doivent appartenir à la société."""
+    queryset = PrixFournisseur.objects.select_related(
+        'produit', 'fournisseur').all()
+    serializer_class = PrixFournisseurSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prix_achat', 'date_dernier_achat']
+    ordering = ['prix_achat']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [HasPermissionOrLegacy('stock_modifier')()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit_id = self.request.query_params.get('produit')
+        if produit_id:
+            qs = qs.filter(produit_id=produit_id)
+        return qs
+
+    def _check_company(self, serializer):
+        company = self.request.user.company
+        produit = serializer.validated_data.get('produit')
+        fournisseur = serializer.validated_data.get('fournisseur')
+        from rest_framework.exceptions import ValidationError
+        if produit is not None and produit.company_id != getattr(
+                company, 'id', None):
+            raise ValidationError({'produit': 'Produit hors de votre entreprise.'})
+        if fournisseur is not None and fournisseur.company_id != getattr(
+                company, 'id', None):
+            raise ValidationError(
+                {'fournisseur': 'Fournisseur hors de votre entreprise.'})
+
+    def perform_create(self, serializer):
+        self._check_company(serializer)
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        self._check_company(serializer)
+        serializer.save(company=self.request.user.company)
 
 
 class EmplacementStockViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -522,6 +578,9 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from django.utils import timezone
+        from .services import record_purchase_price
+        today = timezone.now().date()
         with transaction.atomic():
             for ligne, qte in plan:
                 produit = ligne.produit
@@ -543,6 +602,11 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 produit.save(update_fields=['quantite_stock'])
                 ligne.quantite_recue += qte
                 ligne.save(update_fields=['quantite_recue'])
+                # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
+                record_purchase_price(
+                    company=bc.company, produit=produit,
+                    fournisseur=bc.fournisseur,
+                    prix_achat=ligne.prix_achat_unitaire, date=today)
             bc.refresh_from_db()
             if bc.est_entierement_recu:
                 bc.statut = BonCommandeFournisseur.Statut.RECU

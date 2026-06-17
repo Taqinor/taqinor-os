@@ -45,6 +45,14 @@ const stockApi = {
   getTransferts: (params) => api.get('/stock/transferts/', { params }),
   createTransfert: (data) => api.post('/stock/transferts/', data),
 
+  // N17 — listes de prix multi-fournisseurs par SKU (INTERNE, jamais client).
+  getProduitPrixFournisseurs: (id) =>
+    api.get(`/stock/produits/${id}/prix-fournisseurs/`),
+  createPrixFournisseur: (data) => api.post('/stock/prix-fournisseurs/', data),
+  updatePrixFournisseur: (id, data) =>
+    api.patch(`/stock/prix-fournisseurs/${id}/`, data),
+  deletePrixFournisseur: (id) => api.delete(`/stock/prix-fournisseurs/${id}/`),
+
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
   getMarques: () => api.get('/stock/marques/'),
   saveMarque: (id, data) => id
