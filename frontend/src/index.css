@@ -39,7 +39,13 @@ body {
 /* ── Sidebar ──────────────────────────────────────────────── */
 .sidebar {
   width: 240px;
-  min-height: 100vh;
+  /* Hauteur BORNÉE au viewport (sticky) pour que la navigation défile à
+     l'intérieur et que la déconnexion reste toujours visible, même sur un
+     écran court ou un iPhone. */
+  height: 100vh;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
   background: #0f172a;
   color: #94a3b8;
   display: flex;
@@ -127,9 +133,14 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
+  /* min-height:0 indispensable : sans lui, un enfant flex ne rétrécit pas sous
+     la hauteur de son contenu, donc overflow-y ne défile jamais et les
+     derniers liens + la déconnexion sont coupés (bug iPhone — C1). */
+  min-height: 0;
   padding: 0.4rem 0;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sidebar-section { padding: 0 0.5rem 0.2rem; }
