@@ -49,8 +49,9 @@ repo yet, the rule still applies to any future integration.
 
 ## Repo facts
 
-- Active development happens on `dev`. `main` receives merge commits via PR —
-  always a merge commit, never squash, so authorship history is preserved.
+- All work lands as a single direct push to `main` (`git push origin main`) —
+  no feature branches, no pull requests, no worktrees. `main` is revertable:
+  if a push breaks something, `git revert` restores the previous state.
 - Backend: Django at `backend/django_core` (apps: authentication, stock, crm,
   ventes, reporting, parametres, roles, contact) + FastAPI AI service at
   `backend/fastapi_ia` (OCR via Zhipu AI, natural-language SQL agent via
@@ -146,45 +147,71 @@ repo yet, the rule still applies to any future integration.
   omit the card. Pompage compositions contain NO inverter and NO battery,
   and auto-fill never quotes a price-less product (all guarded by tests).
 
-## Plan execution (my commands)
-Anything I type after a command is extra detail for that run.
+## Workflow
 
-When I say "work on the plan":
-- If docs/PLAN.running exists, a batch is already running — stop and tell me; do not start a second.
-- Otherwise pick the active file: docs/PLAN.md if it has unchecked [ ] tasks, else docs/PLAN2.md if it has any; if neither, say there's nothing to do.
-- Read it fully and verify real repo state. Create docs/PLAN.running and a fresh dev branch off current main; do ALL work on dev — never touch main until the end.
-- Build every unchecked [ ] task. Run independent tasks in parallel via subagents in separate worktrees (never two on the same files); do dependent or overlapping ones in sequence — decide from the code. Commit each finished task to dev, tick it [x], add one dated line to a DONE LOG.
-- If a task can't be made to pass, skip it (leave it unticked, note why) and keep going.
-- Database migrations a task needs are approved. New external dependencies, auth or cost changes, deleted state, or brand-new architecture are NOT — skip those and list them.
-- When all buildable tasks are integrated, run the project's full CI checks (the same ones .github/workflows runs). Only if green, get dev onto main: main is protected and takes no direct pushes, so open a pull request from dev into main and merge it yourself (main requires NO approvals — never ask me to approve, never remove branch protection). This merge auto-deploys to api.taqinor.ma; never run a deploy command. If red, back out the blocking task, re-check, then open the PR for the rest; never merge a red dev.
-- Delete docs/PLAN.running. Report in plain language what shipped and what was skipped. One plan file per run — don't auto-start the other.
+These rules govern HOW work gets done and landed. They replace the old
+branch / pull-request / merge ceremony entirely.
 
-When I say "add to plan:" followed by tasks (one per line or separated by ;):
-- If docs/PLAN.running exists, append them as [ ] lines to docs/PLAN2.md (create it if missing) — never touch docs/PLAN.md while a run is in progress.
-- Otherwise append them as [ ] lines to docs/PLAN.md's BUILD QUEUE.
-- Land the change on main the protected way — never push to main directly: open a pull request for it and merge it yourself (main requires NO approvals; never ask me to approve, never remove branch protection). Confirm in one line which file you added to.
+- **Fewest steps.** Default to the fewest steps that do exactly what was asked.
+  Never add ceremony. Never do extra or adjacent work that wasn't requested —
+  don't go resolve unrelated gated items, don't restructure neighboring files,
+  don't create files nobody asked for.
+- **One session, one direct push to main.** All work happens in one session and
+  lands as a single direct push to `main`: run any relevant tests, then
+  `git push origin main`. No feature branches, no pull requests, no self-merge,
+  no admin-merge, no auto-merge, no worktrees — ever.
+- **Safety model: main is revertable.** If a push breaks something, `git revert`
+  restores the previous state. Do not add branch-protection gates, PR review, or
+  approval steps. Revert is the only safety net, by the operator's explicit
+  choice.
+- **Touch only the named files.** Only edit the files explicitly named in the
+  request. Asked to change two files means change exactly those two. Never
+  create alternate or fallback files.
+- **Several commands in one request** are all handled in the one session and the
+  one push to main — never split across multiple pushes or PRs.
 
-If I say "reset the plan lock", delete docs/PLAN.running and confirm.
+### "work on the plan"
+Anything typed after the command is extra detail for that run.
+- The active file is `docs/PLAN.md`. There is no PLAN2.md and no `.running` lock
+  — there is only ever one session at a time.
+- Read it fully and verify real repo state. Build every unchecked `[ ]` task.
+  Commit each finished task, tick it `[x]`, add one dated line to a DONE LOG.
+- If a task can't be made to pass, skip it (leave it unticked, note why) and
+  keep going.
+- Database migrations a task needs are approved. New external dependencies, auth
+  or cost changes, deleted state, or brand-new architecture are NOT — skip those
+  and list them.
+- When the buildable tasks are done, run any relevant tests, then
+  `git push origin main`. This push auto-deploys to api.taqinor.ma; never run a
+  deploy command.
+- Report in plain language what shipped and what was skipped.
 
-## Website plan execution (apps/web) — Reda's commands
-Anything Reda types after a command is extra detail for that run. This block governs the WEBSITE autopilot only (apps/web). A separate taqinor-os autopilot may run in parallel — if it shares this repo, it uses its own "os"-named commands, plan/lock files, and the dev-os branch, and never touches apps/web. The two must never share a branch, plan file, or lock file, or edit the same files. The website autopilot stays strictly inside apps/web plus its own docs/WEB_PLAN* files.
+### "add to plan:" followed by tasks (one per line or separated by ;)
+- Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE (there is no
+  PLAN2.md), then `git push origin main`. Confirm in one line.
 
-When Reda says "work on the web plan":
-- If docs/WEB_PLAN.running exists, a website batch is already running — stop and say so; do not start a second.
-- Pick the active file: docs/WEB_PLAN.md if it has unchecked [ ] tasks, else docs/WEB_PLAN2.md if it has any; if neither, say there's nothing to do.
-- Read it fully and verify real repo state (git log, file contents, open PRs).
-- Create docs/WEB_PLAN.running and a fresh dev-web branch off main; do ALL work on dev-web — never touch main until the end.
-- Scope: edit ONLY apps/web/** and the docs/WEB_PLAN* files. NEVER touch OS code, the docs/PLAN-os* files, or anything outside apps/web.
-- Build every unchecked [ ] task. Independent tasks in parallel via subagents in separate git worktrees (never two on the same files); dependent/overlapping ones in sequence — decide from the code. Commit each finished task to dev-web, tick it [x], add one dated line to the DONE LOG.
-- If a task can't be made to pass, skip it (leave it unticked, note why) and keep going.
-- Pre-approved unattended: anything website-safe a task plainly needs. NOT pre-approved (skip and list): new external dependencies, auth or cost changes, deleted state files, brand-new architecture, anything touching the form's lead data flow, anything outside apps/web.
-- When all buildable tasks are integrated, run the project's full CI checks. Only if green, merge dev-web → main once via a PR you open and self-merge (no approval) — this auto-deploys the site via Cloudflare on merge; never run a deploy command. If red, back out the blocking task, re-check, merge the rest; never merge a red dev-web.
-- Delete docs/WEB_PLAN.running. Report in plain language (no diffs, no commit hashes): what shipped, what was skipped, and the exact preview URLs or live changes Reda can click. One plan file per run.
+### "work on the web plan"
+The website autopilot stays strictly inside `apps/web/**` plus its own
+`docs/WEB_PLAN*` files. Anything typed after the command is extra detail.
+- The active file is `docs/WEB_PLAN.md`. There is no WEB_PLAN2.md and no
+  `.running` lock — only ever one session at a time.
+- Read it fully and verify real repo state. Scope: edit ONLY `apps/web/**` and
+  the `docs/WEB_PLAN*` files. NEVER touch anything outside apps/web.
+- Build every unchecked `[ ]` task. Commit each finished task, tick it `[x]`,
+  add one dated line to the DONE LOG.
+- If a task can't be made to pass, skip it (leave it unticked, note why) and
+  keep going.
+- Pre-approved: anything website-safe a task plainly needs. NOT pre-approved
+  (skip and list): new external dependencies, auth or cost changes, deleted
+  state files, brand-new architecture, anything touching the form's lead data
+  flow, anything outside apps/web.
+- When the buildable tasks are done, run any relevant tests, then
+  `git push origin main` — this auto-deploys the site via Cloudflare on push;
+  never run a deploy command.
+- Report in plain language (no diffs, no commit hashes): what shipped, what was
+  skipped, and the exact preview URLs or live changes Reda can click.
 
-When Reda says "add to web plan:" followed by tasks (one per line or separated by ;):
-- Pick the target file: if docs/WEB_PLAN.running exists (a run is in progress), append the [ ] lines to docs/WEB_PLAN2.md (create if missing) — never touch docs/WEB_PLAN.md while a run is in progress; otherwise append them as [ ] lines to docs/WEB_PLAN.md's BUILD QUEUE.
-- DURABILITY — this is the whole point of "queue now, fire later (another session / overnight)": a queued task only counts once it reaches the plan file on MAIN. A plain commit here lands on the ephemeral Claude Code web session branch (e.g. claude/...) and is lost when that session ends — so it must NOT stop there. Land the append on main the protected way, exactly like "add to plan" above: branch off the current main, commit only the one-line plan append, open a pull request, and self-merge it (main needs NO approval — never ask Reda to approve, never push to main directly, never remove branch protection). This durable-to-main rule applies to BOTH the WEB_PLAN.md case and the WEB_PLAN2.md case.
-- Keep this PR to the docs/WEB_PLAN* files only — bundle no other change into it.
-- Confirm in one line which file you appended to and that it is merged to main.
-
-If Reda says "reset the web plan lock", delete docs/WEB_PLAN.running and confirm.
+### "add to web plan:" followed by tasks (one per line or separated by ;)
+- Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no
+  WEB_PLAN2.md), then `git push origin main`. Confirm in one line which file you
+  appended to.
