@@ -103,10 +103,12 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
   expect(values.length).toBeGreaterThan(0)
   await devisSelect.selectOption(values[0])
   // Two-option devis require an explicit battery choice.
-  if (await dialog.locator('input[name="sd-option"]').count()) {
-    await dialog.locator('input[value="sans_batterie"]').check()
+  const optionRadios = dialog.locator('input[name="sd-option"]')
+  if (await optionRadios.count()) {
+    await optionRadios.first().check()
   }
-  await dialog.getByRole('button', { name: /Confirmer l'acceptation/ }).click()
+  // The label uses a typographic apostrophe (l’acceptation) — match either.
+  await dialog.getByRole('button', { name: /Confirmer l['’]acceptation/ }).click()
   await expect(dialog).toHaveCount(0)
 
   await expect(page.locator('tr.lv-row', { hasText: name })).toContainText('Signé')
