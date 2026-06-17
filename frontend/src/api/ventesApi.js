@@ -20,6 +20,10 @@ const ventesApi = {
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
   // Approbation admin de la remise (T17) — débloque l'envoi.
   approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
+  // N25 — acceptation explicite (date + nom), déclencheur de chantier + chatter.
+  accepterDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/accepter/`, payload),
+  historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
+  noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
   journalVentes: (params) =>
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),

@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir,
+    Avoir, LigneAvoir, DevisActivity,
 )
 
 
@@ -287,4 +287,16 @@ class RelanceLogSerializer(serializers.ModelSerializer):
         model = RelanceLog
         fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'date',
                   'created_by_nom']
+        read_only_fields = fields
+
+
+class DevisActivitySerializer(serializers.ModelSerializer):
+    """Chatter d'un devis (N25) — lecture seule côté API."""
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        model = DevisActivity
+        fields = ['id', 'devis', 'kind', 'field', 'field_label',
+                  'old_value', 'new_value', 'body', 'user_nom', 'created_at']
         read_only_fields = fields

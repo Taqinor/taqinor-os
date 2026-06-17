@@ -444,6 +444,28 @@ export default function DevisList() {
                       </button>
                     )}
 
+                    {d.statut === 'envoye' && (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        title="Marquer accepté (date + nom) — déclenche la création du chantier"
+                        onClick={() => {
+                          const nom = window.prompt(
+                            `Devis ${d.reference} — nom de la personne qui accepte :`, '')
+                          if (nom === null) return
+                          const date = window.prompt(
+                            "Date d'acceptation (AAAA-MM-JJ) :",
+                            new Date().toISOString().slice(0, 10))
+                          if (date === null) return
+                          ventesApi.accepterDevis(d.id, { nom, date })
+                            .then(() => dispatch(fetchDevis()))
+                            .catch(err => alert(
+                              err?.response?.data?.detail ?? 'Acceptation impossible.'))
+                        }}
+                      >
+                        ✓ Accepter
+                      </button>
+                    )}
+
                     {d.statut === 'accepte' && (
                       <button
                         className="btn btn-sm btn-success"
