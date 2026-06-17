@@ -683,3 +683,20 @@ Tracked here so they aren't lost:
   backend (nouvelles catégories présentes/comptées, préférence désactive une
   catégorie, liste des préférences, type inconnu rejeté) ; flake8 + lint front
   verts.
+- 2026-06-17 — Lot de session vérifié de bout en bout puis poussé sur
+  `claude/beautiful-pascal-vr2q8b` : N97, N51, N52, N75 (+ refresh CODEMAP /
+  empreinte). Toute la file PLAN2.md est drainée (D2/D4 = stop-and-ask déjà
+  notés, E1–E16 = bloqués sur l'environnement). Validation locale réelle :
+  Django 5.1.4 installé + réglages sqlite jetables → `makemigrations --check`
+  = « No changes detected », 16 nouveaux tests verts + suites des apps
+  touchées vertes (1 seul échec PRÉEXISTANT, propre à sqlite : format Décimal
+  '10000' vs '10000.00' dans un test du rapport stock — passe sur Postgres en
+  CI) ; flake8 propre ; 83 tests node verts ; `npm run build` OK ;
+  check_stages + empreinte CODEMAP OK. RESTENT CONSTRUCTIBLES pour une
+  prochaine passe (non commencés ici pour ne pas risquer le lot vert sous
+  contrainte de fenêtre — touchent des flux cœur très partagés) : N58 (libellés
+  + ordre des statuts chantier/SAV/BC configurables — touche le rendu des
+  statuts dans installations/sav/stock + front), N74 (checklists comme modèles
+  de workflow nommés sélectionnés par type d'installation — refond le
+  matérialisateur de checklist), et N102 (doc finale). Le module terrain
+  F1–F24 reste hors lot (gros module multi-session).
