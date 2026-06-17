@@ -60,6 +60,8 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
     expect(offenders).toEqual([
       'src/scripts/roof-tool-3d.ts',
       'src/scripts/roof-tool-pro.ts',
+      'src/scripts/roof-tool-pro10.ts',
+      'src/scripts/roof-tool-pro11.ts',
       'src/scripts/roof-tool-pro2.ts',
       'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool-pro4.ts',
@@ -272,6 +274,8 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
       .sort();
     expect(offenders).toEqual([
       'src/scripts/roof-tool-pro.ts',
+      'src/scripts/roof-tool-pro10.ts',
+      'src/scripts/roof-tool-pro11.ts',
       'src/scripts/roof-tool-pro2.ts',
       'src/scripts/roof-tool-pro3.ts',
       'src/scripts/roof-tool-pro4.ts',
