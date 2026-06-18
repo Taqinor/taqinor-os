@@ -1,35 +1,27 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Pencil, FileText, Trash2, Upload, Plus } from 'lucide-react'
 import { fetchClients, deleteClient } from '../../features/crm/store/crmSlice'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
 import ExcelImport from '../../components/ExcelImport'
+import { DataTable, Badge, Button, Spinner } from '../../ui'
+
+const formatDateFR = (iso) => new Date(iso).toLocaleDateString('fr-FR')
 
 export default function ClientList() {
   const dispatch = useDispatch()
   const { clients, loading, error } = useSelector(s => s.crm)
   const role = useSelector(s => s.auth.role)
 
-  const [showForm, setShowForm]       = useState(false)
-  const [editClient, setEditClient]   = useState(null)
-  const [search, setSearch]           = useState('')
-  const [deletingId, setDeletingId]   = useState(null)
-  const [showImport, setShowImport]   = useState(false)
+  const [showForm, setShowForm]     = useState(false)
+  const [editClient, setEditClient] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [showImport, setShowImport] = useState(false)
 
   useEffect(() => { dispatch(fetchClients()) }, [dispatch])
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return clients
-    return clients.filter(c =>
-      c.nom.toLowerCase().includes(q) ||
-      (c.prenom ?? '').toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      (c.telephone ?? '').includes(q)
-    )
-  }, [clients, search])
 
   const openNew   = () => { setEditClient(null); setShowForm(true) }
   const openEdit  = c  => { setEditClient(c);    setShowForm(true) }
@@ -58,8 +50,100 @@ export default function ClientList() {
     }
   }
 
-  if (loading) return <p className="page-loading">Chargement des clients...</p>
-  if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+  // Export Excel : DataTable nous passe le jeu courant (filtré par sa recherche).
+  const exportRows = async (rows) => {
+    const ids = rows.map(c => c.id)
+    if (!ids.length) return
+    try {
+      const res = await crmApi.exportClientsXlsx(ids)
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'clients.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { /* ignore */ }
+  }
+
+  const columns = useMemo(() => [
+    {
+      id: 'nom',
+      header: 'Client',
+      width: 200,
+      hideable: false,
+      accessor: (c) => [c.nom, c.prenom].filter(Boolean).join(' '),
+      cell: (value) => <span className="font-medium">{value || '—'}</span>,
+      exportValue: (c) => [c.nom, c.prenom].filter(Boolean).join(' '),
+    },
+    {
+      id: 'email',
+      header: 'Email',
+      width: 220,
+      cell: (value) => (
+        <a className="link-blue" href={`mailto:${value}`} onClick={(e) => e.stopPropagation()}>{value}</a>
+      ),
+    },
+    {
+      id: 'telephone',
+      header: 'Téléphone',
+      width: 150,
+      cell: (value) => value || '—',
+    },
+    {
+      id: 'adresse',
+      header: 'Adresse',
+      width: 220,
+      searchable: false,
+      accessor: (c) => (c.adresse ? c.adresse.split('\n')[0] : ''),
+      cell: (value) => (
+        <span className="text-truncate" title={value}>{value || '—'}</span>
+      ),
+    },
+    {
+      id: 'devis_count',
+      header: 'Devis',
+      align: 'right',
+      numeric: true,
+      width: 90,
+      searchable: false,
+      accessor: (c) => c.devis_count ?? 0,
+      cell: (value) => <Badge tone={value ? 'info' : 'neutral'}>{value}</Badge>,
+    },
+    {
+      id: 'date_creation',
+      header: 'Depuis',
+      align: 'right',
+      width: 120,
+      searchable: false,
+      cell: (value) => (
+        <span className="text-muted-foreground">{value ? formatDateFR(value) : '—'}</span>
+      ),
+      exportValue: (c) => (c.date_creation ? formatDateFR(c.date_creation) : ''),
+    },
+  ], [])
+
+  const rowActions = (c) => {
+    const actions = [
+      { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => openEdit(c) },
+      { id: 'releve', label: 'Relevé', icon: FileText, onClick: () => openReleve(c) },
+    ]
+    if (role === 'admin') {
+      actions.push({
+        id: 'delete',
+        label: deletingId === c.id ? 'Suppression…' : 'Supprimer',
+        icon: Trash2,
+        destructive: true,
+        separatorBefore: true,
+        disabled: deletingId === c.id,
+        onClick: () => handleDelete(c),
+      })
+    }
+    return actions
+  }
+
+  if (loading) {
+    return <p className="page-loading"><Spinner /> Chargement des clients…</p>
+  }
+  if (error) return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
 
   return (
     <div className="page">
@@ -71,31 +155,12 @@ export default function ClientList() {
           )}
         </h2>
         <div className="page-header-actions">
-          <input
-            className="search-input"
-            type="search"
-            placeholder="Rechercher nom, email, tél…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <button className="btn btn-sm btn-outline" onClick={async () => {
-            const ids = filtered.map(c => c.id)
-            if (!ids.length) return
-            try {
-              const res = await crmApi.exportClientsXlsx(ids)
-              const url = URL.createObjectURL(new Blob([res.data]))
-              const a = document.createElement('a')
-              a.href = url; a.download = 'clients.xlsx'
-              document.body.appendChild(a); a.click(); a.remove()
-              setTimeout(() => URL.revokeObjectURL(url), 1000)
-            } catch { /* ignore */ }
-          }}>⬇ Exporter Excel</button>
-          <button className="btn btn-sm btn-outline" onClick={() => setShowImport(true)}>
-            ⬆ Importer
-          </button>
-          <button className="btn btn-primary" onClick={openNew}>
-            + Nouveau client
-          </button>
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload /> Importer
+          </Button>
+          <Button onClick={openNew}>
+            <Plus /> Nouveau client
+          </Button>
         </div>
       </div>
 
@@ -108,68 +173,19 @@ export default function ClientList() {
                      onDone={() => dispatch(fetchClients())} />
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Client</th>
-            <th>Email</th>
-            <th>Téléphone</th>
-            <th>Adresse</th>
-            <th className="ta-right">Devis</th>
-            <th>Depuis</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map(c => (
-            <tr key={c.id}>
-              <td>
-                <div className="client-name">
-                  {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                </div>
-              </td>
-              <td>
-                <a className="link-blue" href={`mailto:${c.email}`}>{c.email}</a>
-              </td>
-              <td>{c.telephone ?? '—'}</td>
-              <td className="text-truncate" title={c.adresse ?? ''}>
-                {c.adresse ? c.adresse.split('\n')[0] : '—'}
-              </td>
-              <td className="ta-right">
-                <span className="count-pill">{c.devis_count ?? 0}</span>
-              </td>
-              <td>{new Date(c.date_creation).toLocaleDateString('fr-FR')}</td>
-              <td>
-                <div className="actions-cell">
-                  <button className="btn btn-sm btn-outline" onClick={() => openEdit(c)}>
-                    Éditer
-                  </button>
-                  <button className="btn btn-sm btn-outline" onClick={() => openReleve(c)}>
-                    Relevé
-                  </button>
-                  {role === 'admin' && (
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleDelete(c)}
-                      disabled={deletingId === c.id}
-                    >
-                      {deletingId === c.id ? '...' : 'Supprimer'}
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {filtered.length === 0 && !loading && (
-        <p className="empty-state">
-          {search
-            ? `Aucun résultat pour « ${search} »`
-            : 'Aucun client. Créez votre premier client.'}
-        </p>
-      )}
+      <DataTable
+        data={clients}
+        columns={columns}
+        getRowId={(c) => c.id}
+        searchable
+        searchPlaceholder="Rechercher nom, email, tél…"
+        rowActions={rowActions}
+        onExport={exportRows}
+        exportName="clients"
+        emptyTitle="Aucun client"
+        emptyDescription="Créez votre premier client pour démarrer."
+        aria-label="Liste des clients"
+      />
     </div>
   )
 }

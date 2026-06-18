@@ -2,11 +2,13 @@
 // (aucune librairie de calendrier). Les leads sont posés sur leur date de
 // relance ; les étapes viennent EXCLUSIVEMENT de features/crm/stages.
 import { useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   STAGE_LABELS,
   STAGE_COLORS,
   isPerdu,
 } from '../../../../features/crm/stages'
+import { Button, IconButton } from '../../../../ui'
 import './calendar.css'
 
 // Semaine française : lundi en premier.
@@ -121,31 +123,33 @@ export default function CalendarView({ leads, onOpenLead }) {
     <div className="cal-root">
       <div className="cal-header">
         <div className="cal-nav">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline cal-nav-btn"
+          <IconButton
+            variant="outline"
+            className="cal-nav-btn"
             onClick={() => goMonth(-1)}
-            aria-label="Mois précédent"
+            label="Mois précédent"
           >
-            ◀
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-outline cal-nav-btn"
+            <ChevronLeft />
+          </IconButton>
+          <IconButton
+            variant="outline"
+            className="cal-nav-btn"
             onClick={() => goMonth(1)}
-            aria-label="Mois suivant"
+            label="Mois suivant"
           >
-            ▶
-          </button>
+            <ChevronRight />
+          </IconButton>
         </div>
         <h3 className="cal-title">{title}</h3>
-        <button
+        <Button
           type="button"
-          className="btn btn-sm btn-outline cal-today-btn"
+          size="sm"
+          variant="outline"
+          className="cal-today-btn"
           onClick={goToday}
         >
           Aujourd&apos;hui
-        </button>
+        </Button>
       </div>
 
       <div className="cal-grid" role="grid" aria-label={`Calendrier ${title}`}>

@@ -23,20 +23,20 @@
 /* Lignes « Perdu » : teinte rouge claire mais lisible (prime sur le hover global). */
 .lv-table tbody tr.lv-row-perdu,
 .lv-table tbody tr.lv-row-perdu:hover {
-  background: #fef2f2;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 8%, transparent);
 }
 .lv-table tbody tr.lv-row-perdu:hover {
-  background: #fde8e8;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 14%, transparent);
 }
 
 /* Lead archivé : ligne grisée/atténuée (visible via Tous / Archivés). */
 .lv-table tbody tr.lv-row-archived {
   opacity: 0.55;
-  background: #f1f5f9;
+  background: var(--muted, #f1f5f9);
 }
 .lv-table tbody tr.lv-row-archived:hover {
   opacity: 0.75;
-  background: #e2e8f0;
+  background: var(--accent, #e2e8f0);
 }
 
 /* ── En-têtes triables ── */
@@ -83,14 +83,14 @@
 }
 .lv-lead-societe {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--muted-foreground, #94a3b8);
 }
 .lv-badge-perdu {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 999px;
-  background: #fee2e2;
-  color: #b91c1c;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 14%, transparent);
+  color: var(--destructive, #b91c1c);
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -143,7 +143,7 @@
 
 /* ── Relance en retard ── */
 .lv-relance-late {
-  color: #dc2626;
+  color: var(--destructive, #dc2626);
   font-weight: 600;
 }
 
@@ -165,7 +165,7 @@
 /* ── État vide ── */
 .lv-empty {
   text-align: center;
-  color: #94a3b8;
+  color: var(--muted-foreground, #94a3b8);
   padding: 24px 14px;
 }
 
@@ -188,4 +188,7 @@
   padding-right: 0;
 }
 .lv-check-col input { cursor: pointer; width: 16px; height: 16px; }
-.lv-row-selected { background: rgba(15, 23, 42, 0.06); }
+.lv-row-selected,
+.lv-table tbody tr.lv-row-selected:hover {
+  background: color-mix(in srgb, var(--primary, #0f172a) 10%, transparent);
+}

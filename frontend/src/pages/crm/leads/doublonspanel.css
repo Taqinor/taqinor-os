@@ -2,52 +2,67 @@
 .dbl-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
-  z-index: 1200;
+  background: color-mix(in srgb, var(--nuit, #0f172a) 55%, transparent);
+  backdrop-filter: blur(2px);
+  z-index: var(--z-modal, 1200);
   display: flex;
   justify-content: center;
   align-items: flex-start;
   padding: 4vh 16px;
 }
 .dbl-panel {
-  background: #fff;
-  border-radius: 12px;
+  background: var(--card, #fff);
+  color: var(--card-foreground, inherit);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
   width: min(1100px, 96vw);
   max-height: 92vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-ui-lg, 0 20px 60px rgba(0, 0, 0, 0.3));
 }
 .dbl-header {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border, #e2e8f0);
 }
-.dbl-header h3 { margin: 0; flex: 1; }
+.dbl-header h3 { margin: 0; flex: 1; font-weight: 600; }
 .dbl-arch-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.85rem;
-  color: #475569;
+  color: var(--muted-foreground, #475569);
+  cursor: pointer;
 }
 .dbl-body {
   padding: 16px 20px;
   overflow-y: auto;
 }
+.dbl-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 4px;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.9rem;
+}
 .dbl-cluster {
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
   padding: 14px;
   margin-bottom: 16px;
-  background: #f8fafc;
+  background: var(--muted, #f8fafc);
 }
 .dbl-cluster-done {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #047857;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--success, #10b981) 12%, transparent);
+  border-color: color-mix(in srgb, var(--success, #10b981) 35%, transparent);
+  color: var(--success, #047857);
   font-weight: 600;
 }
 .dbl-cluster-grid {
@@ -56,16 +71,16 @@
   gap: 12px;
 }
 .dbl-member {
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
+  border: 2px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
   padding: 10px;
-  background: #fff;
+  background: var(--card, #fff);
   cursor: pointer;
   display: block;
 }
 .dbl-member-keep {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  border-color: var(--primary, #2563eb);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #2563eb) 15%, transparent);
 }
 .dbl-member-head {
   display: flex;
@@ -73,25 +88,14 @@
   gap: 8px;
   margin-bottom: 8px;
 }
+/* Les pastilles « à garder » / « archivé » sont des <Badge> tonifiés : on ne
+   garde ici que le placement (la couleur vient du primitif). */
 .dbl-keep-tag {
   margin-left: auto;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #2563eb;
-  background: #dbeafe;
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-.dbl-arch-tag {
-  font-size: 0.7rem;
-  color: #92400e;
-  background: #fef3c7;
-  border-radius: 999px;
-  padding: 2px 8px;
 }
 .dbl-member-fields {
   font-size: 0.82rem;
-  color: #475569;
+  color: var(--muted-foreground, #475569);
   display: flex;
   flex-direction: column;
   gap: 3px;

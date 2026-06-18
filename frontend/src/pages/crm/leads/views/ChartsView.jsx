@@ -9,12 +9,16 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
+import { BarChart3 } from 'lucide-react'
 import {
   groupLeadsByStage,
   STAGE_COLORS,
   CANAL_LABELS,
   formatMAD,
 } from '../../../../features/crm/stages'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState,
+} from '../../../../ui'
 import './charts.css'
 
 const NAVY = '#0b1f3a'
@@ -64,9 +68,11 @@ export default function ChartsView({ leads }) {
 
   if (!leads || leads.length === 0) {
     return (
-      <div className="ch-empty">
-        Aucun lead à représenter avec ces filtres.
-      </div>
+      <EmptyState
+        icon={BarChart3}
+        title="Aucune donnée à représenter"
+        description="Aucun lead ne correspond à ces filtres. Ajustez vos filtres ou créez un lead."
+      />
     )
   }
 
@@ -79,12 +85,14 @@ export default function ChartsView({ leads }) {
 
   return (
     <div className="ch-grid">
-      <section className="ch-card">
-        <h3 className="ch-title">Leads par étape</h3>
-        {totalDevis > 0 && (
-          <p className="ch-subtitle">Devis récents : {formatMAD(totalDevis)}</p>
-        )}
-        <div className="ch-chartbox">
+      <Card className="ch-card">
+        <CardHeader>
+          <CardTitle>Leads par étape</CardTitle>
+          {totalDevis > 0 && (
+            <CardDescription>Devis récents : {formatMAD(totalDevis)}</CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="ch-chartbox">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stageData} margin={chartMargin}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -112,12 +120,14 @@ export default function ChartsView({ leads }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="ch-card">
-        <h3 className="ch-title">Leads par canal</h3>
-        <div className="ch-chartbox">
+      <Card className="ch-card">
+        <CardHeader>
+          <CardTitle>Leads par canal</CardTitle>
+        </CardHeader>
+        <CardContent className="ch-chartbox">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={canalData} margin={chartMargin}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -145,8 +155,8 @@ export default function ChartsView({ leads }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     </div>
   )
 }

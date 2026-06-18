@@ -4,8 +4,12 @@
    serveur réutilise merge_leads : devis/activités/chantiers déplacés, absorbés
    archivés et réversibles). Modal autonome ouvert depuis le pipeline. */
 import { useEffect, useState } from 'react'
+import { CheckCircle2, GitMerge, Users } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import { STAGE_LABELS } from '../../../features/crm/stages'
+import {
+  Button, Spinner, Checkbox, RadioGroup, RadioGroupItem, Badge, EmptyState,
+} from '../../../ui'
 import './doublonspanel.css'
 
 function ClusterCard({ cluster, onMerged }) {
@@ -42,29 +46,29 @@ function ClusterCard({ cluster, onMerged }) {
   if (done) {
     return (
       <div className="dbl-cluster dbl-cluster-done">
-        ✅ Groupe fusionné — {others.length} fiche(s) archivée(s).
+        <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+        Groupe fusionné — {others.length} fiche(s) archivée(s).
       </div>
     )
   }
 
   return (
     <div className="dbl-cluster">
-      <div className="dbl-cluster-grid">
+      <RadioGroup
+        value={String(survivor)}
+        onValueChange={(v) => setSurvivor(Number(v))}
+        className="dbl-cluster-grid"
+      >
         {cluster.members.map(m => (
           <label
             key={m.id}
             className={`dbl-member${m.id === survivor ? ' dbl-member-keep' : ''}`}
           >
             <div className="dbl-member-head">
-              <input
-                type="radio"
-                name={`surv-${cluster.members[0].id}`}
-                checked={m.id === survivor}
-                onChange={() => setSurvivor(m.id)}
-              />
+              <RadioGroupItem value={String(m.id)} />
               <strong>{m.nom} {m.prenom || ''}</strong>
-              {m.id === survivor && <span className="dbl-keep-tag">à garder</span>}
-              {m.is_archived && <span className="dbl-arch-tag">archivé</span>}
+              {m.id === survivor && <Badge tone="primary" className="dbl-keep-tag">à garder</Badge>}
+              {m.is_archived && <Badge tone="warning" className="dbl-arch-tag">archivé</Badge>}
             </div>
             <div className="dbl-member-fields">
               {m.societe && <div>🏢 {m.societe}</div>}
@@ -76,17 +80,19 @@ function ClusterCard({ cluster, onMerged }) {
             </div>
           </label>
         ))}
-      </div>
+      </RadioGroup>
       {error && <div className="form-error-box">{error}</div>}
       <div className="dbl-cluster-actions">
-        <button
+        <Button
           type="button"
-          className="btn btn-primary btn-sm"
+          size="sm"
           onClick={doMerge}
+          loading={busy}
           disabled={busy || !others.length}
         >
-          {busy ? 'Fusion…' : `🔀 Fusionner le groupe (${cluster.members.length} → 1)`}
-        </button>
+          {!busy && <GitMerge />}
+          {busy ? 'Fusion…' : `Fusionner le groupe (${cluster.members.length} → 1)`}
+        </Button>
       </div>
     </div>
   )
@@ -116,10 +122,9 @@ export default function DoublonsPanel({ onClose, onAnyMerge }) {
         <div className="dbl-header">
           <h3>🔀 Doublons{clusters ? ` (${clusters.length} groupe${clusters.length > 1 ? 's' : ''})` : ''}</h3>
           <label className="dbl-arch-toggle">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={includeArchived}
-              onChange={e => setIncludeArchived(e.target.checked)}
+              onCheckedChange={(v) => setIncludeArchived(!!v)}
             />
             Inclure les archivés
           </label>
@@ -128,9 +133,17 @@ export default function DoublonsPanel({ onClose, onAnyMerge }) {
 
         <div className="dbl-body">
           {error && <div className="form-error-box">{error}</div>}
-          {!clusters && !error && <p className="gen-hint">Analyse des leads…</p>}
+          {!clusters && !error && (
+            <div className="dbl-loading">
+              <Spinner /> Analyse des leads…
+            </div>
+          )}
           {clusters && clusters.length === 0 && (
-            <p className="gen-hint">Aucun doublon détecté 🎉</p>
+            <EmptyState
+              icon={Users}
+              title="Aucun doublon détecté"
+              description="Toutes les fiches de la société sont uniques (téléphone, email et nom)."
+            />
           )}
           {clusters && clusters.map((c, i) => (
             <ClusterCard
