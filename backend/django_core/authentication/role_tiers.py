@@ -14,13 +14,23 @@ ROLE_ADMIN = 'admin'
 ROLE_RESPONSABLE = 'responsable'
 ROLE_NORMAL = 'normal'
 
+# Rôles système faisant autorité par palier. « Directeur » et « Administrateur »
+# (= Admin) ouvrent les écrans d'administration au même titre ; les deux rôles
+# « responsable » (commercial/technicien) sont promus comme l'ancien
+# « Responsable ». Tout autre rôle (Commercial, Technicien, Viewer, Utilisateur,
+# ou rôle personnalisé) relève du palier limité 'normal'.
+_ADMIN_ROLE_NAMES = {'Administrateur', 'Directeur'}
+_RESPONSABLE_ROLE_NAMES = {
+    'Responsable', 'Commercial responsable', 'Technicien responsable',
+}
+
 
 def tier_for_role_fields(nom, est_systeme):
     """Palier hérité ('admin' / 'responsable' / 'normal') pour un rôle décrit
     par son nom et son drapeau système. Fonction pure, sans accès base."""
-    if est_systeme and nom == 'Administrateur':
+    if est_systeme and nom in _ADMIN_ROLE_NAMES:
         return ROLE_ADMIN
-    if est_systeme and nom == 'Responsable':
+    if est_systeme and nom in _RESPONSABLE_ROLE_NAMES:
         return ROLE_RESPONSABLE
     return ROLE_NORMAL
 

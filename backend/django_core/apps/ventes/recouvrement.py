@@ -65,12 +65,16 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
 
 def _facture_due_rows(user):
     """Factures ouvertes (dues) de la société, non exclues."""
+    from authentication.scoping import scope_queryset
     qs = _scope(
         Facture.objects.select_related('client').prefetch_related(
             'lignes', 'paiements', 'avoirs'),
         user
     ).exclude(statut__in=['payee', 'annulee', 'brouillon']).filter(
         exclu_relances=False)
+    # Portée de visibilité (Feature F) : relances/balance restreintes aux
+    # factures créées par soi / l'équipe pour un rôle restreint. 'all' → inchangé.
+    qs = scope_queryset(qs, user, ['created_by'])
     return [f for f in qs if f.montant_du > 0]
 
 

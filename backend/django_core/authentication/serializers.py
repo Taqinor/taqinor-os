@@ -88,6 +88,11 @@ class UserSerializer(serializers.ModelSerializer):
     menu_tier = serializers.ReadOnlyField()
     permissions = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    # Superviseur direct (Feature E) — assignable par un Directeur/Admin dans
+    # Paramètres → Équipe. Nom en lecture seule pour l'affichage.
+    supervisor_nom = serializers.CharField(
+        source='supervisor.username', read_only=True
+    )
 
     class Meta:
         model = CustomUser
@@ -95,6 +100,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             'poste', 'avatar_key', 'avatar_url',
+            'supervisor', 'supervisor_nom',
             'is_active', 'is_superuser', 'is_protected',
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
@@ -116,6 +122,20 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role:
             return obj.role.permissions or []
         return []
+
+    def validate_supervisor(self, value):
+        """Le superviseur doit être dans la même entreprise et jamais soi-même."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Superviseur hors de votre entreprise.')
+        if self.instance is not None and value.id == self.instance.id:
+            raise serializers.ValidationError(
+                "Un utilisateur ne peut pas être son propre superviseur.")
+        return value
 
     def get_avatar_url(self, obj):
         from .avatars import presign_avatar

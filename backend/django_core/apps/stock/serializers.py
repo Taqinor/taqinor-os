@@ -73,6 +73,12 @@ class ProduitSerializer(serializers.ModelSerializer):
         elif request and request.user.is_superuser:
             fields['categorie_id'].queryset = Categorie.objects.all()
             fields['fournisseur_id'].queryset = Fournisseur.objects.all()
+        # Feature D — le prix d'achat (et donc la marge) ne s'expose qu'aux rôles
+        # autorisés (Directeur/Admin par défaut ; repli historique pour comptes
+        # légacy). Jamais sur un document client. Retiré pour les autres.
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_buy_prices', True):
+            fields.pop('prix_achat', None)
         return fields
     is_low_stock = serializers.SerializerMethodField()
     nb_mouvements = serializers.SerializerMethodField()

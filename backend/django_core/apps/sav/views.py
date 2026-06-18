@@ -41,6 +41,9 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, self.request.user, ['created_by'])
         params = self.request.query_params
         produit = params.get('produit')
         marque = params.get('marque')
@@ -133,6 +136,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) — tickets créés par soi / dont on est
+        # le technicien responsable / ceux de l'équipe. 'all' → inchangé.
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(
+            qs, self.request.user, ['technicien_responsable', 'created_by'])
         params = self.request.query_params
         statut = params.get('statut')
         type_ = params.get('type')

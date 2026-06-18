@@ -48,6 +48,13 @@ class CompanyProfile(models.Model):
         help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
+    # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
+    # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
+    # sont pas renseignés, le PDF facture est strictement identique (les blocs ne
+    # s'affichent que si non-vides). Le RIB ci-dessus complète ce bloc. Ces
+    # valeurs ne touchent JAMAIS le moteur premium des devis (pas de slot dédié).
+    instructions_paiement = models.TextField(blank=True, default='')
+    conditions_generales = models.TextField(blank=True, default='')
     couleur_principale = models.CharField(
         max_length=7, default='#2563EB'
     )

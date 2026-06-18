@@ -34,6 +34,9 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+from authentication.scoping import scope_queryset  # noqa: E402
+
+
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -50,6 +53,9 @@ class DevisViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
+        # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
+        # devis qu'il a créés / son équipe. 'all' → inchangé.
+        qs = scope_queryset(qs, self.request.user, ['created_by'])
         # Filtre optionnel ?lead=<id> — utilisé par le dialogue « Signé » (A2)
         # pour lister les devis d'un lead. Borné à la société par _company_qs.
         lead_id = self.request.query_params.get('lead')
@@ -306,6 +312,9 @@ class DevisViewSet(viewsets.ModelViewSet):
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
         task = task_generate_devis_pdf.delay(devis.id, pdf_options)
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.PDF, instance=devis, detail='PDF devis généré')
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
@@ -643,7 +652,9 @@ class FactureViewSet(viewsets.ModelViewSet):
     ordering = ['-date_emission']
 
     def get_queryset(self):
-        return _company_qs(super().get_queryset(), self.request.user)
+        qs = _company_qs(super().get_queryset(), self.request.user)
+        # Portée de visibilité (Feature F) — factures créées par soi / l'équipe.
+        return scope_queryset(qs, self.request.user, ['created_by'])
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -784,6 +795,10 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture = self.get_object()
         from .tasks import task_generate_facture_pdf
         task = task_generate_facture_pdf.delay(facture.id)
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.PDF, instance=facture,
+               detail='PDF facture généré')
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
@@ -996,6 +1011,8 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
+        # Portée de visibilité (Feature F) — avoirs créés par soi / l'équipe.
+        qs = scope_queryset(qs, self.request.user, ['created_by'])
         facture_id = self.request.query_params.get('facture')
         if facture_id:
             qs = qs.filter(facture_id=facture_id)

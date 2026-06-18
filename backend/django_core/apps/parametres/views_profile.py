@@ -27,6 +27,8 @@ _PROFILE_AUDIT_FIELDS = {
     'cnss': 'CNSS',
     'rib': 'RIB',
     'banque': 'Banque',
+    'instructions_paiement': 'Instructions de paiement',
+    'conditions_generales': 'Conditions générales',
     'couleur_principale': 'Couleur principale',
     'responsable_defaut_leads': 'Responsable par défaut des leads',
     'default_installer': 'Installateur par défaut',

@@ -66,6 +66,16 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             access = response.data.pop('access', None)
             refresh = response.data.pop('refresh', None)
             _set_auth_cookies(response, access, refresh)
+            # Journal d'activité (Feature G) — connexion réussie. Best-effort.
+            try:
+                from apps.audit.recorder import record
+                from apps.audit.models import AuditLog
+                uname = request.data.get('username') or ''
+                u = CustomUser.objects.filter(username=uname).first()
+                record(AuditLog.Action.LOGIN, user=u, actor_username=uname,
+                       company=getattr(u, 'company', None), detail='Connexion')
+            except Exception:
+                pass
         return response
 
 
@@ -127,24 +137,16 @@ class RegisterView(generics.CreateAPIView):
 
 
 def _create_system_roles(company):
-    """Create the 3 default system roles for a newly created company."""
-    from apps.roles.models import (
-        Role,
-        ALL_PERMISSIONS,
-        RESPONSABLE_PERMISSIONS,
-        UTILISATEUR_PERMISSIONS,
-    )
-    defaults = [
-        ('Administrateur', ALL_PERMISSIONS),
-        ('Responsable', RESPONSABLE_PERMISSIONS),
-        ('Utilisateur', UTILISATEUR_PERMISSIONS),
-    ]
+    """Create the canonical system roles for a newly created company (Feature D).
+
+    Seeds the seven roles + the two legacy ones; returns {nom: Role}."""
+    from apps.roles.models import Role, CANONICAL_SYSTEM_ROLES
     roles = {}
-    for nom, perms in defaults:
+    for nom, perms in CANONICAL_SYSTEM_ROLES:
         role, _ = Role.objects.get_or_create(
             company=company,
             nom=nom,
-            defaults={'permissions': perms, 'est_systeme': True},
+            defaults={'permissions': list(perms), 'est_systeme': True},
         )
         roles[nom] = role
     return roles
@@ -199,7 +201,9 @@ class RegisterCompanyView(generics.GenericAPIView):
         )
 
         roles = _create_system_roles(company)
-        admin_role = roles['Administrateur']
+        # Le propriétaire fondateur de la nouvelle société est Directeur (accès
+        # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
+        admin_role = roles['Directeur']
 
         # Types d'activité par défaut (style Odoo) pour la nouvelle société.
         try:
@@ -270,6 +274,14 @@ class LogoutView(generics.GenericAPIView):
                 token.blacklist()
             except TokenError:
                 pass
+        # Journal d'activité (Feature G) — déconnexion. Best-effort.
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.LOGOUT, user=request.user,
+                   detail='Déconnexion')
+        except Exception:
+            pass
         response = Response({'detail': 'Deconnexion reussie.'})
         _clear_auth_cookies(response)
         return response

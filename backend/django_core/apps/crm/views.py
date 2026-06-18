@@ -2,6 +2,7 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
+from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
@@ -59,6 +60,11 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
 
+    def get_queryset(self):
+        # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
+        # clients rattachés à ses documents/leads visibles. 'all' → inchangé.
+        return scope_client_queryset(super().get_queryset(), self.request.user)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
@@ -77,6 +83,9 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         qs = self.get_queryset()
         if ids:
             qs = qs.filter(id__in=ids)
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
         return export_clients_xlsx(qs.order_by('nom'))
 
     def destroy(self, request, *args, **kwargs):
@@ -108,6 +117,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) : un rôle restreint ne voit que ses
+        # leads (responsable). 'all' → inchangé. Un utilisateur voit toujours
+        # ses propres leads (son id est inclus dans la portée).
+        qs = scope_queryset(qs, self.request.user, ['owner'])
         # Optional filters: ?stage=NEW  &  ?source=odoo_import_test
         stage = self.request.query_params.get('stage')
         source = self.request.query_params.get('source')
@@ -134,9 +147,16 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         user = self.request.user
         extra = {'company': user.company}
         if not serializer.validated_data.get('owner'):
-            default = default_responsable_for(user.company)
-            if default is not None:
-                extra['owner'] = default
+            # Un utilisateur à portée restreinte (Feature F) garde la propriété
+            # de ce qu'il crée — sinon il perdrait de vue son propre lead. Les
+            # comptes « voit tout » conservent l'assignation au responsable par
+            # défaut de la société (comportement historique).
+            if user.record_scope() != 'all':
+                extra['owner'] = user
+            else:
+                default = default_responsable_for(user.company)
+                if default is not None:
+                    extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
         from .services import sync_relance_activity
@@ -231,6 +251,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         langue = request.data.get('langue', 'fr')
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.WHATSAPP, instance=lead,
+               detail=f'Lien WhatsApp devis préparé ({len(devis_list)})')
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,
@@ -407,6 +431,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         leads = (Lead.objects.filter(company=request.user.company, id__in=ids)
                  .select_related('owner').order_by('id'))
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.EXPORT,
+               detail=f'Export leads (.xlsx) — {len(ids)} ligne(s)')
         return export_leads_xlsx(leads)
 
 
