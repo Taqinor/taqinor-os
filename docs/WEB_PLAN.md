@@ -190,17 +190,18 @@ or alter them. These tasks **land in the run's single end-of-batch self-merge to
 accepted path — don't flag it). **Lighthouse held 97–100 on every page, reduced-motion respected, zero
 layout shift.**
 
-### W62 — Social proof: avis clients + note d'étoiles (scaffold, pending real content) — [ ]
-**Do:** Build a reusable « Avis clients » component (written quote + name/ville/système, plus an
-optional star-rating + review-count badge) reading a NEW data file that ships EMPTY; place it on the
-homepage (after Réalisations) and reuse on /résidentiel and /professionnel; emit Review/AggregateRating
-JSON-LD only when real entries exist; render nothing publicly (honest internal empty state) when the
-file is empty — fabricate no quote, name or rating.
-**Done when:** the section is hidden with zero data and drops in cleanly the moment Reda adds real
-quotes and/or the real Google rating, a NOTES file documents the one-step add, the live lead form is
-byte-for-byte unchanged, Lighthouse held.
-**Pending Reda:** real client testimonials (name · ville · système) and/or the real Google/GBP star
-rating + review count.
+### W62 — Social proof: REAL avis clients + star rating (honest scaffold + easy collection) — [ ]
+**Do:** Build a reusable « Avis clients » component (real quote + name/ville/système + optional
+star-rating/review-count badge) reading a NEW data file that ships EMPTY, on the homepage (after
+Réalisations) and reused on /résidentiel + /professionnel; emit Review/AggregateRating JSON-LD ONLY for
+real entries; publicly hidden until real entries exist. Meanwhile lean the proof on what is already
+real — measured Deye Cloud production per chantier + « chantiers visitables ». Ship a NOTES file with a
+ready-made one-tap WhatsApp/Google-review request snippet so Reda collects real reviews without an
+awkward ask. **Fabricate no quote, name or rating — none.**
+**Done when:** section hidden with zero data, renders the moment real quotes/rating are added, NOTES
+documents the one-tap collection + the one-step add, lead form byte-for-byte unchanged, Lighthouse held.
+**Pending Reda:** real client quotes (name · ville · système, with their OK) and/or the real Google
+rating + count — or just send happy clients the ready-made review link.
 
 ### W63 — Elevate the guarantee promise + « mesuré, pas promis » proof on the homepage — [ ]
 **Do:** Surface ONE bold, true headline guarantee at credibility-band altitude on the homepage —
@@ -209,29 +210,47 @@ warranty + Deye Cloud monitoring facts already on /garanties and /équipement; n
 **Done when:** the promise reads high on the homepage, every figure traces to existing site data, zero
 layout shift, Lighthouse held.
 
-### W64 — Founder portrait + équipe humanisation block (scaffold, pending real photos) — [ ]
-**Do:** Add a real-face block for the founder (the existing docteur-ingénieur bio) and an optional
-small équipe row, wired to image slots that fall back to today's text-only treatment when no photo is
-present — invent no person and no credential beyond what /à-propos already states.
-**Done when:** the block renders text-only today and shows real faces the moment Reda supplies photos;
-/à-propos and the homepage stay consistent; Lighthouse held.
-**Pending Reda:** a real founder portrait (and optional team photos).
+### W64 — Founder portrait + équipe block (real photo of Reda Kasri, pending the image file) — [ ]
+**Do:** Add a real-face block for founder **Reda Kasri** (bio already TRUE on /à-propos — docteur-
+ingénieur, R&D Huawei/Ericsson/STMicroelectronics) and an optional small équipe row, wired to image
+slots with today's text-only fallback until a photo file lands. Verify identity against those
+already-published employers before using any image; invent no new credential.
+**Done when:** renders text-only today and shows the real portrait the moment the image file is in the
+repo; /à-propos + homepage stay consistent; Lighthouse held.
+**Pending Reda:** the founder portrait image FILE — his LinkedIn photo is fine, just drop the file into
+`public/` (the build environment can't fetch LinkedIn directly) — plus any optional team photos.
 
-### W65 — Tier-1 brand / official-distributor logos strip (pending authorized logos) — [ ]
-**Do:** Upgrade the existing text-only brands strip to render official logos (Canadian Solar, JA Solar,
-Deye, Huawei, Dyness) from image slots when present, keeping the current styled word-marks as the
-fallback; claim « distributeur officiel » only where the site already does.
-**Done when:** logos render when files exist and degrade to word-marks when they don't, no new claim,
-Lighthouse held.
-**Pending Reda:** authorized brand logo files (or confirmation to keep the word-marks).
+### W65 — Tier-1 brand & official-distributor logos strip (authorized; +3 brands) — [ ]
+**Do:** Render official logos in the brands strip and on /équipement, and ADD three founder-confirmed
+brands — **Jinko** (panneaux), **Huawei** (déjà nommé), **Nexans** (câbles) — alongside Canadian Solar,
+JA Solar, Deye, Dyness; styled word-marks stay as the per-brand fallback when a logo file is missing.
+Add brand NAMES/logos only — no invented model or spec claims on /équipement.
+**Done when:** logos render when files exist and degrade to word-marks otherwise, the three new brands
+appear consistently, no invented spec, Lighthouse held.
+**Pending Reda:** official logo image files (Reda authorized their use as distributor) — drop them into
+`public/`; until then the new brands show as word-marks.
 
 ### W66 — Site-wide hygiene, SEO, a11y & performance pass (consolidated polish) — [ ]
 **Do:** One sweep across all public routes — confirm each has a unique meta title/description and a
 matching /og image, alt text on every content image, no broken internal links, /sitemap.xml +
-/robots.txt correct, consistent primary-CTA labels, make the « réponse sous 24 h ouvrées » expectation
-visible on /contact, zero console errors, CLS 0, Lighthouse 97–100.
-**Done when:** the build-time checks pass on every public route, the lead form is byte-for-byte
-unchanged, and the report lists anything that still needs a real asset or decision.
+/robots.txt correct, consistent primary-CTA labels, **set the response promise to « réponse sous 48 h
+ouvrées » and make it visible on /contact — correct the current 24 h copy to 48 h site-wide**, zero
+console errors, CLS 0, Lighthouse 97–100.
+**Done when:** the build-time checks pass on every public route, the « 48 h » promise is visible and
+consistent, the lead form is byte-for-byte unchanged, and the report lists anything that still needs a
+real asset or decision.
+
+### W67 — English + Arabic versions of the public site (i18n, FR default) — [ ]
+**Do:** Add Astro's built-in i18n (FR default + EN + AR) — FAITHFUL translations of the EXISTING true
+copy (translate, never re-invent a claim; keep loi-82-21 wording and every figure exact), a language
+switcher in header + footer, correct `hreflang` + per-locale canonicals + sitemap entries, and **full
+RTL** for Arabic (`dir="rtl"`, mirrored layout). No new dependency (Astro i18n is native). The lead form
+and its entire data flow stay byte-for-byte unchanged in every locale.
+**Done when:** every public page resolves under /en/ and /ar/ with accurate translations, the switcher
+works, hreflang + sitemap are correct, Arabic renders RTL without layout breakage, Lighthouse held, the
+lead form is unchanged. (Large task — the autopilot may lane/stage it across pages.)
+**Pending Reda:** a human review of the EN + AR translations before promotion (especially the loi-82-21
+legal wording).
 
 ---
 
