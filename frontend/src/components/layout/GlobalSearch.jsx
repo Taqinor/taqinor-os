@@ -50,6 +50,10 @@ export default function GlobalSearch() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
+  // NB : le raccourci clavier ⌘K / Ctrl+K est géré par la CommandPalette
+  // (autre lane) pour éviter un double gestionnaire (ouvre-puis-referme). Le
+  // bouton ⌘K visible du Header dispatche `taqinor:command-palette` au clic.
+
   const go = (type, id) => {
     const make = ROUTE[type]
     if (make) navigate(make(id))

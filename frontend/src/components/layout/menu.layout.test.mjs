@@ -69,3 +69,23 @@ test('viewport-fit=cover présent (sinon env(safe-area-inset-*) vaut 0)', () => 
   assert.ok(/viewport-fit\s*=\s*cover/.test(html),
     'index.html doit garder « viewport-fit=cover » sur la meta viewport')
 })
+
+// I36 — La barre d'onglets inférieure (mobile) doit dégager l'indicateur
+// d'accueil iOS, sinon le dernier rang d'onglets passe sous le geste système.
+test('barre d’onglets mobile : inset bas iOS (padding-bottom safe-area)', () => {
+  const media = css.indexOf('@media (max-width: 768px)')
+  assert.notEqual(media, -1, 'media query mobile (max-width: 768px) introuvable')
+  const tabbar = squish(ruleBody(css, '.bottom-tabbar {', media))
+  assert.ok(tabbar.includes('padding-bottom:env(safe-area-inset-bottom)'),
+    '.bottom-tabbar doit dégager l’indicateur d’accueil (padding-bottom: env(safe-area-inset-bottom))')
+  // Masquée sur le bureau : la règle de base hors media query doit la cacher.
+  const base = squish(ruleBody(css, '.bottom-tabbar {'))
+  assert.ok(base.includes('display:none'),
+    '.bottom-tabbar doit être masquée sur le bureau (display:none hors media query)')
+})
+
+// I36 — Une barre de progression de navigation doit exister (feedback instantané).
+test('barre de progression de navigation présente', () => {
+  const bar = squish(ruleBody(css, '.route-progress {'))
+  assert.ok(bar.length > 0, '.route-progress doit rester définie dans index.css')
+})

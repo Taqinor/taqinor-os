@@ -138,21 +138,26 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
 
-      {/* ── Brand header ───────────────────────── */}
+      {/* ── Brand header (marque) ──────────────── */}
       <div className="sidebar-header">
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" title={collapsed ? companyName : undefined}>
           <div className="sidebar-bolt">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="#0d1b3e">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
           </div>
           {!collapsed && (
-            <span className="sidebar-company-name">{companyName}</span>
+            <span className="sidebar-brand-text">
+              <span className="sidebar-company-name">{companyName}</span>
+              <span className="sidebar-brand-sub">ERP Solaire</span>
+            </span>
           )}
         </div>
         <button
+          type="button"
           className="sidebar-toggle"
           onClick={onToggle}
+          aria-label={collapsed ? 'Développer le menu' : 'Réduire le menu'}
           title={collapsed ? 'Développer' : 'Réduire'}
         >
           {collapsed ? I.chevR : I.chevL}

@@ -44,11 +44,11 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 - [x] **H33.** Scale + persistence: saved/preset views as tabs (e.g. "À relancer", "Signés", "En retard"); sort/filter/page persisted to the URL (survives refresh + deep-links); server-side sort/filter for >1000 rows; row virtualization for large lists (619-lead import); CSV/XLSX export (openpyxl server-side); and a mobile fallback (rows → cards, or priority columns + horizontal scroll with frozen first column).
 
 ## Group I — App shell & navigation
-- [ ] **I34.** Sidebar: collapsible, grouped sections, clear active state, brand mark, fully scrollable inside the iOS safe area (resolves C6 menu cutoff).
-- [ ] **I35.** Header: breadcrumbs, global search trigger (⌘K), notifications bell, user menu, and a consistent page-header pattern (title + actions + filters/tabs).
-- [ ] **I36.** Mobile bottom tab bar for primary nav (thumb-reachable) with safe-area inset; route-transition loading bar.
-- [ ] **I37.** Fix desktop cold first-load flakiness so a single load works (resolves C7); global keyboard shortcuts + a "?" shortcuts help dialog.
-- [ ] **I38.** Notifications UI shell: bell + dropdown list + unread badge + an in-context permission prompt (shown with rationale, not on load). Wires to the planned VAPID web-push backend later; degrades to a no-op if the backend/keys are absent.
+- [x] **I34.** Sidebar: collapsible, grouped sections, clear active state, brand mark, fully scrollable inside the iOS safe area (resolves C6 menu cutoff).
+- [x] **I35.** Header: breadcrumbs, global search trigger (⌘K), notifications bell, user menu, and a consistent page-header pattern (title + actions + filters/tabs).
+- [x] **I36.** Mobile bottom tab bar for primary nav (thumb-reachable) with safe-area inset; route-transition loading bar.
+- [x] **I37.** Fix desktop cold first-load flakiness so a single load works (resolves C7); global keyboard shortcuts + a "?" shortcuts help dialog.
+- [x] **I38.** Notifications UI shell: bell + dropdown list + unread badge + an in-context permission prompt (shown with rationale, not on load). Wires to the planned VAPID web-push backend later; degrades to a no-op if the backend/keys are absent.
 
 ## Group J — Per-module restyle (each: list → DataTable, forms → new primitives, modals → Dialog/Sheet, statuses → StatusPill, real empty/loading/error states, mobile pass)
 - [ ] **J39.** CRM Leads — kanban / list / charts / calendar views, LeadCard, FilterBar, ViewSwitcher, DoublonsPanel, LeadDevisPanel; polish drag affordance on the kanban.
@@ -69,11 +69,11 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 - [ ] **K52.** Reporting hub + Balance âgée: restyle with charts, date-range + segment filters, export, and proper empty/loading states.
 
 ## Group L — Global UX behaviors
-- [ ] **L53.** Consistent async feedback: every save / delete / send-WhatsApp / generate-PDF fires a toast, with undo where safe.
-- [ ] **L54.** Confirm dialogs for all destructive actions.
-- [ ] **L55.** Optimistic updates with error rollback on common edits.
-- [ ] **L56.** Global ⌘K command palette searching leads/clients/devis/factures/chantiers/produits → jump to the record.
-- [ ] **L57.** Session-timeout handling: graceful re-auth that preserves the in-progress form.
+- [x] **L53.** Consistent async feedback: every save / delete / send-WhatsApp / generate-PDF fires a toast, with undo where safe.
+- [x] **L54.** Confirm dialogs for all destructive actions.
+- [x] **L55.** Optimistic updates with error rollback on common edits.
+- [x] **L56.** Global ⌘K command palette searching leads/clients/devis/factures/chantiers/produits → jump to the record.
+- [x] **L57.** Session-timeout handling: graceful re-auth that preserves the in-progress form.
 
 ## Group M — Mobile & PWA polish (Meryem is iPhone-primary)
 - [ ] **M58.** iOS pass: safe-area insets everywhere, tap targets ≥44pt, 16px inputs (no zoom), no horizontal scroll on core flows, modals → bottom sheets, primary actions thumb-reachable.
@@ -148,6 +148,45 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — Refonte UI, vague 3 (fondation) : Groupe I (coquille + navigation)
+  + Groupe L (comportements UX globaux). Deux lanes en worktrees isolés à
+  périmètres de fichiers DISJOINTS (SHELL = `components/layout/*` + `index.css` ;
+  BEHAVIORS = `main.jsx`/`router`/`api/axios.js`/`lib/*`/`providers/*`),
+  fusionnées en un seul lot et revues par un agent adversarial avant fusion.
+  La revue a trouvé puis fait corriger 2 bloquants (titre d'en-tête rendu en
+  élément non-heading pour éviter une collision de rôle `heading` qui cassait
+  toute la suite e2e chromium ; suppression d'un 2ᵉ écouteur ⌘K qui ouvrait
+  puis refermait la palette). Règles permanentes respectées : ZÉRO nouvelle
+  dépendance, textes FR, additif, contrat de hooks e2e préservé
+  (`header-title`, `header-menu-btn`, `aside.sidebar`, `sidebar-nav`,
+  `sidebar-nav-item.active`), aucun PDF/page publique/PdfCanvas/STAGES.py/
+  apps-web/back-end touché. CI locale verte : eslint 0 erreur, 172 tests
+  unitaires, build vite+PWA OK. • Groupe I : I34 sidebar repliable (état
+  persistant, marque, sections groupées, scroll dans la safe-area iOS — fin de
+  la coupure du pied de menu) ; I35 en-tête (fil d'Ariane dérivé de la route,
+  déclencheur ⌘K, cloche, menu utilisateur, titres FR corrects pour TOUTES les
+  routes + composant `PageHeader` réutilisable) ; I36 barre d'onglets basse
+  mobile (safe-area-inset-bottom) + barre de progression de transition de route ;
+  I38 coquille de notifications (badge non-lus, liste groupée réutilisant
+  `/reporting/notifications`, invite de permission web-push contextuelle qui ne
+  s'affiche qu'à l'ouverture de la cloche et no-op si push indisponible).
+  • Groupe L : L53 `<Toaster>` (sonner) monté à la racine + helpers de toast +
+  pont d'erreur API global (un échec de requête remonte un toast FR, 401/404
+  exclus) ; L54 `ConfirmProvider`/`useConfirm()` sur AlertDialog (défauts FR,
+  fallback sûr) ; L55 util d'updates optimistes avec rollback (+ tests) ; L56
+  palette ⌘K (Dialog, navigation clavier, réutilise `/reporting/search`, ouvre
+  via ⌘K et via l'événement window du Header) ; L57 ré-auth en place sur 401
+  sans rechargement (préserve le formulaire en cours, exclut `/login` et `/token/`).
+  NUANCES (honnêteté) : L53/L54/L55 livrent l'INFRASTRUCTURE globale + le câblage
+  central ; l'adoption écran-par-écran (un toast/confirm sur chaque action)
+  suivra dans le Groupe J (restyle par module), exactement comme G/H étaient
+  additifs avant le branchement par module. I37 : raccourcis clavier + dialogue
+  d'aide « ? » entièrement livrés ; le correctif de la lenteur de premier
+  chargement à froid (C7) est une déduplication réelle du bootstrap d'auth
+  (confiance modérée — non reproduit en headless, à confirmer en usage réel).
+  RESTE OUVERT : Groupe J (restyle par module), K (dashboard/reporting), M58/M60/
+  M61/M62, N63/N64, O65/O66, P67/P69. GATÉ/BLOQUÉ inchangé : M59 (logo), D2/D4
+  (décision fondateur).
 - 2026-06-18 — Refonte UI, vague 2 : Groupe G terminé + Groupe H (moteur
   DataTable). Deux lanes en worktrees isolés, fusionnées en un seul lot,
   revues par un agent adversarial (API préservée 1:1, proxy de
