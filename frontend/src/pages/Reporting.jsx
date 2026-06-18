@@ -68,14 +68,8 @@ function ConversionBar({ label, value, max, tone }) {
 }
 
 // ── Valeur du pipeline (T7) — section auto-chargée (lecture seule) ───────────
-function PipelineSection() {
-  const [p, setP] = useState(null)
-  useEffect(() => {
-    reportingApi.getPipeline().then((r) => setP(r.data)).catch(() => setP(null))
-  }, [])
-  if (!p) return null
-
-  const StageTable = ({ title, rows, keyField, labelField }) => (
+function StageTable({ title, rows, keyField, labelField }) {
+  return (
     <div>
       <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
@@ -93,6 +87,14 @@ function PipelineSection() {
       </table>
     </div>
   )
+}
+
+function PipelineSection() {
+  const [p, setP] = useState(null)
+  useEffect(() => {
+    reportingApi.getPipeline().then((r) => setP(r.data)).catch(() => setP(null))
+  }, [])
+  if (!p) return null
 
   return (
     <Card className="mb-6">
