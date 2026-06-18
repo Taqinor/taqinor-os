@@ -47,11 +47,20 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  * @param {object[]} produits     Catalogue stock
  * @param {string}   discountStr  Remise globale en %
  * @param {function} dispatch     Redux dispatch
+ * @param {number}   pumpHours    Heures de pompage/jour (réglage entreprise
+ *                                agricole_pump_hours) ; défaut historique sinon
+ * @param {function} onEtude      Rappel facultatif recevant les chiffres clés de
+ *                                l'étude industrielle (autoconso/éco/payback)
+ *                                AVANT enregistrement — pour les afficher
  */
-export async function createAutoQuote({ lead, produits, discountStr, dispatch, quoteLogic }) {
+export async function createAutoQuote({ lead, produits, discountStr, dispatch,
+                                        quoteLogic, pumpHours, onEtude }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const perTranche = (Number(quoteLogic?.panneauxParTranche) > 0) ? Number(quoteLogic.panneauxParTranche) : 8
+  // Heures de pompage effectives : réglage entreprise (agricole_pump_hours) si
+  // fourni, sinon le défaut marché historique — comme le générateur manuel.
+  const heuresPompage = (Number(pumpHours) > 0) ? Number(pumpHours) : HEURES_POMPAGE_DEFAUT
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   const extra = {}
   let rows
@@ -62,7 +71,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch, q
       structureType: 'acier',
       hmt: lead.pompe_hmt_m != null ? String(lead.pompe_hmt_m) : '',
       debit: lead.pompe_debit_m3h != null ? String(lead.pompe_debit_m3h) : '',
-      heures: String(HEURES_POMPAGE_DEFAUT),
+      heures: String(heuresPompage),
     }
     rows = autoFillPompage(produits, opts)
     if (!rows.some(r => r.produit && parseFloat(r.quantite) > 0)) {
@@ -97,6 +106,15 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch, q
             totalTtc: optionTotalsTTC(rows, discountStr || '0').totalSans,
           })
         : null
+      // Surface les chiffres clés (taux d'autoconsommation, économies, payback)
+      // AVANT enregistrement, pour que l'appelant puisse les afficher.
+      if (extra.etude_params && typeof onEtude === 'function') {
+        onEtude({
+          taux_autoconso: extra.etude_params.taux_autoconso,
+          economies_annuelles: extra.etude_params.economies_annuelles,
+          payback: extra.etude_params.payback,
+        })
+      }
     }
   }
   const devis = await dispatch(createDevis({

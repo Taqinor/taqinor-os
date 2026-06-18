@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
+  Copy, Send, X, Eye, Search, AlertTriangle,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -19,9 +20,10 @@ import {
   AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
   AlertDialogCancel, AlertDialogAction,
-  RadioGroup, RadioGroupItem, Checkbox, Label, Input,
+  RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
+import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -29,6 +31,43 @@ const STATUT_DISPLAY = {
   accepte:   'Accepté',
   refuse:    'Refusé',
   expire:    'Expiré',
+}
+
+// Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
+const STATUT_FILTERS = [
+  { value: 'tous',      label: 'Tous' },
+  { value: 'brouillon', label: 'Brouillon' },
+  { value: 'envoye',    label: 'Envoyé' },
+  { value: 'accepte',   label: 'Accepté' },
+  { value: 'refuse',    label: 'Refusé' },
+  { value: 'expire',    label: 'Expiré' },
+]
+
+// Extrait un message d'erreur lisible (français) d'une réponse DRF. Couvre
+// {detail}, les erreurs de champ ({statut: [...]} — ex. garde de remise T17),
+// et retombe sur un message générique sinon. Ne JAMAIS afficher de JSON brut.
+function frenchError(err, fallback) {
+  const data = err?.response?.data ?? err
+  if (typeof data === 'string') return data
+  if (data && typeof data === 'object') {
+    if (data.detail) return String(data.detail)
+    const first = Object.values(data).find(Boolean)
+    if (Array.isArray(first) && first.length) return String(first[0])
+    if (typeof first === 'string') return first
+  }
+  return fallback
+}
+
+// Nombre de jours calendaires entre aujourd'hui et une date ISO (peut être
+// négatif). null si la date est absente/invalide.
+function daysUntil(isoDate) {
+  if (!isoDate) return null
+  const target = new Date(isoDate)
+  if (Number.isNaN(target.getTime())) return null
+  const today = new Date()
+  const a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
+  const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  return Math.round((a - b) / 86400000)
 }
 
 function openPdfBlob(blob, filename) {
@@ -57,6 +96,16 @@ export default function DevisList() {
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
+  const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
+  const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
+
+  // ── Filtre statut + recherche (référence / client) ──
+  const [statutFilter, setStatutFilter] = useState('tous')
+  const [query, setQuery] = useState('')
+
+  // ── Sélection multiple pour génération PDF par lot ──
+  const [selectedIds, setSelectedIds] = useState([]) // ids cochés
+  const [batchPdf, setBatchPdf] = useState(false) // la modale PDF vise le lot
 
   // ── Choix du format PDF (parité simulateur) ──
   const [pdfTarget, setPdfTarget] = useState(null) // devis ciblé par la modale
@@ -67,14 +116,52 @@ export default function DevisList() {
   const [customAcompte, setCustomAcompte] = useState('')
   const [includeEtude, setIncludeEtude] = useState(false)
 
+  // ── Modale d'acceptation inline (nom / date / option) ──
+  const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
+  const [acceptNom, setAcceptNom] = useState('')
+  const [acceptDate, setAcceptDate] = useState('')
+  const [acceptOption, setAcceptOption] = useState('sans_batterie')
+  const [acceptBusy, setAcceptBusy] = useState(false)
+
+  // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
+  const targetHasEtude = !!(pdfTarget?.etude_params
+    && Object.keys(pdfTarget.etude_params).length > 0)
+  // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
+  const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
+
   const openPdfModal = (d) => {
+    setBatchPdf(false)
     setPdfTarget(d)
+    // T14 — un devis agricole bascule d'office sur la une page (premium désactivé).
+    setPdfMode(d?.mode_installation === 'agricole' ? 'onepage' : 'full')
+    setShowMonthly(true)
+    setDevisFinal(false)
+    setPaymentMode('standard')
+    setCustomAcompte('')
+    // T12/T13 — étude cochée par défaut pour un devis industriel disposant de
+    // données d'étude ; sinon décochée (et désactivée plus bas si absente).
+    const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
+    setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
+  }
+
+  // Ouvre la modale PDF pour le lot sélectionné (format partagé).
+  const openBatchPdfModal = () => {
+    setBatchPdf(true)
+    setPdfTarget(null)
     setPdfMode('full')
     setShowMonthly(true)
     setDevisFinal(false)
     setPaymentMode('standard')
     setCustomAcompte('')
     setIncludeEtude(false)
+  }
+
+  const openAcceptModal = (d) => {
+    setAcceptTarget(d)
+    setAcceptNom('')
+    setAcceptDate(new Date().toISOString().slice(0, 10))
+    setAcceptOption('sans_batterie')
+    setAcceptBusy(false)
   }
 
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
@@ -95,10 +182,90 @@ export default function DevisList() {
     try {
       await ventesApi.deleteDevis(d.id)
       dispatch(fetchDevis())
+      toast.success(`Devis ${d.reference} supprimé.`)
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Suppression impossible.')
+      toast.error(frenchError(err, 'Suppression impossible.'))
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  // T2 — Envoyer un brouillon : PATCH statut:'envoye'. Réutilise le chemin
+  // d'update existant, donc la garde de remise (T17) s'applique côté serveur et
+  // remonte son message en toast.
+  const handleEnvoyer = async (d) => {
+    setStatutActionId(d.id)
+    try {
+      await ventesApi.patchDevis(d.id, { statut: 'envoye' })
+      dispatch(fetchDevis())
+      toast.success(`Devis ${d.reference} marqué « Envoyé ».`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Envoi impossible.'))
+    } finally {
+      setStatutActionId(null)
+    }
+  }
+
+  // T3 — Refuser un devis envoyé : PATCH statut:'refuse' après confirmation.
+  const handleRefuser = async (d) => {
+    if (!window.confirm(`Marquer le devis « ${d.reference} » comme refusé ?`)) return
+    setStatutActionId(d.id)
+    try {
+      await ventesApi.patchDevis(d.id, { statut: 'refuse' })
+      dispatch(fetchDevis())
+      toast.success(`Devis ${d.reference} marqué « Refusé ».`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Refus impossible.'))
+    } finally {
+      setStatutActionId(null)
+    }
+  }
+
+  // T9 — Acceptation via la modale inline (nom / date / option).
+  const submitAccept = async () => {
+    const d = acceptTarget
+    if (!d) return
+    setAcceptBusy(true)
+    try {
+      await ventesApi.accepterDevis(d.id, {
+        nom: acceptNom,
+        date: acceptDate,
+        option: d.nb_options === 2 ? acceptOption : '',
+      })
+      setAcceptTarget(null)
+      dispatch(fetchDevis())
+      toast.success(`Devis ${d.reference} marqué « Accepté ».`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Acceptation impossible.'))
+    } finally {
+      setAcceptBusy(false)
+    }
+  }
+
+  // T10 — Aperçu PDF en application : récupère le blob /proposal et l'ouvre dans
+  // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
+  const handlePreview = async (d) => {
+    setPreviewingId(d.id)
+    try {
+      const params = proposalParams(
+        d.mode_installation === 'agricole' ? 'onepage' : 'full',
+        d.mode_installation === 'industriel'
+          && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
+      )
+      const res = await ventesApi.getProposalPdf(d.id, params)
+      const url = URL.createObjectURL(pdfBlob(res.data))
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (err) {
+      // T11 — l'absence d'onduleur lève une ValueError côté moteur premium.
+      const msg = frenchError(err, '')
+      if (/onduleur|inverter/i.test(msg)) {
+        toast.error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
+      } else {
+        toast.error(msg || 'Aperçu du PDF indisponible.')
+      }
+    } finally {
+      setPreviewingId(null)
     }
   }
 
@@ -113,7 +280,7 @@ export default function DevisList() {
       dispatch(fetchDevis())
       navigate('/chantiers')
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Création du chantier impossible.')
+      toast.error(frenchError(err, 'Création du chantier impossible.'))
     } finally {
       setChantierBusy(null)
     }
@@ -125,8 +292,9 @@ export default function DevisList() {
     try {
       await dispatch(convertirDevisEnBC(d.id)).unwrap()
       dispatch(fetchDevis())
+      toast.success(`Bon de commande créé depuis ${d.reference}.`)
     } catch (err) {
-      alert(err?.detail ?? JSON.stringify(err))
+      toast.error(frenchError(err, 'Conversion en bon de commande impossible.'))
     } finally {
       setConvertingId(null)
     }
@@ -137,53 +305,75 @@ export default function DevisList() {
     try {
       const res = await ventesApi.genererFacture(d.id)
       const f = res.data
-      alert(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
+      toast.success(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
       dispatch(fetchDevis())
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Génération de facture impossible.')
+      toast.error(frenchError(err, 'Génération de facture impossible.'))
     } finally {
       setFactureGenId(null)
     }
   }
 
-  const handleGenererPdf = async (d) => {
-    const options = {
-      pdf_mode: pdfMode,
-      show_monthly: showMonthly,
-      devis_final: devisFinal,
-      payment_mode: paymentMode,
-      custom_acompte: (devisFinal && paymentMode === 'custom' && customAcompte !== '')
-        ? parseFloat(customAcompte) : null,
-      include_etude: pdfMode === 'full' && includeEtude,
-    }
-    setPdfTarget(null)
+  // Construit les options PDF depuis l'état de la modale (partagé une page / lot).
+  const buildPdfOptions = (d) => ({
+    pdf_mode: pdfMode,
+    show_monthly: showMonthly,
+    devis_final: devisFinal,
+    payment_mode: paymentMode,
+    custom_acompte: (devisFinal && paymentMode === 'custom' && customAcompte !== '')
+      ? parseFloat(customAcompte) : null,
+    // T12/T13 — étude uniquement si premium ET données d'étude présentes.
+    include_etude: pdfMode === 'full' && includeEtude
+      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
+  })
+
+  // Lance la génération d'un PDF + polling silencieux jusqu'à fichier prêt.
+  // Renvoie une promesse résolue quand la génération est acceptée (pas attendue
+  // jusqu'au fichier final), pour permettre l'enchaînement par lot.
+  const genererUnPdf = async (d) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
     try {
-      await dispatch(genererPdfDevis({ id: d.id, options })).unwrap()
-      // Poll until fichier_pdf is ready (max 30s, every 2s)
+      await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
       const poll = async () => {
-        if (attempts++ > 15) {
-          alert('La génération PDF prend plus de temps que prévu. Réessayez dans quelques instants.')
-          return
-        }
+        if (attempts++ > 15) return
         try {
           const res = await ventesApi.getDevisById(d.id)
-          if (res.data.fichier_pdf) {
-            dispatch(fetchDevis())
-          } else {
-            setTimeout(poll, 2000)
-          }
-        } catch {
-          // ignore poll errors
-        }
+          if (res.data.fichier_pdf) dispatch(fetchDevis())
+          else setTimeout(poll, 2000)
+        } catch { /* ignore poll errors */ }
       }
       setTimeout(poll, 2000)
+      return true
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la génération PDF.')
+      // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).
+      const msg = frenchError(err, '')
+      if (/onduleur|inverter/i.test(msg)) {
+        toast.error(`${d.reference} : ce devis n'a aucun onduleur — choisissez le format une page.`)
+      } else {
+        toast.error(`${d.reference} : ${msg || 'erreur lors de la génération PDF.'}`)
+      }
+      return false
     } finally {
       setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
     }
+  }
+
+  const handleGenererPdf = async (d) => {
+    setPdfTarget(null)
+    await genererUnPdf(d)
+  }
+
+  // T7 — Génération PDF par lot : même format pour tous les devis sélectionnés.
+  const handleGenererPdfLot = async () => {
+    const cibles = devis.filter(d => selectedIds.includes(d.id))
+    setBatchPdf(false)
+    let ok = 0
+    for (const d of cibles) {
+      if (await genererUnPdf(d)) ok += 1
+    }
+    if (ok > 0) toast.success(`Génération lancée pour ${ok} devis.`)
+    setSelectedIds([])
   }
 
   const handleTelechargerPdf = async (d) => {
@@ -192,11 +382,68 @@ export default function DevisList() {
       const res = await ventesApi.telechargerPdfDevis(d.id)
       openPdfBlob(res.data, `${d.reference}.pdf`)
     } catch {
-      alert('Fichier introuvable. Régénérez le PDF.')
+      toast.error('Fichier introuvable. Régénérez le PDF.')
     } finally {
       setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
     }
   }
+
+  // Statut effectif : un devis dont la validité est dépassée s'affiche « Expiré »
+  // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
+  const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
+
+  // T5 — Liste filtrée (statut effectif) + recherche (référence / client).
+  const filteredDevis = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return devis.filter(d => {
+      if (statutFilter !== 'tous' && effStatutOf(d) !== statutFilter) return false
+      if (!q) return true
+      const ref = String(d.reference ?? '').toLowerCase()
+      const client = String(d.client_nom ?? '').toLowerCase()
+      return ref.includes(q) || client.includes(q)
+    })
+  }, [devis, statutFilter, query])
+
+  // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
+  const summary = useMemo(() => {
+    const acc = {}
+    for (const key of Object.keys(STATUT_DISPLAY)) acc[key] = { count: 0, total: 0 }
+    for (const d of devis) {
+      const key = effStatutOf(d)
+      if (!acc[key]) acc[key] = { count: 0, total: 0 }
+      acc[key].count += 1
+      acc[key].total += Number(d.total_affiche ?? d.total_ttc ?? 0) || 0
+    }
+    return acc
+  }, [devis])
+
+  // T15 — Devis envoyés expirant dans ≤ 7 jours (et pas encore expirés).
+  const expiringSoon = useMemo(() => devis.filter(d => {
+    if (d.statut !== 'envoye' || d.is_expired) return false
+    const days = daysUntil(d.date_expiration)
+    return days !== null && days >= 0 && days <= 7
+  }), [devis])
+
+  // T16 — Répartition batterie sur les devis acceptés (option_acceptee).
+  const batteryInsight = useMemo(() => {
+    let avec = 0; let sans = 0
+    for (const d of devis) {
+      if (d.statut !== 'accepte') continue
+      if (d.option_acceptee === 'avec_batterie') avec += 1
+      else if (d.option_acceptee === 'sans_batterie') sans += 1
+    }
+    return { avec, sans }
+  }, [devis])
+
+  const toggleSelected = (id) => setSelectedIds(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const allFilteredSelected = filteredDevis.length > 0
+    && filteredDevis.every(d => selectedIds.includes(d.id))
+  const toggleSelectAll = () => setSelectedIds(prev => (
+    allFilteredSelected
+      ? prev.filter(id => !filteredDevis.some(d => d.id === id))
+      : [...new Set([...prev, ...filteredDevis.map(d => d.id)])]
+  ))
 
   if (loading) {
     return (
@@ -232,20 +479,109 @@ export default function DevisList() {
         <DevisForm devis={editDevis} onClose={closeForm} onSaved={onSaved} />
       )}
 
+      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ── */}
+      {devis.length > 0 && (
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {Object.keys(STATUT_DISPLAY).map(key => (
+            <div key={key} className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-center justify-between">
+                <StatusPill status={key} label={STATUT_DISPLAY[key]} />
+                <span className="text-sm font-semibold tabular-nums">{summary[key]?.count ?? 0}</span>
+              </div>
+              <div className="mt-1.5 text-xs tabular-nums text-muted-foreground">
+                {formatMAD(summary[key]?.total ?? 0)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── T16 — Répartition batterie sur les devis acceptés ── */}
+      {(batteryInsight.avec > 0 || batteryInsight.sans > 0) && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Devis acceptés — option choisie :{' '}
+          <span className="font-medium text-success">{batteryInsight.avec} avec batterie</span>
+          {' · '}
+          <span className="font-medium text-foreground">{batteryInsight.sans} sans batterie</span>
+        </p>
+      )}
+
+      {/* ── T15 — Rappel : devis envoyés expirant dans ≤ 7 jours ── */}
+      {expiringSoon.length > 0 && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div>
+            <strong>{expiringSoon.length} devis expirant bientôt</strong> (validité ≤ 7 jours) :{' '}
+            {expiringSoon.map(d => d.reference).join(', ')}.
+          </div>
+        </div>
+      )}
+
+      {/* ── T5 — Filtre statut + recherche (référence / client) ── */}
+      {devis.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Segmented
+            options={STATUT_FILTERS}
+            value={statutFilter}
+            onChange={setStatutFilter}
+            size="sm"
+          />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Rechercher (référence ou client)…"
+              className="pl-8 sm:w-64"
+              aria-label="Rechercher un devis"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── T7 — Barre d'action du lot sélectionné ── */}
+      {selectedIds.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2 text-sm">
+          <span className="font-medium">{selectedIds.length} devis sélectionné(s)</span>
+          <Button size="sm" onClick={openBatchPdfModal}>
+            <FileText /> Générer les PDF
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>
+            Effacer la sélection
+          </Button>
+        </div>
+      )}
+
       {/* ── Modale de génération PDF : formats du simulateur ── */}
-      <Dialog open={!!pdfTarget} onOpenChange={(o) => { if (!o) setPdfTarget(null) }}>
+      <Dialog
+        open={!!pdfTarget || batchPdf}
+        onOpenChange={(o) => { if (!o) { setPdfTarget(null); setBatchPdf(false) } }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Générer le PDF — {pdfTarget?.reference}</DialogTitle>
+            <DialogTitle>
+              {batchPdf
+                ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
+                : `Générer le PDF — ${pdfTarget?.reference}`}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label>Format</Label>
               <RadioGroup value={pdfMode} onValueChange={setPdfMode} className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="full" className="mt-0.5" />
-                  <span>Devis premium (3 pages — options, analyse, garanties)</span>
+                <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={targetIsAgricole}>
+                  {/* T14 — premium « full » désactivé pour le pompage agricole. */}
+                  <RadioGroupItem value="full" className="mt-0.5" disabled={targetIsAgricole} />
+                  <span>
+                    Devis premium (3 pages — options, analyse, garanties)
+                    {targetIsAgricole && (
+                      <span className="block text-xs text-muted-foreground">
+                        Indisponible pour un devis agricole (pompage) — utilisez la une page.
+                      </span>
+                    )}
+                  </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
                   <RadioGroupItem value="onepage" className="mt-0.5" />
@@ -261,10 +597,23 @@ export default function DevisList() {
               </label>
             )}
 
-            {pdfMode === 'full' && (
-              <label className="flex items-start gap-2 text-sm">
-                <Checkbox checked={includeEtude} onCheckedChange={v => setIncludeEtude(!!v)} className="mt-0.5" />
-                <span>Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span></span>
+            {pdfMode === 'full' && !batchPdf && (
+              <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
+                {/* T13 — case désactivée sans données d'étude (note explicative). */}
+                <Checkbox
+                  checked={includeEtude && targetHasEtude}
+                  disabled={!targetHasEtude}
+                  onCheckedChange={v => setIncludeEtude(!!v)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span>
+                  {!targetHasEtude && (
+                    <span className="block text-xs text-muted-foreground">
+                      Aucune donnée d'étude sur ce devis — option indisponible.
+                    </span>
+                  )}
+                </span>
               </label>
             )}
 
@@ -297,9 +646,52 @@ export default function DevisList() {
           </div>
 
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPdfTarget(null)}>Annuler</Button>
-            <Button onClick={() => handleGenererPdf(pdfTarget)}>
+            <Button variant="ghost" onClick={() => { setPdfTarget(null); setBatchPdf(false) }}>Annuler</Button>
+            <Button onClick={() => (batchPdf ? handleGenererPdfLot() : handleGenererPdf(pdfTarget))}>
               <FileText /> Générer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── T9 — Modale d'acceptation inline (nom / date / option) ── */}
+      <Dialog open={!!acceptTarget} onOpenChange={(o) => { if (!o) setAcceptTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Accepter le devis — {acceptTarget?.reference}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
+              <Input id="accept-nom" value={acceptNom}
+                     onChange={e => setAcceptNom(e.target.value)}
+                     placeholder="Nom et prénom" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="accept-date">Date d'acceptation</Label>
+              <Input id="accept-date" type="date" value={acceptDate}
+                     onChange={e => setAcceptDate(e.target.value)} />
+            </div>
+            {acceptTarget?.nb_options === 2 && (
+              <div className="grid gap-2">
+                <Label>Option retenue par le client</Label>
+                <RadioGroup value={acceptOption} onValueChange={setAcceptOption} className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="sans_batterie" />
+                    <span>Sans batterie</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="avec_batterie" />
+                    <span>Avec batterie</span>
+                  </label>
+                </RadioGroup>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
+            <Button onClick={submitAccept} loading={acceptBusy}>
+              <Check /> Confirmer l'acceptation
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -319,6 +711,14 @@ export default function DevisList() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th className="w-8">
+                    {/* T7 — tout sélectionner (devis affichés / filtrés). */}
+                    <Checkbox
+                      checked={allFilteredSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Tout sélectionner"
+                    />
+                  </th>
                   <th>Référence</th>
                   <th>Client</th>
                   <th>Créé le</th>
@@ -329,7 +729,13 @@ export default function DevisList() {
                 </tr>
               </thead>
               <tbody>
-                {devis.map(d => {
+                {filteredDevis.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-6 text-center text-sm text-muted-foreground">
+                      Aucun devis ne correspond à ces filtres.
+                    </td>
+                  </tr>
+                ) : filteredDevis.map(d => {
                   // Expiration calculée à la volée (T7) : un devis en attente dont la
                   // date de validité est dépassée s'affiche « Expiré » sans changer
                   // son statut stocké ni l'étape du lead.
@@ -338,6 +744,13 @@ export default function DevisList() {
                   const isDownloading = pdfDownloading[d.id]
                   return (
                     <tr key={d.id}>
+                      <td>
+                        <Checkbox
+                          checked={selectedIds.includes(d.id)}
+                          onCheckedChange={() => toggleSelected(d.id)}
+                          aria-label={`Sélectionner ${d.reference}`}
+                        />
+                      </td>
                       <td>
                         <strong>{d.reference}</strong>
                         {d.version > 1 && (
@@ -463,6 +876,26 @@ export default function DevisList() {
                             </AlertDialog>
                           )}
 
+                          {d.statut === 'brouillon' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              loading={statutActionId === d.id}
+                              onClick={() => handleEnvoyer(d)}
+                              title="Marquer ce devis comme envoyé"
+                            >
+                              <Send /> Envoyer
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            loading={previewingId === d.id}
+                            onClick={() => handlePreview(d)}
+                            title="Aperçu du PDF dans l'application"
+                          >
+                            <Eye />
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -488,31 +921,21 @@ export default function DevisList() {
                             <Button
                               size="sm"
                               title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
-                              onClick={() => {
-                                // A1 — pour un devis à deux options, demander
-                                // l'option retenue (Sans / Avec batterie) AVANT le
-                                // reste. « OK » = Avec batterie, « Annuler » = Sans.
-                                let option = ''
-                                if (d.nb_options === 2) {
-                                  const avec = window.confirm(
-                                    `Devis ${d.reference} — option choisie par le client ?\n\n`
-                                    + '« OK » = Avec batterie\n« Annuler » = Sans batterie')
-                                  option = avec ? 'avec_batterie' : 'sans_batterie'
-                                }
-                                const nom = window.prompt(
-                                  `Devis ${d.reference} — nom de la personne qui accepte :`, '')
-                                if (nom === null) return
-                                const date = window.prompt(
-                                  "Date d'acceptation (AAAA-MM-JJ) :",
-                                  new Date().toISOString().slice(0, 10))
-                                if (date === null) return
-                                ventesApi.accepterDevis(d.id, { nom, date, option })
-                                  .then(() => dispatch(fetchDevis()))
-                                  .catch(err => alert(
-                                    err?.response?.data?.detail ?? 'Acceptation impossible.'))
-                              }}
+                              onClick={() => openAcceptModal(d)}
                             >
                               <Check /> Accepter
+                            </Button>
+                          )}
+                          {d.statut === 'envoye' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              loading={statutActionId === d.id}
+                              onClick={() => handleRefuser(d)}
+                              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                              title="Marquer ce devis comme refusé"
+                            >
+                              <X /> Refuser
                             </Button>
                           )}
 

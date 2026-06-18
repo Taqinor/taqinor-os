@@ -126,6 +126,37 @@ export const isReseauInverter = (d) => {
 }
 export const isPanel = (d) => _norm(d).includes('panneau')
 
+// Taux TVA attendu d'après la désignation (réforme : 10 % panneaux PV, 20 % le
+// reste). Sert UNIQUEMENT à signaler une incohérence à l'écran — jamais à
+// recaler la valeur tapée (la frappe reste souveraine).
+export function expectedTvaForDesignation(designation) {
+  return isPanel(designation) ? 10 : 20
+}
+
+// La désignation tapée correspond-elle encore au produit choisi du stock ?
+// (la frappe libre peut diverger du nom produit ; on le signale sans bloquer).
+export function designationMatchesProduct(designation, produit) {
+  if (!produit) return true
+  const d = _norm(designation)
+  const n = _norm(produit.nom)
+  if (!d || !n) return true
+  if (d === n) return true
+  // Tolérance : l'une contient l'autre, ou la classification est identique.
+  if (n.includes(d) || d.includes(n)) return true
+  const cd = classifyProduct(designation)
+  const cn = classifyProduct(produit.nom)
+  return cd != null && cd === cn
+}
+
+// Nombre de panneaux pour une taille cible (kWc) à la puissance panneau donnée.
+// Utilisé pour préremplir depuis lead.taille_souhaitee_kwc. Au moins 1 panneau.
+export function panneauxPourKwc(kwc, panelW = 710) {
+  const k = parseFloat(kwc) || 0
+  const w = parseFloat(panelW) || 710
+  if (!(k > 0) || !(w > 0)) return 0
+  return Math.max(1, Math.round(k * 1000 / w))
+}
+
 const WATT_RE = /(\d{3,4})\s*(?:wc|w)\b/i
 const KW_RE = /(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b/i
 const KWH_RE = /(\d+(?:[.,]\d+)?)\s*kwh\b/i
