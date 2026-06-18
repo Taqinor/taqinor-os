@@ -147,7 +147,7 @@ export const REALISATIONS: Realisation[] = [
     batterie: null,
     segment: 'residentiel',
     resume:
-      'Une petite installation à Nouaceur, dans la périphérie de Casablanca : six panneaux JA Solar posés avec le même soin d’implantation que nos chantiers de plus grande taille.',
+      'Une installation à Nouaceur, dans la périphérie de Casablanca : six panneaux JA Solar posés avec le même soin d’implantation que nos chantiers de plus grande taille.',
     photos: [
       { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", ratio: 1, widths: [1600, 1024, 640] },
       { name: 'mesure-rails', alt: 'Traçage et mesure au mètre des rails de fixation sur toiture, Nouaceur', ratio: 4 / 3, widths: [1600, 1024, 640] },

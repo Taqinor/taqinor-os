@@ -208,15 +208,15 @@ describe('maillage & téléphone (W9 / W10)', () => {
     }
   });
 
-  it('l’accueil lie la galerie + les fiches vers /realisations et chaque étude de cas (W18)', () => {
+  it('l’accueil lie la galerie vers /realisations et chaque étude de cas (W18, post-W54)', () => {
     const idx = read('../src/pages/index.astro');
-    // Lien vers le hub /realisations depuis la galerie ET les fiches (2 blocs).
-    expect((idx.match(/href="\/realisations"/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    // Les deux blocs « preuve » lient chaque carte à son étude de cas (liens
-    // construits par template `/realisations/${slug}`).
-    expect(idx).toContain('/realisations/${g.slug}'); // galerie
-    expect(idx).toContain('/realisations/${c.slug}'); // fiches chantier
-    // Chaque étude de cas réelle est référencée par slug sur l’accueil.
+    // Lien vers le hub /realisations depuis la galerie. W54 a retiré le bloc
+    // « Fiches chantier » en double : la galerie photo porte désormais seule la
+    // preuve (et ses données), d'où un seul lien hub au lieu de deux.
+    expect((idx.match(/href="\/realisations"/g) ?? []).length).toBeGreaterThanOrEqual(1);
+    // Chaque carte de la galerie lie son étude de cas (template `/realisations/${g.slug}`).
+    expect(idx).toContain('/realisations/${g.slug}');
+    // Chaque étude de cas réelle (5 installs) reste référencée par slug sur l’accueil.
     for (const r of REALISATIONS) {
       expect(idx, r.slug).toContain(`slug: '${r.slug}'`);
     }
