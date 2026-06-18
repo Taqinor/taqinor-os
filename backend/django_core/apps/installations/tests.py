@@ -9,6 +9,7 @@ le type de client + identifiants.
 Run :
     docker compose exec django_core python manage.py test apps.installations -v 2
 """
+import itertools
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -41,10 +42,17 @@ def ids_of(resp):
     return [x['id'] for x in rows]
 
 
+_devis_seq = itertools.count(1)
+
+
 def make_accepted_devis(company, with_lead=True):
+    # Suffixe unique par appel : permet plusieurs devis/chantiers pour la même
+    # société dans un seul test sans violer l'unicité (company, email) /
+    # (company, reference).
+    n = next(_devis_seq)
     client = Client.objects.create(
         company=company, nom='Site', prenom='Client',
-        email=f'site-{company.id}@example.invalid')
+        email=f'site-{company.id}-{n}@example.invalid')
     lead = None
     if with_lead:
         lead = Lead.objects.create(
@@ -54,7 +62,7 @@ def make_accepted_devis(company, with_lead=True):
             raccordement='triphase', type_installation='residentiel',
             taille_souhaitee_kwc=Decimal('6.5'))
     devis = Devis.objects.create(
-        company=company, reference=f'DEV-CHT-{company.id}', client=client,
+        company=company, reference=f'DEV-CHT-{company.id}-{n}', client=client,
         lead=lead, statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'),
         mode_installation='residentiel',
         etude_params={'puissance_kwc': 7.2})
