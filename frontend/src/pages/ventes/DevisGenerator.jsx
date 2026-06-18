@@ -30,6 +30,7 @@ import {
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   isBattery, isHybridInverter, prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
+  panneauxPourKwc,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -116,11 +117,24 @@ export default function DevisGenerator({
   const [produits, setProduits] = useState([])
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  // Avertissements NON bloquants (n'empêchent jamais l'enregistrement) —
+  // distincts de `errors` qui, eux, bloquent la sauvegarde.
+  const [warnings, setWarnings] = useState({})
+  // Chargement des référentiels (leads/clients/produits) : on distingue
+  // « en cours » (selects affichent « Chargement… ») de « échec réseau »
+  // (bannière rouge explicite plutôt qu'un select vide silencieux).
+  const [refsLoading, setRefsLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState([])
   const [searchParams] = useSearchParams()
   const autoRan = useRef(false)
   // Mode choisi PAR L'UTILISATEUR : un lead sélectionné ensuite ne l'écrase
   // jamais (le pré-réglage depuis le lead ne joue que sur le défaut intact).
   const modeTouched = useRef(false)
+  // Mêmes garde-fous « intact » pour les champs que applyLead peut pré-remplir :
+  // dès que l'utilisateur y a touché, le lead ne les écrase plus.
+  const structureTouched = useRef(false)
+  const pompeAlimTouched = useRef(false)
+  const nbPanneauxTouched = useRef(false)
 
   // Fin de parcours : embarqué → callbacks (jamais de navigation) ; pleine
   // page → retour à la liste des devis (comportement historique).
@@ -189,9 +203,16 @@ export default function DevisGenerator({
   const [pompeHeures, setPompeHeures] = useState(String(HEURES_POMPAGE_DEFAUT))
 
   useEffect(() => {
-    crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
-    crmApi.getLeads().then(r => setLeads(r.data.results ?? r.data)).catch(() => {})
-    stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
+    // Les trois échecs réseau sont SURFACÉS (bannière) au lieu d'avaler l'erreur :
+    // un select vide sans explication n'aide personne. (refsLoading/loadFailed
+    // partent déjà de true/[] ; on ne re-set rien de synchrone dans l'effet.)
+    const fail = (label) => setLoadFailed(prev =>
+      prev.includes(label) ? prev : [...prev, label])
+    Promise.allSettled([
+      crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => { fail('clients'); throw 0 }),
+      crmApi.getLeads().then(r => setLeads(r.data.results ?? r.data)).catch(() => { fail('leads'); throw 0 }),
+      stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => { fail('produits'); throw 0 }),
+    ]).finally(() => setRefsLoading(false))
   }, [])
 
   // Table par défaut du simulateur une fois le stock chargé
@@ -284,11 +305,19 @@ export default function DevisGenerator({
 
   const resolvedClientLabel = useMemo(() => {
     if (!selectedLead) return null
-    if (selectedLead.client_nom) return `${selectedLead.client_nom} (client existant lié)`
+    // B2B : si le client résolu porte un ICE, on l'affiche (devis professionnel).
+    const linked = selectedLead.client_id
+      ? clients.find(c => String(c.id) === String(selectedLead.client_id))
+      : null
+    const iceSuffix = (c) =>
+      (c && c.ice) ? ` · ICE ${c.ice}` : ''
+    if (selectedLead.client_nom) {
+      return `${selectedLead.client_nom} (client existant lié)${iceSuffix(linked)}`
+    }
     if (selectedLead.email) {
       const match = clients.find(c =>
         (c.email || '').toLowerCase() === selectedLead.email.toLowerCase())
-      if (match) return `${match.nom} ${match.prenom || ''} (client existant — même email)`.trim()
+      if (match) return `${match.nom} ${match.prenom || ''} (client existant — même email)`.trim() + iceSuffix(match)
     }
     return `${selectedLead.nom} ${selectedLead.prenom || ''} (sera créé automatiquement depuis le lead)`.trim()
   }, [selectedLead, clients])
@@ -305,7 +334,30 @@ export default function DevisGenerator({
         && lead.type_installation && LEAD_TYPE_TO_MODE[lead.type_installation]) {
       onModeChange(LEAD_TYPE_TO_MODE[lead.type_installation])
     }
+    // Structure préférée du lead (acier/aluminium) si non touchée par l'utilisateur.
+    if (!structureTouched.current
+        && (lead.structure_pref === 'acier' || lead.structure_pref === 'aluminium')) {
+      setStructureType(lead.structure_pref)
+    }
+    // Lead agricole : recopie pompe CV / HMT / débit ; l'alimentation suit le
+    // raccordement (monophase→mono / triphase→tri) tant qu'elle est intacte.
+    if (LEAD_TYPE_TO_MODE[lead.type_installation] === 'agricole') {
+      if (lead.pompe_cv != null && lead.pompe_cv !== '') setPompeCv(String(lead.pompe_cv))
+      if (lead.pompe_hmt_m != null && lead.pompe_hmt_m !== '') setPompeHmt(String(lead.pompe_hmt_m))
+      if (lead.pompe_debit_m3h != null && lead.pompe_debit_m3h !== '') setPompeDebit(String(lead.pompe_debit_m3h))
+      if (!pompeAlimTouched.current) {
+        if (lead.raccordement === 'monophase') setPompeAlim('mono')
+        else if (lead.raccordement === 'triphase') setPompeAlim('tri')
+      }
+    }
     if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
+    // Taille souhaitée (kWc) du lead → nb de panneaux, prioritaire sur
+    // l'estimation par facture, tant que le champ n'a pas été touché.
+    const tailleKwc = parseFloat(lead.taille_souhaitee_kwc) || 0
+    const fromTaille = (!nbPanneauxTouched.current && tailleKwc > 0)
+      ? panneauxPourKwc(tailleKwc, panelW)
+      : 0
+    if (fromTaille > 0) setNbPanneaux(String(fromTaille))
     const hiver = parseFloat(lead.facture_hiver) || 0
     if (hiver > 0) {
       // bascule OFF → la valeur unique vaut hiver ET été
@@ -313,8 +365,12 @@ export default function DevisGenerator({
         ? parseFloat(lead.facture_ete) : hiver
       setFHiver(String(lead.facture_hiver))
       setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
-      const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
-      if (suggested > 0) setNbPanneaux(String(suggested))
+      // L'estimation par facture ne s'applique que si la taille souhaitée n'a
+      // pas déjà fourni un nombre de panneaux (taille prioritaire).
+      if (fromTaille <= 0) {
+        const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
+        if (suggested > 0) setNbPanneaux(String(suggested))
+      }
       setMonthly(estimerMois(hiver, ete))
     }
   }
@@ -328,9 +384,18 @@ export default function DevisGenerator({
     setSaving(true)
     try {
       // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
-      // dupliqué : un seul endroit dimensionne le devis auto.
+      // dupliqué : un seul endroit dimensionne le devis auto. On transmet les
+      // heures de pompage du réglage entreprise (pompeHeures) et un rappel qui
+      // affiche les chiffres d'étude industrielle avant la fin.
       const devisId = await createAutoQuote({
         lead, produits, discountStr, dispatch, quoteLogic,
+        pumpHours: parseFloat(pompeHeures) || HEURES_POMPAGE_DEFAUT,
+        onEtude: (et) => setWarnings(prev => ({
+          ...prev,
+          autoEtude: `Étude auto : autoconsommation ${et.taux_autoconso} %`
+            + ` · économies ${fmtNum(et.economies_annuelles)} MAD/an`
+            + (et.payback != null ? ` · retour ${et.payback} ans` : ''),
+        })),
       })
       finish(devisId)
     } catch (err) {
@@ -570,6 +635,19 @@ export default function DevisGenerator({
     } else if (!usableLines().length) {
       e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
     }
+    // Avertissement NON bloquant : le lead choisi est perdu et/ou archivé.
+    // On le signale avant l'enregistrement sans jamais l'empêcher.
+    const w = {}
+    if (selectedLead && (selectedLead.perdu || selectedLead.is_archived)) {
+      const flags = [
+        selectedLead.perdu ? 'perdu' : null,
+        selectedLead.is_archived ? 'archivé' : null,
+      ].filter(Boolean).join(' et ')
+      const nom = `${selectedLead.nom}${selectedLead.prenom ? ` ${selectedLead.prenom}` : ''}`.trim()
+      w.lead = `Attention : le lead « ${nom} » est ${flags}. `
+        + 'Vous pouvez tout de même créer ce devis.'
+    }
+    setWarnings(w)
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -590,6 +668,22 @@ export default function DevisGenerator({
           hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
           profondeur: pompeProfondeur, distance: pompeDistance,
         })
+      }
+      // Persiste le scénario + l'option recommandée affichés à l'écran pour que
+      // le PDF mette en avant EXACTEMENT la même option (option recommandée
+      // résolue : « Auto » → l'option du scénario).
+      // Garde-fou (T14) : en mode industriel SANS étude (conso = 0), on ne crée
+      // PAS d'étude dégénérée — etude_params reste null (la consommation manque,
+      // ce que errors.conso bloque déjà en amont). Ailleurs, on annote.
+      const choiceParams = {
+        scenario,
+        recommended_choice: recommendedChoice,
+        recommended_option: recommended,
+      }
+      if (etudeParams) {
+        etudeParams = { ...etudeParams, ...choiceParams }
+      } else if (modeInstallation !== 'industriel') {
+        etudeParams = choiceParams
       }
       const payload = {
         statut: 'brouillon',
@@ -722,6 +816,16 @@ export default function DevisGenerator({
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        {refsLoading && (
+          <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+            Chargement des données (leads, clients, produits)…
+          </div>
+        )}
+        {loadFailed.length > 0 && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            Échec du chargement : {loadFailed.join(', ')}. Vérifiez votre connexion puis rechargez la page.
+          </div>
+        )}
         {/* ── Mode d'installation (marché) ── */}
         <Card>
           <GenCardHeader icon={Target} title="Marché / Mode d'installation" />
@@ -959,7 +1063,7 @@ export default function DevisGenerator({
                     { value: 'tri', label: 'Tri 380V' },
                   ]}
                   value={pompeAlim}
-                  onChange={setPompeAlim}
+                  onChange={(v) => { pompeAlimTouched.current = true; setPompeAlim(v) }}
                 />
               </div>
             </div>
@@ -1030,7 +1134,7 @@ export default function DevisGenerator({
                 <Label htmlFor="gen-nbpanneaux" required>Nombre de panneaux</Label>
                 <Input id="gen-nbpanneaux" type="number" min="1" max="500" step="any"
                        placeholder="ex: 14" value={nbPanneaux}
-                       onChange={e => setNbPanneaux(e.target.value)} />
+                       onChange={e => { nbPanneauxTouched.current = true; setNbPanneaux(e.target.value) }} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
@@ -1049,7 +1153,7 @@ export default function DevisGenerator({
                     { value: 'aluminium', label: 'Aluminium' },
                   ]}
                   value={structureType}
-                  onChange={setStructureType}
+                  onChange={(v) => { structureTouched.current = true; setStructureType(v) }}
                 />
               </div>
             </div>
@@ -1343,6 +1447,15 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
 
+        {/* Avertissements NON bloquants (lead perdu/archivé, chiffres d'étude
+            auto) — informatifs, n'empêchent jamais l'enregistrement. */}
+        {Object.values(warnings).filter(Boolean).length > 0 && (
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            {Object.values(warnings).filter(Boolean).map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        )}
         {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
             clic silencieux sans effet. */}
         {(errors.submit || errors.lines || errors.client || errors.conso) && (
