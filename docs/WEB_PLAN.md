@@ -1272,6 +1272,211 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
 
 ---
 
+### W46 — Estimator optimizer: re-solve after EVERY lock (not just the first one or two) — diagnose the stop-after-two cause, fix to full depth — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Work **IN PLACE on the current latest private preview route `/preview/toiture-3d-pro-N`** — read the
+repo to find the highest N (the version being tested on the phone) — and leave the
+**immediately-prior route byte-for-byte intact** as a baseline; **do NOT spawn a new route** for this
+fix. The live constrained optimizer currently re-solves correctly for the first one or two locked
+options but **STOPS re-optimizing once a third or later option is set** — it must re-solve after
+**EVERY** lock, for **any number** of accumulated locks, all the way until the user has locked every
+axis.
+
+**Do:**
+
+1. **First read `estimatorBrain.ts` and wherever the lock state and the re-solve are wired, and
+   DIAGNOSE the real reason it stops after two — do NOT assume the cause** (a hard-coded depth, a
+   state update that only fires for the first locks, a loop bounded at two axes, a memo that doesn't
+   re-run, a stale closure, etc.) — **and report what it actually was.**
+2. Fix it so that **every time the user locks any axis** (orientation/azimuth, tilt, layout
+   portrait/paysage, roof-edge margin/setback, panneaux-nécessaires target — whichever the route
+   exposes) the optimizer **IMMEDIATELY re-solves over ALL still-AUTO axes holding EVERY locked axis
+   fixed**, maximizing total annual generation (placed × kWc × the PVGIS specific yield at the exact
+   GPS, placed = min(needed, fits), the needed-panel cap always respected), and updates the displayed
+   values, the 3D, and every result — and this continues identically for the 3rd, 4th, 5th… lock
+   until nothing is left to float.
+3. Setting a new value on an **already-locked axis just updates that lock**; **Réinitialiser clears
+   all locks**; the per-axis **"Recommandé" still shows the freed-axis optimum given the current
+   locks**.
+
+**Tests:** re-solve fires on the 3rd, 4th and Nth successive lock (not just the first two);
+accumulating locks holds all of them while only AUTO axes move; the sequence terminates correctly
+when every axis is locked. **One self-merged PR.**
+
+---
+
+### W47 — Pitched-roof flow: add "alignée toit" flush-coplanar as the default/forced orientation + drop the physically-impossible orientations — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Same route, **in place** (current latest `/preview/toiture-3d-pro-N`, the immediately-prior route
+left byte-for-byte intact). The non-flat (pitched/tiled) flow currently offers some orientation
+options but is **MISSING "alignée toit"** — flush panels lying coplanar on the roof slope — which is
+the physically-correct mode for a flush install.
+
+**Do:**
+
+1. **First read the pitched flow and REPORT exactly which orientation/options it currently offers.**
+2. Make **"alignée toit" present and the default/forced orientation for a pitched roof**: the array
+   follows the roof's own facing, every panel **coplanar with the roof plane** (panel normal =
+   roof-plane normal), **tilt = the roof pitch** (roof-determined, never an optimizable axis),
+   **azimuth = the way the roof faces**.
+3. **Remove or mark "non applicable"** any orientation that is physically impossible for a flush panel
+   on that route (true-south rotate, est-ouest tents — a flush panel cannot be turned off the roof
+   plane).
+4. **Preserve the existing flush coplanar 3D exactly:** no triangular racks, no standing frames, no
+   inter-row gaps, every panel corner inside the traced polygon and on the plane.
+5. Production for the pitched roof stays **PVGIS at the single (pitch, facing) pair with
+   `mountingplace="building"`**. The free axes the pitched optimizer floats remain **layout
+   (portrait/paysage), margin/setback, and panneaux-nécessaires**, with the **same live re-solve to
+   the last lock** from W46.
+
+**Tests:** "alignée toit" is present and default on the pitched flow; the impossible orientations are
+not offered; the flush coplanar layout is unchanged (every panel normal = the roof-plane normal);
+production uses `mountingplace="building"`. **One self-merged PR.**
+
+---
+
+### W48 — Harden BOTH optimizers (flat + pitched): exhaustive defensive handling + fuzz/property tests — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Same route, **in place**. Harden **both engines** — the flat optimizer and the pitched optimizer — to
+be robust and exhaustively tested, **without changing any correct behaviour.** Read the engines and
+add defensive handling plus tests for every failure and edge case constructible:
+
+- degenerate roof traces (zero or near-zero area, self-intersecting or non-convex polygons, slivers);
+- obstacles covering all or most of the roof;
+- a roof too small to fit even one panel;
+- a needed-panel cap of zero or a huge value;
+- every orientation×layout×tilt combination composing with **no NaN / Infinity / negative count**;
+- PVGIS returning errors / timeouts / malformed / empty payloads → **graceful fallback to the
+  in-house solar-geometry estimate labelled "estimé", never a crash or a blank number**;
+- the PVGIS azimuth-sign mapping (**SOUTH=0, EAST=−90, WEST=+90, NORTH=180**) correct in all four
+  quadrants;
+- the physical bounds ALWAYS holding (Σ panel footprints ≤ usable area; placed = min(needed, fits) ≤
+  needed; E-W count ≥ same-tilt south; savings ≤ avoidable energy cost; surplus uncompensated);
+- locks accumulating to full depth under fuzzed lock orders;
+- the pitched-specific invariants (no tilt axis, orientation fixed to alignée toit, coplanar panels).
+
+Add **property-based / fuzz tests** where they help (random roofs, random lock orders, random configs)
+asserting the invariants never break.
+
+**Tests:** full Vitest suite green; **report the final test count and the categories covered.**
+**One self-merged PR.**
+
+---
+
+### W49 — Server-side PVGIS production-data engine (yearly / monthly / typical-day / specific-date / daily) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Same route, **in place**. Build a **server-side PVGIS production data engine** that turns the current
+config into precise produced-electricity figures at multiple timescales. **CRITICAL: PVGIS rejects
+browser/AJAX (CORS) requests, so ALL PVGIS calls MUST be server-side** — read the repo to find how
+PVGIS is currently called (it must already be server-side, since browser CORS is blocked) and
+**reuse that existing server-side PVGIS path + cache**; do NOT call PVGIS from client JS. Use the
+**SAME PVGIS endpoint/version the optimizer already calls** so the window's numbers are consistent
+with the optimizer's — confirm which version it is and **do NOT switch the radiation
+database/version** (that would silently shift every existing number).
+
+**Compute**, for the exact roof GPS and the current plane (tilt, azimuth, mountingplace = "free" flat
+/ "building" pitched), all normalized **per 1 kWc** and then **scaled by the placed system size**
+(placed_panels × 0.72 kWc per the Canadian Solar 720 W panel):
+
+- (a) **yearly** production in kWh/an;
+- (b) the **12 monthly** production totals in kWh/month;
+- (c) the **"typical day" hourly PV-power profile for each month** = the average over all days of that
+  month across PVGIS's multi-year record (24 values);
+- (d) a **specific calendar date's** hourly profile = that date averaged across the available years (a
+  "typical 15 mars", avoiding any single-year arbitrariness);
+- (e) **daily** production totals in kWh/day from the hourly profiles.
+
+**Endpoints (verify against current PVGIS docs; pick the minimal-call accurate combination):** PVcalc
+returns the monthly + annual averages in one call; DRcalc returns the average daily profile for all 12
+months in one call; seriescalc with `pvcalculation=1` returns the full multi-year hourly PV power from
+which the typical-day average, any specific date, and the daily/monthly/yearly aggregates can all be
+derived — production scales linearly with kWc (query at 1 kWc, scale afterward). **Cache** every PVGIS
+result per rounded (lat, lon, tilt, azimuth, mounting) so re-renders and config tweaks are instant and
+stay well inside the 30-calls/sec limit. **Reconcile** the timescales so the monthly totals and the
+typical days are mutually consistent with the annual figure, and **state the chosen reconciliation.**
+Savings, if shown anywhere in this window, reuse the engine's **EXISTING honest capped model**
+(self-consumption only, surplus uncompensated in Morocco, never production × tariff uncapped) — invent
+no savings number. **Degrade gracefully** to the in-house "estimé" production if PVGIS is unreachable,
+clearly labelled.
+
+**Tests:** per-kWc → scaled-by-kWc linearity; typical-day = month-average; specific-date = cross-year
+average for that date; monthly/annual reconciliation; the azimuth-sign mapping; mounting "free" vs
+"building" by roof type; cache hits avoiding duplicate calls; graceful fallback. **One self-merged
+PR.**
+
+---
+
+### W50 — Interactive "Production estimée" window (Année / Mois / Jour) driven by the production engine — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Same route, **in place**. Build the interactive **"Production estimée" window** driven by the W49
+production data engine and the current optimizer config — it shows the produced electricity for the
+real system on the real roof and lets the client explore it.
+
+**Do:**
+
+- A **scope toggle — Année / Mois / Jour.**
+  - **Année:** 12 monthly bars (kWh/month) plus the annual total.
+  - **Mois:** the selected month's daily production (and/or its typical-day curve) plus the month
+    total, with a month picker and prev/next to cycle all 12 months.
+  - **Jour:** a 24-hour PV-power curve for the selected day plus that day's kWh — the day **DEFAULTS
+    to the selected month's "typical day"** (the month-average profile), and the client can pick a
+    specific calendar date and cycle days with prev/next.
+- The window reflects the current config and is **editable in place:** the client can adjust the panel
+  count (kWc updates) and the figures recompute from the engine; the layout and the GPS come from the
+  traced roof / optimizer so the production is position-correct and precise to the real area.
+- Show the headline numbers (kWh/an, selected-month kWh, selected-day kWh) and, if savings are shown,
+  the **capped honest** monthly/daily savings clearly framed as estimates.
+- **French UI copy in the site voice; numbers in site format** (space thousands separator, unit after,
+  "~" where appropriate).
+- Render the graphs with **lightweight inline SVG — NO chart library, NO new dependency** (the data is
+  tiny: 12 bars, 24-point curves, ~31 daily bars). All graphs render from cached engine data so
+  cycling months/days is instant.
+- **Reduced-motion fully respected** (no animated draw-in; final values shown), **zero layout shift**
+  (reserve graph space), **Lighthouse held 97–100.**
+- Because the build agent cannot render the map or the charts, anchor correctness to **code-checkable
+  logic and tests** (the right series length, the typical-vs-specific-day selection, the kWc scaling,
+  the month/day cycling bounds) rather than to appearance — the final visual check is on the phone.
+
+**Tests:** the scope toggle yields the right series; month cycling wraps correctly across all 12
+months; the day defaults to the typical day and a picked date overrides it; editing the panel count
+rescales every figure; savings (if shown) never exceed the capped value. **One self-merged PR.**
+
+---
+
+**ACROSS W46–W50 (founder's cross-cutting constraints):** every figure traces to **PVGIS, confirmed
+tariff/physics, or sound logic — no invented numbers**; savings never exceed the avoidable energy
+cost; impossible panel counts stay blocked by the footprint bound; the **needed-panel cap is always
+respected**. **No new dependencies** (PVGIS, MapLibre, Mapbox, Three.js are already in the stack;
+graphs are inline SVG). **Touch only `apps/web`.** All work stays on the **CURRENT latest private
+preview route IN PLACE** (noindex, not in nav, excluded from sitemap, unlinked), the
+**immediately-prior route left byte-for-byte intact as the baseline** — do NOT spawn a new route per
+task and do NOT promote anything to public. The **live public site and the live lead form and its
+entire data flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay
+**byte-for-byte unchanged**. **Each task is its own self-merged PR to protected main** (the accepted
+path — don't flag it). Full Vitest suite green, **Lighthouse held 97–100**, reduced-motion respected,
+zero layout shift. **Plain-language report only** (no diffs or hashes): the preview URL to open; for
+each task what changed (the optimizer now re-solves after every lock down to the last one and what the
+stop-after-two cause actually was; the pitched roof now offers "alignée toit" as the flush default and
+drops the impossible orientations; both engines hardened with the new test count and the categories
+covered; the production window with its Année/Mois/Jour views, typical-vs-specific day, and how
+panel-count/layout/GPS drive it); confirmation the live site and the lead flow are untouched; which
+map env var the route reads; and the one thing to check on the phone — lock options past the third and
+watch each one re-optimize, switch a roof to pitched and confirm alignée toit is the flush default,
+then open the production window, cycle months and days, and confirm a typical day versus a picked
+date.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
