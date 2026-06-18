@@ -264,8 +264,16 @@ class TestBuyPriceConfidentiality(ProcurementBase):
         cl = Client.objects.create(
             company=self.company, nom='Cl', prenom='I',
             email='c@c.com', telephone='+212600000002')
+        # Sentinelle de prix d'achat DISTINCTIVE : un nombre qui ne peut
+        # coïncider ni avec les microsecondes d'un timestamp, ni avec une
+        # référence, un id ou un total calculé (dérivés de prix_vente=1500 →
+        # 1500/300/1800). L'ancien '999' rendait ce test flaky : il apparaissait
+        # parfois dans les microsecondes de date_creation (ex.
+        # '...T02:36:55.999163Z'), un faux positif de sous-chaîne — le prix
+        # d'achat ne fuitait pas réellement.
+        buy_price = '7654321'
         produit = make_produit(
-            self.company, 'SKU-CONF', stock=5, prix_achat='999',
+            self.company, 'SKU-CONF', stock=5, prix_achat=buy_price,
             prix_vente='1500')
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-7777', client=cl,
@@ -278,9 +286,26 @@ class TestBuyPriceConfidentiality(ProcurementBase):
         # pas relayer prix_achat.
         from apps.ventes.serializers import DevisSerializer
         data = DevisSerializer(devis, context={'request': None}).data
-        serialized = str(data)
-        self.assertNotIn('999', serialized)
-        self.assertNotIn('prix_achat', serialized)
+
+        # Garde STRUCTURELLE (pas par sous-chaîne) : aucune clé ne doit relayer
+        # le prix d'achat / la marge, à n'importe quelle profondeur.
+        def _all_keys(obj):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    yield str(k)
+                    yield from _all_keys(v)
+            elif isinstance(obj, (list, tuple)):
+                for item in obj:
+                    yield from _all_keys(item)
+        leaked = [k for k in _all_keys(data) if any(
+            marker in k.lower()
+            for marker in ('prix_achat', 'prix_revient', 'marge', 'buy_price'))]
+        self.assertEqual(leaked, [], f'clé interne exposée au client : {leaked}')
+
+        # La VALEUR du prix d'achat ne doit apparaître nulle part dans la
+        # sérialisation client ; la sentinelle distinctive supprime le faux
+        # positif de sous-chaîne contre les timestamps.
+        self.assertNotIn(buy_price, str(data))
 
     def test_supplier_pdf_shows_buy_price(self):
         """Le PDF FOURNISSEUR (interne) montre légitimement le prix d'achat."""
