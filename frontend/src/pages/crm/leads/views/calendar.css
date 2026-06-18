@@ -38,23 +38,23 @@
   margin: 0;
   font-size: 1.15rem;
   font-weight: 700;
-  color: var(--cat-navy, #0b1f3a);
+  color: var(--foreground, #0b1f3a);
 }
 
 /* ── Grille mensuelle ── */
 .cal-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  background: #e2e8f0; /* les gaps de 1px dessinent les filets */
+  background: var(--border, #e2e8f0); /* les gaps de 1px dessinent les filets */
   gap: 1px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
   overflow: hidden;
 }
 
 .cal-weekday {
-  background: #f8fafc;
-  color: var(--cat-navy, #0b1f3a);
+  background: var(--muted, #f8fafc);
+  color: var(--foreground, #0b1f3a);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -65,7 +65,7 @@
 
 .cal-cell {
   position: relative;
-  background: #fff;
+  background: var(--card, #fff);
   min-height: 96px;
   padding: 6px;
   padding-top: 26px;
@@ -75,21 +75,21 @@
 }
 
 .cal-cell-out {
-  background: #f8fafc;
+  background: var(--muted, #f8fafc);
 }
 
 .cal-cell-out .cal-day-number {
-  color: #94a3b8;
+  color: var(--muted-foreground, #94a3b8);
 }
 
 .cal-cell-today {
-  box-shadow: inset 0 0 0 2px var(--cat-gold, #f5a623);
-  background: var(--cat-gold-soft, #fdf3e0);
+  box-shadow: inset 0 0 0 2px var(--cat-gold, var(--warning, #f5a623));
+  background: var(--cat-gold-soft, color-mix(in srgb, var(--warning, #f5a623) 14%, var(--card, #fff)));
 }
 
 .cal-cell-today .cal-day-number {
-  background: var(--cat-gold, #f5a623);
-  color: var(--cat-navy, #0b1f3a);
+  background: var(--cat-gold, var(--warning, #f5a623));
+  color: #1a1505;
   border-radius: 999px;
 }
 
@@ -105,7 +105,7 @@
   padding: 0 4px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--cat-navy, #0b1f3a);
+  color: var(--foreground, #0b1f3a);
 }
 
 /* ── Pastilles lead ── */
@@ -122,20 +122,25 @@
   gap: 6px;
   width: 100%;
   min-width: 0;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: 6px;
   padding: 3px 6px;
   font-size: 0.76rem;
-  color: var(--cat-navy, #0b1f3a);
+  color: var(--foreground, #0b1f3a);
   text-align: left;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .cal-chip:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 1px 3px rgba(11, 31, 58, 0.12);
+  border-color: var(--primary, #cbd5e1);
+  box-shadow: var(--shadow-ui-xs, 0 1px 3px rgba(11, 31, 58, 0.12));
+}
+
+.cal-chip:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: 1px;
 }
 
 .cal-chip-dot {
@@ -154,7 +159,7 @@
 }
 
 .cal-chip-perdu {
-  color: #dc2626;
+  color: var(--destructive, #dc2626);
 }
 
 .cal-more {
@@ -164,12 +169,12 @@
   padding: 2px 4px;
   font-size: 0.72rem;
   font-weight: 600;
-  color: #64748b;
+  color: var(--muted-foreground, #64748b);
   cursor: pointer;
 }
 
 .cal-more:hover {
-  color: var(--cat-navy, #0b1f3a);
+  color: var(--foreground, #0b1f3a);
   text-decoration: underline;
 }
 
@@ -180,14 +185,14 @@
 
 /* ── Leads sans date de relance ── */
 .cal-undated {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border, #e2e8f0);
   padding-top: 10px;
 }
 
 .cal-undated-label {
   margin: 0 0 6px;
   font-size: 0.82rem;
-  color: #64748b;
+  color: var(--muted-foreground, #64748b);
 }
 
 .cal-undated-chips {

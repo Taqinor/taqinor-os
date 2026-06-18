@@ -1,7 +1,16 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import {
+  FileText, Truck, PackageMinus, HelpCircle, Check, X, AlertCircle, AlertTriangle,
+  ChevronLeft, ChevronRight, RefreshCw, Building2, Repeat, Upload, ArrowDownUp,
+} from 'lucide-react'
 import { FileUpload } from '../../ui/FileUpload'
+import {
+  Button, Badge, Spinner, Card, EmptyState,
+  Input, Segmented,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 import {
   processOcrStockDocument,
   clearStockOcrResult,
@@ -29,74 +38,32 @@ const DOC_TYPES = [
   {
     value: 'facture_achat',
     label: "Facture d'achat",
-    desc: 'Facture reçue d\'un fournisseur avec montants HT et TVA',
+    desc: "Facture reçue d'un fournisseur avec montants HT et TVA",
     mouvement: 'entree',
-    color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', activeBorder: '#1d4ed8',
-    icon: (
-      <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
-        <polyline points="10 9 9 9 8 9"/>
-      </svg>
-    ),
+    icon: FileText,
   },
   {
     value: 'bon_livraison',
     label: 'Bon de livraison',
     desc: 'Livraison fournisseur (les prix peuvent être absents)',
     mouvement: 'entree',
-    color: '#059669', bg: '#f0fdf4', border: '#bbf7d0', activeBorder: '#059669',
-    icon: (
-      <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-        <line x1="12" y1="22.08" x2="12" y2="12"/>
-      </svg>
-    ),
+    icon: Truck,
   },
   {
     value: 'bon_sortie',
     label: 'Bon de sortie',
     desc: 'Livraison à un client (sortie de stock)',
     mouvement: 'sortie',
-    color: '#d97706', bg: '#fffbeb', border: '#fde68a', activeBorder: '#d97706',
-    icon: (
-      <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-        <rect x="1" y="3" width="15" height="13" rx="1"/>
-        <path d="M16 8h4l3 3v5h-7V8z"/>
-        <circle cx="5.5" cy="18.5" r="2.5"/>
-        <circle cx="18.5" cy="18.5" r="2.5"/>
-      </svg>
-    ),
+    icon: PackageMinus,
   },
   {
     value: 'autre',
     label: 'Autre document',
     desc: 'Transfert, inventaire ou document non standard',
     mouvement: null,
-    color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', activeBorder: '#64748b',
-    icon: (
-      <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="12" y1="8" x2="12" y2="12"/>
-        <line x1="12" y1="16" x2="12.01" y2="16"/>
-      </svg>
-    ),
+    icon: HelpCircle,
   },
 ]
-
-// ── SVG helper ────────────────────────────────────────────────────────────────
-function Ic({ size = 20, color = 'currentColor', sw = 1.8, children }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
-      style={{ flexShrink: 0, display: 'block' }}>
-      {children}
-    </svg>
-  )
-}
 
 // ── Stepper ───────────────────────────────────────────────────────────────────
 function Stepper({ step }) {
@@ -107,49 +74,38 @@ function Stepper({ step }) {
     { label: 'Résultats',  sub: 'Application stock' },
   ]
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '2.25rem' }}>
+    <ol className="mb-8 flex items-start">
       {steps.map((s, i) => {
-        const n      = i + 1
-        const done   = n < step
+        const n = i + 1
+        const done = n < step
         const active = n === step
-        const ringColor  = done ? '#059669' : active ? '#1d4ed8' : '#e2e8f0'
-        const labelColor = active ? '#0f172a'  : done ? '#059669' : '#94a3b8'
         return (
-          <div key={n} style={{ display: 'flex', alignItems: 'flex-start', flex: i < steps.length - 1 ? 1 : 'none' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 64 }}>
-              <div style={{
-                width: 34, height: 34, borderRadius: '50%',
-                background: done ? '#059669' : active ? '#1d4ed8' : '#f8fafc',
-                border: `2px solid ${ringColor}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
-                boxShadow: active ? '0 0 0 4px rgba(29,78,216,0.12)' : 'none',
-              }}>
-                {done
-                  ? <Ic size={14} color="#fff" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic>
-                  : <span style={{ fontSize: 12, fontWeight: 700, color: active ? '#fff' : '#94a3b8' }}>{n}</span>
-                }
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11.5, fontWeight: active ? 600 : 400, color: labelColor, transition: 'color 0.3s', whiteSpace: 'nowrap' }}>
+          <li key={n} className={`flex items-start ${i < steps.length - 1 ? 'flex-1' : ''}`}>
+            <div className="flex min-w-16 flex-col items-center gap-1.5">
+              <span className={[
+                'flex size-9 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors',
+                done ? 'border-success bg-success text-success-foreground'
+                  : active ? 'border-primary bg-primary text-primary-foreground ring-4 ring-primary/15'
+                    : 'border-border bg-muted text-muted-foreground',
+              ].join(' ')}>
+                {done ? <Check className="size-4" /> : n}
+              </span>
+              <span className="text-center">
+                <span className={`block text-xs ${active ? 'font-semibold text-foreground' : done ? 'text-success' : 'text-muted-foreground'}`}>
                   {s.label}
-                </div>
-                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1, whiteSpace: 'nowrap' }}>{s.sub}</div>
-              </div>
+                </span>
+                <span className="block text-[10px] text-muted-foreground">{s.sub}</span>
+              </span>
             </div>
             {i < steps.length - 1 && (
-              <div style={{ flex: 1, height: 2, margin: '16px 4px 0', background: '#e2e8f0', borderRadius: 1, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 1, background: '#059669',
-                  width: done ? '100%' : '0%',
-                  transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)',
-                }}/>
-              </div>
+              <span className="mx-1 mt-4 h-0.5 flex-1 overflow-hidden rounded bg-border">
+                <span className={`block h-full rounded bg-success transition-[width] duration-500 ${done ? 'w-full' : 'w-0'}`} />
+              </span>
             )}
-          </div>
+          </li>
         )
       })}
-    </div>
+    </ol>
   )
 }
 
@@ -455,8 +411,9 @@ const cp = produitsRef.current
 
   if (role !== 'responsable' && role !== 'admin') {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-        Accès réservé aux responsables et administrateurs.
+      <div className="ui-root px-6 py-12">
+        <EmptyState icon={AlertTriangle} title="Accès restreint"
+                    description="Accès réservé aux responsables et administrateurs." />
       </div>
     )
   }
@@ -464,21 +421,18 @@ const cp = produitsRef.current
   const currentDocType = DOC_TYPES.find(t => t.value === docType)
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 860, margin: '0 auto' }}>
-
+    <div className="ui-root mx-auto max-w-3xl px-4 py-6 sm:px-5">
       {/* Page header */}
-      <div style={{ marginBottom: '1.75rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
-          Import OCR — Stock
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+      <div className="mb-6">
+        <h2 className="font-display text-xl font-semibold tracking-tight">Import OCR — Stock</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Choisissez le type de document puis scannez-le pour mettre à jour le stock automatiquement.
         </p>
       </div>
 
       <Stepper step={step} />
 
-      <div key={step} style={{ animation: 'ocrStepIn 0.32s cubic-bezier(0.16,1,0.3,1) both' }}>
+      <div>
         {step === 1 && (
           <Step0DocType
             selectedValue={docType}
@@ -513,19 +467,6 @@ const cp = produitsRef.current
           />
         )}
       </div>
-
-      <style>{`
-        @keyframes ocrStepIn {
-          from { opacity: 0; transform: translateY(14px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes ocrSpin {
-          to { transform: rotate(360deg); }
-        }
-        @keyframes ocrPulse {
-          0%,100% { opacity: 1; } 50% { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   )
 }
@@ -534,97 +475,53 @@ const cp = produitsRef.current
 function Step0DocType({ selectedValue, onSelect }) {
   return (
     <div>
-      <div style={{ marginBottom: '1.25rem' }}>
-        <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>
-          Quel type de document allez-vous importer ?
-        </p>
-        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-          Ce choix aide l'IA à mieux extraire les informations et pré-configure le mouvement de stock.
+      <div className="mb-5">
+        <p className="text-sm font-semibold text-foreground">Quel type de document allez-vous importer ?</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Ce choix aide l&apos;IA à mieux extraire les informations et pré-configure le mouvement de stock.
         </p>
       </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-        gap: '0.85rem',
-      }}>
+      <div className="grid gap-3 sm:grid-cols-2">
         {DOC_TYPES.map(type => {
           const isSelected = selectedValue === type.value
+          const Icon = type.icon
           return (
             <button
               key={type.value}
               type="button"
               onClick={() => onSelect(type)}
-              style={{
-                position: 'relative',
-                display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                gap: '0.75rem', padding: '1.25rem',
-                borderRadius: 14, cursor: 'pointer', textAlign: 'left',
-                border: `2px solid ${isSelected ? type.activeBorder : type.border}`,
-                background: isSelected ? type.bg : '#fff',
-                transition: 'all 0.18s cubic-bezier(0.4,0,0.2,1)',
-                boxShadow: isSelected ? `0 0 0 3px ${type.color}22` : '0 1px 3px rgba(0,0,0,0.06)',
-                transform: isSelected ? 'translateY(-1px)' : 'translateY(0)',
-              }}
-              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = type.activeBorder }}
-              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = type.border }}
+              aria-pressed={isSelected}
+              className={[
+                'relative flex flex-col items-start gap-3 rounded-xl border p-5 text-left transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border bg-card hover:border-primary/40 hover:bg-accent',
+              ].join(' ')}
             >
-              {/* Icon */}
-              <div style={{
-                width: 48, height: 48, borderRadius: 12,
-                background: isSelected ? type.bg : '#f8fafc',
-                border: `1.5px solid ${isSelected ? type.border : '#e2e8f0'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: isSelected ? type.color : '#94a3b8',
-                transition: 'all 0.18s',
-              }}>
-                {type.icon}
+              <span className={`flex size-12 items-center justify-center rounded-xl ${isSelected ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                <Icon className="size-6" aria-hidden="true" />
+              </span>
+              <div className="flex-1">
+                <div className={`text-sm font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{type.label}</div>
+                <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{type.desc}</div>
               </div>
-
-              {/* Text */}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: isSelected ? type.color : '#1e293b', marginBottom: 3 }}>
-                  {type.label}
-                </div>
-                <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>
-                  {type.desc}
-                </div>
-              </div>
-
-              {/* Mouvement badge */}
               {type.mouvement && (
-                <div style={{
-                  alignSelf: 'flex-start',
-                  padding: '2px 10px', borderRadius: 20,
-                  background: type.mouvement === 'entree' ? '#f0fdf4' : '#fffbeb',
-                  border: `1px solid ${type.mouvement === 'entree' ? '#bbf7d0' : '#fde68a'}`,
-                  fontSize: 11, fontWeight: 500,
-                  color: type.mouvement === 'entree' ? '#15803d' : '#a16207',
-                }}>
+                <Badge tone={type.mouvement === 'entree' ? 'success' : 'warning'}>
                   {type.mouvement === 'entree' ? '↑ Entrée stock' : '↓ Sortie stock'}
-                </div>
+                </Badge>
               )}
-
-              {/* Selected checkmark */}
               {isSelected && (
-                <div style={{
-                  position: 'absolute', top: 10, right: 10,
-                  width: 20, height: 20, borderRadius: '50%',
-                  background: type.color,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </div>
+                <span className="absolute right-3 top-3 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <Check className="size-3" />
+                </span>
               )}
             </button>
           )
         })}
       </div>
 
-      <p style={{ marginTop: '1.25rem', fontSize: '0.78rem', color: '#cbd5e1', textAlign: 'center' }}>
-        Cliquez sur un type pour passer à l'étape suivante
+      <p className="mt-5 text-center text-xs text-muted-foreground">
+        Cliquez sur un type pour passer à l&apos;étape suivante
       </p>
     </div>
   )
@@ -632,88 +529,50 @@ function Step0DocType({ selectedValue, onSelect }) {
 
 // ── Étape 1 (ex-Step1) : Upload ───────────────────────────────────────────────
 function Step1Upload({ loading, error, onFile, onReset, docType }) {
-
   if (loading) return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      minHeight: 280, gap: 20,
-    }}>
-      <div style={{
-        width: 52, height: 52, borderRadius: '50%',
-        border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8',
-        animation: 'ocrSpin 0.8s linear infinite',
-      }}/>
-      <div style={{ textAlign: 'center' }}>
-        <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: '#1e293b' }}>
-          Analyse OCR en cours
-        </p>
-        <p style={{ margin: '5px 0 0', fontSize: '0.8rem', color: '#94a3b8', animation: 'ocrPulse 1.8s ease infinite' }}>
+    <div className="flex min-h-72 flex-col items-center justify-center gap-5">
+      <Spinner className="size-12 text-primary" />
+      <div className="text-center">
+        <p className="text-sm font-semibold text-foreground">Analyse OCR en cours</p>
+        <p className="mt-1 text-sm text-muted-foreground">
           Extraction des produits, quantités et références…
         </p>
       </div>
-      <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
-        {['Lecture document', 'Détection produits', 'Structuration'].map((label, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8' }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1', animation: `ocrPulse 1.8s ease ${i * 0.4}s infinite` }}/>
-            {label}
-          </div>
+      <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
+        {['Lecture document', 'Détection produits', 'Structuration'].map((label) => (
+          <span key={label} className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-muted-foreground/60" />{label}
+          </span>
         ))}
       </div>
     </div>
   )
 
   if (error && !loading) return (
-    <div style={{
-      background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12,
-      padding: '1.5rem', display: 'flex', gap: 14, alignItems: 'flex-start',
-    }}>
-      <div style={{
-        width: 40, height: 40, borderRadius: 10, background: '#fee2e2',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      }}>
-        <Ic size={20} color="#dc2626">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="15" y1="9" x2="9" y2="15"/>
-          <line x1="9" y1="9" x2="15" y2="15"/>
-        </Ic>
-      </div>
-      <div style={{ flex: 1 }}>
-        <p style={{ margin: '0 0 4px', fontWeight: 600, fontSize: '0.9rem', color: '#b91c1c' }}>
-          Erreur d'analyse
-        </p>
-        <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: '#dc2626' }}>
+    <Card className="flex items-start gap-3 border-destructive/40 bg-destructive/5 p-5">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+        <AlertCircle className="size-5" />
+      </span>
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-destructive">Erreur d&apos;analyse</p>
+        <p className="mt-1 text-sm text-destructive/90">
           {typeof error === 'string' ? error : JSON.stringify(error)}
         </p>
-        <button
-          onClick={onReset}
-          style={{
-            padding: '6px 16px', borderRadius: 8, border: '1.5px solid #fca5a5',
-            background: '#fff', color: '#dc2626', fontSize: 13, fontWeight: 500,
-            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          <Ic size={14} color="#dc2626"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></Ic>
-          Recommencer
-        </button>
+        <Button variant="outline" size="sm" className="mt-3" onClick={onReset}>
+          <RefreshCw /> Recommencer
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 
   return (
-    <div>
-      {/* Doc type reminder */}
+    <div className="flex flex-col gap-4">
       {docType && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '6px 14px', borderRadius: 20, marginBottom: '1rem',
-          background: docType.bg, border: `1.5px solid ${docType.border}`,
-          fontSize: 13, fontWeight: 500, color: docType.color,
-        }}>
-          <span style={{ display: 'flex', color: docType.color }}>{docType.icon}</span>
-          {docType.label}
-          <button onClick={onReset} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: 4, display: 'flex', color: '#94a3b8', fontSize: 11 }}>
-            ✕ changer
-          </button>
+        <div className="flex items-center gap-2">
+          <Badge tone="primary"><docType.icon className="size-3" /> {docType.label}</Badge>
+          <Button variant="ghost" size="sm" onClick={onReset}>
+            <X /> changer
+          </Button>
         </div>
       )}
 
@@ -749,169 +608,112 @@ function Step2Validate({
     return false
   })
   const pct = Math.round(result.confiance * 100)
-  const confColor = pct >= 80 ? { bg: '#f0fdf4', text: '#166534', dot: '#16a34a' }
-    : pct >= 50   ? { bg: '#fefce8', text: '#854d0e', dot: '#ca8a04' }
-    :               { bg: '#fef2f2', text: '#991b1b', dot: '#dc2626' }
+  const confTone = pct >= 80 ? 'success' : pct >= 50 ? 'warning' : 'danger'
 
   const docTypeCfg = DOC_TYPES.find(t => t.value === docType)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-
+    <div className="flex flex-col gap-4">
       {/* ── Document info card ── */}
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '1.1rem 1.25rem' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: '1rem' }}>
-          {/* Doc type chosen badge */}
-          {docTypeCfg && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-              background: docTypeCfg.bg, color: docTypeCfg.color,
-              border: `1px solid ${docTypeCfg.border}`,
-            }}>
-              {docTypeCfg.label}
-            </span>
-          )}
-          {/* OCR document type badge */}
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-            background: '#eff6ff', color: '#1d4ed8',
-          }}>
-            <Ic size={12} color="#1d4ed8" sw={2}>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </Ic>
+      <Card className="p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {docTypeCfg && <Badge tone="primary">{docTypeCfg.label}</Badge>}
+          <Badge tone="info">
+            <FileText className="size-3" />
             {DOC_LABELS[result.type_document] ?? result.type_document}
-          </span>
-
-          {/* Confidence badge */}
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-            background: confColor.bg, color: confColor.text,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: confColor.dot }}/>
-            Confiance {pct}%
-          </span>
-
-          <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>
+          </Badge>
+          <Badge tone={confTone}>Confiance {pct}%</Badge>
+          <span className="ml-auto text-xs text-muted-foreground">
             {lignes.length} ligne{lignes.length > 1 ? 's' : ''} détectée{lignes.length > 1 ? 's' : ''}
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
-              Type de mouvement
-            </label>
-            <select className="form-select" value={mouvementType} onChange={e => setMouvementType(e.target.value)}>
-              <option value="entree">Entrée (ajoute au stock)</option>
-              <option value="sortie">Sortie (retire du stock)</option>
-              <option value="ajustement">Ajustement (fixe le stock)</option>
-            </select>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground" htmlFor="ocr-mvt">Type de mouvement</label>
+            <Select value={mouvementType} onValueChange={setMouvementType}>
+              <SelectTrigger id="ocr-mvt"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="entree">Entrée (ajoute au stock)</SelectItem>
+                <SelectItem value="sortie">Sortie (retire du stock)</SelectItem>
+                <SelectItem value="ajustement">Ajustement (fixe le stock)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
-              Référence document
-            </label>
-            <input className="form-control" value={refDocument} onChange={e => setRefDocument(e.target.value)} placeholder="N° BL, facture…"/>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground" htmlFor="ocr-ref">Référence document</label>
+            <Input id="ocr-ref" value={refDocument} onChange={e => setRefDocument(e.target.value)} placeholder="N° BL, facture…" />
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* ── Fournisseur card — masqué pour bon de sortie ── */}
       {showFournisseur && (
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '1.1rem 1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.85rem' }}>
-            <Ic size={15} color="#64748b">
-              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-            </Ic>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Fournisseur</span>
+        <Card className="p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Building2 className="size-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-foreground">Fournisseur</span>
             {result.fournisseur && (
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>— détecté : « {result.fournisseur} »</span>
+              <span className="text-xs text-muted-foreground">— détecté : « {result.fournisseur} »</span>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 6, marginBottom: '0.85rem', flexWrap: 'wrap' }}>
-            {[
+          <Segmented
+            size="sm"
+            className="mb-3 flex-wrap"
+            value={fournisseurMode}
+            onChange={setFournisseurMode}
+            options={[
               { value: 'existing', label: 'Fournisseur existant' },
               { value: 'new',      label: 'Nouveau fournisseur' },
               { value: 'none',     label: 'Sans fournisseur' },
-            ].map(opt => (
-              <button key={opt.value} type="button" onClick={() => setFournisseurMode(opt.value)} style={{
-                padding: '5px 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12.5, fontWeight: 500,
-                border: `1.5px solid ${fournisseurMode === opt.value ? '#1d4ed8' : '#e2e8f0'}`,
-                background: fournisseurMode === opt.value ? '#eff6ff' : '#fff',
-                color: fournisseurMode === opt.value ? '#1d4ed8' : '#64748b',
-                transition: 'all 0.15s',
-              }}>{opt.label}</button>
-            ))}
-          </div>
+            ]}
+          />
 
           {fournisseurMode === 'existing' && (
-            <select className="form-select" value={fournisseurId} onChange={e => setFournisseurId(e.target.value)}>
-              <option value="">— Sélectionner un fournisseur —</option>
-              {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
-            </select>
+            <Select value={fournisseurId || '__none'} onValueChange={(v) => setFournisseurId(v === '__none' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="— Sélectionner un fournisseur —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Sélectionner un fournisseur —</SelectItem>
+                {fournisseurs.map(f => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
           )}
           {fournisseurMode === 'new' && (
-            <input className="form-control" value={nouveauFournisseurNom} onChange={e => setNouveauFournisseurNom(e.target.value)} placeholder="Nom du fournisseur"/>
+            <Input value={nouveauFournisseurNom} onChange={e => setNouveauFournisseurNom(e.target.value)} placeholder="Nom du fournisseur" />
           )}
-        </div>
+        </Card>
       )}
 
       {/* ── Lignes produits ── */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.75rem' }}>
-          <Ic size={15} color="#64748b">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
-          </Ic>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-            Lignes produits ({lignes.length})
-          </span>
+        <div className="mb-3 flex items-center gap-2">
+          <Truck className="size-4 text-muted-foreground" />
+          <span className="text-sm font-semibold text-foreground">Lignes produits ({lignes.length})</span>
         </div>
 
         {lignes.length === 0 ? (
-          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '1rem 1.25rem', fontSize: 13, color: '#92400e', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Ic size={16} color="#d97706"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Ic>
+          <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <AlertTriangle className="size-4 shrink-0" />
             Aucune ligne produit détectée. Vérifiez la qualité du document.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="flex flex-col gap-2.5">
             {lignes.map((ligne, idx) => (
-              <LigneCard key={ligne.id} ligne={ligne} produits={produits} categories={categories} onChange={u => updateLigne(idx, u)} docType={docType}/>
+              <LigneCard key={ligne.id} ligne={ligne} produits={produits} categories={categories} onChange={u => updateLigne(idx, u)} docType={docType} />
             ))}
           </div>
         )}
       </div>
 
       {/* ── Actions ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid #f1f5f9' }}>
-        <button onClick={onReset} disabled={applying} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e2e8f0',
-          background: '#fff', color: '#64748b', fontSize: 13.5, fontWeight: 500,
-          cursor: applying ? 'not-allowed' : 'pointer', opacity: applying ? 0.5 : 1,
-        }}>
-          <Ic size={14} color="#64748b"><polyline points="15 18 9 12 15 6"/></Ic>
-          Recommencer
-        </button>
-        <button onClick={onApply} disabled={applying || hasErrors || lignes.length === 0} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '9px 22px', borderRadius: 8, border: 'none',
-          background: (applying || hasErrors || lignes.length === 0) ? '#93c5fd' : 'linear-gradient(135deg,#1d4ed8,#2563eb)',
-          color: '#fff', fontSize: 13.5, fontWeight: 600,
-          cursor: (applying || hasErrors || lignes.length === 0) ? 'not-allowed' : 'pointer',
-          boxShadow: (applying || hasErrors || lignes.length === 0) ? 'none' : '0 4px 14px rgba(29,78,216,0.35)',
-          transition: 'opacity 0.2s',
-        }}>
-          {applying
-            ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'ocrSpin 0.7s linear infinite' }}/> Application en cours…</>
-            : <>Appliquer les mouvements <Ic size={14} color="#fff"><polyline points="9 18 15 12 9 6"/></Ic></>
-          }
-        </button>
+      <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
+        <Button variant="outline" onClick={onReset} disabled={applying}>
+          <ChevronLeft /> Recommencer
+        </Button>
+        <Button onClick={onApply} loading={applying} disabled={hasErrors || lignes.length === 0}>
+          {applying ? 'Application en cours…' : <>Appliquer les mouvements <ChevronRight /></>}
+        </Button>
       </div>
     </div>
   )
@@ -934,106 +736,96 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
   const ocrTva = (ligne.tva !== null && ligne.tva !== undefined) ? Number(ligne.tva) : null
   const tvaDivergence = matchedProduit && ocrTva !== null && produitTva !== ocrTva
 
-  const ACTION_CFG = {
-    match:  { label: 'Associer',    activeColor: '#1d4ed8', activeBg: '#eff6ff' },
-    create: { label: 'Créer',       activeColor: '#059669', activeBg: '#f0fdf4' },
-    skip:   { label: 'Ignorer',     activeColor: '#64748b', activeBg: '#f8fafc' },
-  }
+  const ACTION_OPTS = [
+    { value: 'match',  label: 'Associer' },
+    { value: 'create', label: 'Créer' },
+    { value: 'skip',   label: 'Ignorer' },
+  ]
+  const CAT_OPTS = [
+    { value: 'existing', label: 'Existante' },
+    { value: 'create',   label: 'Créer' },
+    { value: 'none',     label: 'Ignorer' },
+  ]
 
   return (
-    <div style={{
-      background: isSkipped ? '#f8fafc' : '#fff',
-      borderRadius: 12,
-      border: `1.5px solid ${hasMatchError || hasCreateError ? '#fca5a5' : isSkipped ? '#e2e8f0' : '#e2e8f0'}`,
-      padding: '1rem 1.1rem',
-      opacity: isSkipped ? 0.6 : 1,
-      transition: 'opacity 0.2s, border-color 0.2s',
-    }}>
+    <Card className={[
+      'p-4',
+      hasMatchError || hasCreateError ? 'border-destructive/50' : '',
+      isSkipped ? 'opacity-60' : '',
+    ].join(' ')}>
       {/* Header: OCR info + quantity */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: '0.85rem' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             {ligne.ref_ocr && (
-              <span style={{ padding: '2px 8px', borderRadius: 5, background: '#f1f5f9', fontSize: 11, fontFamily: 'monospace', color: '#475569' }}>
-                {ligne.ref_ocr}
-              </span>
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">{ligne.ref_ocr}</span>
             )}
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-              {ligne.nom_ocr || '—'}
-            </span>
+            <span className="text-sm font-semibold text-foreground">{ligne.nom_ocr || '—'}</span>
           </div>
           {ligne.prix_unitaire && (
-            <p style={{ margin: '3px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
+            <p className="mt-1 text-xs text-muted-foreground">
               Prix achat HT détecté : {ligne.prix_unitaire} DH
               {ligne.tva != null && (
-                <span style={{ marginLeft: 6, color: '#0ea5e9' }}>
+                <span className="ml-1.5 text-info">
                   · TVA {ligne.tva}% · TTC {(parseFloat(ligne.prix_unitaire) * (1 + ligne.tva / 100)).toFixed(2)} DH
                 </span>
               )}
             </p>
           )}
         </div>
-        <div style={{ flexShrink: 0, textAlign: 'right' }}>
-          <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 500, marginBottom: 4 }}>Qté</label>
-          <input
-            type="number" min="1" step="1"
-            className="form-control"
-            style={{ width: 72, textAlign: 'right' }}
+        <div className="shrink-0 text-right">
+          <label className="mb-1 block text-xs text-muted-foreground" htmlFor={`qte-${ligne.id}`}>Qté</label>
+          <Input
+            id={`qte-${ligne.id}`} type="number" min="1" step="1" inputMode="numeric"
+            className="h-9 w-20 text-right"
             value={ligne.quantite}
             onChange={e => onChange({ quantite: Math.max(1, parseInt(e.target.value) || 1) })}
           />
         </div>
       </div>
 
-      {/* Action pill selector */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: '0.85rem' }}>
-        {Object.entries(ACTION_CFG).map(([value, cfg]) => {
-          const isActive = ligne.action === value
-          return (
-            <button key={value} type="button" onClick={() => onChange({ action: value })} style={{
-              padding: '4px 13px', borderRadius: 20, cursor: 'pointer',
-              fontSize: 12, fontWeight: 500,
-              border: `1.5px solid ${isActive ? cfg.activeColor : '#e2e8f0'}`,
-              background: isActive ? cfg.activeBg : '#fff',
-              color: isActive ? cfg.activeColor : '#64748b',
-              transition: 'all 0.15s',
-            }}>{cfg.label}</button>
-          )
-        })}
-      </div>
+      {/* Action selector */}
+      <Segmented
+        size="sm"
+        className="mb-3"
+        value={ligne.action}
+        onChange={(v) => onChange({ action: v })}
+        options={ACTION_OPTS}
+      />
 
       {/* Match: select existing product */}
       {ligne.action === 'match' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <select
-            className={`form-select${hasMatchError ? ' is-invalid' : ''}`}
-            value={ligne.produit_id}
-            onChange={e => onChange({ produit_id: e.target.value })}
-          >
-            <option value="">— Sélectionner un produit existant —</option>
-            {produits.map(p => (
-              <option key={p.id} value={p.id}>{p.nom}{p.sku ? ` (${p.sku})` : ''} — stock : {p.quantite_stock}</option>
-            ))}
-          </select>
-          {hasMatchError && <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#dc2626' }}>Sélectionnez un produit existant</p>}
+        <div className="flex flex-col gap-2">
+          <Select value={ligne.produit_id || '__none'} onValueChange={(v) => onChange({ produit_id: v === '__none' ? '' : v })}>
+            <SelectTrigger invalid={hasMatchError}>
+              <SelectValue placeholder="— Sélectionner un produit existant —" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">— Sélectionner un produit existant —</SelectItem>
+              {produits.map(p => (
+                <SelectItem key={p.id} value={String(p.id)}>
+                  {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock : {p.quantite_stock}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {hasMatchError && <p className="text-xs text-destructive">Sélectionnez un produit existant</p>}
 
-          {/* Fournisseur existant du produit */}
           {matchedProduit?.fournisseur && (
-            <div style={{ padding: '5px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 11.5, color: '#0369a1', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <Ic size={12} color="#0ea5e9"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></Ic>
-              Fournisseur enregistré : <strong style={{ marginLeft: 3 }}>{matchedProduit.fournisseur.nom}</strong>
+            <div className="flex items-center gap-1.5 rounded-md border border-info/30 bg-info/10 px-2.5 py-1.5 text-xs text-info">
+              <Building2 className="size-3.5" />
+              Fournisseur enregistré : <strong>{matchedProduit.fournisseur.nom}</strong>
             </div>
           )}
 
-          {/* Divergence TVA */}
           {tvaDivergence && (
-            <div style={{ padding: '0.65rem 0.9rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#92400e', fontWeight: 600 }}>
-                <Ic size={13} color="#d97706"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Ic>
+            <div className="flex flex-col gap-1.5 rounded-lg border border-warning/30 bg-warning/10 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-warning">
+                <AlertCircle className="size-3.5" />
                 Divergence TVA — produit enregistré : {produitTva != null ? `${produitTva}%` : 'sans TVA'} · document détecte : {ocrTva}%
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#78350f', cursor: 'pointer' }}>
-                <input type="checkbox" checked={!!ligne.update_tva} onChange={e => onChange({ update_tva: e.target.checked })}/>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+                <input type="checkbox" checked={!!ligne.update_tva} onChange={e => onChange({ update_tva: e.target.checked })} />
                 Mettre à jour la TVA du produit à {ocrTva}%
               </label>
             </div>
@@ -1043,116 +835,97 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
 
       {/* Catégorie — toujours visible pour "create", visible pour "match" si suggestion */}
       {ligne.action !== 'skip' && (ligne.action === 'create' || ligne.categorie_suggeree || ligne.categorie_source === 'keyword') && (
-        <div style={{ marginTop: 8, padding: '0.75rem 0.9rem', background: '#fafafa', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: '#374151' }}>Catégorie</span>
+        <div className="mt-2 rounded-lg border border-border bg-muted/40 p-3">
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-semibold text-foreground">Catégorie</span>
             {ligne.categorie_source === 'ia' && ligne.categorie_suggeree && (
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>— IA suggère : « {ligne.categorie_suggeree} »</span>
+              <span className="text-xs text-muted-foreground">— IA suggère : « {ligne.categorie_suggeree} »</span>
             )}
             {ligne.categorie_source === 'keyword' && ligne.categorie_action === 'existing' && (
-              <span style={{ fontSize: 11, color: '#0ea5e9' }}>
-                — Détecté depuis le nom du produit
-              </span>
+              <span className="text-xs text-info">— Détecté depuis le nom du produit</span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
-            {[
-              { value: 'existing', label: 'Existante' },
-              { value: 'create',   label: 'Créer' },
-              { value: 'none',     label: 'Ignorer' },
-            ].map(opt => (
-              <button key={opt.value} type="button"
-                onClick={() => onChange({ categorie_action: opt.value })}
-                style={{
-                  padding: '3px 11px', borderRadius: 20, cursor: 'pointer', fontSize: 11.5, fontWeight: 500,
-                  border: `1.5px solid ${ligne.categorie_action === opt.value ? '#7c3aed' : '#e2e8f0'}`,
-                  background: ligne.categorie_action === opt.value ? '#f5f3ff' : '#fff',
-                  color: ligne.categorie_action === opt.value ? '#7c3aed' : '#64748b',
-                  transition: 'all 0.15s',
-                }}>{opt.label}</button>
-            ))}
-          </div>
+          <Segmented
+            size="sm"
+            className="mb-2"
+            value={ligne.categorie_action}
+            onChange={(v) => onChange({ categorie_action: v })}
+            options={CAT_OPTS}
+          />
           {ligne.categorie_action === 'existing' && (
-            <select className="form-select" style={{ fontSize: 12.5 }}
-              value={ligne.categorie_id}
-              onChange={e => onChange({ categorie_id: e.target.value })}>
-              <option value="">— Sélectionner une catégorie —</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-            </select>
+            <Select value={ligne.categorie_id || '__none'} onValueChange={(v) => onChange({ categorie_id: v === '__none' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="— Sélectionner une catégorie —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Sélectionner une catégorie —</SelectItem>
+                {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
           )}
           {ligne.categorie_action === 'create' && (
-            <input className="form-control" style={{ fontSize: 12.5 }}
-              value={ligne.categorie_nom_new}
-              onChange={e => onChange({ categorie_nom_new: e.target.value })}
-              placeholder="Nom de la nouvelle catégorie" />
+            <Input value={ligne.categorie_nom_new} onChange={e => onChange({ categorie_nom_new: e.target.value })}
+                   placeholder="Nom de la nouvelle catégorie" />
           )}
         </div>
       )}
 
       {/* Create: new product form */}
       {ligne.action === 'create' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.7rem', background: '#f8fafc', borderRadius: 10, padding: '0.85rem', marginTop: 2 }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Nom <span style={{ color: '#dc2626' }}>*</span></label>
-            <input className="form-control" value={ligne.nouveau_nom} onChange={e => onChange({ nouveau_nom: e.target.value })} placeholder="Nom du produit"/>
+        <div className="mt-2 grid gap-3 rounded-lg bg-muted/40 p-3 sm:grid-cols-2">
+          <div className="sm:col-span-2 flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground" htmlFor={`nom-${ligne.id}`}>
+              Nom <span className="text-destructive">*</span>
+            </label>
+            <Input id={`nom-${ligne.id}`} invalid={hasCreateError && !ligne.nouveau_nom.trim()}
+                   value={ligne.nouveau_nom} onChange={e => onChange({ nouveau_nom: e.target.value })} placeholder="Nom du produit" />
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>SKU / Référence</label>
-            <input className="form-control" value={ligne.nouveau_sku} onChange={e => onChange({ nouveau_sku: e.target.value })} placeholder="ART-001"/>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground" htmlFor={`sku-${ligne.id}`}>SKU / Référence</label>
+            <Input id={`sku-${ligne.id}`} value={ligne.nouveau_sku} onChange={e => onChange({ nouveau_sku: e.target.value })} placeholder="ART-001" />
             {!ligne.ref_ocr && (
-              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#94a3b8' }}>
+              <p className="text-xs text-muted-foreground">
                 Aucun code article dans le document — saisissez-en un manuellement si disponible.
               </p>
             )}
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground" htmlFor={`achat-${ligne.id}`}>
               Prix achat HT (DH)
               {ligne.tva != null && (
-                <span style={{ marginLeft: 6, fontWeight: 400, color: '#6b7280' }}>
+                <span className="ml-1.5 font-normal text-muted-foreground">
                   · TVA {ligne.tva}%
                   {parseFloat(ligne.nouveau_prix_achat) > 0 && (
-                    <span style={{ color: '#0ea5e9' }}>
-                      {' '}→ TTC {(parseFloat(ligne.nouveau_prix_achat) * (1 + ligne.tva / 100)).toFixed(2)} DH
-                    </span>
+                    <span className="text-info"> → TTC {(parseFloat(ligne.nouveau_prix_achat) * (1 + ligne.tva / 100)).toFixed(2)} DH</span>
                   )}
                 </span>
               )}
             </label>
-            <input type="number" min="0" step="0.01" className="form-control" value={ligne.nouveau_prix_achat} onChange={e => onChange({ nouveau_prix_achat: e.target.value })} placeholder="0.00"/>
+            <Input id={`achat-${ligne.id}`} type="number" min="0" step="0.01" inputMode="decimal"
+                   value={ligne.nouveau_prix_achat} onChange={e => onChange({ nouveau_prix_achat: e.target.value })} placeholder="0.00" />
           </div>
           {isPurchase ? (
-            <div style={{ gridColumn: '1 / -1' }}>
-              <div style={{
-                padding: '8px 12px', borderRadius: 8,
-                background: '#f0fdf4', border: '1px solid #bbf7d0',
-                fontSize: 11.5, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6,
-              }}>
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
+            <div className="sm:col-span-2">
+              <div className="flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+                <AlertCircle className="size-3.5" />
                 Prix de vente à définir plus tard selon votre marge
                 {parseFloat(ligne.nouveau_prix_achat) > 0 && (
-                  <span style={{ marginLeft: 4, color: '#64748b' }}>
-                    (achat HT : {parseFloat(ligne.nouveau_prix_achat).toFixed(2)} DH)
-                  </span>
+                  <span className="text-muted-foreground">(achat HT : {parseFloat(ligne.nouveau_prix_achat).toFixed(2)} DH)</span>
                 )}
               </div>
             </div>
           ) : (
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-                Prix vente (DH) <span style={{ color: '#dc2626' }}>*</span>
-                <span style={{ marginLeft: 6, fontWeight: 400, fontSize: 11, color: '#9ca3af' }}>— selon votre marge</span>
+            <div className="sm:col-span-2 flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-foreground" htmlFor={`vente-${ligne.id}`}>
+                Prix vente (DH) <span className="text-destructive">*</span>
+                <span className="ml-1.5 font-normal text-muted-foreground">— selon votre marge</span>
               </label>
-              <input type="number" min="0" step="0.01"
-                className={`form-control${hasCreateError && !(parseFloat(ligne.nouveau_prix_vente) > 0) ? ' is-invalid' : ''}`}
-                value={ligne.nouveau_prix_vente} onChange={e => onChange({ nouveau_prix_vente: e.target.value })} placeholder="Saisir votre prix de vente..."/>
+              <Input id={`vente-${ligne.id}`} type="number" min="0" step="0.01" inputMode="decimal"
+                     invalid={hasCreateError && !(parseFloat(ligne.nouveau_prix_vente) > 0)}
+                     value={ligne.nouveau_prix_vente} onChange={e => onChange({ nouveau_prix_vente: e.target.value })} placeholder="Saisir votre prix de vente…" />
             </div>
           )}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -1164,116 +937,72 @@ function Step3Results({ results, onReset, onNewFile, onViewMovements }) {
   const allOk        = errorCount === 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-
+    <div className="flex flex-col gap-4">
       {/* Summary banner */}
-      <div style={{
-        borderRadius: 14, padding: '1.5rem',
-        background: allOk ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : 'linear-gradient(135deg,#fffbeb,#fef9c3)',
-        border: `1px solid ${allOk ? '#bbf7d0' : '#fde68a'}`,
-        display: 'flex', alignItems: 'center', gap: 16,
-      }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: 14, flexShrink: 0,
-          background: allOk ? '#16a34a' : '#d97706',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          {allOk
-            ? <Ic size={26} color="#fff" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic>
-            : <Ic size={26} color="#fff" sw={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Ic>
-          }
-        </div>
+      <Card className={`flex items-center gap-4 p-5 ${allOk ? 'border-success/30 bg-success/10' : 'border-warning/30 bg-warning/10'}`}>
+        <span className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${allOk ? 'bg-success text-success-foreground' : 'bg-warning text-warning-foreground'}`}>
+          {allOk ? <Check className="size-6" /> : <AlertCircle className="size-6" />}
+        </span>
         <div>
-          <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: allOk ? '#166534' : '#92400e' }}>
+          <p className={`text-base font-bold ${allOk ? 'text-success' : 'text-warning'}`}>
             {allOk ? 'Import réussi' : `Import terminé avec ${errorCount} erreur${errorCount > 1 ? 's' : ''}`}
           </p>
-          <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
-            <span style={{ fontSize: 12.5, color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Ic size={13} color="#16a34a" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic>
-              {successCount} succès
+          <div className="mt-1.5 flex flex-wrap gap-3 text-xs">
+            <span className="inline-flex items-center gap-1 font-semibold text-success">
+              <Check className="size-3.5" /> {successCount} succès
             </span>
             {errorCount > 0 && (
-              <span style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Ic size={13} color="#dc2626" sw={2}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Ic>
-                {errorCount} erreur{errorCount > 1 ? 's' : ''}
+              <span className="inline-flex items-center gap-1 font-semibold text-destructive">
+                <X className="size-3.5" /> {errorCount} erreur{errorCount > 1 ? 's' : ''}
               </span>
             )}
             {skipCount > 0 && (
-              <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 500 }}>
-                {skipCount} ignoré{skipCount > 1 ? 's' : ''}
-              </span>
+              <span className="font-medium text-muted-foreground">{skipCount} ignoré{skipCount > 1 ? 's' : ''}</span>
             )}
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Results list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="flex flex-col gap-1.5">
         {results.map((r, i) => (
-          <div key={i} style={{
-            display: 'flex', alignItems: 'flex-start', gap: 12,
-            padding: '0.75rem 1rem', borderRadius: 10,
-            background: r.ok === true ? '#f0fdf4' : r.ok === false ? '#fef2f2' : '#f8fafc',
-            border: `1px solid ${r.ok === true ? '#bbf7d0' : r.ok === false ? '#fecaca' : '#e2e8f0'}`,
-          }}>
-            <div style={{
-              width: 26, height: 26, borderRadius: 8, flexShrink: 0,
-              background: r.ok === true ? '#dcfce7' : r.ok === false ? '#fee2e2' : '#f1f5f9',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {r.ok === true  && <Ic size={13} color="#16a34a" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic>}
-              {r.ok === false && <Ic size={13} color="#dc2626" sw={2}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Ic>}
-              {r.ok === null  && <Ic size={13} color="#94a3b8" sw={2}><polyline points="9 18 15 12 9 6"/></Ic>}
-            </div>
+          <div key={i} className={[
+            'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
+            r.ok === true ? 'border-success/30 bg-success/10'
+              : r.ok === false ? 'border-destructive/30 bg-destructive/10'
+                : 'border-border bg-muted/40',
+          ].join(' ')}>
+            <span className={[
+              'flex size-6 shrink-0 items-center justify-center rounded-md',
+              r.ok === true ? 'bg-success/20 text-success'
+                : r.ok === false ? 'bg-destructive/20 text-destructive'
+                  : 'bg-muted text-muted-foreground',
+            ].join(' ')}>
+              {r.ok === true && <Check className="size-3.5" />}
+              {r.ok === false && <X className="size-3.5" />}
+              {r.ok === null && <ChevronRight className="size-3.5" />}
+            </span>
             <div>
-              <span style={{ fontWeight: 600, fontSize: 13, color: r.ok === true ? '#166534' : r.ok === false ? '#991b1b' : '#64748b' }}>
+              <span className={`font-semibold ${r.ok === true ? 'text-success' : r.ok === false ? 'text-destructive' : 'text-muted-foreground'}`}>
                 {r.label}
               </span>
-              <span style={{ fontSize: 12.5, color: r.ok === true ? '#15803d' : r.ok === false ? '#b91c1c' : '#94a3b8', marginLeft: 8 }}>
-                — {r.msg}
-              </span>
+              <span className="ml-2 text-muted-foreground">— {r.msg}</span>
             </div>
           </div>
         ))}
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 10, paddingTop: '0.5rem', flexWrap: 'wrap' }}>
-        <button onClick={onViewMovements} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '9px 20px', borderRadius: 8, border: 'none',
-          background: 'linear-gradient(135deg,#1d4ed8,#2563eb)',
-          color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
-          boxShadow: '0 4px 14px rgba(29,78,216,0.3)',
-        }}>
-          <Ic size={15} color="#fff">
-            <polyline points="17 1 21 5 17 9"/>
-            <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-            <polyline points="7 23 3 19 7 15"/>
-            <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-          </Ic>
-          Voir les mouvements
-        </button>
-        <button onClick={onNewFile} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '9px 20px', borderRadius: 8, border: '1.5px solid #e2e8f0',
-          background: '#fff', color: '#475569', fontSize: 13.5, fontWeight: 500, cursor: 'pointer',
-        }}>
-          <Ic size={15} color="#475569">
-            <polyline points="16 16 12 12 8 16"/>
-            <line x1="12" y1="12" x2="12" y2="21"/>
-            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
-          </Ic>
-          Nouveau fichier (même type)
-        </button>
-        <button onClick={onReset} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '9px 20px', borderRadius: 8, border: '1.5px solid #e2e8f0',
-          background: '#fff', color: '#475569', fontSize: 13.5, fontWeight: 500, cursor: 'pointer',
-        }}>
-          <Ic size={15} color="#475569"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></Ic>
-          Nouvel import
-        </button>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button onClick={onViewMovements}>
+          <ArrowDownUp /> Voir les mouvements
+        </Button>
+        <Button variant="outline" onClick={onNewFile}>
+          <Upload /> Nouveau fichier (même type)
+        </Button>
+        <Button variant="outline" onClick={onReset}>
+          <Repeat /> Nouvel import
+        </Button>
       </div>
     </div>
   )

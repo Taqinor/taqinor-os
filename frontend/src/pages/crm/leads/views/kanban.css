@@ -1,6 +1,6 @@
 /* Kanban CRM leads — toutes les classes préfixées kb- (zéro collision avec
-   index.css). Identité : navy/gold de l'app, lecture « Odoo » au premier
-   coup d'œil. */
+   index.css). Identité navy/or de l'app, surfaces tokenisées (thème clair +
+   sombre), lecture « Odoo » au premier coup d'œil. */
 
 /* ---------- Tableau ---------- */
 
@@ -12,8 +12,8 @@
   min-height: 0;
   padding: 0.75rem;
   overflow-x: auto;
-  background: #f1f5f9;
-  border-radius: 12px;
+  background: var(--muted, #f1f5f9);
+  border-radius: var(--radius-lg, 12px);
 }
 
 /* ---------- Colonnes ---------- */
@@ -23,17 +23,20 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #ebeef3;
-  border-radius: 10px;
-  border-top: 3px solid var(--kb-accent, var(--cat-navy));
+  background: var(--card, #ebeef3);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  border-top: 3px solid var(--kb-accent, var(--primary, #0b1f3a));
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Colonne survolée pendant un drag : halo + fond teinté couleur d'étape. */
+/* Colonne survolée pendant un drag : halo net + fond teinté couleur d'étape,
+   pour signaler clairement la zone de dépôt. */
 .kb-over {
-  box-shadow: inset 0 0 0 2px var(--kb-accent);
-  background: #e3e9f1; /* repli si color-mix indisponible */
-  background: color-mix(in srgb, var(--kb-accent) 10%, #ebeef3);
+  box-shadow:
+    inset 0 0 0 2px var(--kb-accent),
+    var(--shadow-ui-md, 0 4px 12px rgba(15, 23, 42, 0.15));
+  background: color-mix(in srgb, var(--kb-accent) 12%, var(--card, #ebeef3));
 }
 
 .kb-col-header {
@@ -54,16 +57,16 @@
   white-space: nowrap;
   font-size: 0.9rem;
   font-weight: 700;
-  color: var(--cat-navy);
+  color: var(--foreground, #0b1f3a);
 }
 
 .kb-col-count {
   flex: 0 0 auto;
   padding: 0.05rem 0.5rem;
   border-radius: 999px;
-  border: 1px solid #d7dde6;
-  background: #fff;
-  color: var(--cat-navy);
+  border: 1px solid var(--border, #d7dde6);
+  background: var(--background, #fff);
+  color: var(--foreground, #0b1f3a);
   font-size: 0.72rem;
   font-weight: 600;
 }
@@ -72,7 +75,7 @@
   display: block;
   margin-top: 0.15rem;
   font-size: 0.72rem;
-  color: #64748b;
+  color: var(--muted-foreground, #64748b);
   font-variant-numeric: tabular-nums;
 }
 
@@ -89,56 +92,82 @@
 .kb-col-empty {
   margin-top: 0.1rem;
   padding: 1.1rem 0.5rem;
-  border: 2px dashed #cbd5e1;
-  border-radius: 8px;
+  border: 2px dashed var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 8px);
   text-align: center;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--muted-foreground, #94a3b8);
 }
 
 /* ---------- Enveloppe draggable ---------- */
 
 .kb-drag-wrap {
-  border-radius: 10px;
+  border-radius: var(--radius, 10px);
   outline: none;
   touch-action: manipulation; /* scroll tactile naturel, drag sur appui long */
 }
 
 .kb-drag-wrap:focus-visible {
-  outline: 2px solid var(--cat-gold);
+  outline: 2px solid var(--ring, #f5a623);
   outline-offset: 2px;
 }
 
 /* L'original reste en place comme repère pendant le drag (overlay au doigt). */
 .kb-drag-source .kb-card {
   opacity: 0.35;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--border, #cbd5e1);
   box-shadow: none;
 }
 
 .kb-drag-overlay .kb-card {
   cursor: grabbing;
-  transform: rotate(2deg);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.25);
+  transform: rotate(2deg) scale(1.02);
+  box-shadow: var(--shadow-ui-lg, 0 10px 24px rgba(15, 23, 42, 0.25));
 }
 
 /* ---------- Cartes ---------- */
 
 .kb-card {
+  position: relative;
   padding: 0.6rem 0.7rem;
-  background: #fff;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  background: var(--background, #fff);
+  border: 1px solid var(--border, transparent);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-xs, 0 1px 2px rgba(15, 23, 42, 0.08));
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 
 .kb-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+  border-color: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 40%, transparent);
+  box-shadow: var(--shadow-ui-md, 0 4px 10px rgba(15, 23, 42, 0.12));
+}
+
+.kb-card:active {
+  cursor: grabbing;
+}
+
+/* Petite poignée de glissé qui apparaît au survol (affordance « déplaçable »). */
+.kb-card::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 45%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.kb-card:hover::before {
+  opacity: 1;
 }
 
 /* Étape en cours d'enregistrement (PATCH en vol) : carte gelée. */
@@ -149,8 +178,8 @@
 
 /* Lead perdu : nettement distinct mais il RESTE dans sa colonne d'étape. */
 .kb-card-perdu {
-  border-left: 3px solid #dc2626;
-  background: #fef2f2;
+  border-left: 3px solid var(--destructive, #dc2626);
+  background: color-mix(in srgb, var(--destructive, #dc2626) 7%, var(--background, #fff));
 }
 
 .kb-card-perdu .kb-card-sub,
@@ -172,7 +201,7 @@
   font-size: 0.86rem;
   font-weight: 600;
   line-height: 1.25;
-  color: var(--cat-navy);
+  color: var(--foreground, #0b1f3a);
   overflow-wrap: anywhere;
 }
 
@@ -181,8 +210,8 @@
   align-self: center;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
-  background: #dc2626;
-  color: #fff;
+  background: var(--destructive, #dc2626);
+  color: var(--destructive-foreground, #fff);
   font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -198,20 +227,25 @@
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: var(--cat-gold-soft);
-  color: #92600a;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--cat-gold-soft, color-mix(in srgb, var(--warning, #f5a623) 16%, transparent));
+  color: var(--warning, #92600a);
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .kb-flash:hover:not(:disabled) {
-  background: var(--cat-gold);
-  border-color: var(--cat-gold);
+  background: var(--cat-gold, var(--warning, #f5a623));
+  border-color: var(--cat-gold, var(--warning, #f5a623));
   color: #fff;
+}
+
+.kb-flash:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: 1px;
 }
 
 /* Lead pas prêt pour le devis auto (champs manquants côté serveur) */
@@ -223,7 +257,7 @@
 .kb-card-sub {
   margin-top: 0.15rem;
   font-size: 0.74rem;
-  color: #64748b;
+  color: var(--muted-foreground, #64748b);
 }
 
 /* ---------- Tags ---------- */
@@ -255,8 +289,8 @@
 .kb-canal {
   padding: 0.08rem 0.35rem;
   border-radius: 4px;
-  background: #eef2f7;
-  color: #475569;
+  background: var(--muted, #eef2f7);
+  color: var(--muted-foreground, #475569);
   font-size: 0.64rem;
   font-weight: 600;
 }
@@ -268,27 +302,27 @@
 }
 
 .kb-star {
-  color: #d1d5db;
+  color: var(--border, #d1d5db);
 }
 
 .kb-star-on {
-  color: var(--cat-gold);
+  color: var(--cat-gold, var(--warning, #f5a623));
 }
 
 .kb-relance {
   padding: 0.06rem 0.4rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: 999px;
-  background: #fff;
-  color: #475569;
+  background: var(--background, #fff);
+  color: var(--muted-foreground, #475569);
   font-size: 0.68rem;
   white-space: nowrap;
 }
 
 .kb-relance-late {
-  border-color: #fecaca;
-  background: #fef2f2;
-  color: #dc2626;
+  border-color: color-mix(in srgb, var(--destructive, #dc2626) 35%, transparent);
+  background: color-mix(in srgb, var(--destructive, #dc2626) 8%, transparent);
+  color: var(--destructive, #dc2626);
   font-weight: 600;
 }
 
@@ -301,8 +335,8 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--cat-navy);
-  color: #fff;
+  background: var(--primary, #0b1f3a);
+  color: var(--primary-foreground, #fff);
   font-size: 0.62rem;
   font-weight: 700;
 }
@@ -336,19 +370,20 @@
 
 /* Pastille horloge d'activité (activité ouverte la plus proche). */
 .kb-act-clock { font-size: 0.8rem; margin-left: 2px; }
-.kb-act-clock.overdue { filter: none; color: #dc2626; }
-.kb-act-clock.today { color: #d97706; }
-.kb-act-clock.upcoming { color: #16a34a; }
+.kb-act-clock.overdue { filter: none; color: var(--destructive, #dc2626); }
+.kb-act-clock.today { color: var(--warning, #d97706); }
+.kb-act-clock.upcoming { color: var(--success, #16a34a); }
 
 /* Case de sélection sur la carte (actions en masse, T3). */
 .kb-card-check {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   margin-right: 4px;
   cursor: pointer;
   flex-shrink: 0;
+  accent-color: var(--primary, #0f172a);
 }
 .kb-card-selected {
-  outline: 2px solid #0f172a;
+  outline: 2px solid var(--primary, #0f172a);
   outline-offset: -1px;
 }

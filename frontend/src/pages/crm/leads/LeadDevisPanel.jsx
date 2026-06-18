@@ -6,6 +6,7 @@
    /proposal (CLAUDE.md règle #4). */
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
+import { Download, Pencil, Zap } from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote } from '../../../features/ventes/autoQuote'
@@ -13,6 +14,7 @@ import {
   proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
+import { Button, Input, Spinner, Segmented } from '../../../ui'
 
 // Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
 // sur le bundle que quand on ouvre réellement un aperçu.
@@ -233,25 +235,25 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
               </p>
               <div className="form-group" style={{ maxWidth: 220 }}>
                 <label className="form-label">Remise (%)</label>
-                <input type="number" min="0" max="100" step="any"
-                       className="form-control" value={discount} autoFocus
+                <Input type="number" min="0" max="100" step="any"
+                       value={discount} autoFocus
                        onChange={e => setDiscount(e.target.value)} />
               </div>
               <div className="ldp-actions">
-                <button type="button" className="btn btn-outline" onClick={onClose}>
+                <Button type="button" variant="outline" onClick={onClose}>
                   Annuler
-                </button>
-                <button type="button" className="btn btn-primary"
+                </Button>
+                <Button type="button"
                         onClick={() => { startedRef.current = true; doCreateAuto(discount || '0') }}>
-                  ⚡ Créer le devis
-                </button>
+                  <Zap /> Créer le devis
+                </Button>
               </div>
             </div>
           )}
 
           {phase === 'creating' && (
             <div className="ldp-center">
-              <p className="gen-hint">⏳ Création du devis et dimensionnement automatique…</p>
+              <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
             </div>
           )}
 
@@ -259,11 +261,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             <div className="ldp-center">
               <div className="form-error-box" role="alert">{errorMsg}</div>
               <div className="ldp-actions">
-                <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
-                <button type="button" className="btn btn-primary"
-                        onClick={() => setPhase('edit')}>
+                <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+                <Button type="button" onClick={() => setPhase('edit')}>
                   Ouvrir l'édition complète
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -284,16 +285,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             <div className="ldp-preview">
               <div className="ldp-toolbar">
                 <div className="ldp-format">
-                  <label className={`gen-radio${pdfMode === 'full' ? ' selected' : ''}`}>
-                    <input type="radio" name="ldp-pdf" checked={pdfMode === 'full'}
-                           onChange={() => setPdfMode('full')} />
-                    Premium
-                  </label>
-                  <label className={`gen-radio${pdfMode === 'onepage' ? ' selected' : ''}`}>
-                    <input type="radio" name="ldp-pdf" checked={pdfMode === 'onepage'}
-                           onChange={() => setPdfMode('onepage')} />
-                    1 page
-                  </label>
+                  <Segmented
+                    size="sm"
+                    value={pdfMode}
+                    onChange={setPdfMode}
+                    options={[
+                      { value: 'full', label: 'Premium' },
+                      { value: 'onepage', label: '1 page' },
+                    ]}
+                  />
                   {pdfMode === 'full' && (
                     <label className="pdf-toggle" style={{ marginLeft: 8 }}>
                       <input type="checkbox" checked={includeEtude}
@@ -303,14 +303,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   )}
                 </div>
                 <div className="ldp-toolbar-actions">
-                  <button type="button" className="btn btn-outline btn-sm"
+                  <Button type="button" variant="outline" size="sm"
                           onClick={() => setPhase('edit')}>
-                    ✏️ Édition complète
-                  </button>
-                  <button type="button" className="btn btn-primary btn-sm"
-                          onClick={handleDownload} disabled={downloading}>
-                    {downloading ? '…' : '⬇ Télécharger le PDF'}
-                  </button>
+                    <Pencil /> Édition complète
+                  </Button>
+                  <Button type="button" size="sm"
+                          onClick={handleDownload} loading={downloading} disabled={downloading}>
+                    {!downloading && <Download />}
+                    {downloading ? '…' : 'Télécharger le PDF'}
+                  </Button>
                 </div>
               </div>
               <div className="ldp-pdf-area">

@@ -5,8 +5,8 @@ import DocumentsArchive from './DocumentsArchive'
 export default function ArchiveClientPage() {
   const { id } = useParams()
   return (
-    <div className="page" style={{ maxWidth: 1000 }}>
-      <div className="page-header">
+    <div className="ui-root page" style={{ maxWidth: 1000 }}>
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <h2>Archive documentaire — client</h2>
       </div>
       <DocumentsArchive kind="client" id={id} />

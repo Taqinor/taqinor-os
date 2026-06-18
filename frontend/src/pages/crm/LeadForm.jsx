@@ -14,6 +14,7 @@ import '../../components/records-panels.css'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import './leads/leaddevispanel.css'
 import './leadform-extra.css'
+import { Button, Input } from '../../ui'
 
 const STAGE_LABELS = {
   NEW: 'Nouveau',
@@ -466,14 +467,15 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               </button>
             )}
             {isEdit && (
-              <button
+              <Button
                 type="button"
-                className="btn btn-sm btn-outline"
+                size="sm"
+                variant="outline"
                 disabled={archiveBusy}
                 onClick={toggleArchive}
               >
                 {lead.is_archived ? 'Restaurer' : 'Archiver'}
-              </button>
+              </Button>
             )}
             <button type="button" className="modal-close" onClick={onClose}>✕</button>
           </div>
@@ -486,21 +488,21 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               <span className="lead-subbar-label">💡 Facture :</span>
               {billEditing ? (
                 <>
-                  <input type="number" step="any" className="form-control form-control-sm lead-bill-input"
+                  <Input type="number" step="any" className="lead-bill-input"
                          placeholder={liveLead?.ete_differente ? 'Hiver' : 'MAD/mois'}
                          value={billHiver} autoFocus
                          onChange={e => setBillHiver(e.target.value)} />
                   {liveLead?.ete_differente && (
-                    <input type="number" step="any" className="form-control form-control-sm lead-bill-input"
+                    <Input type="number" step="any" className="lead-bill-input"
                            placeholder="Été" value={billEte}
                            onChange={e => setBillEte(e.target.value)} />
                   )}
-                  <button type="button" className="btn btn-sm btn-primary"
-                          disabled={billSaving} onClick={saveBill}>
+                  <Button type="button" size="sm"
+                          loading={billSaving} disabled={billSaving} onClick={saveBill}>
                     {billSaving ? '…' : 'Enregistrer'}
-                  </button>
-                  <button type="button" className="btn btn-sm btn-outline"
-                          onClick={() => setBillEditing(false)}>Annuler</button>
+                  </Button>
+                  <Button type="button" size="sm" variant="outline"
+                          onClick={() => setBillEditing(false)}>Annuler</Button>
                 </>
               ) : (
                 <button type="button" className="lead-bill-view" onClick={startBillEdit}
@@ -518,17 +520,17 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             </div>
 
             <div className="lead-subbar-devis">
-              <button type="button" className="btn btn-sm gen-btn-orange"
+              <Button type="button" size="sm" className="gen-btn-orange"
                       disabled={!devisReady}
                       title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
                       onClick={() => openDevisPanel('auto')}>
                 ⚡ Devis automatique
-              </button>
+              </Button>
               <div className="lead-devis-menu-wrap" ref={devisMenuRef}>
-                <button type="button" className="btn btn-sm btn-primary"
+                <Button type="button" size="sm"
                         onClick={() => setDevisMenuOpen(o => !o)}>
                   📝 Devis modifiable ▾
-                </button>
+                </Button>
                 {devisMenuOpen && (
                   <div className="lead-devis-menu">
                     <button type="button" className="lead-devis-menu-item"
@@ -743,16 +745,17 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 ) : (
                   <>
                     <div style={{ margin: '8px 0', display: 'flex', alignItems: 'center' }}>
-                      <button
+                      <Button
                         type="button"
-                        className="btn btn-primary"
+                        variant="success"
+                        loading={waBusy}
                         disabled={!leadPhone || waBusy || waSelected.size === 0}
                         title={leadPhone
                           ? 'Ouvrir WhatsApp avec le(s) devis sélectionné(s)'
                           : 'Aucun numéro de téléphone'}
                         onClick={envoyerWhatsApp}>
                         🟢 Envoyer par WhatsApp{waSelected.size > 0 ? ` (${waSelected.size})` : ''}
-                      </button>
+                      </Button>
                       {!leadPhone && (
                         <span className="gen-hint" style={{ marginLeft: 8 }}>
                           Aucun numéro de téléphone
@@ -790,25 +793,27 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                               <div className="lead-devis-actions">
                                 {d.statut === 'accepte' && (
                                   <>
-                                    <button
+                                    <Button
                                       type="button"
-                                      className="btn btn-sm btn-outline"
+                                      size="sm"
+                                      variant="outline"
                                       disabled={devisActionBusy === `f-${d.id}`}
                                       onClick={e => { e.stopPropagation(); genererFactureDevis(d) }}>
                                       {devisActionBusy === `f-${d.id}` ? '…' : '🧾 Générer la facture'}
-                                    </button>
+                                    </Button>
                                     {d.chantier ? (
                                       <span className="gen-hint" title="Chantier déjà créé">
                                         🏗 {d.chantier.reference}
                                       </span>
                                     ) : (
-                                      <button
+                                      <Button
                                         type="button"
-                                        className="btn btn-sm btn-outline"
+                                        size="sm"
+                                        variant="outline"
                                         disabled={devisActionBusy === `c-${d.id}`}
                                         onClick={e => { e.stopPropagation(); creerChantierDevis(d) }}>
                                         {devisActionBusy === `c-${d.id}` ? '…' : '🏗 Créer le chantier'}
-                                      </button>
+                                      </Button>
                                     )}
                                   </>
                                 )}
@@ -859,10 +864,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                           <td>{d.email || '—'}</td>
                           <td>{d.nb_devis}</td>
                           <td className="ta-right">
-                            <button type="button" className="btn btn-sm btn-primary"
+                            <Button type="button" size="sm"
                                     onClick={() => doMerge(d.id)}>
                               Fusionner ici
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -879,9 +884,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
-                  <button type="button" className="btn btn-outline" onClick={postNote}>
+                  <Button type="button" variant="outline" onClick={postNote}>
                     Noter
-                  </button>
+                  </Button>
                 </div>
                 <div className="chatter-timeline">
                   {historique.length === 0 && (
@@ -916,12 +921,12 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           </div>
 
           <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}>
               Annuler
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            </Button>
+            <Button type="submit" loading={saving} disabled={saving}>
               {saving ? 'Enregistrement...' : (isEdit ? 'Mettre à jour' : 'Créer le lead')}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

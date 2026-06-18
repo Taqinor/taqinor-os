@@ -1,41 +1,105 @@
 import { useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import {
+  Package, Users, FileCheck, FileText, AlertTriangle,
+  TrendingUp, Activity, ReceiptText, Clock,
+} from 'lucide-react'
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell,
+} from 'recharts'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts'
+  Stat, Card, CardHeader, CardTitle, CardDescription, CardContent,
+  StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText,
+} from '../ui'
+import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
 
-function KpiIcon({ color, children }) {
-  return (
-    <div style={{
-      width: 46, height: 46, borderRadius: 12,
-      background: color + '18',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0,
-    }}>
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-        stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        {children}
-      </svg>
-    </div>
-  )
+/* K51 — Tableau de bord restylé sur le système de design (refonte UI).
+   Cartes KPI (Stat), graphiques recharts thémés via les tokens sémantiques
+   (var(--…)), flux d'activité, états réels chargement/vide/erreur. Toutes les
+   sources de données / appels API / sélecteurs Redux sont IDENTIQUES à l'écran
+   précédent — aucune donnée d'achat ni de marge n'est exposée. */
+
+// Tons sémantiques (var CSS) — fonctionnent en attributs SVG recharts et
+// suivent le thème clair/sombre.
+const TOKEN = {
+  primary: 'var(--primary)',
+  info: 'var(--info)',
+  success: 'var(--success)',
+  warning: 'var(--warning)',
+  danger: 'var(--destructive)',
+  muted: 'var(--muted-foreground)',
+  grid: 'var(--border)',
+  surface: 'var(--popover)',
 }
 
-const STATUT_DEVIS = {
-  brouillon: { label: 'Brouillon',  color: '#94a3b8' },
-  envoye:    { label: 'Envoyé',     color: '#3b82f6' },
-  accepte:   { label: 'Accepté',    color: '#10b981' },
-  refuse:    { label: 'Refusé',     color: '#ef4444' },
-  expire:    { label: 'Expiré',     color: '#f59e0b' },
+// Devis : libellé + ton de statut (couleurs via tokens, jamais en dur).
+const STATUT_DEVIS = [
+  { key: 'brouillon', label: 'Brouillon', token: TOKEN.muted },
+  { key: 'envoye', label: 'Envoyé', token: TOKEN.info },
+  { key: 'accepte', label: 'Accepté', token: TOKEN.success },
+  { key: 'refuse', label: 'Refusé', token: TOKEN.danger },
+  { key: 'expire', label: 'Expiré', token: TOKEN.warning },
+]
+
+// Factures : libellé + ton de statut.
+const STATUT_FACTURE = [
+  { key: 'brouillon', label: 'Brouillon', token: TOKEN.muted },
+  { key: 'emise', label: 'Émise', token: TOKEN.info },
+  { key: 'en_retard', label: 'En retard', token: TOKEN.danger },
+  { key: 'payee', label: 'Payée', token: TOKEN.success },
+  { key: 'annulee', label: 'Annulée', token: TOKEN.muted },
+]
+
+// Tranches d'ancienneté des montants dûs (balance âgée).
+const AGE_BUCKETS = [
+  { key: 'a_venir', label: 'À venir', token: TOKEN.info },
+  { key: 'j_0_30', label: '0–30 j', token: TOKEN.warning },
+  { key: 'j_31_60', label: '31–60 j', token: TOKEN.warning },
+  { key: 'j_60_plus', label: '60+ j', token: TOKEN.danger },
+]
+
+const num = (v) => {
+  const n = parseFloat(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+// Style commun de l'infobulle recharts (surface + bordure tokenisées).
+const tooltipStyle = {
+  borderRadius: 10,
+  fontSize: 12,
+  border: `1px solid ${TOKEN.grid}`,
+  background: TOKEN.surface,
+  color: 'var(--popover-foreground)',
+  boxShadow: 'var(--shadow-md)',
+}
+
+function ChartCard({ title, description, children, isEmpty, emptyLabel }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent>
+        {isEmpty ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+        ) : (
+          children
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export function Component() {
   const dispatch = useDispatch()
-  const { produits } = useSelector((s) => s.stock)
-  const { clients }  = useSelector((s) => s.crm)
-  const { devis, factures } = useSelector((s) => s.ventes)
+  const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
+  const { clients, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
+  const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
 
   useEffect(() => {
     dispatch(fetchProduits())
@@ -44,13 +108,13 @@ export function Component() {
     dispatch(fetchFactures())
   }, [dispatch])
 
-  const devisAcceptes    = devis.filter(d => d.statut === 'accepte')
-  const facturesEnRetard = factures.filter(f => f.statut === 'en_retard')
-  const facturesEmises   = factures.filter(f => f.statut === 'emise')
+  const devisAcceptes = devis.filter((d) => d.statut === 'accepte')
+  const facturesEnRetard = factures.filter((f) => f.statut === 'en_retard')
+  const facturesEmises = factures.filter((f) => f.statut === 'emise')
 
-  // CA mensuel sur 6 mois — calculé depuis les factures payées déjà chargées
+  // CA mensuel sur 6 mois — calculé depuis les factures payées déjà chargées.
   const caMensuel = useMemo(() => {
-    const MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+    const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
     const map = {}
     const today = new Date()
     for (let i = 5; i >= 0; i--) {
@@ -59,208 +123,431 @@ export function Component() {
       map[key] = { mois: `${MOIS[d.getMonth()]} ${d.getFullYear()}`, ca: 0 }
     }
     factures
-      .filter(f => f.statut === 'payee' && f.date_emission)
-      .forEach(f => {
+      .filter((f) => f.statut === 'payee' && f.date_emission)
+      .forEach((f) => {
         const key = f.date_emission.slice(0, 7)
-        if (map[key]) map[key].ca += parseFloat(f.total_ht || 0)
+        if (map[key]) map[key].ca += num(f.total_ht)
       })
     return Object.values(map)
   }, [factures])
 
+  const caTotal = useMemo(() => caMensuel.reduce((s, m) => s + m.ca, 0), [caMensuel])
+
+  // Répartition des devis par statut (compte par catégorie connue).
+  const devisParStatut = useMemo(
+    () =>
+      STATUT_DEVIS.map((s) => ({
+        ...s,
+        count: devis.filter((d) => d.statut === s.key).length,
+      })),
+    [devis],
+  )
+
+  // Répartition des factures par statut.
+  const facturesParStatut = useMemo(
+    () =>
+      STATUT_FACTURE.map((s) => ({
+        ...s,
+        count: factures.filter((f) => f.statut === s.key).length,
+      })),
+    [factures],
+  )
+
+  // Conversion devis → signé : envoyés vs. acceptés (taux de signature).
+  const conversion = useMemo(() => {
+    const emis = devis.filter((d) =>
+      ['envoye', 'accepte', 'refuse', 'expire'].includes(d.statut),
+    ).length
+    const signes = devis.filter((d) => d.statut === 'accepte').length
+    const taux = emis > 0 ? Math.round((signes / emis) * 100) : 0
+    return { emis, signes, taux }
+  }, [devis])
+
+  // Encours clients : montant dû agrégé par tranche d'ancienneté (balance âgée).
+  const ageBalance = useMemo(() => {
+    const today = new Date()
+    const buckets = Object.fromEntries(AGE_BUCKETS.map((b) => [b.key, 0]))
+    factures
+      .filter((f) => ['emise', 'en_retard'].includes(f.statut))
+      .forEach((f) => {
+        const du = f.montant_du != null ? num(f.montant_du) : num(f.total_ttc)
+        if (du <= 0) return
+        let key = 'a_venir'
+        if (f.date_echeance) {
+          const diff = Math.floor((today - new Date(f.date_echeance)) / 86400000)
+          if (diff <= 0) key = 'a_venir'
+          else if (diff <= 30) key = 'j_0_30'
+          else if (diff <= 60) key = 'j_31_60'
+          else key = 'j_60_plus'
+        }
+        buckets[key] += du
+      })
+    return AGE_BUCKETS.map((b) => ({ ...b, montant: buckets[b.key] }))
+  }, [factures])
+
+  const encoursTotal = useMemo(() => ageBalance.reduce((s, b) => s + b.montant, 0), [ageBalance])
+
+  // Flux d'activité : derniers devis créés + factures émises, triés par date.
+  const activite = useMemo(() => {
+    const items = []
+    devis.forEach((d) => {
+      if (!d.date_creation) return
+      items.push({
+        id: `d-${d.id}`,
+        type: 'devis',
+        date: d.date_creation,
+        reference: d.reference,
+        client: d.client_nom,
+        statut: d.statut,
+        montant: d.total_affiche ?? d.total_ttc,
+      })
+    })
+    factures.forEach((f) => {
+      if (!f.date_emission) return
+      items.push({
+        id: `f-${f.id}`,
+        type: 'facture',
+        date: f.date_emission,
+        reference: f.reference,
+        client: f.client_nom,
+        statut: f.statut,
+        montant: f.total_ttc,
+      })
+    })
+    return items.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8)
+  }, [devis, factures])
+
   const kpis = [
+    { label: 'Produits en stock', value: formatNumber(produits.length), icon: Package, hint: 'références actives' },
+    { label: 'Clients', value: formatNumber(clients.length), icon: Users, hint: 'enregistrés' },
+    { label: 'Devis acceptés', value: formatNumber(devisAcceptes.length), icon: FileCheck, hint: `sur ${formatNumber(devis.length)} devis` },
+    { label: 'Factures émises', value: formatNumber(facturesEmises.length), icon: FileText, hint: 'en attente de règlement' },
     {
-      label: 'Produits en stock', value: produits.length, color: '#3b82f6',
-      icon: <>
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-        <line x1="12" y1="22.08" x2="12" y2="12"/>
-      </>,
-    },
-    {
-      label: 'Clients', value: clients.length, color: '#8b5cf6',
-      icon: <>
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </>,
-    },
-    {
-      label: 'Devis acceptés', value: devisAcceptes.length, color: '#10b981',
-      icon: <>
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <polyline points="9 15 11 17 15 13"/>
-      </>,
-    },
-    {
-      label: 'Factures émises', value: facturesEmises.length, color: '#f59e0b',
-      icon: <>
-        <rect x="5" y="2" width="14" height="20" rx="2"/>
-        <line x1="9" y1="7" x2="15" y2="7"/>
-        <line x1="9" y1="11" x2="15" y2="11"/>
-        <line x1="9" y1="15" x2="12" y2="15"/>
-      </>,
-    },
-    {
-      label: 'Factures en retard', value: facturesEnRetard.length, color: '#ef4444',
-      icon: <>
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="12" y1="8" x2="12" y2="12"/>
-        <line x1="12" y1="16" x2="12.01" y2="16"/>
-      </>,
+      label: 'Factures en retard',
+      value: formatNumber(facturesEnRetard.length),
+      icon: AlertTriangle,
+      hint: facturesEnRetard.length > 0 ? 'à relancer' : 'aucune',
+      delta: facturesEnRetard.length > 0
+        ? { value: `${facturesEnRetard.length}`, direction: 'down' }
+        : undefined,
     },
   ]
 
-  return (
-    <div style={{ padding: '1.5rem' }}>
+  // États globaux : on s'appuie sur les drapeaux loading/error déjà exposés par
+  // les slices (aucun nouvel appel API). Loading uniquement tant qu'aucune
+  // donnée n'est encore arrivée ; erreur uniquement si tout est vide.
+  const anyLoading = stockLoading || crmLoading || ventesLoading
+  const hasAnyData = produits.length || clients.length || devis.length || factures.length
+  const firstError = ventesError || crmError || stockError
+  const showLoading = anyLoading && !hasAnyData
+  const showError = !anyLoading && !hasAnyData && !!firstError
+  const errorMessage =
+    typeof firstError === 'string'
+      ? firstError
+      : firstError?.detail || firstError?.message || 'Veuillez réessayer.'
 
-      {/* Page title */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+  return (
+    <div className="ui-root min-h-full p-4 sm:p-6">
+      {/* En-tête — le titre « Tableau de bord » reste un <h2> (heading) :
+          l'e2e (auth.setup.js) s'appuie dessus, ne pas modifier. */}
+      <header className="mb-6">
+        <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
           Tableau de bord
         </h2>
-        <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-          Vue d'ensemble de votre activité
-        </p>
-      </div>
+        <p className="mt-1 text-sm text-muted-foreground">Vue d'ensemble de votre activité</p>
+      </header>
 
-      {/* KPI cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-        gap: '1rem',
-        marginBottom: '1.25rem',
-      }}>
-        {kpis.map(kpi => (
-          <div key={kpi.label} style={{
-            background: '#ffffff',
-            borderRadius: 14,
-            padding: '1.1rem 1.2rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)',
-            borderTop: `3px solid ${kpi.color}`,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-          }}>
-            <KpiIcon color={kpi.color}>{kpi.icon}</KpiIcon>
-            <div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-                {kpi.value}
-              </div>
-              <div style={{ fontSize: '0.77rem', color: '#64748b', marginTop: 5 }}>
-                {kpi.label}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-
-        {/* Chiffre d'affaires */}
-        <div style={{
-          background: '#ffffff', borderRadius: 14, padding: '1.25rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
-        }}>
-          <h3 style={{ margin: '0 0 12px', fontSize: '0.92rem', fontWeight: 600, color: '#1e293b' }}>
-            Chiffre d'affaires mensuel
-          </h3>
-          {caMensuel.every(m => m.ca === 0) ? (
-            <p style={{ color: '#94a3b8', fontSize: '0.82rem', margin: 0 }}>
-              Aucune facture payée sur les 6 derniers mois.
+      {showError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center sm:pt-12">
+            <span className="flex size-11 items-center justify-center rounded-full bg-destructive/12 text-destructive">
+              <AlertTriangle className="size-5" aria-hidden="true" />
+            </span>
+            <p className="font-display text-base font-semibold text-foreground">
+              Impossible de charger le tableau de bord
             </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={caMensuel} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="caGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  tickFormatter={v => v >= 1000 ? Math.round(v / 1000) + 'k' : v}
-                />
-                <Tooltip
-                  formatter={v => [
-                    new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(v) + ' DH',
-                    'CA HT'
-                  ]}
-                  contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                />
-                <Area
-                  type="monotone" dataKey="ca"
-                  stroke="#3b82f6" strokeWidth={2}
-                  fill="url(#caGrad)" dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Devis par statut */}
-        <div style={{
-          background: '#ffffff', borderRadius: 14, padding: '1.25rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
-        }}>
-          <h3 style={{ margin: '0 0 14px', fontSize: '0.92rem', fontWeight: 600, color: '#1e293b' }}>
-            Devis par statut
-          </h3>
-          {devis.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {Object.entries(STATUT_DEVIS).map(([statut, { label, color }]) => {
-                const count = devis.filter(d => d.statut === statut).length
-                if (count === 0) return null
-                const pct = Math.round((count / devis.length) * 100)
-                return (
-                  <div key={statut}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.81rem', marginBottom: 5 }}>
-                      <span style={{ color: '#475569' }}>{label}</span>
-                      <span style={{ fontWeight: 600, color }}>{count}</span>
-                    </div>
-                    <div style={{ height: 4, borderRadius: 2, background: '#f1f5f9' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 2, background: color, transition: 'width 0.4s ease' }}/>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p style={{ color: '#94a3b8', fontSize: '0.82rem', margin: 0 }}>Aucun devis</p>
-          )}
-        </div>
-      </div>
-
-      {/* Factures en retard alert */}
-      {facturesEnRetard.length > 0 && (
-        <div style={{
-          marginTop: '1rem',
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          borderRadius: 12,
-          padding: '1rem 1.25rem',
-        }}>
-          <h3 style={{
-            margin: '0 0 8px', fontSize: '0.88rem', fontWeight: 600, color: '#b91c1c',
-            display: 'flex', alignItems: 'center', gap: 7,
-          }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            Factures en retard ({facturesEnRetard.length})
-          </h3>
-          <ul style={{ margin: 0, padding: '0 0 0 1rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {facturesEnRetard.map(f => (
-              <li key={f.id} style={{ fontSize: '0.83rem', color: '#b91c1c' }}>
-                {f.reference} — {f.client_nom}
-              </li>
+            <p className="max-w-sm text-sm text-muted-foreground">{errorMessage}</p>
+          </CardContent>
+        </Card>
+      ) : showLoading ? (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
+            {Array.from({ length: 5 }).map((unused, i) => (
+              <Card key={i} className="p-4 sm:p-5">
+                <Skeleton className="size-4" />
+                <Skeleton className="mt-3 h-7 w-1/2" />
+                <Skeleton className="mt-2 h-3 w-2/3" />
+              </Card>
             ))}
-          </ul>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {Array.from({ length: 2 }).map((unused, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-4 w-40" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-40 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-4 w-32" />
+            </CardHeader>
+            <CardContent>
+              <SkeletonText lines={5} />
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 sm:gap-5">
+          {/* Cartes KPI */}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
+            {kpis.map((kpi) => (
+              <Stat
+                key={kpi.label}
+                label={kpi.label}
+                value={kpi.value}
+                hint={kpi.hint}
+                delta={kpi.delta}
+                icon={kpi.icon}
+              />
+            ))}
+          </div>
+
+          {/* Rangée graphiques : CA mensuel + devis par statut */}
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+            <ChartCard
+              title="Chiffre d'affaires mensuel"
+              description={`Factures payées · ${formatMAD(caTotal, { decimals: 0 })} sur 6 mois`}
+              isEmpty={caMensuel.every((m) => m.ca === 0)}
+              emptyLabel="Aucune facture payée sur les 6 derniers mois."
+            >
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={caMensuel} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="caGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={TOKEN.primary} stopOpacity={0.35} />
+                      <stop offset="95%" stopColor={TOKEN.primary} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
+                  <XAxis dataKey="mois" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: TOKEN.muted }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={40}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
+                  />
+                  <Tooltip
+                    cursor={{ stroke: TOKEN.grid }}
+                    contentStyle={tooltipStyle}
+                    formatter={(v) => [`${formatMAD(v, { decimals: 0 })}`, 'CA HT']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="ca"
+                    stroke={TOKEN.primary}
+                    strokeWidth={2}
+                    fill="url(#caGrad)"
+                    dot={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Devis par statut"
+              description={`${formatNumber(devis.length)} devis au total`}
+              isEmpty={devis.length === 0}
+              emptyLabel="Aucun devis pour le moment."
+            >
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart
+                  data={devisParStatut.filter((s) => s.count > 0)}
+                  layout="vertical"
+                  margin={{ top: 4, right: 12, bottom: 0, left: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="label" width={78} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Devis']} />
+                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={18}>
+                    {devisParStatut.filter((s) => s.count > 0).map((s) => (
+                      <Cell key={s.key} fill={s.token} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          {/* Rangée graphiques : factures par statut + balance âgée */}
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+            <ChartCard
+              title="Factures par statut"
+              description={`${formatNumber(factures.length)} factures au total`}
+              isEmpty={factures.length === 0}
+              emptyLabel="Aucune facture pour le moment."
+            >
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart
+                  data={facturesParStatut.filter((s) => s.count > 0)}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} width={32} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Factures']} />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={36}>
+                    {facturesParStatut.filter((s) => s.count > 0).map((s) => (
+                      <Cell key={s.key} fill={s.token} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Encours clients (balance âgée)"
+              description={`${formatMAD(encoursTotal, { decimals: 0 })} à recouvrer`}
+              isEmpty={encoursTotal === 0}
+              emptyLabel="Aucun encours client à recouvrer."
+            >
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={ageBalance} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                  <YAxis
+                    width={40}
+                    tick={{ fontSize: 11, fill: TOKEN.muted }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
+                  />
+                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatMAD(v, { decimals: 0 }), 'Montant dû']} />
+                  <Bar dataKey="montant" radius={[6, 6, 0, 0]} barSize={40}>
+                    {ageBalance.map((b) => (
+                      <Cell key={b.key} fill={b.token} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          {/* Rangée : conversion devis→signé + flux d'activité */}
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="size-4 text-muted-foreground" aria-hidden="true" />
+                  Conversion devis → signé
+                </CardTitle>
+                <CardDescription>Taux de signature des devis émis</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {conversion.emis === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    Aucun devis émis à analyser.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-end justify-between">
+                      <span className="font-display text-3xl font-semibold tabular-nums leading-none text-foreground">
+                        {formatPercent(conversion.taux)}
+                      </span>
+                      <Badge tone="success">
+                        {formatNumber(conversion.signes)} signé{conversion.signes > 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                    <Progress value={conversion.taux} tone="success" />
+                    <p className="text-xs text-muted-foreground">
+                      {formatNumber(conversion.signes)} signés sur {formatNumber(conversion.emis)} devis émis
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
+                  Activité récente
+                </CardTitle>
+                <CardDescription>Derniers devis et factures</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {activite.length === 0 ? (
+                  <EmptyState
+                    icon={Activity}
+                    title="Aucune activité"
+                    description="Vos derniers devis et factures apparaîtront ici."
+                    className="border-0 px-0 py-8"
+                  />
+                ) : (
+                  <ul className="flex flex-col divide-y divide-border">
+                    {activite.map((a) => {
+                      const Icon = a.type === 'devis' ? FileText : ReceiptText
+                      return (
+                        <li key={a.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                            <Icon className="size-4" aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {a.type === 'devis' ? 'Devis' : 'Facture'} {a.reference ?? '—'}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {a.client || 'Client non renseigné'} · {formatDate(a.date)}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            <span className="text-sm font-medium tabular-nums text-foreground">
+                              {a.montant != null ? formatMAD(a.montant, { decimals: 0 }) : '—'}
+                            </span>
+                            {a.statut && <StatusPill status={a.statut} label={a.statut} />}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Alerte factures en retard */}
+          {facturesEnRetard.length > 0 && (
+            <Card className="border-destructive/30 bg-destructive/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <Clock className="size-4" aria-hidden="true" />
+                  Factures en retard ({formatNumber(facturesEnRetard.length)})
+                </CardTitle>
+                <CardDescription>Factures dont l'échéance est dépassée — à relancer.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="flex flex-col gap-1.5">
+                  {facturesEnRetard.map((f) => (
+                    <li key={f.id} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate text-foreground">
+                        <span className="font-medium">{f.reference}</span>
+                        <span className="text-muted-foreground"> · {f.client_nom || '—'}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums font-medium text-destructive">
+                        {f.total_ttc != null ? formatMAD(f.total_ttc, { decimals: 0 }) : '—'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>

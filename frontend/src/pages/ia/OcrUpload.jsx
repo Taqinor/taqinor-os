@@ -1,6 +1,22 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import {
+  FileText, Inbox, AlertCircle, Check, Copy, RefreshCw, Save, Trash2, ChevronDown,
+} from 'lucide-react'
+import {
+  Button,
+  Badge,
+  Spinner,
+  Card,
+  CardContent,
+  EmptyState,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
+import { cn } from '../../lib/cn'
 import {
   processOcrDocument,
   saveOcrDocument,
@@ -36,23 +52,12 @@ const FIELD_LABELS = {
 
 function ConfidenceBadge({ value }) {
   const pct = Math.round(value * 100)
-  const color =
-    pct >= 80 ? 'bg-green-100 text-green-800' :
-    pct >= 50 ? 'bg-yellow-100 text-yellow-800' :
-                'bg-red-100 text-red-800'
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${color}`}>
-      Confiance : {pct}%
-    </span>
-  )
+  const tone = pct >= 80 ? 'success' : pct >= 50 ? 'warning' : 'danger'
+  return <Badge tone={tone}>Confiance : {pct}%</Badge>
 }
 
 function TypeBadge({ type }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-      {TYPE_LABELS[type] ?? type}
-    </span>
-  )
+  return <Badge tone="info">{TYPE_LABELS[type] ?? type}</Badge>
 }
 
 // ── Onglet Analyser ───────────────────────────────────────────────────────────
@@ -100,127 +105,141 @@ function AnalyseTab({ canSave }) {
   const lignes = donnees.lignes ?? []
 
   return (
-    <div className="mt-4">
+    <div className="space-y-4">
       {/* Zone de dépôt (G26 — primitif FileUpload ; même dispatch OCR) */}
       {!ocrResult && !ocrLoading && (
         <FileUpload
           accept={OCR_ACCEPT}
           maxSize={OCR_MAX_SIZE}
           onFiles={(files) => processFile(files[0])}
+          hint="JPEG, PNG, TIFF, WebP ou PDF — 10 Mo maximum"
         />
       )}
 
       {ocrLoading && (
-        <div className="mt-8 flex flex-col items-center gap-3 text-gray-500">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+        <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+          <Spinner className="size-7 text-primary" />
           <p className="text-sm">Analyse OCR en cours…</p>
         </div>
       )}
 
       {ocrError && !ocrLoading && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {typeof ocrError === 'string' ? ocrError : JSON.stringify(ocrError)}
-          <button className="ml-3 underline text-red-600" onClick={handleReset}>Réessayer</button>
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+          <span>{typeof ocrError === 'string' ? ocrError : JSON.stringify(ocrError)}</span>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={handleReset}>
+            <RefreshCw /> Réessayer
+          </Button>
         </div>
       )}
 
       {ocrResult && (
         <div className="space-y-5">
           {/* En-tête */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <TypeBadge type={ocrResult.type_document} />
             <ConfidenceBadge value={ocrResult.confiance} />
-            {currentFile && <span className="text-xs text-gray-500">{currentFile.name}</span>}
+            {currentFile && (
+              <span className="text-xs text-muted-foreground">{currentFile.name}</span>
+            )}
           </div>
 
           {/* Données structurées */}
           {Object.keys(donnees).some(k => k !== 'lignes' && donnees[k] != null) && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">Données extraites</h3>
-              <div className="overflow-hidden rounded-lg border border-gray-200">
+            <Card>
+              <CardContent className="p-0">
+                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                  Données extraites
+                </p>
                 <table className="w-full text-sm">
                   <tbody>
                     {Object.entries(FIELD_LABELS).map(([key, label]) => {
                       const val = donnees[key]
                       if (val == null) return null
                       return (
-                        <tr key={key} className="border-b border-gray-100 last:border-0">
-                          <td className="w-44 bg-gray-50 px-4 py-2 font-medium text-gray-600">{label}</td>
-                          <td className="px-4 py-2 text-gray-800">{String(val)}</td>
+                        <tr key={key} className="border-b border-border last:border-0">
+                          <td className="w-44 bg-muted/50 px-4 py-2 font-medium text-muted-foreground">{label}</td>
+                          <td className="px-4 py-2 text-foreground">{String(val)}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Lignes */}
           {lignes.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">Lignes ({lignes.length})</h3>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Description</th>
-                      <th className="px-4 py-2 text-right">Qté</th>
-                      <th className="px-4 py-2 text-right">P.U.</th>
-                      <th className="px-4 py-2 text-right">Montant</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lignes.map((l, i) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-4 py-2">{l.description ?? '—'}</td>
-                        <td className="px-4 py-2 text-right">{l.quantite ?? '—'}</td>
-                        <td className="px-4 py-2 text-right">{l.prix_unitaire ?? '—'}</td>
-                        <td className="px-4 py-2 text-right">{l.montant ?? '—'}</td>
+            <Card>
+              <CardContent className="p-0">
+                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                  Lignes ({lignes.length})
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-medium">Description</th>
+                        <th className="px-4 py-2 text-right font-medium">Qté</th>
+                        <th className="px-4 py-2 text-right font-medium">P.U.</th>
+                        <th className="px-4 py-2 text-right font-medium">Montant</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    </thead>
+                    <tbody>
+                      {lignes.map((l, i) => (
+                        <tr key={i} className="border-t border-border">
+                          <td className="px-4 py-2 text-foreground">{l.description ?? '—'}</td>
+                          <td className="px-4 py-2 text-right text-foreground">{l.quantite ?? '—'}</td>
+                          <td className="px-4 py-2 text-right text-foreground">{l.prix_unitaire ?? '—'}</td>
+                          <td className="px-4 py-2 text-right text-foreground">{l.montant ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Texte brut */}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">Texte brut</h3>
-              <button className="text-xs text-blue-600 hover:underline" onClick={handleCopy}>
+              <h3 className="text-sm font-semibold text-foreground">Texte brut</h3>
+              <Button variant="ghost" size="sm" onClick={handleCopy}>
+                {copied ? <Check /> : <Copy />}
                 {copied ? 'Copié !' : 'Copier'}
-              </button>
+              </Button>
             </div>
-            <pre className="max-h-64 overflow-y-auto rounded-lg bg-gray-50 p-4 text-xs text-gray-700 whitespace-pre-wrap break-words border border-gray-200">
+            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/50 p-4 text-xs text-muted-foreground">
               {ocrResult.texte_brut || '(aucun texte extrait)'}
             </pre>
           </div>
 
           {/* Actions */}
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             {canSave && (
               <>
                 {savedDocumentId ? (
-                  <span className="rounded-lg bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-700">
+                  <Badge tone="success" className="gap-1.5 px-3 py-1.5 text-sm">
+                    <Check className="size-4" aria-hidden="true" />
                     Document enregistré (ID #{savedDocumentId})
-                  </span>
+                  </Badge>
                 ) : (
-                  <button
-                    className="btn btn-primary btn-sm disabled:opacity-50"
-                    onClick={handleSave}
-                    disabled={saveLoading}
-                  >
+                  <Button variant="success" size="sm" onClick={handleSave} loading={saveLoading}>
+                    {!saveLoading && <Save />}
                     {saveLoading ? 'Enregistrement…' : 'Valider et enregistrer'}
-                  </button>
+                  </Button>
                 )}
-                {saveError && <span className="text-sm text-red-600">{saveError}</span>}
+                {saveError && <span className="text-sm text-destructive">{saveError}</span>}
               </>
             )}
-            <button className="btn btn-sm btn-outline" onClick={handleReset}>
-              Analyser un autre fichier
-            </button>
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              <RefreshCw /> Analyser un autre fichier
+            </Button>
           </div>
         </div>
       )}
@@ -241,59 +260,83 @@ function DocumentsTab({ canDelete }) {
   }
 
   if (docsLoading) return (
-    <div className="mt-8 flex justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+    <div className="flex justify-center py-12">
+      <Spinner className="size-6 text-primary" />
     </div>
   )
 
   if (docsError) return (
-    <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    <div
+      role="alert"
+      className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+    >
+      <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
       Erreur : {docsError}
     </div>
   )
 
   if (documents.length === 0) return (
-    <div className="mt-10 flex flex-col items-center gap-2 text-gray-400">
-      <span className="text-3xl">🗂️</span>
-      <p className="text-sm">Aucun document enregistré pour l'instant.</p>
-    </div>
+    <EmptyState
+      icon={Inbox}
+      title="Aucun document enregistré"
+      description="Les documents que vous validez dans l'onglet « Analyser » apparaîtront ici."
+    />
   )
 
   return (
-    <div className="mt-4 space-y-2">
+    <div className="space-y-2">
       {documents.map((doc) => {
         const isOpen = expanded === doc.id
         const d = doc.donnees_structurees ?? {}
         return (
-          <div key={doc.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <Card key={doc.id} className="overflow-hidden">
             {/* Ligne principale */}
-            <div
-              className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50"
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
               onClick={() => setExpanded(isOpen ? null : doc.id)}
+              aria-expanded={isOpen}
             >
-              <span className="text-gray-400 text-xs w-8">#{doc.id}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{doc.filename}</p>
-                <p className="text-xs text-gray-500">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <FileText className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{doc.filename}</p>
+                <p className="text-xs text-muted-foreground">
                   {new Date(doc.created_at).toLocaleString('fr-FR')} — {doc.username}
                 </p>
               </div>
-              <TypeBadge type={doc.type_document} />
-              <ConfidenceBadge value={doc.confiance} />
+              <div className="hidden shrink-0 items-center gap-2 sm:flex">
+                <TypeBadge type={doc.type_document} />
+                <ConfidenceBadge value={doc.confiance} />
+              </div>
               {canDelete && (
-                <button
-                  className="ml-2 text-xs text-red-500 hover:text-red-700"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-destructive hover:text-destructive"
                   onClick={(e) => { e.stopPropagation(); handleDelete(doc.id) }}
                 >
-                  Supprimer
-                </button>
+                  <Trash2 />
+                  <span className="sr-only sm:not-sr-only">Supprimer</span>
+                </Button>
               )}
-              <span className="text-gray-400 text-xs">{isOpen ? '▲' : '▼'}</span>
-            </div>
+              <ChevronDown
+                className={cn(
+                  'size-4 shrink-0 text-muted-foreground transition-transform',
+                  isOpen && 'rotate-180',
+                )}
+                aria-hidden="true"
+              />
+            </button>
 
             {/* Détail déroulant */}
             {isOpen && (
-              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 space-y-3">
+              <div className="space-y-3 border-t border-border bg-muted/40 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2 sm:hidden">
+                  <TypeBadge type={doc.type_document} />
+                  <ConfidenceBadge value={doc.confiance} />
+                </div>
                 {Object.keys(d).some(k => k !== 'lignes' && d[k] != null) && (
                   <table className="w-full text-xs">
                     <tbody>
@@ -301,9 +344,9 @@ function DocumentsTab({ canDelete }) {
                         const val = d[key]
                         if (val == null) return null
                         return (
-                          <tr key={key} className="border-b border-gray-100 last:border-0">
-                            <td className="w-36 py-1 font-medium text-gray-500">{label}</td>
-                            <td className="py-1 text-gray-800">{String(val)}</td>
+                          <tr key={key} className="border-b border-border last:border-0">
+                            <td className="w-36 py-1 font-medium text-muted-foreground">{label}</td>
+                            <td className="py-1 text-foreground">{String(val)}</td>
                           </tr>
                         )
                       })}
@@ -311,11 +354,11 @@ function DocumentsTab({ canDelete }) {
                   </table>
                 )}
                 {(d.lignes ?? []).length > 0 && (
-                  <p className="text-xs text-gray-500">{d.lignes.length} ligne(s) de détail</p>
+                  <p className="text-xs text-muted-foreground">{d.lignes.length} ligne(s) de détail</p>
                 )}
               </div>
             )}
-          </div>
+          </Card>
         )
       })}
     </div>
@@ -329,34 +372,28 @@ export default function OcrUpload() {
   const canSave = role === 'responsable' || role === 'admin'
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h2>Traitement OCR</h2>
+    <div className="ui-root space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
+          Traitement OCR
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Extraction de données depuis vos factures, devis et bons.
+        </p>
       </div>
 
-      {/* Onglets */}
-      <div className="mt-2 flex gap-1 border-b border-gray-200">
-        {[
-          { key: 'analyse', label: 'Analyser un document' },
-          { key: 'documents', label: 'Documents sauvegardés' },
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors
-              ${tab === key
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'analyse'
-        ? <AnalyseTab canSave={canSave} />
-        : <DocumentsTab canDelete={canSave} />
-      }
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="analyse">Analyser un document</TabsTrigger>
+          <TabsTrigger value="documents">Documents sauvegardés</TabsTrigger>
+        </TabsList>
+        <TabsContent value="analyse">
+          <AnalyseTab canSave={canSave} />
+        </TabsContent>
+        <TabsContent value="documents">
+          <DocumentsTab canDelete={canSave} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -1,6 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
+  Search, Plus, Download, BookText, ListChecks, FileWarning,
+  MessageCircle, Code2, Check, FileText, ReceiptText,
+} from 'lucide-react'
+import {
   fetchFactures,
   emettreFacture,
   marquerPayeeFacture,
@@ -10,13 +14,22 @@ import {
 import ventesApi from '../../api/ventesApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
+import {
+  Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  Tabs, TabsList, TabsTrigger,
+  Input,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Form, FormField, FormActions,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
+import { formatMAD } from '../../lib/format'
 
-const STATUT_META = {
-  brouillon: { label: 'Brouillon', bg: '#f1f5f9', color: '#64748b' },
-  emise:     { label: 'Émise',     bg: '#dbeafe', color: '#1d4ed8' },
-  payee:     { label: 'Payée',     bg: '#dcfce7', color: '#15803d' },
-  en_retard: { label: 'En retard', bg: '#fee2e2', color: '#b91c1c' },
-  annulee:   { label: 'Annulée',   bg: '#f1f5f9', color: '#94a3b8' },
+const STATUT_DISPLAY = {
+  brouillon: 'Brouillon',
+  emise:     'Émise',
+  payee:     'Payée',
+  en_retard: 'En retard',
+  annulee:   'Annulée',
 }
 
 const TABS = [
@@ -265,8 +278,21 @@ export default function FactureList() {
     }
   }
 
-  if (loading) return <p className="page-loading">Chargement des factures...</p>
-  if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+        <Spinner /> Chargement des factures…
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="page">
+        <EmptyState icon={FileWarning} title="Erreur de chargement"
+                    description={typeof error === 'string' ? error : JSON.stringify(error)} />
+      </div>
+    )
+  }
 
   return (
     <div className="page">
@@ -274,23 +300,24 @@ export default function FactureList() {
         <h2>
           Factures
           {factures.length > 0 && (
-            <span className="count-badge">{factures.length}</span>
+            <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
           )}
         </h2>
-        <div className="page-header-actions">
-          <input
-            className="search-input"
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
             type="search"
+            className="w-full sm:w-56"
+            leading={<Search />}
             placeholder="Référence, client…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <button className="btn btn-sm btn-outline"
+          <Button size="sm" variant="outline"
                   onClick={() => importApi.exportList('factures', factures.map(f => f.id))
                     .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
-            ⬇ Exporter Excel
-          </button>
-          <button className="btn btn-sm btn-outline" title="Journal des ventes + résumé TVA (comptable)"
+            <Download /> Exporter Excel
+          </Button>
+          <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable)"
                   onClick={() => {
                     const m = window.prompt('Mois du journal des ventes (AAAA-MM) :',
                       new Date().toISOString().slice(0, 7))
@@ -299,18 +326,16 @@ export default function FactureList() {
                       .then(r => downloadXlsx(r.data, `journal-ventes-${m}.xlsx`))
                       .catch(() => {})
                   }}>
-            📒 Journal comptable
-          </button>
+            <BookText /> Journal comptable
+          </Button>
           {isAdmin && (
-            <button className="btn btn-sm btn-outline" disabled={auditBusy}
+            <Button size="sm" variant="outline" loading={auditBusy}
                     title="Vérifier les trous/doublons de numérotation (Art. 145 — séquence continue)"
                     onClick={handleAuditNumerotation}>
-              {auditBusy ? '...' : '🔢 Audit numérotation'}
-            </button>
+              <ListChecks /> Audit numérotation
+            </Button>
           )}
-          <button className="btn btn-primary" onClick={openNew}>
-            + Nouvelle facture
-          </button>
+          <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
         </div>
       </div>
 
@@ -319,246 +344,205 @@ export default function FactureList() {
       )}
 
       {/* ── Modale d'enregistrement de paiement ── */}
-      {payTarget && (
-        <div className="modal-overlay" onClick={() => setPayTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <form onSubmit={handleEnregistrerPaiement}>
-              <div className="modal-header">
-                <h3 className="modal-title">Enregistrer un paiement — {payTarget.reference}</h3>
-                <button type="button" className="modal-close" onClick={() => setPayTarget(null)}>✕</button>
-              </div>
-              <div className="modal-body">
-                <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 0 }}>
-                  Payé {payTarget.montant_paye} / Dû {payTarget.montant_du} MAD
-                </p>
-                <div className="form-group">
-                  <label className="form-label">Montant (MAD)</label>
-                  <input type="number" min="0" step="any" className="form-control" required
-                         value={payMontant} onChange={e => setPayMontant(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date de paiement</label>
-                  <input type="date" className="form-control" required
-                         value={payDate} onChange={e => setPayDate(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Mode</label>
-                  <select className="form-control" value={payMode} onChange={e => setPayMode(e.target.value)}>
-                    {MODES_PAIEMENT.map(m => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Référence (optionnel)</label>
-                  <input type="text" className="form-control"
-                         value={payReference} onChange={e => setPayReference(e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setPayTarget(null)}>
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={paySaving}>
-                  {paySaving ? '...' : 'Enregistrer'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={!!payTarget} onOpenChange={(o) => { if (!o) setPayTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enregistrer un paiement — {payTarget?.reference}</DialogTitle>
+            <DialogDescription>
+              Payé {payTarget?.montant_paye} / Dû {payTarget?.montant_du} MAD
+            </DialogDescription>
+          </DialogHeader>
+          <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
+            <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth>
+              <Input id="pay-montant" type="number" min="0" step="any" required
+                     value={payMontant} onChange={e => setPayMontant(e.target.value)} />
+            </FormField>
+            <FormField label="Date de paiement" required htmlFor="pay-date">
+              <Input id="pay-date" type="date" required
+                     value={payDate} onChange={e => setPayDate(e.target.value)} />
+            </FormField>
+            <FormField label="Mode" htmlFor="pay-mode">
+              <Select value={payMode} onValueChange={setPayMode}>
+                <SelectTrigger id="pay-mode"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MODES_PAIEMENT.map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Référence (optionnel)" htmlFor="pay-ref" fullWidth>
+              <Input id="pay-ref" type="text"
+                     value={payReference} onChange={e => setPayReference(e.target.value)} />
+            </FormField>
+            <FormActions sticky={false}>
+              <Button type="button" variant="ghost" onClick={() => setPayTarget(null)}>Annuler</Button>
+              <Button type="submit" loading={paySaving}>Enregistrer</Button>
+            </FormActions>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Tabs ── */}
-      <div className="status-tabs">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            className={`status-tab${activeTab === t.key ? ' active' : ''}${t.key === 'overdue' && counts.overdue > 0 ? ' overdue' : ''}`}
-            onClick={() => setActiveTab(t.key)}
-          >
-            {t.label}
-            {counts[t.key] > 0 && (
-              <span className="tab-count">{counts[t.key]}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-1">
+        <TabsList className="flex-wrap">
+          {TABS.map(t => (
+            <TabsTrigger key={t.key} value={t.key}
+                         className={t.key === 'overdue' && counts.overdue > 0 ? 'text-destructive data-[state=active]:text-destructive' : undefined}>
+              {t.label}
+              {counts[t.key] > 0 && (
+                <span className="ml-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{counts[t.key]}</span>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Référence</th>
-            <th>Client</th>
-            <th>Émission</th>
-            <th>Échéance</th>
-            <th className="ta-right">Total TTC</th>
-            <th>Statut</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map(f => {
-            const overdue = isOverdue(f)
-            const meta = overdue && f.statut === 'emise'
-              ? STATUT_META.en_retard
-              : (STATUT_META[f.statut] ?? STATUT_META.brouillon)
-            const busy = actionId === f.id
-            const isGenerating = pdfGenerating[f.id]
-            const isDownloading = pdfDownloading[f.id]
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={ReceiptText}
+          title={
+            search ? `Aucun résultat pour « ${search} »`
+              : activeTab !== 'toutes' ? 'Aucune facture dans cet onglet'
+                : 'Aucune facture'
+          }
+          description={search || activeTab !== 'toutes' ? undefined : 'Créez votre première facture.'}
+          action={!search && activeTab === 'toutes'
+            ? <Button onClick={openNew}><Plus /> Nouvelle facture</Button> : undefined}
+          className="mt-4"
+        />
+      ) : (
+        <Card className="mt-4 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Référence</th>
+                  <th>Client</th>
+                  <th>Émission</th>
+                  <th>Échéance</th>
+                  <th className="ta-right">Total TTC</th>
+                  <th>Statut</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(f => {
+                  const overdue = isOverdue(f)
+                  const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
+                  const busy = actionId === f.id
+                  const isGenerating = pdfGenerating[f.id]
+                  const isDownloading = pdfDownloading[f.id]
 
-            return (
-              <tr key={f.id} className={overdue ? 'row-overdue' : ''}>
-                <td>
-                  <strong>{f.reference}</strong>
-                  {f.type_facture_display && (
-                    <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>
-                      {f.type_facture_display}
-                    </div>
-                  )}
-                  {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
-                    <div
-                      className="badge"
-                      style={{ background: '#fffbeb', color: '#92400e', marginTop: 2,
-                               fontSize: '0.66rem', cursor: 'help' }}
-                      title={`Mentions légales manquantes (Art. 145) :\n- ${f.mentions_manquantes.join('\n- ')}`}
-                    >
-                      ⚠ {f.mentions_manquantes.length} mention(s) manquante(s)
-                    </div>
-                  )}
-                </td>
-                <td>{f.client_nom ?? '—'}</td>
-                <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
-                <td>
-                  <span className={overdue ? 'text-danger' : ''}>
-                    {f.date_echeance
-                      ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
-                      : '—'}
-                  </span>
-                </td>
-                <td className="ta-right">
-                  {f.total_ttc != null
-                    ? `${parseFloat(f.total_ttc).toFixed(2)} DH`
-                    : '—'}
-                  {(f.montant_paye != null || f.montant_du != null) && (
-                    <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>
-                      Payé {f.montant_paye} / Dû {f.montant_du} MAD
-                    </div>
-                  )}
-                </td>
-                <td>
-                  <span className="badge" style={{ background: meta.bg, color: meta.color }}>
-                    {meta.label}
-                  </span>
-                </td>
-                <td>
-                  <div className="actions-cell">
-                    {f.statut === 'brouillon' && (
-                      <button className="btn btn-sm btn-outline" onClick={() => openEdit(f)}>
-                        Éditer
-                      </button>
-                    )}
-                    {f.statut === 'brouillon' && (
-                      <button
-                        className="btn btn-sm btn-primary"
-                        disabled={busy}
-                        onClick={() => doAction(emettreFacture, f.id)}
-                      >
-                        {busy ? '...' : 'Émettre'}
-                      </button>
-                    )}
-                    {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
-                      <button
-                        className="btn btn-sm btn-success"
-                        disabled={busy}
-                        onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}
-                      >
-                        {busy ? '...' : '✓ Payée'}
-                      </button>
-                    )}
-                    {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => openPayModal(f)}
-                        title="Enregistrer un paiement"
-                      >
-                        Enregistrer paiement
-                      </button>
-                    )}
-                    {f.statut !== 'payee' && f.statut !== 'annulee' && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        disabled={busy}
-                        onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}
-                      >
-                        Annuler
-                      </button>
-                    )}
-                    {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => creerAvoir(f)}
-                        title="Créer un avoir (note de crédit)"
-                      >
-                        Avoir
-                      </button>
-                    )}
-
-                    {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => handleWhatsApp(f, 'facture')}
-                        disabled={waBusyId === f.id}
-                        title="Envoyer par WhatsApp (lien vers le PDF client)"
-                      >
-                        {waBusyId === f.id ? '...' : '🟢 WhatsApp'}
-                      </button>
-                    )}
-
-                    {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => handleUbl(f)}
-                        disabled={ublBusyId === f.id}
-                        title="Aperçu BROUILLON UBL 2.1 (XML) — préparation e-facturation, non transmis"
-                      >
-                        {ublBusyId === f.id ? '...' : '⟨/⟩ UBL'}
-                      </button>
-                    )}
-                    {f.fichier_pdf ? (
-                      <button
-                        className="btn btn-sm btn-success"
-                        onClick={() => handleTelechargerPdf(f)}
-                        disabled={isDownloading}
-                        title="Télécharger le PDF"
-                      >
-                        {isDownloading ? '...' : '↓ PDF'}
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => handleGenererPdf(f)}
-                        disabled={isGenerating}
-                        title="Générer le PDF"
-                      >
-                        {isGenerating ? 'PDF...' : 'PDF'}
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-
-      {filtered.length === 0 && !loading && (
-        <p className="empty-state">
-          {search
-            ? `Aucun résultat pour « ${search} »`
-            : activeTab !== 'toutes'
-              ? 'Aucune facture dans cet onglet.'
-              : 'Aucune facture. Créez votre première facture.'}
-        </p>
+                  return (
+                    <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
+                      <td>
+                        <strong>{f.reference}</strong>
+                        {f.type_facture_display && (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {f.type_facture_display}
+                          </div>
+                        )}
+                        {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
+                          <Badge
+                            tone="warning"
+                            className="mt-1 cursor-help"
+                            title={`Mentions légales manquantes (Art. 145) :\n- ${f.mentions_manquantes.join('\n- ')}`}
+                          >
+                            <FileWarning className="size-3" />
+                            {f.mentions_manquantes.length} mention(s) manquante(s)
+                          </Badge>
+                        )}
+                      </td>
+                      <td>{f.client_nom ?? '—'}</td>
+                      <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+                      <td>
+                        <span className={overdue ? 'font-semibold text-destructive' : undefined}>
+                          {f.date_echeance
+                            ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
+                            : '—'}
+                        </span>
+                      </td>
+                      <td className="ta-right tabular-nums">
+                        {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
+                        {(f.montant_paye != null || f.montant_du != null) && (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            Payé {f.montant_paye} / Dû {f.montant_du} MAD
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {f.statut === 'brouillon' && (
+                            <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
+                              Éditer
+                            </Button>
+                          )}
+                          {f.statut === 'brouillon' && (
+                            <Button size="sm" loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
+                              Émettre
+                            </Button>
+                          )}
+                          {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
+                            <Button size="sm" variant="success" loading={busy}
+                                    onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}>
+                              <Check /> Payée
+                            </Button>
+                          )}
+                          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+                            <Button size="sm" variant="outline" onClick={() => openPayModal(f)} title="Enregistrer un paiement">
+                              Enregistrer paiement
+                            </Button>
+                          )}
+                          {f.statut !== 'payee' && f.statut !== 'annulee' && (
+                            <Button size="sm" variant="outline" loading={busy}
+                                    onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
+                              Annuler
+                            </Button>
+                          )}
+                          {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                            <Button size="sm" variant="outline" onClick={() => creerAvoir(f)}
+                                    title="Créer un avoir (note de crédit)">
+                              Avoir
+                            </Button>
+                          )}
+                          {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                            <Button size="sm" variant="outline" loading={waBusyId === f.id}
+                                    onClick={() => handleWhatsApp(f, 'facture')}
+                                    title="Envoyer par WhatsApp (lien vers le PDF client)">
+                              <MessageCircle /> WhatsApp
+                            </Button>
+                          )}
+                          {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                            <Button size="sm" variant="outline" loading={ublBusyId === f.id}
+                                    onClick={() => handleUbl(f)}
+                                    title="Aperçu BROUILLON UBL 2.1 (XML) — préparation e-facturation, non transmis">
+                              <Code2 /> UBL
+                            </Button>
+                          )}
+                          {f.fichier_pdf ? (
+                            <Button size="sm" variant="success" loading={isDownloading}
+                                    onClick={() => handleTelechargerPdf(f)} title="Télécharger le PDF">
+                              <Download /> PDF
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" loading={isGenerating}
+                                    onClick={() => handleGenererPdf(f)} title="Générer le PDF">
+                              <FileText /> PDF
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   )

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import ProduitPicker from '../../components/ProduitPicker'
 import { downloadBlob } from '../../utils/downloadBlob'
+import {
+  Button, IconButton, StatusPill, DataTable,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Input, Textarea,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 import {
   BCF_STATUTS,
   bcfStatutLabel,
@@ -13,13 +20,6 @@ import {
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
 
-const STATUT_COLORS = {
-  brouillon: '#64748b',
-  envoye: '#2563eb',
-  recu: '#16a34a',
-  annule: '#b91c1c',
-}
-
 const fmtMad = (v) => {
   const n = Number(v) || 0
   return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`
@@ -28,18 +28,6 @@ const fmtDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
-}
-
-function StatutBadge({ statut }) {
-  const c = STATUT_COLORS[statut] ?? '#64748b'
-  return (
-    <span className="badge" style={{
-      background: `${c}22`, color: c, padding: '2px 8px',
-      borderRadius: 6, fontSize: 12, whiteSpace: 'nowrap', fontWeight: 600,
-    }}>
-      {bcfStatutLabel(statut)}
-    </span>
-  )
 }
 
 // ── N19 — Modal de retour fournisseur (créé + validé depuis un BCF) ──────────
@@ -84,34 +72,38 @@ function RetourModal({ bcf, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Retour fournisseur — {bcf.reference}</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <p className="gen-hint" style={{ marginTop: 0 }}>
-            Articles défectueux ou erronés. À la validation, le stock est
-            décrémenté. Donnée interne (prix d'achat jamais client-facing).
-          </p>
-          <table className="data-table">
-            <thead>
-              <tr><th>Produit</th><th>Reçu</th><th>À retourner</th><th>Motif</th></tr>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Retour fournisseur — {bcf.reference}</DialogTitle>
+          <DialogDescription>
+            Articles défectueux ou erronés. À la validation, le stock est décrémenté.
+            Donnée interne (prix d&apos;achat jamais client-facing).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="overflow-hidden rounded-lg border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold">Produit</th>
+                <th className="px-3 py-2 text-left font-semibold">Reçu</th>
+                <th className="px-3 py-2 text-left font-semibold">À retourner</th>
+                <th className="px-3 py-2 text-left font-semibold">Motif</th>
+              </tr>
             </thead>
             <tbody>
               {lignes.map((l) => (
-                <tr key={l.id}>
-                  <td>{l.produit_nom}</td>
-                  <td>{l.quantite_recue}</td>
-                  <td>
-                    <input type="number" min="0" className="form-control"
-                           style={{ width: 90 }}
+                <tr key={l.id} className="border-t border-border">
+                  <td className="px-3 py-2">{l.produit_nom}</td>
+                  <td className="px-3 py-2 tabular-nums">{l.quantite_recue}</td>
+                  <td className="px-3 py-2">
+                    <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
                            value={saisies[l.id]?.qte ?? ''}
                            onChange={(e) => setLigne(l.id, { qte: e.target.value })} />
                   </td>
-                  <td>
-                    <input className="form-control"
+                  <td className="px-3 py-2">
+                    <Input className="h-9"
                            value={saisies[l.id]?.motif ?? ''}
                            placeholder="ex. cassé à la livraison"
                            onChange={(e) => setLigne(l.id, { motif: e.target.value })} />
@@ -120,16 +112,21 @@ function RetourModal({ bcf, onClose, onDone }) {
               ))}
             </tbody>
           </table>
-          {error && <div className="form-error-box" role="alert">{error}</div>}
         </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={submit}>
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button type="button" loading={busy} onClick={submit}>
             {busy ? 'Enregistrement…' : 'Valider le retour'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -240,75 +237,75 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
             {isNew ? 'Nouveau bon de commande fournisseur'
               : `Bon de commande — ${bcf.reference ?? ''}`}
-            {!isNew && <span style={{ marginLeft: 8 }}><StatutBadge statut={statut} /></span>}
-          </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+            {!isNew && <StatusPill status={statut} label={bcfStatutLabel(statut)} />}
+          </DialogTitle>
+          <DialogDescription>
+            Document <strong>interne</strong> : les prix d&apos;achat n&apos;apparaissent
+            jamais sur un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-fou">Fournisseur</label>
+            <Select value={fournisseur ? String(fournisseur) : '__none'} disabled={!editableLignes}
+                    onValueChange={(v) => setFournisseur(v === '__none' ? '' : v)}>
+              <SelectTrigger id="bcf-fou"><SelectValue placeholder="— Choisir un fournisseur —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Choisir un fournisseur —</SelectItem>
+                {fournisseurs.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-date">Date de commande</label>
+            <Input id="bcf-date" type="date" value={dateCommande ?? ''}
+                   disabled={!editableLignes}
+                   onChange={(e) => setDateCommande(e.target.value)} />
+          </div>
         </div>
 
-        <div className="modal-body">
-          <p className="gen-hint" style={{ marginTop: 0 }}>
-            Document <strong>interne</strong> : les prix d'achat n'apparaissent
-            jamais sur un document client.
-          </p>
-
-          <div className="form-row">
-            <div className="form-group fg-grow">
-              <label className="form-label">Fournisseur</label>
-              <select className="form-select" value={fournisseur}
-                      disabled={!editableLignes}
-                      onChange={(e) => setFournisseur(e.target.value)}>
-                <option value="">— Choisir un fournisseur —</option>
-                {fournisseurs.map((f) => (
-                  <option key={f.id} value={f.id}>{f.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Date de commande</label>
-              <input type="date" className="form-control" value={dateCommande ?? ''}
-                     disabled={!editableLignes}
-                     onChange={(e) => setDateCommande(e.target.value)} />
-            </div>
+        {/* ── Lignes ── */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              <Package className="size-4 text-muted-foreground" /> Lignes
+            </span>
+            {editableLignes && (
+              <Button type="button" variant="outline" size="sm" onClick={addLigne}>
+                <Plus /> Ajouter une ligne
+              </Button>
+            )}
           </div>
-
-          {/* ── Lignes ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">📦 Lignes</span>
-              {editableLignes && (
-                <button type="button" className="btn btn-sm btn-outline" onClick={addLigne}>
-                  + Ajouter une ligne
-                </button>
-              )}
-            </div>
-            <table className="lines-table">
-              <thead>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th style={{ minWidth: 220 }}>Article</th>
-                  <th>Quantité</th>
-                  <th>Prix achat U. (interne)</th>
-                  <th>Total HT</th>
-                  {!isNew && <th>Reçu</th>}
-                  {!isNew && statut === 'envoye' && <th>À recevoir</th>}
-                  {editableLignes && <th></th>}
+                  <th className="px-3 py-2 text-left font-semibold" style={{ minWidth: 220 }}>Article</th>
+                  <th className="px-3 py-2 text-left font-semibold">Quantité</th>
+                  <th className="px-3 py-2 text-left font-semibold">Prix achat U. (interne)</th>
+                  <th className="px-3 py-2 text-left font-semibold">Total HT</th>
+                  {!isNew && <th className="px-3 py-2 text-left font-semibold">Reçu</th>}
+                  {!isNew && statut === 'envoye' && <th className="px-3 py-2 text-left font-semibold">À recevoir</th>}
+                  {editableLignes && <th className="w-10 px-3 py-2" />}
                 </tr>
               </thead>
               <tbody>
                 {lignes.length === 0 && (
-                  <tr><td colSpan={7} className="gen-hint">Aucune ligne.</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-3 text-sm text-muted-foreground">Aucune ligne.</td></tr>
                 )}
                 {lignes.map((l, idx) => {
                   const lineTotal = (Number(l.quantite) || 0) * (Number(l.prix_achat_unitaire) || 0)
                   const restante = quantiteRestante(l)
                   return (
-                    <tr key={l.id ?? `new-${idx}`}>
-                      <td>
+                    <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
+                      <td className="px-3 py-2">
                         {editableLignes ? (
                           <ProduitPicker produits={produits} value={l.produit}
                                          onChange={(v) => setLigne(idx, { produit: v })} />
@@ -316,37 +313,38 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                           <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
                         )}
                       </td>
-                      <td>
+                      <td className="px-3 py-2">
                         {editableLignes ? (
-                          <input type="number" step="any" className="form-control"
-                                 style={{ width: 90 }} value={l.quantite ?? ''}
+                          <Input type="number" step="any" inputMode="decimal" className="h-9 w-24"
+                                 value={l.quantite ?? ''}
                                  onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
                         ) : l.quantite}
                       </td>
-                      <td>
+                      <td className="px-3 py-2">
                         {editableLignes ? (
-                          <input type="number" step="any" className="form-control"
-                                 style={{ width: 130 }} value={l.prix_achat_unitaire ?? ''}
+                          <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
+                                 value={l.prix_achat_unitaire ?? ''}
                                  onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
                         ) : fmtMad(l.prix_achat_unitaire)}
                       </td>
-                      <td>{fmtMad(lineTotal)}</td>
-                      {!isNew && <td>{l.quantite_recue ?? 0}</td>}
+                      <td className="px-3 py-2 tabular-nums">{fmtMad(lineTotal)}</td>
+                      {!isNew && <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>}
                       {!isNew && statut === 'envoye' && (
-                        <td>
+                        <td className="px-3 py-2">
                           {restante > 0 ? (
-                            <input type="number" min="0" max={restante} className="form-control"
-                                   style={{ width: 90 }}
+                            <Input type="number" min="0" max={restante} inputMode="numeric" className="h-9 w-24"
                                    placeholder={`/${restante}`}
                                    value={receptions[l.id] ?? ''}
                                    onChange={(e) => setReceptions((r) => ({ ...r, [l.id]: e.target.value }))} />
-                          ) : <span className="gen-hint">soldée</span>}
+                          ) : <span className="text-xs text-muted-foreground">soldée</span>}
                         </td>
                       )}
                       {editableLignes && (
-                        <td>
-                          <button type="button" className="btn btn-sm btn-outline"
-                                  onClick={() => removeLigne(idx)}>✕</button>
+                        <td className="px-3 py-2">
+                          <IconButton label="Retirer la ligne" variant="ghost" size="icon" className="size-8"
+                                      onClick={() => removeLigne(idx)}>
+                            <Trash2 className="text-destructive" />
+                          </IconButton>
                         </td>
                       )}
                     </tr>
@@ -354,61 +352,65 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                 })}
               </tbody>
             </table>
-            <div style={{ textAlign: 'right', marginTop: 8, fontWeight: 700 }}>
-              Total achat HT (interne) : {fmtMad(total)}
-            </div>
           </div>
-
-          <div className="form-group">
-            <label className="form-label">Note</label>
-            <textarea className="form-control" rows={2} value={note ?? ''}
-                      disabled={!editableLignes && statut !== 'envoye'}
-                      onChange={(e) => setNote(e.target.value)} />
+          <div className="text-right text-sm font-bold">
+            Total achat HT (interne) : {fmtMad(total)}
           </div>
-
-          {error && <div className="form-error-box" role="alert">{error}</div>}
         </div>
 
-        <div className="modal-footer">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="bcf-note">Note</label>
+          <Textarea id="bcf-note" rows={2} value={note ?? ''}
+                    disabled={!editableLignes && statut !== 'envoye'}
+                    onChange={(e) => setNote(e.target.value)} />
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        <DialogFooter className="flex-wrap">
           {!isNew && statut !== 'annule' && (
-            <button type="button" className="btn btn-outline" onClick={telechargerPdf}>
-              📄 PDF (interne)
-            </button>
+            <Button type="button" variant="outline" onClick={telechargerPdf}>
+              <FileText /> PDF (interne)
+            </Button>
           )}
           {!isNew && (statut === 'brouillon' || statut === 'envoye') && (
-            <button type="button" className="btn btn-danger" disabled={busy} onClick={annuler}>
+            <Button type="button" variant="destructive" loading={busy} onClick={annuler}>
               Annuler le BC
-            </button>
+            </Button>
           )}
-          <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           {editableLignes && (
             <>
-              <button type="button" className="btn btn-outline" disabled={busy} onClick={save}>
+              <Button type="button" variant="outline" loading={busy} onClick={save}>
                 {busy ? '…' : 'Enregistrer'}
-              </button>
-              <button type="button" className="btn btn-primary" disabled={busy} onClick={envoyer}>
+              </Button>
+              <Button type="button" loading={busy} onClick={envoyer}>
                 {busy ? '…' : 'Envoyer au fournisseur'}
-              </button>
+              </Button>
             </>
           )}
           {!isNew && statut === 'envoye' && (
-            <button type="button" className="btn btn-success" disabled={busy} onClick={recevoir}>
+            <Button type="button" variant="success" loading={busy} onClick={recevoir}>
               {busy ? '…' : 'Recevoir les quantités'}
-            </button>
+            </Button>
           )}
           {!isNew && (statut === 'recu' || statut === 'envoye') && (
-            <button type="button" className="btn btn-outline" onClick={() => setShowRetour(true)}
+            <Button type="button" variant="outline" onClick={() => setShowRetour(true)}
                     title="Retourner des articles défectueux/erronés (décrémente le stock)">
-              ↩ Retour fournisseur
-            </button>
+              <Undo2 /> Retour fournisseur
+            </Button>
           )}
-        </div>
-      </div>
+        </DialogFooter>
+      </DialogContent>
       {showRetour && (
         <RetourModal bcf={bcf} onClose={() => setShowRetour(false)}
                      onDone={() => { onSaved?.() }} />
       )}
-    </div>
+    </Dialog>
   )
 }
 
@@ -418,7 +420,6 @@ export default function BonsCommandeFournisseur() {
   const [fournisseurs, setFournisseurs] = useState([])
   const [produits, setProduits] = useState([])
   const [statutFiltre, setStatutFiltre] = useState('')
-  const [q, setQ] = useState('')
   const [selected, setSelected] = useState(null) // bcf object or {} for new
 
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
@@ -436,15 +437,11 @@ export default function BonsCommandeFournisseur() {
     stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    return items.filter((b) => {
-      if (statutFiltre && b.statut !== statutFiltre) return false
-      if (!needle) return true
-      return (b.reference ?? '').toLowerCase().includes(needle)
-        || (b.fournisseur_nom ?? '').toLowerCase().includes(needle)
-    })
-  }, [items, statutFiltre, q])
+  // Le filtre statut reste local (Select dédié) ; la recherche texte
+  // (référence / fournisseur) est gérée par le DataTable via globalColumns.
+  const rows = useMemo(() => (
+    statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
+  ), [items, statutFiltre])
 
   // Ouvre le détail en rechargeant la version complète (lignes à jour).
   const openBcf = async (b) => {
@@ -454,63 +451,66 @@ export default function BonsCommandeFournisseur() {
     } catch { setSelected(b) }
   }
 
-  return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Bons de commande fournisseur</h1>
-        <div className="page-subtitle">{rows.length} bon(s) de commande</div>
-        <button type="button" className="btn btn-sm btn-primary"
-                onClick={() => setSelected({})}>
-          + Nouveau bon de commande
-        </button>
-      </div>
+  const columns = useMemo(() => [
+    { id: 'reference', header: 'Référence', minWidth: 140,
+      accessor: (b) => b.reference ?? '' },
+    { id: 'fournisseur_nom', header: 'Fournisseur', minWidth: 160,
+      accessor: (b) => b.fournisseur_nom ?? '',
+      cell: (v) => v || <span className="text-muted-foreground">—</span> },
+    { id: 'statut', header: 'Statut', width: 130, searchable: false,
+      accessor: (b) => b.statut,
+      cell: (v) => <StatusPill status={v} label={bcfStatutLabel(v)} /> },
+    { id: 'date_commande', header: 'Date', width: 120, searchable: false,
+      accessor: (b) => b.date_commande,
+      cell: (v) => fmtDateFR(v) },
+    { id: 'lignes', header: 'Lignes', align: 'right', width: 90, searchable: false,
+      accessor: (b) => (b.lignes ?? []).length },
+    { id: 'total_achat', header: 'Total achat HT (interne)', align: 'right', minWidth: 170, searchable: false,
+      accessor: (b) => b.total_achat,
+      cell: (v) => fmtMad(v) },
+  ], [])
 
-      <div className="filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-        <input className="form-control" placeholder="Rechercher (référence, fournisseur)…"
-               value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: '1 1 220px' }} />
-        <select className="form-select" value={statutFiltre} onChange={(e) => setStatutFiltre(e.target.value)}>
-          <option value="">Tous les statuts</option>
-          {Object.entries(BCF_STATUTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        {(q || statutFiltre) && (
-          <button type="button" className="btn btn-sm btn-outline"
-                  onClick={() => { setQ(''); setStatutFiltre('') }}>Réinitialiser</button>
+  return (
+    <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-xl font-semibold tracking-tight">Bons de commande fournisseur</h1>
+          <p className="text-sm text-muted-foreground">{rows.length} bon(s) de commande</p>
+        </div>
+        <Button onClick={() => setSelected({})}>
+          <Plus /> Nouveau bon de commande
+        </Button>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="w-48 sm:w-56">
+          <Select value={statutFiltre || '__all'} onValueChange={(v) => setStatutFiltre(v === '__all' ? '' : v)}>
+            <SelectTrigger><SelectValue placeholder="Tous les statuts" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Tous les statuts</SelectItem>
+              {Object.entries(BCF_STATUTS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {statutFiltre && (
+          <Button variant="ghost" size="sm" onClick={() => setStatutFiltre('')}>
+            Réinitialiser
+          </Button>
         )}
       </div>
 
-      {loading ? (
-        <p className="gen-hint">Chargement…</p>
-      ) : rows.length === 0 ? (
-        <p className="gen-hint">Aucun bon de commande fournisseur. Créez-en un avec « Nouveau bon de commande »
-          ou depuis le besoin matériel d'un chantier.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Référence</th>
-                <th>Fournisseur</th>
-                <th>Statut</th>
-                <th>Date</th>
-                <th>Lignes</th>
-                <th>Total achat HT (interne)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((b) => (
-                <tr key={b.id} onClick={() => openBcf(b)} style={{ cursor: 'pointer' }}>
-                  <td>{b.reference}</td>
-                  <td>{b.fournisseur_nom ?? '—'}</td>
-                  <td><StatutBadge statut={b.statut} /></td>
-                  <td>{fmtDateFR(b.date_commande)}</td>
-                  <td>{(b.lignes ?? []).length}</td>
-                  <td>{fmtMad(b.total_achat)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        loading={loading}
+        getRowId={(b) => b.id}
+        searchPlaceholder="Rechercher (référence, fournisseur)…"
+        globalColumns={['reference', 'fournisseur_nom']}
+        onRowClick={openBcf}
+        emptyTitle="Aucun bon de commande fournisseur"
+        emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
+        aria-label="Bons de commande fournisseur"
+      />
 
       {selected && (
         <BcfDetail bcf={selected} fournisseurs={fournisseurs} produits={produits}
