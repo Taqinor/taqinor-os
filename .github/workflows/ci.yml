@@ -237,6 +237,9 @@ jobs:
       - name: Install apps/web dependencies
         working-directory: apps/web
         run: npm ci
+      - name: Type-check apps/web logic (tsc — src/lib estimator/math surface)
+        working-directory: apps/web
+        run: npm run check
       - name: Build marketing site (astro build)
         working-directory: apps/web
         run: npm run build
