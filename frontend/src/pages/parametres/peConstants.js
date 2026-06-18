@@ -32,6 +32,7 @@ export const TABS = [
   { key: 'stock',      label: 'Stock' },
   { key: 'statuts',    label: 'Statuts' },
   { key: 'checklists', label: 'Checklists' },
+  { key: 'kits',       label: "Kits d'outillage" },
   { key: 'equipe',     label: 'Équipe & rôles' },
   { key: 'messages',   label: 'Messages & relances' },
   { key: 'avance',     label: 'Avancé' },
