@@ -117,26 +117,22 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
     without re-entry**, with a **non-blocking reminder** when missing on B2B docs;
   - a configurable **RIB + payment-instructions block** on the devis/facture PDFs;
   - **editable warranty texts per product/category**, seeded from the current texts.
-  These print through the **existing vendored quote engine** — do **not** edit the premium
-  PDF pages; feed the engine new fields (rule #4).
-  _(2026-06-17 — STOP-AND-ASK : conflit avec une règle non-négociable. Le moteur premium
-  `apps/ventes/quote_engine/generate_devis_premium.py` CODE EN DUR la validité « 30 jours »,
-  le bloc RIB, les conditions générales et l'identité légale (ce ne sont pas des champs de
-  données — ce sont des littéraux dans le gabarit). Les imprimer depuis les Paramètres exige
-  de modifier ces pages premium, ce que la règle #4 / la règle permanente « ne jamais éditer
-  les pages premium » interdit. « Feed the engine new fields » suppose que le moteur consomme
-  ces champs, ce qui n'est pas le cas. Décision du founder requise : (a) autoriser un câblage
-  minimal des littéraux vers des champs `data` AVEC valeurs par défaut identiques (sortie PDF
-  inchangée tant que rien n'est édité), ou (b) accepter que CGV/validité/RIB restent figés
-  dans le moteur. Idem N36 / N60 / N67 (mêmes littéraux premium). Laissé `[ ]` ; D3 et D5
-  restent constructibles. Note : le client ICE (N28) et les défauts acompte (N34) /
-  responsable existent déjà ; la validité est déjà éditable dans Paramètres → Devis & Factures
-  mais le PDF affiche « 30 jours » figé.)_
-  _(MISE À JOUR 2026-06-18 — Feature B a livré le bloc RIB + Instructions de paiement +
-  Conditions générales ÉDITABLE dans Paramètres → Société, imprimé sur la **FACTURE**
-  uniquement quand renseigné (identique au byte près tant que vide). Reste gaté : l'impression
-  côté **DEVIS** (moteur premium, règle #4). Voir N36/N60 dans PLAN.md. Laissé `[ ]` car D2
-  couvre aussi le devis + d'autres sous-points.)_
+  Ces littéraux s'impriment via le **moteur de devis vendoré existant**.
+  _(UNGATED 2026-06-18 — chantier « littéraux PDF règle #4 ». Décision du founder prise =
+  option (a) : autoriser un **câblage minimal des littéraux** (CGV, validité, RIB, garanties,
+  « accepté le… ») du moteur premium `apps/ventes/quote_engine/generate_devis_premium.py` vers
+  des **réglages éditables versionnés**, chaque réglage par DÉFAUT reproduisant EXACTEMENT le
+  texte actuel pour que le PDF rendu soit **identique au byte près tant que rien n'est édité** ;
+  la disposition visuelle NE CHANGE PAS. C'est une exception ciblée à « ne jamais éditer les
+  pages premium », limitée à ce seul câblage littéral→réglage — PRÉ-APPROUVÉ (voir le bloc
+  PRÉ-APPROUVÉ de `docs/PLAN.md`). Couvre les mêmes littéraux que N26 / N59 / N60 / N67 dans
+  `docs/PLAN.md` ; construire D2 et ces tâches comme une seule famille cohérente. Déjà livré
+  côté FACTURE : RIB + Instructions de paiement + Conditions générales (Feature B, voir N36) —
+  reste à câbler le CÔTÉ DEVIS. Le client ICE (N28) et les défauts acompte (N34) / responsable
+  existent déjà. Laissé `[ ]` — non construit. Règles permanentes : texte UI en français ;
+  FK company forcée serveur ; chaque réglage par défaut = texte actuel exact (PDF byte-identique) ;
+  migrations additives ; aucun prix d'achat sur le PDF client ; STAGES.py/funnel intouchés ;
+  DEBUG/déploiement/sécurité inchangés.)_
 
 - [x] **D4 — Roles & permissions editor (on the existing roles app).** Grant/restrict
   **per module and action**. **Buy prices and margins visible to owner only by default.** Ship
