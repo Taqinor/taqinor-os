@@ -27,6 +27,22 @@ body {
 html, body { max-width: 100%; overflow-x: hidden; }
 img, table, pre { max-width: 100%; }
 
+/* M62 — Défilement fluide (ancres, scrollIntoView). */
+html { scroll-behavior: smooth; }
+
+/* M62 — Confort de mouvement (catch-all). En complément des `--motion-*` déjà
+   mis à 0 dans tokens.css, on neutralise TOUTE animation/transition CSS — y
+   compris celles des écrans legacy qui n'utilisent pas ces tokens — quand
+   l'utilisateur demande à réduire les animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 #root {
   width: 100%;
   min-height: 100vh;
