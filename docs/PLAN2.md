@@ -77,7 +77,7 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## Group M — Mobile & PWA polish (Meryem is iPhone-primary)
 - [x] **M58.** iOS pass: safe-area insets everywhere, tap targets ≥44pt, 16px inputs (no zoom), no horizontal scroll on core flows, modals → bottom sheets, primary actions thumb-reachable.
-- [ ] **M59.** PWA icons: standard 192/512 + maskable variants with the 80% safe zone, plus favicon — from the sun-bolt asset (BLOCKED until Reda uploads the logo/PNG); add splash + install-prompt UI.
+- [x] **M59.** PWA icons: standard 192/512 + maskable variants with the 80% safe zone, plus favicon — from the sun-bolt asset (BLOCKED until Reda uploads the logo/PNG); add splash + install-prompt UI. (SHIPPED 2026-06-18 — Feature C: regenerated 192/512/maskable(512)/180 apple-touch + favicon-16/32 + favicon.ico from the sun-bolt « O » glyph of the official logo on the navy brand background, via `frontend/scripts/gen_pwa_icons.py`. Splash screens + install-prompt UI not in this pass.)
 - [x] **M60.** (already present) Service-worker update flow: a "Nouvelle version — recharger" toast when a new build is live (removes the delete-and-reinstall pain for future updates).
 - [x] **M61.** Offline state: cached app shell + a clear offline banner instead of a browser error page.
 - [x] **M62.** Smooth scrolling + reduced-motion respected throughout.
@@ -132,15 +132,24 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
   restent constructibles. Note : le client ICE (N28) et les défauts acompte (N34) /
   responsable existent déjà ; la validité est déjà éditable dans Paramètres → Devis & Factures
   mais le PDF affiche « 30 jours » figé.)_
+  _(MISE À JOUR 2026-06-18 — Feature B a livré le bloc RIB + Instructions de paiement +
+  Conditions générales ÉDITABLE dans Paramètres → Société, imprimé sur la **FACTURE**
+  uniquement quand renseigné (identique au byte près tant que vide). Reste gaté : l'impression
+  côté **DEVIS** (moteur premium, règle #4). Voir N36/N60 dans PLAN.md. Laissé `[ ]` car D2
+  couvre aussi le devis + d'autres sous-points.)_
 
-- [ ] **D4 — Roles & permissions editor (on the existing roles app).** Grant/restrict
+- [x] **D4 — Roles & permissions editor (on the existing roles app).** Grant/restrict
   **per module and action**. **Buy prices and margins visible to owner only by default.** Ship
   a **safe default role set** (owner / commerciale / technicien / viewer) so **current access
   is unchanged**. Add **record-level scoping where feasible**. Margins/buy-price
   (`Produit.prix_achat`) must remain generator-only and never reach any PDF/client output.
-  _(2026-06-17 — STOP-AND-ASK : changement d'autorisations/RBAC = nouvelle
-  architecture, aligné sur le GATED G4 de PLAN.md ; laissé `[ ]`, à traiter sur
-  décision du founder. D1–D3 et D5 restent constructibles.)_
+  _(SHIPPED 2026-06-18 — founder pre-approved the auth change. Seven editable roles
+  (Directeur, Administrateur, Commercial responsable, Commercial, Technicien responsable,
+  Technicien, Viewer) seeded per company; full module×action grid in Paramètres → Rôles;
+  `prix_achat_voir` gates buy prices (Directeur/Admin only); record-visibility scoping by
+  supervisor/team across leads/clients/devis/factures/avoirs/relances/chantiers/
+  interventions/tickets/équipements; existing users mapped so nobody lost access. Pairs with
+  the supervisor/team hierarchy (Feature E) and the activity log (Feature G).)_
 
 ### Group E — End-to-end (E2E) browser test suite covering every screen flow
 
@@ -148,6 +157,29 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — RBAC + visibilité + audit + réglages facture + chart chantiers +
+  icônes PWA (run « features A–G », un seul self-merge). **D4/N68/N69 (RBAC) :**
+  7 rôles éditables (Directeur, Administrateur, Commercial responsable, Commercial,
+  Technicien responsable, Technicien, Viewer) semés par société ; grille
+  module×action complète dans Paramètres → Rôles ; prix d'achat & marges gatés par
+  `prix_achat_voir` (Directeur/Admin) ; utilisateurs existants mappés sans perte
+  d'accès. **Feature E (hiérarchie d'équipe, NON pré-listée) :** champ `supervisor`
+  nullable sur l'utilisateur + éditeur dans Paramètres → Équipe. **Feature F
+  (visibilité des enregistrements, NON pré-listée — couverte par N68) :** narrowing
+  OPT-IN par rôle (équipe/sous-arbre) appliqué aux listes ET détails des leads,
+  clients, devis, factures, avoirs, relances, chantiers, interventions, tickets,
+  équipements ; admins/légacy/rôles personnalisés voient tout ; chacun voit toujours
+  ses propres enregistrements. **Feature G (Journal d'activité / audit, NON
+  pré-listé) :** un modèle d'audit company-scopé (signaux + middleware best-effort),
+  capture connexion/déconnexion/échec + CRUD + statut + PDF/export/WhatsApp,
+  endpoints stats (buckets Africa/Casablanca) + liste filtrable, page
+  « Journal d'activité » réservée au Directeur (permission éditable). **N36/D2
+  (Feature B) :** RIB + Instructions de paiement + Conditions générales éditables,
+  imprimés sur la FACTURE seulement si renseignés (identique au byte près sinon ;
+  côté devis gaté règle #4). **K51 — comblé :** graphe « Chantiers par statut »
+  ajouté au tableau de bord (recharts, respecte la nouvelle visibilité).
+  **M59/Feature C :** icônes PWA + favicons régénérées depuis le logo. CI verte,
+  merge unique vers `main`.
 - 2026-06-18 — Refonte UI, vague 5 (Groupes M/N/O/P — finitions mobile/PWA,
   accessibilité, performance, nettoyage). 10 tâches livrées en 4 lanes parallèles
   à fichiers DISJOINTS (orchestrateur = revue + bookkeeping centralisé). **Lane
