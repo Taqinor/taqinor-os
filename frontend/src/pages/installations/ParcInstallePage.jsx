@@ -3,11 +3,22 @@
 // année d'installation) + vue « carte » par liens GPS. La carte à tuiles
 // interactive est différée (nécessiterait une nouvelle dépendance, leaflet).
 // N10 — un clic ouvre la fiche système (InstallationDetail), le hub par actif.
+// J43 — portée sur le système de design (DataTable, Select, Input, Button).
 import { useEffect, useMemo, useState } from 'react'
+import { Download, Search, ExternalLink } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import { TYPE_LABELS } from '../../features/installations/statuses'
 import InstallationDetail from './InstallationDetail'
+import {
+  Button, Badge, Segmented, Spinner, EmptyState, Input,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  DataTable,
+} from '../../ui'
+
+const ALL = '__all__'
+const toSel = (v) => (v ? v : ALL)
+const fromSel = (v) => (v === ALL ? '' : v)
 
 const installYear = (it) => {
   const iso = it.date_reception || it.date_mise_en_service
@@ -75,107 +86,168 @@ export default function ParcInstallePage() {
 
   const located = rows.filter((it) => it.gps_lat && it.gps_lng)
 
+  const columns = useMemo(
+    () => [
+      { id: 'reference', header: 'Référence', width: 150, cell: (v) => <span className="font-semibold">{v}</span> },
+      { id: 'client_nom', header: 'Client', width: 170, accessor: (r) => r.client_nom ?? '' },
+      { id: 'site_ville', header: 'Ville', width: 130, accessor: (r) => r.site_ville ?? '' },
+      {
+        id: 'puissance', header: 'Puissance', width: 120, align: 'right',
+        accessor: (r) => Number(r.puissance_installee_kwc) || 0,
+        cell: (v, r) => (r.puissance_installee_kwc ? `${r.puissance_installee_kwc} kWc` : '—'),
+        exportValue: (r) => r.puissance_installee_kwc ?? '',
+      },
+      {
+        id: 'type', header: 'Type', width: 150,
+        accessor: (r) => TYPE_LABELS[r.type_installation] ?? '',
+        exportValue: (r) => TYPE_LABELS[r.type_installation] ?? '',
+      },
+      {
+        id: 'annee', header: 'Année', width: 90, align: 'right',
+        accessor: (r) => installYear(r) ?? '',
+        cell: (v) => v || '—',
+      },
+      { id: 'technicien_nom', header: 'Installateur', width: 150, accessor: (r) => r.technicien_nom ?? '' },
+    ],
+    [],
+  )
+
+  const handleExport = (exportRows) => {
+    importApi
+      .exportList('chantiers', (exportRows ?? rows).map((r) => r.id))
+      .then((r) => downloadXlsx(r.data, 'parc-installe.xlsx'))
+      .catch(() => {})
+  }
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Parc installé</h1>
+        <h1 className="page-title flex items-center gap-2">
+          Parc installé
+          <Badge tone="primary">{rows.length}</Badge>
+        </h1>
         <div className="page-subtitle">{rows.length} système(s) installé(s)</div>
-        <div className="page-header-actions" style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="btn btn-sm btn-outline"
-                  onClick={() => importApi.exportList('chantiers', rows.map((r) => r.id))
-                    .then((r) => downloadXlsx(r.data, 'parc-installe.xlsx')).catch(() => {})}>
-            ⬇ Exporter Excel
-          </button>
-          <div className="fb-pills" role="group" aria-label="Changer de vue">
-            <button type="button" className={`fb-pill${view === 'liste' ? ' fb-pill-active' : ''}`}
-                    onClick={() => setView('liste')}>Liste</button>
-            <button type="button" className={`fb-pill${view === 'carte' ? ' fb-pill-active' : ''}`}
-                    onClick={() => setView('carte')}>Carte</button>
-          </div>
+        <div className="page-header-actions flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => handleExport(rows)}>
+            <Download /> Exporter Excel
+          </Button>
+          <Segmented
+            size="sm"
+            value={view}
+            onChange={setView}
+            aria-label="Changer de vue"
+            options={[
+              { value: 'liste', label: 'Liste' },
+              { value: 'carte', label: 'Carte' },
+            ]}
+          />
         </div>
       </div>
 
-      <div className="filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-        <input className="form-control" placeholder="Rechercher (réf, client, ville)…"
-               value={filters.q} onChange={(e) => setF('q', e.target.value)} style={{ flex: '1 1 200px' }} />
-        <select className="form-select" value={filters.ville} onChange={(e) => setF('ville', e.target.value)}>
-          <option value="">Toutes les villes</option>
-          {villeOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select className="form-select" value={filters.marque} onChange={(e) => setF('marque', e.target.value)}>
-          <option value="">Toutes les marques</option>
-          {marqueOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <select className="form-select" value={filters.band} onChange={(e) => setF('band', e.target.value)}>
-          <option value="">Toutes puissances</option>
-          {['< 3 kWc', '3–10 kWc', '10–50 kWc', '≥ 50 kWc'].map((b) => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <select className="form-select" value={filters.annee} onChange={(e) => setF('annee', e.target.value)}>
-          <option value="">Toutes années</option>
-          {anneeOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-        </select>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="min-w-[14rem] flex-1">
+          <Input
+            type="search"
+            leading={<Search />}
+            placeholder="Rechercher (réf, client, ville)…"
+            value={filters.q}
+            onChange={(e) => setF('q', e.target.value)}
+            aria-label="Rechercher un système installé"
+          />
+        </div>
+        <Select value={toSel(filters.ville)} onValueChange={(v) => setF('ville', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[9rem]" aria-label="Filtrer par ville"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes les villes</SelectItem>
+            {villeOptions.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={toSel(filters.marque)} onValueChange={(v) => setF('marque', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[9rem]" aria-label="Filtrer par marque"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes les marques</SelectItem>
+            {marqueOptions.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={toSel(filters.band)} onValueChange={(v) => setF('band', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[9rem]" aria-label="Filtrer par puissance"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes puissances</SelectItem>
+            {['< 3 kWc', '3–10 kWc', '10–50 kWc', '≥ 50 kWc'].map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={toSel(filters.annee)} onValueChange={(v) => setF('annee', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[8rem]" aria-label="Filtrer par année"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes années</SelectItem>
+            {anneeOptions.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
-        <p className="gen-hint">Chargement…</p>
+        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
       ) : rows.length === 0 ? (
-        <p className="gen-hint">Aucun système installé. Un chantier rejoint le parc dès qu'il atteint « Réceptionné ».</p>
+        <EmptyState
+          title="Aucun système installé"
+          description="Un chantier rejoint le parc dès qu'il atteint « Réceptionné »."
+          className="my-6"
+        />
       ) : view === 'liste' ? (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Référence</th><th>Client</th><th>Ville</th>
-                <th>Puissance</th><th>Type</th><th>Année</th><th>Installateur</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((it) => (
-                <tr key={it.id} onClick={() => setSelected(it)} style={{ cursor: 'pointer' }}>
-                  <td>{it.reference}</td>
-                  <td>{it.client_nom ?? '—'}</td>
-                  <td>{it.site_ville ?? '—'}</td>
-                  <td>{it.puissance_installee_kwc ? `${it.puissance_installee_kwc} kWc` : '—'}</td>
-                  <td>{TYPE_LABELS[it.type_installation] ?? '—'}</td>
-                  <td>{installYear(it) ?? '—'}</td>
-                  <td>{it.technicien_nom ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={rows}
+          columns={columns}
+          getRowId={(row) => row.id}
+          searchable={false}
+          onRowClick={(row) => setSelected(row)}
+          onExport={handleExport}
+          exportName="parc-installe"
+          pageSize={25}
+          emptyTitle="Aucun système installé"
+          emptyDescription="Aucun système ne correspond aux filtres."
+          aria-label="Parc installé"
+        />
       ) : (
-        <div>
-          <p className="gen-hint">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
             {located.length} système(s) géolocalisé(s). Cliquez « Ouvrir sur la carte »
             pour visualiser un site (la carte à tuiles intégrée sera ajoutée ultérieurement).
           </p>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>Référence</th><th>Client</th><th>Ville</th><th>GPS</th><th></th></tr>
-              </thead>
-              <tbody>
-                {located.map((it) => (
-                  <tr key={it.id}>
-                    <td><button type="button" className="btn btn-sm btn-outline" onClick={() => setSelected(it)}>{it.reference}</button></td>
-                    <td>{it.client_nom ?? '—'}</td>
-                    <td>{it.site_ville ?? '—'}</td>
-                    <td>{it.gps_lat}, {it.gps_lng}</td>
-                    <td>
-                      <a className="btn btn-sm btn-outline" target="_blank" rel="noopener"
-                         href={`https://www.openstreetmap.org/?mlat=${it.gps_lat}&mlon=${it.gps_lng}#map=17/${it.gps_lat}/${it.gps_lng}`}>
-                        Ouvrir sur la carte
-                      </a>
-                    </td>
+          {located.length === 0 ? (
+            <EmptyState title="Aucun système géolocalisé" description="Renseignez les coordonnées GPS d'un chantier pour le voir ici." />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-muted/60">
+                  <tr>
+                    {['Référence', 'Client', 'Ville', 'GPS', ''].map((h, i) => (
+                      <th key={i} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{h}</th>
+                    ))}
                   </tr>
-                ))}
-                {located.length === 0 && (
-                  <tr><td colSpan={5} className="gen-hint">Aucun système géolocalisé.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {located.map((it) => (
+                    <tr key={it.id} className="border-t border-border">
+                      <td className="px-3 py-2">
+                        <Button size="sm" variant="outline" onClick={() => setSelected(it)}>{it.reference}</Button>
+                      </td>
+                      <td className="px-3 py-2">{it.client_nom ?? '—'}</td>
+                      <td className="px-3 py-2">{it.site_ville ?? '—'}</td>
+                      <td className="px-3 py-2 tabular-nums">{it.gps_lat}, {it.gps_lng}</td>
+                      <td className="px-3 py-2">
+                        <Button asChild size="sm" variant="outline">
+                          <a target="_blank" rel="noopener"
+                             href={`https://www.openstreetmap.org/?mlat=${it.gps_lat}&mlon=${it.gps_lng}#map=17/${it.gps_lat}/${it.gps_lng}`}>
+                            <ExternalLink /> Ouvrir sur la carte
+                          </a>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
