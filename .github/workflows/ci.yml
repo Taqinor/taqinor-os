@@ -4,8 +4,104 @@ on:
   push:
   pull_request:
 
+# NOTE on path filtering (see docs/CODEMAP.md §7):
+# We do NOT use top-level `on: paths`/`paths-ignore`. A workflow skipped by a
+# top-level path filter leaves its checks stuck in "Pending", which would
+# *block* a PR that requires them (GitHub Docs: "Troubleshooting required
+# status checks"). Instead, every heavy/lint job is gated by a per-job `if:`
+# on the `changes` detector below. A job skipped by an `if:` conditional
+# reports "Success" to branch protection, so it never deadlocks a merge.
+# `stage-names` is intentionally left ungated (it is fast and is the broad
+# drift guard), and `ci-gate` is an always-running aggregate so a single
+# required check can be pinned safely.
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # Change detector. Resolves which surfaces a push/PR touched, using pure git
+  # (no third-party action). It FAILS OPEN: whenever a precise diff range can't
+  # be resolved (new branch, force-push, shallow history, missing base) it runs
+  # the full suite, so a real code change can never silently skip its tests.
+  # ---------------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      web: ${{ steps.detect.outputs.web }}
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          backend=false; frontend=false; web=false
+          run_all=false
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"; head="$PR_HEAD"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            base="$PUSH_BEFORE"; head="$PUSH_AFTER"
+          else
+            base=""; head=""
+          fi
+
+          # Fail open on anything we cannot resolve to a precise diff range.
+          if [ -z "$base" ] || [ -z "$head" ]; then run_all=true; fi
+          case "$base" in *[!0]*) : ;; *) run_all=true ;; esac   # all-zeros => new branch
+          if [ "$run_all" = false ]; then
+            git cat-file -e "${base}^{commit}" 2>/dev/null || run_all=true
+          fi
+          if [ "$run_all" = false ]; then
+            git cat-file -e "${head}^{commit}" 2>/dev/null || run_all=true
+          fi
+
+          if [ "$run_all" = true ]; then
+            echo "Could not resolve a precise diff range — running the FULL suite (fail-open)."
+            backend=true; frontend=true; web=true
+          else
+            changed="$(git diff --name-only "$base" "$head")"
+            echo "Changed files between ${base} and ${head}:"
+            echo "$changed"
+            # Touching CI/infra re-runs the whole suite (it can change how any
+            # job builds or tests). The `|| true` keeps a no-match (grep exit 1)
+            # from tripping `set -e`.
+            echo "$changed" | grep -qE '^\.github/'                   && { backend=true; frontend=true; web=true; } || true
+            echo "$changed" | grep -qE '^docker-compose[^/]*\.ya?ml$' && { backend=true; frontend=true; web=true; } || true
+            # Shared backend<->frontend contract: exercise both sides + e2e.
+            echo "$changed" | grep -qE '^STAGES\.py$'                 && { backend=true; frontend=true; } || true
+            echo "$changed" | grep -qE '^backend/'                    && backend=true  || true
+            echo "$changed" | grep -qE '^frontend/'                   && frontend=true || true
+            echo "$changed" | grep -qE '^apps/web/'                   && web=true      || true
+            # Everything else (docs/**, *.md, top-level state files, etc.)
+            # affects none of the heavy jobs — only the always-on stage-names
+            # guard, which is not gated here.
+          fi
+
+          # The e2e browser suite is the cross-surface net: any application
+          # code (backend OR frontend, incl. the STAGES.py contract) runs it;
+          # website-only and docs-only changes do not.
+          code=false
+          if [ "$backend" = true ] || [ "$frontend" = true ]; then code=true; fi
+
+          {
+            echo "backend=$backend"
+            echo "frontend=$frontend"
+            echo "web=$web"
+            echo "code=$code"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved -> backend=$backend frontend=$frontend web=$web e2e(code)=$code"
+
   backend-lint:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +113,8 @@ jobs:
         run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations
 
   backend-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -89,6 +187,8 @@ jobs:
         run: python manage.py test apps authentication -v 2
 
   frontend-lint:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +208,10 @@ jobs:
         run: node --test "src/features/ventes/solar.test.mjs" "src/features/ventes/previewPdf.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs" "src/features/crm/bulk.test.mjs" "src/features/installations/statuses.test.mjs" "src/pages/reporting/archiveDocs.test.mjs" "src/features/stock/procurement.test.mjs" "src/features/stock/emplacements.test.mjs" "src/components/layout/menu.layout.test.mjs"
 
   stage-names:
+    # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
+    # docs/plan changes (plan fingerprint), on STAGES.py, and on any structural
+    # change that feeds the CODEMAP fingerprint or the stage-name scan — so it
+    # always runs, on every push and PR.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +224,8 @@ jobs:
         run: python scripts/codemap_fingerprint.py --check
 
   web-build-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,7 +248,12 @@ jobs:
   # backend-tests (Postgres+pgvector, Redis, MinIO — never production), serves
   # the real built app via vite preview (same-origin proxy to Django), and drives
   # 16 flows headless. Seeds only throwaway demo data (manage.py seed_demo).
+  # Gated on `code` (backend OR frontend, incl. the STAGES.py contract): it is
+  # the cross-surface integration net and must NOT skip on a backend- or
+  # frontend-only change; it skips only on website-only and docs-only changes.
   e2e:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -254,3 +365,39 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Always-running aggregate gate. Pin THIS one job as the single required
+  # status check on `main`: because it always runs (if: always()) it can never
+  # be left "Pending", and it passes only when no job that actually ran failed
+  # or was cancelled. A SKIPPED job (path-filtered out) counts as acceptable —
+  # `contains(needs.*.result, 'failure')` is false for 'skipped'/'success'.
+  # ---------------------------------------------------------------------------
+  ci-gate:
+    if: ${{ always() }}
+    needs:
+      - changes
+      - backend-lint
+      - backend-tests
+      - frontend-lint
+      - stage-names
+      - web-build-test
+      - e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report job results
+        run: |
+          echo "changes=${{ needs.changes.result }}"
+          echo "backend-lint=${{ needs.backend-lint.result }}"
+          echo "backend-tests=${{ needs.backend-tests.result }}"
+          echo "frontend-lint=${{ needs.frontend-lint.result }}"
+          echo "stage-names=${{ needs.stage-names.result }}"
+          echo "web-build-test=${{ needs.web-build-test.result }}"
+          echo "e2e=${{ needs.e2e.result }}"
+      - name: Fail if any required job failed or was cancelled
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "A required CI job failed or was cancelled — see results above."
+          exit 1
+      - name: All clear
+        run: echo "All CI jobs that ran passed (skipped jobs are acceptable)."
