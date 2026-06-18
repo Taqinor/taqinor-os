@@ -1,0 +1,144 @@
+/* ============================================================================
+   F19 — Utilitaires de formatage centralisés (une seule source de vérité)
+   ----------------------------------------------------------------------------
+   Monnaie MAD, nombres fr-FR, dates jj/mm/aaaa, téléphone marocain. À utiliser
+   partout dans l'app à la place des `toLocaleString`/concaténations ad hoc.
+   100 % additif : aucun écran existant n'est modifié par ce fichier ; il est
+   adopté progressivement (groupes J/P de la refonte).
+   ========================================================================== */
+
+const LOCALE = 'fr-FR'
+
+/** Coerce une valeur (number | string fr/en) en nombre fini, sinon null. */
+export function toNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  // Accepte "1 234,56", "1234.56", "1.234,56", "12 %" (incl. espaces insécables)
+  const cleaned = String(value)
+    .replace(/\s|%|MAD|DH|dh/g, '')
+    .replace(/\.(?=\d{3}(\D|$))/g, '') // points de milliers
+    .replace(',', '.')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Montant en dirhams marocains. Par défaut 2 décimales, séparateur fr-FR,
+ * suffixe « MAD ». `decimals` configurable ; valeur invalide → tiret cadratin.
+ */
+export function formatMAD(value, { decimals = 2, withSymbol = true } = {}) {
+  const n = toNumber(value)
+  if (n === null) return '—'
+  const body = new Intl.NumberFormat(LOCALE, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(n)
+  return withSymbol ? `${body} MAD` : body
+}
+
+/** Nombre fr-FR (espace fine comme séparateur de milliers, virgule décimale). */
+export function formatNumber(value, { decimals } = {}) {
+  const n = toNumber(value)
+  if (n === null) return '—'
+  const opts = {}
+  if (decimals !== undefined) {
+    opts.minimumFractionDigits = decimals
+    opts.maximumFractionDigits = decimals
+  }
+  return new Intl.NumberFormat(LOCALE, opts).format(n)
+}
+
+/** Pourcentage : `formatPercent(19)` → « 19 % » ; `formatPercent(0.5,{decimals:1})` → « 0,5 % ». */
+export function formatPercent(value, { decimals = 0 } = {}) {
+  const n = toNumber(value)
+  if (n === null) return '—'
+  const body = new Intl.NumberFormat(LOCALE, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(n)
+  return `${body} %`
+}
+
+function asDate(value) {
+  if (!value) return null
+  const d = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Date jj/mm/aaaa (défaut), ou format long « 18 juin 2026 » si long=true. */
+export function formatDate(value, { long = false } = {}) {
+  const d = asDate(value)
+  if (!d) return '—'
+  if (long) {
+    return new Intl.DateTimeFormat(LOCALE, {
+      day: 'numeric', month: 'long', year: 'numeric',
+    }).format(d)
+  }
+  return new Intl.DateTimeFormat(LOCALE, {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(d)
+}
+
+/** Date + heure : « 18/06/2026 14:05 ». */
+export function formatDateTime(value) {
+  const d = asDate(value)
+  if (!d) return '—'
+  return new Intl.DateTimeFormat(LOCALE, {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(d)
+}
+
+/**
+ * Téléphone marocain pour AFFICHAGE.
+ * - Local 10 chiffres « 0612345678 » → « 06 12 34 56 78 »
+ * - International « +212612345678 » / « 212612345678 » → « +212 6 12 34 56 78 »
+ * Chaîne non reconnue renvoyée telle quelle (jamais d'exception).
+ */
+export function formatPhoneMA(value) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  const digits = raw.replace(/[^\d+]/g, '')
+  // International +212 / 00212 / 212
+  let intl = null
+  if (digits.startsWith('+212')) intl = digits.slice(4)
+  else if (digits.startsWith('00212')) intl = digits.slice(5)
+  else if (digits.startsWith('212') && digits.length === 12) intl = digits.slice(3)
+  if (intl !== null) {
+    const d = intl.replace(/\D/g, '').replace(/^0/, '')
+    if (d.length === 9) {
+      return `+212 ${d[0]} ${d.slice(1, 3)} ${d.slice(3, 5)} ${d.slice(5, 7)} ${d.slice(7, 9)}`
+    }
+    return raw
+  }
+  // Local 0XXXXXXXXX (10 chiffres)
+  const d = digits.replace(/\D/g, '')
+  if (d.length === 10 && d.startsWith('0')) {
+    return `${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 6)} ${d.slice(6, 8)} ${d.slice(8, 10)}`
+  }
+  return raw
+}
+
+/**
+ * Forme canonique marocaine pour STOCKAGE / dédup : « +2126XXXXXXXX » /
+ * « +2125XXXXXXXX » quand reconnaissable, sinon les chiffres bruts.
+ */
+export function canonicalPhoneMA(value) {
+  if (!value) return ''
+  const digits = String(value).replace(/[^\d+]/g, '')
+  let local = null
+  if (digits.startsWith('+212')) local = digits.slice(4)
+  else if (digits.startsWith('00212')) local = digits.slice(5)
+  else if (digits.startsWith('212') && digits.length === 12) local = digits.slice(3)
+  else local = digits
+  const d = local.replace(/\D/g, '').replace(/^0/, '')
+  if (d.length === 9 && (d[0] === '6' || d[0] === '7' || d[0] === '5')) {
+    return `+212${d}`
+  }
+  return String(value).replace(/[^\d+]/g, '')
+}
+
+export default {
+  toNumber, formatMAD, formatNumber, formatPercent,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
+}
