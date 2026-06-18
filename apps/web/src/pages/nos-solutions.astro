@@ -18,37 +18,37 @@ const solutions = [
     href: '/résidentiel',
     title: 'Solaire résidentiel',
     summary:
-      'Installation solaire pour villa ou appartement, dimensionnée sur votre facture réelle. Déclaration loi 82-21 incluse.',
+      'Villa ou appartement : on dimensionne sur votre facture, pas sur un kit, et la déclaration loi 82-21 part avec le chantier.',
   },
   {
     href: '/professionnel',
     title: 'Solaire professionnel & industriel',
     summary:
-      'Toitures de hangars, industries, hôtels, cliniques : réduction du poste électricité, moyenne tension et conformité loi 82-21.',
+      'Hangars, usines, hôtels, cliniques : on attaque le poste électricité, en moyenne tension si besoin, dans les règles de la loi 82-21.',
   },
   {
     href: '/pompage-solaire',
     title: 'Pompage solaire',
     summary:
-      'Pompage agricole et irrigation au fil du soleil, souvent sans batteries, dimensionné sur le besoin réel.',
+      'Irrigation au fil du soleil, le plus souvent sans batteries, calé sur le débit et la HMT — et exonéré de TVA en agricole.',
   },
   {
     href: '/batteries-stockage',
     title: 'Batteries & stockage',
     summary:
-      'Stockage LFP pour la consommation nocturne ou la continuité de service — quand l’étude le justifie.',
+      'Batteries LFP Dyness pour le creux du soir ou la continuité de service, quand votre courbe de consommation le justifie.',
   },
   {
     href: '/maintenance-monitoring',
     title: 'Maintenance & monitoring',
     summary:
-      'Supervision Deye Cloud avec accès client, SAV proactif et dossier technique — après la pose.',
+      'Supervision Deye Cloud avec accès client, SAV qui agit sur alerte et dossier technique complet — la vie d’après la pose.',
   },
   {
     href: '/regularization-article-33',
     title: 'Régularisation Loi 82-21',
     summary:
-      'Mise en conformité des installations existantes via l’Article 33.',
+      'Une installation existante remise dans les clous via l’Article 33.',
   },
 ];
 
@@ -65,8 +65,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="Nos solutions solaires au Maroc | Taqinor"
-  description="Toute l'offre solaire Taqinor en un coup d'œil : résidentiel, professionnel & industriel, pompage solaire, batteries & stockage, maintenance & monitoring, et régularisation loi 82-21. Une étude décide de chaque installation."
+  title="Nos solutions solaires au Maroc : six réponses, une méthode | Taqinor"
+  description="Toute l’offre Taqinor en un coup d’œil : solaire résidentiel, professionnel & industriel, pompage agricole, batteries & stockage LFP, maintenance & monitoring Deye Cloud, et régularisation loi 82-21. Six chantiers différents, un même point de départ — votre situation réelle, chiffrée."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -81,9 +81,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Nos solutions</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Une offre solaire pour chaque besoin</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          De la villa au hangar industriel, du pompage agricole à la régularisation d’une
-          installation existante : chaque solution part de votre situation réelle, et c’est
-          l’étude qui décide du matériel. Voici l’ensemble de ce que nous faisons.
+          La villa et le hangar ne se dimensionnent pas pareil ; le pompage agricole et la
+          régularisation d’une installation existante encore moins. Six chantiers différents, donc,
+          mais un seul point de départ : votre situation, mesurée, avant tout choix de matériel.
+          Voici l’ensemble.
         </p>
       </div>
     </section>
@@ -106,15 +107,15 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-brass-300">Par où commencer</p>
         <h2 class="display v2-section-title mt-5 text-white">Pas sûr de la solution qu’il vous faut ?</h2>
         <p class="v2-lead mt-5 text-lune-soft">
-          Vous n’avez pas à choisir seul. Décrivez votre situation et votre consommation : le
-          diagnostic gratuit identifie la solution adaptée et le régime loi 82-21 qui vous
-          concerne — sans engagement.
+          Inutile de trancher seul. Décrivez votre situation et votre consommation, et le diagnostic
+          gratuit fait le tri : la solution qui colle à votre cas, et le régime loi 82-21 dont vous
+          relevez. Sans engagement.
         </p>
         <a href="/contact#simulateur" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Lancer mon diagnostic gratuit</a>
       </div>
     </section>
 
-    <CtaBand title="Une solution adaptée commence par une étude gratuite." href="/contact#simulateur" />
+    <CtaBand title="La bonne solution sort du diagnostic, pas du catalogue — il est gratuit." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

@@ -25,24 +25,24 @@ const moyens = [
   {
     k: '01',
     title: 'Au comptant',
-    body: 'La plupart de nos clients règlent l’installation au comptant. L’investissement se rembourse ensuite tout seul par l’électricité que vous cessez d’acheter au réseau — au barème régie ONEE.',
+    body: 'La plupart de nos clients règlent l’installation en une fois. À partir de la mise en service, elle se rembourse seule : chaque kWh produit est un kWh que vous n’achetez plus au réseau, valorisé au barème régie ONEE.',
   },
   {
     k: '02',
     title: 'Crédit à la consommation bancaire classique',
-    body: 'Certains clients financent l’installation via un crédit à la consommation bancaire classique, souscrit directement auprès de leur banque. Taqinor n’intervient pas dans ce montage : nous ne sommes pas un organisme de crédit.',
+    body: 'D’autres passent par un crédit à la consommation classique, souscrit directement auprès de leur banque. Le montage se traite entre vous et votre établissement — nous n’y intervenons pas et n’y touchons aucune commission.',
   },
   {
     k: '03',
     title: 'Financement vert (entreprises)',
-    body: 'Pour les projets professionnels, des lignes de financement vert dédiées aux énergies renouvelables existent au Maroc. C’est votre banque qui en décide, selon votre dossier — Taqinor ne vend ni crédit ni produit bancaire.',
+    body: 'Côté entreprises, des lignes de financement vert pour les énergies renouvelables existent au Maroc. L’accord et les conditions relèvent de votre banque et de votre dossier ; nous ne vendons ni crédit ni produit bancaire, et n’en garantissons aucun.',
   },
 ];
 ---
 
 <Layout
-  title="Financement & rentabilité du solaire au Maroc | Taqinor"
-  description="Combien rapporte une installation solaire au Maroc : remboursée en gros en 3 à 7 ans par l'électricité évitée (barème régie ONEE), puis 25 ans de performance garantie. Comment la financer, en toute transparence — Taqinor n'est pas un organisme de crédit."
+  title="Rentabilité & financement du solaire au Maroc : ROI 3–7 ans | Taqinor"
+  description="Ce que rapporte vraiment une installation solaire au Maroc : remboursée en gros en 3 à 7 ans par l’électricité que vous cessez d’acheter (barème régie ONEE), puis 25 ans de performance garantie et 60 à 90 % de facture couverte. Comment la financer sans détour — Taqinor installe et garantit, mais n’est pas prêteur."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -57,11 +57,11 @@ const moyens = [
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Rentabilité</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">L’investissement qui se rembourse, puis paie pour vous</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Une installation solaire est un investissement sérieux — de l’ordre de 80 000 MAD pour une
-          villa. Bien dimensionnée, elle <strong class="text-white">se rembourse en gros en 3 à 7 ans</strong>
-          par l’électricité que vous cessez d’acheter au réseau, au barème régie ONEE. Ensuite,
-          pendant les années qui restent sur les 25 ans de performance garantie, votre électricité
-          est <strong class="text-white">quasi gratuite</strong>.
+          Une installation, c’est de l’ordre de 80 000 MAD pour une villa — un vrai investissement,
+          pas un gadget. Bien dimensionnée, elle <strong class="text-white">s’amortit en gros en
+          3 à 7 ans</strong> grâce à l’électricité que vous cessez d’acheter au réseau, valorisée au
+          barème régie ONEE. Passé ce point, il reste une bonne quinzaine d’années sur les 25 ans
+          garantis où votre courant est <strong class="text-white">quasi gratuit</strong>.
         </p>
       </div>
     </section>
@@ -72,10 +72,10 @@ const moyens = [
         <p class="tech-label v2-kicker rule-brass text-brass-300">L’investissement en chiffres</p>
         <h2 class="display v2-section-title mt-5 text-white">Des ordres de grandeur — jamais un devis</h2>
         <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
-          Les fourchettes ci-dessous sont celles déjà publiées sur nos pages Résidentiel et
-          Professionnel. Le chiffre exact de <em>votre</em> rentabilité est calculé dans l’étude,
-          à partir de votre facture réelle — nous vous dirons honnêtement si le solaire n’est pas
-          le bon placement pour votre profil.
+          Les fourchettes ci-dessous reprennent celles de nos pages Résidentiel et Professionnel —
+          aucune n’est gonflée pour cette page. Le chiffre exact de <em>votre</em> rentabilité, lui,
+          se calcule sur votre facture réelle ; et si le solaire n’est pas le bon placement pour
+          votre profil, nous vous le dirons sans détour.
         </p>
         <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:grid-cols-4 sm:pl-10" data-stagger>
           {chiffres.map((c, i) => (
@@ -86,12 +86,13 @@ const moyens = [
           ))}
         </dl>
         <p class="mt-8 max-w-2xl text-sm leading-relaxed text-lune-soft">
-          Le retour dépend de votre profil : pour une villa typique, il est de l’ordre de
-          <a href="/résidentiel" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">4 à 6 ans en résidentiel</a>,
-          et de l’ordre de
-          <a href="/professionnel" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">3 à 5 ans pour un site professionnel</a>
-          (effet d’échelle en toiture de hangar). En dessous de 1 000 MAD de facture par mois, le
-          retour dépasse généralement 7 ans — nous vous le dirons franchement.
+          Plus la facture est lourde, plus le retour est rapide. Pour une villa typique, comptez de
+          l’ordre de
+          <a href="/résidentiel" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">4 à 6 ans en résidentiel</a> ;
+          sur un hangar, l’effet d’échelle resserre le retour à
+          <a href="/professionnel" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">3 à 5 ans pour un site professionnel</a>.
+          En dessous de 1 000 MAD de facture mensuelle, en revanche, le retour passe le plus souvent
+          au-delà de 7 ans — et nous vous le dirons franchement plutôt que de vous vendre l’inutile.
         </p>
       </div>
     </section>
@@ -103,9 +104,9 @@ const moyens = [
         <p class="tech-label v2-kicker rule-brass text-azur-600">Sans détour</p>
         <h2 class="display v2-section-title mt-5">Comment financer — en toute transparence</h2>
         <p class="v2-lead mt-4 max-w-2xl text-encre-soft">
-          Soyons clairs sur ce que nous sommes et ne sommes pas. Taqinor installe et garantit le
-          solaire ; nous ne vendons aucun produit financier. Voici les façons dont nos clients
-          financent réellement leur installation.
+          Mettons une chose au clair d’emblée : nous posons et garantissons le solaire, nous ne
+          vendons aucun produit financier. Voilà, sans habillage, les trois manières dont nos
+          clients règlent réellement leur installation.
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
           {moyens.map((m, i) => (
@@ -137,10 +138,11 @@ const moyens = [
           <p class="tech-label v2-kicker rule-brass text-brass-300">Votre rentabilité, pas une moyenne</p>
           <h2 class="display v2-section-title mt-5 text-white">L’étude calcule la rentabilité de votre facture</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            Les fourchettes de cette page sont des ordres de grandeur. Le vrai chiffre — combien
-            vous économisez, en combien d’années l’installation est remboursée — est calculé dans
-            l’étude, à partir de votre facture réelle, de votre profil de consommation et de votre
-            toiture. C’est un calcul de rentabilité personnalisé, pas une promesse de plaquette.
+            Tout ce qui précède reste des ordres de grandeur. Votre chiffre — ce que vous économisez
+            chaque mois, l’année où l’installation s’est remboursée — sort de trois données qui
+            n’appartiennent qu’à vous : votre facture, votre profil de consommation, votre toiture.
+            On les fait passer dans le calcul, et le résultat est le vôtre, pas une moyenne de
+            plaquette.
           </p>
           <a href="/contact#simulateur" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Calculer ma rentabilité — étude à 0 MAD</a>
         </div>
@@ -175,7 +177,7 @@ const moyens = [
       </div>
     </section>
 
-    <CtaBand title="Votre rentabilité se calcule : commencez par l’étude gratuite." href="/contact#simulateur" />
+    <CtaBand title="Combien votre toit vous rapporte ? Le diagnostic gratuit le chiffre." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

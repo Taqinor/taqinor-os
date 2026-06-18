@@ -1158,7 +1158,7 @@ freshly), and leads with concrete evidence. Équipement especially: make the rea
 technical argument, not a spec dump. Keep "ordres de grandeur — jamais un devis" framing and the
 honest ranges. No invented facts. Refresh each page's title/meta-description. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W39 — Rewrite the service pages (pompage-solaire, batteries-stockage, maintenance-monitoring, financement, nos-solutions) — [ ]
+### W39 — Rewrite the service pages (pompage-solaire, batteries-stockage, maintenance-monitoring, financement, nos-solutions) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1645,3 +1645,13 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   recycled formula removed (« jamais l'inverse », « kit standard », the trio, « validée par le fondateur »
   — now at-home on à-propos) and no banned adjective; all real figures, refs, GarantiesTeaser, JSON-LD,
   V2Enhance/Breadcrumb and links preserved; nothing invented.
+- 2026-06-18 — W39 done (five service pages rewritten, each distinct and useful): pompage-solaire leads
+  on the genuine agriculture-only fact (solar pumping is TVA-exonéré, pump + panels — explicitly NOT
+  residential PV) and keeps its débit/HMT/forage method with no fabricated pumping project. batteries-
+  stockage leads on the published Dyness LFP spec (6 000+ cycles à 90 % DoD, 5 kWh-modular, CAN BMS with
+  Deye, 10-year warranty). maintenance-monitoring leads on the Deye Cloud reality (real-time production,
+  history, alerts, client access) with NO invented SLA. financement stays rentabilité-first and strictly
+  honest (3–7 ans / 25 ans / 60–90 % / barème ONEE; no bank, no rate, no residential VAT exemption,
+  Taqinor not a lender). nos-solutions keeps its CollectionPage JSON-LD and six links, each summary
+  rewritten concrete and distinct. Recycled formulas removed; all JSON-LD '@type', V2Enhance/Breadcrumb
+  and links preserved; nothing invented.
