@@ -62,7 +62,7 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 - [x] **J47.** Admin — Roles editor + Users.
 - [x] **J48.** Paramètres — restyle in the new system (the tabbed split + editable settings are feature tasks D9–D13; build them on the new primitives).
 - [x] **J49.** Activities — Mes Activités.
-- [ ] **J50.** PDF preview screen — restyle only the chrome around PdfCanvas (toolbar, container, mobile layout). Do NOT touch the rendered PDF content or template.
+- [x] **J50.** PDF preview screen — restyle only the chrome around PdfCanvas (toolbar, container, mobile layout). Do NOT touch the rendered PDF content or template.
 
 ## Group K — Dashboard & reporting
 - [x] **K51.** Dashboard: KPI cards + themed charts (recharts, or Tremor copy-in blocks) — pipeline value, devis→signé conversion, outstanding invoices / aged balance, chantiers by status, revenue — plus an activity feed. Real data from existing slices/APIs; no buy-price exposure.
@@ -148,6 +148,19 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — Refonte UI, vague 4 (fin du Groupe J) : J50 (chrome de l'aperçu
+  PDF) livré sur un `main` contenant déjà la vague 4 (donc base correcte, plus de
+  conflit). Restyle UNIQUEMENT du chrome de la zone d'aperçu dans LeadDevisPanel
+  (toolbar format `Segmented` + case « étude » `Checkbox`, indicateur de
+  chargement `Spinner`, overlays d'erreur/hors-ligne → `EmptyState`+`Button`,
+  mise en page mobile, couleurs tokenisées dans leaddevispanel.css). PdfCanvas.jsx
+  et previewPdf.js NON touchés (règle #4). Hooks e2e préservés (`.ldp-panel`,
+  `.ldp-pdf-area`+canvas, `.ldp-fallback` count 0 au succès, `.ldp-overlay`/
+  `.modal-close`, intitulés « Édition complète »/« Télécharger le PDF »). CI
+  locale verte (eslint 0 erreur, build vite+PWA, 157 tests). Le **Groupe J est
+  désormais complet (J39–J50)**. RESTE OUVERT : Groupes M (mobile/PWA), N (a11y),
+  O (perf), P (cleanup) — transverses (partagent src/ui/router/index.css), à
+  traiter en vague dédiée. GATÉ : M59 (logo), D2/D4 (décision fondateur).
 - 2026-06-18 — Refonte UI, vague 4 (suite) : J49 (Mes Activités) + Groupe K
   (K51 Dashboard, K52 hub Reporting + Rapports + Balance âgée) livrés dans le
   MÊME lot/merge que le Groupe J (PR #152), via 3 lanes worktree isolées et
