@@ -47,6 +47,7 @@ export default function ParametresEntreprise() {
   const [form, setForm] = useState({
     nom: '', adresse: '', email: '', telephone: '',
     siret: '', tva_intra: '', rib: '', banque: '',
+    instructions_paiement: '', conditions_generales: '',
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
     responsable_defaut_leads: '',
@@ -288,6 +289,8 @@ export default function ParametresEntreprise() {
       tva_intra:         profile.tva_intra         ?? '',
       rib:               profile.rib               ?? '',
       banque:            profile.banque            ?? '',
+      instructions_paiement: profile.instructions_paiement ?? '',
+      conditions_generales:  profile.conditions_generales  ?? '',
       ice:               profile.ice               ?? '',
       identifiant_fiscal: profile.identifiant_fiscal ?? '',
       rc:                profile.rc                ?? '',

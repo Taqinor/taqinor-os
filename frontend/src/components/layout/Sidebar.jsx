@@ -39,6 +39,7 @@ const I = {
   equipements:  <Ic><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></Ic>,
   sav:          <Ic><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6a2 2 0 1 0 2.8 2.8l6-6a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.1-2.1 2.6-2.6z"/></Ic>,
   agenda:       <Ic><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Ic>,
+  journal:      <Ic><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></Ic>,
 }
 
 const ROLE_META = {
@@ -118,6 +119,9 @@ const NAV_SECTIONS = [
     items: [
       { to: '/admin/users',          label: 'Utilisateurs',     icon: I.utilisateurs,  roles: ['responsable','admin'] },
       { to: '/admin/roles',          label: 'Rôles',            icon: I.roles_icon,    roles: ['responsable','admin'] },
+      // Journal d'activité — visible UNIQUEMENT avec la permission dédiée
+      // (Directeur par défaut), indépendamment du palier de menu.
+      { to: '/journal',              label: "Journal d'activité", icon: I.journal,    roles: ['normal','responsable','admin'], perm: 'journal_activite_voir' },
       { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['responsable','admin'] },
     ],
   },
@@ -127,6 +131,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const dispatch    = useDispatch()
   const navigate    = useNavigate()
   const role        = useSelector((s) => s.auth.role) || 'normal'
+  const permissions = useSelector((s) => s.auth.permissions) || []
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
 
@@ -175,7 +180,8 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
       {/* ── Navigation ─────────────────────────── */}
       <nav className="sidebar-nav">
         {NAV_SECTIONS.map((section, si) => {
-          const items = section.items.filter(it => it.roles.includes(role))
+          const items = section.items.filter(it =>
+            it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)))
           if (items.length === 0) return null
           return (
             <div key={si} className="sidebar-section">

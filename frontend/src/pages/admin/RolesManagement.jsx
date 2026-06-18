@@ -11,6 +11,8 @@ import {
   Label, Input, Checkbox,
 } from '../../ui'
 
+// Grille module × action (Feature D) : tout est éditable ici. Les codes
+// inconnus du backend sont rejetés à l'enregistrement (validation serveur).
 const PERMISSION_GROUPS = [
   {
     label: 'Stock',
@@ -20,19 +22,22 @@ const PERMISSION_GROUPS = [
       { code: 'stock_modifier',  label: 'Modifier' },
       { code: 'stock_supprimer', label: 'Supprimer' },
       { code: 'stock_mouvement', label: 'Mouvements' },
+      { code: 'stock_export',    label: 'Exporter' },
     ],
   },
   {
-    label: 'CRM',
+    label: 'CRM (leads & clients)',
     codes: [
       { code: 'crm_voir',      label: 'Voir' },
       { code: 'crm_creer',     label: 'Créer' },
       { code: 'crm_modifier',  label: 'Modifier' },
       { code: 'crm_supprimer', label: 'Supprimer' },
+      { code: 'crm_export',    label: 'Exporter' },
+      { code: 'crm_reassign',  label: 'Réassigner' },
     ],
   },
   {
-    label: 'Ventes',
+    label: 'Ventes (devis/factures/avoirs)',
     codes: [
       { code: 'ventes_voir',      label: 'Voir' },
       { code: 'ventes_creer',     label: 'Créer' },
@@ -40,6 +45,36 @@ const PERMISSION_GROUPS = [
       { code: 'ventes_supprimer', label: 'Supprimer' },
       { code: 'ventes_valider',   label: 'Valider' },
       { code: 'ventes_pdf',       label: 'Générer PDF' },
+      { code: 'ventes_export',    label: 'Exporter' },
+      { code: 'ventes_reassign',  label: 'Réassigner' },
+    ],
+  },
+  {
+    label: 'Chantiers / Installations',
+    codes: [
+      { code: 'installation_voir',    label: 'Voir' },
+      { code: 'installation_gerer',   label: 'Gérer' },
+      { code: 'intervention_gerer',   label: 'Interventions' },
+      { code: 'installation_export',  label: 'Exporter' },
+      { code: 'technicien_assign',    label: 'Assigner techniciens' },
+    ],
+  },
+  {
+    label: 'Après-vente (SAV)',
+    codes: [
+      { code: 'equipement_voir',  label: 'Voir équipements' },
+      { code: 'equipement_gerer', label: 'Gérer équipements' },
+      { code: 'sav_voir',         label: 'Voir tickets' },
+      { code: 'sav_gerer',        label: 'Gérer tickets' },
+      { code: 'sav_export',       label: 'Exporter' },
+      { code: 'sav_reassign',     label: 'Réassigner' },
+    ],
+  },
+  {
+    label: 'Reporting',
+    codes: [
+      { code: 'reporting_voir',   label: 'Voir' },
+      { code: 'reporting_export', label: 'Exporter' },
     ],
   },
   {
@@ -63,9 +98,22 @@ const PERMISSION_GROUPS = [
     ],
   },
   {
-    label: 'Reporting',
+    label: 'Données sensibles',
     codes: [
-      { code: 'reporting_voir', label: 'Voir' },
+      { code: 'prix_achat_voir', label: 'Voir prix d\'achat & marges' },
+    ],
+  },
+  {
+    label: 'Journal d\'activité',
+    codes: [
+      { code: 'journal_activite_voir', label: 'Voir le journal' },
+    ],
+  },
+  {
+    label: 'Visibilité des données',
+    codes: [
+      { code: 'records_scope_equipe', label: 'Limiter à mon équipe' },
+      { code: 'records_scope_sous_arbre', label: 'Limiter à mon sous-arbre' },
     ],
   },
 ]

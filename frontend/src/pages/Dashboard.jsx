@@ -11,6 +11,10 @@ import {
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
+import { fetchInstallations } from '../features/installations/store/installationsSlice'
+import {
+  INSTALLATION_STATUSES, STATUS_LABELS, STATUS_COLORS, canonicalStatus,
+} from '../features/installations/statuses'
 import {
   Stat, Card, CardHeader, CardTitle, CardDescription, CardContent,
   StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText,
@@ -100,12 +104,14 @@ export function Component() {
   const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
   const { clients, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
+  const { items: installations, loading: instLoading } = useSelector((s) => s.installations)
 
   useEffect(() => {
     dispatch(fetchProduits())
     dispatch(fetchClients())
     dispatch(fetchDevis())
     dispatch(fetchFactures())
+    dispatch(fetchInstallations())
   }, [dispatch])
 
   const devisAcceptes = devis.filter((d) => d.statut === 'accepte')
@@ -151,6 +157,24 @@ export function Component() {
         count: factures.filter((f) => f.statut === s.key).length,
       })),
     [factures],
+  )
+
+  // Répartition des chantiers par statut (entonnoir canonique, hors annulés).
+  // Reflète la nouvelle portée de visibilité : la liste vient de l'API déjà
+  // restreinte à ce que l'utilisateur a le droit de voir.
+  const chantiersParStatut = useMemo(() => {
+    const actifs = (installations ?? []).filter((it) => !it.annule)
+    return INSTALLATION_STATUSES.map((key) => ({
+      key,
+      label: STATUS_LABELS[key] ?? key,
+      token: STATUS_COLORS[key] ?? TOKEN.muted,
+      count: actifs.filter((it) => canonicalStatus(it.statut) === key).length,
+    }))
+  }, [installations])
+
+  const chantiersActifs = useMemo(
+    () => (installations ?? []).filter((it) => !it.annule).length,
+    [installations],
   )
 
   // Conversion devis → signé : envoyés vs. acceptés (taux de signature).
@@ -236,8 +260,9 @@ export function Component() {
   // États globaux : on s'appuie sur les drapeaux loading/error déjà exposés par
   // les slices (aucun nouvel appel API). Loading uniquement tant qu'aucune
   // donnée n'est encore arrivée ; erreur uniquement si tout est vide.
-  const anyLoading = stockLoading || crmLoading || ventesLoading
-  const hasAnyData = produits.length || clients.length || devis.length || factures.length
+  const anyLoading = stockLoading || crmLoading || ventesLoading || instLoading
+  const hasAnyData = produits.length || clients.length || devis.length
+    || factures.length || (installations?.length ?? 0)
   const firstError = ventesError || crmError || stockError
   const showLoading = anyLoading && !hasAnyData
   const showError = !anyLoading && !hasAnyData && !!firstError
@@ -438,6 +463,32 @@ export function Component() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
+
+          {/* Rangée : chantiers par statut (réalisation physique) */}
+          <ChartCard
+            title="Chantiers par statut"
+            description={`${formatNumber(chantiersActifs)} chantier(s) en cours`}
+            isEmpty={chantiersActifs === 0}
+            emptyLabel="Aucun chantier pour le moment."
+          >
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart
+                data={chantiersParStatut.filter((s) => s.count > 0)}
+                layout="vertical"
+                margin={{ top: 4, right: 12, bottom: 0, left: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} horizontal={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
+                <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Chantiers']} />
+                <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={18}>
+                  {chantiersParStatut.filter((s) => s.count > 0).map((s) => (
+                    <Cell key={s.key} fill={s.token} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
 
           {/* Rangée : conversion devis→signé + flux d'activité */}
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">

@@ -39,6 +39,7 @@ const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
 const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
+const Journal = lazy(() => import('../pages/Journal'))
 const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
 const CalendarPage = lazy(() => import('../pages/CalendarPage'))
 const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
@@ -157,6 +158,7 @@ const router = createBrowserRouter([
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },
   { path: '/admin/roles', loader: authLoader, element: <WithLayout><RolesManagement /></WithLayout> },
   { path: '/parametres', loader: authLoader, element: <WithLayout><ParametresEntreprise /></WithLayout> },
+  { path: '/journal', loader: authLoader, element: <WithLayout><Journal /></WithLayout> },
 
   // Catch-all
   { path: '*', element: <Navigate to="/dashboard" replace /> },

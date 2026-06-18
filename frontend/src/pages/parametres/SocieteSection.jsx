@@ -118,6 +118,34 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
             </CardContent>
           </Card>
 
+          {/* Paiement & conditions (factures) — Feature B */}
+          <Card>
+            <CardContent className="pt-4 sm:pt-5">
+              <SectionTitle label="Paiement & conditions (factures)" icon={<><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></>}/>
+              <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+                Texte libre affiché sur vos factures, juste sous le RIB. Tant qu'un champ est vide, rien ne s'affiche : vos factures restent identiques jusqu'à ce que vous les renseigniez. (Ces blocs ne concernent que les factures, pas les devis premium.)
+              </p>
+              <div className="flex flex-col gap-3">
+                <Field label="Instructions de paiement" htmlFor="pe-instructions-paiement">
+                  <Textarea
+                    id="pe-instructions-paiement" className="min-h-[68px] resize-y"
+                    name="instructions_paiement" value={form.instructions_paiement} onChange={set}
+                    placeholder="Ex : Acompte de 30 % à la commande, solde à la mise en service. Paiement par virement ou chèque."
+                    rows={3}
+                  />
+                </Field>
+                <Field label="Conditions générales" htmlFor="pe-conditions-generales">
+                  <Textarea
+                    id="pe-conditions-generales" className="min-h-[88px] resize-y"
+                    name="conditions_generales" value={form.conditions_generales} onChange={set}
+                    placeholder="Ex : Garantie 10 ans sur les panneaux, 5 ans onduleur. Réclamations sous 8 jours…"
+                    rows={4}
+                  />
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Identifiants légaux (Maroc) */}
           <Card>
             <CardContent className="pt-4 sm:pt-5">
