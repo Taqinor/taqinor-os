@@ -1212,7 +1212,7 @@ moat becomes vivid — make each one a story a buyer remembers, inventing nothin
 to its city page and the relevant segment page. Refresh titles/meta-descriptions. One self-merged
 PR.
 
-### W43 — Make the evidence feel alive: restrained CSS scroll-reveal + count-up (perf budget, reduced-motion safe) — [ ]
+### W43 — Make the evidence feel alive: restrained CSS scroll-reveal + count-up (perf budget, reduced-motion safe) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1687,3 +1687,14 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   only to GET/HEAD text/html responses (wired in `worker/redirect-entry.mjs`), while `astro.config.mjs`
   keeps `_astro`/photos/videos/fonts/og served asset-first with their immutable long cache and `/api/*` +
   the lead pipeline untouched. Both W44 concerns were already satisfied by W17 and W33 — nothing to fix.
+- 2026-06-18 — W43 done (evidence feels alive — verified existing system + closed the one gap). The
+  CSS-only scroll-reveal + count-up engine already exists (`V2Enhance.astro`: an IntersectionObserver
+  that reveals `.v2-rise` and counts `[data-tally]` up from zero, French-formatted, width locked for
+  zero CLS, the whole thing behind `if (!reduce)` for prefers-reduced-motion; no animation library, one
+  observer). It is already applied to the big figures site-wide — homepage hero stats (43,48 kWc /
+  60–90 % / 3–7 ans / 25 ans / 0 MAD), the evidence-gallery cards (kWc + production), and the case-study
+  production `<dl>` dashboard (kWc + measured kWh/an) all count up and reveal. The only marquee figures
+  not yet animated were on the homepage « Dernière installation livrée » readout, so 17,04 kWc and
+  21 406 kWh/an now carry `data-tally` too — completing the measured-production dashboard feel. Two
+  presentational attributes only; the DiagnosticForm fields/validation/fetch/data flow are untouched.
+  Reduced-motion still fully kills motion; zero new dependency; Lighthouse unaffected.
