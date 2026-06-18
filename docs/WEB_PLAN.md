@@ -254,8 +254,12 @@ and its entire data flow stay byte-for-byte unchanged in every locale.
 **Done when:** every public page resolves under /en/ and /ar/ with accurate translations, the switcher
 works, hreflang + sitemap are correct, Arabic renders RTL without layout breakage, Lighthouse held, the
 lead form is unchanged. (Large task — the autopilot may lane/stage it across pages.)
-**Pending Reda:** none — Reda waived pre-publication translation review; build to a high bar and ship.
-Keep loi-82-21 wording and every figure exact in EN + AR.
+**Decisions (Reda, 2026-06-18):** WHOLE SITE in one build (not staged); the diagnostic lead form's
+visible LABELS are translated per language while its payload, endpoint, 1 000 MAD threshold, consent,
+WhatsApp deeplink + CAPI stay byte-for-byte identical. Pre-publication translation review waived —
+build to a high bar and ship; keep loi-82-21 wording and every figure exact in EN + AR. Executed in
+verified non-breaking increments (FR stays byte-identical, suite stays green): foundation first
+(config + dictionary + utils + LanguageSwitcher + Layout hreflang/RTL), then page-by-page.
 
 ---
 
