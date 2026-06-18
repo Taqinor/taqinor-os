@@ -51,16 +51,16 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 - [x] **I38.** Notifications UI shell: bell + dropdown list + unread badge + an in-context permission prompt (shown with rationale, not on load). Wires to the planned VAPID web-push backend later; degrades to a no-op if the backend/keys are absent.
 
 ## Group J — Per-module restyle (each: list → DataTable, forms → new primitives, modals → Dialog/Sheet, statuses → StatusPill, real empty/loading/error states, mobile pass)
-- [ ] **J39.** CRM Leads — kanban / list / charts / calendar views, LeadCard, FilterBar, ViewSwitcher, DoublonsPanel, LeadDevisPanel; polish drag affordance on the kanban.
-- [ ] **J40.** CRM Clients — list + form.
-- [ ] **J41.** Ventes Devis — list, form, and the multi-market generator (the line-item editor needs the most care).
-- [ ] **J42.** Ventes Factures — list + form (acompte/solde/avoir); Relances; Avoirs; Ventes Kanban.
-- [ ] **J43.** Chantiers/Installations — list + detail + filter bar.
-- [ ] **J44.** SAV — Tickets + Équipements (warranty tracking).
-- [ ] **J45.** Stock — list, mouvements, produit form, OCR import.
-- [ ] **J46.** IA — AgentChat + OCR upload.
-- [ ] **J47.** Admin — Roles editor + Users.
-- [ ] **J48.** Paramètres — restyle in the new system (the tabbed split + editable settings are feature tasks D9–D13; build them on the new primitives).
+- [x] **J39.** CRM Leads — kanban / list / charts / calendar views, LeadCard, FilterBar, ViewSwitcher, DoublonsPanel, LeadDevisPanel; polish drag affordance on the kanban.
+- [x] **J40.** CRM Clients — list + form.
+- [x] **J41.** Ventes Devis — list, form, and the multi-market generator (the line-item editor needs the most care).
+- [x] **J42.** Ventes Factures — list + form (acompte/solde/avoir); Relances; Avoirs; Ventes Kanban.
+- [x] **J43.** Chantiers/Installations — list + detail + filter bar.
+- [x] **J44.** SAV — Tickets + Équipements (warranty tracking).
+- [x] **J45.** Stock — list, mouvements, produit form, OCR import.
+- [x] **J46.** IA — AgentChat + OCR upload.
+- [x] **J47.** Admin — Roles editor + Users.
+- [x] **J48.** Paramètres — restyle in the new system (the tabbed split + editable settings are feature tasks D9–D13; build them on the new primitives).
 - [ ] **J49.** Activities — Mes Activités.
 - [ ] **J50.** PDF preview screen — restyle only the chrome around PdfCanvas (toolbar, container, mobile layout). Do NOT touch the rendered PDF content or template.
 
@@ -148,6 +148,34 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — Refonte UI, vague 4 (restyle par module, Groupe J) : J39→J48
+  livrés. HUIT lanes en worktrees isolés à périmètres de fichiers DISJOINTS
+  (vérifié : zéro chevauchement, zéro fichier hors `frontend/src/pages/<module>/`),
+  chacune branchant un module sur le système de design `@/ui` (G/H/I) sans toucher
+  aux primitives, aux slices API, au routeur, à `index.css`, ni aux composants
+  partagés (`AssigneePicker`, `InlineEdit`, `AttachmentsPanel`…). Lanes : CRM
+  (J39 leads + J40 clients), Ventes (J41 devis + J42 factures/relances/avoirs/
+  kanban), Installations (J43), SAV (J44), Stock (J45), IA (J46), Admin (J47),
+  Paramètres (J48). Les huit branches repliées en un seul `dev` (8 fusions sans
+  conflit). CONTRAT e2e PRÉSERVÉ et re-vérifié statiquement sur l'arbre fusionné :
+  toutes les classes/ids/intitulés porteurs présents (`modal modal-xl`,
+  `kb-card`/`lv-row`, `lead-bill-*`, `#sd-devis`/`sd-option`, `dbl-panel`/
+  `dbl-cluster`, `data-table` côté factures/avoirs/relances, `input:not([type])`
+  pour le username admin, `input[name=email]` + « Profil enregistré avec succès. »
+  côté Paramètres, intitulés de boutons/titres exacts) ; les hooks des composants
+  partagés (`ie-cell`/`ie-input`, `ap-*`, `att-name`) intacts et toujours utilisés.
+  Décision technique notée : la primitive `DataTable` n'émet pas de `<table class="data-table">`
+  et bascule en cartes en mobile — donc les listes sélectionnées par e2e (factures/
+  avoirs/relances, users admin) gardent une `<table className="data-table">`/`<tr>`
+  sémantique plutôt que la primitive. Revue orchestrateur : 2 erreurs eslint
+  introduites (lecture de ref pendant le rendu dans ProduitForm ; set-state-in-effect
+  dans ContratsMaintenance) trouvées puis corrigées. CI locale verte : eslint 0
+  erreur, build vite+PWA OK, 157 tests unitaires. Règles permanentes respectées :
+  ZÉRO nouvelle dépendance, textes FR, additif, aucun PDF/PdfCanvas/page publique/
+  STAGES.py/apps-web/back-end touché, prix d'achat jamais exposés. RESTE OUVERT :
+  J49 (Activities), J50 (chrome PDF), Groupes K (dashboard/reporting), M (mobile/PWA),
+  N (a11y), O (perf), P (cleanup). GATÉ/BLOQUÉ inchangé : M59 (logo), D2/D4 (décision
+  fondateur).
 - 2026-06-18 — Refonte UI, vague 3 (fondation) : Groupe I (coquille + navigation)
   + Groupe L (comportements UX globaux). Deux lanes en worktrees isolés à
   périmètres de fichiers DISJOINTS (SHELL = `components/layout/*` + `index.css` ;
