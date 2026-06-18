@@ -80,6 +80,9 @@ const ID_BUTTONS = [
   'rp9-finish', 'rp9-clear', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
   'rp9-obstacle', 'rp9-obstacle-clear', 'rp9-obs-delete', 'rp9-obs-plus', 'rp9-obs-minus',
   'rp9-optimum', 'rp9-optimum-apply', 'rp9-cta',
+  // W50 — pickers de la fenêtre de production.
+  'rp9-prod-month-prev', 'rp9-prod-month-next',
+  'rp9-prod-day-prev', 'rp9-prod-day-next', 'rp9-prod-day-reset',
 ];
 const ID_GENERIC = [
   'rp9-map', 'rp9-status', 'rp9-bill-kwh', 'rp9-config', 'rp9-azimuth-group', 'rp9-compass-arrow',
@@ -89,6 +92,10 @@ const ID_GENERIC = [
   'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note',
   'rp9-reco-title', 'rp9-reco-kwc', 'rp9-reco-panels', 'rp9-reco-prod', 'rp9-reco-cover',
   'rp9-reco-savings', 'rp9-reco-why', 'rp9-reco-bifacial', 'rp9-results', 'rp9-maxline', 'rp9-compare-wrap',
+  // W50 — fenêtre de production (conteneur, scope, labels, headline, graphe, source, économies).
+  'rp9-prod-window', 'rp9-prod-scope', 'rp9-prod-month-picker', 'rp9-prod-month-label',
+  'rp9-prod-day-picker', 'rp9-prod-day-label', 'rp9-prod-headline', 'rp9-prod-sub',
+  'rp9-prod-graph', 'rp9-prod-source', 'rp9-prod-savings',
 ];
 
 const CHIP_GROUPS: { attr: string; values: string[]; badge?: boolean }[] = [
@@ -158,6 +165,17 @@ function setupDom() {
         b.appendChild(badge);
       }
       root.appendChild(b);
+    }
+  }
+  // W50 — les puces de scope [data-prod-scope] vivent À L'INTÉRIEUR de #rp9-prod-scope
+  // (le script les interroge via prodScopeWrap.querySelectorAll). On les y insère.
+  const scopeWrap = root.querySelector('#rp9-prod-scope');
+  if (scopeWrap) {
+    for (const v of ['year', 'month', 'day']) {
+      const b = el('button') as HTMLButtonElement;
+      b.setAttribute('data-prod-scope', v);
+      b.setAttribute('aria-pressed', String(v === 'year'));
+      scopeWrap.appendChild(b);
     }
   }
   // tableau matrice : <table><tbody id=rp9-compare> + en-têtes de tri + filtre
@@ -533,5 +551,212 @@ describe('W46 (toit plat) — re-résolution après CHAQUE verrou (3ᵉ, 4ᵉ, N
     (document.getElementById('rp9-optimum') as HTMLButtonElement).click();
     await flushPvgis();
     expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  }, 60000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W50 — FENÊTRE « PRODUCTION ESTIMÉE » (Année / Mois / Jour). On MONTE le vrai script,
+// mock /api/roof-production (jamais PVGIS directement), trace un toit, et vérifie : le
+// scope donne la bonne série (Année=12 mois, Jour=courbe 24 h), le cyclage mois parcourt
+// les 12 mois, le jour démarre sur le jour TYPE puis une date précise le surcharge, et
+// éditer le nombre de panneaux rescale toutes les figures (linéarité, sans nouvel appel
+// PVGIS direct). Le client appelle bien /api/roof-production.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+const PANEL_KWC_TEST = 0.72;
+
+/** Production PAR 1 kWc déterministe (mensuels distincts → on repère le mois affiché). */
+function perKwcFixture() {
+  const monthly = [80, 90, 120, 140, 160, 175, 180, 170, 145, 120, 95, 75]; // kWh/kWc/mois
+  const annual = monthly.reduce((a, b) => a + b, 0);
+  const daysIn = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const bell = (peak: number) => {
+    const out = new Array<number>(24).fill(0);
+    for (let h = 6; h <= 18; h++) {
+      const x = (h - 12) / 4;
+      out[h] = peak * Math.exp(-0.5 * x * x);
+    }
+    const s = out.reduce((a, b) => a + b, 0);
+    return out.map((v) => (s > 0 ? v : 0));
+  };
+  const typicalDayByMonth: number[][] = [];
+  const dailyKwhByMonth: number[] = [];
+  for (let m = 0; m < 12; m++) {
+    const targetDaily = monthly[m] / daysIn[m];
+    const shape = bell(1);
+    const shapeSum = shape.reduce((a, b) => a + b, 0);
+    const k = shapeSum > 0 ? targetDaily / shapeSum : 0;
+    const prof = shape.map((v) => v * k);
+    typicalDayByMonth.push(prof);
+    dailyKwhByMonth.push(prof.reduce((a, b) => a + b, 0));
+  }
+  return { annual, monthly, typicalDayByMonth, dailyKwhByMonth };
+}
+
+/** Mock fetch : /api/roof-production renvoie la fixture mise à l'échelle par placedPanels ;
+ *  /api/roof-yield renvoie un rendement plausible ; toute URL est enregistrée. */
+function installProductionFetch(urls: string[]) {
+  const fx = perKwcFixture();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: { body?: string }) => {
+      urls.push(url);
+      const body = init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+      if (url.includes('/api/roof-production')) {
+        const panels = Number(body.placedPanels) || 1;
+        const kwc = panels * PANEL_KWC_TEST;
+        const monthlyKwh = fx.monthly.map((v) => v * kwc);
+        const annualKwh = fx.annual * kwc;
+        const dailyKwhByMonth = fx.dailyKwhByMonth.map((v) => v * kwc);
+        const typicalDayByMonth = fx.typicalDayByMonth.map((prof) => prof.map((v) => v * kwc));
+        let specificDate = null;
+        if (typeof body.dateMonth === 'number' && typeof body.dateDay === 'number') {
+          // Date précise : profil clairement DIFFÉRENT du jour type (pic ×3) → on le repère.
+          const peak = 3;
+          const out = new Array<number>(24).fill(0);
+          for (let h = 6; h <= 18; h++) {
+            const x = (h - 12) / 4;
+            out[h] = peak * Math.exp(-0.5 * x * x);
+          }
+          const hourlyKw = out.map((v) => v * kwc);
+          specificDate = {
+            month: body.dateMonth,
+            day: body.dateDay,
+            hourlyKw,
+            dailyKwh: hourlyKw.reduce((a, b) => a + b, 0),
+            yearsAveraged: 5,
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            source: 'pvgis',
+            cacheHit: false,
+            placedPanels: panels,
+            panelKwc: PANEL_KWC_TEST,
+            placedKwc: kwc,
+            annualKwh,
+            monthlyKwh,
+            dailyKwhByMonth,
+            typicalDayByMonth,
+            specificDate,
+          }),
+        } as unknown as Response;
+      }
+      // /api/roof-yield : rendement plausible (PVGIS GPS exact) pour l'optimiseur.
+      const legs = (body.legs as { kwc?: number }[]) || [];
+      const annual = legs.reduce((a, lg) => a + (lg.kwc || 1) * 1700, 0);
+      return { ok: true, json: async () => ({ ok: true, annualKwh: annual }) } as unknown as Response;
+    }),
+  );
+}
+
+/** kWh affichés dans le headline de la fenêtre de production (nombre). */
+function prodHeadlineKwh(): number {
+  return Number((txt('rp9-prod-headline').match(/[\d  ]+/)?.[0] ?? '0').replace(/[^\d]/g, ''));
+}
+
+describe('W50 — fenêtre de production : scope, cyclage, jour type/date, rescale', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function mount() {
+    const urls: string[] = [];
+    installProductionFetch(urls);
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0]);
+    await flushPvgis();
+    return urls;
+  }
+
+  it('la fenêtre se remplit (kWh/an) et le client appelle /api/roof-production', async () => {
+    const urls = await mount();
+    expect((document.getElementById('rp9-prod-window') as HTMLElement).hidden).toBe(false);
+    expect(txt('rp9-prod-headline')).toMatch(/kWh\/an/);
+    expect(prodHeadlineKwh()).toBeGreaterThan(0);
+    // le client appelle bien la route serveur — JAMAIS PVGIS directement
+    expect(urls.some((u) => u.includes('/api/roof-production'))).toBe(true);
+    expect(urls.some((u) => u.includes('pvgis') || u.includes('re.jrc.ec.europa.eu'))).toBe(false);
+    // un graphe SVG a été rendu (12 barres mensuelles)
+    expect(document.querySelectorAll('#rp9-prod-graph rect').length).toBe(12);
+  }, 60000);
+
+  it('toggle Mois puis Jour change la série (Jour = courbe 24 points)', async () => {
+    await mount();
+    document.querySelector<HTMLButtonElement>('[data-prod-scope="month"]')!.click();
+    await flushPvgis();
+    expect(txt('rp9-prod-sub')).toMatch(/Production de/i);
+    expect((document.getElementById('rp9-prod-month-picker') as HTMLElement).hidden).toBe(false);
+    // Jour : une courbe (path) au lieu de barres
+    document.querySelector<HTMLButtonElement>('[data-prod-scope="day"]')!.click();
+    await flushPvgis();
+    expect((document.getElementById('rp9-prod-day-picker') as HTMLElement).hidden).toBe(false);
+    expect(document.querySelectorAll('#rp9-prod-graph path').length).toBeGreaterThan(0);
+    expect(txt('rp9-prod-sub')).toMatch(/jour type/i); // défaut = jour type
+  }, 60000);
+
+  it('cycler les mois parcourt les 12 mois et revient au point de départ', async () => {
+    await mount();
+    document.querySelector<HTMLButtonElement>('[data-prod-scope="month"]')!.click();
+    await flushPvgis();
+    const next = document.getElementById('rp9-prod-month-next') as HTMLButtonElement;
+    const seen = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      seen.add(txt('rp9-prod-month-label'));
+      next.click();
+      await flushPvgis();
+    }
+    expect(seen.size).toBe(12); // tous les mois affichés
+  }, 60000);
+
+  it('le jour démarre sur le JOUR TYPE ; une date choisie le surcharge', async () => {
+    await mount();
+    document.querySelector<HTMLButtonElement>('[data-prod-scope="day"]')!.click();
+    await flushPvgis();
+    const typicalKwh = prodHeadlineKwh();
+    expect(txt('rp9-prod-day-label')).toMatch(/jour type/i);
+    // choisir une date précise (flèche jour suivant) → le profil change (pic ×3 dans le mock)
+    (document.getElementById('rp9-prod-day-next') as HTMLButtonElement).click();
+    await flushPvgis();
+    expect(txt('rp9-prod-day-label')).not.toMatch(/jour type/i); // date précise affichée
+    expect(prodHeadlineKwh()).toBeGreaterThan(typicalKwh); // la date pic ×3 > jour type
+    // « Jour type » ramène au profil moyen
+    const resetBtn = document.getElementById('rp9-prod-day-reset') as HTMLButtonElement;
+    expect(resetBtn.hidden).toBe(false);
+    resetBtn.click();
+    await flushPvgis();
+    expect(txt('rp9-prod-day-label')).toMatch(/jour type/i);
+  }, 60000);
+
+  it('éditer le nombre de panneaux rescale les figures (linéarité)', async () => {
+    await mount();
+    const before = prodHeadlineKwh();
+    expect(before).toBeGreaterThan(0);
+    // augmente le besoin → plus de panneaux posés → production plus haute
+    const needInput = document.getElementById('rp9-need-input') as HTMLInputElement;
+    const baseNeed = Number(needInput.value.replace(/[^\d]/g, '')) || 1;
+    needInput.value = String(baseNeed + 6);
+    needInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    await flushPvgis();
+    const after = prodHeadlineKwh();
+    expect(after).toBeGreaterThan(before); // plus de panneaux → plus de production
+  }, 60000);
+
+  it('en pente, la fenêtre reflète la pose affleurante (building) et reste remplie', async () => {
+    await mount();
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    await flushPvgis();
+    expect((document.getElementById('rp9-prod-window') as HTMLElement).hidden).toBe(false);
+    expect(txt('rp9-prod-headline')).toMatch(/kWh\/an/);
   }, 60000);
 });
