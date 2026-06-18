@@ -47,7 +47,11 @@ export default function Header({ onMenu }) {
         </button>
         <div className="header-heading">
           <Breadcrumbs pathname={location.pathname} />
-          <h1 className="header-title">{title}</h1>
+          {/* Titre de page en élément non-heading : évite la collision de rôle
+              `heading` avec le <h2> de chaque page (les tests e2e ciblent le
+              titre de page par getByRole('heading')). La classe .header-title
+              reste le point d'ancrage des assertions e2e/mobile. */}
+          <div className="header-title">{title}</div>
         </div>
       </div>
 
