@@ -61,12 +61,12 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 - [x] **J46.** IA — AgentChat + OCR upload.
 - [x] **J47.** Admin — Roles editor + Users.
 - [x] **J48.** Paramètres — restyle in the new system (the tabbed split + editable settings are feature tasks D9–D13; build them on the new primitives).
-- [ ] **J49.** Activities — Mes Activités.
+- [x] **J49.** Activities — Mes Activités.
 - [ ] **J50.** PDF preview screen — restyle only the chrome around PdfCanvas (toolbar, container, mobile layout). Do NOT touch the rendered PDF content or template.
 
 ## Group K — Dashboard & reporting
-- [ ] **K51.** Dashboard: KPI cards + themed charts (recharts, or Tremor copy-in blocks) — pipeline value, devis→signé conversion, outstanding invoices / aged balance, chantiers by status, revenue — plus an activity feed. Real data from existing slices/APIs; no buy-price exposure.
-- [ ] **K52.** Reporting hub + Balance âgée: restyle with charts, date-range + segment filters, export, and proper empty/loading states.
+- [x] **K51.** Dashboard: KPI cards + themed charts (recharts, or Tremor copy-in blocks) — pipeline value, devis→signé conversion, outstanding invoices / aged balance, chantiers by status, revenue — plus an activity feed. Real data from existing slices/APIs; no buy-price exposure.
+- [x] **K52.** Reporting hub + Balance âgée: restyle with charts, date-range + segment filters, export, and proper empty/loading states.
 
 ## Group L — Global UX behaviors
 - [x] **L53.** Consistent async feedback: every save / delete / send-WhatsApp / generate-PDF fires a toast, with undo where safe.
@@ -148,6 +148,27 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — Refonte UI, vague 4 (suite) : J49 (Mes Activités) + Groupe K
+  (K51 Dashboard, K52 hub Reporting + Rapports + Balance âgée) livrés dans le
+  MÊME lot/merge que le Groupe J (PR #152), via 3 lanes worktree isolées et
+  file-disjointes (activities ; Dashboard.jsx ; Reporting/Rapports/reporting/*).
+  K51 : cartes KPI → `Stat`, recharts re-thémées via tokens, fil d'activité,
+  états vides/chargement(Skeleton)/erreur ; titre « Tableau de bord » (heading)
+  préservé (assertion auth.setup e2e). K52 : hub Reporting + Rapports (onglets
+  `Tabs`) + Balance âgée + archives ; filtres `Segmented` côté client (sans appel
+  API en plus) ; titres « Balance âgée » et /Archive documentaire/ + tables
+  `data-table` préservés (e2e receivables). J49 : cockpit Mes Activités sur
+  Card/StatusPill/Button + vrai état d'erreur ; les hooks `.act-*`/`.ap-*` vivent
+  dans le composant partagé ActivitiesPanel (non touché), donc préservés. CI
+  locale verte (eslint 0 erreur, build vite+PWA, 157 tests). NUANCE honnête :
+  K51 n'inclut PAS le graphe « chantiers par statut » suggéré — les slices du
+  dashboard ne chargent pas les installations aujourd'hui et ajouter un appel
+  serait un changement de comportement (hors périmètre « API identiques ») ;
+  noté comme petit reliquat. J50 (chrome de l'aperçu PDF) REPORTÉ d'un cran :
+  les sous-agents worktree branchent depuis `origin/main`, donc J50 avait été
+  bâti sur le LeadDevisPanel d'AVANT la vague 4 et entrait en conflit ; il sera
+  refait proprement sur un `main` contenant déjà la vague 4. RESTE OUVERT : J50,
+  Groupes M (mobile/PWA), N (a11y), O (perf), P (cleanup). GATÉ : M59, D2/D4.
 - 2026-06-18 — Refonte UI, vague 4 (restyle par module, Groupe J) : J39→J48
   livrés. HUIT lanes en worktrees isolés à périmètres de fichiers DISJOINTS
   (vérifié : zéro chevauchement, zéro fichier hors `frontend/src/pages/<module>/`),
