@@ -10,10 +10,7 @@ import AssigneePicker from '../../components/AssigneePicker'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
-import '../../components/records-panels.css'
 import LeadDevisPanel from './leads/LeadDevisPanel'
-import './leads/leaddevispanel.css'
-import './leadform-extra.css'
 import { Button, Input } from '../../ui'
 
 const STAGE_LABELS = {

@@ -10,6 +10,8 @@ import Layout from '../components/layout/Layout'
 // router, au chokepoint commun des écrans authentifiés (WithLayout).
 import { CommandPalette } from '../providers/CommandPalette'
 import { ShortcutsProvider } from '../providers/ShortcutsProvider'
+// O65 — Repli « skeleton-first » pendant le chargement lazy d'un bundle de page.
+import RouteFallback from '../components/RouteFallback'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -80,7 +82,9 @@ const authLoader = async () => {
   return ok ? null : redirect('/login')
 }
 
-const Fallback = () => <div style={{ padding: '2rem', textAlign: 'center' }}>Chargement...</div>
+// O65 — squelette de page (en-tête + contenu) au lieu d'un texte brut, pour un
+// chargement « skeleton-first » sur toutes les routes (publiques et authentifiées).
+const Fallback = () => <RouteFallback />
 
 function WithLayout({ children }) {
   // ShortcutsProvider + CommandPalette vivent ici : ils ont besoin du contexte

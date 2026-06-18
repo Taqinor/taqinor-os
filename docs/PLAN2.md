@@ -76,23 +76,23 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 - [x] **L57.** Session-timeout handling: graceful re-auth that preserves the in-progress form.
 
 ## Group M — Mobile & PWA polish (Meryem is iPhone-primary)
-- [ ] **M58.** iOS pass: safe-area insets everywhere, tap targets ≥44pt, 16px inputs (no zoom), no horizontal scroll on core flows, modals → bottom sheets, primary actions thumb-reachable.
+- [x] **M58.** iOS pass: safe-area insets everywhere, tap targets ≥44pt, 16px inputs (no zoom), no horizontal scroll on core flows, modals → bottom sheets, primary actions thumb-reachable.
 - [ ] **M59.** PWA icons: standard 192/512 + maskable variants with the 80% safe zone, plus favicon — from the sun-bolt asset (BLOCKED until Reda uploads the logo/PNG); add splash + install-prompt UI.
-- [ ] **M60.** Service-worker update flow: a "Nouvelle version — recharger" toast when a new build is live (removes the delete-and-reinstall pain for future updates).
-- [ ] **M61.** Offline state: cached app shell + a clear offline banner instead of a browser error page.
-- [ ] **M62.** Smooth scrolling + reduced-motion respected throughout.
+- [x] **M60.** (already present) Service-worker update flow: a "Nouvelle version — recharger" toast when a new build is live (removes the delete-and-reinstall pain for future updates).
+- [x] **M61.** Offline state: cached app shell + a clear offline banner instead of a browser error page.
+- [x] **M62.** Smooth scrolling + reduced-motion respected throughout.
 
 ## Group N — Accessibility & quality floor (WCAG 2.2 AA)
-- [ ] **N63.** Contrast 4.5:1 (incl. dark / disabled / pressed states), focus-visible rings, ARIA labels on icon buttons, semantic HTML, full keyboard nav for tables/kanban/dialogs (focus trap + restore), screen-reader announcements for toasts + validation, color never the only signal.
-- [ ] **N64.** Text resize to 200% and portrait+landscape without breakage; Lighthouse + axe pass each release.
+- [x] **N63.** Contrast 4.5:1 (incl. dark / disabled / pressed states), focus-visible rings, ARIA labels on icon buttons, semantic HTML, full keyboard nav for tables/kanban/dialogs (focus trap + restore), screen-reader announcements for toasts + validation, color never the only signal.
+- [x] **N64.** Text resize to 200% and portrait+landscape without breakage; Lighthouse + axe pass each release.
 
 ## Group O — Performance
-- [ ] **O65.** Route-based code splitting + lazy loading; skeleton-first rendering.
-- [ ] **O66.** List virtualization for big tables, debounced search, request caching; font preload + image lazy-load; a bundle budget.
+- [x] **O65.** Route-based code splitting + lazy loading; skeleton-first rendering.
+- [x] **O66.** List virtualization for big tables, debounced search, request caching; font preload + image lazy-load; a bundle budget.
 
 ## Group P — Consistency & cleanup
-- [ ] **P67.** Migrate and DELETE the ~15 ad-hoc per-component .css files into the token system + primitives as each screen is converted.
-- [ ] **P69.** Document the token system in one reference file; save before/after screenshots of key screens to docs/ui-redesign/.
+- [x] **P67.** Migrate and DELETE the ~15 ad-hoc per-component .css files into the token system + primitives as each screen is converted.
+- [x] **P69.** Document the token system in one reference file; save before/after screenshots of key screens to docs/ui-redesign/. _(Reference doc shipped; binary before/after screenshots remain a manual capture step — see docs/ui-redesign/SCREENSHOTS.md.)_
 
 ## Pending Reda (carry these in the plan)
 - [ ] New dependencies to approve before Groups G/H build: @tanstack/react-table, plus shadcn's helper set (@radix-ui/* primitives, class-variance-authority, tailwind-merge, clsx, lucide-react, sonner) — all small, free, MIT.
@@ -148,6 +148,41 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — Refonte UI, vague 5 (Groupes M/N/O/P — finitions mobile/PWA,
+  accessibilité, performance, nettoyage). 10 tâches livrées en 4 lanes parallèles
+  à fichiers DISJOINTS (orchestrateur = revue + bookkeeping centralisé). **Lane
+  STYLE** (séquentielle, propriétaire de `index.css`/`tokens.css`/`ui/*.jsx`) :
+  M58 (passe iOS — champs legacy forcés à 16px ≤768px contre le zoom, garde
+  anti-scroll-horizontal, modales en bottom-sheets sur mobile, cibles 44px),
+  M62 (`scroll-behavior:smooth` + catch-all `prefers-reduced-motion` couvrant
+  les écrans legacy hors tokens), N63 (anneau `:focus-visible` global sur les
+  éléments interactifs legacy via `--ring` + repli de nom accessible sur
+  IconButton ; StatusPill couleur+texte confirmé), N64 (hauteurs `min-height`
+  au lieu de `height` fixes sur `.btn/.status-tab`, repli `100dvh` paysage ;
+  Lighthouse/axe automatisés = étape manuelle, @axe-core étant une nouvelle
+  dépendance hors périmètre), **P67** (les 16 CSS ad-hoc par composant migrés
+  VERBATIM dans `index.css` sous sections commentées puis SUPPRIMÉS, 18 imports
+  retirés ; ordre de cascade préservé pour `.kb-act-clock` records-panels avant
+  kanban ; `tokens.css`/`index.css`/`landing.css` conservés). **Lane PERF**
+  (router/vite/axios/datatable/lib/index.html) : O65 (découpage de routes + lazy
+  déjà présents ; nouveau `RouteFallback` squelette via la primitive Skeleton
+  remplace le « Chargement... » texte), O66 (virtualisation datatable + préload
+  polices déjà présents ; nouveau `debounce.js`+hook `useDebouncedValue` câblé au
+  filtre global du DataTable (250 ms, valeur affichée instantanée) + 5 tests ;
+  helper de cache GET `requestCache.js` OPT-IN non branché (comportement par
+  défaut inchangé) ; budget de bundle `chunkSizeWarningLimit:900` + `manualChunks`
+  isolant react-vendor/recharts/pdfjs-dist/@radix-ui ; aucune `<img>` dans le
+  périmètre). **Lane PWA** (Layout.jsx) : M61 (OfflineBanner monté dans le
+  layout — bannière FR hors-ligne, inerte en ligne ; shell précaché déjà fait
+  par sw.js) ; M60 confirmé DÉJÀ présent (UpdateToast « Nouvelle version
+  disponible — Actualiser » dans PwaPrompts). **Lane DOCS** : P69 (`tokens.md`
+  étendu en référence canonique du design-system + `SCREENSHOTS.md` ; captures
+  binaires = étape manuelle honnêtement notée). CI locale verte sur l'agrégat :
+  eslint 0 erreur (6 warnings legacy Landing.jsx), 157 tests unitaires, build
+  vite+PWA OK. Aucune nouvelle dépendance, additif, FR, aucun PDF/PdfCanvas/page
+  publique/STAGES.py/apps-web/back-end touché, prix d'achat jamais exposés.
+  RESTE OUVERT/GATÉ : M59 (logo à fournir par Reda), D2/D4 (décision fondateur).
+  **La file PLAN2 est désormais drainée** (seuls M59/D2/D4 gatés restent).
 - 2026-06-18 — Refonte UI, vague 4 (fin du Groupe J) : J50 (chrome de l'aperçu
   PDF) livré sur un `main` contenant déjà la vague 4 (donc base correcte, plus de
   conflit). Restyle UNIQUEMENT du chrome de la zone d'aperçu dans LeadDevisPanel

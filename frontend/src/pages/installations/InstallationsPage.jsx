@@ -22,7 +22,6 @@ import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import KanbanView from './views/KanbanView'
 import InstallationDetail from './InstallationDetail'
-import '../crm/leads/views/calendar.css'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']

@@ -14,7 +14,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, Clock, ShieldCheck, Banknote, X } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import './notificationbell.css'
 
 // Le push n'est tentable que si l'API navigateur ET une clé VAPID publique
 // (exposée au build) sont présentes. Sinon : no-op total.

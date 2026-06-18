@@ -19,7 +19,6 @@ import {
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState,
 } from '../../../../ui'
-import './charts.css'
 
 const NAVY = '#0b1f3a'
 const GOLD = '#f5a623'

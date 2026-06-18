@@ -14,7 +14,6 @@ import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
 import reportingApi from '../api/reportingApi'
-import './command-palette.css'
 
 // Route d'ouverture par type d'entité (aligné sur router/index.jsx). `produit`
 // est inclus pour le jour où le back le renvoie ; il pointe vers le stock.

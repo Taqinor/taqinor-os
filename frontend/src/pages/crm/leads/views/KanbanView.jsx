@@ -14,7 +14,6 @@ import {
 } from '@dnd-kit/core'
 import { formatMAD, groupLeadsByStage } from '../../../../features/crm/stages'
 import LeadCard from './LeadCard'
-import './kanban.css'
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.

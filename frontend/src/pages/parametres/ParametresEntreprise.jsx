@@ -18,7 +18,6 @@ import { CheckCircle2, AlertCircle, Save } from 'lucide-react'
 import {
   Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider,
 } from '../../ui'
-import './parametres.css'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
 } from './peConstants'

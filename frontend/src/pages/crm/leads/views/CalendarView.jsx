@@ -9,7 +9,6 @@ import {
   isPerdu,
 } from '../../../../features/crm/stages'
 import { Button, IconButton } from '../../../../ui'
-import './calendar.css'
 
 // Semaine française : lundi en premier.
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
