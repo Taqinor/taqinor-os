@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
+import { ShieldPlus, ShieldCheck, Pencil, Trash2 } from 'lucide-react'
 import rolesApi from '../../api/rolesApi'
+import {
+  Button, Spinner, Badge,
+  Card, CardHeader, CardTitle,
+  EmptyState, Skeleton,
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Form, FormActions,
+  Label, Input, Checkbox,
+} from '../../ui'
 
 const PERMISSION_GROUPS = [
   {
@@ -62,28 +72,6 @@ const PERMISSION_GROUPS = [
 
 const EMPTY_FORM = { nom: '', permissions: [] }
 
-const S = {
-  card: { background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' },
-  th: { padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 },
-  td: { padding: '0.75rem 1rem', fontSize: '0.875rem' },
-  badge: (sys) => ({
-    display: 'inline-block',
-    background: sys ? '#eff6ff' : '#f0fdf4',
-    color: sys ? '#1d4ed8' : '#166534',
-    border: `1px solid ${sys ? '#bfdbfe' : '#bbf7d0'}`,
-    borderRadius: '999px', padding: '0.15rem 0.55rem', fontSize: '0.72rem', fontWeight: 600,
-  }),
-  btnPrimary: { background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', padding: '0.5rem 1rem', cursor: 'pointer', fontWeight: 500, fontSize: '0.875rem' },
-  btnDanger: { background: 'transparent', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' },
-  btnGhost: { background: 'transparent', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' },
-  input: { border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.45rem 0.75rem', fontSize: '0.875rem', width: '100%' },
-  label: { fontSize: '0.8rem', color: '#64748b', marginBottom: '0.25rem', display: 'block' },
-  section: { marginBottom: '0.5rem' },
-  groupTitle: { fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' },
-  checkRow: { display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.2rem', marginBottom: '0.2rem' },
-  checkLabel: { display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#374151', cursor: 'pointer' },
-}
-
 export default function RolesManagement() {
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -92,6 +80,7 @@ export default function RolesManagement() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [formError, setFormError] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -112,12 +101,14 @@ export default function RolesManagement() {
   const openCreate = () => {
     setEditing(null)
     setForm(EMPTY_FORM)
+    setFormError(null)
     setShowForm(true)
   }
 
   const openEdit = (role) => {
     setEditing(role)
     setForm({ nom: role.nom, permissions: [...role.permissions] })
+    setFormError(null)
     setShowForm(true)
   }
 
@@ -125,6 +116,7 @@ export default function RolesManagement() {
     setShowForm(false)
     setEditing(null)
     setForm(EMPTY_FORM)
+    setFormError(null)
   }
 
   const togglePerm = (code) => {
@@ -154,6 +146,7 @@ export default function RolesManagement() {
   const handleSave = async (e) => {
     e.preventDefault()
     setSaving(true)
+    setFormError(null)
     try {
       if (editing) {
         await rolesApi.patchRole(editing.id, form)
@@ -167,164 +160,198 @@ export default function RolesManagement() {
         || err.response?.data?.permissions?.[0]
         || err.response?.data?.detail
         || err.message
-      alert('Erreur : ' + msg)
+      setFormError('Erreur : ' + msg)
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (role) => {
-    if (!confirm(`Supprimer le rôle "${role.nom}" ?`)) return
     try {
       await rolesApi.deleteRole(role.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
+      setError(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
     }
   }
 
+  const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
+
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       {/* ── Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Gestion des rôles</h2>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+          <h2 className="font-display text-xl font-semibold tracking-tight">Gestion des rôles</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             Créez des rôles personnalisés avec des permissions précises pour votre entreprise.
           </p>
         </div>
         {!showForm && (
-          <button onClick={openCreate} style={S.btnPrimary}>
-            + Nouveau rôle
-          </button>
+          <Button onClick={openCreate}>
+            <ShieldPlus /> Nouveau rôle
+          </Button>
         )}
       </div>
 
-      {error && <p style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</p>}
+      {error && (
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
-      {/* ── Form ── */}
+      {/* ── Éditeur de rôle ── */}
       {showForm && (
-        <div style={{ ...S.card, padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 600 }}>
+        <Card className="p-4 sm:p-5">
+          <CardTitle className="mb-4">
             {editing ? `Modifier : ${editing.nom}` : 'Nouveau rôle'}
-          </h3>
-          <form onSubmit={handleSave}>
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={S.label}>Nom du rôle *</label>
-              <input
+          </CardTitle>
+          <Form onSubmit={handleSave} className="gap-5">
+            <div className="flex flex-col gap-1.5 sm:max-w-xs">
+              <Label htmlFor="role-nom" required>Nom du rôle</Label>
+              <Input
+                id="role-nom"
                 required
                 value={form.nom}
+                placeholder="ex: Comptable, Magasinier…"
                 onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
-                placeholder="ex: Comptable, Magasinier..."
-                style={{ ...S.input, maxWidth: '320px' }}
               />
             </div>
 
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ ...S.label, marginBottom: '0.75rem' }}>Permissions</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
+            <div className="flex flex-col gap-2">
+              <Label>Permissions</Label>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {PERMISSION_GROUPS.map(group => {
-                  const allSelected = group.codes.every(p => form.permissions.includes(p.code))
+                  const codes = group.codes.map(p => p.code)
+                  const allSelected = codes.every(c => form.permissions.includes(c))
                   return (
-                    <div key={group.label} style={{ background: '#f8fafc', borderRadius: '6px', padding: '0.75rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <span style={S.groupTitle}>{group.label}</span>
-                        <button
+                    <Card key={group.label} className="bg-muted/30 shadow-none">
+                      <CardHeader className="flex-row items-center justify-between p-3">
+                        <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {group.label}
+                        </CardTitle>
+                        <Button
                           type="button"
-                          onClick={() => allSelected
-                            ? deselectAll(group.codes.map(p => p.code))
-                            : selectAll(group.codes.map(p => p.code))
-                          }
-                          style={{ fontSize: '0.7rem', background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs"
+                          onClick={() => allSelected ? deselectAll(codes) : selectAll(codes)}
                         >
                           {allSelected ? 'Tout décocher' : 'Tout cocher'}
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        </Button>
+                      </CardHeader>
+                      <div className="flex flex-col gap-2 p-3 pt-0">
                         {group.codes.map(p => (
-                          <label key={p.code} style={S.checkLabel}>
-                            <input
-                              type="checkbox"
+                          <label key={p.code} className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
+                            <Checkbox
                               checked={form.permissions.includes(p.code)}
-                              onChange={() => togglePerm(p.code)}
-                              style={{ accentColor: '#3b82f6' }}
+                              onCheckedChange={() => togglePerm(p.code)}
                             />
                             {p.label}
                           </label>
                         ))}
                       </div>
-                    </div>
+                    </Card>
                   )
                 })}
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button type="submit" disabled={saving} style={{ ...S.btnPrimary, background: '#10b981' }}>
-                {saving ? 'Enregistrement...' : (editing ? 'Mettre à jour' : 'Créer le rôle')}
-              </button>
-              <button type="button" onClick={cancel} style={S.btnGhost}>
-                Annuler
-              </button>
-            </div>
-          </form>
-        </div>
+            {formError && (
+              <p role="alert" className="text-sm text-destructive">{formError}</p>
+            )}
+
+            <FormActions sticky={false}>
+              <Button type="button" variant="ghost" onClick={cancel}>Annuler</Button>
+              <Button type="submit" variant="success" loading={saving}>
+                {editing ? 'Mettre à jour' : 'Créer le rôle'}
+              </Button>
+            </FormActions>
+          </Form>
+        </Card>
       )}
 
-      {/* ── Table ── */}
+      {/* ── Liste ── */}
       {loading ? (
-        <p style={{ color: '#64748b' }}>Chargement...</p>
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner /> Chargement…
+          </div>
+          <div className="mt-4 space-y-3">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        </Card>
+      ) : roles.length === 0 ? (
+        <EmptyState
+          icon={ShieldCheck}
+          title="Aucun rôle défini"
+          description="Créez un rôle personnalisé pour attribuer des permissions précises."
+          action={<Button size="sm" onClick={openCreate}><ShieldPlus /> Nouveau rôle</Button>}
+        />
       ) : (
-        <div style={{ ...S.card, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                <th style={S.th}>Nom</th>
-                <th style={S.th}>Type</th>
-                <th style={S.th}>Permissions</th>
-                <th style={S.th}>Utilisateurs</th>
-                <th style={{ ...S.th, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roles.map((r, i) => (
-                <tr key={r.id} style={{ borderBottom: i < roles.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                  <td style={{ ...S.td, fontWeight: 600 }}>{r.nom}</td>
-                  <td style={S.td}>
-                    <span style={S.badge(r.est_systeme)}>
-                      {r.est_systeme ? 'Système' : 'Personnalisé'}
-                    </span>
-                  </td>
-                  <td style={S.td}>
-                    <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className={th}>Nom</th>
+                  <th className={th}>Type</th>
+                  <th className={th}>Permissions</th>
+                  <th className={th}>Utilisateurs</th>
+                  <th className={`${th} text-right`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roles.map((r) => (
+                  <tr key={r.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
+                    <td className="px-4 py-2.5 font-medium text-foreground">{r.nom}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={r.est_systeme ? 'info' : 'success'}>
+                        {r.est_systeme ? 'Système' : 'Personnalisé'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground">
                       {r.permissions.length} permission{r.permissions.length !== 1 ? 's' : ''}
-                    </span>
-                  </td>
-                  <td style={{ ...S.td, color: '#64748b' }}>{r.users_count}</td>
-                  <td style={{ ...S.td, textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                      <button onClick={() => openEdit(r)} style={S.btnGhost}>
-                        Modifier
-                      </button>
-                      {!r.est_systeme && (
-                        <button onClick={() => handleDelete(r)} style={S.btnDanger}>
-                          Supprimer
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {roles.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
-                    Aucun rôle défini.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{r.users_count}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
+                          <Pencil /> Modifier
+                        </Button>
+                        {!r.est_systeme && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
+                                <Trash2 /> Supprimer
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Le rôle « {r.nom} » sera définitivement supprimé.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(r)}>
+                                  Supprimer
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   )
