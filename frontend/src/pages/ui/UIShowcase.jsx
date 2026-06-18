@@ -17,7 +17,7 @@ import {
   Popover, PopoverTrigger, PopoverContent,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
   TooltipProvider, SimpleTooltip,
-  Toaster, toast, Tag, Avatar, AvatarFallback, AvatarGroup, initials,
+  toast, Tag, Avatar, AvatarFallback, AvatarGroup, initials,
   DefinitionList, Tabs, TabsList, TabsTrigger, TabsContent,
   Accordion, AccordionItem, AccordionTrigger, AccordionContent, Progress,
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem, SelectLabel,
@@ -99,7 +99,8 @@ export function UIShowcase() {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="ui-root min-h-screen px-5 py-8">
-        <Toaster />
+        {/* Toaster global monté dans main.jsx (L53) — un seul <Toaster> pour
+            toute l'app, /ui compris, sinon chaque toast s'affiche en double. */}
         <div className="mx-auto flex max-w-5xl flex-col gap-10">
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div>
