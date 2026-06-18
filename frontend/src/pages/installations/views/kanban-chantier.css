@@ -1,10 +1,72 @@
-/* N2 — compléments de style pour les cartes du kanban chantier. */
-.kb-card-title { font-weight: 600; font-size: 0.82rem; color: #0f172a; }
-.kb-card-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.kb-chip {
+/* N2 / J43 — compléments de style pour les cartes du kanban chantier, portées
+   sur les tokens du système de design (variables sémantiques, mode sombre). Le
+   squelette de carte (kb-card) et le câblage du drag viennent de kanban.css. */
+
+.kc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.kc-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.kc-card-ref {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.kc-card-sub {
+  font-size: 0.74rem;
+  color: var(--muted-foreground);
+}
+
+.kc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.kc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
   font-size: 0.68rem;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--muted);
+  color: var(--muted-foreground);
   border-radius: 6px;
-  padding: 1px 6px;
+  padding: 0.1rem 0.4rem;
+}
+
+.kc-chip-icon {
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.kc-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.kc-progress-label {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.kc-reassign {
+  margin-top: 0.2rem;
 }

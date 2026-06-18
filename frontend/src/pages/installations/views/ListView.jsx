@@ -1,131 +1,100 @@
-// Vue LISTE des chantiers — table dense et triable, façon Odoo.
-// Le tri PAR DÉFAUT suit l'ordre d'entonnoir des statuts (jamais alphabétique),
-// via sortInstallations() de features/installations/statuses.
-import { useMemo, useState } from 'react'
+// Vue LISTE des chantiers — moteur DataTable du système de design (J43).
+// Le tri PAR DÉFAUT suit l'ordre d'entonnoir des statuts (jamais alphabétique) :
+// la colonne « Statut » trie sur statusOrder() et la vue par défaut l'applique.
+import { useMemo } from 'react'
+import { Eye } from 'lucide-react'
 import {
   statusLabel,
-  statusColor,
-  sortInstallations,
+  statusOrder,
 } from '../../../features/installations/statuses'
-
-// Fond de pastille de statut : couleur du statut à ~14 % d'opacité.
-const statusBg = (hex) => {
-  const h = String(hex ?? '').replace('#', '')
-  if (h.length !== 6) return 'rgba(100,116,139,0.14)'
-  const r = parseInt(h.slice(0, 2), 16)
-  const g = parseInt(h.slice(2, 4), 16)
-  const b = parseInt(h.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, 0.14)`
-}
-
-const formatDateFR = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(`${iso}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
-}
-
-function SortableTh({ col, label, sort, onSort, className }) {
-  const active = sort.key === col
-  return (
-    <th className={className} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" className="lv-th-btn" onClick={() => onSort(col)}>
-        {label}
-        <span className="lv-sort-ind" aria-hidden="true">
-          {active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
-        </span>
-      </button>
-    </th>
-  )
-}
+import { DataTable, StatusPill } from '../../../ui'
+import { formatDate } from '../../../lib/format'
+import importApi, { downloadXlsx } from '../../../api/importApi'
 
 export default function ListView({ items, onOpen }) {
-  // Par défaut : tri par statut dans l'ordre de l'entonnoir.
-  const [sort, setSort] = useState({ key: 'statut', dir: 'asc' })
-
-  const onSort = (key) =>
-    setSort((s) =>
-      s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
-    )
-
-  const sorted = useMemo(
-    () => sortInstallations(items, sort.key, sort.dir),
-    [items, sort],
+  const columns = useMemo(
+    () => [
+      {
+        id: 'reference',
+        header: 'Référence',
+        width: 160,
+        cell: (value) => <span className="font-semibold">{value ?? '—'}</span>,
+        exportValue: (row) => row.reference ?? '',
+      },
+      { id: 'client_nom', header: 'Client', width: 180, accessor: (r) => r.client_nom ?? '' },
+      { id: 'site_ville', header: 'Ville', width: 140, accessor: (r) => r.site_ville ?? '' },
+      {
+        id: 'statut',
+        header: 'Statut',
+        width: 190,
+        searchable: false,
+        // Tri funnel-aware : on trie sur la position d'entonnoir, pas le libellé.
+        accessor: (row) => statusOrder(row.statut),
+        cell: (value, row) => (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <StatusPill status={row.statut} label={statusLabel(row.statut)} />
+            {row.annule && <StatusPill tone="danger" label="Annulé" />}
+          </span>
+        ),
+        exportValue: (row) => statusLabel(row.statut) + (row.annule ? ' (annulé)' : ''),
+      },
+      {
+        id: 'type_installation',
+        header: 'Type',
+        width: 160,
+        accessor: (r) => r.type_installation_display ?? '',
+      },
+      {
+        id: 'technicien_nom',
+        header: 'Technicien',
+        width: 150,
+        accessor: (r) => r.technicien_nom ?? '',
+      },
+      {
+        id: 'date_pose_prevue',
+        header: 'Pose prévue',
+        width: 130,
+        searchable: false,
+        accessor: (r) => r.date_pose_prevue ?? '',
+        cell: (value) => formatDate(value),
+        exportValue: (row) => formatDate(row.date_pose_prevue),
+      },
+    ],
+    [],
   )
 
+  const rowActions = (row) => [
+    { id: 'view', label: 'Voir', icon: Eye, onClick: () => onOpen?.(row) },
+  ]
+
+  // Vue par défaut : tri par statut dans l'ordre de l'entonnoir.
+  const savedViews = [
+    { id: 'funnel', label: 'Entonnoir', sorting: [{ id: 'statut', desc: false }], columnFilters: {}, query: '' },
+  ]
+
+  // Export Excel serveur (comportement identique à l'ancienne barre d'outils).
+  const handleExport = (rows) => {
+    importApi
+      .exportList('chantiers', rows.map((r) => r.id))
+      .then((r) => downloadXlsx(r.data, 'chantiers.xlsx'))
+      .catch(() => {})
+  }
+
   return (
-    <div className="lv-wrap">
-      <table className="data-table lv-table">
-        <thead>
-          <tr>
-            <SortableTh col="reference" label="Référence" sort={sort} onSort={onSort} />
-            <SortableTh col="client_nom" label="Client" sort={sort} onSort={onSort} />
-            <SortableTh col="site_ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
-            <SortableTh col="statut" label="Statut" sort={sort} onSort={onSort} />
-            <SortableTh col="type_installation" label="Type" sort={sort} onSort={onSort} className="m-hide" />
-            <SortableTh col="technicien_nom" label="Technicien" sort={sort} onSort={onSort} className="m-hide" />
-            <SortableTh col="date_pose_prevue" label="Pose prévue" sort={sort} onSort={onSort} />
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((it) => (
-            <tr
-              key={it.id}
-              className={`lv-row${it.annule ? ' lv-row-perdu' : ''}`}
-              onClick={() => onOpen(it)}
-            >
-              <td data-label="Référence">
-                <strong>{it.reference ?? '—'}</strong>
-              </td>
-              <td data-label="Client">{it.client_nom ?? '—'}</td>
-              <td className="m-hide">{it.site_ville ?? '—'}</td>
-              <td data-label="Statut">
-                <span
-                  className="lv-stage-badge"
-                  style={{
-                    background: statusBg(statusColor(it.statut)),
-                    color: statusColor(it.statut),
-                  }}
-                >
-                  {statusLabel(it.statut)}
-                </span>
-                {it.annule && (
-                  <span
-                    className="lv-stage-badge"
-                    style={{ background: 'rgba(100,116,139,0.14)', color: '#64748b', marginLeft: 6 }}
-                  >
-                    Annulé
-                  </span>
-                )}
-              </td>
-              <td className="m-hide">{it.type_installation_display ?? '—'}</td>
-              <td className="m-hide">{it.technicien_nom ?? '—'}</td>
-              <td data-label="Pose prévue">{formatDateFR(it.date_pose_prevue)}</td>
-              <td data-label="Actions">
-                <div className="actions-cell">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onOpen(it)
-                    }}
-                  >
-                    Voir
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-          {!sorted.length && (
-            <tr>
-              <td colSpan={8} className="lv-empty">
-                Aucun chantier à afficher.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      data={items ?? []}
+      columns={columns}
+      getRowId={(row) => row.id}
+      searchable={false}
+      savedViews={savedViews}
+      rowActions={rowActions}
+      onRowClick={(row) => onOpen?.(row)}
+      onExport={handleExport}
+      exportName="chantiers"
+      pageSize={25}
+      emptyTitle="Aucun chantier"
+      emptyDescription="Aucun chantier ne correspond aux filtres."
+      aria-label="Liste des chantiers"
+    />
   )
 }

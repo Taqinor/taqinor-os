@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
 import { fetchInstallations, updateInstallation } from '../../features/installations/store/installationsSlice'
 import {
   EMPTY_FILTERS,
@@ -9,6 +10,14 @@ import {
 } from '../../features/installations/statuses'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import crmApi from '../../api/crmApi'
+import {
+  Button,
+  Badge,
+  Segmented,
+  Spinner,
+  EmptyState,
+  Card,
+} from '../../ui'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import KanbanView from './views/KanbanView'
@@ -109,16 +118,20 @@ function CalendarView({ items, onOpen }) {
   return (
     <div className="cal-root">
       <div className="cal-header">
-        <div className="cal-nav">
-          <button type="button" className="btn btn-sm btn-outline cal-nav-btn"
-                  onClick={() => goMonth(-1)} aria-label="Mois précédent">◀</button>
-          <button type="button" className="btn btn-sm btn-outline cal-nav-btn"
-                  onClick={() => goMonth(1)} aria-label="Mois suivant">▶</button>
+        <div className="cal-nav flex items-center gap-1">
+          <Button type="button" size="sm" variant="outline"
+                  onClick={() => goMonth(-1)} aria-label="Mois précédent">
+            <ChevronLeft />
+          </Button>
+          <Button type="button" size="sm" variant="outline"
+                  onClick={() => goMonth(1)} aria-label="Mois suivant">
+            <ChevronRight />
+          </Button>
         </div>
         <h3 className="cal-title">{title}</h3>
-        <button type="button" className="btn btn-sm btn-outline cal-today-btn" onClick={goToday}>
+        <Button type="button" size="sm" variant="outline" onClick={goToday}>
           Aujourd&apos;hui
-        </button>
+        </Button>
       </div>
 
       <div className="cal-grid" role="grid" aria-label={`Calendrier ${title}`}>
@@ -208,45 +221,56 @@ export default function InstallationsPage() {
   const onClose = () => setSelected(null)
   const onSaved = () => { refetch(); setSelected(null) }
 
-  if (loading) return <p className="page-loading">Chargement des chantiers...</p>
-  if (error) return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+  if (loading) {
+    return (
+      <div className="page lp-page">
+        <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
+          <Spinner /> Chargement des chantiers…
+        </div>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="page lp-page">
+        <EmptyState
+          title="Impossible de charger les chantiers"
+          description={typeof error === 'string' ? error : 'Une erreur est survenue. Réessayez.'}
+          action={<Button size="sm" onClick={refetch}>Réessayer</Button>}
+          className="my-8 border-destructive/40"
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="page lp-page">
       <div className="page-header lp-header">
-        <h2>
+        <h2 className="flex items-center gap-2">
           Chantiers
-          <span className="count-badge">{filtered.length}</span>
+          <Badge tone="primary">{filtered.length}</Badge>
         </h2>
-        <div className="page-header-actions lp-header-actions">
-          <button type="button" className="btn btn-sm btn-outline"
-                  onClick={() => importApi.exportList('chantiers', filtered.map(i => i.id))
-                    .then(r => downloadXlsx(r.data, 'chantiers.xlsx')).catch(() => {})}>
-            ⬇ Exporter Excel
-          </button>
-          <div className="fb-pills" role="group" aria-label="Changer de vue">
-            <button
-              type="button"
-              className={`fb-pill${view === 'liste' ? ' fb-pill-active' : ''}`}
-              onClick={() => setView('liste')}
-            >
-              Liste
-            </button>
-            <button
-              type="button"
-              className={`fb-pill${view === 'kanban' ? ' fb-pill-active' : ''}`}
-              onClick={() => setView('kanban')}
-            >
-              Kanban
-            </button>
-            <button
-              type="button"
-              className={`fb-pill${view === 'calendrier' ? ' fb-pill-active' : ''}`}
-              onClick={() => setView('calendrier')}
-            >
-              Calendrier
-            </button>
-          </div>
+        <div className="page-header-actions lp-header-actions flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => importApi.exportList('chantiers', filtered.map(i => i.id))
+              .then(r => downloadXlsx(r.data, 'chantiers.xlsx')).catch(() => {})}
+          >
+            <Download /> Exporter Excel
+          </Button>
+          <Segmented
+            size="sm"
+            value={view}
+            onChange={setView}
+            aria-label="Changer de vue"
+            options={[
+              { value: 'liste', label: 'Liste' },
+              { value: 'kanban', label: 'Kanban' },
+              { value: 'calendrier', label: 'Calendrier' },
+            ]}
+          />
         </div>
       </div>
 
@@ -258,7 +282,19 @@ export default function InstallationsPage() {
           <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
                       users={users} onReassign={onReassign} />
         )}
-        {view === 'calendrier' && <CalendarView items={filtered} onOpen={onOpen} />}
+        {view === 'calendrier' && (
+          filtered.length === 0 ? (
+            <Card className="p-0">
+              <EmptyState
+                title="Aucun chantier à planifier"
+                description="Aucun chantier ne correspond aux filtres actuels."
+                className="border-0"
+              />
+            </Card>
+          ) : (
+            <CalendarView items={filtered} onOpen={onOpen} />
+          )
+        )}
       </div>
 
       {selected && (
