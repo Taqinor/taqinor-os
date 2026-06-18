@@ -21,6 +21,30 @@ class IsResponsableOrAdmin(BasePermission):
         )
 
 
+class IsAdminOrResponsableTier(BasePermission):
+    """Palier Administrateur OU Responsable (dérivé du nouveau rôle).
+
+    Ouvre les écrans d'administration (Paramètres, Utilisateurs, Rôles) à
+    l'Administrateur ET au Responsable — promu — mais JAMAIS au palier limité
+    (Utilisateur ou rôle personnalisé type « Commercial »).
+
+    À NE PAS confondre avec ``IsResponsableOrAdmin`` : celui-ci passe pour tout
+    porteur de rôle (``is_responsable`` renvoie True dès qu'un rôle est posé),
+    ce qui laisserait entrer le palier limité. Ici on s'appuie sur le palier de
+    menu canonique pour bloquer précisément ce palier.
+    """
+    def has_permission(self, request, view):
+        from .models import CustomUser
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and getattr(user, 'menu_tier', None) in (
+                CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE
+            )
+        )
+
+
 class IsAnyRole(BasePermission):
     """Any authenticated user."""
     def has_permission(self, request, view):

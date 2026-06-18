@@ -26,7 +26,12 @@ waves of 8 when there are more lanes — see HOW TO RUN.
    with fewer, use fewer agents. **Tasks inside one lane run in sequence.** Each subagent
    commits its lane's work to its own worktree branch — ticking each task `[x]` + a DONE LOG
    line as it lands — and the orchestrator folds every worktree branch into one `dev` branch at
-   the end. Derive lane ownership from the real code, not from guesses.
+   the end. Derive lane ownership from the real code, not from guesses. **Default to running
+   this as a dynamic workflow with review** — one worktree subagent per task plus a **separate
+   adversarial review agent** that must pass each finished change (against the STANDING RULES
+   and the task's acceptance criteria) before it is eligible to fold in — and **fall back to the
+   same parallel worktree subagents (orchestrator reviews each lane) when no workflow engine is
+   available; never a single serial one-task-at-a-time agent** (see STANDING RULES).
 3. **Verify each task isn't already built — never trust these ticks or prior reports.**
    Inspect the actual repo and the deployed app. If a task already exists and works, mark it
    `[x] (already present)`, add a line to the DONE LOG, and move on to the next `[ ]` task.
@@ -44,7 +49,12 @@ waves of 8 when there are more lanes — see HOW TO RUN.
    production server polls `main` about once a minute and runs the full deploy (rebuild +
    migrations + role sync + nginx/Caddy reload + the mandatory PDF pre-warm). **You do not run
    any deploy command.** `powershell -File scripts\deploy-prod.ps1` still works as a **manual
-   fallback** from a PC if ever needed.
+   fallback** from a PC if ever needed. **Make this one merge sync-safe:** right before merging,
+   **integrate the latest `origin/main` into `dev`** (merge it in, never force-push), recompute
+   the CODEMAP structure fingerprint if that changed the structural surface, **re-run CI once on
+   the integrated tree, and merge only when green**; if the push is rejected because `main`
+   advanced (e.g. a concurrent web-plan run landed first), **repeat the integrate → CI → push
+   loop — never force, never overwrite the other run's commits** (see STANDING RULES).
 6. **Skip-and-note blockers, never stall.** If a task hits a blocker (a destructive migration,
    a paid/external dependency that isn't pre-approved, an auth or cost change, a brand-new
    architectural component, a conflict with a non-negotiable rule, or a real decision): do
@@ -71,13 +81,15 @@ CODEMAP §10 refresh.
 from Claude Code on the web or from the phone with no PC involved. **One-line starter** to
 paste into a fresh cloud session:
 
-> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task — **first** `docs/PLAN2.md` (if it exists), **then** this file's BUILD QUEUE. First partition the unchecked tasks into independent lanes by the real files each writes, then build the lanes in parallel with **up to 8 concurrent worktree subagents** (each in its own git worktree, waves of 8 if there are more lanes), coupled tasks in sequence inside a lane. For each task: verify it isn't already built, build it with tests, commit it to its worktree branch, tick it `[x]`, add a dated DONE LOG line, then continue to the next. Skip-and-note any blocker (`[BLOCKED: reason]` → GATED) and keep going. At the very end, fold every worktree branch into one `dev`, get the four required CI checks green over the whole batch (with MinIO) and self-merge `dev` → `main` exactly once (this auto-deploys — do not run any deploy command; no per-agent PR, no per-task merge). Report once, in plain language, including the lane plan. Do not stop after one task and do not merge per task.
+> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task — **first** `docs/PLAN2.md` (if it exists), **then** this file's BUILD QUEUE. First partition the unchecked tasks into independent lanes by the real files each writes, then build the lanes in parallel with **up to 8 concurrent worktree subagents** (each in its own git worktree, waves of 8 if there are more lanes), coupled tasks in sequence inside a lane (default: run this as a dynamic workflow with a separate adversarial review agent that must pass each change before it's merge-eligible; fall back to plain parallel worktree subagents — never a single serial one-task-at-a-time agent). For each task: verify it isn't already built, build it with tests, commit it to its worktree branch, tick it `[x]`, add a dated DONE LOG line, then continue to the next. Skip-and-note any blocker (`[BLOCKED: reason]` → GATED) and keep going. At the very end, fold every worktree branch into one `dev`, integrate the latest `origin/main` first (merge it in, never force-push) and recompute the CODEMAP structure fingerprint if that changed the structural surface, get the four required CI checks green over the whole batch (with MinIO) and self-merge `dev` → `main` exactly once (this auto-deploys — do not run any deploy command; no per-agent PR, no per-task merge). Report once, in plain language, including the lane plan. Do not stop after one task and do not merge per task.
 
 ---
 
 ## STANDING RULES (every task obeys these)
 
 - **One run = the whole queue, not one task, fanned across up to 8 lanes.** At the start, partition the unchecked queue into independent **lanes** (grouped by the real files each task writes) and give each lane its own subagent in its own git worktree — **up to 8 worktree subagents at once, in waves of 8** when there are more lanes — so each subagent's context stays small and focused and two lanes never edit the same files at once; tasks that depend on or overlap each other run in sequence inside one lane. Never stop after a single task. The orchestrator folds every worktree branch into one `dev`, CI runs **once** over the whole batch, and the run self-merges `dev` → `main` **exactly once** — no per-agent PR, no per-task merge. (Human-review PRs are still not wanted — the run self-merges its own green work.)
+- **Engine = workflow-with-review by default; parallel subagents as fallback; never single-serial.** Run the lanes as a **dynamic workflow with a fan-out-and-verify shape** — one worktree subagent per independent task **plus a separate adversarial review agent** that checks every finished change against these STANDING RULES and the task's acceptance criteria; nothing folds into `dev` or merges until its review passes. When no workflow engine is available (e.g. a phone or cloud session), **fall back to the same lane-planned worktree subagents** with the orchestrator reviewing each lane against these rules before folding it in. **Never drop to a single serial, one-task-at-a-time agent** — parallel lanes with review are the floor.
+- **Sync-safe single merge.** Right before the one self-merge, **fetch and integrate the latest `origin/main` into `dev`** (merge it in — never rebase published history, never force-push); if that changed the code-structure surface, **recompute the CODEMAP structure fingerprint on the integrated tree** (the fingerprint the `stage-names` check verifies); **re-run CI once on the integrated state and merge only when green**; if the push is rejected because `main` advanced, **repeat (fetch, integrate, recompute if needed, re-run CI, push) — never force**. A run edits the shared files (`CLAUDE.md` / its own plan file / `docs/CODEMAP.md`) only for its own command and ships that change inside this same merge — so a concurrent OS run and web-plan run never fight over those files.
 - **Verify against real code first. Never trust prior reports.** (Round 1 reported a preview
   fix that was never real, because that session's CI was silently broken.)
 - **Additive only.** New tables / nullable columns / new defaults. **Never** a destructive

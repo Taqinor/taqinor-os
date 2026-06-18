@@ -3,7 +3,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminRole
+from authentication.permissions import IsAdminOrResponsableTier
 from .models import Role, ALL_PERMISSIONS
 from .serializers import RoleSerializer
 
@@ -11,12 +11,13 @@ from .serializers import RoleSerializer
 class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     Gestion des rôles d'une entreprise.
-    Seul l'admin peut créer/modifier/supprimer des rôles.
+    Administrateur et Responsable (promu) peuvent créer/modifier/supprimer des
+    rôles ; le palier limité reste bloqué.
     Les rôles système (est_systeme=True) ne peuvent pas être supprimés.
     """
     queryset = Role.objects.select_related('company').all()
     serializer_class = RoleSerializer
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAdminOrResponsableTier]
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related('users')

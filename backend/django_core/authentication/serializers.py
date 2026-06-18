@@ -17,6 +17,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['username'] = user.username
         # Backward compat: legacy role string ('admin'/'responsable'/'normal')
         token['role'] = user.role_legacy
+        # Palier de menu faisant autorité, dérivé du NOUVEAU rôle.
+        token['menu_tier'] = user.menu_tier
         token['role_nom'] = user.role.nom if user.role else None
         token['permissions'] = (
             list(user.role.permissions) if user.role else []
@@ -57,13 +59,17 @@ class RegisterSerializer(serializers.ModelSerializer):
             ).first()
 
         validated_data.pop('role', None)
+        # role_legacy doit suivre le palier du Role assigné (Administrateur →
+        # 'admin', Responsable → 'responsable', sinon 'normal'). Le figer à
+        # 'normal' donnait à tort le menu limité aux comptes admin/responsable.
+        role_legacy = CustomUser.tier_for_role(role) or CustomUser.ROLE_NORMAL
         user = CustomUser.objects.create_user(
             username=validated_data['username'],
             email=validated_data.get('email', ''),
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            role_legacy=CustomUser.ROLE_NORMAL,
+            role_legacy=role_legacy,
             role=role,
             company=company,
         )
@@ -78,6 +84,8 @@ class UserSerializer(serializers.ModelSerializer):
     role_nom = serializers.CharField(
         source='role.nom', read_only=True
     )
+    # Palier de menu faisant autorité, dérivé du NOUVEAU rôle (jamais du legacy).
+    menu_tier = serializers.ReadOnlyField()
     permissions = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
 
@@ -85,7 +93,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
-            'role', 'role_nom', 'role_legacy', 'permissions',
+            'role', 'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             'poste', 'avatar_key', 'avatar_url',
             'is_active', 'is_superuser', 'is_protected',
             'password', 'date_joined', 'last_login',
@@ -94,7 +102,7 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = (
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
-            'role_nom', 'role_legacy', 'permissions',
+            'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             # avatar_key se pilote par l'endpoint d'upload dédié, jamais par
             # un PATCH direct du corps ; avatar_url est calculé (présigné).
             'avatar_key', 'avatar_url',
@@ -116,6 +124,13 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop('password')
         user = CustomUser(**validated_data)
+        # role_legacy suit le palier du Role assigné (sinon il resterait au
+        # défaut 'normal' et l'admin/responsable hériterait du menu limité).
+        if 'role' in validated_data:
+            user.role_legacy = (
+                CustomUser.tier_for_role(validated_data.get('role'))
+                or CustomUser.ROLE_NORMAL
+            )
         user.set_password(password)
         user.save()
         return user
@@ -124,6 +139,13 @@ class UserSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        # Quand le rôle change, role_legacy doit se réaligner sur son palier —
+        # sinon le menu reste figé sur l'ancien palier (dérive legacy).
+        if 'role' in validated_data:
+            instance.role_legacy = (
+                CustomUser.tier_for_role(validated_data.get('role'))
+                or CustomUser.ROLE_NORMAL
+            )
         if password:
             instance.set_password(password)
         instance.save()

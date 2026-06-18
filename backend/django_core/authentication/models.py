@@ -70,6 +70,33 @@ class CustomUser(AbstractUser):
     # par un secret en dur. Additif, défaut False.
     is_protected = models.BooleanField(default=False)
 
+    @staticmethod
+    def tier_for_role(role):
+        """Palier de menu hérité correspondant à un Role (ou None sans rôle).
+
+        Délègue à la source unique de vérité ``role_tiers`` : Administrateur →
+        'admin', Responsable → 'responsable', Utilisateur / rôle personnalisé →
+        'normal'."""
+        if role is None:
+            return None
+        from authentication.role_tiers import tier_for_role_fields
+        return tier_for_role_fields(role.nom, role.est_systeme)
+
+    @property
+    def menu_tier(self):
+        """Palier de menu FAISANT AUTORITÉ, dérivé du NOUVEAU rôle.
+
+        C'est le signal que le frontend doit utiliser pour choisir le menu : il
+        vient toujours du Role assigné, jamais du champ ``role_legacy`` qui peut
+        dériver (un Administrateur créé avec role_legacy='normal' obtenait à
+        tort le menu limité). Repli sur ``role_legacy`` uniquement pour les
+        comptes encore sans rôle."""
+        if self.is_superuser:
+            return self.ROLE_ADMIN
+        if self.role_id:
+            return self.tier_for_role(self.role)
+        return self.role_legacy
+
     @property
     def is_admin_role(self):
         if self.is_superuser:

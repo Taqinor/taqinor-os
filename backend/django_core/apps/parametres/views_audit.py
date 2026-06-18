@@ -1,17 +1,18 @@
-"""Vue du journal d'audit des paramètres (N55) — LECTURE SEULE, admin only.
+"""Vue du journal d'audit des paramètres (N55) — LECTURE SEULE.
 
-Domaine « Avancé / Journal d'audit ». Extrait de l'ancien ``views.py`` sans
-aucun changement d'endpoint, de filtre, de permission ni de comportement."""
+Domaine « Avancé / Journal d'audit ». Ouverte à l'Administrateur ET au
+Responsable (promu) — comme le reste de l'écran Paramètres — jamais au palier
+limité."""
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminRole
+from authentication.permissions import IsAdminOrResponsableTier
 from .models import SettingsAuditLog
 from .serializers import SettingsAuditLogSerializer
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsAdminOrResponsableTier])
 def settings_audit_log(request):
     """Journal des changements de paramètres (qui, quoi, quand).
 

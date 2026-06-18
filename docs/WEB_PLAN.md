@@ -30,7 +30,12 @@ relies on the agent's own memory — the file on disk is the memory.
    in **waves of up to 8** when there are more lanes, with fewer agents when there are fewer.
    Each subagent commits its lane to its own worktree branch as each task lands; the orchestrator
    folds every branch into one `dev` at the end. Scope stays strictly inside `apps/web/**` and
-   the `docs/WEB_PLAN*` files.
+   the `docs/WEB_PLAN*` files. **Default to running this as a dynamic workflow with review** —
+   one worktree subagent per task plus a **separate adversarial review agent** that must pass
+   each finished change (against the STANDING RULES and the task's acceptance criteria) before it
+   is eligible to fold in — and **fall back to the same parallel worktree subagents (orchestrator
+   reviews each lane) when no workflow engine is available; never a single serial
+   one-task-at-a-time agent** (see STANDING RULES).
 3. **Verify each task isn't already built — never trust these ticks or prior reports.** Inspect
    the actual route and the deployed preview. If a task already exists and works, mark it
    `[x] (already present)`, add a line to the DONE LOG, and move on to the next `[ ]` task.
@@ -42,7 +47,13 @@ relies on the agent's own memory — the file on disk is the memory.
 5. **Fold every lane's worktree branch into one `dev`, then CI runs ONCE over the whole batch**
    (lint, the `apps/web` vitest suite, the preview/privacy guards, plus the four required checks).
    When green, **self-merge `dev` → `main` exactly once** (a single merge commit, history
-   preserved, 0 approvals; no per-agent PR, no per-task merge).
+   preserved, 0 approvals; no per-agent PR, no per-task merge). **Make this one merge sync-safe:**
+   right before merging, **integrate the latest `origin/main` into `dev`** (merge it in, never
+   force-push), recompute the CODEMAP structure fingerprint if that changed the structural
+   surface, **re-run CI once on the integrated tree, and merge only when green**; if the push is
+   rejected because `main` advanced (e.g. a concurrent OS-plan run landed first), **repeat the
+   integrate → CI → push loop — never force, never overwrite the other run's commits** (see
+   STANDING RULES).
 6. **Deploy is automatic.** The public site **auto-deploys via Cloudflare Workers Builds
    on every push/merge to `main`** — that IS the deploy. **You never run `wrangler deploy`,
    and you never ask for a Cloudflare API token** (the old one is dead and deleted). Worker
@@ -73,6 +84,24 @@ a task can be run from Claude Code on the web or the phone with no PC involved.
   folds every branch into one `dev` and the run self-merges `dev` → `main` exactly once when CI
   is green — no per-agent PR, no per-task merge. Multiple sessions or multiple merges are not
   wanted.
+- **Engine = workflow-with-review by default; parallel subagents as fallback; never
+  single-serial.** Run the lanes as a **dynamic workflow with a fan-out-and-verify
+  shape** — one worktree subagent per independent task **plus a separate adversarial
+  review agent** that checks every finished change against these STANDING RULES and the
+  task's acceptance criteria; nothing folds into `dev` or merges until its review passes.
+  When no workflow engine is available (e.g. a phone or cloud session), **fall back to the
+  same lane-planned worktree subagents** with the orchestrator reviewing each lane against
+  these rules before folding it in. **Never drop to a single serial, one-task-at-a-time
+  agent** — parallel lanes with review are the floor.
+- **Sync-safe single merge.** Right before the one self-merge, **fetch and integrate the
+  latest `origin/main` into `dev`** (merge it in — never rebase published history, never
+  force-push); if that changed the code-structure surface, **recompute the CODEMAP structure
+  fingerprint on the integrated tree** (the fingerprint the `stage-names` check verifies);
+  **re-run CI once on the integrated state and merge only when green**; if the push is
+  rejected because `main` advanced, **repeat (fetch, integrate, recompute if needed, re-run
+  CI, push) — never force**. A run edits the shared files (`CLAUDE.md` / its own plan file /
+  `docs/CODEMAP.md`) only for its own command and ships that change inside this same merge —
+  so a concurrent OS run and web-plan run never fight over those files.
 - **Verify against real code first. Never trust prior reports.** Inspect the actual route
   and the deployed preview before assuming anything is present or correct.
 - **The live public site and the lead form stay unchanged.** Preview work must never alter

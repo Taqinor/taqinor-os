@@ -211,6 +211,18 @@ Anything typed after the command is extra detail for that run.
   interrupted run loses nothing and re-firing resumes from the first still-unchecked
   task. CI runs once at the end over the whole batch (see below), not per task or per
   agent. This processes EVERY unchecked task; it does NOT end the run after the first.
+- **Engine — default to a dynamic workflow with review; fall back to parallel
+  subagents; NEVER single-serial.** The default way to run the lanes is a
+  **dynamic workflow with a fan-out-and-verify shape**: one subagent per
+  independent task, each in its own git worktree, **plus a separate adversarial
+  review agent that checks every finished change against the standing safety
+  rules and that task's acceptance criteria before the change is eligible to
+  merge — nothing folds into `dev` or merges until its review passes.** When the
+  workflow engine isn't available (e.g. a phone or cloud session), **fall back to
+  the same lane-planned worktree subagents**, with the orchestrator itself
+  reviewing each lane against the safety rules before folding it in. **Never fall
+  back to a single serial, one-task-at-a-time agent** — parallel lanes with review
+  are the floor, not the ceiling.
 - **A run stops ONLY when one of these is true — nothing else licenses
   stopping:**
   1. **Queue drained** — no buildable unchecked `[ ]` tasks remain in the BUILD
@@ -261,6 +273,22 @@ Anything typed after the command is extra detail for that run.
   four required CI checks green over the whole batch, then self-merge `dev` → `main`
   exactly once (a single merge commit, no per-agent PR, no per-task merge). This
   merge auto-deploys to api.taqinor.ma; never run a deploy command.
+- **Sync-safe single merge — OS and web runs may run at the same time on this one
+  `main`.** The two commands own different folders so their code never collides,
+  but both land on the same `main` and both may touch shared files (`CLAUDE.md`,
+  the plan files, `docs/CODEMAP.md`). So the single self-merge is sync-safe:
+  **right before merging, fetch and integrate the latest `origin/main` into this
+  run's `dev`** (merge `main` in — do **not** rebase published history, **never
+  force-push**). If integrating `main` changed the code-structure surface,
+  **recompute the CODEMAP structure fingerprint on the integrated tree** (the same
+  fingerprint the `stage-names` check verifies) so it isn't stale on the merged
+  result. **Re-run the full CI suite once on the integrated state and self-merge
+  to `main` only when it is green.** If the push is rejected because `main`
+  advanced again, **repeat — fetch, integrate, recompute the fingerprint if
+  needed, re-run CI, push — never force, never overwrite the other run's
+  commits.** A run only ever edits the shared files (`CLAUDE.md` / **its own**
+  plan file / `docs/CODEMAP.md`) for **its own** command's lane, and ships that
+  small change inside this **same single merge**.
 - Report once, in plain language, and **include the lane plan**: how many lanes ran
   in parallel and what each shipped, plus what was skipped and why.
 
@@ -295,6 +323,18 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
   interrupted run loses nothing and re-firing resumes from the first still-unchecked
   task. CI runs once at the end over the whole batch (see below), not per task or per
   agent. This processes EVERY unchecked task; it does NOT end the run after the first.
+- **Engine — default to a dynamic workflow with review; fall back to parallel
+  subagents; NEVER single-serial.** The default way to run the lanes is a
+  **dynamic workflow with a fan-out-and-verify shape**: one subagent per
+  independent task, each in its own git worktree, **plus a separate adversarial
+  review agent that checks every finished change against the standing safety
+  rules and that task's acceptance criteria before the change is eligible to
+  merge — nothing folds into `dev` or merges until its review passes.** When the
+  workflow engine isn't available (e.g. a phone or cloud session), **fall back to
+  the same lane-planned worktree subagents**, with the orchestrator itself
+  reviewing each lane against the safety rules before folding it in. **Never fall
+  back to a single serial, one-task-at-a-time agent** — parallel lanes with review
+  are the floor, not the ceiling.
 - **A run stops ONLY when one of these is true — nothing else licenses
   stopping:**
   1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
@@ -320,6 +360,22 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
   green over the whole batch, then self-merge `dev` → `main` exactly once (a single
   merge commit, no per-agent PR, no per-task merge) — this auto-deploys the site via
   Cloudflare on merge; never run a deploy command.
+- **Sync-safe single merge — OS and web runs may run at the same time on this one
+  `main`.** The two commands own different folders so their code never collides,
+  but both land on the same `main` and both may touch shared files (`CLAUDE.md`,
+  the plan files, `docs/CODEMAP.md`). So the single self-merge is sync-safe:
+  **right before merging, fetch and integrate the latest `origin/main` into this
+  run's `dev`** (merge `main` in — do **not** rebase published history, **never
+  force-push**). If integrating `main` changed the code-structure surface,
+  **recompute the CODEMAP structure fingerprint on the integrated tree** (the same
+  fingerprint the `stage-names` check verifies) so it isn't stale on the merged
+  result. **Re-run the full CI suite once on the integrated state and self-merge
+  to `main` only when it is green.** If the push is rejected because `main`
+  advanced again, **repeat — fetch, integrate, recompute the fingerprint if
+  needed, re-run CI, push — never force, never overwrite the other run's
+  commits.** A run only ever edits the shared files (`CLAUDE.md` / **its own**
+  plan file / `docs/CODEMAP.md`) for **its own** command's lane, and ships that
+  small change inside this **same single merge**.
 - Report in plain language (no diffs, no commit hashes), and **include the lane plan**
   (how many lanes ran in parallel and what each shipped): every task that shipped,
   what was skipped and why, and the exact preview URLs or live changes Reda can
