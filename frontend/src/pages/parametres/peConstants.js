@@ -53,24 +53,3 @@ export const mediaUrl   = (url) => {
   // hasardeuse, l'aperçu dégrade proprement (la page, elle, vit).
   return url
 }
-
-export const inputBase = {
-  width: '100%', padding: '9px 12px', borderRadius: 9,
-  border: '1.5px solid #e2e8f0', fontSize: 13.5, color: '#111827',
-  outline: 'none', boxSizing: 'border-box', background: '#f8fafc',
-  transition: 'border-color 0.18s, box-shadow 0.18s, background 0.18s',
-  fontFamily: 'inherit',
-}
-export const onFocus = e => {
-  e.target.style.borderColor = '#1d4ed8'
-  e.target.style.boxShadow   = '0 0 0 3px rgba(29,78,216,0.1)'
-  e.target.style.background  = '#fff'
-}
-export const onBlur  = e => {
-  e.target.style.borderColor = '#e2e8f0'
-  e.target.style.boxShadow   = 'none'
-  e.target.style.background  = '#f8fafc'
-}
-
-// Style commun des cartes blanches (réutilisé pour les cartes d'information).
-export const cardStyle = { background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem' }

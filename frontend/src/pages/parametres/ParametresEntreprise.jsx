@@ -14,8 +14,11 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
+import { CheckCircle2, AlertCircle, Save } from 'lucide-react'
+import {
+  Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider,
+} from '../../ui'
 import './parametres.css'
-import { Ic } from './peComponents'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
 } from './peConstants'
@@ -408,39 +411,24 @@ export default function ParametresEntreprise() {
   const showSave = ['societe', 'leads', 'devis', 'avance'].includes(tab)
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: 12, color: '#64748b' }}>
-      <div style={{ width: 22, height: 22, border: '2.5px solid #e2e8f0', borderTopColor: '#1d4ed8', borderRadius: '50%', animation: 'paramSpin 0.7s linear infinite' }}/>
+    <div className="flex min-h-[200px] items-center justify-center gap-3 text-sm text-muted-foreground">
+      <Spinner className="size-5 text-primary" />
       Chargement…
     </div>
   )
 
+  // Bouton d'enregistrement du profil. Le NOM ACCESSIBLE reste exactement
+  // « Enregistrer » (contrat e2e) : pendant l'envoi le bouton est désactivé et
+  // affiche un spinner, l'état « Enregistré ! » n'apparaît qu'après succès.
   const saveButton = (
-    <button
-      type="submit"
-      disabled={saving}
-      style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        padding: '11px 28px', borderRadius: 10, border: 'none',
-        background: saved
-          ? 'linear-gradient(135deg,#059669,#10b981)'
-          : saving
-            ? '#93c5fd'
-            : `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-        color: '#fff', fontWeight: 700, fontSize: 14,
-        cursor: saving ? 'not-allowed' : 'pointer',
-        boxShadow: saving || saved ? 'none' : `0 4px 16px ${accent}40`,
-        transition: 'background 0.3s, box-shadow 0.3s',
-        alignSelf: 'flex-start',
-      }}
-    >
-      {saving ? (
-        <><div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'paramSpin 0.7s linear infinite' }}/> Enregistrement…</>
-      ) : saved ? (
-        <><Ic size={16} color="#fff" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic> Enregistré !</>
+    <Button type="submit" loading={saving} disabled={saving}
+      variant={saved ? 'success' : 'default'} className="self-start">
+      {saving ? 'Enregistrement…' : saved ? (
+        <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
       ) : (
-        <><Ic size={16} color="#fff"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></Ic> Enregistrer</>
+        <><Save className="size-4" aria-hidden="true" /> Enregistrer</>
       )}
-    </button>
+    </Button>
   )
 
   // Tout l'état + tous les handlers passés tels quels aux sections. Chaque
@@ -463,80 +451,61 @@ export default function ParametresEntreprise() {
   }
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+    <TooltipProvider delayDuration={200}>
+      <div className="mx-auto max-w-[1100px] p-6">
 
-      {/* ── Page title ── */}
-      <div style={{ marginBottom: '1.1rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
-          Paramètres de l'entreprise
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-          Ces informations apparaissent dans l'en-tête de vos devis et factures PDF.
-        </p>
-      </div>
-
-      {/* ── Onglets ── */}
-      <div className="pe-tabs" role="tablist">
-        {TABS.map(t => (
-          <button key={t.key} type="button" role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={`pe-tab${tab === t.key ? ' pe-tab--active' : ''}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Toast messages ── */}
-      {saved && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '11px 16px', borderRadius: 10, marginBottom: '1rem',
-          background: '#f0fdf4', border: '1px solid #bbf7d0',
-          animation: 'paramSlideDown 0.3s ease',
-        }}>
-          <Ic size={16} color="#16a34a" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic>
-          <span style={{ fontSize: 13.5, fontWeight: 500, color: '#166534' }}>Profil enregistré avec succès.</span>
+        {/* ── Titre de page ── */}
+        <div className="mb-4">
+          <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
+            Paramètres de l'entreprise
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ces informations apparaissent dans l'en-tête de vos devis et factures PDF.
+          </p>
         </div>
-      )}
-      {error && !saved && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '11px 16px', borderRadius: 10, marginBottom: '1rem',
-          background: '#fef2f2', border: '1px solid #fecaca',
-        }}>
-          <Ic size={16} color="#dc2626" sw={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Ic>
-          <span style={{ fontSize: 13.5, color: '#b91c1c' }}>{typeof error === 'string' ? error : JSON.stringify(error)}</span>
-        </div>
-      )}
 
-      {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
-            masqués restent dans l'état React, donc Enregistrer sauve tout) ── */}
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+        {/* ── Onglets (primitif Tabs, défilable sur mobile) ── */}
+        <Tabs value={tab} onValueChange={setTab} className="mb-5">
+          <TabsList className="pe-tabs-scroll flex w-full justify-start overflow-x-auto">
+            {TABS.map(t => (
+              <TabsTrigger key={t.key} value={t.key} className="shrink-0">
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-        {tab === 'societe'  && <SocieteSection {...ctx} />}
-        {tab === 'leads'    && <LeadsSection {...ctx} />}
-        {tab === 'clients'  && <ClientsSection {...ctx} />}
-        {tab === 'devis'    && <DevisSection {...ctx} />}
-        {tab === 'stock'    && <StockSection {...ctx} />}
-        {tab === 'equipe'   && <EquipeSection {...ctx} />}
-        {tab === 'messages' && <MessagesSection {...ctx} />}
-        {tab === 'avance'   && <AvanceSection {...ctx} />}
+        {/* ── Bandeaux de feedback ── */}
+        {saved && (
+          <div className="mb-4 flex animate-pop-in items-center gap-2.5 rounded-lg border border-success/30 bg-success/12 px-4 py-2.5">
+            <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+            <span className="text-sm font-medium text-success">Profil enregistré avec succès.</span>
+          </div>
+        )}
+        {error && !saved && (
+          <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5">
+            <AlertCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+            <span className="text-sm text-destructive">{typeof error === 'string' ? error : JSON.stringify(error)}</span>
+          </div>
+        )}
 
-        {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
-        {showSave && saveButton}
-      </form>
+        {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
+              masqués restent dans l'état React, donc Enregistrer sauve tout) ── */}
+        <form onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
 
-      <style>{`
-        @keyframes paramSpin     { to { transform: rotate(360deg); } }
-        @keyframes paramSlideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @media (max-width: 768px) {
-          .param-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-    </div>
+          {tab === 'societe'  && <SocieteSection {...ctx} />}
+          {tab === 'leads'    && <LeadsSection {...ctx} />}
+          {tab === 'clients'  && <ClientsSection {...ctx} />}
+          {tab === 'devis'    && <DevisSection {...ctx} />}
+          {tab === 'stock'    && <StockSection {...ctx} />}
+          {tab === 'equipe'   && <EquipeSection {...ctx} />}
+          {tab === 'messages' && <MessagesSection {...ctx} />}
+          {tab === 'avance'   && <AvanceSection {...ctx} />}
+
+          {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
+          {showSave && saveButton}
+        </form>
+      </div>
+    </TooltipProvider>
   )
 }
