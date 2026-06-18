@@ -2,6 +2,11 @@
 // est coché. Prix (% ou fixe), garantie, catégorie, marque, export Excel. La
 // règle (prix d'achat jamais touché) est appliquée SERVEUR ; ici, UI seulement.
 import { useState } from 'react'
+import { Download, X } from 'lucide-react'
+import {
+  Button, Input,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 
 export default function BulkProductBar({
   count, categories = [], marques = [], busy, onAction, onExport, onClear,
@@ -17,70 +22,109 @@ export default function BulkProductBar({
   const toggle = (n) => setPanel((p) => (p === n ? null : n))
   const run = (action, params) => { onAction(action, params); setPanel(null) }
 
+  // Bouton onglet de panneau (style cohérent avec la barre sombre).
+  const tabBtn = (key, label) => (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => toggle(key)}
+      aria-pressed={panel === key}
+      className="rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 aria-pressed:bg-white/15"
+    >
+      {label}
+    </button>
+  )
+
   return (
-    <div className="bulk-bar" role="region" aria-label="Actions produits en masse"
-         style={{ background: '#0f172a', color: '#fff', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-      <div><strong>{count}</strong> produit{count > 1 ? 's' : ''} sélectionné{count > 1 ? 's' : ''}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        <button type="button" className="btn btn-sm btn-outline" disabled={busy}
-                onClick={() => toggle('price')}>Prix</button>
-        <button type="button" className="btn btn-sm btn-outline" disabled={busy}
-                onClick={() => toggle('warranty')}>Garantie</button>
-        <button type="button" className="btn btn-sm btn-outline" disabled={busy}
-                onClick={() => toggle('cat')}>Catégorie</button>
-        <button type="button" className="btn btn-sm btn-outline" disabled={busy}
-                onClick={() => toggle('brand')}>Marque</button>
-        <button type="button" className="btn btn-sm btn-outline" disabled={busy}
-                onClick={onExport}>⬇ Exporter Excel</button>
-        <button type="button" className="btn btn-sm" disabled={busy} onClick={onClear}
-                style={{ color: '#cbd5e1' }}>✕ Désélectionner</button>
+    <div
+      role="region"
+      aria-label="Actions produits en masse"
+      className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-nuit px-4 py-2.5 text-white shadow-ui-md"
+    >
+      <div className="text-sm">
+        <strong className="tabular-nums">{count}</strong> produit{count > 1 ? 's' : ''} sélectionné{count > 1 ? 's' : ''}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {tabBtn('price', 'Prix')}
+        {tabBtn('warranty', 'Garantie')}
+        {tabBtn('cat', 'Catégorie')}
+        {tabBtn('brand', 'Marque')}
+        <button
+          type="button" disabled={busy} onClick={onExport}
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+        >
+          <Download className="size-3.5" /> Exporter Excel
+        </button>
+        <button
+          type="button" disabled={busy} onClick={onClear}
+          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-white/70 transition-colors hover:text-white disabled:opacity-50"
+        >
+          <X className="size-3.5" /> Désélectionner
+        </button>
       </div>
 
       {panel === 'price' && (
-        <div style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-          <select className="form-control" style={{ maxWidth: 160, color: '#0f172a' }}
-                  value={priceMode} onChange={(e) => setPriceMode(e.target.value)}>
-            <option value="percent">Variation (%)</option>
-            <option value="fixed">Prix fixe (HT)</option>
-          </select>
-          <input className="form-control" type="number" step="any" style={{ maxWidth: 140, color: '#0f172a' }}
-                 placeholder={priceMode === 'percent' ? 'ex. 10 ou -5' : 'ex. 1200'}
-                 value={priceVal} onChange={(e) => setPriceVal(e.target.value)} />
-          <button type="button" className="btn btn-sm btn-primary" disabled={priceVal === ''}
-                  onClick={() => run('set_price', { mode: priceMode, valeur: priceVal })}>Appliquer</button>
-          <span style={{ fontSize: 12, color: '#cbd5e1' }}>Le prix d'achat n'est jamais modifié.</span>
+        <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/15 pt-2">
+          <div className="w-40">
+            <Select value={priceMode} onValueChange={setPriceMode}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percent">Variation (%)</SelectItem>
+                <SelectItem value="fixed">Prix fixe (HT)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Input
+            type="number" step="any" inputMode="decimal"
+            className="h-9 w-36"
+            placeholder={priceMode === 'percent' ? 'ex. 10 ou -5' : 'ex. 1200'}
+            value={priceVal} onChange={(e) => setPriceVal(e.target.value)}
+          />
+          <Button size="sm" disabled={priceVal === ''}
+                  onClick={() => run('set_price', { mode: priceMode, valeur: priceVal })}>
+            Appliquer
+          </Button>
+          <span className="text-xs text-white/60">Le prix d&apos;achat n&apos;est jamais modifié.</span>
         </div>
       )}
       {panel === 'warranty' && (
-        <div style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-          <input className="form-control" type="number" min="0" style={{ maxWidth: 160, color: '#0f172a' }}
+        <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/15 pt-2">
+          <Input type="number" min="0" inputMode="numeric" className="h-9 w-40"
                  placeholder="Garantie (mois)" value={gar} onChange={(e) => setGar(e.target.value)} />
-          <input className="form-control" type="number" min="0" style={{ maxWidth: 200, color: '#0f172a' }}
+          <Input type="number" min="0" inputMode="numeric" className="h-9 w-52"
                  placeholder="Garantie production (mois)" value={garProd} onChange={(e) => setGarProd(e.target.value)} />
-          <button type="button" className="btn btn-sm btn-primary" disabled={gar === '' && garProd === ''}
-                  onClick={() => run('set_warranty', { garantie_mois: gar, garantie_production_mois: garProd })}>Appliquer</button>
+          <Button size="sm" disabled={gar === '' && garProd === ''}
+                  onClick={() => run('set_warranty', { garantie_mois: gar, garantie_production_mois: garProd })}>
+            Appliquer
+          </Button>
         </div>
       )}
       {panel === 'cat' && (
-        <div style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-          <select className="form-control" style={{ maxWidth: 240, color: '#0f172a' }}
-                  value={cat} onChange={(e) => setCat(e.target.value)}>
-            <option value="">— Aucune catégorie —</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
-          </select>
-          <button type="button" className="btn btn-sm btn-primary"
-                  onClick={() => run('set_category', { categorie_id: cat || null })}>Appliquer</button>
+        <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/15 pt-2">
+          <div className="w-60">
+            <Select value={cat || '__none'} onValueChange={(v) => setCat(v === '__none' ? '' : v)}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="— Aucune catégorie —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Aucune catégorie —</SelectItem>
+                {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button size="sm" onClick={() => run('set_category', { categorie_id: cat || null })}>
+            Appliquer
+          </Button>
         </div>
       )}
       {panel === 'brand' && (
-        <div style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-          <input className="form-control" list="bpb-marques" style={{ maxWidth: 240, color: '#0f172a' }}
+        <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/15 pt-2">
+          <Input list="bpb-marques" className="h-9 w-60"
                  placeholder="Marque" value={marque} onChange={(e) => setMarque(e.target.value)} />
           <datalist id="bpb-marques">
             {marques.map((m) => <option key={m.id} value={m.nom} />)}
           </datalist>
-          <button type="button" className="btn btn-sm btn-primary"
-                  onClick={() => run('set_brand', { marque })}>Appliquer</button>
+          <Button size="sm" onClick={() => run('set_brand', { marque })}>
+            Appliquer
+          </Button>
         </div>
       )}
     </div>

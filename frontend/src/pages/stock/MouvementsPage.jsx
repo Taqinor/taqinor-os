@@ -1,23 +1,32 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Plus, ArrowDownUp } from 'lucide-react'
 import {
   fetchMouvements,
   fetchProduits,
   createMouvement,
 } from '../../features/stock/store/stockSlice'
+import {
+  Button, Badge, Segmented, DataTable,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Form, FormField, FormActions,
+  Input, Textarea,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 
+// Tonalité du badge par type de mouvement (taxonomie de couleurs commune).
 const TYPE_META = {
-  entree:     { label: 'Entrée',      bg: '#dcfce7', color: '#15803d' },
-  sortie:     { label: 'Sortie',      bg: '#fee2e2', color: '#b91c1c' },
-  ajustement: { label: 'Ajustement',  bg: '#fef9c3', color: '#a16207' },
-  transfert:  { label: 'Transfert',   bg: '#dbeafe', color: '#1d4ed8' },
+  entree:     { label: 'Entrée',     tone: 'success' },
+  sortie:     { label: 'Sortie',     tone: 'danger' },
+  ajustement: { label: 'Ajustement', tone: 'warning' },
+  transfert:  { label: 'Transfert',  tone: 'info' },
 }
 
 const TABS = [
-  { key: 'tous',       label: 'Tous' },
-  { key: 'entree',     label: 'Entrées' },
-  { key: 'sortie',     label: 'Sorties' },
-  { key: 'ajustement', label: 'Ajustements' },
+  { value: 'tous',       label: 'Tous' },
+  { value: 'entree',     label: 'Entrées' },
+  { value: 'sortie',     label: 'Sorties' },
+  { value: 'ajustement', label: 'Ajustements' },
 ]
 
 export default function MouvementsPage() {
@@ -32,7 +41,6 @@ export default function MouvementsPage() {
     : (role === 'responsable' || role === 'admin')
 
   const [activeTab, setActiveTab] = useState('tous')
-  const [search, setSearch]       = useState('')
   const [showForm, setShowForm]   = useState(false)
 
   useEffect(() => {
@@ -40,20 +48,11 @@ export default function MouvementsPage() {
     if (!produits.length) dispatch(fetchProduits())
   }, [dispatch, produits.length])
 
-  const filtered = useMemo(() => {
-    let list = activeTab === 'tous'
+  const filtered = useMemo(() => (
+    activeTab === 'tous'
       ? mouvements
       : mouvements.filter(m => m.type_mouvement === activeTab)
-    const q = search.trim().toLowerCase()
-    if (q) {
-      list = list.filter(m =>
-        (m.produit_nom ?? '').toLowerCase().includes(q) ||
-        (m.reference ?? '').toLowerCase().includes(q) ||
-        (m.note ?? '').toLowerCase().includes(q)
-      )
-    }
-    return list
-  }, [mouvements, activeTab, search])
+  ), [mouvements, activeTab])
 
   const counts = useMemo(() => ({
     tous:       mouvements.length,
@@ -62,33 +61,111 @@ export default function MouvementsPage() {
     ajustement: mouvements.filter(m => m.type_mouvement === 'ajustement').length,
   }), [mouvements])
 
-  if (loading) return <p className="page-loading">Chargement des mouvements...</p>
-  if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+  const tabOptions = TABS.map(t => ({
+    ...t,
+    label: counts[t.value] > 0 ? `${t.label} (${counts[t.value]})` : t.label,
+  }))
+
+  // Colonnes DataTable (la recherche globale balaie produit / référence / note).
+  const columns = useMemo(() => [
+    {
+      id: 'date', header: 'Date', width: 150, searchable: false,
+      accessor: (m) => m.date,
+      cell: (v) => (
+        <span className="whitespace-nowrap">
+          {new Date(v).toLocaleDateString('fr-FR')}{' '}
+          <span className="text-xs text-muted-foreground">
+            {new Date(v).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: 'produit_nom', header: 'Produit', minWidth: 160,
+      accessor: (m) => m.produit_nom ?? String(m.produit ?? ''),
+    },
+    {
+      id: 'type', header: 'Type', width: 130, searchable: false,
+      accessor: (m) => m.type_mouvement,
+      cell: (v) => {
+        const meta = TYPE_META[v] ?? TYPE_META.entree
+        return <Badge tone={meta.tone}>{meta.label}</Badge>
+      },
+    },
+    {
+      id: 'quantite_avant', header: 'Avant', align: 'right', width: 90, searchable: false,
+      cell: (v) => <span className="text-muted-foreground">{v}</span>,
+    },
+    {
+      id: 'mouvement', header: 'Mouvement', align: 'right', width: 110, searchable: false,
+      accessor: (m) => m.quantite_apres - m.quantite_avant,
+      cell: (delta) => (
+        <span className={delta >= 0 ? 'text-success' : 'text-destructive'}>
+          {delta >= 0 ? '+' : ''}{delta}
+        </span>
+      ),
+    },
+    {
+      id: 'quantite_apres', header: 'Après', align: 'right', width: 90, searchable: false,
+      cell: (v) => <strong>{v}</strong>,
+    },
+    {
+      id: 'reference', header: 'Référence', width: 140,
+      accessor: (m) => m.reference ?? '',
+      cell: (v) => (v ? <span className="font-mono text-xs">{v}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      id: 'note', header: 'Note', minWidth: 140,
+      accessor: (m) => m.note ?? '',
+      cell: (v) => (v ? <span className="line-clamp-2">{v}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      id: 'created_by_username', header: 'Par', width: 120,
+      accessor: (m) => m.created_by_username ?? '',
+      cell: (v) => <span className="text-muted-foreground">{v || '—'}</span>,
+    },
+  ], [])
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h2>
-          Mouvements de stock
+    <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-xl font-semibold tracking-tight">Mouvements de stock</h2>
           {mouvements.length > 0 && (
-            <span className="count-badge">{mouvements.length}</span>
-          )}
-        </h2>
-        <div className="page-header-actions">
-          <input
-            className="search-input"
-            type="search"
-            placeholder="Produit, référence, note…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {canPostMouvement && (
-            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-              + Saisir mouvement
-            </button>
+            <Badge tone="primary">{mouvements.length}</Badge>
           )}
         </div>
-      </div>
+        {canPostMouvement && (
+          <Button onClick={() => setShowForm(true)}>
+            <Plus /> Saisir mouvement
+          </Button>
+        )}
+      </header>
+
+      <Segmented
+        size="sm"
+        value={activeTab}
+        onChange={setActiveTab}
+        options={tabOptions}
+        className="flex-wrap"
+      />
+
+      <DataTable
+        data={filtered}
+        columns={columns}
+        loading={loading}
+        error={error ? `Erreur : ${JSON.stringify(error)}` : null}
+        getRowId={(m) => m.id}
+        searchPlaceholder="Produit, référence, note…"
+        globalColumns={['produit_nom', 'reference', 'note']}
+        emptyTitle="Aucun mouvement"
+        emptyDescription={
+          activeTab !== 'tous'
+            ? 'Aucun mouvement dans cet onglet.'
+            : 'Aucun mouvement de stock enregistré.'
+        }
+        aria-label="Mouvements de stock"
+      />
 
       {showForm && (
         <MouvementForm
@@ -96,83 +173,6 @@ export default function MouvementsPage() {
           onClose={() => setShowForm(false)}
           onSaved={() => { dispatch(fetchMouvements()); setShowForm(false) }}
         />
-      )}
-
-      <div className="status-tabs">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            className={`status-tab${activeTab === t.key ? ' active' : ''}`}
-            onClick={() => setActiveTab(t.key)}
-          >
-            {t.label}
-            {counts[t.key] > 0 && (
-              <span className="tab-count">{counts[t.key]}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Produit</th>
-            <th>Type</th>
-            <th className="ta-right">Avant</th>
-            <th className="ta-right">Mouvement</th>
-            <th className="ta-right">Après</th>
-            <th>Référence</th>
-            <th>Note</th>
-            <th>Par</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map(m => {
-            const meta = TYPE_META[m.type_mouvement] ?? TYPE_META.entree
-            const delta = m.quantite_apres - m.quantite_avant
-            return (
-              <tr key={m.id}>
-                <td>
-                  {new Date(m.date).toLocaleDateString('fr-FR')}{' '}
-                  <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                    {new Date(m.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </td>
-                <td><strong>{m.produit_nom ?? m.produit}</strong></td>
-                <td>
-                  <span className="badge" style={{ background: meta.bg, color: meta.color }}>
-                    {meta.label}
-                  </span>
-                </td>
-                <td className="ta-right text-muted">{m.quantite_avant}</td>
-                <td className="ta-right">
-                  <span className={delta >= 0 ? 'text-success' : 'text-danger'}>
-                    {delta >= 0 ? '+' : ''}{delta}
-                  </span>
-                </td>
-                <td className="ta-right"><strong>{m.quantite_apres}</strong></td>
-                <td>
-                  <span className="mono-text">{m.reference ?? <span className="text-muted">—</span>}</span>
-                </td>
-                <td className="text-truncate" style={{ maxWidth: 160 }}>
-                  {m.note ?? <span className="text-muted">—</span>}
-                </td>
-                <td className="text-muted">{m.created_by_username ?? '—'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-
-      {filtered.length === 0 && !loading && (
-        <p className="empty-state">
-          {search
-            ? `Aucun résultat pour « ${search} »`
-            : activeTab !== 'tous'
-              ? 'Aucun mouvement dans cet onglet.'
-              : 'Aucun mouvement de stock enregistré.'}
-        </p>
       )}
     </div>
   )
@@ -240,108 +240,97 @@ function MouvementForm({ produits, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Saisir un mouvement de stock</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Saisir un mouvement de stock</DialogTitle>
+          <DialogDescription>
+            Entrée, sortie ou ajustement — la quantité résultante est prévisualisée.
+          </DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            <div className="form-group">
-              <label className="form-label">Produit <span className="req">*</span></label>
-              <select
-                className={`form-select${errors.produit ? ' is-invalid' : ''}`}
-                value={fields.produit}
-                onChange={e => setField('produit', e.target.value)}
-              >
-                <option value="">— Sélectionner un produit —</option>
+        <Form onSubmit={handleSubmit} className="gap-4">
+          <FormField label="Produit" required htmlFor="mv-produit" error={errors.produit} fullWidth>
+            <Select value={fields.produit} onValueChange={(v) => setField('produit', v)}>
+              <SelectTrigger id="mv-produit" invalid={!!errors.produit}>
+                <SelectValue placeholder="— Sélectionner un produit —" />
+              </SelectTrigger>
+              <SelectContent>
                 {produits.map(p => (
-                  <option key={p.id} value={p.id}>
+                  <SelectItem key={p.id} value={String(p.id)}>
                     {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock : {p.quantite_stock}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-              {errors.produit && <div className="form-feedback">{errors.produit}</div>}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField label="Type de mouvement" htmlFor="mv-type">
+            <Select value={fields.type_mouvement} onValueChange={(v) => setField('type_mouvement', v)}>
+              <SelectTrigger id="mv-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="entree">Entrée (ajoute au stock)</SelectItem>
+                <SelectItem value="sortie">Sortie (retire du stock)</SelectItem>
+                <SelectItem value="ajustement">Ajustement (fixe le stock)</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField
+            label={fields.type_mouvement === 'ajustement' ? 'Nouvelle quantité' : 'Quantité'}
+            required htmlFor="mv-quantite" error={errors.quantite}
+          >
+            <Input
+              id="mv-quantite" type="number" min="0" step="1" inputMode="numeric"
+              invalid={!!errors.quantite}
+              value={fields.quantite}
+              onChange={e => setField('quantite', e.target.value)}
+            />
+          </FormField>
+
+          {selectedProduit && previewApres !== null && (
+            <div className="sm:col-span-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+              <span>Stock actuel : <strong>{selectedProduit.quantite_stock}</strong></span>
+              <ArrowDownUp className="size-3.5 rotate-90 text-muted-foreground" aria-hidden="true" />
+              <span>
+                Après :{' '}
+                <strong className={previewApres < 0 ? 'text-destructive' : ''}>{previewApres}</strong>
+              </span>
             </div>
+          )}
 
-            <div className="form-row">
-              <div className="form-group fg-grow">
-                <label className="form-label">Type de mouvement</label>
-                <select
-                  className="form-select"
-                  value={fields.type_mouvement}
-                  onChange={e => setField('type_mouvement', e.target.value)}
-                >
-                  <option value="entree">Entrée (ajoute au stock)</option>
-                  <option value="sortie">Sortie (retire du stock)</option>
-                  <option value="ajustement">Ajustement (fixe le stock)</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">
-                  {fields.type_mouvement === 'ajustement' ? 'Nouvelle quantité' : 'Quantité'}
-                  <span className="req"> *</span>
-                </label>
-                <input
-                  type="number" min="0" step="1"
-                  className={`form-control${errors.quantite ? ' is-invalid' : ''}`}
-                  value={fields.quantite}
-                  onChange={e => setField('quantite', e.target.value)}
-                />
-                {errors.quantite && <div className="form-feedback">{errors.quantite}</div>}
-              </div>
+          <FormField label="Référence" htmlFor="mv-reference" fullWidth>
+            <Input
+              id="mv-reference"
+              value={fields.reference}
+              onChange={e => setField('reference', e.target.value)}
+              placeholder="Numéro BL, facture fournisseur…"
+            />
+          </FormField>
+
+          <FormField label="Note" htmlFor="mv-note" fullWidth>
+            <Textarea
+              id="mv-note" rows={2}
+              value={fields.note}
+              onChange={e => setField('note', e.target.value)}
+              placeholder="Raison du mouvement…"
+            />
+          </FormField>
+
+          {errors.submit && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {errors.submit}
             </div>
+          )}
 
-            {selectedProduit && previewApres !== null && (
-              <div className="stock-preview">
-                <span>Stock actuel : <strong>{selectedProduit.quantite_stock}</strong></span>
-                <span className="stock-arrow">→</span>
-                <span>
-                  Après : <strong className={previewApres < 0 ? 'text-danger' : ''}>
-                    {previewApres}
-                  </strong>
-                </span>
-              </div>
-            )}
-
-            <div className="form-row">
-              <div className="form-group fg-grow">
-                <label className="form-label">Référence</label>
-                <input
-                  className="form-control"
-                  value={fields.reference}
-                  onChange={e => setField('reference', e.target.value)}
-                  placeholder="Numéro BL, facture fournisseur..."
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Note</label>
-              <textarea
-                className="form-control"
-                rows={2}
-                value={fields.note}
-                onChange={e => setField('note', e.target.value)}
-                placeholder="Raison du mouvement..."
-              />
-            </div>
-
-            {errors.submit && <div className="form-error-box">{errors.submit}</div>}
-          </div>
-
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose}>
-              Annuler
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Enregistrement...' : 'Enregistrer le mouvement'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer le mouvement'}
+            </Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }
