@@ -151,9 +151,9 @@ export const CASE_STUDIES: Record<string, CaseStudyContent> = {
     description:
       'Réf. NC-10/25 : 3,72 kWc à Nouaceur, dans la périphérie de Casablanca, 6 panneaux JA Solar posés en octobre 2025 avec le même soin d’implantation que nos plus grands chantiers.',
     situation:
-      'À Nouaceur, dans la périphérie de Casablanca, une petite installation de 3,72 kWc : six panneaux JA Solar. Le format est modeste, le soin ne l’est pas — c’est la même méthode d’implantation que sur nos chantiers de plus grande taille, appliquée à une toiture qui n’en demandait pas plus.',
+      'À Nouaceur, dans la périphérie de Casablanca, une installation de 3,72 kWc : six panneaux JA Solar, posés avec le même soin d’implantation que sur nos chantiers de plus grande taille, sur une toiture qui n’en demandait pas plus.',
     sizing:
-      'Six modules JA Solar pour 3,72 kWc : la puissance répond à un besoin réduit, et l’honnêteté commande de ne pas poser au-delà de ce que la consommation justifie. Petit chantier ne veut pas dire chantier bâclé : le tracé des rails et l’alignement se calculent avec la même rigueur qu’à 17 kWc.',
+      'Six modules JA Solar pour 3,72 kWc : la puissance répond au besoin réel du foyer, et l’honnêteté commande de ne pas poser au-delà de ce que la consommation justifie. Le tracé des rails et l’alignement se calculent ici avec la même rigueur qu’à 17 kWc.',
     install:
       'Les photos du dossier montrent le travail de fond : l’installateur en gilet Taqinor posant les rails de la structure, le traçage et la mesure au mètre des fixations, puis le nettoyage au jet du champ une fois les modules en place. C’est cette préparation invisible qui tient une installation sur la durée.',
     result:
