@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { FileText, FolderOpen, AlertTriangle } from 'lucide-react'
 import api from '../../api/axios'
 import reportingApi from '../../api/reportingApi'
+import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Skeleton, EmptyState } from '../../ui'
 import { typeLabel, sortDocsDesc } from './archiveDocs'
 
 // N32 — Archive documentaire (par client ou par chantier). Composant
@@ -57,44 +59,66 @@ export default function DocumentsArchive({ kind, id }) {
     }
   }
 
-  if (loading) return <p className="page-loading">Chargement…</p>
-  if (error) return <p style={empty}>{error}</p>
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader><Skeleton className="h-4 w-40" /></CardHeader>
+        <CardContent className="space-y-2">
+          {Array.from({ length: 4 }).map((unused, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return <EmptyState icon={AlertTriangle} title="Archive indisponible" description={error} />
+  }
   if (!data) return null
 
   return (
-    <div style={{ background: '#fff', borderRadius: 14, padding: '1.1rem 1.3rem', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-      <h3 style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#1e293b', margin: '0 0 0.75rem' }}>
-        Documents ({data.count})
-      </h3>
-      {data.documents.length === 0 ? (
-        <p style={empty}>Aucun document.</p>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr><th>Type</th><th>Référence</th><th>Date</th><th /></tr>
-          </thead>
-          <tbody>
-            {sortDocsDesc(data.documents).map((d, i) => (
-              <tr key={i}>
-                <td>{typeLabel(d)}</td>
-                <td>{d.reference || '—'}</td>
-                <td>{d.date || '—'}</td>
-                <td className="ta-right">
-                  {d.download_url ? (
-                    <button className="btn btn-sm btn-outline" onClick={() => openDoc(d)}>
-                      Ouvrir le PDF
-                    </button>
-                  ) : (
-                    <span style={{ color: '#94a3b8', fontSize: 12 }}>—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-2">
+        <CardTitle>Documents</CardTitle>
+        <Badge tone="neutral">{data.count}</Badge>
+      </CardHeader>
+      <CardContent>
+        {data.documents.length === 0 ? (
+          <EmptyState
+            icon={FolderOpen}
+            title="Aucun document"
+            description="Aucun document n’a encore été généré pour cette fiche."
+            className="border-0 py-6"
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr><th>Type</th><th>Référence</th><th>Date</th><th /></tr>
+              </thead>
+              <tbody>
+                {sortDocsDesc(data.documents).map((d, i) => (
+                  <tr key={i}>
+                    <td data-label="Type">{typeLabel(d)}</td>
+                    <td data-label="Référence">{d.reference || '—'}</td>
+                    <td data-label="Date" className="tabular-nums">{d.date || '—'}</td>
+                    <td className="ta-right">
+                      {d.download_url ? (
+                        <Button variant="outline" size="sm" onClick={() => openDoc(d)}>
+                          <FileText /> Ouvrir le PDF
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
-
-const empty = { textAlign: 'center', color: '#94a3b8', padding: '1.5rem' }
