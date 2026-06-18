@@ -87,7 +87,13 @@ export interface PitchedLiveEval {
 const LAYOUT_FR: Record<PitchedLayoutAxis, string> = { portrait: 'portrait', landscape: 'paysage' };
 const MARGIN_FR: Record<PitchedMarginAxis, string> = { keep: 'marge gardée', remove: 'pleine rive' };
 
-/** Rendement résolu pour le plan (pente, face) : PVGIS si dispo/valide, sinon table. */
+/** W48 — n'accepte qu'un rendement FINI ≥ 0 (rejette NaN/Infinity/négatif). */
+const safeYield = (v: number): number => (Number.isFinite(v) && v >= 0 ? v : 0);
+
+/** Rendement résolu pour le plan (pente, face) : PVGIS si dispo/valide, sinon table.
+ *  W48 — la table elle-même peut rendre NaN sur une pente/face NaN (entrée adverse) :
+ *  on borne le repli « estimé » à un nombre FINI ≥ 0 pour ne JAMAIS propager NaN/Infinity
+ *  dans annualKwh. Le yieldFn (PVGIS) reste rejeté s'il n'est pas fini > 0 → repli table. */
 function resolvePitchedYield(
   yieldFn: PitchedYieldFn | undefined,
   latitudeDeg: number,
@@ -98,7 +104,7 @@ function resolvePitchedYield(
     const v = yieldFn(pitchDeg, facingAzimuthDeg);
     if (v != null && Number.isFinite(v) && v > 0) return { value: v, source: 'pvgis' };
   }
-  return { value: flushPlaneYield(latitudeDeg, pitchDeg, facingAzimuthDeg), source: 'estimate' };
+  return { value: safeYield(flushPlaneYield(latitudeDeg, pitchDeg, facingAzimuthDeg)), source: 'estimate' };
 }
 
 /**
@@ -138,13 +144,16 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
     ctx.packCache.set(key, pack);
   }
   const grid = layout === 'portrait' ? pack.portrait : pack.landscape;
-  const fitCount = grid.count;
-  // Pan orienté nord : on ne pose RIEN (honnêteté — surplus nord non rentable).
-  const placedCount = pack.northFacing ? 0 : ctx.effectiveNeed > 0 ? Math.min(ctx.effectiveNeed, fitCount) : fitCount;
-  const perKwcPanel = grid.count > 0 ? grid.kwc / grid.count : PANEL2_WATT / 1000;
+  // W48 — borne défensive : un pavage ne rend JAMAIS un compte négatif/non entier/NaN.
+  const fitCount = Number.isFinite(grid.count) && grid.count > 0 ? Math.floor(grid.count) : 0;
+  // Pan orienté nord : on ne pose RIEN (honnêteté — surplus nord non rentable). Posé =
+  // min(besoin, ce qui tient) ≤ besoin, plafond TOUJOURS respecté, jamais < 0.
+  const placedCount = pack.northFacing ? 0 : ctx.effectiveNeed > 0 ? Math.max(0, Math.min(ctx.effectiveNeed, fitCount)) : fitCount;
+  const perKwcPanel = fitCount > 0 && Number.isFinite(grid.kwc) ? grid.kwc / fitCount : PANEL2_WATT / 1000;
   const kwc = placedCount * perKwcPanel;
   const y = resolvePitchedYield(ctx.yieldFn, ctx.latitudeDeg, ctx.pitchDeg, ctx.facingAzimuthDeg);
-  const annualKwh = kwc * y.value;
+  // W48 — y.value est déjà borné fini ≥ 0 (safeYield) ; on reborne le produit par sûreté.
+  const annualKwh = safeYield(kwc * y.value);
   const savings = annualSavingsMad(annualKwh, ctx.target, ctx.tariff);
   return {
     layout,

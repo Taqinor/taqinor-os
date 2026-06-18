@@ -112,7 +112,13 @@ const ORIENT_FR: Record<OrientationAxis, string> = {
 };
 const LAYOUT_FR: Record<LayoutAxis, string> = { portrait: 'portrait', landscape: 'paysage' };
 
-/** Rendement résolu pour un (tilt, aspect) : PVGIS si dispo/valide, sinon table. */
+/** W48 — n'accepte qu'un rendement FINI ≥ 0 (rejette NaN/Infinity/négatif). */
+const safeYield = (v: number): number => (Number.isFinite(v) && v >= 0 ? v : 0);
+
+/** Rendement résolu pour un (tilt, aspect) : PVGIS si dispo/valide, sinon table.
+ *  W48 — la table peut rendre NaN sur des entrées adverses (lat/tilt/aspect NaN) :
+ *  on borne le repli « estimé » à un nombre FINI ≥ 0 pour ne JAMAIS propager NaN/Infinity
+ *  dans annualKwh. Le yieldFn (PVGIS) reste rejeté s'il n'est pas fini > 0 → repli table. */
 function resolveYield(
   yieldFn: YieldFn | undefined,
   latitudeDeg: number,
@@ -123,7 +129,7 @@ function resolveYield(
     const v = yieldFn(tiltDeg, aspect);
     if (v != null && Number.isFinite(v) && v > 0) return { value: v, source: 'pvgis' };
   }
-  return { value: specificYield(latitudeDeg, tiltDeg, aspect), source: 'estimate' };
+  return { value: safeYield(specificYield(latitudeDeg, tiltDeg, aspect)), source: 'estimate' };
 }
 
 /**
@@ -188,8 +194,10 @@ function evalOne(
     ctx.cache.set(key, pack);
   }
   const grid = layout === 'portrait' ? pack.portrait : pack.landscape;
-  const fitCount = grid.count;
-  const placedCount = ctx.effectiveNeed > 0 ? Math.min(ctx.effectiveNeed, fitCount) : fitCount;
+  // W48 — borne défensive : un pavage ne rend JAMAIS un compte négatif/non entier/NaN.
+  const fitCount = Number.isFinite(grid.count) && grid.count > 0 ? Math.floor(grid.count) : 0;
+  // Posé = min(besoin, ce qui tient) ≤ besoin, plafond TOUJOURS respecté, jamais < 0.
+  const placedCount = ctx.effectiveNeed > 0 ? Math.max(0, Math.min(ctx.effectiveNeed, fitCount)) : fitCount;
   const kwc = (placedCount * PANEL2_WATT) / 1000;
   const aspect = aspectForAzimuth(family, pack.azimuthDeg);
   let annualKwh: number;
@@ -198,12 +206,12 @@ function evalOne(
   if (family === 'eastwest') {
     const e = resolveYield(ctx.yieldFn, ctx.latitudeDeg, tiltDeg, aspect - 90);
     const w = resolveYield(ctx.yieldFn, ctx.latitudeDeg, tiltDeg, aspect + 90);
-    annualKwh = (kwc / 2) * e.value + (kwc / 2) * w.value;
+    annualKwh = safeYield((kwc / 2) * e.value + (kwc / 2) * w.value);
     perPanelYield = (e.value + w.value) / 2;
     source = e.source === 'pvgis' && w.source === 'pvgis' ? 'pvgis' : 'estimate';
   } else {
     const s = resolveYield(ctx.yieldFn, ctx.latitudeDeg, tiltDeg, aspect);
-    annualKwh = kwc * s.value;
+    annualKwh = safeYield(kwc * s.value);
     perPanelYield = s.value;
     source = s.source;
   }
