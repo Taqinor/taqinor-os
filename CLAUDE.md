@@ -385,3 +385,56 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
 - Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no
   WEB_PLAN2.md), then commit on `dev` and self-merge to `main`. Confirm in one line
   which file you appended to.
+
+### "clean the plans"
+Pure plan-file housekeeping. This command **NEVER builds, edits, or implements any
+task**, never runs a feature/dependency/database/CI change, and makes **no code
+changes** of any kind. It **NEVER changes the wording of a task, its ID, or its
+gating tag**; it **NEVER reorders tasks**; it **NEVER moves a not-done task from one
+queue to another**; it **NEVER decides priorities**. It does exactly one thing: it
+**relocates COMPLETED tasks** out of the active plan files into a single archive,
+leaving every not-done task exactly where — and in the order — it already is.
+- **What counts as DONE.** A task is DONE only if it is **explicitly checked
+  complete** — a `[x]` checkbox or an equivalent explicit "done/shipped" mark.
+  Anything unchecked `[ ]`, `[BLOCKED…]`, `[SKIP]`, gated, or ambiguous is **NOT
+  done** and stays in its active plan file, untouched. **When in doubt, treat a task
+  as NOT done and leave it where it is.**
+- **Move (do not copy) into one archive.** Move every DONE task from **every active
+  plan file** (`docs/PLAN.md`, `docs/PLAN2.md`, `docs/WEB_PLAN.md`, and any other
+  `docs/PLAN*.md`) into **`docs/DONE.md`** (create it if missing), **grouped under a
+  heading per source file** (e.g. `## Archived from PLAN.md`), **preserving each
+  task's original text verbatim** (for a header-format task that is the `###` header
+  **and** its body). After the move, that done task **no longer appears** in the
+  active plan file. If a **DONE LOG / done section** already exists inside a plan
+  file, **fold those entries into `docs/DONE.md` too** (under a per-file heading), so
+  done history lives in one place — keep the DONE LOG **header + scaffolding** in the
+  active file so future runs can still append.
+- **Touch nothing else.** The active plan files keep **all their structure** —
+  headers, HOW TO RUN, STANDING RULES, GATED/MANUAL sections, cross-cutting
+  constraint notes, dividers, and every not-done task — **exactly as written**. Only
+  completed task **lines/blocks** are removed. **Do not delete or reword any rule,
+  header, prose note, or not-done task.** (Emptying a section of its done tasks is
+  fine — the header stays.)
+- **Reconcile — never guess.** Confirm **no task was lost or duplicated**: the count
+  of (done tasks now in `docs/DONE.md`) **plus** (not-done tasks still in the active
+  files) must equal the total task count **before** you started. The strongest check
+  is line-level: every original line must end up in exactly one place (active file or
+  `docs/DONE.md`), none lost, none duplicated, none altered. **If the numbers do not
+  reconcile, STOP and report — do not guess.**
+- **Fingerprint.** Moving done tasks out of `docs/PLAN.md` / `docs/PLAN2.md` changes
+  the **plan-fingerprint surface**, so refresh §10 "Plan status" of
+  `docs/CODEMAP.md` (paste `python scripts/codemap_fingerprint.py
+  --print-plan-status` + its totals/stamp) and re-run
+  `python scripts/codemap_fingerprint.py --write` **in the same commit** — this is a
+  legitimate plan edit, not a code change — then confirm `python
+  scripts/codemap_fingerprint.py --check` and `python scripts/check_stages.py` are
+  green. (`docs/WEB_PLAN.md` is **not** in the plan-fingerprint surface.) If unsure
+  whether re-stamping is correct, STOP and ask rather than forcing it.
+- **Land it.** Commit on `dev`, get the required CI checks green (a docs-only change
+  runs only `stage-names`; the heavy jobs skip), then **self-merge `dev` → `main`
+  exactly once** (one merge commit, no PR, sync-safe per the STANDING RULES). If CI
+  is red, do **not** merge — report what failed and stop.
+- **Report** in plain language only (no diffs, no hashes): per file, **how many done
+  tasks were archived** to `docs/DONE.md` and **how many not-done tasks remain**, and
+  confirm nothing was reordered, reworded, re-prioritized, or built. It never reports
+  code changes because it makes none.
