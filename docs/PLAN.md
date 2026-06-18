@@ -148,6 +148,71 @@ production on Hetzner at **api.taqinor.ma** (cx23, daily backups, deploy via
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+### PRE-APPROVED FOR AUTONOMOUS BUILD (added 2026-06-18)
+
+For the **specific ungated tasks below ONLY** — N14, N26, N59, N60, N64, N65, N67, N85,
+N87, N88, G9, N103, N104, N105, N106, N107, and the additive-column / UI / comptable-export /
+Odoo-importer refinement tasks flipped to `[ROUTINE]` in the REFINEMENT QUEUE — the following are
+**already authorized**, and a future session must **NOT pause** on them despite the general rule to
+stop-and-ask before a new dependency / schema / cost change:
+
+- the **Leaflet** map library (N85 + the Parc « Carte » refinement);
+- **Celery Beat** as the scheduler (G9);
+- the **Brevo** email integration (N87/N88, SDK or SMTP, key from settings/env, no-op without key);
+- the **specific additive columns** listed (Client `created_by` + `date_modification`; a
+  `type_equipement` tag on `stock.Categorie`; per-company serial uniqueness on `Equipement`;
+  ICE-inclusive client export);
+- the **ONEE grid seed values** (the residential TTC scale + the cheaper force-motrice/agricole
+  class in N64);
+- the **stock-reserve-then-decrement rule** (N14 + the folded-in G6);
+- the **silent DGI export/validator** capability (N105, master toggle default OFF);
+- **converting the devis PDF literals to settings** (the rule-#4 literal→setting wiring of N26 /
+  N59 / N60 / N67 — minimal premium-engine wiring with byte-identical defaults, visual layout
+  unchanged).
+
+The general stop-and-ask / pause rule **still applies to everything NOT on this list.**
+
+### Active regressions — fix first (added 2026-06-18, top priority)
+
+- [ ] N103 — RÉGRESSION (active, à corriger en priorité — bloque l'usage réel) : un
+  Directeur / Administrateur ne peut plus changer le rôle assigné d'un utilisateur depuis
+  l'interface. **Diagnostiquer d'abord la vraie cause** (inspecter le code réel, `git log` autour
+  de PR #155) avant de supposer, **PUIS corriger, PUIS ajouter un test de régression** — pas un
+  build aveugle. Vérifier CHAQUE couche : l'écran Utilisateurs (le contrôle de rôle est-il présent
+  et activé, liste-t-il tous les rôles actuels, appelle-t-il le bon endpoint, gère-t-il les
+  erreurs) ; le serializer + viewset utilisateur (le champ rôle, ou la récente validation
+  superviseur/société, est-il devenu read-only ou échoue-t-il la validation) ; les classes de
+  permission de gestion des utilisateurs (un Directeur/Admin est-il réellement autorisé à modifier
+  un autre utilisateur, le nouveau gating a-t-il bloqué cela, et le Directeur/Admin connecté
+  détient-il vraiment la permission de gestion utilisateur/rôle après l'auto-mapping de PR #155).
+  Corriger pour qu'un Directeur ET un Administrateur puissent changer FACILEMENT le rôle de
+  N'IMPORTE QUEL utilisateur, persistant et effectif immédiatement, chaque rôle sélectionnable,
+  SANS affaiblir les contrôles de permission des autres rôles. Confirmer que l'attribution du
+  superviseur d'un utilisateur fonctionne aussi et la corriger si la même cause l'a cassée.
+  **Test de régression backend** : un Directeur ET un Administrateur peuvent changer le rôle d'un
+  autre utilisateur via l'API et cela persiste, et la permission de gestion des rôles est accordée
+  par défaut au Directeur/Admin. Règles permanentes : texte UI en français ; ne pas affaiblir les
+  permissions des autres rôles ; FK company respectée ; additif ; STAGES.py/funnel intouchés ;
+  DEBUG/déploiement/sécurité inchangés.
+- [ ] N104 — RÉGRESSION (active, à corriger en priorité — bloque l'usage réel) : Reda ne peut plus
+  joindre de fichiers nulle part dans l'ERP. **Diagnostiquer d'abord la vraie cause** (inspecter le
+  code réel) avant de supposer, **PUIS reproduire et trouver POURQUOI** l'ajout d'une pièce jointe
+  échoue aujourd'hui partout où les pièces jointes sont utilisées (le composant partagé
+  `AttachmentsPanel` et l'`AttachmentViewSet` / le modèle `Attachment` générique sur MinIO —
+  leads, clients, devis, factures, chantiers, tickets, et partout ailleurs), **PUIS corriger, PUIS
+  ajouter un test de régression** — pas un build aveugle. Vérifier spécifiquement les suspects
+  PR #155 : le scoping de visibilité (`_scoped`) restreint-il à tort le queryset des pièces
+  jointes, et le gating d'écriture (`IsResponsableOrAdmin`) bloque-t-il des rôles censés pouvoir
+  joindre — plus le flux d'upload lui-même (requête multipart, résolution de cible par modèle+id,
+  stockage MinIO, validation type/taille) et l'hypothèse d'un build frontend caché périmé. Corriger
+  PARTOUT où les pièces jointes sont utilisées pour que l'ajout (et l'ouverture/le téléchargement)
+  d'un fichier refonctionne pour les rôles autorisés, sans affaiblir la sécurité. **Test de
+  régression** exerçant RÉELLEMENT l'ajout d'une pièce jointe via l'API contre MinIO et vérifiant
+  qu'elle persiste et est récupérable — pas un simple 200. Règles permanentes : texte UI en
+  français ; ne pas affaiblir la sécurité ; FK company respectée ; toutes les pièces = données
+  client réelles → object storage, jamais committées ; additif ; STAGES.py/funnel intouchés ;
+  DEBUG/déploiement/sécurité inchangés.
+
 ---
 
 ## BUILD QUEUE — N1–N102 (post-sale, procurement, Moroccan billing, editability, platform)
@@ -167,13 +232,15 @@ conformity warning banner).
 ### Chantiers / projets & execution
 ### Parc installé (installed-systems asset base)
 ### Procurement & inventory
-- [BLOCKED: la consommation du stock réservé à l'étape « Installé » EST le périmètre exact de G6 (« Stock auto-decrement on installation »), gaté pour impact comptable — le founder doit valider la règle avant de matérialiser réservation→consommation. La réservation seule (sans consommation) serait à moitié faite ; laissée en bloc jusqu'à la décision G6.] N14 — Stock reservation: creating a chantier reserves required quantities against stock with a reserved-vs-available indicator per SKU; reaching Installé consumes reserved stock; cancelling/closing a chantier releases the reservation; stock view + low-stock alerts account for committed-but-not-consumed quantities.
+- [ ] N14 — Réservation de stock sur chantier puis consommation à « Installé » (regroupe N14 + G6). À la création d'un chantier, réserver auprès du stock les quantités requises (issues de la nomenclature gelée du devis lié) avec, par SKU, un indicateur réservé-vs-disponible ; les vues stock + alertes de stock bas tiennent compte des quantités engagées-mais-non-consommées. Quand le chantier atteint « Installé », la consommation décrémente le stock réservé (un seul mouvement de sortie par SKU, idempotent — jamais en double si l'on repasse par « Installé »). Annuler/clôturer un chantier libère la réservation restante. Réutiliser le mécanisme de réservation/consommation de stock existant. La règle comptable réserver-puis-décrémenter est PRÉ-APPROUVÉE (voir le bloc PRÉ-APPROUVÉ en tête de file) — ne pas se mettre en pause dessus. Règles permanentes : texte UI en français ; FK company forcée serveur sur tout nouveau modèle/mouvement ; migrations additives uniquement ; aucun prix d'achat/marge sur une sortie client ; STAGES.py et le funnel pipeline jamais touchés (le statut chantier « Installé » est sa propre machine à états, distincte de STAGES.py) ; DEBUG et les réglages de déploiement/sécurité inchangés.
 - [ ] N20 — Optional QR/barcode labels for stock SKUs and installed systems; printable labels; chatbot or search field resolves a scanned code to the SKU or Système installé.
 ### Post-sale / client-facing documents
+- [ ] N106 — Deux livrables additifs uniquement (ungate partiel de G3), dans le langage visuel du gabarit premium EXISTANT (look actuel conservé, AUCUN re-stylage) : (1) **trois lettres de relance à ton croissant** (courtois, ferme, mise en demeure) et (2) une **fiche de remise / garantie après-vente d'une page**, générées à la demande. La refonte visuelle complète des documents reste GATÉE comme non-objectif délibéré (voir G3). Règles permanentes : texte client en français ; aucun prix d'achat/marge sur ces documents ; FK company respectée ; additif ; le moteur de mise en page premium n'est pas redessiné ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 ### Devis acceptance trigger
-- [BLOCKED: la capture (nom + date + acceptation) est déjà faite par N25 (accepte_par_nom/date_acceptation + chatter DevisActivity) ; le « tampon accepté le <date> par <nom> » sur une copie régénérée du PDF exige d'éditer le moteur premium — règle #4 l'interdit (même conflit que N36/N59/N60).] N26 — Lightweight client acceptance capture on a devis (typed name + date + "Bon pour accord" confirmation) recorded on the devis — not a cryptographic e-signature, no external provider — producing a regenerated acceptance copy of the devis PDF stamped "accepté le <date> par <nom>".
+- [ ] N26 — Capture d'acceptation client légère sur un devis (nom saisi + date + confirmation « Bon pour accord »), enregistrée sur le devis — pas de e-signature cryptographique, aucun prestataire externe — produisant une copie d'acceptation régénérée du devis tamponnée « accepté le <date> par <nom> ». La capture nom+date existe déjà via N25 (accepte_par_nom / date_acceptation + chatter DevisActivity) ; il reste à imprimer le tampon. Partie du chantier « littéraux PDF règle #4 » : le libellé du tampon d'acceptation devient un réglage éditable versionné dans Paramètres dont la valeur PAR DÉFAUT reproduit EXACTEMENT le texte actuel, pour que le PDF rendu soit identique au byte près tant que rien n'est édité. PRÉ-APPROUVÉ (voir bloc PRÉ-APPROUVÉ) : câbler ces littéraux du moteur premium (`apps/ventes/quote_engine`) vers des champs de réglage versionnés — la disposition visuelle NE CHANGE PAS ; exception ciblée à « ne jamais éditer les pages premium », limitée à ce seul câblage littéral→réglage. Règles permanentes : texte UI en français ; FK company forcée serveur ; chaque réglage versionné par défaut = texte actuel exact (PDF byte-identique) ; migrations additives ; aucun prix d'achat sur le PDF client ; STAGES.py/funnel jamais touchés ; DEBUG/déploiement/sécurité inchangés.
 ### Moroccan legal billing & compliance
 - [x] N36 — RIB + payment-instructions block on facture and devis PDFs, sourced from Paramètres. (Facture side SHIPPED 2026-06-18 — Feature B: editable RIB + Instructions de paiement + Conditions générales in Paramètres → Société, rendered on the facture PDF only when non-empty, byte-identical when empty. Devis side intentionally NOT added: the premium engine has no slot and rule #4 forbids editing it.)
+- [ ] N105 — Capacité DGI LOCALE, BACKEND UNIQUEMENT, SILENCIEUSE (ungate partiel de G14). AUCUNE sortie visible dans l'interface : pas de pastille par facture, pas de statut, pas de colonne de liste, aucune modif du modèle Facture. Construire (1) un export XML **UBL 2.1 / CII** des factures portant l'**ICE du destinataire sur chaque ligne**, généré à la demande, et (2) un **validateur de conformité** vérifiant qu'une facture porte les champs obligatoires DGI. Les deux atteignables uniquement par programme / à la demande, gardés derrière un **seul interrupteur maître dans Paramètres qui par DÉFAUT est OFF** ; tant qu'il est OFF, la capacité est totalement invisible et ne change RIEN au comportement actuel. NE PAS ajouter de sceau d'archivage, de piste d'audit ni de champ de statut de facture — hors périmètre. PRÉ-APPROUVÉ (voir bloc PRÉ-APPROUVÉ) : l'export/validateur DGI silencieux. RESTENT GATÉS (voir G14, bloqués sur le décret d'application DGI non publié — aucune spec d'API n'existe, ce n'est pas une décision de Reda) : la transmission au portail Simpl-TVA et la signature électronique certifiée. Règles permanentes : texte UI en français ; FK company forcée serveur ; interrupteur par défaut OFF = comportement actuel exact ; migrations additives ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 ### Loi 82-21 / Article 33 regulatory
 ### SAV / maintenance / warranty / monitoring
 - [ ] N50 — Monitoring-integration framework with a swappable provider interface, starting with a Huawei FusionSolar connector that (given per-system credentials in config) pulls recent production data; admin enables it per system; no-ops safely when no provider is configured.
@@ -182,11 +249,11 @@ conformity warning banner).
 - [BLOCKED: needs production data from the monitoring framework (N50, gated — external service/credentials).] N53 — Client energy-yield report PDF (French): a system's production over a period, estimated bill savings, CO2 avoided; client-facing, no buy prices.
 ### Editability layer (Paramètres hub)
 - [x] N58 — Make chantier statuses, SAV statuses, and bon-de-commande statuses configurable in label & order from Paramètres while keeping their underlying state-machine semantics intact; never touch the protected lead pipeline. (SHIPPED 2026-06-18 — display-only overlay: a per-company `StatutConfig` (parametres) surcharge le libellé/ordre/visibilité des statuts chantier, SAV et bon de commande ; les clés canoniques et la machine à états restent intactes dans leurs modèles sources, défauts lus à la source donc sortie byte-identique tant que rien n'est édité. Onglet Paramètres → Statuts ; endpoints `/parametres/statuts/`, `/effective/`, `/bulk/` ; STAGES.py jamais touché.)
-- [BLOCKED: the editable text portions of client docs are hardcoded literals in the premium PDF engine — rule #4 forbids editing it.] N59 — Document-template editor in Paramètres for the editable text portions of client-facing documents (devis/facture/acompte/avoir/PV de réception/bon de livraison/handover pack/attestation): headers, footers, legal footnotes, CGV, quote-validity text, payment-terms text, with safe placeholders for company/client/system fields; core layout engine intact; buy prices impossible to insert.
-- [BLOCKED: this task is DEVIS-specific — CGV + validity printed on the premium DEVIS PDF, whose text is hardcoded in the vendored engine (rule #4 forbids editing it). NOTE: editable Conditions générales now EXIST in Paramètres and print on the FACTURE (Feature B, 2026-06-18, see N36); quote-validity duration is already editable. Only the DEVIS-side printing remains gated.] N60 — Editable conditions générales + configurable quote-validity duration applied to new devis, with the validity date printed on the devis PDF.
-- [BLOCKED: per-tranche tariff tables change the calculation model (flat tariff is already editable from D5) — founder must validate the bracket scale first.] N64 — Editable ONEE electricity tariff tables + tranche thresholds in Paramètres used by the seasonal bill estimator and ROI calculation; current values seeded as defaults.
-- [BLOCKED: there is no region field on a quote today; needs a founder-validated regional irradiation map + a new model (per D5).] N65 — Editable per-city/region irradiation & production-yield assumptions used to estimate annual production, seeded with Moroccan defaults, selectable on a quote.
-- [BLOCKED: warranty texts are printed by the premium PDF engine (hardcoded) — rule #4 forbids editing it. Per-product garantie text already exists on the Produit model.] N67 — Editable warranty texts per product & per category in Paramètres (printed on devis & handover packs), current researched warranty texts seeded as defaults and used wherever warranties appear.
+- [ ] N59 — Éditeur de gabarits de documents dans Paramètres pour les portions de texte éditables des documents client (devis/facture/acompte/avoir/PV de réception/bon de livraison/dossier de remise/attestation) : en-têtes, pieds de page, mentions légales, CGV, texte de validité, texte de conditions de paiement, avec des espaces réservés sûrs pour les champs société/client/système ; le moteur de mise en page reste intact ; impossible d'y insérer un prix d'achat. Partie du chantier « littéraux PDF règle #4 » : chaque littéral devient un réglage éditable versionné dont le défaut reproduit EXACTEMENT le texte actuel → PDF identique au byte près tant que non édité. PRÉ-APPROUVÉ (voir bloc PRÉ-APPROUVÉ) : câbler ces littéraux du moteur premium vers des champs de réglage versionnés ; la disposition visuelle NE CHANGE PAS ; exception ciblée règle #4, limitée au câblage littéral→réglage. Règles permanentes : texte UI en français ; FK company forcée serveur ; défauts = texte actuel exact ; migrations additives ; aucun prix d'achat client-facing ; STAGES.py/funnel jamais touchés ; DEBUG/déploiement/sécurité inchangés.
+- [ ] N60 — Conditions générales éditables + durée de validité configurable appliquées aux nouveaux devis, avec la date de validité imprimée sur le PDF du devis. Les CGV éditables existent déjà dans Paramètres et s'impriment sur la FACTURE (Feature B 2026-06-18, voir N36) ; la durée de validité est déjà éditable. Reste à câbler l'impression CÔTÉ DEVIS. Partie du chantier « littéraux PDF règle #4 » : le texte CGV + la validité deviennent des réglages versionnés dont le défaut reproduit EXACTEMENT le texte premium actuel (« 30 jours », bloc CGV) → PDF devis identique au byte près tant que non édité. PRÉ-APPROUVÉ (voir bloc PRÉ-APPROUVÉ) : câbler ces littéraux du moteur premium vers des champs de réglage ; disposition visuelle inchangée ; exception ciblée règle #4. Règles permanentes : texte UI en français ; FK company forcée serveur ; défauts = texte actuel ; migrations additives ; aucun prix d'achat sur le PDF ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
+- [ ] N64 — Moteur tarifaire ONEE + ROI (TOUTES les valeurs en réglages éditables versionnés, JAMAIS en dur), utilisé par l'estimateur de facture saisonnière et le calcul de ROI ; valeurs actuelles semées comme défauts. **Modèle de facturation** : PROGRESSIF à ≤ 150 kWh/mois (chaque tranche facturée à son propre tarif) ; SÉLECTIF au-dessus de 150 kWh/mois (le mois ENTIER facturé au tarif unique de la tranche où tombe le total — NON progressif), avec une tolérance de 10 kWh décalant les bornes opératoires à 210 / 310 / 510. **Grille résidentielle semée en défauts TTC (NE JAMAIS rajouter de TVA par-dessus)** : 0–100 kWh = 0,9010 ; 101–150 et 151–210 = 1,0732 ; 211–310 = 1,1676 ; 311–510 = 1,3817 ; > 510 = 1,5958. **Classe « force motrice / agricole » SÉPARÉE et moins chère** (≈ 0,90–0,95), jamais le tarif résidentiel haut. **Réglage « surplus injecté compensé » par défaut FAUX** (pas de net-metering : surplus valorisé à zéro, dimensionner sur l'autoconsommation). **Si la production est calculée** : PVGIS aux coordonnées GPS exactes, convention azimut Sud 0 / Est −90 / Ouest +90 / Nord +180. Par défaut, chiffres CONSERVATEURS qui SOUS-estiment les économies. PRÉ-APPROUVÉ (voir bloc PRÉ-APPROUVÉ) : le barème/seed ONEE ci-dessus — ne pas se mettre en pause sur le barème. Règles permanentes : texte UI en français ; FK company forcée serveur sur les modèles de réglage ; chaque réglage par défaut = chiffre actuel ; migrations additives ; aucun prix d'achat/marge client-facing ; STAGES.py/funnel jamais touchés ; DEBUG/déploiement/sécurité inchangés.
+- [ ] N65 — Hypothèses d'irradiation / productible par localisation pour estimer la production annuelle, semées de défauts marocains conservateurs. **RÉALISÉ PAR L'APPROCHE PVGIS** : au lieu d'une table régionale figée, utiliser PVGIS aux coordonnées GPS EXACTES du site (convention azimut Sud 0 / Est −90 / Ouest +90 / Nord +180), ce qui satisfait l'intention « irradiation régionale » de N65 par une irradiance précise à la localisation — donc N65 est rempli par l'approche PVGIS de N64 plutôt que par une table régionale séparée. Les hypothèses de productible restent des réglages éditables versionnés ; repli manuel de productible si PVGIS indisponible. Règles permanentes : texte UI en français ; FK company forcée serveur ; défauts = chiffres actuels conservateurs ; migrations additives ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
+- [ ] N67 — Textes de garantie éditables par produit & par catégorie dans Paramètres (imprimés sur les devis & dossiers de remise), textes de garantie actuels semés comme défauts et utilisés partout où la garantie apparaît. Le texte garantie par produit existe déjà sur le modèle Produit. Partie du chantier « littéraux PDF règle #4 » : les textes de garantie imprimés par le moteur premium deviennent des réglages versionnés dont le défaut reproduit EXACTEMENT le texte actuel → PDF identique au byte près tant que non édité. PRÉ-APPROUVÉ (voir bloc PRÉ-APPROUVÉ) : câbler ces littéraux du moteur premium vers des champs de réglage ; disposition visuelle inchangée ; exception ciblée règle #4, limitée au câblage littéral→réglage. Règles permanentes : texte UI en français ; FK company forcée serveur ; défauts = texte actuel ; migrations additives ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 - [x] N68 — Roles-and-permissions RBAC editor in Paramètres: define roles, grant/restrict per module & per action (view/create/edit/delete/export), restrict sensitive fields (buy prices, margins) to specific roles, safe default role set (owner/commerciale/technicien/viewer) so current access is unchanged, record-level rules limiting a user to their own assigned leads/chantiers when desired. (SHIPPED 2026-06-18 — seven roles seeded & editable as a module×action grid; record-visibility scoping by supervisor/team across all main objects; existing users mapped so nobody lost access.)
 - [x] N69 — Buy prices & internal margins governed by an explicit permission, visible only to roles Reda authorises, default owner-only. (SHIPPED 2026-06-18 — `prix_achat_voir` permission gates buy prices on the Produit serializer; granted to Directeur & Administrateur by default; legacy accounts unchanged.)
 - [ ] N72 — No-code automation-rules engine in Paramètres (if-this-then-that over the app's own events): triggers (lead stage change, devis accepted, chantier reaching a status, facture overdue, warranty nearing expiry, maintenance visit due, stock below threshold); actions (send WhatsApp/email/SMS from a template, create activity/task, assign a record, set a field, create a SAV ticket); rules editable/enabled/disabled, all runs logged; complements not duplicates n8n.
@@ -196,12 +263,14 @@ conformity warning banner).
 - [ ] N75 — Unified notification engine: in-app + (where configured) WhatsApp/email/SMS for key events (new lead assigned, devis accepted, chantier due to install, facture overdue, warranty expiring, maintenance visit due, stock low, SAV ticket opened/breaching target); per-user & per-event preferences in settings; in-app notification centre; reuse planned templates/channels.
 - [BLOCKED: scheduled daily/weekly digest delivery needs a scheduler (G9, gated). On-demand summary data is now available via the N49/N80 insights endpoints.] N76 — Daily & weekly digest notification for Reda & Meryem (jobs to plan, quotes awaiting acceptance, overdue payments, due maintenance, open SAV), in-app and optionally WhatsApp/email.
 - [BLOCKED: the "schedule a periodic export by email" half needs a scheduler + email provider (G9/G1, gated). Saved-view persistence deferred with it.] N79 — Saved-reports & custom-views capability: save filtered/grouped views of any major object, pin to dashboard, schedule a periodic export of a saved report by email when email is configured.
+- [ ] G9 — Planificateur **Celery Beat** + deux jobs planifiés en heure **Africa/Casablanca** (ungate de G9) : (1) rappels de relance planifiés, et (2) un contrôle quotidien des factures en retard. Règle de retard : une facture dont l'échéance est passée et qui n'est pas entièrement payée bascule en « En retard » ; si aucune échéance n'est posée, la défaut = 30 jours après émission ; le job quotidien effectue le basculement. Celery Beat est PRÉ-APPROUVÉ comme planificateur (voir bloc PRÉ-APPROUVÉ) — ne pas se mettre en pause dessus. Règles permanentes : texte UI en français ; TOUTE la logique horaire en Africa/Casablanca ; FK company respectée/forcée serveur ; chaque nouveau réglage par défaut = comportement actuel ; migrations additives ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 ### Import/export / search / calendar / map
-- [ ] N85 — Map view plotting leads/chantiers/installed systems/scheduled visits by GPS or address, filterable by type & status, for planning site visits without heavyweight routing.
+- [ ] N107 — Importateur de leads Odoo : une **commande de gestion** (`manage.py`) prenant en argument le chemin d'un fichier de sauvegarde, important les leads de façon **idempotente**, et ne faisant RIEN tant qu'elle n'est pas lancée avec un fichier. Réutiliser le framework d'import existant (T9 / N81) ; création/mise à jour idempotente (jamais de doublon — rapprochement email/téléphone). L'extraction one-shot réelle des 619 leads reste manuelle/gatée sur la vraie sauvegarde Odoo (voir G13 — le fichier contient des PII, jamais committé). Règles permanentes : texte UI en français ; FK company forcée serveur sur les leads importés ; idempotent (aucun écrasement silencieux) ; additif ; aucune donnée client réelle dans le dépôt ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
+- [ ] N85 — Vue carte traçant leads/chantiers/systèmes installés/visites planifiées par GPS ou adresse, filtrable par type & statut, pour planifier les visites sans routage lourd. **Intégrer Leaflet** (pré-approuvé — voir bloc PRÉ-APPROUVÉ) pour cette carte du Parc/équipement ET partout où une carte est nécessaire (réutiliser le même composant carte). Marqueurs cliquables ouvrant le détail de l'enregistrement ; requêtes bornées société. Règles permanentes : texte UI en français ; aucune sortie client exposant un prix d'achat ; FK company respectée dans les requêtes ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 ### Chatbot / integrations / API
 - [ ] N86 — Extend the unified chatbot to read & act across all new objects (e.g. which chantiers à planifier, which garanties expire this quarter, which factures overdue, what production a named client's system did last month; open a SAV ticket, draft a BC for a chantier shortfall, schedule a maintenance visit), reusing the existing chatbot interface, respecting role permissions.
-- [ ] N87 — Email integration to send client-facing documents & follow-ups via a configurable sending account (French templates, attach the relevant PDF, record what was sent on the client/document chatter); complements WhatsApp. [GATED-style: needs provider/cost decision]
-- [ ] N88 — Inbound email capture attaching replies to the relevant client/chantier thread when a recognisable reference is present.
+- [ ] N87 — Intégration email pour envoyer les documents client & relances via un compte d'envoi configurable (templates FR, pièce jointe = le PDF pertinent, journaliser ce qui a été envoyé sur le chatter du client/document) ; complète WhatsApp. **Intégration BREVO (SDK ou SMTP)** lisant la clé API depuis les réglages/variables d'environnement (pré-approuvé — voir bloc PRÉ-APPROUVÉ) ; si la clé est absente, l'envoi est un no-op et les tests ne doivent PAS exiger de clé live. **Acheminer les emails de rappel de relance par cette intégration.** Règles permanentes : texte UI/templates en français ; toute logique horaire en Africa/Casablanca ; FK company forcée serveur ; clé absente ⇒ no-op (comportement actuel préservé) ; additif ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
+- [ ] N88 — Capture d'email entrant rattachant les réponses au fil client/chantier pertinent lorsqu'une référence reconnaissable est présente. S'appuie sur la même intégration **BREVO** que N87 (pré-approuvé) ; no-op sans clé configurée (les tests n'exigent pas de clé live). Règles permanentes : texte UI en français ; Africa/Casablanca ; FK company forcée serveur ; clé absente ⇒ no-op ; additif ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 - [ ] N89 — Public REST API exposing core objects with token-based API keys managed in settings, scoped permissions, rate limiting, and webhooks on key events (new lead, devis accepted, chantier completed, facture paid).
 ### PWA / mobile / offline
 - [ ] N91 — Offline-tolerant field capture for the chantier checklist, photos, and PV de réception signature, syncing when back online.
@@ -324,7 +393,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [CRM/Leads] [L9] [ROUTINE] Ajouter un filtre "En retard de relance" / "Relance cette semaine" à FilterBar.jsx (relance_date est affichée en retard sur les cartes mais non filtrable). Fait = une pastille "Relances en retard" ne montre que les leads dont relance_date < aujourd'hui dans toutes les vues.
 [ ] [CRM/Leads] [L2] [ROUTINE] Étendre la recherche FilterBar/filterLeads au WhatsApp et à la société (filterLeads cherche nom/prénom/société/email/téléphone/ville mais le numéro WhatsApp distinct n'est pas couvert). Fait = taper un numéro WhatsApp dans la recherche trouve le lead même si telephone diffère du whatsapp.
 [ ] [CRM/Leads] [L9] [ROUTINE] Persister les filtres FilterBar dans localStorage comme la vue active (VIEW_KEY existe, mais filters repart à EMPTY_FILTERS à chaque rechargement). Fait = appliquer un filtre canal puis recharger la page conserve le filtre.
-[ ] [CRM/Leads] [L9] [DECISION] Ajouter des "vues enregistrées" nommées (combinaison filtres+vue) réutilisables — N79 saved-views est BLOCKED car couplé à l'export planifié, mais une version locale sans email reste utile. Fait = l'utilisateur enregistre "Mes relances chaudes" et la rappelle d'un clic. [cf. N79]
+[ ] [CRM/Leads] [L9] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé) Ajouter des "vues enregistrées" nommées (combinaison filtres+vue) réutilisables, enregistrées LOCALEMENT (sans email) — distinct de N79 qui reste BLOCKED car couplé à l'export planifié. Fait = l'utilisateur enregistre "Mes relances chaudes" et la rappelle d'un clic. Règles permanentes : texte UI FR ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés. [cf. N79]
 
 #### Actions en masse (bulk)
 [ ] [CRM/Leads] [L10] [ROUTINE] Ajouter une action en masse "Définir le canal" dans BulkActionBar.jsx + services.apply_bulk_action (les BULK_ACTIONS couvrent reassign/tag/stage/relance/perdu/archive mais pas le canal, souvent vide sur les imports). Fait = sélectionner des leads et choisir "Canal → Référence" met à jour canal en masse avec entrée Historique "en masse".
@@ -370,7 +439,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [CRM/Leads] [L14] [ROUTINE] Ajouter au lead_row de l'export (exports.py) la colonne date_modification ("Dernière activité") absente. Fait = leads.xlsx inclut une colonne "Modifié le" reflétant date_modification.
 
 ### Clients
-[ ] [Clients] [L17] [SCHEMA] Ajouter les identifiants légaux marocains (ICE/IF/RC/CIN/RIB) à l'export Excel des clients. Fait = export_clients_xlsx dans apps/crm/exports.py sort des colonnes Type, ICE, IF, RC, CIN, RIB à côté de nom/email/téléphone/adresse, alimentées depuis les champs Client correspondants.
+[ ] [Clients] [L17] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — export client ICE-inclusif) Ajouter les identifiants légaux marocains (ICE/IF/RC/CIN/RIB) à l'export Excel des clients. Fait = export_clients_xlsx dans apps/crm/exports.py sort des colonnes Type, ICE, IF, RC, CIN, RIB à côté de nom/email/téléphone/adresse, alimentées depuis les champs Client correspondants. Règles permanentes : FR ; FK company respectée ; additif ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Clients] [L1] [ROUTINE] Rendre le compteur de devis liés cliquable vers la liste des devis filtrée. Fait = la pastille Devis dans ClientList.jsx (c.devis_count) devient un lien qui ouvre /ventes/devis pré-filtré sur les devis de ce client.
 [ ] [Clients] [L9] [ROUTINE] Étendre la recherche client à ICE/IF/RC et CIN. Fait = le memo `filtered` de ClientList.jsx teste c.ice/c.if_fiscal/c.rc/c.cin et le search_fields du ClientViewSet ajoute ice/if_fiscal/rc/cin.
 [x] [Clients] [L8] [ROUTINE] Afficher le type de client (Particulier/Entreprise) en badge dans la liste. Fait = ClientList.jsx affiche un badge coloré depuis c.type_client dans la colonne Client.
@@ -386,7 +455,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Clients] [L10] [ROUTINE] Ajouter une suppression en masse des clients sans devis liés (admin). Fait = ClientList.jsx permet à un admin de multi-sélectionner et supprimer ceux dont devis_count===0, avec message FR de protection pour les lignes ignorées.
 [x] [Clients] [L2] [ROUTINE] Filtrer la liste clients par type (Particulier/Entreprise). Fait = ClientList.jsx ajoute un filtre segmenté de type qui réduit `filtered`.
 [x] [Clients] [L13] [ROUTINE] Signaler les clients B2B sans ICE dans la liste. Fait = ClientList.jsx affiche un badge non bloquant "ICE manquant" sur les lignes Entreprise (ou avec IF/RC) dont ice est vide, miroir de Facture.mentions_manquantes.
-[ ] [Clients] [L16] [SCHEMA] Enregistrer qui a créé/modifié un client. Fait = Client reçoit created_by (nullable) et date_modification (auto_now), perform_create force created_by côté serveur, et ClientSerializer les expose en lecture.
+[ ] [Clients] [L16] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — colonnes additives) Enregistrer qui a créé/modifié un client. Fait = Client reçoit created_by (nullable) et date_modification (auto_now), perform_create force created_by côté serveur, et ClientSerializer les expose en lecture. Règles permanentes : FR ; FK company forcée serveur ; migration additive uniquement ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Clients] [L12] [ROUTINE] Rendre la table clients mobile-ergonomique en lignes empilées. Fait = ClientList.jsx porte des attributs data-label (comme DevisList.jsx) pour s'empiler en cartes lisibles sur téléphone.
 [ ] [Clients] [L9] [ROUTINE] Ajouter le tri (nom / date de création) à la liste clients. Fait = les en-têtes Client et "Depuis" de ClientList.jsx sont cliquables, via ordering_fields ['nom','date_creation'] déjà déclaré sur ClientViewSet.
 [x] [Clients] [L15] [ROUTINE] Normaliser le téléphone client pour l'affichage et la cohérence dedup. Fait = ClientForm.jsx montre la forme marocaine normalisée (réutilisant normalize_phone de crm/services.py) en indice et stocke la valeur saisie.
@@ -480,7 +549,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Facturation] [L16] [ROUTINE] Tracer dans un chatter/log la création d'avoir et l'encaissement de paiement (acteur côté serveur). Fait = créer un avoir ou enregistrer un paiement consigne une ligne d'activité (qui, quand, montant) consultable sur la facture, jamais lue du corps de requête.
 [ ] [Facturation/Relances] [L13] [GALLERY] Adapter la lettre de relance PDF au niveau courant (ton J+7 vs J+30) en variant le corps depuis FollowupLevel.message. Fait = generate_lettre_relance_pdf rend un texte distinct par niveau, sans changer la mise en page premium.
 [ ] [Facturation] [L7] [DECISION] Décider si l'auto-passage en "En retard" des factures échues doit être matérialisé (aujourd'hui seulement calculé à la lecture). Fait = note tranchée — garder le on-the-fly (jours_retard) ou ajouter un job (gaté G9 scheduler), le choix consigné dans PLAN.md.
-[ ] [Facturation/Comptable] [L17] [DECISION] Confirmer le périmètre exact de l'export journal/TVA attendu par le comptable (format DGI/Article 33, colonnes ICE/IF). Fait = spec validée par le founder des colonnes et de la structure du .xlsx avant tout élargissement de exports.py (groundwork DGI, pas de transmission).
+[ ] [Facturation/Comptable] [L17] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — export comptable) Exporter toutes les factures validées sur une plage de dates choisie par l'utilisateur, avec la TVA par ligne, l'ICE client et les totaux, aux formats Excel ET CSV. Fait = un export comptable scopé société sort, pour les factures validées d'une plage from→to, une feuille .xlsx ET un .csv listant par facture la ventilation TVA par ligne, l'ICE du client et les totaux HT/TVA/TTC (groundwork DGI, pas de transmission). Règles permanentes : FR ; FK company respectée ; additif ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 
 ### Chantiers / Installations
 [ ] [Chantiers] [L6] [ROUTINE] Contraindre le select de statut chantier dans InstallationDetail.jsx aux mouvements avant/adjacents sur Installation.STATUT_ORDER au lieu de tout statut (bloquer ex. Signé→Clôturé). Fait = le dropdown statut n'offre que le statut courant ±1 (et toute valeur héritée déjà stockée), et un saut non-adjacent est empêché côté client avec un indice FR.
@@ -507,7 +576,7 @@ client-facing PDFs are GALLERY-gated).
 
 #### Équipement
 [ ] [Chantiers/Équipement] [L1+L2] [ROUTINE] Constrain the chantier equipment produit picker to that chantier's devis lines (Installation.devis → LigneDevis.produit) and filter each equipment slot to the correct product category. Fait = on a chantier created from a quote, the panneaux picker lists only that quote's panel products and the onduleur picker lists only inverter products, not the whole catalogue.
-[ ] [Chantiers/Équipement] [L2] [SCHEMA] Ajouter un tag additif optionnel type_equipement (ou role) sur stock.Categorie (les catégories free-text gardent leurs noms FR) pour filtrer les slots par TYPE quel que soit le libellé. Fait = un nouveau champ Categorie nullable permet au slot onduleur de ne montrer que les produits typés onduleur et au slot panneaux que les panneaux, même si la société a renommé ses catégories ; les lignes existantes restent non typées et le comportement actuel est inchangé.
+[ ] [Chantiers/Équipement] [L2] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — colonne additive) Ajouter un tag additif optionnel type_equipement (ou role) sur stock.Categorie (les catégories free-text gardent leurs noms FR) pour filtrer les slots par TYPE quel que soit le libellé. Fait = un nouveau champ Categorie nullable permet au slot onduleur de ne montrer que les produits typés onduleur et au slot panneaux que les panneaux, même si la société a renommé ses catégories ; les lignes existantes restent non typées et le comportement actuel est inchangé. Règles permanentes : FR ; FK company respectée ; migration additive uniquement ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Chantiers/Équipement] [L8] [ROUTINE] Réconcilier les Equipement capturés contre le BOM gelé dans InstallationDetail.jsx (attendus BOM vs capturés par produit). Fait = le panneau Équipements liste chaque ligne BOM avec le nombre de séries capturées, en surlignant les composants encore sans unité enregistrée.
 [ ] [Chantiers/Équipement] [L3] [ROUTINE] Pré-remplir le champ date_pose de l'équipement avec date_pose_reelle du chantier à l'ajout (miroir du fallback serveur de cocher_checklist). Fait = ouvrir le formulaire "Ajouter l'équipement" pré-remplit date_pose avec current.date_pose_reelle.
 [ ] [Chantiers/Équipement] [L1+L2] [ROUTINE] Remplacer le <select> catalogue entier du formulaire "Ajouter un équipement" par le même ProduitPicker (scopé aux produits devis/BOM) que la checklist. Fait = le sélecteur produit d'ajout d'équipement utilise ProduitPicker alimenté des seuls produits du devis du chantier.
@@ -535,7 +604,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Chantiers/Planning] [L11] [ROUTINE] Afficher un état vide clair sur la vue Calendrier quand aucun chantier du mois n'a de date_pose_prevue. Fait = CalendarView rend un indice FR "Aucune pose planifiée ce mois".
 
 #### Parc installé
-[ ] [Parc] [L4] [DEP] Rendre la vue "Carte" du Parc installé en vraie carte tuilée interactive des systèmes géolocalisés au lieu d'un tableau de liens GPS. Fait = l'onglet Carte de ParcInstallePage.jsx montre des marqueurs pour chaque système localisé ; cliquer un marqueur ouvre le détail. [DEP: nouvelle dépendance carto leaflet/maptiler — déjà différée dans le commentaire N8]
+[ ] [Parc] [L4] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — Leaflet) Rendre la vue "Carte" du Parc installé en vraie carte tuilée interactive des systèmes géolocalisés au lieu d'un tableau de liens GPS, via **Leaflet** (pré-approuvé, voir bloc PRÉ-APPROUVÉ + N85). Fait = l'onglet Carte de ParcInstallePage.jsx montre des marqueurs pour chaque système localisé ; cliquer un marqueur ouvre le détail. Règles permanentes : FR ; FK company respectée ; additif ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Parc] [L9] [ROUTINE] Ajouter un filtre régime loi 82-21 / statut de dossier à la barre de filtres du Parc installé (la donnée existe par système). Fait = ParcInstallePage.jsx gagne des selects régime + statut dossier pour isoler les systèmes en attente de déclaration/approbation.
 [ ] [Parc] [L14] [ROUTINE] Ajouter une bande de synthèse Parc (total kWc installé, comptes par type d'installation, par tranche de puissance). Fait = ParcInstallePage.jsx montre des stats FR agrégées calculées depuis les lignes chargées.
 [ ] [Parc] [L9] [ROUTINE] Rendre les colonnes du Parc triables (puissance, année, ville, client). Fait = cliquer un en-tête trie la table des systèmes installés, par défaut année d'installation la plus récente.
@@ -564,7 +633,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Équipements] [L17] [ROUTINE] Rendre la date de fin de garantie production en badge distinct labellisé (pas seulement un indice inline). Fait = date_fin_garantie_production s'affiche "Garantie production : {date FR}".
 [ ] [Équipements] [L12] [ROUTINE] Rendre la table du parc mobile-usable en cartes empilées sous le breakpoint m-hide existant. Fait = sur écran étroit chaque équipement rend une carte empilée avec série/produit/garantie visibles.
 [ ] [Équipements] [L9] [ROUTINE] Ajouter une option de tri sur date_pose à l'en-tête de liste (ordering_fields backend inclut déjà date_pose). Fait = un en-tête "Posé le" bascule sortEquipements('date_pose').
-[ ] [Équipements] [L15] [DECISION] Ajouter un garde/index d'unicité scopé société sur Equipement.numero_serie (nullable, vides permis) pour stopper la duplication silencieuse de séries. Fait = créer deux équipements à numero_serie non vide identique dans une société est rejeté avec un message FR clair.
+[ ] [Équipements] [L15] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — unicité série par société) Ajouter un garde/index d'unicité scopé société sur Equipement.numero_serie (nullable, vides permis) pour stopper la duplication silencieuse de séries. Fait = créer deux équipements à numero_serie non vide identique dans une société est rejeté avec un message FR clair. Additif uniquement — **si une contrainte d'unicité entrerait en collision avec des lignes existantes, la session est autorisée à sauter la contrainte DB et à imposer l'unicité au niveau du serializer.** Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 
 ### SAV
 [ ] [SAV] [L4] [ROUTINE] Ajouter une vue Kanban (par statut, ordre funnel via statusOrder) à TicketsPage à côté de la table, sur le patron leads/chantiers. Fait = un view switcher rend les cartes ticket en colonnes Nouveau→Clôturé via TICKET_STATUS_COLORS.
@@ -621,11 +690,11 @@ client-facing PDFs are GALLERY-gated).
 
 #### Catégories & marques
 [ ] [Stock/Catalogue] [L9] [ROUTINE] Ajouter une recherche/filtre marque au rail de StockList (les marques structurent l'affichage via groupCatalogue mais ne sont pas filtrables seules). Fait = on peut filtrer le catalogue par marque depuis le rail.
-[ ] [Stock/Catalogue] [L8] [DECISION] Offrir un écran Paramètres → Stock de gestion des catégories (renommer/ordre/archiver) — CategorieViewSet expose update/destroy mais aucune UI dédiée. Fait = un panneau Paramètres liste les catégories avec édition du nom et de ordre, conforme au free-text par société.
+[ ] [Stock/Catalogue] [L8] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — UI gestion catégories) Offrir un écran Paramètres → Stock de gestion des catégories (renommer/ordre/archiver) — CategorieViewSet expose update/destroy mais aucune UI dédiée. Fait = un panneau Paramètres liste les catégories avec édition du nom et de ordre, conforme au free-text par société. Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Stock/Catalogue] [L11] [ROUTINE] Afficher un message FR clair quand la suppression d'une marque est refusée (409 "utilisée par des produits"). Fait = tenter de supprimer une marque en usage montre "archivez-la plutôt".
 
 #### Fournisseurs
-[ ] [Stock/Achats] [L8] [DECISION] Créer un écran de gestion des fournisseurs (liste/édition coordonnées) — FournisseurViewSet expose list/update/destroy + contact/email/telephone/adresse mais aucune UI ne les édite. Fait = une page liste les fournisseurs et permet d'éditer personne de contact, email, téléphone, adresse.
+[ ] [Stock/Achats] [L8] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — écran Fournisseurs) Créer un écran de gestion des fournisseurs (liste/édition coordonnées) — FournisseurViewSet expose list/update/destroy + contact/email/telephone/adresse mais aucune UI ne les édite. Fait = une page liste les fournisseurs et permet d'éditer personne de contact, email, téléphone, adresse. Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Stock/Achats] [L7] [ROUTINE] Valider le format email du fournisseur à la création inline (le champ email existe). Fait = un email invalide saisi affiche une erreur FR avant enregistrement.
 [ ] [Stock/Achats] [L14] [ROUTINE] Afficher sur un fournisseur le nombre de produits liés et de BCF associés (lecture seule). Fait = la fiche fournisseur montre "X produits · Y bons de commande".
 
@@ -672,7 +741,7 @@ client-facing PDFs are GALLERY-gated).
 
 #### Retours fournisseur
 [ ] [Stock/Achats] [L7] [ROUTINE] Plafonner la quantité retournée à la quantité reçue par ligne dans RetourModal (aujourd'hui input libre, le serveur décrémente sans plafond). Fait = le champ "À retourner" a max = quantite_recue et avertit si dépassé.
-[ ] [Stock/Achats] [L9] [DECISION] Exposer une page/liste des retours fournisseur (RetourFournisseurViewSet existe mais aucune liste consultable). Fait = un écran liste les retours (référence RF, fournisseur, statut, date) avec consultation.
+[ ] [Stock/Achats] [L9] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — liste Retours) Exposer une page/liste des retours fournisseur (RetourFournisseurViewSet existe mais aucune liste consultable). Fait = un écran liste les retours (référence RF, fournisseur, statut, date) avec consultation. Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Stock/Achats] [L11] [ROUTINE] Remplacer l'alert() de confirmation de retour par un retour intégré et afficher les erreurs FR (le catch fait JSON.stringify). Fait = valider un retour montre une confirmation/erreur FR sans popup ni JSON brut.
 
 #### OCR import
@@ -783,7 +852,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [WhatsApp] [L4] [ROUTINE] Montrer un aperçu du message WhatsApp avant d'ouvrir wa.me (le backend renvoie déjà message et links). Fait = cliquer "Envoyer par WhatsApp" montre le message rendu FR/Darija + le(s) lien(s) public(s) dans une étape de confirmation, puis ouvre wa.me.
 [ ] [WhatsApp] [L7] [ROUTINE] Valider le téléphone côté front avant d'appeler l'endpoint WhatsApp pour un message clair immédiat plutôt qu'un 400 aller-retour. Fait = un lead/facture à téléphone non normalisable désactive le bouton avec un tooltip FR "Numéro invalide" miroir de normalize_ma_phone.
 [ ] [Liens publics] [L6] [ROUTINE] Gérer le cas lien expiré côté devis de public_views.py plus utilement (un ShareLink de 30 jours renvoie un "Lien expiré ou introuvable" nu). Fait = la page publique d'un devis/facture expiré montre un avis FR clair invitant à demander un lien frais (aucune donnée interne).
-[ ] [Liens publics] [L7] [DECISION] Décider si les PDF ShareLink publics doivent porter un en-tête no-index/cache court et un rate-limiting par token (aujourd'hui public_views.py sert le PDF client à quiconque a le token, sans throttle). Fait = une décision documentée ; si approuvée, ajouter X-Robots-Tag: noindex + un throttle par IP basique sans toucher au rendu sans prix d'achat.
+[ ] [Liens publics] [L7] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — noindex + throttle) Sur les PDF ShareLink publics, ajouter un en-tête no-index et un rate-limiting par token (aujourd'hui public_views.py sert le PDF client à quiconque a le token, sans throttle). Fait = chaque PDF public porte X-Robots-Tag: noindex + un throttle par IP/token basique, sans toucher au rendu et sans jamais exposer de prix d'achat. Règles permanentes : FR ; additif ; aucun prix d'achat client-facing ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [WhatsApp] [L16] [ROUTINE] Journaliser l'action d'envoi WhatsApp au chatter de l'enregistrement (lead Historique / facture activity) — l'envoi n'écrit rien aujourd'hui. Fait = construire un lien WhatsApp devis/facture ajoute "Lien WhatsApp généré pour <réf> par <user>" au chatter, côté serveur.
 [ ] [WhatsApp] [L11] [ROUTINE] Donner aux boutons WhatsApp une affordance busy/disabled claire sur les listes factures (FactureList montre "..." mais le bouton lead n'a pas de spinner). Fait = chaque "Envoyer par WhatsApp" montre un libellé busy FR pendant la construction du lien.
 
@@ -819,23 +888,32 @@ client-facing PDFs are GALLERY-gated).
 The agent must **not** start these. They cost money, change auth, add a new module/architecture, or
 need Reda's taste. Reda decides; then I write a focused task and move it into the BUILD QUEUE.
 
-- **G1 — Real email sending** (devis/facture/relance by email). Needs SMTP/SendGrid → a cost/auth
-  change. Decision: which provider, OK to add the cost? (WhatsApp link-send already covers "send" for free.)
+- **G1 — Real email sending** (devis/facture/relance by email). **UNGATED 2026-06-18 → BUILD QUEUE
+  (N87/N88, Brevo).** Provider chosen = **Brevo** (SDK or SMTP), key from settings/env, no-op
+  without a key; pre-approved (see the PRE-APPROVED block). No longer a blocker.
 - **G2 — WhatsApp Business Cloud API** (true auto-send + PDF *attached*, message templates). Cost +
   Meta Business setup. Already your Month-2 roadmap.
-- **G3 — Full document visual redesign** (devis/facture/bon de commande). **Needs your gallery
-  approval** (taste) — never an unattended run. `PDF_ENGINE=legacy` stays as the fallback.
+- **G3 — Full document visual redesign** (devis/facture/bon de commande). **Still GATED** — the
+  full visual redesign **needs your gallery approval** (taste) and is a deliberate non-goal for an
+  unattended run; `PDF_ENGINE=legacy` stays as the fallback. **PARTIAL UNGATE 2026-06-18 → BUILD
+  QUEUE (N106):** only the two additive deliverables in the EXISTING premium visual language — the
+  three escalating-tone relance letters and the one-page after-sale handover/warranty sheet — were
+  ungated; the redesign itself stays here.
 - **G4 — Custom per-module roles/permissions.** New architecture; becomes important at multi-tenant
   Phase 6. Today Commerciale vs admin works.
 - **G5 — Supplier procurement module** (bons de commande fournisseur, goods-in/receiving, supplier
   invoices / accounts payable). A real new module — a multi-session project of its own.
 - **G6 — Stock auto-decrement on installation** (a chantier consumes its equipment from stock).
-  Accounting impact — confirm the exact rule first.
+  **UNGATED 2026-06-18 → folded into BUILD QUEUE N14.** The exact rule is now confirmed and
+  pre-approved: **reserve on chantier create → decrement on « Installé » → release on
+  cancel/close** (see the PRE-APPROVED block). No longer a blocker.
 - **G7 — Quote e-signature.** External dependency / provider.
 - **G8 — 2FA / SSO.** Auth change.
-- **G9 — Automation engine / scheduler.** For things that must fire on a timer: cold-lead reminders,
-  stale-quote nudges, last-chance-close, persisted expiry, and the planned n8n workflows. Decision:
-  Celery Beat (in-app) vs n8n (separate). Needed before any "runs by itself daily" automation.
+- **G9 — Automation engine / scheduler.** **UNGATED 2026-06-18 → BUILD QUEUE (G9).** Decision made:
+  **Celery Beat (in-app)**, two scheduled jobs in Africa/Casablanca time — scheduled relance
+  reminders + a daily facture-overdue check (overdue = échéance passed & not fully paid → « En
+  retard »; default échéance = issue + 30 days). Pre-approved (see the PRE-APPROVED block). The
+  broader no-code automation engine (N72/N73) and n8n workflows stay separate.
 - **G10 — CAPI service** (Meta Conversions API, sends `SignedQuote` on Signé, EMQ ≥ 7.0). Roadmap;
   **gated on fbclid/UTM capture landing in the site form first**.
 - **G11 — Chatbot → Reda's Claude API key.** Small, but a cost change — needs the key present + your OK.
@@ -843,10 +921,13 @@ need Reda's taste. Reda decides; then I write a focused task and move it into th
 - **G13 — One-off 619-lead Odoo import.** Uses the reusable importer (T9) once built, but **gated on a
   2nd Odoo backup** before any real extraction. File holds PII → gitignored, never in chat/GitHub.
 - **G14 — DGI e-invoicing readiness (Morocco).** Mandatory ~**Jan 2027** for businesses with CA >
-  500k DH — likely Taqinor's wave. Clearance model: structured **UBL 2.1 / CII** XML + electronic
-  signature, validated by the DGI platform before sending; **a PDF is explicitly NOT compliant**.
-  **Cannot be built until the DGI platform specs are public** and the décret d'application is
-  published. Your per-line TVA + ICE work is the right groundwork. Start when specs publish.
+  500k DH — likely Taqinor's wave. **PARTIAL UNGATE 2026-06-18 → BUILD QUEUE (N105):** only the
+  **silent, backend-only local capability** was ungated — on-demand **UBL 2.1 / CII** XML export
+  (recipient ICE on every line) + a conformity validator, both behind a master toggle that defaults
+  OFF and is completely invisible while off. **STILL GATED here** (blocked on the unpublished DGI
+  implementing decree — no API spec exists yet, not a decision of Reda's): the **Simpl-TVA portal
+  transmission** and the **certified e-signature** (a PDF is explicitly NOT compliant; clearance
+  needs the live DGI platform). Start those when the specs publish.
 - **G15 — Arabic / Darija UI** (full interface localization, not just message templates). Decide if
   needed and for whom.
 
@@ -856,23 +937,21 @@ Mirror of every non-ROUTINE task in the REFINEMENT QUEUE above, kept here so an 
 never auto-builds them. Each still lives in its module section above; build only after Reda's call.
 
 **SCHEMA — needs an additive DB migration (still gated)**
-[ ] [Clients] [L17] [SCHEMA] Ajouter les identifiants légaux marocains (ICE/IF/RC/CIN/RIB) à l'export Excel des clients. Fait = export_clients_xlsx dans apps/crm/exports.py sort des colonnes Type, ICE, IF, RC, CIN, RIB à côté de nom/email/téléphone/adresse, alimentées depuis les champs Client correspondants.
-[ ] [Clients] [L16] [SCHEMA] Enregistrer qui a créé/modifié un client. Fait = Client reçoit created_by (nullable) et date_modification (auto_now), perform_create force created_by côté serveur, et ClientSerializer les expose en lecture.
-[ ] [Chantiers/Équipement] [L2] [SCHEMA] Ajouter un tag additif optionnel type_equipement (ou role) sur stock.Categorie (les catégories free-text gardent leurs noms FR) pour filtrer les slots par TYPE quel que soit le libellé. Fait = un nouveau champ Categorie nullable permet au slot onduleur de ne montrer que les produits typés onduleur et au slot panneaux que les panneaux, même si la société a renommé ses catégories ; les lignes existantes restent non typées et le comportement actuel est inchangé.
+_(none — the three SCHEMA refinements (client ICE export, client `created_by`/`date_modification`,
+`type_equipement` tag on `stock.Categorie`) were UNGATED 2026-06-18 to `[ROUTINE]` in their module
+sections; additive migrations are pre-approved — see the PRE-APPROVED block.)_
 
 **DEP — needs a dependency beyond openpyxl / vite-plugin-pwa**
-[ ] [Parc] [L4] [DEP] Rendre la vue "Carte" du Parc installé en vraie carte tuilée interactive des systèmes géolocalisés au lieu d'un tableau de liens GPS. Fait = l'onglet Carte de ParcInstallePage.jsx montre des marqueurs pour chaque système localisé ; cliquer un marqueur ouvre le détail. [DEP: nouvelle dépendance carto leaflet/maptiler — déjà différée dans le commentaire N8]
+_(none — the Parc « Carte » Leaflet refinement was UNGATED 2026-06-18 to `[ROUTINE]`; Leaflet is
+pre-approved — see the PRE-APPROVED block + N85.)_
 
 **DECISION — needs Reda's product call**
-[ ] [CRM/Leads] [L9] [DECISION] Ajouter des "vues enregistrées" nommées (combinaison filtres+vue) réutilisables — N79 saved-views est BLOCKED car couplé à l'export planifié, mais une version locale sans email reste utile. Fait = l'utilisateur enregistre "Mes relances chaudes" et la rappelle d'un clic. [cf. N79]
 [ ] [CRM/Leads] [L17] [DECISION] Capturer/afficher la langue de communication préférée du lead (FR/Darija) pour préparer l'envoi WhatsApp bilingue (whatsapp_devis prend déjà un paramètre langue, mais rien ne le mémorise sur le lead). Fait = un champ "Langue préférée" sur la fiche pré-sélectionne la langue du message WhatsApp. [cf. N93]
 [ ] [Facturation] [L7] [DECISION] Décider si l'auto-passage en "En retard" des factures échues doit être matérialisé (aujourd'hui seulement calculé à la lecture). Fait = note tranchée — garder le on-the-fly (jours_retard) ou ajouter un job (gaté G9 scheduler), le choix consigné dans PLAN.md.
-[ ] [Facturation/Comptable] [L17] [DECISION] Confirmer le périmètre exact de l'export journal/TVA attendu par le comptable (format DGI/Article 33, colonnes ICE/IF). Fait = spec validée par le founder des colonnes et de la structure du .xlsx avant tout élargissement de exports.py (groundwork DGI, pas de transmission).
-[ ] [Équipements] [L15] [DECISION] Ajouter un garde/index d'unicité scopé société sur Equipement.numero_serie (nullable, vides permis) pour stopper la duplication silencieuse de séries. Fait = créer deux équipements à numero_serie non vide identique dans une société est rejeté avec un message FR clair.
-[ ] [Stock/Catalogue] [L8] [DECISION] Offrir un écran Paramètres → Stock de gestion des catégories (renommer/ordre/archiver) — CategorieViewSet expose update/destroy mais aucune UI dédiée. Fait = un panneau Paramètres liste les catégories avec édition du nom et de ordre, conforme au free-text par société.
-[ ] [Stock/Achats] [L8] [DECISION] Créer un écran de gestion des fournisseurs (liste/édition coordonnées) — FournisseurViewSet expose list/update/destroy + contact/email/telephone/adresse mais aucune UI ne les édite. Fait = une page liste les fournisseurs et permet d'éditer personne de contact, email, téléphone, adresse.
-[ ] [Stock/Achats] [L9] [DECISION] Exposer une page/liste des retours fournisseur (RetourFournisseurViewSet existe mais aucune liste consultable). Fait = un écran liste les retours (référence RF, fournisseur, statut, date) avec consultation.
-[ ] [Liens publics] [L7] [DECISION] Décider si les PDF ShareLink publics doivent porter un en-tête no-index/cache court et un rate-limiting par token (aujourd'hui public_views.py sert le PDF client à quiconque a le token, sans throttle). Fait = une décision documentée ; si approuvée, ajouter X-Robots-Tag: noindex + un throttle par IP basique sans toucher au rendu sans prix d'achat.
+_(UNGATED 2026-06-18 to `[ROUTINE]` in their module sections — see the PRE-APPROVED block:
+saved named views (local, no email); comptable export; per-company `Equipement` serial uniqueness;
+Stock-category management UI; Fournisseurs management screen; Retours list; public ShareLink
+noindex + per-token throttle.)_
 
 **GALLERY — changes a client-facing PDF/visual (needs gallery approval)**
 [ ] [Facturation/Relances] [L13] [GALLERY] Adapter la lettre de relance PDF au niveau courant (ton J+7 vs J+30) en variant le corps depuis FollowupLevel.message. Fait = generate_lettre_relance_pdf rend un texte distinct par niveau, sans changer la mise en page premium.
