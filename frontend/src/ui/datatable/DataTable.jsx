@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useMemo, useRef, useState, Fragment } from 'react'
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import {
   ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal,
   ChevronRight, Pin, PinOff, EyeOff, Download, ChevronLeft, Inbox, AlertTriangle,
@@ -17,6 +17,7 @@ import {
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
 } from '../DropdownMenu'
 import { highlightSegments, computeWindow } from './logic.js'
+import { debounce } from '../../lib/debounce.js'
 import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
 import { ColumnManager } from './ColumnManager.jsx'
@@ -128,6 +129,35 @@ export const DataTable = forwardRef(function DataTable(
   const dragId = useRef(null)
   const scrollRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
+
+  /* ---- Recherche globale anti-rebond (O66) ----
+     La valeur AFFICHÉE dans le champ reste instantanée (`searchInput`) ; seul le
+     filtre APPLIQUÉ (`onQueryChange`) est différé d'un court délai, pour ne pas
+     refiltrer une grande liste à chaque frappe. Si `query` change de l'extérieur
+     (ex. application d'une vue sauvegardée), on resynchronise l'affichage. */
+  const [searchInput, setSearchInput] = useState(query)
+  const lastTyped = useRef(query)
+  const applyQueryDebounced = useMemo(
+    () => debounce((value) => onQueryChange(value), 250),
+    [onQueryChange],
+  )
+  useEffect(() => () => applyQueryDebounced.cancel(), [applyQueryDebounced])
+  // Resynchronise le champ uniquement quand `query` change SANS venir d'une frappe
+  // (vue sauvegardée, reset programmatique), sans écraser la saisie en cours.
+  useEffect(() => {
+    if (query !== lastTyped.current) {
+      lastTyped.current = query
+      setSearchInput(query)
+    }
+  }, [query])
+  const onSearchInput = useCallback(
+    (value) => {
+      lastTyped.current = value
+      setSearchInput(value)
+      applyQueryDebounced(value)
+    },
+    [applyQueryDebounced],
+  )
 
   /* ---- Tri : map id → direction ---- */
   const sortDir = useMemo(() => {
@@ -254,8 +284,8 @@ export const DataTable = forwardRef(function DataTable(
             <div className="w-full sm:w-72">
               <Input
                 leading={<Search />}
-                value={query}
-                onChange={(e) => onQueryChange(e.target.value)}
+                value={searchInput}
+                onChange={(e) => onSearchInput(e.target.value)}
                 placeholder={searchPlaceholder}
                 aria-label="Recherche globale"
               />

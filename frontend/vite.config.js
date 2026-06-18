@@ -81,6 +81,33 @@ export default defineConfig({
       interval: 500,
     },
   },
+  // O66 — Budget de bundle + découpage des gros vendors.
+  // Les grosses dépendances tierces sont isolées dans leurs propres chunks
+  // (mises en cache séparément du code applicatif, qui change plus souvent) et
+  // un budget d'alerte raisonnable évite les régressions silencieuses de taille.
+  // Les pages restent découpées par route (React.lazy dans le routeur).
+  // Les chunks `.js` produits restent précachés par le SW : le
+  // `injectManifest.globPatterns` ci-dessus inclut déjà `**/*.js`.
+  build: {
+    chunkSizeWarningLimit: 900, // ko (gzip non compté) — alerte, pas une erreur
+    rollupOptions: {
+      output: {
+        // Découpe les gros vendors en chunks dédiés (mis en cache séparément du
+        // code applicatif). Un module hors de ces groupes suit le découpage par
+        // route (React.lazy) — comportement par défaut de Rollup conservé.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/[\\/]node_modules[\\/]recharts[\\/]/.test(id)) return 'recharts'
+          if (/[\\/]node_modules[\\/]pdfjs-dist[\\/]/.test(id)) return 'pdfjs-dist'
+          if (/[\\/]node_modules[\\/]@radix-ui[\\/]/.test(id)) return 'radix-ui'
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return 'react-vendor'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   // `vite preview` is what the E2E suite serves the built app from. With
   // E2E_PROXY=1 it forwards the same-origin API paths to Django, so the browser
   // sees one origin (localhost) exactly like nginx does in production. Without
