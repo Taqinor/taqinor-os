@@ -9,7 +9,10 @@ sur une tuile navy de marque (solide, jamais transparent — exigé par iOS).
 Sorties (remplacent les fichiers existants, mêmes noms -> manifeste inchangé) :
   public/pwa-192.png, public/pwa-512.png,
   public/pwa-maskable-512.png (glyphe dans la zone sûre centrale ~62 %),
-  public/apple-touch-icon-180.png
+  public/apple-touch-icon-180.png,
+  public/favicon-32.png, public/favicon-16.png, public/favicon.ico
+
+(favicon.svg reste tel quel : on ne régénère pas un vectoriel depuis un raster.)
 
 Régénérer :  python scripts/gen_pwa_icons.py     (nécessite Pillow)
 """
@@ -63,6 +66,17 @@ def tile(glyph, size, frac, out):
     t.convert("RGB").save(os.path.join(PUBLIC, out))
 
 
+def make_ico(glyph, out="favicon.ico"):
+    """Favicon multi-tailles (16/32/48) : même glyphe sur tuile navy opaque."""
+    base = Image.new("RGBA", (64, 64), NAVY)
+    w, h = glyph.size
+    s = int(64 * 0.84) / max(w, h)
+    gg = glyph.resize((max(1, round(w * s)), max(1, round(h * s))), Image.LANCZOS)
+    base.alpha_composite(gg, ((64 - gg.width) // 2, (64 - gg.height) // 2))
+    base.convert("RGB").save(
+        os.path.join(PUBLIC, out), sizes=[(16, 16), (32, 32), (48, 48)])
+
+
 def main():
     glyph = extract_glyph()
     print("glyphe nettoyé :", glyph.size)
@@ -70,8 +84,14 @@ def main():
     tile(glyph, 192, 0.80, "pwa-192.png")
     tile(glyph, 512, 0.80, "pwa-512.png")
     tile(glyph, 180, 0.80, "apple-touch-icon-180.png")
-    # Maskable : glyphe dans la zone sûre centrale (~62 %) -> jamais rogné.
+    # Maskable : glyphe dans la zone sûre centrale (~62 %) -> jamais rogné
+    # (largement dans la zone sûre de 80 % exigée par la spec maskable).
     tile(glyph, 512, 0.62, "pwa-maskable-512.png")
+    # Favicons (onglets navigateur). Glyphe un peu plus grand aux petites
+    # tailles pour rester lisible.
+    tile(glyph, 32, 0.86, "favicon-32.png")
+    tile(glyph, 16, 0.90, "favicon-16.png")
+    make_ico(glyph)
     print("icônes écrites dans", os.path.normpath(PUBLIC))
 
 
