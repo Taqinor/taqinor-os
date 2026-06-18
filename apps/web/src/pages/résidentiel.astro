@@ -17,6 +17,7 @@ import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
+import Testimonials from '../components/Testimonials.astro';
 import { BILL_RANGES, localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 
@@ -180,6 +181,9 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         <a href="/pourquoi-taqinor" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pourquoi Taqinor →</a>
       </div>
     </section>
+
+    <!-- W62 — Avis clients (vide → ne rend rien tant qu'aucun vrai avis) -->
+    <Testimonials />
 
     <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
     <GarantiesTeaser />

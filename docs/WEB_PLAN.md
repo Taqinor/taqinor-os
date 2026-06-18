@@ -190,7 +190,7 @@ or alter them. These tasks **land in the run's single end-of-batch self-merge to
 accepted path — don't flag it). **Lighthouse held 97–100 on every page, reduced-motion respected, zero
 layout shift.**
 
-### W62 — Social proof: REAL avis clients + star rating (honest scaffold + easy collection) — [ ]
+### W62 — Social proof: REAL avis clients + star rating (honest scaffold + easy collection) — [x]
 **Do:** Build a reusable « Avis clients » component (real quote + name/ville/système + optional
 star-rating/review-count badge) reading a NEW data file that ships EMPTY, on the homepage (after
 Réalisations) and reused on /résidentiel + /professionnel; emit Review/AggregateRating JSON-LD ONLY for
@@ -203,14 +203,14 @@ documents the one-tap collection + the one-step add, lead form byte-for-byte unc
 **Pending Reda:** real client quotes (name · ville · système, with their OK) and/or the real Google
 rating + count — or just send happy clients the ready-made review link.
 
-### W63 — Elevate the guarantee promise + « mesuré, pas promis » proof on the homepage — [ ]
+### W63 — Elevate the guarantee promise + « mesuré, pas promis » proof on the homepage — [x]
 **Do:** Surface ONE bold, true headline guarantee at credibility-band altitude on the homepage —
 e.g. « 25 ans de performance garantie · production mesurée, pas promise » — drawing only on the
 warranty + Deye Cloud monitoring facts already on /garanties and /équipement; no new claim or number.
 **Done when:** the promise reads high on the homepage, every figure traces to existing site data, zero
 layout shift, Lighthouse held.
 
-### W64 — Founder portrait + équipe block (Reda Kasri photo supplied; needs the file in-repo) — [ ]
+### W64 — Founder portrait + équipe block (Reda Kasri photo supplied; needs the file in-repo) — [x]
 **Do:** Add a real-face founder block (bio already TRUE on /à-propos — docteur-ingénieur, R&D
 Huawei/Ericsson/STMicroelectronics) wired into the site's responsive Picture pipeline, plus an optional
 small équipe row; text-only fallback until the image file is present. Apply web-grade cleanup to Reda's
@@ -223,7 +223,7 @@ widths. Invent no new credential.
 — add it (a light real-photo edit first gives the best result) to `apps/web/public/photos/`; the build
 then optimizes it. Optional team photos likewise.
 
-### W65 — Tier-1 brand & official-distributor logos strip (authorized; +3 brands) — [ ]
+### W65 — Tier-1 brand & official-distributor logos strip (authorized; +3 brands) — [x]
 **Do:** Render official logos in the brands strip and on /équipement, and ADD three founder-confirmed
 brands — **Jinko** (panneaux), **Huawei** (déjà nommé), **Nexans** (câbles) — alongside Canadian Solar,
 JA Solar, Deye, Dyness; styled word-marks stay as the per-brand fallback when a logo file is missing.
@@ -235,7 +235,7 @@ appear consistently, no invented spec, Lighthouse held.
 the repo; provide their official files for `apps/web/public/`, or confirm keeping clean word-marks (no
 files needed). Reda authorized their use as distributor.
 
-### W66 — Site-wide hygiene, SEO, a11y & performance pass (consolidated polish) — [ ]
+### W66 — Site-wide hygiene, SEO, a11y & performance pass (consolidated polish) — [x]
 **Do:** One sweep across all public routes — confirm each has a unique meta title/description and a
 matching /og image, alt text on every content image, no broken internal links, /sitemap.xml +
 /robots.txt correct, consistent primary-CTA labels, **set the response promise to « réponse sous 48 h
@@ -469,3 +469,16 @@ report only** (no diffs or hashes): for each task, **what a visitor now sees dif
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state of the site +
   preview lab)*
+- 2026-06-18 — W62 shipped: `Testimonials.astro` + `testimonials.ts` (ships EMPTY, renders nothing
+  until real avis added) on accueil/résidentiel/professionnel, Review/AggregateRating JSON-LD only on
+  real data, `TESTIMONIALS_NOTES.md` with a one-tap WhatsApp review-request message. No fabricated avis.
+- 2026-06-18 — W63 shipped: homepage guarantee band « 25 ans de performance garantie · production
+  mesurée, pas promise — monitoring Deye Cloud » (facts from /garanties + monitoring; no new number).
+- 2026-06-18 — W64 shipped: `FounderPortrait.astro` — photo-ready founder block, text-only fallback
+  identical to today until Reda's portrait file lands under `public/photos/` (FOUNDER_PHOTO=null).
+- 2026-06-18 — W65 shipped: `BrandStrip.astro` + `brands.ts` — 7 founder-confirmed tier-1 brands
+  (+ Jinko, Huawei, Nexans), official logos when a file exists else styled word-marks; /équipement intro
+  updated to name them (no invented model/spec). Logo files pending under `public/brands/`.
+- 2026-06-18 — W66 shipped: « réponse sous 48 h ouvrées » on /contact (corrected from 24 h); SEO/a11y/
+  hygiene guards (seo-pages, hygiene-w61, picture, photos-assets) green + clean production build.
+- 2026-06-18 — Verified: full Vitest suite 1364/1364 green, `astro build` clean, `tsc` check clean.
