@@ -1,4 +1,5 @@
-/* Barre d'actions en masse — collante sous le filtre, accent de marque. */
+/* Barre d'actions en masse — collante sous le filtre, surface tokenisée pour
+   que les primitifs Button rendent correctement en thème clair comme sombre. */
 .bulk-bar {
   display: flex;
   flex-wrap: wrap;
@@ -6,10 +7,12 @@
   gap: 10px;
   padding: 10px 14px;
   margin: 0 0 12px;
-  background: #0f172a;
-  color: #fff;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+  background: var(--card, #fff);
+  color: var(--card-foreground, #0f172a);
+  border: 1px solid var(--border, #e2e8f0);
+  border-left: 3px solid var(--primary, #0f172a);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-sm, 0 2px 8px rgba(15, 23, 42, 0.12));
 }
 
 .bulk-bar-count {
@@ -26,24 +29,6 @@
   align-items: center;
 }
 
-.bulk-bar .btn-outline {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-}
-
-.bulk-bar .btn-outline:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.bulk-bar-clear {
-  background: transparent;
-  color: #cbd5e1;
-  border: 1px solid transparent;
-}
-
-.bulk-bar-clear:hover:not(:disabled) { color: #fff; }
-
 .bulk-panel {
   flex-basis: 100%;
   display: flex;
@@ -51,15 +36,24 @@
   gap: 8px;
   align-items: center;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-top: 1px solid var(--border, #e2e8f0);
 }
 
-.bulk-panel .form-control {
+.bulk-field {
   max-width: 240px;
-  color: #0f172a;
 }
 
 .bulk-hint {
   font-size: 0.78rem;
-  color: #cbd5e1;
+  color: var(--muted-foreground, #64748b);
+}
+
+@media (max-width: 768px) {
+  .bulk-bar-actions {
+    width: 100%;
+  }
+  .bulk-field {
+    max-width: none;
+    flex: 1 1 100%;
+  }
 }

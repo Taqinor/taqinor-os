@@ -18,6 +18,7 @@ import {
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
+import { Button, Checkbox } from '../../../../ui'
 import './listview.css'
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
@@ -159,11 +160,10 @@ export default function ListView({
           <tr>
             {onToggleSelect && (
               <th className="lv-check-col">
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label="Tout sélectionner"
                   checked={allChecked}
-                  onChange={() => onToggleAll?.(visibleIds)}
+                  onCheckedChange={() => onToggleAll?.(visibleIds)}
                 />
               </th>
             )}
@@ -194,11 +194,10 @@ export default function ListView({
                     className="lv-check-col"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Sélectionner ${fullName(lead) || 'ce lead'}`}
                       checked={selected.has(lead.id)}
-                      onChange={() => onToggleSelect(lead.id)}
+                      onCheckedChange={() => onToggleSelect(lead.id)}
                     />
                   </td>
                 )}
@@ -299,19 +298,21 @@ export default function ListView({
                 </td>
                 <td data-label="Actions">
                   <div className="actions-cell">
-                    <button
+                    <Button
                       type="button"
-                      className="btn btn-sm btn-outline"
+                      size="sm"
+                      variant="outline"
                       onClick={(e) => {
                         e.stopPropagation()
                         onOpenLead(lead)
                       }}
                     >
                       Éditer
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="btn btn-sm gen-btn-orange"
+                      size="sm"
+                      className="gen-btn-orange"
                       disabled={!lead.devis_auto?.pret}
                       title={lead.devis_auto?.pret
                         ? 'Devis auto'
@@ -322,11 +323,12 @@ export default function ListView({
                       }}
                     >
                       ⚡ Devis auto
-                    </button>
+                    </Button>
                     {lead.is_archived ? (
-                      <button
+                      <Button
                         type="button"
-                        className="btn btn-sm btn-outline"
+                        size="sm"
+                        variant="outline"
                         disabled={busyId === lead.id}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -334,11 +336,12 @@ export default function ListView({
                         }}
                       >
                         Restaurer
-                      </button>
+                      </Button>
                     ) : (
-                      <button
+                      <Button
                         type="button"
-                        className="btn btn-sm btn-outline"
+                        size="sm"
+                        variant="outline"
                         disabled={busyId === lead.id}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -346,12 +349,13 @@ export default function ListView({
                         }}
                       >
                         Archiver
-                      </button>
+                      </Button>
                     )}
                     {canDelete && (
-                      <button
+                      <Button
                         type="button"
-                        className="btn btn-sm btn-danger"
+                        size="sm"
+                        variant="destructive"
                         disabled={busyId === lead.id}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -359,7 +363,7 @@ export default function ListView({
                         }}
                       >
                         Supprimer
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </td>
@@ -369,7 +373,7 @@ export default function ListView({
           {!sorted.length && (
             <tr>
               <td colSpan={onToggleSelect ? 9 : 8} className="lv-empty">
-                Aucun lead à afficher.
+                Aucun lead à afficher avec ces filtres.
               </td>
             </tr>
           )}

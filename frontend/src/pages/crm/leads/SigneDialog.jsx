@@ -7,7 +7,9 @@
 // inventé, jamais de passage en Signé sans devis (règles #2/#4 : l'étape du
 // funnel et le statut du document restent deux couches séparées).
 import { useEffect, useMemo, useState } from 'react'
+import { FileWarning } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
+import { Button, Spinner } from '../../../ui'
 
 const OPTION_LABELS = {
   sans_batterie: 'Sans batterie',
@@ -101,11 +103,14 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
         </div>
 
         <div className="modal-body">
-          {loading && <p>Chargement des devis…</p>}
+          {loading && (
+            <p className="sd-loading"><Spinner /> Chargement des devis…</p>
+          )}
 
           {!loading && devisList.length === 0 && (
             <div className="sd-empty" role="alert">
-              <p>
+              <p className="sd-empty-head">
+                <FileWarning className="size-4 shrink-0" aria-hidden="true" />
                 <strong>{leadNom}</strong> n'a aucun devis.
               </p>
               <p>
@@ -180,18 +185,19 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
         </div>
 
         <div className="modal-footer">
-          <button type="button" className="btn btn-outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onClose}>
             Annuler
-          </button>
+          </Button>
           {!loading && devisList.length > 0 && (
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
+              variant="success"
               onClick={confirm}
+              loading={busy}
               disabled={busy || !selected}
             >
               {busy ? 'Enregistrement…' : 'Confirmer l’acceptation'}
-            </button>
+            </Button>
           )}
         </div>
       </div>

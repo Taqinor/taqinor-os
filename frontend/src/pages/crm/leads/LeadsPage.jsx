@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
+import { Upload, Download, X } from 'lucide-react'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../../../features/crm/stages'
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
+import { Button, IconButton, Spinner } from '../../../ui'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
 import FilterBar from './FilterBar'
@@ -245,7 +247,11 @@ export default function LeadsPage() {
   // Only blank the page on the FIRST load. A background refetch (after saving a
   // bill, generating a devis, changing a stage…) must NOT unmount the page —
   // doing so tore down any open lead modal / inline devis preview mid-action.
-  if (leadsLoading && leads.length === 0) return <p className="page-loading">Chargement des leads...</p>
+  if (leadsLoading && leads.length === 0) {
+    return (
+      <p className="page-loading"><Spinner /> Chargement des leads…</p>
+    )
+  }
   if (error) return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
 
   const viewProps = {
@@ -271,16 +277,16 @@ export default function LeadsPage() {
           <span className="count-badge">{filtered.length}</span>
         </h2>
         <div className="page-header-actions lp-header-actions">
-          <button className="btn btn-primary" onClick={openNew}>+ Nouveau lead</button>
-          <button className="btn btn-outline" onClick={() => setShowDoublons(true)}>
+          <Button onClick={openNew}>+ Nouveau lead</Button>
+          <Button variant="outline" onClick={() => setShowDoublons(true)}>
             🔀 Doublons
-          </button>
-          <button className="btn btn-outline" onClick={() => setShowImport(true)}>
-            ⬆ Importer
-          </button>
-          <button className="btn btn-outline" onClick={exportFiltered}>
-            ⬇ Exporter Excel
-          </button>
+          </Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload /> Importer
+          </Button>
+          <Button variant="outline" onClick={exportFiltered}>
+            <Download /> Exporter Excel
+          </Button>
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
@@ -302,28 +308,28 @@ export default function LeadsPage() {
       {bulkMsg && (
         <div className="lp-bulk-msg" role="status">
           <span>{bulkMsg}</span>
-          <button
-            type="button"
+          <IconButton
+            variant="ghost"
             className="lp-stage-error-close"
-            aria-label="Fermer le message"
+            label="Fermer le message"
             onClick={() => setBulkMsg(null)}
           >
-            ✕
-          </button>
+            <X />
+          </IconButton>
         </div>
       )}
 
       {stageError && (
         <div className="lp-stage-error" role="alert">
           <span>{stageError}</span>
-          <button
-            type="button"
+          <IconButton
+            variant="ghost"
             className="lp-stage-error-close"
-            aria-label="Fermer le message d'erreur"
+            label="Fermer le message d'erreur"
             onClick={() => setStageError(null)}
           >
-            ✕
-          </button>
+            <X />
+          </IconButton>
         </div>
       )}
 
