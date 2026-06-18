@@ -32,8 +32,6 @@ import {
   SelectItem,
 } from '../../../ui'
 import { formatDate } from '../../../lib/format'
-import '../../crm/leads/views/kanban.css'
-import './kanban-chantier.css'
 
 // Sentinelle « aucun installateur » (le Select du design system n'accepte pas '').
 const NO_TECH = '__none__'

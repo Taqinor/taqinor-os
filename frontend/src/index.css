@@ -2463,3 +2463,1939 @@ textarea.form-control {
   border-radius: 999px;
   vertical-align: middle;
 }
+
+
+/* ████████████████████████████████████████████████████████████████████
+   P67 — CSS de composants ad hoc RELOCALISÉ ICI (verbatim). Les fichiers
+   .css par composant ont été supprimés et leurs imports retirés ; les
+   sélecteurs (préfixes uniques) sont déplacés tels quels, donc la cascade
+   est préservée. records-panels avant kanban : .kb-act-clock (rendu
+   uniquement dans LeadCard, vue kanban) garde la valeur de kanban.css.
+   ████████████████████████████████████████████████████████████████████ */
+
+/* ===== migrated from src/components/inlineedit.css (P67) ===== */
+/* Édition en place (InlineEdit) — discret, devient visible au survol. */
+.ie-cell {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font: inherit;
+  color: inherit;
+  cursor: text;
+  text-align: inherit;
+  max-width: 100%;
+}
+.ie-cell:hover { border-color: #cbd5e1; background: #f8fafc; }
+.ie-saving { opacity: 0.6; }
+.ie-err { border-color: #fca5a5; background: #fef2f2; }
+.ie-placeholder { color: #94a3b8; }
+.ie-display { padding: 2px 6px; }
+.ie-right { text-align: right; }
+.ie-left { text-align: left; }
+.ie-input {
+  min-width: 80px;
+  max-width: 180px;
+  padding: 2px 6px;
+  height: auto;
+  font-size: 0.85rem;
+}
+
+/* ===== migrated from src/components/layout/globalsearch.css (P67) ===== */
+/* Recherche globale (barre du haut). */
+.gs-wrap { position: relative; flex: 1; max-width: 460px; }
+.gs-input {
+  width: 100%;
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: #f8fafc;
+}
+.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; }
+.gs-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 200;
+  padding: 6px;
+}
+.gs-empty { padding: 12px; color: #64748b; font-size: 0.85rem; }
+.gs-group { padding: 4px 0; }
+.gs-group-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  padding: 4px 10px;
+}
+.gs-result {
+  display: flex; flex-direction: column; align-items: flex-start;
+  width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 7px 10px; border-radius: 6px;
+}
+.gs-result:hover { background: #f1f5f9; }
+.gs-result-label { font-size: 0.875rem; color: #0f172a; }
+.gs-result-sub { font-size: 0.75rem; color: #64748b; }
+
+/* ===== migrated from src/components/layout/notificationbell.css (P67) ===== */
+/* Cloche de notifications in-app. */
+.nb-wrap { position: relative; }
+.nb-btn {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  line-height: 1; padding: 7px;
+  border-radius: 8px;
+  color: #475569;
+}
+.nb-btn:hover { background: #f1f5f9; color: #1e293b; }
+.nb-badge {
+  position: absolute; top: -2px; right: -2px;
+  background: #dc2626; color: #fff;
+  font-size: 0.62rem; font-weight: 700;
+  min-width: 16px; height: 16px;
+  border-radius: 999px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.nb-panel {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  width: 320px; max-height: 70vh; overflow-y: auto;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  z-index: 200; padding: 6px;
+}
+.nb-header {
+  font-size: 0.8rem; font-weight: 700; color: #0f172a;
+  padding: 6px 10px 8px;
+}
+.nb-empty { padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem; }
+.nb-group { padding: 4px 0; }
+.nb-group-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.72rem; font-weight: 600; color: #475569;
+  padding: 4px 10px;
+}
+.nb-group-title svg { color: #94a3b8; flex-shrink: 0; }
+
+/* I38 — Invite d'activation des notifications push (in-context, justifiée). */
+.nb-push-prompt {
+  position: relative;
+  margin: 0 6px 8px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  border-radius: 8px;
+}
+.nb-push-close {
+  position: absolute; top: 6px; right: 6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border: none; background: none; cursor: pointer;
+  color: #94a3b8; border-radius: 6px;
+}
+.nb-push-close:hover { background: #dbeafe; color: #475569; }
+.nb-push-title { font-size: 0.82rem; font-weight: 700; color: #1e3a8a; padding-right: 20px; }
+.nb-push-text { font-size: 0.75rem; color: #475569; margin: 4px 0 8px; line-height: 1.35; }
+.nb-push-btn {
+  font-size: 0.78rem; font-weight: 600;
+  background: #1d4ed8; color: #fff;
+  border: none; border-radius: 7px;
+  padding: 6px 12px; cursor: pointer;
+}
+.nb-push-btn:hover { background: #1e40af; }
+.nb-item {
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 6px 10px; border-radius: 6px; font-size: 0.82rem; color: #0f172a;
+}
+.nb-item:hover { background: #f1f5f9; }
+.nb-item-date { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
+.nb-overdue { color: #dc2626; font-weight: 600; }
+
+/* ===== migrated from src/components/records-panels.css (P67) ===== */
+/* Panneaux Activités + Pièces jointes (style Odoo, sobres). */
+.act-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.act-count { font-size: 0.85rem; font-weight: 600; color: #475569; }
+
+.act-form { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.act-form-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+
+.act-list, .att-list { display: flex; flex-direction: column; gap: 6px; }
+
+.act-item, .att-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid #eef2f7; border-radius: 8px; background: #fff;
+  font-size: 0.85rem;
+}
+.act-item-done { opacity: 0.65; }
+.act-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.act-body { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
+.act-meta, .att-meta { font-size: 0.72rem; color: #94a3b8; }
+.act-actions { display: flex; align-items: center; gap: 6px; }
+.act-done-sep { font-size: 0.72rem; text-transform: uppercase; color: #94a3b8; margin: 8px 0 2px; letter-spacing: 0.5px; }
+
+.att-name { flex: 1; color: #1d4ed8; text-decoration: none; font-weight: 600; }
+.att-name:hover { text-decoration: underline; }
+
+/* Pastille horloge d'activité sur les cartes kanban. */
+.kb-act-clock { display: inline-flex; align-items: center; font-size: 0.72rem; gap: 3px; }
+.kb-act-clock.overdue { color: #dc2626; }
+.kb-act-clock.today { color: #d97706; }
+.kb-act-clock.upcoming { color: #16a34a; }
+
+/* ===== migrated from src/pages/crm/leadform-extra.css (P67) ===== */
+/* Compléments fiche lead : avatar responsable d'entête, barre d'actions devis
+   (style Odoo) et édition inline de la facture. */
+
+.lead-head-owner { display: inline-flex; align-items: center; margin-right: 4px; }
+
+/* Barre d'actions sous l'entête : facture inline (gauche) + devis (droite). */
+.lead-subbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  background: var(--muted, #f1f5f9);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.lead-subbar-bills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lead-subbar-label { font-weight: 600; color: var(--muted-foreground, #475569); font-size: 0.85rem; }
+.lead-bill-input { width: 110px; }
+
+.lead-bill-view {
+  background: var(--card, #fff);
+  border: 1px dashed var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 8px);
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+}
+.lead-bill-view:hover {
+  border-color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, var(--card, #fff));
+}
+.lead-bill-edit-hint { color: var(--primary, #2563eb); margin-left: 6px; }
+.lead-bill-empty { color: var(--primary, #2563eb); font-weight: 600; }
+
+.lead-subbar-devis { display: flex; align-items: center; gap: 8px; }
+
+.lead-devis-menu-wrap { position: relative; display: inline-block; }
+.lead-devis-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--popover, #fff);
+  color: var(--popover-foreground, inherit);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-lg, 0 16px 40px rgba(0, 0, 0, 0.16));
+  padding: 4px;
+}
+.lead-devis-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+}
+.lead-devis-menu-item:hover:not(:disabled) { background: var(--accent, #f1f5f9); }
+.lead-devis-menu-item:disabled { color: var(--muted-foreground, #94a3b8); cursor: not-allowed; }
+
+/* A4 — actions en ligne sur les devis d'un lead (facture / chantier). */
+.lead-devis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.lead-devis-pdf-hint { color: var(--muted-foreground, #64748b); white-space: nowrap; }
+
+/* ===== migrated from src/pages/crm/leads/bulkactionbar.css (P67) ===== */
+/* Barre d'actions en masse — collante sous le filtre, surface tokenisée pour
+   que les primitifs Button rendent correctement en thème clair comme sombre. */
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  background: var(--card, #fff);
+  color: var(--card-foreground, #0f172a);
+  border: 1px solid var(--border, #e2e8f0);
+  border-left: 3px solid var(--primary, #0f172a);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-sm, 0 2px 8px rgba(15, 23, 42, 0.12));
+}
+
+.bulk-bar-count {
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+
+.bulk-bar-count strong { font-size: 1.05rem; }
+
+.bulk-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.bulk-panel {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.bulk-field {
+  max-width: 240px;
+}
+
+.bulk-hint {
+  font-size: 0.78rem;
+  color: var(--muted-foreground, #64748b);
+}
+
+@media (max-width: 768px) {
+  .bulk-bar-actions {
+    width: 100%;
+  }
+  .bulk-field {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+}
+
+/* ===== migrated from src/pages/crm/leads/doublonspanel.css (P67) ===== */
+/* Atelier Doublons (FEATURE 1) — modal plein écran au-dessus du pipeline. */
+.dbl-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--nuit, #0f172a) 55%, transparent);
+  backdrop-filter: blur(2px);
+  z-index: var(--z-modal, 1200);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 4vh 16px;
+}
+.dbl-panel {
+  background: var(--card, #fff);
+  color: var(--card-foreground, inherit);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-ui-lg, 0 20px 60px rgba(0, 0, 0, 0.3));
+}
+.dbl-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+.dbl-header h3 { margin: 0; flex: 1; font-weight: 600; }
+.dbl-arch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #475569);
+  cursor: pointer;
+}
+.dbl-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.dbl-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 4px;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.9rem;
+}
+.dbl-cluster {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--muted, #f8fafc);
+}
+.dbl-cluster-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--success, #10b981) 12%, transparent);
+  border-color: color-mix(in srgb, var(--success, #10b981) 35%, transparent);
+  color: var(--success, #047857);
+  font-weight: 600;
+}
+.dbl-cluster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.dbl-member {
+  border: 2px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  padding: 10px;
+  background: var(--card, #fff);
+  cursor: pointer;
+  display: block;
+}
+.dbl-member-keep {
+  border-color: var(--primary, #2563eb);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #2563eb) 15%, transparent);
+}
+.dbl-member-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+/* Les pastilles « à garder » / « archivé » sont des <Badge> tonifiés : on ne
+   garde ici que le placement (la couleur vient du primitif). */
+.dbl-keep-tag {
+  margin-left: auto;
+}
+.dbl-member-fields {
+  font-size: 0.82rem;
+  color: var(--muted-foreground, #475569);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dbl-cluster-actions {
+  margin-top: 12px;
+  text-align: right;
+}
+
+/* ===== migrated from src/pages/crm/leads/leaddevispanel.css (P67) ===== */
+/* Panneau devis inline (slide-over Odoo) au-dessus de la fiche lead. */
+.ldp-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--nuit, #0f172a) 55%, transparent);
+  backdrop-filter: blur(3px);
+  z-index: 1100; /* au-dessus de la fiche lead (.modal-overlay = 1000) */
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ldp-panel {
+  background: var(--background, #f8fafc);
+  color: var(--foreground, inherit);
+  width: min(1100px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.25);
+  animation: ldpIn 0.18s ease-out;
+}
+
+@keyframes ldpIn {
+  from { transform: translateX(40px); opacity: 0.4; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.ldp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Panneau plein écran : titre + bouton ✕ sous l'encoche en PWA iOS. */
+  padding: max(14px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+           14px max(20px, env(safe-area-inset-left));
+  background: var(--card, #fff);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  flex-shrink: 0;
+}
+
+.ldp-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ldp-ref {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--info, #1d4ed8);
+  background: color-mix(in srgb, var(--info, #1d4ed8) 16%, transparent);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.ldp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ldp-center {
+  margin: auto;
+  text-align: center;
+  max-width: 480px;
+  padding: 32px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.ldp-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* Édition complète : le générateur embarqué scrolle dans le panneau. */
+.ldp-edit {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.ldp-edit .gen-embedded { max-width: 980px; margin: 0 auto; }
+
+/* Aperçu PDF */
+.ldp-preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ldp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--card, #fff);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.ldp-format { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ldp-toolbar-actions { display: flex; gap: 8px; }
+
+/* Bascule « Inclure l'étude » : aligne la case @/ui avec son libellé. */
+.ldp-etude-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #475569);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ldp-pdf-area {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  /* Fond sombre « visionneuse » derrière les pages du document. */
+  background: var(--pdf-backdrop, #475569);
+}
+
+.ldp-pdf-loading {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--pdf-on-backdrop, #ffffff);
+}
+
+.ldp-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+/* Rendu PDF.js : pages canvas empilées, défilables, centrées sur la zone
+   sombre, comme un vrai document. */
+.ldp-pdfjs-wrap {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ldp-pdfjs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 12px 24px;
+  min-height: 100%;
+}
+
+.ldp-pdf-page {
+  display: block;
+  max-width: 100%;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* Repli quand l'aperçu inline ne se rend pas (bloqueur de pub / réseau) ou
+   quand le serveur ne peut pas générer le PDF : un EmptyState @/ui centré sur la
+   zone sombre. On neutralise le cadre par défaut (bordure/fond) pour qu'il
+   s'inscrive sur le fond « visionneuse » au lieu d'une carte claire. */
+.ldp-fallback {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  padding: 24px;
+  max-width: none;
+  /* Texte lisible sur le fond sombre de la visionneuse. */
+  color: var(--pdf-on-backdrop, #f1f5f9);
+}
+
+.ldp-fallback p { color: inherit; }
+
+.ldp-fallback-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ldp-fallback-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Lien « Réessayer l'aperçu » lisible sur fond sombre. */
+.ldp-fallback-retry {
+  color: var(--pdf-on-backdrop, #cbd5e1);
+  opacity: 0.85;
+}
+.ldp-fallback-retry:hover { opacity: 1; }
+
+@media (max-width: 640px) {
+  .ldp-panel { width: 100%; }
+
+  /* Barre d'outils empilée sur mobile : format au-dessus, actions pleine
+     largeur en dessous. */
+  .ldp-toolbar {
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .ldp-format { justify-content: space-between; }
+  .ldp-toolbar-actions { width: 100%; }
+  .ldp-toolbar-actions > * { flex: 1; }
+
+  .ldp-fallback { padding: 16px; }
+  .ldp-fallback-actions { width: 100%; flex-direction: column; }
+}
+
+/* ===== migrated from src/pages/crm/leads/leadspage.css (P67) ===== */
+/* ── Page Pipeline (conteneur multi-vues CRM leads) ─────────────────────────
+   Préfixes : lp- (chrome de page), fb- (barre de filtres), vs- (sélecteur de
+   vue). Les vues (kanban/liste/calendrier/graphique) gèrent leur propre CSS. */
+
+.lp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.lp-header-actions .vs-group {
+  margin-left: auto;
+}
+
+/* Zone derrière les vues : surface sourde de tableau de bord. */
+.lp-view-area {
+  background: var(--muted, #f1f5f9);
+  border-radius: var(--radius, 10px);
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  min-height: 320px;
+}
+
+/* Bandeau d'erreur (changement d'étape non enregistré). */
+.lp-stage-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--destructive, #dc2626) 35%, transparent);
+  color: var(--destructive, #b91c1c);
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.6rem 0.85rem;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.lp-stage-error-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.lp-stage-error-close:hover {
+  background: color-mix(in srgb, var(--destructive, #dc2626) 20%, transparent);
+}
+
+/* Bilan d'une action en masse (T3) — ton informatif, non-erreur. */
+.lp-bulk-msg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--success, #10b981) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success, #10b981) 35%, transparent);
+  color: var(--success, #065f46);
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.6rem 0.85rem;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* ── Barre de filtres partagée ───────────────────────────────────────────── */
+.fb-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.fb-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.fb-select {
+  flex: 0 1 auto;
+  max-width: 220px;
+  min-width: 150px;
+}
+
+.fb-clear {
+  white-space: nowrap;
+}
+
+/* ── Sélecteur de vue (groupe de boutons-icônes joints, façon Odoo) ──────── */
+.vs-group {
+  display: inline-flex;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+  background: var(--card, #fff);
+}
+
+.vs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 36px;
+  background: var(--card, #fff);
+  border: none;
+  border-right: 1px solid var(--border, #e2e8f0);
+  color: var(--foreground, #0b1f3a);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vs-btn:last-child {
+  border-right: none;
+}
+
+.vs-btn:hover {
+  background: var(--accent, #f1f5f9);
+}
+
+.vs-btn:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: -2px;
+}
+
+.vs-btn-active,
+.vs-btn-active:hover {
+  background: var(--primary, #0b1f3a);
+  color: var(--primary-foreground, #fff);
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .fb-bar {
+    gap: 0.45rem;
+  }
+
+  .fb-search,
+  .fb-select {
+    flex: 1 1 100%;
+    max-width: none;
+    min-height: 44px;
+  }
+
+  .vs-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .lp-view-area {
+    padding: 0.5rem;
+  }
+}
+
+/* Dialogue « Signé » (A2) — choix du devis accepté + option. */
+.sd-intro { margin: 0 0 0.75rem; }
+.sd-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground, #64748b);
+}
+.sd-empty {
+  background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #f59e0b) 35%, transparent);
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.75rem 1rem;
+  color: var(--warning, #9a3412);
+}
+.sd-empty p { margin: 0 0 0.5rem; }
+.sd-empty p:last-child { margin-bottom: 0; }
+.sd-empty-head { display: flex; align-items: center; gap: 0.4rem; }
+.sd-options { margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.sd-radio { display: flex; align-items: center; gap: 0.5rem; min-height: 36px; cursor: pointer; }
+.sd-modal .form-label { display: block; margin: 0.75rem 0 0.25rem; font-weight: 600; }
+
+/* ===== migrated from src/pages/crm/leads/views/calendar.css (P67) ===== */
+/* ── Vue CALENDRIER des leads CRM ──
+   Grille mensuelle façon Odoo : fond clair, cellules blanches, filets
+   #e2e8f0, numéros de jour navy, accent or sur aujourd'hui.
+   Toutes les classes sont préfixées cal- (aucune fuite globale). */
+
+.cal-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 100%;
+}
+
+/* ── Barre d'en-tête ── */
+.cal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cal-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.cal-nav-btn {
+  min-width: 40px;
+  min-height: 40px;
+  line-height: 1;
+}
+
+.cal-today-btn {
+  min-height: 40px;
+  margin-left: auto;
+}
+
+.cal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+}
+
+/* ── Grille mensuelle ── */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--border, #e2e8f0); /* les gaps de 1px dessinent les filets */
+  gap: 1px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+}
+
+.cal-weekday {
+  background: var(--muted, #f8fafc);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.cal-cell {
+  position: relative;
+  background: var(--card, #fff);
+  min-height: 96px;
+  padding: 6px;
+  padding-top: 26px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cal-cell-out {
+  background: var(--muted, #f8fafc);
+}
+
+.cal-cell-out .cal-day-number {
+  color: var(--muted-foreground, #94a3b8);
+}
+
+.cal-cell-today {
+  box-shadow: inset 0 0 0 2px var(--cat-gold, var(--warning, #f5a623));
+  background: var(--cat-gold-soft, color-mix(in srgb, var(--warning, #f5a623) 14%, var(--card, #fff)));
+}
+
+.cal-cell-today .cal-day-number {
+  background: var(--cat-gold, var(--warning, #f5a623));
+  color: #1a1505;
+  border-radius: 999px;
+}
+
+.cal-day-number {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground, #0b1f3a);
+}
+
+/* ── Pastilles lead ── */
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.76rem;
+  color: var(--foreground, #0b1f3a);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cal-chip:hover {
+  border-color: var(--primary, #cbd5e1);
+  box-shadow: var(--shadow-ui-xs, 0 1px 3px rgba(11, 31, 58, 0.12));
+}
+
+.cal-chip:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: 1px;
+}
+
+.cal-chip-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cal-chip-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-chip-perdu {
+  color: var(--destructive, #dc2626);
+}
+
+.cal-more {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+}
+
+.cal-more:hover {
+  color: var(--foreground, #0b1f3a);
+  text-decoration: underline;
+}
+
+.cal-more-static {
+  cursor: default;
+  text-decoration: none;
+}
+
+/* ── Leads sans date de relance ── */
+.cal-undated {
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 10px;
+}
+
+.cal-undated-label {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  color: var(--muted-foreground, #64748b);
+}
+
+.cal-undated-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-undated-chips .cal-chip {
+  width: auto;
+  max-width: 220px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  .cal-cell {
+    min-height: 64px;
+    padding: 3px;
+    padding-top: 20px;
+  }
+
+  .cal-day-number {
+    top: 2px;
+    right: 2px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.72rem;
+  }
+
+  .cal-chip {
+    padding: 2px 4px;
+    font-size: 0.68rem;
+    gap: 4px;
+  }
+
+  .cal-title {
+    font-size: 1rem;
+  }
+
+  .cal-undated-chips .cal-chip {
+    max-width: 150px;
+  }
+}
+
+/* ===== migrated from src/pages/crm/leads/views/charts.css (P67) ===== */
+/* Vue « Graphiques » des leads CRM — toutes les classes sont préfixées ch-.
+   Les cartes utilisent le primitif <Card> (surface/ombre/bordure tokenisées) ;
+   ici on ne gère que la grille et la boîte de tracé. */
+
+.ch-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 1100px) {
+  .ch-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ch-card {
+  min-width: 0; /* laisse ResponsiveContainer rétrécir dans la grille */
+}
+
+.ch-chartbox {
+  height: 320px;
+}
+
+@media (max-width: 768px) {
+  .ch-chartbox {
+    height: 260px;
+  }
+}
+
+/* ===== migrated from src/pages/crm/leads/views/kanban.css (P67) ===== */
+/* Kanban CRM leads — toutes les classes préfixées kb- (zéro collision avec
+   index.css). Identité navy/or de l'app, surfaces tokenisées (thème clair +
+   sombre), lecture « Odoo » au premier coup d'œil. */
+
+/* ---------- Tableau ---------- */
+
+.kb-board {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  background: var(--muted, #f1f5f9);
+  border-radius: var(--radius-lg, 12px);
+}
+
+/* ---------- Colonnes ---------- */
+
+.kb-col {
+  flex: 0 0 272px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card, #ebeef3);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  border-top: 3px solid var(--kb-accent, var(--primary, #0b1f3a));
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Colonne survolée pendant un drag : halo net + fond teinté couleur d'étape,
+   pour signaler clairement la zone de dépôt. */
+.kb-over {
+  box-shadow:
+    inset 0 0 0 2px var(--kb-accent),
+    var(--shadow-ui-md, 0 4px 12px rgba(15, 23, 42, 0.15));
+  background: color-mix(in srgb, var(--kb-accent) 12%, var(--card, #ebeef3));
+}
+
+.kb-col-header {
+  padding: 0.6rem 0.7rem 0.4rem;
+}
+
+.kb-col-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kb-col-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+}
+
+.kb-col-count {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d7dde6);
+  background: var(--background, #fff);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.kb-col-money {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-col-body {
+  flex: 1;
+  min-height: 80px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.35rem 0.55rem 0.6rem;
+}
+
+.kb-col-empty {
+  margin-top: 0.1rem;
+  padding: 1.1rem 0.5rem;
+  border: 2px dashed var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 8px);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted-foreground, #94a3b8);
+}
+
+/* ---------- Enveloppe draggable ---------- */
+
+.kb-drag-wrap {
+  border-radius: var(--radius, 10px);
+  outline: none;
+  touch-action: manipulation; /* scroll tactile naturel, drag sur appui long */
+}
+
+.kb-drag-wrap:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 2px;
+}
+
+/* L'original reste en place comme repère pendant le drag (overlay au doigt). */
+.kb-drag-source .kb-card {
+  opacity: 0.35;
+  border: 1px dashed var(--border, #cbd5e1);
+  box-shadow: none;
+}
+
+.kb-drag-overlay .kb-card {
+  cursor: grabbing;
+  transform: rotate(2deg) scale(1.02);
+  box-shadow: var(--shadow-ui-lg, 0 10px 24px rgba(15, 23, 42, 0.25));
+}
+
+/* ---------- Cartes ---------- */
+
+.kb-card {
+  position: relative;
+  padding: 0.6rem 0.7rem;
+  background: var(--background, #fff);
+  border: 1px solid var(--border, transparent);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-xs, 0 1px 2px rgba(15, 23, 42, 0.08));
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.kb-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 40%, transparent);
+  box-shadow: var(--shadow-ui-md, 0 4px 10px rgba(15, 23, 42, 0.12));
+}
+
+.kb-card:active {
+  cursor: grabbing;
+}
+
+/* Petite poignée de glissé qui apparaît au survol (affordance « déplaçable »). */
+.kb-card::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 45%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.kb-card:hover::before {
+  opacity: 1;
+}
+
+/* Étape en cours d'enregistrement (PATCH en vol) : carte gelée. */
+.kb-card-busy {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Lead perdu : nettement distinct mais il RESTE dans sa colonne d'étape. */
+.kb-card-perdu {
+  border-left: 3px solid var(--destructive, #dc2626);
+  background: color-mix(in srgb, var(--destructive, #dc2626) 7%, var(--background, #fff));
+}
+
+.kb-card-perdu .kb-card-sub,
+.kb-card-perdu .kb-tags,
+.kb-card-perdu .kb-card-foot {
+  filter: saturate(0.5);
+  opacity: 0.9;
+}
+
+.kb-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.kb-card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--foreground, #0b1f3a);
+  overflow-wrap: anywhere;
+}
+
+.kb-badge-perdu {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--destructive, #dc2626);
+  color: var(--destructive-foreground, #fff);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Bouton « Devis auto » ⚡ */
+.kb-flash {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--cat-gold-soft, color-mix(in srgb, var(--warning, #f5a623) 16%, transparent));
+  color: var(--warning, #92600a);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.kb-flash:hover:not(:disabled) {
+  background: var(--cat-gold, var(--warning, #f5a623));
+  border-color: var(--cat-gold, var(--warning, #f5a623));
+  color: #fff;
+}
+
+.kb-flash:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: 1px;
+}
+
+/* Lead pas prêt pour le devis auto (champs manquants côté serveur) */
+.kb-flash:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kb-card-sub {
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--muted-foreground, #64748b);
+}
+
+/* ---------- Tags ---------- */
+
+.kb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.kb-tag {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+/* ---------- Pied de carte ---------- */
+
+.kb-card-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.kb-canal {
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  background: var(--muted, #eef2f7);
+  color: var(--muted-foreground, #475569);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.kb-stars {
+  font-size: 0.8rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+
+.kb-star {
+  color: var(--border, #d1d5db);
+}
+
+.kb-star-on {
+  color: var(--cat-gold, var(--warning, #f5a623));
+}
+
+.kb-relance {
+  padding: 0.06rem 0.4rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--background, #fff);
+  color: var(--muted-foreground, #475569);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.kb-relance-late {
+  border-color: color-mix(in srgb, var(--destructive, #dc2626) 35%, transparent);
+  background: color-mix(in srgb, var(--destructive, #dc2626) 8%, transparent);
+  color: var(--destructive, #dc2626);
+  font-weight: 600;
+}
+
+.kb-avatar {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary, #0b1f3a);
+  color: var(--primary-foreground, #fff);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 768px) {
+  .kb-board {
+    gap: 0.6rem;
+    padding: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kb-col {
+    flex: 0 0 85vw;
+    max-width: 320px;
+  }
+
+  /* Cible tactile confortable pour le bouton ⚡ */
+  .kb-flash {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1.05rem;
+  }
+}
+
+/* Sélecteur de responsable (avatar) sur la carte — poussé à droite du pied. */
+.kb-card-assignee { margin-left: auto; display: inline-flex; align-items: center; }
+
+/* Pastille horloge d'activité (activité ouverte la plus proche). */
+.kb-act-clock { font-size: 0.8rem; margin-left: 2px; }
+.kb-act-clock.overdue { filter: none; color: var(--destructive, #dc2626); }
+.kb-act-clock.today { color: var(--warning, #d97706); }
+.kb-act-clock.upcoming { color: var(--success, #16a34a); }
+
+/* Case de sélection sur la carte (actions en masse, T3). */
+.kb-card-check {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--primary, #0f172a);
+}
+.kb-card-selected {
+  outline: 2px solid var(--primary, #0f172a);
+  outline-offset: -1px;
+}
+
+/* ===== migrated from src/pages/crm/leads/views/listview.css (P67) ===== */
+/* Vue LISTE des leads CRM — style dense façon Odoo, identité navy/or.
+   Préfixe lv- ; s'appuie sur .data-table (index.css) sans le modifier. */
+
+.lv-wrap {
+  --cat-navy: #0b1f3a;
+  --cat-gold: #f5a623;
+  --cat-gold-soft: #fdf3e0;
+  overflow-x: auto;
+}
+
+/* Densité : un cran plus serré que la table globale. */
+.lv-table td {
+  padding: 8px 12px;
+}
+.lv-table th {
+  padding: 7px 12px;
+}
+
+.lv-table tbody tr.lv-row {
+  cursor: pointer;
+}
+
+/* Lignes « Perdu » : teinte rouge claire mais lisible (prime sur le hover global). */
+.lv-table tbody tr.lv-row-perdu,
+.lv-table tbody tr.lv-row-perdu:hover {
+  background: color-mix(in srgb, var(--destructive, #dc2626) 8%, transparent);
+}
+.lv-table tbody tr.lv-row-perdu:hover {
+  background: color-mix(in srgb, var(--destructive, #dc2626) 14%, transparent);
+}
+
+/* Lead archivé : ligne grisée/atténuée (visible via Tous / Archivés). */
+.lv-table tbody tr.lv-row-archived {
+  opacity: 0.55;
+  background: var(--muted, #f1f5f9);
+}
+.lv-table tbody tr.lv-row-archived:hover {
+  opacity: 0.75;
+  background: var(--accent, #e2e8f0);
+}
+
+/* ── En-têtes triables ── */
+.lv-th-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.lv-th-btn:hover {
+  color: var(--cat-navy, #0b1f3a);
+}
+.lv-th-btn:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.lv-sort-ind {
+  font-size: 0.6rem;
+  min-width: 0.7em;
+  color: var(--cat-gold, #f5a623);
+}
+
+/* ── Colonne Lead ── */
+.lv-lead-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.lv-lead-name {
+  font-weight: 600;
+  color: var(--cat-navy, #0b1f3a);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lv-lead-societe {
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #94a3b8);
+}
+.lv-badge-perdu {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 14%, transparent);
+  color: var(--destructive, #b91c1c);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* ── Pastille d'étape (couleurs inline depuis STAGE_COLORS) ── */
+.lv-stage-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ── Responsable ── */
+.lv-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.lv-avatar {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--cat-navy, #0b1f3a);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+}
+
+/* ── Priorité (2 étoiles) ── */
+.lv-stars {
+  font-size: 0.95rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.lv-star {
+  color: #d1d5db;
+}
+.lv-star-on {
+  color: var(--cat-gold, #f5a623);
+}
+
+/* ── Relance en retard ── */
+.lv-relance-late {
+  color: var(--destructive, #dc2626);
+  font-weight: 600;
+}
+
+/* ── Tags ── */
+.lv-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lv-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── État vide ── */
+.lv-empty {
+  text-align: center;
+  color: var(--muted-foreground, #94a3b8);
+  padding: 24px 14px;
+}
+
+/* ── Mobile (≤768px) : la table globale passe en cartes ; on garde la
+      colonne Lead alignée à gauche malgré son data-label. ── */
+@media (max-width: 768px) {
+  .lv-lead-cell {
+    align-items: flex-end;
+  }
+  .lv-table .actions-cell {
+    justify-content: flex-end;
+  }
+}
+
+/* Colonne de sélection (actions en masse, T3). */
+.lv-check-col {
+  width: 36px;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 0;
+}
+.lv-check-col input { cursor: pointer; width: 16px; height: 16px; }
+.lv-row-selected,
+.lv-table tbody tr.lv-row-selected:hover {
+  background: color-mix(in srgb, var(--primary, #0f172a) 10%, transparent);
+}
+
+/* ===== migrated from src/pages/installations/views/kanban-chantier.css (P67) ===== */
+/* N2 / J43 — compléments de style pour les cartes du kanban chantier, portées
+   sur les tokens du système de design (variables sémantiques, mode sombre). Le
+   squelette de carte (kb-card) et le câblage du drag viennent de kanban.css. */
+
+.kc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.kc-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.kc-card-ref {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.kc-card-sub {
+  font-size: 0.74rem;
+  color: var(--muted-foreground);
+}
+
+.kc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.kc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+}
+
+.kc-chip-icon {
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.kc-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.kc-progress-label {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.kc-reassign {
+  margin-top: 0.2rem;
+}
+
+/* ===== migrated from src/providers/command-palette.css (P67) ===== */
+/* L56 — Palette de commandes (⌘K). Styles scoped, tokenisés sur le design
+   system. N'altère pas src/index.css (propriété d'une autre lane). */
+.cmdk-content {
+  /* On surcharge la largeur/positionnement de DialogContent pour une palette
+     ancrée en haut, à la manière des palettes de commandes natives. Le
+     primitif applique déjà -translate-x-1/2 -translate-y-1/2 ; on neutralise
+     la translation verticale et on ancre le haut à 12vh. */
+  top: 12vh;
+  transform: translate(-50%, 0);
+  width: calc(100% - 2rem);
+  max-width: 38rem;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.cmdk-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--border, hsl(0 0% 90%));
+}
+
+.cmdk-input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+.cmdk-input::placeholder { color: var(--muted-foreground, #94a3b8); }
+
+.cmdk-list {
+  max-height: 56vh;
+  overflow-y: auto;
+  padding: 0.375rem;
+}
+
+.cmdk-state {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--muted-foreground, #94a3b8);
+  font-size: 0.875rem;
+}
+
+.cmdk-group-title {
+  padding: 0.5rem 0.625rem 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground, #94a3b8);
+}
+
+.cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-radius: var(--radius-md, 0.5rem);
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cmdk-item[data-active='true'],
+.cmdk-item:hover {
+  background: var(--accent, #f1f5f9);
+}
+
+.cmdk-item-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdk-item-sub {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted-foreground, #94a3b8);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmdk-footer {
+  display: flex;
+  gap: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border, hsl(0 0% 90%));
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #94a3b8);
+}
+.cmdk-kbd {
+  display: inline-block;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border, hsl(0 0% 85%));
+  border-radius: 0.25rem;
+  font-family: inherit;
+  font-size: 0.7rem;
+}
+
+/* ===== migrated from src/pages/parametres/parametres.css (P67) ===== */
+/* Barre d'onglets (J48) : le primitif <TabsList> est rendu défilable
+   horizontalement sur téléphone — la barre scrolle à l'intérieur, la page ne
+   déborde jamais. Le style visuel des onglets vient des tokens (@/ui Tabs). */
+.pe-tabs-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Grilles responsives de la page Paramètres : multi-colonnes au bureau,
+   une seule colonne sur téléphone (plus de débordement horizontal). */
+.pe-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.pe-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.pe-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; }
+.pe-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.6rem; }
+.pe-grid-relance { display: grid; grid-template-columns: 1fr 110px; gap: 0.6rem; align-items: end; }
+
+/* Le bloc principal passe en 1 colonne tôt (la colonne droite descend). */
+@media (max-width: 900px) {
+  .pe-main { grid-template-columns: 1fr; }
+}
+/* Sur téléphone, toutes les grilles de champs passent en 1 colonne. */
+@media (max-width: 560px) {
+  .pe-grid-2,
+  .pe-grid-3,
+  .pe-grid-4 { grid-template-columns: 1fr; }
+  .pe-grid-relance { grid-template-columns: 1fr 1fr; }
+}

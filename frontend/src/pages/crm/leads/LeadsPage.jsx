@@ -20,7 +20,6 @@ import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
-import './leadspage.css'
 
 const VIEW_KEY = 'taqinor.leads.view'
 const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']

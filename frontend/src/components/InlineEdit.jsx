@@ -4,7 +4,6 @@
 // La validation reste SERVEUR : si onSave rejette, on restaure l'ancienne
 // valeur et on affiche le message. Présentation pure et réutilisable.
 import { useEffect, useRef, useState } from 'react'
-import './inlineedit.css'
 
 export default function InlineEdit({
   value, type = 'text', options = null, display = null,

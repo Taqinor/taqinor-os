@@ -10,7 +10,6 @@ import { STAGE_LABELS } from '../../../features/crm/stages'
 import {
   Button, Spinner, Checkbox, RadioGroup, RadioGroupItem, Badge, EmptyState,
 } from '../../../ui'
-import './doublonspanel.css'
 
 function ClusterCard({ cluster, onMerged }) {
   const [survivor, setSurvivor] = useState(cluster.suggested_survivor_id)

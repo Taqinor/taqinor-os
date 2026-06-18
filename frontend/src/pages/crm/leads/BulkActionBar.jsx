@@ -13,7 +13,6 @@ import {
   Button, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
-import './bulkactionbar.css'
 
 // Radix Select interdit la valeur chaîne vide → sentinelle pour « aucun ».
 const NO_OWNER = '__none'

@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../../api/reportingApi'
-import './globalsearch.css'
 
 // Route d'ouverture par type d'entité (cf. router/index.jsx).
 const ROUTE = {

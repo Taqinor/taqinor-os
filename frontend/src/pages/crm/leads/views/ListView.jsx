@@ -19,7 +19,6 @@ import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import { Button, Checkbox } from '../../../../ui'
-import './listview.css'
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 const STAGE_OPTIONS = PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s }))
