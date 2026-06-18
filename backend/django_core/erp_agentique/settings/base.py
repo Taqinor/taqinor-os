@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'apps.roles',
     'apps.installations',
     'apps.sav',
+    'apps.outillage',
     'apps.records',
     'apps.customfields',
     'apps.documents',

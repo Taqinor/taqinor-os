@@ -19,6 +19,7 @@ ALLOWED_TARGETS = {
     ('crm', 'client'),
     ('installations', 'installation'),
     ('sav', 'ticket'),
+    ('outillage', 'outillage'),
 }
 
 

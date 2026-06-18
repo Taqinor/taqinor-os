@@ -28,6 +28,7 @@ import DevisSection from './DevisSection'
 import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
 import ChecklistSection from './ChecklistSection'
+import KitsSection from './KitsSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import AvanceSection from './AvanceSection'
@@ -506,6 +507,8 @@ export default function ParametresEntreprise() {
           {tab === 'statuts'    && <StatutsSection />}
           {/* N74 — éditeur de modèles de checklist par type d'installation. */}
           {tab === 'checklists' && <ChecklistSection />}
+          {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}
+          {tab === 'kits'       && <KitsSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}

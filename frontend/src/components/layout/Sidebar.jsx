@@ -36,6 +36,7 @@ const I = {
   briefcase:    <Ic size={13}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></Ic>,
   user_single:  <Ic size={13}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Ic>,
   chantiers:    <Ic><path d="M2 20h20"/><path d="M4 20V8l8-5 8 5v12"/><path d="M9 20v-6h6v6"/></Ic>,
+  outillage:    <Ic><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6a2 2 0 1 0 2.8 2.8l6-6a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.1-2.1 2.6-2.6z"/></Ic>,
   equipements:  <Ic><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></Ic>,
   sav:          <Ic><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6a2 2 0 1 0 2.8 2.8l6-6a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.1-2.1 2.6-2.6z"/></Ic>,
   agenda:       <Ic><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Ic>,
@@ -89,6 +90,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/chantiers',            label: 'Chantiers',        icon: I.chantiers,    roles: ['normal','responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    icon: I.equipements,  roles: ['normal','responsable','admin'] },
+      { to: '/outillage',            label: 'Outillage',        icon: I.outillage,    roles: ['normal','responsable','admin'] },
     ],
   },
   {
