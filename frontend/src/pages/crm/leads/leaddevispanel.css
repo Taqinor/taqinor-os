@@ -113,11 +113,24 @@
 .ldp-format { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ldp-toolbar-actions { display: flex; gap: 8px; }
 
+/* Bascule « Inclure l'étude » : aligne la case @/ui avec son libellé. */
+.ldp-etude-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #475569);
+  cursor: pointer;
+  user-select: none;
+}
+
 .ldp-pdf-area {
   flex: 1;
   min-height: 0;
   position: relative;
-  background: #475569;
+  /* Fond sombre « visionneuse » derrière les pages du document. */
+  background: var(--pdf-backdrop, #475569);
 }
 
 .ldp-pdf-loading {
@@ -125,8 +138,13 @@
   top: 16px;
   left: 0;
   right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   text-align: center;
-  color: #fff;
+  font-size: 0.9rem;
+  color: var(--pdf-on-backdrop, #ffffff);
 }
 
 .ldp-iframe {
@@ -163,29 +181,21 @@
 }
 
 /* Repli quand l'aperçu inline ne se rend pas (bloqueur de pub / réseau) ou
-   quand le serveur ne peut pas générer le PDF : centré sur la zone sombre,
-   jamais un cadre d'erreur brut. */
+   quand le serveur ne peut pas générer le PDF : un EmptyState @/ui centré sur la
+   zone sombre. On neutralise le cadre par défaut (bordure/fond) pour qu'il
+   s'inscrive sur le fond « visionneuse » au lieu d'une carte claire. */
 .ldp-fallback {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
+  border: 0;
+  background: transparent;
   padding: 24px;
-  text-align: center;
+  max-width: none;
+  /* Texte lisible sur le fond sombre de la visionneuse. */
+  color: var(--pdf-on-backdrop, #f1f5f9);
 }
 
-.ldp-fallback-icon { font-size: 40px; line-height: 1; }
-
-.ldp-fallback-msg {
-  margin: 0;
-  max-width: 420px;
-  line-height: 1.5;
-  color: #f1f5f9;
-  font-size: 0.95rem;
-}
+.ldp-fallback p { color: inherit; }
 
 .ldp-fallback-actions {
   display: flex;
@@ -194,17 +204,34 @@
   justify-content: center;
 }
 
-.ldp-fallback-retry {
-  background: none;
-  border: none;
-  color: #cbd5e1;
-  text-decoration: underline;
-  cursor: pointer;
-  font-size: 0.85rem;
-  padding: 4px;
+.ldp-fallback-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
-.ldp-fallback-retry:hover { color: #fff; }
+
+/* Lien « Réessayer l'aperçu » lisible sur fond sombre. */
+.ldp-fallback-retry {
+  color: var(--pdf-on-backdrop, #cbd5e1);
+  opacity: 0.85;
+}
+.ldp-fallback-retry:hover { opacity: 1; }
 
 @media (max-width: 640px) {
   .ldp-panel { width: 100%; }
+
+  /* Barre d'outils empilée sur mobile : format au-dessus, actions pleine
+     largeur en dessous. */
+  .ldp-toolbar {
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .ldp-format { justify-content: space-between; }
+  .ldp-toolbar-actions { width: 100%; }
+  .ldp-toolbar-actions > * { flex: 1; }
+
+  .ldp-fallback { padding: 16px; }
+  .ldp-fallback-actions { width: 100%; flex-direction: column; }
 }
