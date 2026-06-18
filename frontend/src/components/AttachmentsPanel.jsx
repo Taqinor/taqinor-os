@@ -80,7 +80,7 @@ export default function AttachmentsPanel({ model, id, onChange }) {
               href={a.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground hover:text-primary hover:underline"
+              className="att-name flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground hover:text-primary hover:underline"
             >
               <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="truncate">{a.filename}</span>

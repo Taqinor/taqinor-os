@@ -35,6 +35,7 @@ export default function AssigneePicker({
           title={currentName ? `Responsable : ${currentName}` : 'Assigner un responsable'}
           onClick={(e) => e.stopPropagation()}
           className={cn(
+            'ap-trigger',
             'inline-flex max-w-full items-center gap-2 text-sm text-foreground transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
             compact
@@ -54,14 +55,14 @@ export default function AssigneePicker({
           align={compact ? 'end' : 'start'}
           sideOffset={4}
           onClick={(e) => e.stopPropagation()}
-          className="z-[var(--z-popover)] max-h-72 min-w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
+          className="ap-menu z-[var(--z-popover)] max-h-72 min-w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
         >
           {allowUnassigned && (
             <PopoverPrimitive.Close asChild>
               <button
                 type="button"
                 onClick={() => pick(null)}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
+                className="ap-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
               >
                 <Avatar name={null} size={22} />
                 <span>Non assigné</span>
@@ -73,7 +74,7 @@ export default function AssigneePicker({
               <button
                 type="button"
                 onClick={() => pick(u.id)}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
+                className="ap-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
               >
                 <Avatar name={u.username} src={u.avatar_url} size={22} />
                 <span className="flex flex-col leading-tight">

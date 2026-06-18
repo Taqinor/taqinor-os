@@ -20,7 +20,7 @@ import {
   Toaster, toast, Tag, Avatar, AvatarFallback, AvatarGroup, initials,
   DefinitionList, Tabs, TabsList, TabsTrigger, TabsContent,
   Accordion, AccordionItem, AccordionTrigger, AccordionContent, Progress,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectLabel,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem, SelectLabel,
   Combobox, MultiSelect, DatePicker, DateRangePicker, TimePicker,
   FileUpload,
   Form, FormSection, FormField, FormActions, FormErrorSummary, useDirtyGuard,
@@ -222,10 +222,12 @@ export function UIShowcase() {
               <Select value={marche} onValueChange={setMarche}>
                 <SelectTrigger id="g23-select"><SelectValue placeholder="Choisir un marché…" /></SelectTrigger>
                 <SelectContent>
-                  <SelectLabel>Type d’installation</SelectLabel>
-                  <SelectItem value="residentiel">Résidentiel</SelectItem>
-                  <SelectItem value="industriel">Industriel / Commercial</SelectItem>
-                  <SelectItem value="agricole">Agricole (pompage)</SelectItem>
+                  <SelectGroup>
+                    <SelectLabel>Type d’installation</SelectLabel>
+                    <SelectItem value="residentiel">Résidentiel</SelectItem>
+                    <SelectItem value="industriel">Industriel / Commercial</SelectItem>
+                    <SelectItem value="agricole">Agricole (pompage)</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
