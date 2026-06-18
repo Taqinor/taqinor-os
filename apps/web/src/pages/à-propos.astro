@@ -22,30 +22,30 @@ import StickyCta from '../components/StickyCta.astro';
 const etapes = [
   {
     n: '01',
-    title: 'L’étude avant le devis',
-    body: 'Tout commence par votre consommation réelle et votre toiture — surface utile, orientation, ombrage. C’est l’étude qui décide de la puissance et du matériel, jamais un kit standard. L’étude et le diagnostic sont à 0 MAD.',
+    title: 'On lit la toiture et la facture',
+    body: 'Surface utile, orientation, ombrage, consommation réelle : ces quatre données fixent la puissance et le matériel. Nous ne faisons que les lire et en tirer le bon dimensionnement. Le diagnostic et l’étude sont à 0 MAD.',
   },
   {
     n: '02',
-    title: 'Validée par le fondateur',
-    body: 'Chaque étude est validée personnellement par le fondateur, docteur-ingénieur avec plus de 10 ans d’expertise en R&D. Le dimensionnement est un calcul, pas un argument de vente.',
+    title: 'Le fondateur signe l’étude',
+    body: 'Avant toute commande, le fondateur — docteur-ingénieur, plus de 10 ans de R&D — relit et valide personnellement le dimensionnement. Une étude qui sort d’ici a été défendue par quelqu’un qui répond du chiffre.',
   },
   {
     n: '03',
-    title: 'Le chantier, sans mise en scène',
-    body: 'Matériel tier-1 uniquement, posé avec un dossier technique complet — schémas, calcul de câbles, protections, mise en service. Nos chantiers de Casablanca, El Jadida et Nouaceur sont réels et visitables sur demande.',
+    title: 'On pose, dossier à l’appui',
+    body: 'Marques tier-1 uniquement, installées avec leur dossier technique complet : schémas unifilaires, calcul de câbles, protections, mise en service. Nos chantiers de Casablanca, El Jadida et Nouaceur sont réels et se visitent sur demande.',
   },
   {
     n: '04',
-    title: 'La preuve après la pose',
-    body: 'Chaque installation est supervisée sur Deye Cloud : la production se mesure en temps réel, le client garde son accès. La conformité loi 82-21 est traitée de bout en bout — déclaration ou régularisation comprise.',
+    title: 'Le compteur prend le relais',
+    body: 'Une fois en service, Deye Cloud relève la production en continu et le client garde son accès — la preuve remplace la promesse. En parallèle, le dossier loi 82-21 est mené à terme : déclaration ou régularisation comprise.',
   },
 ];
 ---
 
 <Layout
-  title="À propos de Taqinor — notre approche d’ingénieur | Taqinor"
-  description="L’approche Taqinor : un fondateur docteur-ingénieur qui valide personnellement chaque étude, la méthode « l’étude d’abord, le chantier ensuite », du matériel tier-1, une production mesurée sur Deye Cloud et une conformité loi 82-21 de bout en bout."
+  title="À propos — le fondateur, docteur-ingénieur, derrière chaque étude | Taqinor"
+  description="Le fondateur de Taqinor est docteur-ingénieur, passé par plus de dix ans de R&D chez Huawei, Ericsson et STMicroelectronics. Il valide personnellement chaque étude avant la moindre commande de matériel. Voici pourquoi un ingénieur s’est mis au solaire, et ce que cela change pour vous."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -56,13 +56,13 @@ const etapes = [
 
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Notre approche</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Une exigence d’ingénieur, du diagnostic au monitoring</h1>
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Le fondateur</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Un docteur-ingénieur valide chaque étude, à la main</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Taqinor a été fondée sur une conviction simple : une installation solaire est un
-          placement sur 25 ans, et un placement se calcule. Notre méthode tient en une phrase —
-          <strong class="text-white">l’étude d’abord, le chantier ensuite</strong> — et chaque étape
-          répond à un standard d’ingénierie, pas à un argument commercial.
+          Le fondateur de Taqinor a passé plus de dix ans en recherche et développement chez
+          <strong class="text-white">Huawei, Ericsson et STMicroelectronics</strong>. Il a quitté ce
+          monde pour le solaire parce qu’il y a vu, partout, le même réflexe : vendre un kit avant
+          d’avoir fait le calcul. Ici, l’ordre est inversé — et c’est lui qui signe le calcul.
         </p>
       </div>
     </section>
@@ -71,30 +71,36 @@ const etapes = [
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-azur-600">Le fondateur</p>
-        <h2 class="display v2-section-title mt-5">Docteur-ingénieur — chaque étude validée à la main</h2>
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Un parcours d’ingénieur</p>
+        <h2 class="display v2-section-title mt-5">Dix ans de R&D, mis au service de votre toiture</h2>
         <p class="v2-lead mt-5 text-encre-soft">
-          Le fondateur de Taqinor est docteur-ingénieur, avec plus de dix ans d’expertise en
-          recherche et développement menée chez <strong class="text-encre">Huawei, Ericsson et
-          STMicroelectronics</strong> — trois références mondiales de la haute technologie.
-          Concrètement, cette exigence ne reste pas une ligne sur une plaquette :
-          <strong class="text-encre">chaque étude est validée personnellement par le fondateur</strong>
-          avant qu’un seul panneau ne soit commandé. La puissance retenue, le choix de
-          l’onduleur, l’opportunité d’une batterie — tout part d’un calcul sur votre consommation
-          réelle, et tout est tranché par quelqu’un qui sait lire ce calcul.
+          Docteur-ingénieur, le fondateur a mené plus de dix ans de recherche et développement chez
+          <strong class="text-encre">Huawei, Ericsson et STMicroelectronics</strong>. Trois maisons
+          où une décision technique ne se prend pas à l’intuition : elle se mesure, se vérifie, et
+          se défend chiffres à l’appui. C’est exactement cette discipline qu’il applique aujourd’hui
+          à une installation solaire — un objet bien plus simple, mais dont l’économie tient
+          pourtant à quelques paramètres qu’on néglige trop souvent de calculer.
         </p>
         <p class="mt-5 text-encre-soft">
-          Pourquoi un ingénieur passé par la R&amp;D de pointe lance-t-il une entreprise solaire ?
-          Parce que le solaire est, avant tout, un problème d’ingénierie : mesurer une consommation,
-          dimensionner une puissance, choisir le bon matériel, prouver une production. Trop
-          d’installations sont pourtant vendues comme des kits, sans véritable calcul. Taqinor est
-          née de cette conviction simple — <strong class="text-encre">l’étude d’abord, le chantier
-          ensuite</strong>.
+          Concrètement, <strong class="text-encre">il valide personnellement chaque étude avant
+          qu’une seule référence ne soit commandée</strong>. La puissance retenue, le choix de
+          l’onduleur, l’opportunité d’une batterie : rien n’est décidé par un commercial pressé ou
+          recopié d’un kit. Tout part de votre facture et de votre toiture, et tout est tranché par
+          quelqu’un dont le métier, depuis vingt ans, est de lire ce genre de calcul. C’est cette
+          signature qui sépare un dimensionnement d’une estimation au jugé.
+        </p>
+        <p class="mt-5 text-encre-soft">
+          Pourquoi un ingénieur quitte la R&amp;D de pointe pour le solaire au Maroc ? Parce que le
+          décalage y est devenu intenable : un actif qui engage le client sur vingt-cinq ans, vendu
+          en une après-midi comme on vend un électroménager. Le solaire est d’abord un problème de
+          mesure — combien vous consommez, quand, sur quelle surface, avec quel ombrage — et ce
+          problème-là, un ingénieur sait le résoudre. Taqinor existe pour traiter chaque toiture
+          comme un dossier technique, pas comme une vente.
         </p>
         <p class="mt-5 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          C’est aussi pour cela que nous vous dirons honnêtement quand le solaire n’est pas le bon
-          placement pour votre profil. Le rôle de l’ingénieur n’est pas de vendre du matériel : c’est
-          de dimensionner juste.
+          Cette même rigueur nous conduit parfois à vous déconseiller le solaire, quand les chiffres
+          ne suivent pas pour votre profil. Un ingénieur n’est pas payé pour placer du matériel : il
+          est là pour dimensionner juste, ou dire non.
         </p>
       </div>
     </section>
@@ -103,10 +109,11 @@ const etapes = [
     <section class="px-4 py-20 sm:py-28">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-brass-300">La méthode</p>
-        <h2 class="display v2-section-title mt-5 text-white">L’étude d’abord, le chantier ensuite</h2>
+        <h2 class="display v2-section-title mt-5 text-white">Quatre temps, et l’ordre n’est pas négociable</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
-          La même logique, du premier contact au suivi de production. Quatre temps, dans cet ordre —
-          parce que l’ordre, justement, fait la différence.
+          La même logique se déroule du premier contact au suivi de production. Le calcul vient
+          avant le devis, le devis avant la pose, la mesure après la pose : intervertir ces temps,
+          c’est revenir au kit qu’on cherche justement à éviter.
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
@@ -124,13 +131,13 @@ const etapes = [
     <section class="border-y border-white/10 px-4 py-16 sm:py-20">
       <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Nos standards</p>
-          <h2 class="display v2-section-title mt-5 text-white">Des principes qui ne se négocient pas</h2>
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Ce que la méthode produit</p>
+          <h2 class="display v2-section-title mt-5 text-white">La même exigence, déclinée en quatre engagements</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            Matériel tier-1 uniquement, production mesurée sur Deye Cloud avec accès client,
-            conformité loi 82-21 de bout en bout, et des chantiers réels qu’on peut aller voir.
-            Ces standards sont la traduction directe de la méthode — la preuve plutôt que la
-            promesse.
+            La conviction du fondateur ne reste pas sur cette page : elle se lit dans les choix
+            concrets de chaque chantier — matériel tier-1, suivi Deye Cloud avec accès client,
+            dossier loi 82-21 mené à terme, installations qu’on peut aller voir. Vous voulez ces
+            différences détaillées, point par point ? C’est l’objet de la page <strong class="text-white">Pourquoi Taqinor</strong>.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             <a href="/pourquoi-taqinor" class="bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Pourquoi Taqinor →</a>
@@ -158,7 +165,7 @@ const etapes = [
       </div>
     </section>
 
-    <CtaBand title="Notre méthode commence par votre étude — gratuite." href="/contact#simulateur" />
+    <CtaBand title="Mettez le fondateur sur votre toiture : l’étude est gratuite." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

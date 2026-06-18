@@ -26,7 +26,7 @@ const jsonLd = {
 
 <Layout
   title="Faut-il des batteries pour son installation solaire ? | Taqinor"
-  description="Pas nécessairement. Si votre consommation est surtout diurne, l'autoconsommation directe est le meilleur investissement ; les batteries se justifient pour le nocturne ou la continuité de service. On vous explique pourquoi c'est l'étude qui décide."
+  description="Souvent non. Si vous consommez surtout en journée, l’autoconsommation directe rapporte plus que n’importe quelle batterie ; le stockage se justifie pour le nocturne ou la continuité de service. Tout se joue sur l’heure à laquelle votre compteur tourne."
   ogSlug="equipement"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -40,31 +40,36 @@ const jsonLd = {
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Faut-il des batteries ?</h1>
       <p class="v2-lead mt-6 text-lune-soft">
-        La réponse courte : pas nécessairement. C’est l’une des questions qu’on nous pose le plus,
-        et la bonne réponse dépend entièrement de <em>quand</em> vous consommez votre électricité.
+        Réponse courte : souvent non. C’est la question qui revient le plus, et beaucoup la posent
+        à l’envers — la batterie n’est pas le cœur d’une installation, c’est une option. Ce qui la
+        justifie ou non, c’est <em>l’heure</em> à laquelle vous consommez votre électricité.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Si vous consommez surtout en journée</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Si votre consommation est principalement diurne, l’autoconsommation directe est le
-        meilleur investissement : l’électricité produite par vos panneaux est utilisée au moment
-        même où elle est produite, sans passer par une batterie. C’est souvent le cas des foyers
-        actifs en journée, et des sites professionnels dont l’activité suit le soleil.
+        Quand l’essentiel de votre consommation tombe en plein jour, l’électricité de vos panneaux
+        part directement vers vos appareils, à la seconde où elle est produite, sans détour par une
+        batterie. Aucune perte de stockage, aucun matériel en plus à amortir : c’est le scénario le
+        plus rentable. Il colle aux foyers où l’on vit la journée et aux sites professionnels dont
+        l’activité suit le soleil.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Quand les batteries se justifient</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Quand le stockage devient utile</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Les batteries se justifient pour la consommation nocturne — quand vous utilisez le plus
-        d’électricité une fois le soleil couché — ou pour la continuité de service, lorsqu’il faut
-        sécuriser des équipements en cas de coupure. Stocker l’énergie produite en journée pour la
-        restituer le soir a alors un sens.
+        Le calcul s’inverse dès que votre pic de consommation arrive une fois le soleil couché :
+        là, stocker en journée pour restituer le soir a un sens économique. Deuxième cas de figure,
+        la continuité de service — garder certains équipements alimentés pendant une coupure. Dans
+        ces deux situations, la batterie cesse d’être un gadget pour devenir un poste qui se
+        rembourse.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">C’est l’étude qui tranche</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Ce que dit votre courbe de consommation</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Plutôt que de partir d’un kit standard avec ou sans batteries, nous analysons votre profil
-        de consommation réel — c’est lui qui décide. L’objectif n’est jamais d’ajouter du matériel,
-        mais de couvrir l’essentiel de votre facture au meilleur placement.
+        La réponse n’est donc pas dans un catalogue, elle est dans votre relevé. Nous regardons à
+        quelles heures votre compteur tourne le plus, et c’est cette courbe qui désigne — ou non —
+        une batterie. Ajouter du stockage « pour être tranquille » coûte cher sans rien rapporter
+        si votre consommation est diurne ; le bon réflexe, c’est de couvrir l’essentiel de la
+        facture au moindre euro investi.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>
@@ -73,7 +78,7 @@ const jsonLd = {
       </div>
     </article>
 
-    <CtaBand title="Batteries ou pas ? L’étude gratuite vous le dira." href="/contact#simulateur" />
+    <CtaBand title="Pour trancher sur votre cas précis, lancez l’étude gratuite." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

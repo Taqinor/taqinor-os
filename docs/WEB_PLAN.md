@@ -1172,7 +1172,7 @@ claims no residential VAT exemption; batteries and maintenance draw only from fa
 the site. Make each read as written by someone who knows the engineering, with varied rhythm and
 zero recycled blurbs. Refresh titles/meta-descriptions. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W40 — Rewrite the trust & story pages (pourquoi-taqinor, marocains-du-monde, garanties, guides hub + seed articles, /faq) + reconcile with à-propos — [ ]
+### W40 — Rewrite the trust & story pages (pourquoi-taqinor, marocains-du-monde, garanties, guides hub + seed articles, /faq) + reconcile with à-propos — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1185,7 +1185,7 @@ be sharp, specific and varied. Turn garanties from a table restatement into a re
 inventing no SLA or underperformance policy). Make the FAQ answers genuinely helpful and human,
 not boilerplate. Refresh titles/meta-descriptions. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W41 — Bring the à-propos founder page to its strongest honest form (approved pedigree) — [ ]
+### W41 — Bring the à-propos founder page to its strongest honest form (approved pedigree) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1655,3 +1655,15 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   Taqinor not a lender). nos-solutions keeps its CollectionPage JSON-LD and six links, each summary
   rewritten concrete and distinct. Recycled formulas removed; all JSON-LD '@type', V2Enhance/Breadcrumb
   and links preserved; nothing invented.
+- 2026-06-18 — W40 + W41 done together (trust & story pages + the founder page, sharing à-propos).
+  W40: pourquoi-taqinor, marocains-du-monde, garanties, the guides hub + its 3 seed articles, and /faq
+  rewritten in the STYLE.md voice. pourquoi-taqinor is now PURELY the differentiators list (the founder/
+  docteur-ingénieur claim stripped out of it and pointed to à-propos); garanties turned from a table
+  restatement into a real promise (84,8 % at 25 years made the load-bearing fact, no invented SLA);
+  FAQ answers made human and specific while keeping every figure and adding no financing/bank/tax
+  question; faq.astro keeps `<Faq items={faq}>` with no schema={false} and no inline FAQPage (single
+  FAQPage preserved). W41: à-propos brought to its strongest honest form on the owner-approved pedigree
+  (docteur-ingénieur, 10+ ans R&D chez Huawei, Ericsson et STMicroelectronics) with a deepened « why an
+  engineer started a solar company » narrative and « il valide personnellement chaque étude » — no
+  invented project/date/title/anecdote. pourquoi-taqinor and à-propos are now distinct and cross-linked
+  both ways. All three guides keep their Article JSON-LD; every marker/figure preserved.

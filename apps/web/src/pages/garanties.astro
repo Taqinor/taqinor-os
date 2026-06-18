@@ -23,23 +23,23 @@ const warranties = [
 
 const engagements = [
   {
-    title: 'Production mesurée, pas promise',
-    body: 'Chaque installation est supervisée sur Deye Cloud : production en temps réel, alertes automatiques, historiques. Le client reçoit son accès personnel via l’application mobile.',
+    title: 'Nous regardons votre courbe, pas seulement la nôtre',
+    body: 'Chaque installation remonte sur Deye Cloud : production en temps réel, historiques, alertes automatiques. Vous recevez votre accès personnel via l’application mobile — vous voyez exactement ce que nous voyons, jour après jour.',
   },
   {
-    title: 'SAV proactif',
-    body: 'Taqinor surveille l’ensemble du parc installé : les alertes automatiques permettent d’intervenir sans attendre que le client constate un problème.',
+    title: 'C’est nous qui repérons l’anomalie, pas vous',
+    body: 'Nous gardons un œil sur l’ensemble du parc installé. Quand une alerte se déclenche, elle nous parvient — l’idée étant d’agir sur un écart avant que vous n’ayez à constater quoi que ce soit chez vous.',
   },
   {
-    title: 'Dossier technique complet',
-    body: 'Chaque installation est livrée avec son dossier : schémas unifilaires, calcul de câbles, liste des protections, procédure de mise en service et accès monitoring Deye Cloud.',
+    title: 'Le dossier reste entre vos mains',
+    body: 'À la livraison, vous repartez avec tout : schémas unifilaires, calcul de câbles, liste des protections, procédure de mise en service et accès au monitoring Deye Cloud. De quoi faire intervenir n’importe quel technicien, le jour où vous le voudrez.',
   },
 ];
 ---
 
 <Layout
-  title="Nos garanties et engagements — 25 ans de performance | Taqinor"
-  description="Les garanties Taqinor, noir sur blanc : 12 ans produit et 25 ans de performance sur les panneaux, 10 ans onduleurs et batteries, 20 ans structure, 2 ans main-d'œuvre. Monitoring Deye Cloud et SAV proactif inclus."
+  title="Nos garanties — ce qui est couvert, et pour combien d’années | Taqinor"
+  description="Une installation Taqinor s’engage sur la durée : 25 ans de performance et 12 ans produit sur les panneaux (≥ 84,8 % de puissance à 25 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi qui repère l’anomalie avant vous, sur Deye Cloud."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -51,10 +51,13 @@ const engagements = [
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Engagements contractuels</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Nos garanties, noir sur blanc</h1>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Ce sur quoi nous nous engageons</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Une installation Taqinor n’est pas une promesse : c’est un dossier technique complet et
-          des garanties écrites, de 2 à 25 ans selon les composants. Voici lesquelles.
+          Une garantie n’a de valeur que si elle est écrite et activable. Les nôtres le sont,
+          composant par composant, de 2 à 25 ans — et celle qui compte vraiment sur un placement de
+          25 ans, c’est la performance : vos panneaux doivent encore restituer
+          <strong class="text-white">au moins 84,8 % de leur puissance à 25 ans</strong>. Le tableau
+          ci-dessous ne cache aucune ligne.
         </p>
       </div>
     </section>
@@ -64,7 +67,7 @@ const engagements = [
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">Durées de garantie</p>
-        <h2 class="display v2-section-title mt-5">Chaque composant, sa garantie</h2>
+        <h2 class="display v2-section-title mt-5">Chaque composant porte la sienne</h2>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {warranties.map((w, i) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
@@ -74,8 +77,9 @@ const engagements = [
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          Marques tier-1 sourcées via des distributeurs officiels au Maroc : les garanties sont
-          activables localement. <a href="/équipement" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir le matériel posé →</a>
+          Le détail qui change tout : ces marques tier-1 sont sourcées chez des distributeurs
+          officiels au Maroc. Une garantie ne vaut que si on peut la faire jouer sans rapatrier un
+          panneau à l’autre bout du monde — celles-ci s’activent sur place. <a href="/équipement" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir le matériel posé →</a>
         </p>
       </div>
     </section>
@@ -84,7 +88,7 @@ const engagements = [
     <section class="px-4 py-20 sm:py-28">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-brass-300">Au-delà du matériel</p>
-        <h2 class="display v2-section-title mt-5 text-white">Nos engagements de suivi</h2>
+        <h2 class="display v2-section-title mt-5 text-white">Le suivi qui prolonge la garantie</h2>
         <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
           {engagements.map((e, i) => (
             <div class="v2-rise cine-card p-7" style={`--v2-i:${i}`}>
@@ -101,7 +105,7 @@ const engagements = [
       </div>
     </section>
 
-    <CtaBand title="Des garanties claires commencent par une étude sérieuse." href="/contact#simulateur" />
+    <CtaBand title="Une garantie de 25 ans se mérite par une étude sérieuse. La nôtre est gratuite." href="/contact#simulateur" />
 
     <StickyCta />
   </div>
