@@ -320,3 +320,195 @@ describe('runtime W35 (toit en pente) — l\'optimiseur pente se déclenche', ()
     expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W46 — L'OPTIMISEUR RE-RÉSOUT APRÈS CHAQUE VERROU (pas seulement les deux premiers).
+// On MONTE le vrai script avec une surface PVGIS injectée (rendement qui dépend de
+// l'inclinaison ET de l'aspect) sur un toit TOURNÉ, puis on VERROUILLE des axes un par un
+// (3ᵉ, 4ᵉ, 5ᵉ verrou) en vérifiant que chaque verrou est TENU et que les axes encore AUTO
+// sont re-résolus (la production change quand un verrou déplace réellement l'optimum). On
+// vérifie aussi que LIBÉRER un axe (« Recommandé » de l'inclinaison) garde TOUS les autres
+// verrous accumulés — le bug W46 = un bouton qui effaçait tout après quelques verrous.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+/** Toit RECTANGULAIRE TOURNÉ de `rotDeg` (sens horaire) → « aligné toit » est un vrai choix
+ *  distinct du plein sud et l'Est-Ouest diffère. */
+function rotatedCorners(lenM: number, widM: number, rotDeg: number, lng0 = -7.62, lat0 = 33.59): [number, number][] {
+  const r = (rotDeg * Math.PI) / 180;
+  const cos = Math.cos(r), sin = Math.sin(r);
+  const mPerLat = 111320, mPerLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  const corners: [number, number][] = [[-lenM / 2, -widM / 2], [lenM / 2, -widM / 2], [lenM / 2, widM / 2], [-lenM / 2, widM / 2]];
+  return corners.map(([x, y]) => {
+    const xr = x * cos - y * sin, yr = x * sin + y * cos;
+    return [lng0 + xr / mPerLng, lat0 + yr / mPerLat] as [number, number];
+  });
+}
+
+/** Trace un toit à partir de coins lng/lat fournis (toit tourné), puis « Terminer ». */
+function traceCorners(map: FakeMap, corners: [number, number][]) {
+  vi.useFakeTimers();
+  for (const [lng, lat] of corners) {
+    map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+    vi.advanceTimersByTime(241);
+  }
+  vi.useRealTimers();
+  (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+}
+
+/** Laisse résoudre les promesses PVGIS (warming async) + le débattement 280 ms du tilt. */
+async function flushPvgis() {
+  for (let i = 0; i < 25; i++) await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 350));
+  for (let i = 0; i < 25; i++) await Promise.resolve();
+}
+
+/** Production annuelle (kWh) affichée, en nombre (sépare les espaces fines). */
+function prod(): number {
+  return Number((txt('rp9-reco-prod').match(/[\d   ]+/)?.[0] ?? '0').replace(/[^\d]/g, ''));
+}
+/** Valeurs des puces d'un groupe actuellement « pressées » (verrou ou miroir du gagnant). */
+function pressedVals(attr: string): string[] {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>(`[${attr}]`))
+    .filter((b) => b.getAttribute('aria-pressed') === 'true')
+    .map((b) => b.getAttribute(attr) || '');
+}
+
+describe('W46 (toit plat) — re-résolution après CHAQUE verrou (3ᵉ, 4ᵉ, Nᵉ)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    // PVGIS PRÉSENT : rendement = surface non triviale en (inclinaison, aspect) → chaque
+    // verrou qui déplace l'optimum DOIT changer la production. Pic à 29°, plein sud.
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body) as { legs: { tiltDeg: number; aspect: number; kwc: number }[] };
+      let annual = 0;
+      for (const lg of body.legs) {
+        const y = Math.max(200, 1800 - Math.abs(lg.tiltDeg - 29) * 12 - Math.abs(lg.aspect) * 8);
+        annual += (lg.kwc || 1) * y;
+      }
+      return { ok: true, json: async () => ({ ok: true, annualKwh: annual }) } as unknown as Response;
+    }));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('verrouiller le 3ᵉ puis le 4ᵉ axe re-résout (la production change) et TIENT tous les verrous', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('2500');
+    traceCorners(fakeMaps[0], rotatedCorners(30, 18, 35));
+    await flushPvgis();
+
+    // Verrou 1 : orientation Est-Ouest (sous-optimale ici → l'optimum change vraiment).
+    document.querySelector<HTMLButtonElement>('[data-family="eastwest"]')!.click();
+    await flushPvgis();
+    const afterLock1 = prod();
+    expect(pressedVals('data-family')).toContain('eastwest');
+
+    // Verrou 2 : pose paysage.
+    document.querySelector<HTMLButtonElement>('[data-orient="landscape"]')!.click();
+    await flushPvgis();
+    expect(pressedVals('data-orient')).toContain('landscape');
+
+    // Verrou 3 : inclinaison 10° (loin du pic 29° → la production DOIT chuter).
+    document.querySelector<HTMLButtonElement>('[data-tilt="10"]')!.click();
+    await flushPvgis();
+    const afterLock3 = prod();
+    expect(pressedVals('data-tilt')).toContain('10');
+    expect(afterLock3).toBeLessThan(afterLock1); // le 3ᵉ verrou a bien re-résolu
+    // tous les verrous précédents sont TENUS (accumulation)
+    expect(pressedVals('data-family')).toContain('eastwest');
+    expect(pressedVals('data-orient')).toContain('landscape');
+
+    // Verrou 4 : marge pleine rive — re-résout encore (le 4ᵉ verrou n'est pas ignoré).
+    document.querySelector<HTMLButtonElement>('[data-margin="remove"]')!.click();
+    await flushPvgis();
+    expect(pressedVals('data-margin')).toContain('remove');
+    // les trois verrous précédents tiennent toujours
+    expect(pressedVals('data-family')).toContain('eastwest');
+    expect(pressedVals('data-orient')).toContain('landscape');
+    expect(pressedVals('data-tilt')).toContain('10');
+
+    // Changer un axe DÉJÀ verrouillé (inclinaison 10 → 29 = le pic) re-résout : production remonte.
+    const beforeRetilt = prod();
+    document.querySelector<HTMLButtonElement>('[data-tilt="29"]')!.click();
+    await flushPvgis();
+    expect(pressedVals('data-tilt')).toContain('29');
+    expect(prod()).toBeGreaterThan(beforeRetilt); // 29° (pic) > 10°
+    // les autres verrous restent tenus pendant ce changement
+    expect(pressedVals('data-family')).toContain('eastwest');
+    expect(pressedVals('data-orient')).toContain('landscape');
+    expect(pressedVals('data-margin')).toContain('remove');
+  }, 60000);
+
+  it('libérer l\'inclinaison (« Recommandé ») garde les AUTRES verrous accumulés (W46 §3)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('2500');
+    traceCorners(fakeMaps[0], rotatedCorners(30, 18, 35));
+    await flushPvgis();
+
+    document.querySelector<HTMLButtonElement>('[data-family="eastwest"]')!.click();
+    await flushPvgis();
+    document.querySelector<HTMLButtonElement>('[data-orient="landscape"]')!.click();
+    await flushPvgis();
+    document.querySelector<HTMLButtonElement>('[data-tilt="10"]')!.click();
+    await flushPvgis();
+    expect(pressedVals('data-tilt')).toContain('10');
+
+    // LIBÉRER l'inclinaison via la puce « Recommandé » — ne doit PAS effacer family/orient.
+    document.querySelector<HTMLButtonElement>('[data-tilt="reco"]')!.click();
+    await flushPvgis();
+    expect(pressedVals('data-family')).toContain('eastwest'); // verrou conservé
+    expect(pressedVals('data-orient')).toContain('landscape'); // verrou conservé
+    // l'inclinaison est re-libérée : la production remonte vers l'optimum tenu (≠ 10° figé)
+    expect(txt('rp9-reco-prod')).toMatch(/kWh\/an/);
+
+    // Le BOUTON tilt-reco dédié (rp9-tilt-reco) doit faire pareil (ne pas tout réinitialiser).
+    document.querySelector<HTMLButtonElement>('[data-tilt="15"]')!.click();
+    await flushPvgis();
+    expect(pressedVals('data-tilt')).toContain('15');
+    (document.getElementById('rp9-tilt-reco') as HTMLButtonElement).click();
+    await flushPvgis();
+    expect(pressedVals('data-family')).toContain('eastwest'); // toujours tenu
+    expect(pressedVals('data-orient')).toContain('landscape'); // toujours tenu
+  }, 60000);
+
+  it('la séquence se termine quand TOUS les axes sont verrouillés (rien ne flotte)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('2500');
+    traceCorners(fakeMaps[0], rotatedCorners(30, 18, 35));
+    await flushPvgis();
+
+    // Verrouille les CINQ axes exposés : orientation(famille) + azimut + inclinaison + pose + marge.
+    document.querySelector<HTMLButtonElement>('[data-family="south"]')!.click();
+    await flushPvgis();
+    // azimut visible seulement sur toit tourné → présent ici
+    const aligned = document.querySelector<HTMLButtonElement>('[data-azimuth="aligned"]')!;
+    aligned.click();
+    await flushPvgis();
+    document.querySelector<HTMLButtonElement>('[data-tilt="29"]')!.click();
+    await flushPvgis();
+    document.querySelector<HTMLButtonElement>('[data-orient="portrait"]')!.click();
+    await flushPvgis();
+    document.querySelector<HTMLButtonElement>('[data-margin="remove"]')!.click();
+    await flushPvgis();
+
+    // Tous tenus, la carte reste remplie (pas de crash, pas de blanc).
+    expect(pressedVals('data-azimuth')).toContain('aligned');
+    expect(pressedVals('data-tilt')).toContain('29');
+    expect(pressedVals('data-orient')).toContain('portrait');
+    expect(pressedVals('data-margin')).toContain('remove');
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+    expect(txt('rp9-reco-prod')).toMatch(/kWh\/an/);
+
+    // « Réinitialiser » relâche TOUT → retour à l'optimum global.
+    (document.getElementById('rp9-optimum') as HTMLButtonElement).click();
+    await flushPvgis();
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  }, 60000);
+});
