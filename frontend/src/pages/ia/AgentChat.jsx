@@ -1,5 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Bot, MessageSquare, Send, Code2, ChevronDown } from 'lucide-react'
+import {
+  Button,
+  IconButton,
+  Card,
+  CardContent,
+  EmptyState,
+  Textarea,
+  TooltipProvider,
+  SimpleTooltip,
+} from '../../ui'
+import { cn } from '../../lib/cn'
 import { queryAgent, loadChatHistory, clearChatHistory } from '../../features/ia/store/iaSlice'
 
 const SUGGESTIONS = [
@@ -48,144 +60,171 @@ export default function AgentChat() {
   }
 
   return (
-    <div className="agent-page">
+    <TooltipProvider delayDuration={200}>
+      <div className="ui-root flex h-[calc(100vh-7rem)] min-h-[28rem] flex-col gap-3">
 
-      {/* ── Header ── */}
-      <div className="agent-header">
-        <div className="agent-header-left">
-          <div className="agent-avatar-lg">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
-            </svg>
+        {/* ── En-tête ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <Bot className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
+                Agent IA Conversationnel
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Groq · llama-3.3-70b · Données en temps réel
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="agent-title">Agent IA Conversationnel</h2>
-            <span className="agent-subtitle">Groq · llama-3.3-70b · Données en temps réel</span>
-          </div>
+          {messages.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => dispatch(clearChatHistory())}>
+              Nouvelle conversation
+            </Button>
+          )}
         </div>
-        {messages.length > 0 && (
-          <button className="btn btn-sm btn-outline" onClick={() => dispatch(clearChatHistory())}>
-            Nouvelle conversation
-          </button>
-        )}
-      </div>
 
-      {/* ── Zone messages ── */}
-      <div className="agent-messages">
+        {/* ── Zone messages ── */}
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
 
-        {messages.length === 0 && !agentLoading && (
-          <div className="agent-empty">
-            <div className="agent-empty-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            </div>
-            <h3 className="agent-empty-title">Posez une question sur vos données</h3>
-            <p className="agent-empty-desc">
-              L'agent analyse votre base de données en temps réel et répond en français.
-            </p>
-            <div className="agent-suggestions">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} className="agent-suggestion-chip" onClick={() => handleSuggestion(s)}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+            {messages.length === 0 && !agentLoading && (
+              <EmptyState
+                icon={MessageSquare}
+                title="Posez une question sur vos données"
+                description="L'agent analyse votre base de données en temps réel et répond en français."
+                className="border-0 py-8"
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {SUGGESTIONS.map((s) => (
+                      <Button
+                        key={s}
+                        variant="outline"
+                        size="sm"
+                        className="h-auto whitespace-normal py-1.5 text-left"
+                        onClick={() => handleSuggestion(s)}
+                      >
+                        {s}
+                      </Button>
+                    ))}
+                  </div>
+                }
+              />
+            )}
 
-        {messages.map((msg, i) => (
-          <div key={i} className={`agent-msg agent-msg-${msg.role}`}>
-            {msg.role === 'agent' && (
-              <div className="agent-msg-avatar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
-                </svg>
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={cn(
+                  'flex items-start gap-2.5',
+                  msg.role === 'user' && 'flex-row-reverse',
+                )}
+              >
+                {msg.role === 'agent' && (
+                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                    <Bot className="size-4" aria-hidden="true" />
+                  </span>
+                )}
+                <div
+                  className={cn(
+                    'max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm',
+                    msg.role === 'user'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-foreground',
+                  )}
+                >
+                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  {msg.sql_query && (
+                    <details className="group mt-2 rounded-md border border-border bg-card text-foreground">
+                      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+                        <Code2 className="size-3.5" aria-hidden="true" />
+                        Requête SQL générée
+                        <ChevronDown
+                          className="ml-auto size-3.5 transition-transform group-open:rotate-180"
+                          aria-hidden="true"
+                        />
+                      </summary>
+                      <pre className="overflow-x-auto border-t border-border px-2.5 py-2 text-xs text-muted-foreground">
+                        <code>{msg.sql_query}</code>
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {agentLoading && (
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <Bot className="size-4" aria-hidden="true" />
+                </span>
+                <div className="flex items-center gap-1 rounded-xl bg-muted px-3.5 py-3">
+                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+                </div>
               </div>
             )}
-            <div className="agent-msg-body">
-              <p className="agent-msg-text">{msg.content}</p>
-              {msg.sql_query && (
-                <details className="agent-sql">
-                  <summary>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-                    </svg>
-                    Requête SQL générée
-                  </summary>
-                  <pre className="agent-sql-code"><code>{msg.sql_query}</code></pre>
-                </details>
-              )}
-            </div>
-          </div>
-        ))}
 
-        {agentLoading && (
-          <div className="agent-msg agent-msg-agent">
-            <div className="agent-msg-avatar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
-              </svg>
-            </div>
-            <div className="agent-msg-body">
-              <div className="agent-typing">
-                <span /><span /><span />
+            {agentError && (
+              <div
+                role="alert"
+                className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              >
+                Erreur : {typeof agentError === 'string' ? agentError : JSON.stringify(agentError)}
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {agentError && (
-          <div className="page-error" style={{ margin: '0 0 1rem' }}>
-            Erreur : {typeof agentError === 'string' ? agentError : JSON.stringify(agentError)}
+            <div ref={messagesEndRef} />
           </div>
-        )}
 
-        <div ref={messagesEndRef} />
+          {/* ── Saisie ── */}
+          <div className="border-t border-border bg-card p-3 sm:p-4">
+            {messages.length > 0 && !agentLoading && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {SUGGESTIONS.slice(0, 3).map((s) => (
+                  <Button
+                    key={s}
+                    variant="outline"
+                    size="sm"
+                    className="h-auto whitespace-normal py-1 text-xs"
+                    onClick={() => handleSuggestion(s)}
+                  >
+                    {s}
+                  </Button>
+                ))}
+              </div>
+            )}
+            <form className="flex items-end gap-2" onSubmit={handleSubmit}>
+              <Textarea
+                ref={inputRef}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Posez votre question en français…"
+                disabled={agentLoading}
+                autoComplete="off"
+                className="max-h-32 min-h-[var(--control-h)] resize-none py-2.5"
+              />
+              <SimpleTooltip label="Envoyer">
+                <IconButton
+                  type="submit"
+                  variant="default"
+                  label="Envoyer"
+                  disabled={agentLoading || !input.trim()}
+                >
+                  <Send />
+                </IconButton>
+              </SimpleTooltip>
+            </form>
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              L'agent peut faire des erreurs. Vérifiez les informations importantes.
+            </p>
+          </div>
+        </Card>
       </div>
-
-      {/* ── Input ── */}
-      <div className="agent-input-area">
-        {messages.length > 0 && !agentLoading && (
-          <div className="agent-suggestions agent-suggestions-inline">
-            {SUGGESTIONS.slice(0, 3).map((s) => (
-              <button key={s} className="agent-suggestion-chip agent-suggestion-chip-sm" onClick={() => handleSuggestion(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        <form className="agent-input-row" onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            className="agent-input"
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Posez votre question en français..."
-            disabled={agentLoading}
-            autoComplete="off"
-          />
-          <button
-            className="agent-send-btn"
-            type="submit"
-            disabled={agentLoading || !input.trim()}
-            title="Envoyer"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
-        </form>
-        <p className="agent-disclaimer">
-          L'agent peut faire des erreurs. Vérifiez les informations importantes.
-        </p>
-      </div>
-    </div>
+    </TooltipProvider>
   )
 }
