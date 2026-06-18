@@ -2407,6 +2407,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     b.addEventListener('click', () => {
       if (b.dataset.tilt === 'reco') {
         pinned.delete('tilt'); // « Recommandé » = inclinaison AUTO (re-résolue)
+        sel = { ...sel, tilt: 'reco' }; // W46 — efface la valeur numérique figée (sinon currentPins/affichage la garde)
       } else {
         const v = Number(b.dataset.tilt);
         if (pinned.has('tilt') && sel.tilt === v) pinned.delete('tilt'); // re-clic → AUTO
@@ -2557,11 +2558,15 @@ export function initRoofToolPro8(opts: InitOptions): void {
     };
     tiltRangeEl.addEventListener('input', onTilt);
   }
+  // W46 — bouton « Recommandé » de l'inclinaison = AFFORDANCE PAR AXE : il LIBÈRE LE
+  // SEUL axe inclinaison (retour AUTO) en TENANT tous les autres verrous accumulés, puis
+  // re-résout. Il NE doit PAS tout réinitialiser (« Réinitialiser » fait ça). Auparavant
+  // un `pinned.clear()` ici effaçait silencieusement orientation/azimut/pose/marge déjà
+  // verrouillés — l'optimiseur SEMBLAIT « cesser de tenir » les choix après quelques
+  // verrous. On aligne ce bouton sur la puce data-tilt="reco" : delete('tilt') seulement.
   tiltRecoBtn?.addEventListener('click', () => {
-    useRecommended = true;
-    pinned.clear();
-    sel = { family: rec?.recommended.family ?? 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: sel.margin };
-    syncChips();
+    pinned.delete('tilt');
+    sel = { ...sel, tilt: 'reco' };
     renderSelection();
   });
 
