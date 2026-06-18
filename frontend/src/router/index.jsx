@@ -6,6 +6,10 @@ import { lazy, Suspense } from 'react'
 import { store } from '../store'
 import { fetchMe } from '../features/auth/store/authSlice'
 import Layout from '../components/layout/Layout'
+// Providers UX dépendant du contexte routeur (useNavigate) → montés DANS le
+// router, au chokepoint commun des écrans authentifiés (WithLayout).
+import { CommandPalette } from '../providers/CommandPalette'
+import { ShortcutsProvider } from '../providers/ShortcutsProvider'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -45,23 +49,51 @@ const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantie
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
-// Verifie la session via le cookie httpOnly — aucun token cote client
-const authLoader = async () => {
+// Verifie la session via le cookie httpOnly — aucun token cote client.
+//
+// I37 (bug « C7 ») — Robustesse du tout premier chargement à froid sur desktop :
+// au démarrage l'app pouvait nécessiter un 2e chargement. La cause : plusieurs
+// loaders de routes (et le double-montage StrictMode en dev) déclenchaient
+// CHACUN un `fetchMe()` concurrent au lieu de PARTAGER l'amorçage de session.
+// On dédoublonne désormais via une UNIQUE promesse d'amorçage : le premier
+// loader lance `fetchMe`, les suivants attendent le MÊME résultat. La première
+// vue authentifiée n'est rendue qu'une fois la session résolue — un seul
+// chargement suffit.
+let bootstrapPromise = null
+
+const ensureSession = async () => {
   const state = store.getState().auth
-  if (state.isAuthenticated) return null
-  // Session inconnue : tente de la restaurer depuis le cookie
-  const result = await store.dispatch(fetchMe())
-  if (fetchMe.fulfilled.match(result)) return null
-  return redirect('/login')
+  if (state.isAuthenticated) return true
+  // Une amorce est déjà en cours (autre loader / double-montage) → on attend la
+  // même, sans relancer un second appel réseau.
+  if (!bootstrapPromise) {
+    bootstrapPromise = store
+      .dispatch(fetchMe())
+      .then((result) => fetchMe.fulfilled.match(result))
+      .finally(() => { bootstrapPromise = null })
+  }
+  return bootstrapPromise
+}
+
+const authLoader = async () => {
+  const ok = await ensureSession()
+  return ok ? null : redirect('/login')
 }
 
 const Fallback = () => <div style={{ padding: '2rem', textAlign: 'center' }}>Chargement...</div>
 
 function WithLayout({ children }) {
+  // ShortcutsProvider + CommandPalette vivent ici : ils ont besoin du contexte
+  // routeur (navigation clavier / ouverture d'un enregistrement) et ne
+  // concernent que les écrans authentifiés. La palette s'ouvre sur ⌘K et sur
+  // l'événement window émis par le bouton ⌘K du Header (autre lane).
   return (
-    <Layout>
-      <Suspense fallback={<Fallback />}>{children}</Suspense>
-    </Layout>
+    <ShortcutsProvider>
+      <Layout>
+        <Suspense fallback={<Fallback />}>{children}</Suspense>
+      </Layout>
+      <CommandPalette />
+    </ShortcutsProvider>
   )
 }
 
