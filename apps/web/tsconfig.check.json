@@ -1,0 +1,15 @@
+{
+  "//": "Type-check gate for the PURE estimator/logic surface (src/lib/**) — the math the",
+  "//2": "previews depend on. The heavy DOM/Three.js/MapLibre scripts (src/scripts/roof-tool-*)",
+  "//3": "stay transpile-only (esbuild) and are exercised at RUNTIME by tests/estimator-runtime",
+  "//4": "instead; Three's namespace types don't resolve cleanly under astro check, so checking",
+  "//5": "them here would be noise, not signal. Unused-var lint is off (style, not a bug class).",
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src/lib/**/*.ts"]
+}
