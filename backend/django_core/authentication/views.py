@@ -16,7 +16,7 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
 )
 from .throttles import LoginRateThrottle, RegisterRateThrottle
-from authentication.permissions import IsAdminRole
+from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 
 _COOKIE_SECURE = not settings.DEBUG
 _COOKIE_SAMESITE = 'Strict'
@@ -277,11 +277,13 @@ class LogoutView(generics.GenericAPIView):
 
 # ── Gestion utilisateurs (admin) ───────────────────────────────
 class UserViewSet(viewsets.ModelViewSet):
-    """Gestion des utilisateurs — admin voit uniquement sa company."""
+    """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
 
     def get_permissions(self):
-        return [IsAdminRole()]
+        # Écran Utilisateurs ouvert au Responsable (promu) en plus de
+        # l'Administrateur ; le palier limité reste bloqué.
+        return [IsAdminOrResponsableTier()]
 
     def get_queryset(self):
         user = self.request.user

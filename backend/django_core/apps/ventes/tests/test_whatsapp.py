@@ -294,14 +294,24 @@ class TestMessagesSettingsApi(TestCase):
         self.assertEqual(fac['corps_fr'], 'FR perso {lien}')
         self.assertEqual(fac['corps_darija'], 'DR perso {lien}')
 
-    def test_save_requires_admin(self):
-        resp_user = User.objects.create_user(
-            username='wa_user', password='x', role_legacy='responsable',
+    def test_save_blocks_limited_tier_allows_responsable(self):
+        # Palier limité (Utilisateur/normal) : ne peut pas enregistrer.
+        limited = User.objects.create_user(
+            username='wa_user', password='x', role_legacy='normal',
             company=self.company)
-        api = make_api(resp_user)
+        api = make_api(limited)
         resp = api.put('/api/django/parametres/messages/', {
             'cle': 'facture', 'corps_fr': 'x'}, format='json')
         self.assertEqual(resp.status_code, 403)
+
+        # Responsable (promu) : enregistrement autorisé.
+        resp_user = User.objects.create_user(
+            username='wa_resp_save', password='x', role_legacy='responsable',
+            company=self.company)
+        api2 = make_api(resp_user)
+        ok = api2.put('/api/django/parametres/messages/', {
+            'cle': 'facture', 'corps_fr': 'ok {lien}'}, format='json')
+        self.assertEqual(ok.status_code, 200, ok.data)
 
     def test_unknown_key_rejected(self):
         resp = self.api.put('/api/django/parametres/messages/', {

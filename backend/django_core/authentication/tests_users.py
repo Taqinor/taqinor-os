@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import Role, ALL_PERMISSIONS
+from apps.roles.models import Role, ALL_PERMISSIONS, RESPONSABLE_PERMISSIONS
 
 User = get_user_model()
 
@@ -67,9 +67,15 @@ class TestEmployeeAdmin(TestCase):
             f'/api/django/users/{self.employee.id}/avatar/', {}, format='multipart')
         self.assertEqual(resp.status_code, 400)
 
-    def test_avatar_endpoint_is_admin_only(self):
+    def test_avatar_endpoint_blocks_limited_tier_allows_responsable(self):
+        # Gestion des utilisateurs (dont l'avatar) : ouverte à l'Administrateur
+        # ET au Responsable (promu), fermée au palier limité.
+        commerciale_role = Role.objects.create(
+            company=self.company, nom='Commerciale',
+            permissions=['crm_voir', 'ventes_voir'], est_systeme=False,
+        )
         commerciale = User.objects.create_user(
-            username='emp_comm', password='x', role_legacy='responsable',
+            username='emp_comm', password='x', role=commerciale_role,
             company=self.company,
         )
         api = APIClient()
@@ -78,6 +84,23 @@ class TestEmployeeAdmin(TestCase):
         resp = api.post(
             f'/api/django/users/{self.employee.id}/avatar/', {}, format='multipart')
         self.assertEqual(resp.status_code, 403)
+
+        # Le Responsable est autorisé : 400 (aucun fichier) prouve que la garde
+        # de permission est passée.
+        resp_role = Role.objects.create(
+            company=self.company, nom='Responsable',
+            permissions=RESPONSABLE_PERMISSIONS, est_systeme=True,
+        )
+        resp_user = User.objects.create_user(
+            username='emp_resp', password='x', role=resp_role,
+            company=self.company,
+        )
+        api2 = APIClient()
+        api2.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
+        resp2 = api2.post(
+            f'/api/django/users/{self.employee.id}/avatar/', {}, format='multipart')
+        self.assertEqual(resp2.status_code, 400)
 
     def test_user_serializer_exposes_avatar_url_field(self):
         resp = self.api.get(f'/api/django/users/{self.employee.id}/')
