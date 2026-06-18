@@ -2,14 +2,14 @@ from rest_framework import serializers
 
 from .models import (
     Installation, Intervention, InstallationActivity, TypeIntervention,
-    ChecklistEtapeModele, ChantierChecklistItem,
+    ChecklistTemplate, ChecklistEtapeModele, ChantierChecklistItem,
 )
 
 
 class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChecklistEtapeModele
-        fields = ['id', 'cle', 'libelle', 'ordre', 'capture_serie',
+        fields = ['id', 'template', 'cle', 'libelle', 'ordre', 'capture_serie',
                   'actif', 'protege']
         read_only_fields = ['protege']
 
@@ -18,6 +18,29 @@ class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "La clé d'une étape protégée ne peut pas être modifiée.")
         return value
+
+
+class ChecklistTemplateSerializer(serializers.ModelSerializer):
+    """N74 — modèle nommé de checklist + ses étapes ordonnées (imbriquées en
+    lecture). `type_installation` auto-sélectionne le template à la création
+    d'un chantier ; le template « Défaut » (type vide) est le repli protégé."""
+    etapes = ChecklistEtapeModeleSerializer(many=True, read_only=True)
+    type_installation_display = serializers.CharField(
+        source='get_type_installation_display', read_only=True, default=None)
+
+    class Meta:
+        model = ChecklistTemplate
+        fields = ['id', 'nom', 'type_installation', 'type_installation_display',
+                  'ordre', 'actif', 'protege', 'etapes']
+        read_only_fields = ['protege']
+
+    def validate_type_installation(self, value):
+        # Le template « Défaut » (protégé, type vide) garde son type vide.
+        if (self.instance and self.instance.protege
+                and value != self.instance.type_installation):
+            raise serializers.ValidationError(
+                "Le type du template « Défaut » ne peut pas être modifié.")
+        return value or None
 
 
 class ChantierChecklistItemSerializer(serializers.ModelSerializer):

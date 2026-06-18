@@ -1,5 +1,14 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+
 from . import views
+from .views_statuses import StatutConfigViewSet
+
+# N58 — configuration d'affichage des statuts métier (chantier/SAV/BC).
+# Routeur isolé (registre dédié) pour ne pas perturber les vues fonctions.
+statuts_router = DefaultRouter()
+statuts_router.register(r'statuts', StatutConfigViewSet,
+                        basename='statut-config')
 
 urlpatterns = [
     path('', views.get_profile),
@@ -12,4 +21,6 @@ urlpatterns = [
     path('messages/', views.messages_endpoint),
     # Journal d'audit des changements de paramètres (admin, lecture seule).
     path('audit/', views.settings_audit_log),
+    # N58 — statuts configurables (libellé/ordre/visibilité), couche affichage.
+    path('', include(statuts_router.urls)),
 ]

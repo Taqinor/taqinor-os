@@ -6,6 +6,8 @@ import {
   TICKET_STATUS_LABELS,
   TICKET_STATUS_COLORS,
   statusOrder,
+  statusLabel,
+  applyTicketStatutConfig,
   filterTickets,
   sortTickets,
   EMPTY_TICKET_FILTERS,
@@ -54,4 +56,24 @@ test('filterTickets : ouverts par défaut, statut, sous-garantie, recherche', ()
   // Recherche.
   assert.deepEqual(
     filterTickets(rows, { ...EMPTY_TICKET_FILTERS, ouvert: 'tous', q: 'sav-2' }).map(r => r.id), [2])
+})
+
+// ── N58 — couche de configuration des libellés/ordre (purement affichage) ──
+test('applyTicketStatutConfig surcharge libellé & ordre sans toucher aux clés', () => {
+  assert.equal(statusLabel('nouveau'), 'Nouveau')
+  applyTicketStatutConfig([
+    { cle: 'nouveau', libelle: 'À traiter', ordre: 9, actif: true },
+    { cle: 'cloture', libelle: 'Fermé', ordre: 0, actif: true },
+  ])
+  assert.equal(statusLabel('nouveau'), 'À traiter')
+  assert.equal(statusLabel('cloture'), 'Fermé')
+  assert.ok(statusOrder('cloture') < statusOrder('nouveau'))
+  // Clés canoniques figées (machine à états intacte).
+  assert.deepEqual(TICKET_STATUSES, [
+    'nouveau', 'planifie', 'en_cours', 'resolu', 'cloture',
+  ])
+  // Réinitialisation → défauts byte-identiques.
+  applyTicketStatutConfig(null)
+  assert.equal(statusLabel('nouveau'), 'Nouveau')
+  assert.ok(statusOrder('nouveau') < statusOrder('cloture'))
 })

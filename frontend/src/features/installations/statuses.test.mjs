@@ -6,6 +6,8 @@ import {
   STATUS_LABELS,
   STATUS_COLORS,
   statusOrder,
+  statusLabel,
+  applyStatutConfig,
   filterInstallations,
   sortInstallations,
   EMPTY_FILTERS,
@@ -52,4 +54,35 @@ test('filterInstallations : recherche + drapeau annulé', () => {
   assert.equal(filterInstallations(rows, { ...EMPTY_FILTERS, annule: 'sans' }).length, 1)
   assert.equal(filterInstallations(rows, { ...EMPTY_FILTERS, annule: 'seuls' }).length, 1)
   assert.equal(filterInstallations(rows, EMPTY_FILTERS).length, 2)
+})
+
+// ── N58 — couche de configuration des libellés/ordre (purement affichage) ──
+test('applyStatutConfig surcharge libellé & ordre sans toucher aux clés', () => {
+  // Défaut avant config.
+  assert.equal(statusLabel('signe'), 'Signé')
+  // Surcharge : renomme « signe » et le pousse après « cloture ».
+  applyStatutConfig([
+    { cle: 'signe', libelle: 'Contrat signé', ordre: 9, actif: true },
+    { cle: 'cloture', libelle: 'Terminé', ordre: 0, actif: true },
+  ])
+  assert.equal(statusLabel('signe'), 'Contrat signé')
+  assert.equal(statusLabel('cloture'), 'Terminé')
+  // L'ordre d'AFFICHAGE suit la config : cloture (0) avant signe (9).
+  assert.ok(statusOrder('cloture') < statusOrder('signe'))
+  // Les clés canoniques ne bougent jamais (machine à états intacte).
+  assert.deepEqual(INSTALLATION_STATUSES, [
+    'signe', 'materiel_commande', 'planifie', 'en_cours',
+    'installe', 'receptionne', 'cloture',
+  ])
+  // Réinitialisation : retour aux défauts byte-identiques.
+  applyStatutConfig(null)
+  assert.equal(statusLabel('signe'), 'Signé')
+  assert.ok(statusOrder('signe') < statusOrder('cloture'))
+})
+
+test('applyStatutConfig ignore les clés inconnues', () => {
+  applyStatutConfig([{ cle: 'inexistant', libelle: 'X', ordre: 0 }])
+  // Aucun effet : on reste sur les défauts.
+  assert.equal(statusLabel('signe'), 'Signé')
+  applyStatutConfig(null)
 })

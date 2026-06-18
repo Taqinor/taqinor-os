@@ -25,14 +25,16 @@ export const MODE_LABELS = { residentiel: 'Résidentiel', agricole: 'Agricole', 
 // ── Onglets de la page Paramètres (D1) ─────────────────────────────────────────
 // Chaque réglage existant reste présent, simplement regroupé par domaine.
 export const TABS = [
-  { key: 'societe',  label: 'Société & identité' },
-  { key: 'leads',    label: 'Leads' },
-  { key: 'clients',  label: 'Clients' },
-  { key: 'devis',    label: 'Devis & Factures' },
-  { key: 'stock',    label: 'Stock' },
-  { key: 'equipe',   label: 'Équipe & rôles' },
-  { key: 'messages', label: 'Messages & relances' },
-  { key: 'avance',   label: 'Avancé' },
+  { key: 'societe',    label: 'Société & identité' },
+  { key: 'leads',      label: 'Leads' },
+  { key: 'clients',    label: 'Clients' },
+  { key: 'devis',      label: 'Devis & Factures' },
+  { key: 'stock',      label: 'Stock' },
+  { key: 'statuts',    label: 'Statuts' },
+  { key: 'checklists', label: 'Checklists' },
+  { key: 'equipe',     label: 'Équipe & rôles' },
+  { key: 'messages',   label: 'Messages & relances' },
+  { key: 'avance',     label: 'Avancé' },
 ]
 
 export const ACCEPTED   = ['image/png', 'image/jpeg', 'image/webp']
