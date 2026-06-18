@@ -46,7 +46,7 @@ export default function AssigneePicker({
         >
           <Avatar name={currentName} src={current?.avatar_url} size={size} />
           {!compact && (
-            <span className="truncate font-semibold">{currentName || 'Non assigné'}</span>
+            <span className="ap-name truncate font-semibold">{currentName || 'Non assigné'}</span>
           )}
         </button>
       </PopoverPrimitive.Trigger>
