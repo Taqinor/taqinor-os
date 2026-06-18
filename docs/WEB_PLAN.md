@@ -7,22 +7,30 @@ This file is the **single source of truth** for the public website (`apps/web`, 
 backend) and explicitly excludes `apps/web`. Anything touching the Astro site or a
 `/preview/*` route is planned here, not there.
 
-A run drains the **whole** BUILD QUEUE — every unchecked task, never just one — ticking each
-off *in this file* and committing it to `dev` as it lands, then self-merges `dev` → `main`
-exactly once at the end and lets that merge deploy itself. The next session reads this file and
-continues. Nothing relies on the agent's own memory — the file on disk is the memory.
+A run drains the **whole** BUILD QUEUE — every unchecked task, never just one — by partitioning
+the unchecked tasks into independent **lanes** (grouped by the real `apps/web` files each writes)
+and building them with **up to 8 concurrent worktree subagents** (waves of 8 if there are more
+lanes), ticking each off *in this file* and committing it to its worktree branch as it lands,
+then folding every branch into one `dev` and self-merging `dev` → `main` exactly once at the end
+and letting that merge deploy itself. The next session reads this file and continues. Nothing
+relies on the agent's own memory — the file on disk is the memory.
 
 ---
 
 ## HOW TO RUN (read this every session)
 
 1. **Read this whole file.**
-2. **Drain the WHOLE BUILD QUEUE — never just one task.** Process EVERY unchecked `[ ]` task
-   (not `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and MANUAL sections entirely.
-   Build independent tasks (and independent groups of tasks) **in parallel with subagents, each
-   in its own isolated git worktree** so two never edit the same files at once; run tasks that
-   depend on each other, or that touch the same files, in sequence. Scope stays strictly inside
-   `apps/web/**` and the `docs/WEB_PLAN*` files.
+2. **Drain the WHOLE BUILD QUEUE — never just one task, with MAXIMUM SAFE PARALLELISM.** Process
+   EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and
+   MANUAL sections entirely. **At the START, compute the file-ownership + dependency graph from
+   the real `apps/web` code and partition the queue into independent lanes** (a lane shares a
+   file or has a dependency and runs in sequence; different lanes never touch each other's
+   files), then **fan the lanes out to up to 8 concurrent worktree subagents** (`isolation:
+   worktree`, each in its own isolated git worktree so two never edit the same files at once),
+   in **waves of up to 8** when there are more lanes, with fewer agents when there are fewer.
+   Each subagent commits its lane to its own worktree branch as each task lands; the orchestrator
+   folds every branch into one `dev` at the end. Scope stays strictly inside `apps/web/**` and
+   the `docs/WEB_PLAN*` files.
 3. **Verify each task isn't already built — never trust these ticks or prior reports.** Inspect
    the actual route and the deployed preview. If a task already exists and works, mark it
    `[x] (already present)`, add a line to the DONE LOG, and move on to the next `[ ]` task.
@@ -31,9 +39,10 @@ continues. Nothing relies on the agent's own memory — the file on disk is the 
    append one dated plain-language line to the DONE LOG — so an interrupted run never loses
    finished work and re-firing resumes from the first still-unchecked task. Then **immediately
    continue to the next `[ ]` task. Do NOT merge after each task.**
-5. **CI runs ONCE at the end, over the whole batch** (lint, the `apps/web` vitest suite, the
-   preview/privacy guards, plus the four required checks). When green, **self-merge `dev` →
-   `main` exactly once** (a single merge commit, history preserved, 0 approvals).
+5. **Fold every lane's worktree branch into one `dev`, then CI runs ONCE over the whole batch**
+   (lint, the `apps/web` vitest suite, the preview/privacy guards, plus the four required checks).
+   When green, **self-merge `dev` → `main` exactly once** (a single merge commit, history
+   preserved, 0 approvals; no per-agent PR, no per-task merge).
 6. **Deploy is automatic.** The public site **auto-deploys via Cloudflare Workers Builds
    on every push/merge to `main`** — that IS the deploy. **You never run `wrangler deploy`,
    and you never ask for a Cloudflare API token** (the old one is dead and deleted). Worker
@@ -58,9 +67,12 @@ a task can be run from Claude Code on the web or the phone with no PC involved.
 
 ## STANDING RULES (every web task obeys these)
 
-- **One run = the whole BUILD QUEUE, one self-merged PR at the end.** Many subagents inside the
-  session (each in its own git worktree) are fine; the run self-merges `dev` → `main` exactly
-  once when CI is green — no per-task merge. Multiple sessions or multiple PRs are not wanted.
+- **One run = the whole BUILD QUEUE across up to 8 concurrent worktree lanes, one self-merge at
+  the end.** Partition the queue into independent lanes and run **up to 8 worktree subagents at
+  once** (each in its own git worktree, waves of 8 if there are more lanes); the orchestrator
+  folds every branch into one `dev` and the run self-merges `dev` → `main` exactly once when CI
+  is green — no per-agent PR, no per-task merge. Multiple sessions or multiple merges are not
+  wanted.
 - **Verify against real code first. Never trust prior reports.** Inspect the actual route
   and the deployed preview before assuming anything is present or correct.
 - **The live public site and the lead form stay unchanged.** Preview work must never alter
@@ -1065,8 +1077,8 @@ impossible panel counts stay blocked by the **footprint bound** (Σ panel footpr
 already in the stack). **Touch only `apps/web`.** Every new route stays **private** (noindex, not in nav,
 excluded from the sitemap, unlinked) and every prior preview route is left **byte-for-byte intact** as a
 baseline. The **live public site and the live lead form and its entire data flow** (1 000 MAD threshold,
-consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**. Each task is its **own
-self-merged PR to protected main** (the accepted path — don't flag it). **Reduced-motion respected, zero
+consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**. The whole W34–W35 batch
+lands in the run's **single self-merge to protected main** (the accepted path — don't flag it). **Reduced-motion respected, zero
 layout shift, Lighthouse held.** Because the build agent cannot render the map (the map keys live in
 Cloudflare), **anchor every claim to code-checkable logic and tests** rather than to how it looks.
 
@@ -1112,7 +1124,7 @@ call-center-impersonal); and two hard rules every page and every future session 
 homepage), every other page expressing the idea in its own fresh words, and CTAs/footer/legal
 lines exempt; (2) every city, segment and service page must carry at least one concrete fact
 specific to that page, never a generic sentence with only the place/topic swapped in. This is
-documentation/governance only — **no page changes in this task**. One self-merged PR.
+documentation/governance only — **no page changes in this task**. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W37 — Rewrite the five city pages so no two share a paragraph (city-specific prose) — [ ]
 
@@ -1131,7 +1143,7 @@ landscape has been reforming) — if it can't be verified as current, use the r�
 instead rather than risk a stale name. Replace the identical three-block trio and the "mérite
 une étude sérieuse" closer with city-specific writing. Invent nothing; every figure traces to
 published or confirmed data. Rewrite each page's title and meta-description to be distinct and
-compelling too. One self-merged PR.
+compelling too. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W38 — Rewrite the three core sales pages (résidentiel, professionnel, équipement) to STYLE.md voice — [ ]
 
@@ -1144,7 +1156,7 @@ its own rhythm and language, removes every recycled signature phrase (each idea 
 freshly), and leads with concrete evidence. Équipement especially: make the real posed brands
 (Canadian Solar, JA Solar, Deye, Huawei, Dyness) and the warranty table read as a confident
 technical argument, not a spec dump. Keep "ordres de grandeur — jamais un devis" framing and the
-honest ranges. No invented facts. Refresh each page's title/meta-description. One self-merged PR.
+honest ranges. No invented facts. Refresh each page's title/meta-description. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W39 — Rewrite the service pages (pompage-solaire, batteries-stockage, maintenance-monitoring, financement, nos-solutions) — [ ]
 
@@ -1158,7 +1170,7 @@ keeps only the genuine solar-pumping VAT-exemption advantage (not extended to re
 financement stays rentabilité-first and strictly honest — names no bank partner, quotes no rate,
 claims no residential VAT exemption; batteries and maintenance draw only from facts already on
 the site. Make each read as written by someone who knows the engineering, with varied rhythm and
-zero recycled blurbs. Refresh titles/meta-descriptions. One self-merged PR.
+zero recycled blurbs. Refresh titles/meta-descriptions. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W40 — Rewrite the trust & story pages (pourquoi-taqinor, marocains-du-monde, garanties, guides hub + seed articles, /faq) + reconcile with à-propos — [ ]
 
@@ -1171,7 +1183,7 @@ and are cross-linked. Read each first; keep all verified facts (the warranty fig
 garanties, the FAQ answers, the guide content drawn from existing pages) and rewrite the prose to
 be sharp, specific and varied. Turn garanties from a table restatement into a real promise (still
 inventing no SLA or underperformance policy). Make the FAQ answers genuinely helpful and human,
-not boilerplate. Refresh titles/meta-descriptions. One self-merged PR.
+not boilerplate. Refresh titles/meta-descriptions. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W41 — Bring the à-propos founder page to its strongest honest form (approved pedigree) — [ ]
 
@@ -1186,7 +1198,7 @@ facts: name those three employers and the doctorate/R&D background, but invent N
 projects, dates, titles, team sizes, or personal anecdotes — leave the narrative refinable by
 Reda/Meryem later. This is the page that answers a skeptical buyer's "they've only done a handful
 of jobs" with credentials no competitor can claim. Make it the single most convincing page on the
-site within those honesty limits. Refresh title/meta-description. One self-merged PR.
+site within those honesty limits. Refresh title/meta-description. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W42 — Rewrite the five case-study pages from stat readouts into real narratives — [ ]
 
@@ -1214,7 +1226,7 @@ case studies as a confident dashboard-style readout that makes "mesuré sur Deye
 Motion is CSS/transform/opacity plus one small IntersectionObserver ONLY — no animation library,
 no new dependency. Fully respect prefers-reduced-motion (no reveals, no count-up, numbers show
 final values) and keep every page fully usable with JS off. Lighthouse held 97–100 on every page.
-One self-merged PR.
+Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W44 — Fix the site serving multiple versions of itself: homepage shares Header/Footer + HTML revalidates on deploy — [ ]
 
@@ -1230,7 +1242,7 @@ after a merge (an appropriate Cache-Control on HTML, a cache rule excluding HTML
 purge-on-deploy step — whatever fits the existing Worker setup), while leaving long-cache on
 hashed CSS/JS/font/image assets untouched. Do not change any other Worker behaviour; /api/* and
 the lead pipeline stay exactly as they are. In the report, confirm a fresh deploy now reflects on
-/ with no manual purge. One self-merged PR.
+/ with no manual purge. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ### W45 — Final consistency pass: unique titles/meta, BreadcrumbList sitewide, contextual cross-links — [ ]
 
@@ -1240,7 +1252,7 @@ Final consistency pass: confirm no two pages share an identical title or meta-de
 the rewrites, verify BreadcrumbList structured data sitewide (add where missing), and confirm the
 contextual in-body cross-links between équipement, résidentiel/professionnel, the loi-82-21
 pages, the city pages, the case studies and the new service pages are present and sensible.
-Purely additive; touch no lead-flow code. One self-merged PR.
+Purely additive; touch no lead-flow code. Part of the run's single end-of-run self-merge (no per-task merge).
 
 ---
 
@@ -1252,8 +1264,8 @@ pompage has no Taqinor installs; financing names no partner, quotes no rate, cla
 exemption. **No new dependencies. Touch only `apps/web`.** The **live lead form and its entire data
 flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte
 unchanged**. The **private estimator preview routes stay private** (noindex, not in nav, excluded
-from sitemap, unlinked) — do not promote or alter them. **Each task is its own self-merged PR to
-protected main** (the accepted path — don't flag it). **Lighthouse held 97–100 on every page,
+from sitemap, unlinked) — do not promote or alter them. **The whole W36–W45 batch lands in the run's
+single self-merge to protected main** (the accepted path — don't flag it). **Lighthouse held 97–100 on every page,
 reduced-motion respected, zero layout shift.** Plain-language report only (no diffs or hashes): for
 each task, the pages changed and what a visitor now reads differently, confirmation the homepage
 matches the sub-pages, confirmation the live lead flow is untouched, and any one thing left for Reda.

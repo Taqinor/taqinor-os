@@ -3,33 +3,44 @@
 This file is the **single source of truth** for the Taqinor OS build backlog and the
 **memory between Claude Code sessions**. Each run first works through EVERY unchecked task in `docs/PLAN2.md` (if that file exists) from top to bottom — not just one — ticking each off as it lands, then does the same for this file, and only stops when both queues are clear (or a usage limit pauses it, in which case re-running resumes from the next unchecked task). The next session reads this file and
 continues. Nothing relies on the agent's own memory — the file on disk is the memory.
+Each run partitions its unchecked tasks into independent **lanes** (grouped by which real
+source files they write) and builds them with **up to 8 concurrent worktree subagents**, in
+waves of 8 when there are more lanes — see HOW TO RUN.
 
 ---
 
 ## HOW TO RUN (read this every session)
 
 1. **Read this whole file.**
-2. **Drain the WHOLE queue, PLAN2 first — never just one task.** Check `docs/PLAN2.md` FIRST:
-   work through EVERY pending `[ ]` task there that isn't gated/blocked — following PLAN2.md's
-   own rules, which are the same as this file's — then drain this file's **BUILD QUEUE** the
-   same way. Process EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`);
-   ignore the GATED and MANUAL sections entirely. Build independent tasks (and independent
-   groups of tasks) **in parallel with subagents, each in its own isolated git worktree** so
-   two never edit the same files at once; run tasks that depend on each other, or that touch
-   the same files, in sequence — derive this ownership from the real code, not from guesses.
+2. **Drain the WHOLE queue, PLAN2 first — never just one task, with MAXIMUM SAFE PARALLELISM.**
+   Check `docs/PLAN2.md` FIRST: work through EVERY pending `[ ]` task there that isn't
+   gated/blocked — following PLAN2.md's own rules, which are the same as this file's — then
+   drain this file's **BUILD QUEUE** the same way. Process EVERY unchecked `[ ]` task (not
+   `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and MANUAL sections entirely.
+   **At the START, compute the file-ownership + dependency graph from the real code** (which
+   source files each `[ ]` task must write) and **partition the queue into independent lanes**
+   — a lane is a group that must run in sequence because it shares a file or has a dependency;
+   different lanes never touch each other's files. **Fan the lanes out to up to 8 concurrent
+   worktree subagents** (`isolation: worktree`, each in its own isolated git worktree so two
+   never edit the same files at once); with more than 8 lanes, run them in **waves of up to 8**;
+   with fewer, use fewer agents. **Tasks inside one lane run in sequence.** Each subagent
+   commits its lane's work to its own worktree branch — ticking each task `[x]` + a DONE LOG
+   line as it lands — and the orchestrator folds every worktree branch into one `dev` branch at
+   the end. Derive lane ownership from the real code, not from guesses.
 3. **Verify each task isn't already built — never trust these ticks or prior reports.**
    Inspect the actual repo and the deployed app. If a task already exists and works, mark it
    `[x] (already present)`, add a line to the DONE LOG, and move on to the next `[ ]` task.
-4. **Build each task completely, with tests, and land it to `dev` the moment it's done.** Obey
-   every STANDING RULE below. As each task finishes: commit it to `dev`, flip it to `[x]`, and
-   append one dated plain-language line to the DONE LOG — so an interrupted run never loses
-   finished work and re-firing resumes from the first still-unchecked task. Then **immediately
-   continue to the next `[ ]` task. Do NOT merge after each task.**
-5. **CI runs ONCE at the end, over the whole batch.** The four required checks must pass:
-   backend-lint, backend-tests **with MinIO** (so PDF/storage tests actually run, including the
-   PDF page-count guardrails), frontend-lint, and the stage-name check. When all four are
-   green, **self-merge `dev` → `main` exactly once** (a single merge commit, history preserved,
-   0 approvals). **Merging to `main` AUTO-DEPLOYS to api.taqinor.ma on its own** — the
+4. **Build each task completely, with tests, and land it on its lane's worktree branch the moment
+   it's done.** Obey every STANDING RULE below. As each task finishes: commit it to its **worktree
+   branch** (folded into `dev` at the end of the run), flip it to `[x]`, and append one dated
+   plain-language line to the DONE LOG — so an interrupted run never loses finished work and
+   re-firing resumes from the first still-unchecked task. Then the lane **immediately continues to
+   its next `[ ]` task. Do NOT merge after each task.**
+5. **Fold every lane's worktree branch into one `dev`, then CI runs ONCE over the whole batch.**
+   The four required checks must pass: backend-lint, backend-tests **with MinIO** (so PDF/storage
+   tests actually run, including the PDF page-count guardrails), frontend-lint, and the stage-name
+   check. When all four are green, **self-merge `dev` → `main` exactly once** (a single merge
+   commit, history preserved, 0 approvals; no per-agent PR, no per-task merge). **Merging to `main` AUTO-DEPLOYS to api.taqinor.ma on its own** — the
    production server polls `main` about once a minute and runs the full deploy (rebuild +
    migrations + role sync + nginx/Caddy reload + the mandatory PDF pre-warm). **You do not run
    any deploy command.** `powershell -File scripts\deploy-prod.ps1` still works as a **manual
@@ -60,13 +71,13 @@ CODEMAP §10 refresh.
 from Claude Code on the web or from the phone with no PC involved. **One-line starter** to
 paste into a fresh cloud session:
 
-> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task — **first** `docs/PLAN2.md` (if it exists), **then** this file's BUILD QUEUE. For each: verify it isn't already built, build it with tests, commit it to `dev`, tick it `[x]`, add a dated DONE LOG line, then continue to the next — build independent tasks in parallel (subagents in their own git worktrees) and coupled tasks in sequence. Skip-and-note any blocker (`[BLOCKED: reason]` → GATED) and keep going. At the very end, get the four required CI checks green over the whole batch (with MinIO) and self-merge `dev` → `main` exactly once (this auto-deploys — do not run any deploy command). Report once, in plain language. Do not stop after one task and do not merge per task.
+> Read `docs/PLAN.md` top to bottom. Work through EVERY `[ ]` task — **first** `docs/PLAN2.md` (if it exists), **then** this file's BUILD QUEUE. First partition the unchecked tasks into independent lanes by the real files each writes, then build the lanes in parallel with **up to 8 concurrent worktree subagents** (each in its own git worktree, waves of 8 if there are more lanes), coupled tasks in sequence inside a lane. For each task: verify it isn't already built, build it with tests, commit it to its worktree branch, tick it `[x]`, add a dated DONE LOG line, then continue to the next. Skip-and-note any blocker (`[BLOCKED: reason]` → GATED) and keep going. At the very end, fold every worktree branch into one `dev`, get the four required CI checks green over the whole batch (with MinIO) and self-merge `dev` → `main` exactly once (this auto-deploys — do not run any deploy command; no per-agent PR, no per-task merge). Report once, in plain language, including the lane plan. Do not stop after one task and do not merge per task.
 
 ---
 
 ## STANDING RULES (every task obeys these)
 
-- **One run = the whole queue, not one task.** Give each independent task its own subagent in its own git worktree so each subagent's context stays small and focused and two tasks never edit the same files at once; run tasks that depend on or overlap each other in sequence. Never stop after a single task. CI runs **once** over the whole batch and the run self-merges `dev` → `main` **exactly once** — no per-task merge. (Human-review PRs are still not wanted — the run self-merges its own green work.)
+- **One run = the whole queue, not one task, fanned across up to 8 lanes.** At the start, partition the unchecked queue into independent **lanes** (grouped by the real files each task writes) and give each lane its own subagent in its own git worktree — **up to 8 worktree subagents at once, in waves of 8** when there are more lanes — so each subagent's context stays small and focused and two lanes never edit the same files at once; tasks that depend on or overlap each other run in sequence inside one lane. Never stop after a single task. The orchestrator folds every worktree branch into one `dev`, CI runs **once** over the whole batch, and the run self-merges `dev` → `main` **exactly once** — no per-agent PR, no per-task merge. (Human-review PRs are still not wanted — the run self-merges its own green work.)
 - **Verify against real code first. Never trust prior reports.** (Round 1 reported a preview
   fix that was never real, because that session's CI was silently broken.)
 - **Additive only.** New tables / nullable columns / new defaults. **Never** a destructive
@@ -432,7 +443,9 @@ STANDING RULE plus the **module-specific constraints** below.
 - **Reuse existing patterns**: file attachments / object storage, audit + chatter, kanban visual
   language + drag-to-change-status, the existing PDF engine, stock reservation + consumption,
   race-safe gapless numbering, Paramètres editability.
-- **One session, dev → self-merge to main after tests pass — never split into review PRs.**
+- **One session = the whole queue across up to 8 concurrent worktree lanes, every branch folded
+  into one `dev` → self-merged to `main` exactly once after tests pass — never one PR per agent,
+  never a merge per task, never split into review PRs.**
 
 - [ ] F1 — **Outillage (équipement durable) catalogue**, kept completely separate from the consumable Stock SKUs. Each tool carries: nom, catégorie, asset tag, optional numéro de série, a current location chosen from the existing stock locations (dépôt + camionnette) plus an **En intervention** state, a statut (Disponible / En intervention / En réparation / Perdu), a purchase date, and an optional photo via the existing file-attachment feature. List view + filter by location and statut. Durable tools are tracked across dépôt, camionnette, and job sites **without ever being treated as sellable stock, consumed, or shown on any client-facing document**.
 - [ ] F2 — **Reusable kits d'outillage** as named templates editable in Paramètres (seeded defaults: Kit pose structure, Kit raccordement électrique, Kit mise en service), each an ordered list of required tools drawn from the Outillage catalogue, selectable per type d'intervention. Seeded defaults support add / rename / reorder / deactivate like every other référentiel; deactivation preserves the value on historical records.

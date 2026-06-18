@@ -4,12 +4,15 @@
 
 This is the **priority queue**, worked **before** `docs/PLAN.md`. A run drains every `[ ]` task
 in this file FIRST — the same way (verify it isn't already built, build it completely with
-tests, obey every STANDING RULE in `PLAN.md`, then commit it to `dev`, tick it `[x]`, and append
-a DONE LOG line as it lands; build independent tasks in parallel worktrees and coupled tasks in
-sequence) — and only once this file has no pending `[ ]` task left does it fall through to
-`docs/PLAN.md`. CI runs once over the whole batch and the run self-merges `dev` → `main` exactly
-once at the very end — **no per-task merge**. All the HOW TO RUN and STANDING RULES in
-`docs/PLAN.md` apply here unchanged — this file only adds tasks.
+tests, obey every STANDING RULE in `PLAN.md`, then commit it to a worktree branch, tick it `[x]`,
+and append a DONE LOG line as it lands; **partition the unchecked tasks into independent lanes by
+the real files they write and build the lanes in parallel with up to 8 concurrent worktree
+subagents — waves of 8 if there are more — coupled tasks in sequence inside a lane**) — and only
+once this file has no pending `[ ]` task left does it fall through to `docs/PLAN.md`. Every
+worktree branch is folded into one `dev`, CI runs once over the whole batch, and the run
+self-merges `dev` → `main` exactly once at the very end — **no per-agent PR, no per-task merge**.
+All the HOW TO RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — this file only
+adds tasks.
 
 > Added 2026-06-17 while the field-execution batch (PLAN.md F1–F24) was running on
 > `dev-field-exec`. Per the founder's "add to plan" convention, new tasks go here while a

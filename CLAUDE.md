@@ -50,11 +50,18 @@ repo yet, the rule still applies to any future integration.
 ## Repo facts
 
 - A run lands its whole batch as a single self-merge of `dev` → `main` (one merge
-  commit, history preserved, 0 approvals). Work happens on a `dev` branch cut from
-  an up-to-date `main`; independent tasks are built in parallel by subagents, each
-  in its own isolated git worktree, so two tasks never edit the same files at once.
-  The four required CI checks gate the merge and `main` stays revertable: if a merge
-  breaks something, `git revert` restores the previous state.
+  commit, history preserved, 0 approvals). At the START of the run the orchestrator
+  computes the file-ownership + dependency graph from the real code and partitions
+  the unchecked queue into independent **lanes** (groups that must run in sequence
+  because they share a file or depend on each other; different lanes never touch
+  each other's files), then fans those lanes out to **up to 8 concurrent worktree
+  subagents** — each in its own isolated git worktree, so two tasks never edit the
+  same files at once — running them in **waves of up to 8** when there are more
+  lanes than that, with tasks inside a lane done in sequence. When the lanes finish,
+  every worktree branch is folded into one `dev` branch, the four required CI checks
+  run once over the whole batch and gate the single merge, and `main` stays
+  revertable: if a merge breaks something, `git revert` restores the previous state.
+  There is no per-agent PR and no per-task merge — exactly one merge per run.
 - Backend: Django at `backend/django_core` (apps: authentication, stock, crm,
   ventes, reporting, parametres, roles, contact) + FastAPI AI service at
   `backend/fastapi_ia` (OCR via Zhipu AI, natural-language SQL agent via
@@ -158,16 +165,19 @@ These rules govern HOW work gets done and landed.
   Never add ceremony. Never do extra or adjacent work that wasn't requested —
   don't go resolve unrelated gated items, don't restructure neighboring files,
   don't create files nobody asked for.
-- **One run, one self-merge to main.** All work happens in one session on a `dev`
-  branch cut from an up-to-date `main`. Independent tasks (and independent groups
-  of tasks) are built in parallel by subagents, each in its own isolated git
-  worktree, so two tasks never edit the same files at once; tasks that depend on
-  each other, or that touch the same files, run in sequence — derive this ownership
-  from the real code, not from guesses. Each task is committed to `dev` the moment
-  it lands. At the end CI runs once over the whole batch; when the four required
-  checks are green the run self-merges `dev` → `main` exactly once (a single merge
-  commit, history preserved, 0 approvals), which auto-deploys the whole batch.
-  There is no per-task merge, no admin-merge bypass, and no deploy command.
+- **One run, one self-merge to main — with maximum safe parallelism.** All work
+  happens in one session. At the START the run computes the file-ownership +
+  dependency graph from the real code and partitions the unchecked queue into
+  independent lanes, then fans them out to **up to 8 concurrent worktree subagents**
+  (each in its own isolated git worktree, so two tasks never edit the same files at
+  once), in **waves of up to 8** when there are more lanes than that; tasks inside a
+  lane run in sequence and ownership is derived from the real code, not from guesses.
+  Each subagent commits its lane's tasks to its own worktree branch the moment each
+  lands. At the end every worktree branch is folded into one `dev` branch, CI runs
+  once over the whole batch, and when the four required checks are green the run
+  self-merges `dev` → `main` exactly once (a single merge commit, history preserved,
+  0 approvals), which auto-deploys the whole batch. There is no per-agent PR, no
+  per-task merge, no admin-merge bypass, and no deploy command.
 - **Safety model: CI gate + revertable main.** The four required checks
   (backend-lint, backend-tests with MinIO, frontend-lint, stage-names) gate every
   merge with 0 approvals, and `main` stays revertable: if a merge breaks something,
@@ -184,18 +194,23 @@ Anything typed after the command is extra detail for that run.
 - The active file is `docs/PLAN.md`. There is no `.running` lock — there is only
   ever one session at a time.
 - Read it fully and verify real repo state.
-- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just
-  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE. Build independent
-  tasks (and independent groups of tasks) IN PARALLEL with subagents, each in its
-  own isolated git worktree so two tasks never edit the same files at once; run
-  tasks that depend on each other, or that touch the same files, in sequence —
-  derive this ownership from the real code, not from guesses. For each task: build
-  it completely with tests, then land it (commit the finished task to `dev`, tick
-  it `[x]`, add one dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to
-  the next unchecked `[ ]` task**. CI runs once at the end over the whole batch
-  (see below), not per task. Keep looping until a stop condition below is hit. This
-  build-and-checkoff is repeated for every task; it does NOT end the run after the
-  first task.
+- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
+  with MAXIMUM SAFE PARALLELISM.** At the START of the run, compute the
+  file-ownership + dependency graph from the real code (which source files each
+  unchecked `[ ]` task must write) and **partition the queue into independent lanes**
+  — a lane is a group of tasks that must run in sequence because they share a file or
+  depend on each other; different lanes never touch each other's files. Process EVERY
+  unchecked `[ ]` task in the BUILD QUEUE. **Fan the lanes out to concurrent
+  subagents, each launched with worktree isolation (`isolation: worktree`)** so no
+  two ever edit the same files. Spawn them concurrently — do NOT finish one before
+  starting the next — up to a ceiling of **8 worktree subagents running at once**;
+  with more than 8 lanes, run them in **waves of up to 8**; with fewer, use fewer
+  agents. **Tasks inside one lane run in sequence.** Each subagent builds its lane's
+  tasks completely with tests and, as each lands, commits it to **its own worktree
+  branch**, ticks it `[x]`, and adds one dated line to the DONE LOG — so an
+  interrupted run loses nothing and re-firing resumes from the first still-unchecked
+  task. CI runs once at the end over the whole batch (see below), not per task or per
+  agent. This processes EVERY unchecked task; it does NOT end the run after the first.
 - **A run stops ONLY when one of these is true — nothing else licenses
   stopping:**
   1. **Queue drained** — no buildable unchecked `[ ]` tasks remain in the BUILD
@@ -242,11 +257,12 @@ Anything typed after the command is extra detail for that run.
   skippable on docs-only runs: ticking a task IS a plan-state change. (Editing only
   a `[BLOCKED]` reason's wording, reordering the lists, or appending a DONE LOG line
   does not move the plan fingerprint, so it needs no refresh.)
-- When the run stops, get the four required CI checks green over the whole batch,
-  then self-merge `dev` → `main` exactly once (a single merge commit). This merge
-  auto-deploys to api.taqinor.ma; never run a deploy command.
-- Report once, in plain language: every task that shipped, and what was skipped
-  and why.
+- When the run stops, **fold every worktree branch into one `dev` branch**, get the
+  four required CI checks green over the whole batch, then self-merge `dev` → `main`
+  exactly once (a single merge commit, no per-agent PR, no per-task merge). This
+  merge auto-deploys to api.taqinor.ma; never run a deploy command.
+- Report once, in plain language, and **include the lane plan**: how many lanes ran
+  in parallel and what each shipped, plus what was skipped and why.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE, then refresh §10
@@ -262,18 +278,23 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
   `.running` lock — only ever one session at a time.
 - Read it fully and verify real repo state. Scope: edit ONLY `apps/web/**` and
   the `docs/WEB_PLAN*` files. NEVER touch anything outside apps/web.
-- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just
-  one.** Process EVERY unchecked `[ ]` task in the BUILD QUEUE. Build independent
-  tasks (and independent groups of tasks) IN PARALLEL with subagents, each in its
-  own isolated git worktree so two tasks never edit the same files at once; run
-  tasks that depend on each other, or that touch the same files, in sequence —
-  derive this ownership from the real code, not from guesses. For each task: build
-  it completely with tests, then land it (commit the finished task to `dev`, tick
-  it `[x]`, add one dated line to the DONE LOG) — then **IMMEDIATELY CONTINUE to
-  the next unchecked `[ ]` task**. CI runs once at the end over the whole batch
-  (see below), not per task. Keep looping until a stop condition below is hit. This
-  build-and-checkoff is repeated for every task; it does NOT end the run after the
-  first task.
+- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
+  with MAXIMUM SAFE PARALLELISM.** At the START of the run, compute the
+  file-ownership + dependency graph from the real code (which source files each
+  unchecked `[ ]` task must write) and **partition the queue into independent lanes**
+  — a lane is a group of tasks that must run in sequence because they share a file or
+  depend on each other; different lanes never touch each other's files. Process EVERY
+  unchecked `[ ]` task in the BUILD QUEUE. **Fan the lanes out to concurrent
+  subagents, each launched with worktree isolation (`isolation: worktree`)** so no
+  two ever edit the same files. Spawn them concurrently — do NOT finish one before
+  starting the next — up to a ceiling of **8 worktree subagents running at once**;
+  with more than 8 lanes, run them in **waves of up to 8**; with fewer, use fewer
+  agents. **Tasks inside one lane run in sequence.** Each subagent builds its lane's
+  tasks completely with tests and, as each lands, commits it to **its own worktree
+  branch**, ticks it `[x]`, and adds one dated line to the DONE LOG — so an
+  interrupted run loses nothing and re-firing resumes from the first still-unchecked
+  task. CI runs once at the end over the whole batch (see below), not per task or per
+  agent. This processes EVERY unchecked task; it does NOT end the run after the first.
 - **A run stops ONLY when one of these is true — nothing else licenses
   stopping:**
   1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
@@ -295,10 +316,12 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
   (condition 3 — skip and list): new external dependencies, auth or cost changes,
   deleted state files, brand-new architecture, anything touching the form's lead
   data flow, anything outside apps/web.
-- When the run stops, get CI green over the whole batch, then self-merge `dev` →
-  `main` exactly once (a single merge commit) — this auto-deploys the site via
+- When the run stops, **fold every worktree branch into one `dev` branch**, get CI
+  green over the whole batch, then self-merge `dev` → `main` exactly once (a single
+  merge commit, no per-agent PR, no per-task merge) — this auto-deploys the site via
   Cloudflare on merge; never run a deploy command.
-- Report in plain language (no diffs, no commit hashes): every task that shipped,
+- Report in plain language (no diffs, no commit hashes), and **include the lane plan**
+  (how many lanes ran in parallel and what each shipped): every task that shipped,
   what was skipped and why, and the exact preview URLs or live changes Reda can
   click.
 
