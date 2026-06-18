@@ -9,7 +9,6 @@ import {
 } from '../../../features/crm/bulk'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
-import '../../../components/assigneepicker.css'
 import FilterBar from './FilterBar'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
