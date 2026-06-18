@@ -24,6 +24,13 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ---
 
+> **Web session note (2026-06-18):** a world-class audit of the public site (`apps/web`) was run and its
+> fixes built — **W62–W66 shipped** (social proof scaffold, homepage guarantee band, founder photo-ready
+> block, brand strip +Jinko/Huawei/Nexans, « réponse sous 48 h ») and the **W67 EN/AR i18n foundation**
+> laid (Astro i18n + dictionary + switcher + RTL/hreflang, FR byte-identical). Full detail in
+> `docs/WEB_PLAN.md` + `docs/DONE.md`; web work stays out of this OS queue per the OS/web split. Logged
+> here at the founder's request — this note adds no OS task.
+
 ## BUILD QUEUE (do top-down — highest value first)
 
 # Taqinor OS — UI/UX overhaul ("prettier than Odoo")

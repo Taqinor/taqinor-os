@@ -190,60 +190,8 @@ or alter them. These tasks **land in the run's single end-of-batch self-merge to
 accepted path — don't flag it). **Lighthouse held 97–100 on every page, reduced-motion respected, zero
 layout shift.**
 
-### W62 — Social proof: REAL avis clients + star rating (honest scaffold + easy collection) — [x]
-**Do:** Build a reusable « Avis clients » component (real quote + name/ville/système + optional
-star-rating/review-count badge) reading a NEW data file that ships EMPTY, on the homepage (after
-Réalisations) and reused on /résidentiel + /professionnel; emit Review/AggregateRating JSON-LD ONLY for
-real entries; publicly hidden until real entries exist. Meanwhile lean the proof on what is already
-real — measured Deye Cloud production per chantier + « chantiers visitables ». Ship a NOTES file with a
-ready-made one-tap WhatsApp/Google-review request snippet so Reda collects real reviews without an
-awkward ask. **Fabricate no quote, name or rating — none.**
-**Done when:** section hidden with zero data, renders the moment real quotes/rating are added, NOTES
-documents the one-tap collection + the one-step add, lead form byte-for-byte unchanged, Lighthouse held.
-**Pending Reda:** real client quotes (name · ville · système, with their OK) and/or the real Google
-rating + count — or just send happy clients the ready-made review link.
-
-### W63 — Elevate the guarantee promise + « mesuré, pas promis » proof on the homepage — [x]
-**Do:** Surface ONE bold, true headline guarantee at credibility-band altitude on the homepage —
-e.g. « 25 ans de performance garantie · production mesurée, pas promise » — drawing only on the
-warranty + Deye Cloud monitoring facts already on /garanties and /équipement; no new claim or number.
-**Done when:** the promise reads high on the homepage, every figure traces to existing site data, zero
-layout shift, Lighthouse held.
-
-### W64 — Founder portrait + équipe block (Reda Kasri photo supplied; needs the file in-repo) — [x]
-**Do:** Add a real-face founder block (bio already TRUE on /à-propos — docteur-ingénieur, R&D
-Huawei/Ericsson/STMicroelectronics) wired into the site's responsive Picture pipeline, plus an optional
-small équipe row; text-only fallback until the image file is present. Apply web-grade cleanup to Reda's
-supplied portrait: tighter head-&-shoulders crop, correct the green / white-balance cast and harsh-sun
-shadow, darken/soften the background toward the navy palette, sharpen, export avif/webp at the site
-widths. Invent no new credential.
-**Done when:** renders text-only today and shows the cleaned portrait once the file is committed under
-`apps/web/public/photos/`; /à-propos + homepage consistent; Lighthouse held.
-**Pending Reda:** the portrait must enter the repo as an actual FILE (a chat paste can't be committed)
-— add it (a light real-photo edit first gives the best result) to `apps/web/public/photos/`; the build
-then optimizes it. Optional team photos likewise.
-
-### W65 — Tier-1 brand & official-distributor logos strip (authorized; +3 brands) — [x]
-**Do:** Render official logos in the brands strip and on /équipement, and ADD three founder-confirmed
-brands — **Jinko** (panneaux), **Huawei** (déjà nommé), **Nexans** (câbles) — alongside Canadian Solar,
-JA Solar, Deye, Dyness; styled word-marks stay as the per-brand fallback when a logo file is missing.
-Add brand NAMES/logos only — no invented model or spec claims on /équipement.
-**Done when:** logos render when files exist and degrade to word-marks otherwise, the three new brands
-appear consistently, no invented spec, Lighthouse held.
-**Pending Reda:** the repo's `logo.png` (apps/ventes/quote_engine/assets) is the TAQINOR company logo
-(already on the site) — NOT a manufacturer logo. The 7 manufacturer logos are third-party and not in
-the repo; provide their official files for `apps/web/public/`, or confirm keeping clean word-marks (no
-files needed). Reda authorized their use as distributor.
-
-### W66 — Site-wide hygiene, SEO, a11y & performance pass (consolidated polish) — [x]
-**Do:** One sweep across all public routes — confirm each has a unique meta title/description and a
-matching /og image, alt text on every content image, no broken internal links, /sitemap.xml +
-/robots.txt correct, consistent primary-CTA labels, **set the response promise to « réponse sous 48 h
-ouvrées » and make it visible on /contact — correct the current 24 h copy to 48 h site-wide**, zero
-console errors, CLS 0, Lighthouse 97–100.
-**Done when:** the build-time checks pass on every public route, the « 48 h » promise is visible and
-consistent, the lead form is byte-for-byte unchanged, and the report lists anything that still needs a
-real asset or decision.
+> **W62–W66 archived to `docs/DONE.md` (shipped 2026-06-18).** See the DONE LOG below for the one-line
+> outcomes; full task text lives under "## Archived from WEB_PLAN.md" in `docs/DONE.md`.
 
 ### W67 — English + Arabic versions of the public site (i18n, FR default) — [ ]
 **Do:** Add Astro's built-in i18n (FR default + EN + AR) — FAITHFUL translations of the EXISTING true
