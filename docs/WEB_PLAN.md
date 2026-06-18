@@ -1200,7 +1200,7 @@ Reda/Meryem later. This is the page that answers a skeptical buyer's "they've on
 of jobs" with credentials no competitor can claim. Make it the single most convincing page on the
 site within those honesty limits. Refresh title/meta-description. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W42 — Rewrite the five case-study pages from stat readouts into real narratives — [ ]
+### W42 — Rewrite the five case-study pages from stat readouts into real narratives — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1667,3 +1667,14 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   engineer started a solar company » narrative and « il valide personnellement chaque étude » — no
   invented project/date/title/anecdote. pourquoi-taqinor and à-propos are now distinct and cross-linked
   both ways. All three guides keep their Article JSON-LD; every marker/figure preserved.
+- 2026-06-18 — W42 done (five case studies turned from stat readouts into narratives): the [slug] route
+  rendered the same generic shape for every study. Added a NEW per-slug narrative module
+  `src/lib/caseStudies.ts` (unique title/meta + situation/sizing/install/result built ONLY from the
+  published facts) and rewired `realisations/[slug].astro` to render it — keeping `getStaticPaths`, the
+  Article JSON-LD, V2Enhance/Breadcrumb, the real photos with alts, and all fact bindings with their
+  null-guards (`realisations.ts` left read-only). Each study leads with its own measured number (17,04
+  kWc → 21 406 kWh/an; 11,36 → 14 271; 5,68 → 7 135; etc.) and cross-links to its segment page
+  (/résidentiel — all five are residential) and to the relevant service city (/installation-solaire-
+  casablanca; El Jadida and Nouaceur, off the five service cities, point to the nearest same-region
+  service city honestly). No null field is ever printed: réf. 134 names no onduleur/battery, Nouaceur
+  states no production is published. No invented client name, quote, date or figure; no « témoignage ».
