@@ -210,15 +210,18 @@ warranty + Deye Cloud monitoring facts already on /garanties and /équipement; n
 **Done when:** the promise reads high on the homepage, every figure traces to existing site data, zero
 layout shift, Lighthouse held.
 
-### W64 — Founder portrait + équipe block (real photo of Reda Kasri, pending the image file) — [ ]
-**Do:** Add a real-face block for founder **Reda Kasri** (bio already TRUE on /à-propos — docteur-
-ingénieur, R&D Huawei/Ericsson/STMicroelectronics) and an optional small équipe row, wired to image
-slots with today's text-only fallback until a photo file lands. Verify identity against those
-already-published employers before using any image; invent no new credential.
-**Done when:** renders text-only today and shows the real portrait the moment the image file is in the
-repo; /à-propos + homepage stay consistent; Lighthouse held.
-**Pending Reda:** the founder portrait image FILE — his LinkedIn photo is fine, just drop the file into
-`public/` (the build environment can't fetch LinkedIn directly) — plus any optional team photos.
+### W64 — Founder portrait + équipe block (Reda Kasri photo supplied; needs the file in-repo) — [ ]
+**Do:** Add a real-face founder block (bio already TRUE on /à-propos — docteur-ingénieur, R&D
+Huawei/Ericsson/STMicroelectronics) wired into the site's responsive Picture pipeline, plus an optional
+small équipe row; text-only fallback until the image file is present. Apply web-grade cleanup to Reda's
+supplied portrait: tighter head-&-shoulders crop, correct the green / white-balance cast and harsh-sun
+shadow, darken/soften the background toward the navy palette, sharpen, export avif/webp at the site
+widths. Invent no new credential.
+**Done when:** renders text-only today and shows the cleaned portrait once the file is committed under
+`apps/web/public/photos/`; /à-propos + homepage consistent; Lighthouse held.
+**Pending Reda:** the portrait must enter the repo as an actual FILE (a chat paste can't be committed)
+— add it (a light real-photo edit first gives the best result) to `apps/web/public/photos/`; the build
+then optimizes it. Optional team photos likewise.
 
 ### W65 — Tier-1 brand & official-distributor logos strip (authorized; +3 brands) — [ ]
 **Do:** Render official logos in the brands strip and on /équipement, and ADD three founder-confirmed
@@ -227,8 +230,10 @@ JA Solar, Deye, Dyness; styled word-marks stay as the per-brand fallback when a 
 Add brand NAMES/logos only — no invented model or spec claims on /équipement.
 **Done when:** logos render when files exist and degrade to word-marks otherwise, the three new brands
 appear consistently, no invented spec, Lighthouse held.
-**Pending Reda:** official logo image files (Reda authorized their use as distributor) — drop them into
-`public/`; until then the new brands show as word-marks.
+**Pending Reda:** the repo's `logo.png` (apps/ventes/quote_engine/assets) is the TAQINOR company logo
+(already on the site) — NOT a manufacturer logo. The 7 manufacturer logos are third-party and not in
+the repo; provide their official files for `apps/web/public/`, or confirm keeping clean word-marks (no
+files needed). Reda authorized their use as distributor.
 
 ### W66 — Site-wide hygiene, SEO, a11y & performance pass (consolidated polish) — [ ]
 **Do:** One sweep across all public routes — confirm each has a unique meta title/description and a
@@ -249,8 +254,8 @@ and its entire data flow stay byte-for-byte unchanged in every locale.
 **Done when:** every public page resolves under /en/ and /ar/ with accurate translations, the switcher
 works, hreflang + sitemap are correct, Arabic renders RTL without layout breakage, Lighthouse held, the
 lead form is unchanged. (Large task — the autopilot may lane/stage it across pages.)
-**Pending Reda:** a human review of the EN + AR translations before promotion (especially the loi-82-21
-legal wording).
+**Pending Reda:** none — Reda waived pre-publication translation review; build to a high bar and ship.
+Keep loi-82-21 wording and every figure exact in EN + AR.
 
 ---
 
