@@ -11,8 +11,12 @@ subagents — waves of 8 if there are more — coupled tasks in sequence inside 
 once this file has no pending `[ ]` task left does it fall through to `docs/PLAN.md`. Every
 worktree branch is folded into one `dev`, CI runs once over the whole batch, and the run
 self-merges `dev` → `main` exactly once at the very end — **no per-agent PR, no per-task merge**.
-All the HOW TO RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — this file only
-adds tasks.
+All the HOW TO RUN and STANDING RULES in `docs/PLAN.md` apply here unchanged — including the
+default **workflow-with-review engine** (one worktree subagent per task plus a separate
+adversarial review agent that must pass before a change is merge-eligible), the
+**parallel-subagent fallback** when no workflow engine is available (never a single serial
+one-task-at-a-time agent), and the **sync-safe single merge** (integrate the latest
+`origin/main` first, re-run CI, push without forcing). This file only adds tasks.
 
 > Added 2026-06-17 while the field-execution batch (PLAN.md F1–F24) was running on
 > `dev-field-exec`. Per the founder's "add to plan" convention, new tasks go here while a
