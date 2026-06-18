@@ -60,6 +60,22 @@ textarea:focus-visible,
   outline-offset: 2px;
 }
 
+/* ============================================================================
+   N64 — Redimensionnement du texte à 200 % & orientation
+   ----------------------------------------------------------------------------
+   Durcissement conservateur (CSS) : les contrôles porteurs de texte utilisent
+   `min-height` (et non une hauteur fixe) pour ne pas rogner un libellé agrandi,
+   et les hauteurs plein-écran ont un repli `dvh` pour le paysage mobile.
+
+   ÉTAPE DE RELEASE MANUELLE (hors périmètre CSS) : la vérification automatisée
+   du zoom 200 %, du contraste et de l'arbre d'accessibilité (Lighthouse / axe)
+   reste un contrôle MANUEL avant publication. On n'ajoute PAS @axe-core /
+   lighthouse-ci ici : ce serait une nouvelle dépendance (hors périmètre). À
+   faire à la main : zoom navigateur 200 % + rotation paysage sur les flux
+   clés (login, listes, formulaires, modales) — aucun texte coupé, aucun piège
+   de défilement.
+   ========================================================================== */
+
 #root {
   width: 100%;
   min-height: 100vh;
@@ -503,7 +519,9 @@ textarea:focus-visible,
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 36px;
+  /* N64 — min-height (et non height fixe) pour que le libellé ne soit pas
+     rogné quand le texte est agrandi à 200 %. Rendu identique au repos. */
+  min-height: 36px;
   padding: 0 14px;
   border-radius: 8px;
   font-size: 0.875rem;
@@ -568,7 +586,8 @@ textarea:focus-visible,
 }
 
 .btn-sm {
-  height: 30px;
+  /* N64 — min-height : pas de rognage à 200 % (rendu identique au repos). */
+  min-height: 30px;
   padding: 0 10px;
   font-size: 0.8rem;
   border-radius: 6px;
@@ -1112,7 +1131,8 @@ textarea.form-control {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  /* N64 — min-height : le libellé d'onglet ne se rogne pas à 200 %. */
+  min-height: 36px;
   padding: 0 14px;
   background: transparent;
   border: none;
@@ -1812,6 +1832,10 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 56px);
+  /* N64 — dvh : en paysage mobile (barres d'URL dynamiques) la hauteur réelle
+     du viewport est respectée, pas de zone coupée. Repli 100vh ci-dessus pour
+     les navigateurs sans dvh. */
+  height: calc(100dvh - 56px);
   max-width: 860px;
   margin: 0 auto;
   padding: 0;
