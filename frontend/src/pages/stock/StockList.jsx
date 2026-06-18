@@ -1,6 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
+  Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
+  Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package,
+} from 'lucide-react'
+import {
   fetchProduits,
   fetchProduitsArchived,
   fetchCategories,
@@ -19,6 +23,30 @@ import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
 import { validateTransfert, totalVentile } from '../../features/stock/emplacements'
+import {
+  Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  EmptyState, DataTable,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
+
+const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Petit tableau interne stylé (lecture seule) — utilisé dans les modals.
+function MiniTable({ head, children, className = '' }) {
+  return (
+    <div className={`overflow-hidden rounded-lg border border-border ${className}`}>
+      <table className="w-full text-sm">
+        <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+          <tr>{head.map((h, i) => <th key={i} className="px-3 py-2 text-left font-semibold">{h}</th>)}</tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  )
+}
 
 // ── N16 — Inventaire physique : comptage par produit → ajustement de stock ──
 function InventaireModal({ produits, onClose, onDone }) {
@@ -46,55 +74,51 @@ function InventaireModal({ produits, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Inventaire physique</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <p className="gen-hint" style={{ marginTop: 0 }}>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Inventaire physique</DialogTitle>
+          <DialogDescription>
             Saisissez la quantité comptée ; seuls les écarts sont ajustés (mouvement
             « Ajustement » audité). Laissez vide pour ne pas toucher un produit.
-          </p>
-          <div className="form-group">
-            <label className="form-label">Motif (optionnel)</label>
-            <input className="form-control" value={motif}
-                   onChange={(e) => setMotif(e.target.value)}
-                   placeholder="Ex. comptage annuel" />
-          </div>
-          <div className="table-wrap" style={{ maxHeight: 360, overflow: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr><th>Produit</th><th>SKU</th><th>Stock actuel</th><th>Compté</th></tr>
-              </thead>
-              <tbody>
-                {rows.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.nom}</td>
-                    <td>{p.sku ?? '—'}</td>
-                    <td>{p.quantite_stock}</td>
-                    <td>
-                      <input type="number" min="0" className="form-control"
-                             style={{ width: 90 }} value={counts[p.id] ?? ''}
-                             placeholder={String(p.quantite_stock)}
-                             onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {error && <div className="form-error-box" role="alert">{error}</div>}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="inv-motif">Motif (optionnel)</label>
+          <Input id="inv-motif" value={motif} onChange={(e) => setMotif(e.target.value)}
+                 placeholder="Ex. comptage annuel" />
         </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
-          <button type="button" className="btn btn-primary" disabled={saving} onClick={submit}>
-            {saving ? 'Enregistrement…' : 'Valider l\'inventaire'}
-          </button>
+
+        <div className="max-h-80 overflow-auto">
+          <MiniTable head={['Produit', 'SKU', 'Stock actuel', 'Compté']}>
+            {rows.map((p) => (
+              <tr key={p.id} className="border-t border-border">
+                <td className="px-3 py-2">{p.nom}</td>
+                <td className="px-3 py-2 font-mono text-xs">{p.sku ?? '—'}</td>
+                <td className="px-3 py-2 tabular-nums">{p.quantite_stock}</td>
+                <td className="px-3 py-2">
+                  <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
+                         value={counts[p.id] ?? ''}
+                         placeholder={String(p.quantite_stock)}
+                         onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
+                </td>
+              </tr>
+            ))}
+          </MiniTable>
         </div>
-      </div>
-    </div>
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button type="button" loading={saving} onClick={submit}>
+            {saving ? 'Enregistrement…' : "Valider l'inventaire"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -107,62 +131,60 @@ function ValorisationModal({ onClose }) {
       .then((r) => setData(r.data))
       .catch(() => setError('Échec du chargement de la valorisation.'))
   }, [])
-  const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Valorisation du stock par emplacement</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <p className="gen-hint" style={{ marginTop: 0 }}>
-            Valeur au coût moyen d'achat (historique des réceptions, sinon prix
-            d'achat catalogue). Donnée interne — jamais sur un document client.
-          </p>
-          {error && <div className="form-error-box" role="alert">{error}</div>}
-          {!data && !error && <p>Chargement…</p>}
-          {data && (
-            <>
-              <div className="table-wrap" style={{ marginBottom: '1rem' }}>
-                <table className="data-table">
-                  <thead><tr><th>Emplacement</th><th>Quantité</th><th>Valeur</th></tr></thead>
-                  <tbody>
-                    {data.par_emplacement.map((t) => (
-                      <tr key={t.emplacement_id}>
-                        <td>{t.emplacement_nom}{t.is_principal ? ' (principal)' : ''}</td>
-                        <td>{t.quantite}</td>
-                        <td>{fmt(t.valeur)} DH</td>
-                      </tr>
-                    ))}
-                    <tr><td><strong>Total</strong></td><td></td><td><strong>{fmt(data.total)} DH</strong></td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="table-wrap" style={{ maxHeight: 320, overflow: 'auto' }}>
-                <table className="data-table">
-                  <thead><tr><th>Produit</th><th>Emplacement</th><th>Qté</th><th>Coût moyen</th><th>Valeur</th></tr></thead>
-                  <tbody>
-                    {data.lignes.map((l, i) => (
-                      <tr key={`${l.produit_id}-${l.emplacement_nom}-${i}`}>
-                        <td>{l.designation}</td>
-                        <td>{l.emplacement_nom}</td>
-                        <td>{l.quantite}</td>
-                        <td>{fmt(l.cout_moyen)} DH</td>
-                        <td>{fmt(l.valeur)} DH</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
-        </div>
-      </div>
-    </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Valorisation du stock par emplacement</DialogTitle>
+          <DialogDescription>
+            Valeur au coût moyen d&apos;achat (historique des réceptions, sinon prix
+            d&apos;achat catalogue). Donnée interne — jamais sur un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+        )}
+        {!data && !error && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+        )}
+        {data && (
+          <>
+            <MiniTable head={['Emplacement', 'Quantité', 'Valeur']}>
+              {data.par_emplacement.map((t) => (
+                <tr key={t.emplacement_id} className="border-t border-border">
+                  <td className="px-3 py-2">{t.emplacement_nom}{t.is_principal ? ' (principal)' : ''}</td>
+                  <td className="px-3 py-2 tabular-nums">{t.quantite}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtNum2(t.valeur)} DH</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-border bg-muted/40">
+                <td className="px-3 py-2 font-semibold">Total</td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2 font-semibold tabular-nums">{fmtNum2(data.total)} DH</td>
+              </tr>
+            </MiniTable>
+            <div className="max-h-80 overflow-auto">
+              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Coût moyen', 'Valeur']}>
+                {data.lignes.map((l, i) => (
+                  <tr key={`${l.produit_id}-${l.emplacement_nom}-${i}`} className="border-t border-border">
+                    <td className="px-3 py-2">{l.designation}</td>
+                    <td className="px-3 py-2">{l.emplacement_nom}</td>
+                    <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
+                    <td className="px-3 py-2 tabular-nums">{fmtNum2(l.cout_moyen)} DH</td>
+                    <td className="px-3 py-2 tabular-nums">{fmtNum2(l.valeur)} DH</td>
+                  </tr>
+                ))}
+              </MiniTable>
+            </div>
+          </>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -236,135 +258,131 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const empOptions = emplacements.filter((e) => !e.archived)
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Transférer du stock entre emplacements</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <p className="gen-hint" style={{ marginTop: 0 }}>
-            Déplacez une quantité d'un emplacement à un autre (ex. dépôt principal →
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Transférer du stock entre emplacements</DialogTitle>
+          <DialogDescription>
+            Déplacez une quantité d&apos;un emplacement à un autre (ex. dépôt principal →
             camionnette). Le stock total du produit ne change pas — seule la
             répartition change.
-          </p>
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="form-group">
-            <label className="form-label">Produit</label>
-            <select className="form-control" value={produitId}
-                    onChange={(e) => onPickProduit(e.target.value)}>
-              <option value="">— Choisir un produit —</option>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="tr-produit">Produit</label>
+          <Select value={produitId || '__none'} onValueChange={(v) => onPickProduit(v === '__none' ? '' : v)}>
+            <SelectTrigger id="tr-produit"><SelectValue placeholder="— Choisir un produit —" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">— Choisir un produit —</SelectItem>
               {rows.map((p) => (
-                <option key={p.id} value={p.id}>
+                <SelectItem key={p.id} value={String(p.id)}>
                   {p.nom}{p.sku ? ` (${p.sku})` : ''} — stock {p.quantite_stock}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          </div>
-
-          {produitId && (
-            <div className="table-wrap" style={{ marginBottom: '0.75rem' }}>
-              <table className="data-table">
-                <thead><tr><th>Emplacement</th><th>Quantité</th></tr></thead>
-                <tbody>
-                  {breakdown.map((b) => (
-                    <tr key={b.emplacement_id}>
-                      <td>{b.emplacement_nom}{b.is_principal ? ' (principal)' : ''}</td>
-                      <td>{b.quantite}</td>
-                    </tr>
-                  ))}
-                  <tr><td><strong>Total</strong></td><td><strong>{totalVentile(breakdown)}</strong></td></tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <div className="form-group" style={{ flex: '1 1 160px' }}>
-              <label className="form-label">De</label>
-              <select className="form-control" value={source}
-                      onChange={(e) => setSource(e.target.value)}>
-                <option value="">— Source —</option>
-                {empOptions.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex: '1 1 160px' }}>
-              <label className="form-label">Vers</label>
-              <select className="form-control" value={destination}
-                      onChange={(e) => setDestination(e.target.value)}>
-                <option value="">— Destination —</option>
-                {empOptions.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex: '0 0 110px' }}>
-              <label className="form-label">Quantité</label>
-              <input type="number" min="1" className="form-control" value={quantite}
-                     onChange={(e) => setQuantite(e.target.value)} />
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Note (optionnel)</label>
-            <input className="form-control" value={note}
-                   onChange={(e) => setNote(e.target.value)}
-                   placeholder="Ex. chargement chantier Casablanca" />
-          </div>
-
-          {error && <div className="form-error-box" role="alert">{error}</div>}
-
-          <div className="modal-footer" style={{ padding: '0.5rem 0', borderTop: 'none' }}>
-            <button type="button" className="btn btn-primary" disabled={saving} onClick={submit}>
-              {saving ? 'Transfert…' : 'Transférer'}
-            </button>
-          </div>
-
-          {transferts.length > 0 && (
-            <>
-              <h4 style={{ marginBottom: '0.25rem' }}>Derniers transferts</h4>
-              <div className="table-wrap" style={{ maxHeight: 180, overflow: 'auto' }}>
-                <table className="data-table">
-                  <thead><tr><th>Produit</th><th>De → Vers</th><th>Qté</th></tr></thead>
-                  <tbody>
-                    {transferts.map((t) => (
-                      <tr key={t.id}>
-                        <td>{t.produit_nom}</td>
-                        <td>{t.source_nom} → {t.destination_nom}</td>
-                        <td>{t.quantite}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-
-          {isAdmin && (
-            <details style={{ marginTop: '0.75rem' }}>
-              <summary>Gérer les emplacements</summary>
-              <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 0' }}>
-                <input className="form-control" value={newEmp}
-                       onChange={(e) => setNewEmp(e.target.value)}
-                       placeholder="Nouvel emplacement (ex. Camionnette 2)" />
-                <button type="button" className="btn btn-sm btn-outline" onClick={addEmplacement}>
-                  Ajouter
-                </button>
-              </div>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                {emplacements.map((e) => (
-                  <li key={e.id} style={{ display: 'flex', justifyContent: 'space-between',
-                                          padding: '0.25rem 0' }}>
-                    <span>{e.nom}{e.is_principal ? ' (principal)' : ''}</span>
-                    {!e.is_principal && (
-                      <button type="button" className="btn btn-sm btn-outline"
-                              onClick={() => removeEmplacement(e.id)}>Supprimer</button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+            </SelectContent>
+          </Select>
         </div>
-      </div>
-    </div>
+
+        {produitId && (
+          <MiniTable head={['Emplacement', 'Quantité']}>
+            {breakdown.map((b) => (
+              <tr key={b.emplacement_id} className="border-t border-border">
+                <td className="px-3 py-2">{b.emplacement_nom}{b.is_principal ? ' (principal)' : ''}</td>
+                <td className="px-3 py-2 tabular-nums">{b.quantite}</td>
+              </tr>
+            ))}
+            <tr className="border-t-2 border-border bg-muted/40">
+              <td className="px-3 py-2 font-semibold">Total</td>
+              <td className="px-3 py-2 font-semibold tabular-nums">{totalVentile(breakdown)}</td>
+            </tr>
+          </MiniTable>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <div className="min-w-40 flex-1 flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="tr-src">De</label>
+            <Select value={source || '__none'} onValueChange={(v) => setSource(v === '__none' ? '' : v)}>
+              <SelectTrigger id="tr-src"><SelectValue placeholder="— Source —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Source —</SelectItem>
+                {empOptions.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-40 flex-1 flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="tr-dst">Vers</label>
+            <Select value={destination || '__none'} onValueChange={(v) => setDestination(v === '__none' ? '' : v)}>
+              <SelectTrigger id="tr-dst"><SelectValue placeholder="— Destination —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Destination —</SelectItem>
+                {empOptions.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-28 flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="tr-qte">Quantité</label>
+            <Input id="tr-qte" type="number" min="1" inputMode="numeric" value={quantite}
+                   onChange={(e) => setQuantite(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="tr-note">Note (optionnel)</label>
+          <Input id="tr-note" value={note} onChange={(e) => setNote(e.target.value)}
+                 placeholder="Ex. chargement chantier Casablanca" />
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+        )}
+
+        <div className="flex justify-end">
+          <Button type="button" loading={saving} onClick={submit}>
+            {saving ? 'Transfert…' : 'Transférer'}
+          </Button>
+        </div>
+
+        {transferts.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <h4 className="text-sm font-semibold">Derniers transferts</h4>
+            <div className="max-h-44 overflow-auto">
+              <MiniTable head={['Produit', 'De → Vers', 'Qté']}>
+                {transferts.map((t) => (
+                  <tr key={t.id} className="border-t border-border">
+                    <td className="px-3 py-2">{t.produit_nom}</td>
+                    <td className="px-3 py-2">{t.source_nom} → {t.destination_nom}</td>
+                    <td className="px-3 py-2 tabular-nums">{t.quantite}</td>
+                  </tr>
+                ))}
+              </MiniTable>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <details className="rounded-lg border border-border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Gérer les emplacements</summary>
+            <div className="mt-2 flex gap-2">
+              <Input value={newEmp} onChange={(e) => setNewEmp(e.target.value)}
+                     placeholder="Nouvel emplacement (ex. Camionnette 2)" />
+              <Button type="button" variant="outline" onClick={addEmplacement}>Ajouter</Button>
+            </div>
+            <ul className="mt-2 flex flex-col">
+              {emplacements.map((e) => (
+                <li key={e.id} className="flex items-center justify-between py-1 text-sm">
+                  <span>{e.nom}{e.is_principal ? ' (principal)' : ''}</span>
+                  {!e.is_principal && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeEmplacement(e.id)}>
+                      Supprimer
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -375,22 +393,20 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
   const catOptions = [{ value: '', label: '— Catégorie —' }]
     .concat((categories ?? []).map((c) => ({ value: c.id, label: c.nom })))
   return (
-    <div className={`cat-row${p.is_low_stock ? ' cat-row-low' : ''}`}>
+    <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors sm:flex-nowrap ${p.is_low_stock ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card hover:bg-muted/40'}`}>
       {onToggleSelect && (
-        <input type="checkbox" className="cat-row-check"
-               aria-label={`Sélectionner ${p.nom}`}
-               checked={selected} onChange={() => onToggleSelect(p.id)}
-               style={{ marginRight: 8 }} />
+        <Checkbox checked={selected} onCheckedChange={() => onToggleSelect(p.id)}
+                  aria-label={`Sélectionner ${p.nom}`} />
       )}
-      <div className="cat-row-id">
-        <div className="cat-row-nom">{p.nom}</div>
-        <div className="cat-row-sub">
-          {p.sku && <span className="mono-text">{p.sku}</span>}
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-foreground">{p.nom}</div>
+        <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          {p.sku && <span className="font-mono">{p.sku}</span>}
           {parseFloat(p.prix_achat) > 0 && (
-            <span> · achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
+            <span>· achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
           )}
           {onInlineSave && (
-            <span className="cat-row-cat-edit">
+            <span>
               {' · '}
               <InlineEdit
                 value={p.categorie?.id ?? ''}
@@ -403,14 +419,16 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
           )}
         </div>
       </div>
-      <div className="cat-row-spec">{spec && <span className="cat-spec-chip">{spec}</span>}</div>
-      <div className="cat-row-prix">
+      <div className="shrink-0">{spec && <Badge tone="primary">{spec}</Badge>}</div>
+      <div className="shrink-0 text-right">
         {sansPrix(p) && !onInlineSave
-          ? <span className="cat-badge cat-badge-prix">prix à renseigner</span>
+          ? <Badge tone="warning">prix à renseigner</Badge>
           : (
             <>
-              <div className="cat-prix-ttc">{ttc.toLocaleString('fr-MA')} DH <span>TTC</span></div>
-              <div className="cat-prix-ht">
+              <div className="font-semibold tabular-nums">
+                {ttc.toLocaleString('fr-MA')} DH <span className="text-xs font-normal text-muted-foreground">TTC</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
                 {onInlineSave ? (
                   <InlineEdit
                     value={p.prix_vente}
@@ -425,8 +443,8 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
             </>
           )}
       </div>
-      <div className="cat-row-stock">
-        <span className={p.is_low_stock ? 'text-danger' : ''}>
+      <div className="shrink-0 text-right">
+        <span className={`text-sm ${p.is_low_stock ? 'text-destructive' : ''}`}>
           {onInlineSave ? (
             <InlineEdit
               value={p.quantite_stock}
@@ -437,22 +455,29 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
           ) : <strong>{p.quantite_stock}</strong>}
           {' '}en stock
         </span>
-        {p.is_low_stock && <span className="cat-badge cat-badge-low">⚠ seuil {p.seuil_alerte}</span>}
+        {p.is_low_stock && (
+          <div className="mt-0.5">
+            <Badge tone="danger"><AlertTriangle className="size-3" /> seuil {p.seuil_alerte}</Badge>
+          </div>
+        )}
       </div>
-      <div className="cat-row-actions">
+      <div className="flex shrink-0 items-center gap-0.5">
         {canWrite && (
-          <button className="btn btn-sm btn-outline" onClick={() => onEdit(p)}>Éditer</button>
+          <IconButton label="Éditer" variant="ghost" size="icon" className="size-8" onClick={() => onEdit(p)}>
+            <Pencil />
+          </IconButton>
         )}
         {canDelete && (
-          <button className="btn btn-sm btn-outline btn-danger-outline"
-                  onClick={() => onDelete(p)}>Supprimer</button>
+          <IconButton label="Supprimer" variant="ghost" size="icon" className="size-8" onClick={() => onDelete(p)}>
+            <Trash2 className="text-destructive" />
+          </IconButton>
         )}
       </div>
     </div>
   )
 }
 
-// ── Modal confirmation suppression définitive ──────────────────────────────
+// ── Confirmation suppression définitive (AlertDialog + saisie de confirmation) ──
 function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
   const [typed, setTyped] = useState('')
   const expected = produit.sku || produit.nom
@@ -464,65 +489,50 @@ function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 12, padding: '2rem',
-        width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-      }}>
-        <h3 style={{ margin: '0 0 0.25rem', color: '#dc2626', fontSize: '1.1rem' }}>
-          Suppression définitive
-        </h3>
-        <p style={{ margin: '0 0 1.25rem', color: '#64748b', fontSize: '0.875rem' }}>
-          Cette action supprimera le produit et tout son historique de mouvements.
-          Elle est <strong>irréversible</strong>.
-        </p>
+    <AlertDialog open onOpenChange={(o) => { if (!o) onCancel() }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-destructive">Suppression définitive</AlertDialogTitle>
+          <AlertDialogDescription>
+            Cette action supprimera le produit et tout son historique de mouvements.
+            Elle est <strong>irréversible</strong>.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.875rem 1rem', marginBottom: '1.25rem', fontSize: '0.875rem', lineHeight: 1.7 }}>
-          <div><span style={{ color: '#94a3b8', minWidth: 140, display: 'inline-block' }}>Produit</span><strong>{produit.nom}</strong></div>
-          <div><span style={{ color: '#94a3b8', minWidth: 140, display: 'inline-block' }}>SKU / Référence</span><code style={{ background: '#e2e8f0', padding: '1px 5px', borderRadius: 4 }}>{produit.sku || '—'}</code></div>
-          <div><span style={{ color: '#94a3b8', minWidth: 140, display: 'inline-block' }}>Créé le</span>{fmtDate(produit.date_creation)}</div>
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm leading-relaxed">
+          <div><span className="inline-block min-w-32 text-muted-foreground">Produit</span><strong>{produit.nom}</strong></div>
+          <div><span className="inline-block min-w-32 text-muted-foreground">SKU / Référence</span><code className="rounded bg-muted px-1.5 py-0.5">{produit.sku || '—'}</code></div>
+          <div><span className="inline-block min-w-32 text-muted-foreground">Créé le</span>{fmtDate(produit.date_creation)}</div>
           {produit.nb_mouvements != null && (
-            <div><span style={{ color: '#94a3b8', minWidth: 140, display: 'inline-block' }}>Mouvements</span>
+            <div>
+              <span className="inline-block min-w-32 text-muted-foreground">Mouvements</span>
               {produit.nb_mouvements} mouvement{produit.nb_mouvements !== 1 ? 's' : ''}
               {produit.premiere_date_mouvement && (
-                <span style={{ color: '#64748b' }}> ({fmtDate(produit.premiere_date_mouvement)} → {fmtDate(produit.derniere_date_mouvement)})</span>
+                <span className="text-muted-foreground"> ({fmtDate(produit.premiere_date_mouvement)} → {fmtDate(produit.derniere_date_mouvement)})</span>
               )}
             </div>
           )}
         </div>
 
-        <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.4rem', color: '#374151' }}>
-          Tapez <code style={{ background: '#fee2e2', padding: '1px 5px', borderRadius: 4, color: '#dc2626' }}>{expected}</code> pour confirmer
-        </label>
-        <input
-          type="text"
-          className="form-control"
-          value={typed}
-          onChange={e => setTyped(e.target.value)}
-          placeholder={`Saisir : ${expected}`}
-          autoFocus
-          style={{ marginBottom: '1.25rem' }}
-        />
-
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button className="btn btn-outline" onClick={onCancel} disabled={loading}>
-            Annuler
-          </button>
-          <button
-            className="btn btn-danger"
-            onClick={() => onConfirm(produit)}
-            disabled={!isValid || loading}
-            style={{ background: isValid && !loading ? '#dc2626' : undefined }}
-          >
-            {loading ? 'Suppression...' : 'Supprimer définitivement'}
-          </button>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="fd-confirm">
+            Tapez <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">{expected}</code> pour confirmer
+          </label>
+          <Input id="fd-confirm" value={typed} onChange={e => setTyped(e.target.value)}
+                 placeholder={`Saisir : ${expected}`} autoFocus />
         </div>
-      </div>
-    </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading}>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={!isValid || loading}
+            onClick={(e) => { e.preventDefault(); onConfirm(produit) }}
+          >
+            {loading ? 'Suppression…' : 'Supprimer définitivement'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -687,11 +697,60 @@ export default function StockList() {
     }
   }
 
-  if (loading) return <p className="page-loading">Chargement des produits...</p>
-  if (error)   return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+  // ── Colonnes du tableau des produits archivés (DataTable) ──
+  const archivedColumns = useMemo(() => [
+    { id: 'sku', header: 'SKU', width: 120,
+      accessor: (p) => p.sku ?? '—',
+      cell: (v) => <span className="font-mono text-xs line-through">{v}</span> },
+    { id: 'nom', header: 'Nom', minWidth: 160,
+      cell: (v) => <span className="line-through">{v}</span> },
+    { id: 'categorie', header: 'Catégorie', minWidth: 120, searchable: false,
+      accessor: (p) => p.categorie?.nom ?? '—' },
+    { id: 'fournisseur', header: 'Fournisseur', minWidth: 120, searchable: false,
+      accessor: (p) => p.fournisseur?.nom ?? '—' },
+    { id: 'quantite_stock', header: 'Stock', align: 'right', width: 80, searchable: false },
+    { id: 'nb_mouvements', header: 'Mouvements', align: 'right', width: 110, searchable: false,
+      accessor: (p) => p.nb_mouvements ?? null,
+      cell: (v, p) => (v != null
+        ? <span title={p.premiere_date_mouvement
+            ? `${new Date(p.premiere_date_mouvement).toLocaleDateString('fr-FR')} → ${new Date(p.derniere_date_mouvement).toLocaleDateString('fr-FR')}`
+            : ''}>{v}</span>
+        : '—') },
+    { id: 'prix_vente', header: 'Prix vente HT', align: 'right', width: 120, searchable: false,
+      accessor: (p) => p.prix_vente,
+      cell: (v) => `${parseFloat(v).toFixed(2)} DH` },
+  ], [])
+
+  const archivedRowActions = (p) => [
+    { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => openEdit(p) },
+    { id: 'unarchive', label: 'Désarchiver', icon: RotateCcw, onClick: () => handleUnarchive(p) },
+    { id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true, onClick: () => setConfirmDelete(p) },
+  ]
+
+  // Squelette de chargement de premier rendu (avant données).
+  if (loading && actifs.length === 0) {
+    return (
+      <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
+        <Skeleton className="h-8 w-56" />
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 6 }).map((u, i) => <Skeleton key={i} className="h-14 w-full" />)}
+        </div>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="ui-root px-4 py-5 sm:px-5">
+        <EmptyState icon={AlertTriangle} title="Erreur de chargement"
+                    description={`Erreur : ${JSON.stringify(error)}`} className="border-destructive/40" />
+      </div>
+    )
+  }
+
+  const actifsCount = produits.filter(p => !p.is_archived).length
 
   return (
-    <div className="page">
+    <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       {confirmDelete && (
         <ForceDeleteModal
           produit={confirmDelete}
@@ -701,64 +760,60 @@ export default function StockList() {
         />
       )}
 
-      <div className="page-header">
-        <h2>
-          Produits en stock
-          {produits.filter(p => !p.is_archived).length > 0 && (
-            <span className="count-badge">{produits.filter(p => !p.is_archived).length}</span>
-          )}
-        </h2>
-        <div className="page-header-actions">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-xl font-semibold tracking-tight">Produits en stock</h2>
+          {actifsCount > 0 && <Badge tone="primary">{actifsCount}</Badge>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           {lowCount > 0 && (
-            <button
-              className={`btn btn-sm${filterLow ? ' btn-danger' : ' btn-outline'}`}
+            <Button
+              variant={filterLow ? 'destructive' : 'outline'} size="sm"
               onClick={() => setFilterLow(v => !v)}
               title="Filtrer les produits en rupture ou sous le seuil d'alerte"
             >
-              ⚠ Stock bas ({lowCount})
-            </button>
+              <AlertTriangle /> Stock bas ({lowCount})
+            </Button>
           )}
           {role === 'admin' && (
-            <button
-              className={`btn btn-sm${showArchived ? ' btn-warning' : ' btn-outline'}`}
-              onClick={() => setShowArchived(v => !v)}
-            >
-              {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
-            </button>
+            <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
+                    onClick={() => setShowArchived(v => !v)}>
+              <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
+            </Button>
           )}
           {role === 'admin' && (
-            <button className="btn btn-sm btn-outline" onClick={() => setShowInventaire(true)}
+            <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
                     title="Inventaire physique : saisir un comptage et ajuster le stock">
-              🧮 Inventaire
-            </button>
+              <Calculator /> Inventaire
+            </Button>
           )}
           {role === 'admin' && (
-            <button className="btn btn-sm btn-outline" onClick={() => setShowValorisation(true)}
+            <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
                     title="Valorisation du stock par emplacement (coût moyen, interne)">
-              💰 Valorisation
-            </button>
+              <Wallet /> Valorisation
+            </Button>
           )}
           {canWrite && (
-            <button className="btn btn-sm btn-outline" onClick={() => setShowTransfert(true)}
+            <Button variant="outline" size="sm" onClick={() => setShowTransfert(true)}
                     title="Transférer du stock entre emplacements (dépôt / camionnette)">
-              🚚 Transférer
-            </button>
+              <Truck /> Transférer
+            </Button>
           )}
-          <button className="btn btn-sm btn-outline" onClick={exportFiltered}>
-            ⬇ Exporter Excel
-          </button>
+          <Button variant="outline" size="sm" onClick={exportFiltered}>
+            <Download /> Exporter Excel
+          </Button>
           {canWrite && (
-            <button className="btn btn-sm btn-outline" onClick={() => setShowImport(true)}>
-              ⬆ Importer
-            </button>
+            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+              <Upload /> Importer
+            </Button>
           )}
           {canWrite && (
-            <button className="btn btn-primary" onClick={openNew}>
-              + Nouveau produit
-            </button>
+            <Button onClick={openNew}>
+              <Plus /> Nouveau produit
+            </Button>
           )}
         </div>
-      </div>
+      </header>
 
       {showImport && (
         <ExcelImport target="products" onClose={() => setShowImport(false)}
@@ -781,16 +836,13 @@ export default function StockList() {
       )}
 
       {archiveNotif && (
-        <div className="alert alert-warning" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span>📦</span>
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          <Package className="size-4 text-warning" />
           <span>{archiveNotif}</span>
-          <button
-            className="btn btn-sm btn-outline"
-            style={{ marginLeft: 'auto' }}
-            onClick={() => { setShowArchived(true); setArchiveNotif(null) }}
-          >
+          <Button variant="outline" size="sm" className="ml-auto"
+                  onClick={() => { setShowArchived(true); setArchiveNotif(null) }}>
             Voir les archivés
-          </button>
+          </Button>
         </div>
       )}
 
@@ -806,7 +858,7 @@ export default function StockList() {
         />
       )}
       {bulkMsg && (
-        <div className="alert alert-info" style={{ marginBottom: '1rem', background: '#ecfdf5', border: '1px solid #6ee7b7', color: '#065f46', borderRadius: 8, padding: '0.6rem 0.85rem' }}>
+        <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
           {bulkMsg}
         </div>
       )}
@@ -815,144 +867,105 @@ export default function StockList() {
         <ProduitForm produit={editProduit} onClose={closeForm} onSaved={onSaved} />
       )}
 
-      <div className="cat-layout">
-        <aside className="cat-rail">
-          <input
-            className="form-control cat-rail-search"
-            type="search"
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <aside className="flex shrink-0 flex-col gap-1 lg:w-60">
+          <Input
+            type="search" leading={<Package className="size-4" />}
             placeholder="Chercher partout…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
           <button type="button"
-                  className={`cat-rail-item${!activeCat && !searching ? ' active' : ''}`}
+                  className={`mt-1 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${!activeCat && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
                   onClick={() => { setActiveCat(''); setSearch('') }}>
             <span>Tout le catalogue</span>
-            <span className="cat-rail-count">{actifs.length}</span>
+            <Badge>{actifs.length}</Badge>
           </button>
           {allGroups.map(c => (
             <button key={c.nom} type="button"
-                    className={`cat-rail-item${activeCat === c.nom && !searching ? ' active' : ''}`}
+                    className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${activeCat === c.nom && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
                     onClick={() => { setActiveCat(c.nom); setSearch('') }}>
-              <span>{c.nom}</span>
-              <span className="cat-rail-count">{c.count}</span>
+              <span className="truncate">{c.nom}</span>
+              <Badge>{c.count}</Badge>
             </button>
           ))}
         </aside>
 
-        <main className="cat-main">
+        <main className="min-w-0 flex-1">
           {searching && (
-            <div className="cat-search-note">
+            <p className="mb-3 text-sm text-muted-foreground">
               {filtered.length} résultat{filtered.length !== 1 ? 's' : ''} pour
               « {search} » dans tout le catalogue
-            </div>
+            </p>
           )}
-          {groups.map(c => (
-            <section key={c.nom} className="cat-section">
-              <h3 className="cat-section-title">
-                {c.nom} <span className="cat-rail-count">{c.count}</span>
-              </h3>
-              {c.brands.map(b => (
-                <div key={b.marque} className="cat-brand">
-                  <div className="cat-brand-header">
-                    <span className="cat-brand-name">{b.marque}</span>
-                    <span className="cat-brand-rule" />
-                    <span className="cat-brand-count">{b.items.length} article{b.items.length !== 1 ? 's' : ''}</span>
+          <div className="flex flex-col gap-6">
+            {groups.map(c => (
+              <section key={c.nom} className="flex flex-col gap-2">
+                <h3 className="flex items-center gap-2 font-display text-base font-semibold tracking-tight">
+                  {c.nom} <Badge>{c.count}</Badge>
+                </h3>
+                {c.brands.map(b => (
+                  <div key={b.marque} className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{b.marque}</span>
+                      <span className="h-px flex-1 bg-border" />
+                      <span className="text-xs text-muted-foreground">{b.items.length} article{b.items.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {b.items.map(p => (
+                      <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
+                                    onEdit={openEdit} onDelete={handleDelete}
+                                    categories={categories}
+                                    onInlineSave={canWrite ? onInlineSave : null}
+                                    selected={visibleSelected.has(p.id)}
+                                    onToggleSelect={canWrite ? onToggleSelect : null} />
+                    ))}
                   </div>
-                  {b.items.map(p => (
-                    <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
-                                  onEdit={openEdit} onDelete={handleDelete}
-                                  categories={categories}
-                                  onInlineSave={canWrite ? onInlineSave : null}
-                                  selected={visibleSelected.has(p.id)}
-                                  onToggleSelect={canWrite ? onToggleSelect : null} />
-                  ))}
-                </div>
-              ))}
-            </section>
-          ))}
+                ))}
+              </section>
+            ))}
+          </div>
           {filtered.length === 0 && !loading && (
-            <p className="empty-state">
-              {filterLow
-                ? 'Aucun produit en stock bas.'
+            <EmptyState
+              icon={PackageOpen}
+              title={filterLow
+                ? 'Aucun produit en stock bas'
+                : search ? 'Aucun résultat' : 'Aucun produit'}
+              description={filterLow
+                ? 'Tous les produits sont au-dessus de leur seuil d’alerte.'
                 : search
                   ? `Aucun résultat pour « ${search} »`
-                  : 'Aucun produit. Créez votre premier produit.'}
-            </p>
+                  : 'Créez votre premier produit pour démarrer le catalogue.'}
+              action={canWrite && !search && !filterLow
+                ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
+                : undefined}
+            />
           )}
         </main>
       </div>
 
       {showArchived && (
-        <div style={{ marginTop: '2rem' }}>
-          <h3 style={{ color: 'var(--text-muted, #888)', marginBottom: '0.75rem' }}>
+        <div className="mt-6 flex flex-col gap-2">
+          <h3 className="flex items-center gap-2 font-display text-base font-semibold tracking-tight text-muted-foreground">
             Produits archivés
-            {produitsArchived.length > 0 && (
-              <span className="count-badge" style={{ background: 'var(--color-warning, #f59e0b)' }}>
-                {produitsArchived.length}
-              </span>
-            )}
+            {produitsArchived.length > 0 && <Badge tone="warning">{produitsArchived.length}</Badge>}
           </h3>
           {produitsArchived.length === 0 ? (
-            <p className="empty-state">Aucun produit archivé.</p>
+            <EmptyState icon={Archive} title="Aucun produit archivé"
+                        description="Les produits supprimés avec historique apparaissent ici." />
           ) : (
-            <table className="data-table" style={{ opacity: 0.8 }}>
-              <thead>
-                <tr>
-                  <th>SKU</th>
-                  <th>Nom</th>
-                  <th>Catégorie</th>
-                  <th>Fournisseur</th>
-                  <th className="ta-right">Stock</th>
-                  <th className="ta-right">Mouvements</th>
-                  <th className="ta-right">Prix vente HT</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {produitsArchived.map(p => (
-                  <tr key={p.id} style={{ color: 'var(--text-muted, #888)' }}>
-                    <td><span className="mono-text" style={{ textDecoration: 'line-through' }}>{p.sku ?? '—'}</span></td>
-                    <td style={{ textDecoration: 'line-through' }}>{p.nom}</td>
-                    <td>{p.categorie?.nom ?? '—'}</td>
-                    <td>{p.fournisseur?.nom ?? '—'}</td>
-                    <td className="ta-right">{p.quantite_stock}</td>
-                    <td className="ta-right">
-                      {p.nb_mouvements != null ? (
-                        <span title={p.premiere_date_mouvement
-                          ? `${new Date(p.premiere_date_mouvement).toLocaleDateString('fr-FR')} → ${new Date(p.derniere_date_mouvement).toLocaleDateString('fr-FR')}`
-                          : ''}>
-                          {p.nb_mouvements}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="ta-right">{parseFloat(p.prix_vente).toFixed(2)} DH</td>
-                    <td>
-                      <div className="actions-cell">
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => openEdit(p)}
-                        >
-                          Éditer
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => handleUnarchive(p)}
-                        >
-                          Désarchiver
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline btn-danger-outline"
-                          onClick={() => setConfirmDelete(p)}
-                        >
-                          Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="opacity-80">
+              <DataTable
+                data={produitsArchived}
+                columns={archivedColumns}
+                getRowId={(p) => p.id}
+                rowActions={archivedRowActions}
+                searchPlaceholder="Rechercher un produit archivé…"
+                globalColumns={['sku', 'nom']}
+                emptyTitle="Aucun produit archivé"
+                emptyDescription="Les produits supprimés avec historique apparaissent ici."
+                aria-label="Produits archivés"
+              />
+            </div>
           )}
         </div>
       )}
