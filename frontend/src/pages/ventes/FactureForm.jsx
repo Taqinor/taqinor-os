@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useDispatch } from 'react-redux'
+import { Plus, Trash2, AlertTriangle } from 'lucide-react'
 import {
   createFacture,
   updateFacture,
@@ -10,6 +11,13 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import {
+  Button, IconButton,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Form, FormField, FormActions, useDirtyGuard,
+  Input, Textarea, Label,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -33,6 +41,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [bonsCommande, setBonsCommande] = useState([])
   const [saving, setSaving]             = useState(false)
   const [errors, setErrors]             = useState({})
+  const [dirty, setDirty]               = useState(false)
+  useDirtyGuard(dirty)
 
   const [fields, setFields] = useState({
     client:          facture?.client          ?? '',
@@ -82,7 +92,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const totalTVA = totalHT * (tva / 100)
   const totalTTC = totalHT + totalTVA
 
-  const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
 
   const onBcChange = (bcId) => {
     setField('bon_commande', bcId)
@@ -92,10 +102,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     }
   }
 
-  const setLine = (key, k, v) =>
+  const setLine = (key, k, v) => {
+    setDirty(true)
     setLines(ls => ls.map(l => l._key === key ? { ...l, [k]: v } : l))
+  }
 
   const onProduitChange = (key, produitId) => {
+    setDirty(true)
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -104,8 +117,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     ))
   }
 
-  const addLine    = () => setLines(ls => [...ls, emptyLine()])
+  const addLine    = () => { setDirty(true); setLines(ls => [...ls, emptyLine()]) }
   const removeLine = key => {
+    setDirty(true)
     const line = lines.find(l => l._key === key)
     if (line?.id) setRemovedLineIds(ids => [...ids, line.id])
     setLines(ls => ls.filter(l => l._key !== key))
@@ -180,6 +194,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         )
       )
 
+      setDirty(false)
       onSaved?.()
       onClose()
     } catch (err) {
@@ -191,288 +206,250 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xl" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">
-            {isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}
-          </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            {/* ── Conformité Article 145 CGI (N29) — AVERTISSEMENT, jamais bloquant ── */}
-            {isEdit && Array.isArray(facture.mentions_manquantes)
-              && facture.mentions_manquantes.length > 0 && (
-              <div className="form-error-box" role="alert" style={{
-                background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e',
-                marginBottom: 14,
-              }}>
-                <strong>⚠️ Conformité Article 145 — mentions légales manquantes :</strong>
-                <ul style={{ margin: '6px 0 4px', paddingLeft: 20 }}>
-                  {facture.mentions_manquantes.map((m, i) => (
-                    <li key={i}>{m}</li>
-                  ))}
-                </ul>
-                <div style={{ fontSize: 12 }}>
-                  Vous pouvez tout de même émettre la facture — complétez ces
-                  mentions (Paramètres → Identité, fiche client, lignes) pour
-                  une facture pleinement conforme.
-                </div>
-              </div>
-            )}
+        <Form onSubmit={handleSubmit} className="gap-5">
+          {/* ── Conformité Article 145 CGI (N29) — AVERTISSEMENT, jamais bloquant ── */}
+          {isEdit && Array.isArray(facture.mentions_manquantes)
+            && facture.mentions_manquantes.length > 0 && (
+            <div role="alert" className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+              <p className="flex items-center gap-1.5 font-semibold">
+                <AlertTriangle className="size-4 shrink-0" />
+                Conformité Article 145 — mentions légales manquantes :
+              </p>
+              <ul className="ml-6 mt-1.5 list-disc space-y-0.5">
+                {facture.mentions_manquantes.map((m, i) => (
+                  <li key={i}>{m}</li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-xs">
+                Vous pouvez tout de même émettre la facture — complétez ces
+                mentions (Paramètres → Identité, fiche client, lignes) pour
+                une facture pleinement conforme.
+              </p>
+            </div>
+          )}
 
-            {/* ── Infos générales ── */}
-            <div className="form-row">
-              <div className="form-group fg-grow">
-                <label className="form-label">Client <span className="req">*</span></label>
-                <select
-                  className={`form-select${errors.client ? ' is-invalid' : ''}`}
-                  value={fields.client}
-                  onChange={e => setField('client', e.target.value)}
-                >
-                  <option value="">— Sélectionner un client —</option>
+          {/* ── Infos générales ── */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <FormField label="Client" required htmlFor="fc-client" error={errors.client}>
+              <Select value={fields.client ? String(fields.client) : undefined}
+                      onValueChange={v => setField('client', v)}>
+                <SelectTrigger id="fc-client" invalid={!!errors.client}>
+                  <SelectValue placeholder="— Sélectionner un client —" />
+                </SelectTrigger>
+                <SelectContent>
                   {clients.map(c => (
-                    <option key={c.id} value={c.id}>
+                    <SelectItem key={c.id} value={String(c.id)}>
                       {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-                {errors.client && <div className="form-feedback">{errors.client}</div>}
-              </div>
+                </SelectContent>
+              </Select>
+            </FormField>
 
-              <div className="form-group fg-grow">
-                <label className="form-label">Bon de commande (optionnel)</label>
-                <select
-                  className="form-select"
-                  value={fields.bon_commande}
-                  onChange={e => onBcChange(e.target.value)}
-                >
-                  <option value="">— Aucun BC —</option>
+            <FormField label="Bon de commande (optionnel)" htmlFor="fc-bc">
+              <Select value={fields.bon_commande ? String(fields.bon_commande) : undefined}
+                      onValueChange={v => onBcChange(v)}>
+                <SelectTrigger id="fc-bc">
+                  <SelectValue placeholder="— Aucun BC —" />
+                </SelectTrigger>
+                <SelectContent>
                   {bonsCommande.map(bc => (
-                    <option key={bc.id} value={bc.id}>
+                    <SelectItem key={bc.id} value={String(bc.id)}>
                       {bc.reference} — {bc.client_nom}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
-            </div>
+                </SelectContent>
+              </Select>
+            </FormField>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Date d'échéance</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={fields.date_echeance}
-                  onChange={e => setField('date_echeance', e.target.value)}
-                />
-              </div>
+            <FormField label="Date d'échéance" htmlFor="fc-echeance">
+              <Input id="fc-echeance" type="date" value={fields.date_echeance}
+                     onChange={e => setField('date_echeance', e.target.value)} />
+            </FormField>
 
-              {isEdit && (
-                <div className="form-group">
-                  <label className="form-label">Statut</label>
-                  <select
-                    className="form-select"
-                    value={fields.statut}
-                    onChange={e => setField('statut', e.target.value)}
-                  >
-                    <option value="brouillon">Brouillon</option>
-                    <option value="emise">Émise</option>
-                    <option value="payee">Payée</option>
-                    <option value="en_retard">En retard</option>
-                    <option value="annulee">Annulée</option>
-                  </select>
-                </div>
-              )}
-
-              {isEdit && (
-                <div className="form-group">
-                  <label className="form-label" title="Statut DGI — informatif, posé à la main">
-                    Télédéclaration DGI
-                  </label>
-                  <select
-                    className="form-select"
-                    value={fields.statut_teledeclaration}
-                    onChange={e => setField('statut_teledeclaration', e.target.value)}
-                  >
-                    <option value="non_soumise">Non soumise</option>
-                    <option value="soumise">Soumise</option>
-                    <option value="validee">Validée</option>
-                  </select>
-                </div>
-              )}
-
-              <div className="form-group fg-sm">
-                <label className="form-label">TVA (%)</label>
-                <input
-                  type="number" min="0" max="100" step="0.01"
-                  className="form-control"
-                  value={fields.taux_tva}
-                  onChange={e => setField('taux_tva', e.target.value)}
-                />
-              </div>
-
-              <div className="form-group fg-sm">
-                <label className="form-label">Remise globale (%)</label>
-                <input
-                  type="number" min="0" max="100" step="0.01"
-                  className="form-control"
-                  value={fields.remise_globale}
-                  onChange={e => setField('remise_globale', e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* ── Lignes ── */}
-            <div className="form-section">
-              <div className="form-section-header">
-                <span className="form-section-title">Lignes de la facture</span>
-                <button type="button" className="btn btn-sm btn-outline" onClick={addLine}>
-                  + Ajouter une ligne
-                </button>
-              </div>
-
-              {errors.lines && <div className="form-feedback mb-8">{errors.lines}</div>}
-
-              <div className="lines-table-wrap">
-                <table className="lines-table">
-                  <thead>
-                    <tr>
-                      <th style={{ minWidth: 160 }}>Produit</th>
-                      <th>Désignation</th>
-                      <th className="col-num">Qté</th>
-                      <th className="col-num">Prix HT (DH)</th>
-                      <th className="col-num">Rem. %</th>
-                      <th className="col-num">Total HT</th>
-                      <th className="col-del"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map(l => {
-                      const lineTotal =
-                        (parseFloat(l.quantite)      || 0) *
-                        (parseFloat(l.prix_unitaire) || 0) *
-                        (1 - (parseFloat(l.remise)   || 0) / 100)
-                      return (
-                        <tr key={l._key}>
-                          <td>
-                            <select
-                              className="form-select form-select-sm"
-                              value={l.produit}
-                              onChange={e => onProduitChange(l._key, e.target.value)}
-                            >
-                              <option value="">— Produit —</option>
-                              {produits.map(p => (
-                                <option key={p.id} value={p.id}>{p.nom}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            <input
-                              className="form-control form-control-sm"
-                              value={l.designation}
-                              onChange={e => setLine(l._key, 'designation', e.target.value)}
-                              placeholder="Désignation"
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number" min="0.01" step="0.01"
-                              className="form-control form-control-sm ta-right"
-                              value={l.quantite}
-                              onChange={e => setLine(l._key, 'quantite', e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number" min="0" step="0.01"
-                              className="form-control form-control-sm ta-right"
-                              value={l.prix_unitaire}
-                              onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number" min="0" max="100" step="0.01"
-                              className="form-control form-control-sm ta-right"
-                              value={l.remise}
-                              onChange={e => setLine(l._key, 'remise', e.target.value)}
-                            />
-                          </td>
-                          <td className="line-total">{lineTotal.toFixed(2)} DH</td>
-                          <td>
-                            {lines.length > 1 && (
-                              <button
-                                type="button"
-                                className="btn-icon-danger"
-                                onClick={() => removeLine(l._key)}
-                                title="Supprimer"
-                              >✕</button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* ── Totaux ── */}
-            <div className="devis-totals">
-              <div className="devis-total-row">
-                <span>Sous-total HT</span>
-                <span>{subtotalHT.toFixed(2)} DH</span>
-              </div>
-              {remGlobal > 0 && (
-                <div className="devis-total-row devis-total-discount">
-                  <span>Remise globale ({remGlobal}%)</span>
-                  <span>−{(subtotalHT * remGlobal / 100).toFixed(2)} DH</span>
-                </div>
-              )}
-              <div className="devis-total-row">
-                <span>Total HT</span>
-                <strong>{totalHT.toFixed(2)} DH</strong>
-              </div>
-              <div className="devis-total-row">
-                <span>TVA ({tva}%)</span>
-                <span>{totalTVA.toFixed(2)} DH</span>
-              </div>
-              <div className="devis-total-row devis-total-ttc">
-                <span>Total TTC</span>
-                <strong>{totalTTC.toFixed(2)} DH</strong>
-              </div>
-            </div>
-
-            {/* ── Note ── */}
-            <div className="form-group mt-16">
-              <label className="form-label">Note interne</label>
-              <textarea
-                className="form-control"
-                rows={3}
-                value={fields.note}
-                onChange={e => setField('note', e.target.value)}
-                placeholder="Conditions de paiement, remarques..."
-              />
-            </div>
-
-            {errors.submit && (
-              <div className="form-error-box">{errors.submit}</div>
+            {isEdit && (
+              <FormField label="Statut" htmlFor="fc-statut">
+                <Select value={fields.statut} onValueChange={v => setField('statut', v)}>
+                  <SelectTrigger id="fc-statut"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="brouillon">Brouillon</SelectItem>
+                    <SelectItem value="emise">Émise</SelectItem>
+                    <SelectItem value="payee">Payée</SelectItem>
+                    <SelectItem value="en_retard">En retard</SelectItem>
+                    <SelectItem value="annulee">Annulée</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
             )}
+
+            {isEdit && (
+              <FormField label="Télédéclaration DGI" htmlFor="fc-teledecl"
+                         hint="Statut DGI — informatif, posé à la main">
+                <Select value={fields.statut_teledeclaration}
+                        onValueChange={v => setField('statut_teledeclaration', v)}>
+                  <SelectTrigger id="fc-teledecl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="non_soumise">Non soumise</SelectItem>
+                    <SelectItem value="soumise">Soumise</SelectItem>
+                    <SelectItem value="validee">Validée</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+
+            <FormField label="TVA (%)" htmlFor="fc-tva">
+              <Input id="fc-tva" type="number" min="0" max="100" step="0.01"
+                     value={fields.taux_tva} onChange={e => setField('taux_tva', e.target.value)} />
+            </FormField>
+
+            <FormField label="Remise globale (%)" htmlFor="fc-remise">
+              <Input id="fc-remise" type="number" min="0" max="100" step="0.01"
+                     value={fields.remise_globale} onChange={e => setField('remise_globale', e.target.value)} />
+            </FormField>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose}>
-              Annuler
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Enregistrement...' : (isEdit ? 'Mettre à jour' : 'Créer la facture')}
-            </button>
+          {/* ── Lignes ── */}
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-base font-semibold text-foreground">Lignes de la facture</h3>
+              <Button type="button" size="sm" variant="outline" onClick={addLine}>
+                <Plus /> Ajouter une ligne
+              </Button>
+            </div>
+
+            {errors.lines && (
+              <p role="alert" className="text-xs text-destructive">{errors.lines}</p>
+            )}
+
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-2 text-left" style={{ minWidth: 160 }}>Produit</th>
+                    <th className="px-2 py-2 text-left">Désignation</th>
+                    <th className="px-2 py-2 text-right">Qté</th>
+                    <th className="px-2 py-2 text-right">Prix HT (DH)</th>
+                    <th className="px-2 py-2 text-right">Rem. %</th>
+                    <th className="px-2 py-2 text-right">Total HT</th>
+                    <th className="w-10 px-2 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map(l => {
+                    const lineTotal =
+                      (parseFloat(l.quantite)      || 0) *
+                      (parseFloat(l.prix_unitaire) || 0) *
+                      (1 - (parseFloat(l.remise)   || 0) / 100)
+                    return (
+                      <tr key={l._key} className="border-t border-border align-top">
+                        <td className="px-2 py-1.5">
+                          <Select value={l.produit ? String(l.produit) : undefined}
+                                  onValueChange={v => onProduitChange(l._key, v)}>
+                            <SelectTrigger className="h-[var(--control-h-sm)] text-xs">
+                              <SelectValue placeholder="— Produit —" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {produits.map(p => (
+                                <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
+                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
+                                 placeholder="Désignation" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min="0.01" step="0.01"
+                                 className="h-[var(--control-h-sm)] text-right text-xs"
+                                 value={l.quantite}
+                                 onChange={e => setLine(l._key, 'quantite', e.target.value)} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min="0" step="0.01"
+                                 className="h-[var(--control-h-sm)] text-right text-xs"
+                                 value={l.prix_unitaire}
+                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min="0" max="100" step="0.01"
+                                 className="h-[var(--control-h-sm)] text-right text-xs"
+                                 value={l.remise}
+                                 onChange={e => setLine(l._key, 'remise', e.target.value)} />
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{lineTotal.toFixed(2)} DH</td>
+                        <td className="px-2 py-1.5 text-center">
+                          {lines.length > 1 && (
+                            <IconButton type="button" label="Supprimer la ligne" size="sm"
+                                        className="text-destructive hover:bg-destructive/10"
+                                        onClick={() => removeLine(l._key)}>
+                              <Trash2 />
+                            </IconButton>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* ── Totaux ── */}
+          <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            <div className="flex justify-between py-0.5">
+              <span className="text-muted-foreground">Sous-total HT</span>
+              <span className="tabular-nums">{subtotalHT.toFixed(2)} DH</span>
+            </div>
+            {remGlobal > 0 && (
+              <div className="flex justify-between py-0.5 text-warning">
+                <span>Remise globale ({remGlobal}%)</span>
+                <span className="tabular-nums">−{(subtotalHT * remGlobal / 100).toFixed(2)} DH</span>
+              </div>
+            )}
+            <div className="flex justify-between py-0.5">
+              <span className="text-muted-foreground">Total HT</span>
+              <strong className="tabular-nums">{totalHT.toFixed(2)} DH</strong>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-muted-foreground">TVA ({tva}%)</span>
+              <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+            </div>
+            <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
+              <span className="font-semibold">Total TTC</span>
+              <strong className="tabular-nums text-primary">{totalTTC.toFixed(2)} DH</strong>
+            </div>
           </div>
-        </form>
-      </div>
-    </div>
+
+          {/* ── Note ── */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="fc-note">Note interne</Label>
+            <Textarea id="fc-note" rows={3} value={fields.note}
+                      onChange={e => setField('note', e.target.value)}
+                      placeholder="Conditions de paiement, remarques..." />
+          </div>
+
+          {errors.submit && (
+            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {errors.submit}
+            </p>
+          )}
+
+          <FormActions sticky={false}>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>
+              {isEdit ? 'Mettre à jour' : 'Créer la facture'}
+            </Button>
+          </FormActions>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }
