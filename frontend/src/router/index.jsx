@@ -41,6 +41,8 @@ const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
+// Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
+const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client
@@ -69,6 +71,8 @@ const router = createBrowserRouter([
   { path: '/',      element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
   { path: '/landing', element: <Suspense fallback={<Fallback />}><Landing /></Suspense> },
   { path: '/login',  element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
+  // Référence interne du design system (sans auth ni layout : page autonome).
+  { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
 

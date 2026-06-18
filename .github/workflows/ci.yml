@@ -205,7 +205,7 @@ jobs:
         run: npm run lint
       - name: Frontend unit tests (solar math parity + catalogue)
         working-directory: frontend
-        run: node --test "src/features/ventes/solar.test.mjs" "src/features/ventes/previewPdf.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs" "src/features/crm/bulk.test.mjs" "src/features/installations/statuses.test.mjs" "src/pages/reporting/archiveDocs.test.mjs" "src/features/stock/procurement.test.mjs" "src/features/stock/emplacements.test.mjs" "src/components/layout/menu.layout.test.mjs"
+        run: node --test "src/features/ventes/solar.test.mjs" "src/features/ventes/previewPdf.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs" "src/features/crm/bulk.test.mjs" "src/features/installations/statuses.test.mjs" "src/pages/reporting/archiveDocs.test.mjs" "src/features/stock/procurement.test.mjs" "src/features/stock/emplacements.test.mjs" "src/components/layout/menu.layout.test.mjs" "src/lib/format.test.mjs" "src/design/theme.test.mjs"
 
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
