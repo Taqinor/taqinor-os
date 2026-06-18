@@ -155,7 +155,14 @@ export default function DevisGenerator({
 
   // ── Document ──
   const [leadId, setLeadId] = useState('')
-  const [clientId, setClientId] = useState('')
+  // Pré-sélection d'un client passé en query (?client=<id>) depuis « Nouveau
+  // devis » de la liste clients — plein écran et sans lead (un lead résout le
+  // client côté serveur). Calculé à l'init : aucun setState dans un effet.
+  const [clientId, setClientId] = useState(
+    () => (!embedded && searchParams.get('client') && !searchParams.get('lead'))
+      ? String(searchParams.get('client'))
+      : '',
+  )
   const [dateValidite, setDateValidite] = useState('')
   const [instType, setInstType] = useState('Résidentielle')
   const [scenario, setScenario] = useState('Les deux (Sans + Avec)')
