@@ -5,6 +5,10 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import {
+  ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
+  ShoppingCart, StickyNote, FileText, RotateCcw, Sun, Plus, Trash2,
+} from 'lucide-react'
 import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
 import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../features/ventes/autoQuote'
 import crmApi from '../../api/crmApi'
@@ -12,6 +16,11 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import ProduitPicker from '../../components/ProduitPicker'
+import {
+  Button, IconButton, Card, CardContent,
+  Input, Textarea, Label, Segmented,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -23,10 +32,10 @@ import {
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
 } from '../../features/ventes/solar'
 
-const MODES = [
-  ['residentiel', '🏠 Résidentiel'],
-  ['industriel', '🏭 Industriel / Commercial'],
-  ['agricole', '🌾 Agricole (pompage)'],
+const MODE_OPTIONS = [
+  { value: 'residentiel', label: '🏠 Résidentiel' },
+  { value: 'industriel', label: '🏭 Industriel / Commercial' },
+  { value: 'agricole', label: '🌾 Agricole (pompage)' },
 ]
 
 let _keyCounter = 0
@@ -52,6 +61,17 @@ const emptyLine = () => ({
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
+
+// En-tête de carte du générateur (style design system, repose sur Card).
+function GenCardHeader({ icon: Icon, title, children }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+      {Icon && <Icon className="size-4 text-primary" aria-hidden="true" />}
+      <span className="font-display text-base font-semibold tracking-tight">{title}</span>
+      {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
+    </div>
+  )
+}
 
 function MetricCard({ label, value, unit, recommended, accent }) {
   return (
@@ -692,129 +712,131 @@ export default function DevisGenerator({
     <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
       {!embedded && (
         <div className="page-header">
-          <h2>☀️ Générateur de Devis Solaire</h2>
-          <button className="btn btn-outline" onClick={() => navigate('/ventes/devis')}>
-            ← Retour aux devis
-          </button>
+          <h2>Générateur de Devis Solaire</h2>
+          <Button variant="outline" onClick={() => navigate('/ventes/devis')}>
+            <ArrowLeft /> Retour aux devis
+          </Button>
         </div>
       )}
 
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
         {/* ── Mode d'installation (marché) ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">🎯 Marché / Mode d'installation</div>
-          <div className="gen-card-body">
-            <div className="gen-radio-group">
-              {MODES.map(([value, label]) => (
-                <label key={value}
-                       className={`gen-radio${modeInstallation === value ? ' selected' : ''}`}>
-                  <input type="radio" name="mode-installation" value={value}
-                         checked={modeInstallation === value}
-                         onChange={() => { modeTouched.current = true; onModeChange(value) }} />
-                  {label}
-                </label>
-              ))}
-            </div>
+        <Card>
+          <GenCardHeader icon={Target} title="Marché / Mode d'installation" />
+          <CardContent className="pt-4">
+            <Segmented
+              className="flex-wrap"
+              options={MODE_OPTIONS}
+              value={modeInstallation}
+              onChange={(v) => { modeTouched.current = true; onModeChange(v) }}
+            />
             {modeInstallation === 'residentiel' && kwp > 36 && (
-              <div className="gen-resolved-client" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e40af' }}>
-                💡 Ce système fait {kwp.toFixed(2)} kWc — au-delà de l'échelle résidentielle.
+              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                Ce système fait {kwp.toFixed(2)} kWc — au-delà de l'échelle résidentielle.
                 Le mode Industriel / Commercial produira un document plus adapté
                 (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
               </div>
             )}
             {showAvecWarning && (
-              <div className="form-error-box" style={{ marginTop: '0.75rem' }}>
-                ⚠ Option « avec batterie » indisponible pour ce système : {avecDispo.reason}.
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                Option « avec batterie » indisponible pour ce système : {avecDispo.reason}.
                 Le PDF sera un document à option unique (sans batterie) — jamais une
                 option partielle silencieuse.
               </div>
             )}
             {errors.conso && (
-              <div className="form-error-box" style={{ marginTop: '0.75rem' }}>{errors.conso}</div>
+              <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {errors.conso}
+              </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* ── Informations du document ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">📋 Informations du Document</div>
-          <div className="gen-card-body">
-            <div className="gen-grid">
-              <div className="form-group">
-                <label className="form-label">N° de Devis</label>
-                <input className="form-control" value="Généré automatiquement" disabled />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Type d'Installation</label>
-                <select className="form-select" value={instType} onChange={e => onInstTypeChange(e.target.value)}>
-                  <option>Résidentielle</option>
-                  <option>Commerciale</option>
-                  <option>Industrielle</option>
-                  <option>Agricole</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Scénario</label>
-                <select className="form-select" value={scenario} onChange={e => onScenarioChange(e.target.value)}>
-                  <option value="Les deux (Sans + Avec)">Les deux (Sans + Avec batterie)</option>
-                  <option value="Sans batterie">Sans batterie seulement</option>
-                  <option value="Avec batterie">Avec batterie seulement</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Option Recommandée</label>
-                <select className="form-select" value={recommendedChoice} onChange={e => setRecommendedChoice(e.target.value)}>
-                  <option value="Auto">Auto (défaut)</option>
-                  <option value="Aucune recommandation">Aucune recommandation</option>
-                  <option value="Sans batterie">Sans batterie</option>
-                  <option value="Avec batterie">Avec batterie</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Date de validité</label>
-                <input type="date" className="form-control" value={dateValidite}
-                       onChange={e => setDateValidite(e.target.value)} />
-              </div>
+        <Card>
+          <GenCardHeader icon={ClipboardList} title="Informations du document" />
+          <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-num">N° de Devis</Label>
+              <Input id="gen-num" value="Généré automatiquement" disabled />
             </div>
-          </div>
-        </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-insttype">Type d'Installation</Label>
+              <Select value={instType} onValueChange={onInstTypeChange}>
+                <SelectTrigger id="gen-insttype"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Résidentielle">Résidentielle</SelectItem>
+                  <SelectItem value="Commerciale">Commerciale</SelectItem>
+                  <SelectItem value="Industrielle">Industrielle</SelectItem>
+                  <SelectItem value="Agricole">Agricole</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-scenario">Scénario</Label>
+              <Select value={scenario} onValueChange={onScenarioChange}>
+                <SelectTrigger id="gen-scenario"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Les deux (Sans + Avec)">Les deux (Sans + Avec batterie)</SelectItem>
+                  <SelectItem value="Sans batterie">Sans batterie seulement</SelectItem>
+                  <SelectItem value="Avec batterie">Avec batterie seulement</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-reco">Option Recommandée</Label>
+              <Select value={recommendedChoice} onValueChange={setRecommendedChoice}>
+                <SelectTrigger id="gen-reco"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Auto">Auto (défaut)</SelectItem>
+                  <SelectItem value="Aucune recommandation">Aucune recommandation</SelectItem>
+                  <SelectItem value="Sans batterie">Sans batterie</SelectItem>
+                  <SelectItem value="Avec batterie">Avec batterie</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-validite">Date de validité</Label>
+              <Input id="gen-validite" type="date" value={dateValidite}
+                     onChange={e => setDateValidite(e.target.value)} />
+            </div>
+          </CardContent>
+        </Card>
 
         {/* ── Lead / Client (lead prioritaire) ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">👤 Lead & Client</div>
-          <div className="gen-card-body">
-            <div className="gen-grid">
-              <div className="form-group fg-grow">
-                <label className="form-label">
-                  Lead (point de départ) <span className="req">*</span>
-                </label>
-                <select
-                  className={`form-select${errors.client ? ' is-invalid' : ''}`}
-                  value={leadId}
-                  onChange={e => applyLead(e.target.value)}
-                >
-                  <option value="">— Sélectionner un lead —</option>
-                  {leads.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {l.nom}{l.prenom ? ` ${l.prenom}` : ''}
-                      {l.societe ? ` (${l.societe})` : ''}
-                      {l.facture_hiver ? ` — ${Math.round(parseFloat(l.facture_hiver))} MAD/mois` : ''}
-                    </option>
-                  ))}
-                </select>
-                {errors.client && <div className="form-feedback">{errors.client}</div>}
+        <Card>
+          <GenCardHeader icon={User} title="Lead & Client" />
+          <CardContent className="pt-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-lead" required>Lead (point de départ)</Label>
+                <Select value={leadId ? String(leadId) : undefined} onValueChange={applyLead}>
+                  <SelectTrigger id="gen-lead" invalid={!!errors.client}>
+                    <SelectValue placeholder="— Sélectionner un lead —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leads.map(l => (
+                      <SelectItem key={l.id} value={String(l.id)}>
+                        {l.nom}{l.prenom ? ` ${l.prenom}` : ''}
+                        {l.societe ? ` (${l.societe})` : ''}
+                        {l.facture_hiver ? ` — ${Math.round(parseFloat(l.facture_hiver))} MAD/mois` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.client && <p className="text-xs text-destructive">{errors.client}</p>}
               </div>
-              <div className="form-group fg-grow">
-                <label className="form-label">Téléphone</label>
-                <input className="form-control" disabled placeholder="—"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-tel">Téléphone</Label>
+                <Input id="gen-tel" disabled placeholder="—"
                        value={selectedLead?.telephone ?? selectedClient?.telephone ?? ''} />
               </div>
             </div>
 
             {selectedLead && (
-              <div className="gen-resolved-client">
+              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
                 ✓ Client du devis : <strong>{resolvedClientLabel}</strong>
                 {selectedLead.facture_hiver
                   ? ` · factures remplies depuis le lead (${selectedLead.facture_hiver}${selectedLead.ete_differente && selectedLead.facture_ete ? ` hiver / ${selectedLead.facture_ete} été` : ' MAD/mois'})`
@@ -823,58 +845,58 @@ export default function DevisGenerator({
             )}
 
             {!leadId && (
-              <div className="gen-grid" style={{ marginTop: '0.75rem' }}>
-                <div className="form-group fg-grow">
-                  <label className="form-label">…ou choisir un client directement (sans lead)</label>
-                  <select className="form-select" value={clientId}
-                          onChange={e => setClientId(e.target.value)}>
-                    <option value="">— Sélectionner un client —</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                      </option>
-                    ))}
-                  </select>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
+                  <Select value={clientId ? String(clientId) : undefined} onValueChange={setClientId}>
+                    <SelectTrigger id="gen-client">
+                      <SelectValue placeholder="— Sélectionner un client —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="form-group fg-grow">
-                  <label className="form-label">Adresse</label>
-                  <input className="form-control" value={selectedClient?.adresse ?? ''} disabled
-                         placeholder="—" />
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-adresse">Adresse</Label>
+                  <Input id="gen-adresse" value={selectedClient?.adresse ?? ''} disabled placeholder="—" />
                 </div>
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* ── Factures électriques (masquées en mode pompage) ── */}
         {modeInstallation !== 'agricole' && (
-        <div className="gen-card">
-          <div className="gen-card-header">💡 Factures Électriques</div>
-          <div className="gen-card-body">
-            <p className="gen-hint">
+        <Card>
+          <GenCardHeader icon={Zap} title="Factures Électriques" />
+          <CardContent className="pt-4">
+            <p className="text-sm text-muted-foreground">
               Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants
               hiver/été. Ces valeurs servent au calcul ROI dans le devis.
             </p>
-            <div className="gen-grid">
-              <div className="form-group">
-                <label className="form-label">Facture Hiver moy. (MAD/mois)</label>
-                <input type="number" min="0" step="any" className="form-control"
+            <div className="mt-3 grid items-end gap-4 sm:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-hiver">Facture Hiver moy. (MAD/mois)</Label>
+                <Input id="gen-hiver" type="number" min="0" step="any"
                        placeholder="ex: 600" value={fHiver}
                        onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Facture Été moy. (MAD/mois)</label>
-                <input type="number" min="0" step="any" className="form-control"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-ete">Facture Été moy. (MAD/mois)</Label>
+                <Input id="gen-ete" type="number" min="0" step="any"
                        placeholder="ex: 400" value={fEte}
                        onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }} />
               </div>
-              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
-                <button type="button" className="btn btn-outline" onClick={handleEstimerMois}>
-                  📊 Estimer 12 mois
-                </button>
-              </div>
+              <Button type="button" variant="outline" onClick={handleEstimerMois}>
+                <BarChart3 /> Estimer 12 mois
+              </Button>
             </div>
-            {errors.bills && <div className="form-feedback">{errors.bills}</div>}
+            {errors.bills && <p className="mt-1 text-xs text-destructive">{errors.bills}</p>}
             <div className="gen-monthly-grid">
               {MONTHS_FR.map((m, i) => (
                 <div key={m} className="gen-month">
@@ -886,102 +908,89 @@ export default function DevisGenerator({
               ))}
             </div>
             {modeInstallation === 'industriel' && (
-              <div className="gen-grid" style={{ marginTop: '0.85rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Consommation mensuelle (kWh) — pour l'étude</label>
-                  <input type="number" min="0" step="any" className="form-control"
+              <div className="mt-3.5 grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-conso">Consommation mensuelle (kWh) — pour l'étude</Label>
+                  <Input id="gen-conso" type="number" min="0" step="any"
                          placeholder="ex: 12000" value={consoMensuelle}
                          onChange={e => setConsoMensuelle(e.target.value)} />
                 </div>
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
         )}
 
         {/* ── Pompage solaire (mode Agricole) ── */}
         {modeInstallation === 'agricole' && (
-        <div className="gen-card">
-          <div className="gen-card-header">🌾 Pompage solaire</div>
-          <div className="gen-card-body">
-            <div className="gen-grid">
-              <div className="form-group">
-                <label className="form-label">
-                  Puissance pompe (CV)
-                  {pompageSel?.mode === 'courbe' && ' — auto (courbe)'}
-                </label>
-                <input type="number" min="0" step="any" className="form-control"
+        <Card>
+          <GenCardHeader icon={Sprout} title="Pompage solaire" />
+          <CardContent className="pt-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-pompecv">
+                  Puissance pompe (CV){pompageSel?.mode === 'courbe' && ' — auto (courbe)'}
+                </Label>
+                <Input id="gen-pompecv" type="number" min="0" step="any"
                        value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
                 {pompageDims && (
-                  <div className="gen-hint" style={{ marginTop: 4 }}>
+                  <p className="text-xs text-muted-foreground">
                     ≈ {pompageSel?.kw ?? pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
                     ({pompageDims.nbPanneaux} panneaux 710 W)
-                  </div>
+                  </p>
                 )}
               </div>
-              <div className="form-group">
-                <label className="form-label">Type de pompe</label>
-                <div className="gen-radio-group">
-                  <label className={`gen-radio${pompeType === 'immergee' ? ' selected' : ''}`}>
-                    <input type="radio" name="pompe-type" value="immergee"
-                           checked={pompeType === 'immergee'}
-                           onChange={() => setPompeType('immergee')} />
-                    Immergée
-                  </label>
-                  <label className={`gen-radio${pompeType === 'surface' ? ' selected' : ''}`}>
-                    <input type="radio" name="pompe-type" value="surface"
-                           checked={pompeType === 'surface'}
-                           onChange={() => setPompeType('surface')} />
-                    Surface
-                  </label>
-                </div>
+              <div className="grid gap-1.5">
+                <Label>Type de pompe</Label>
+                <Segmented
+                  options={[
+                    { value: 'immergee', label: 'Immergée' },
+                    { value: 'surface', label: 'Surface' },
+                  ]}
+                  value={pompeType}
+                  onChange={setPompeType}
+                />
               </div>
-              <div className="form-group">
-                <label className="form-label">Alimentation</label>
-                <div className="gen-radio-group">
-                  <label className={`gen-radio${pompeAlim === 'mono' ? ' selected' : ''}`}>
-                    <input type="radio" name="pompe-alim" value="mono"
-                           checked={pompeAlim === 'mono'}
-                           onChange={() => setPompeAlim('mono')} />
-                    Mono 220V
-                  </label>
-                  <label className={`gen-radio${pompeAlim === 'tri' ? ' selected' : ''}`}>
-                    <input type="radio" name="pompe-alim" value="tri"
-                           checked={pompeAlim === 'tri'}
-                           onChange={() => setPompeAlim('tri')} />
-                    Tri 380V
-                  </label>
-                </div>
+              <div className="grid gap-1.5">
+                <Label>Alimentation</Label>
+                <Segmented
+                  options={[
+                    { value: 'mono', label: 'Mono 220V' },
+                    { value: 'tri', label: 'Tri 380V' },
+                  ]}
+                  value={pompeAlim}
+                  onChange={setPompeAlim}
+                />
               </div>
             </div>
-            <div className="gen-grid" style={{ marginTop: '0.75rem' }}>
-              <div className="form-group">
-                <label className="form-label">HMT (m)</label>
-                <input type="number" min="0" step="any" className="form-control"
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-hmt">HMT (m)</Label>
+                <Input id="gen-hmt" type="number" min="0" step="any"
                        placeholder="ex: 120" value={pompeHmt}
                        onChange={e => setPompeHmt(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Débit souhaité (m³/h)</label>
-                <input type="number" min="0" step="any" className="form-control"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-debit">Débit souhaité (m³/h)</Label>
+                <Input id="gen-debit" type="number" min="0" step="any"
                        placeholder="ex: 30" value={pompeDebit}
                        onChange={e => setPompeDebit(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Heures de pompage effectives / jour</label>
-                <input type="number" min="0" step="any" className="form-control"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-heures">Heures de pompage effectives / jour</Label>
+                <Input id="gen-heures" type="number" min="0" step="any"
                        value={pompeHeures}
                        onChange={e => setPompeHeures(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Profondeur forage (m) — optionnel</label>
-                <input type="number" min="0" step="any" className="form-control"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-profondeur">Profondeur forage (m) — optionnel</Label>
+                <Input id="gen-profondeur" type="number" min="0" step="any"
                        value={pompeProfondeur}
                        onChange={e => setPompeProfondeur(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Distance panneaux → coffret (m)</label>
-                <input type="number" min="0" step="any" className="form-control"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-distance">Distance panneaux → coffret (m)</Label>
+                <Input id="gen-distance" type="number" min="0" step="any"
                        value={pompeDistance}
                        onChange={e => setPompeDistance(e.target.value)} />
               </div>
@@ -989,10 +998,9 @@ export default function DevisGenerator({
 
             {/* ── Résultat du dimensionnement (source des chiffres du PDF) ── */}
             {pompageSel?.mode === 'courbe' && (
-              <div className="gen-resolved-client"
-                   style={{ marginTop: '0.75rem', background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e40af' }}>
+              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
                 <strong>Pompe sélectionnée : {pompageSel.pump.nom}</strong>
-                <div style={{ marginTop: 4 }}>
+                <div className="mt-1">
                   {pompageSel.cv} CV ({pompageSel.kw} kW) · débit à {pompeHmt} m
                   de HMT : <strong>{pompageSel.debitHmt} m³/h</strong>
                   {pompageSel.m3Jour != null && (
@@ -1003,52 +1011,46 @@ export default function DevisGenerator({
               </div>
             )}
             {pompageSel?.sansPrix?.length > 0 && (
-              <div className="form-error-box" style={{ marginTop: '0.75rem' }}>
-                ⚠ Seules des pompes <strong>sans prix renseigné</strong> conviennent à cette
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                Seules des pompes <strong>sans prix renseigné</strong> conviennent à cette
                 HMT et ce débit ({pompageSel.sansPrix.join(', ')}). Renseignez leur prix
                 dans Stock pour les chiffrer — aucune pompe ne sera ajoutée au devis.
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
         )}
 
         {/* ── Paramètres techniques ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">⚡ Paramètres Techniques</div>
-          <div className="gen-card-body">
-            <div className="gen-grid">
-              <div className="form-group">
-                <label className="form-label">Nombre de panneaux <span className="req">*</span></label>
-                <input type="number" min="1" max="500" step="any" className="form-control"
+        <Card>
+          <GenCardHeader icon={Zap} title="Paramètres Techniques" />
+          <CardContent className="pt-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-nbpanneaux" required>Nombre de panneaux</Label>
+                <Input id="gen-nbpanneaux" type="number" min="1" max="500" step="any"
                        placeholder="ex: 14" value={nbPanneaux}
                        onChange={e => setNbPanneaux(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Puissance Panneau (W)</label>
-                <input type="number" min="100" max="1000" step="any" className="form-control"
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
+                <Input id="gen-panelw" type="number" min="100" max="1000" step="any"
                        value={panelW} onChange={e => setPanelW(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Puissance PV (kWp) — calculée</label>
+              <div className="grid gap-1.5">
+                <Label>Puissance PV (kWp) — calculée</Label>
                 <div className="gen-kwp">{kwp > 0 ? kwp.toFixed(2) + ' kWp' : '—'}</div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Type de Structure</label>
-                <div className="gen-radio-group">
-                  <label className={`gen-radio${structureType === 'acier' ? ' selected' : ''}`}>
-                    <input type="radio" name="structure-type" value="acier"
-                           checked={structureType === 'acier'}
-                           onChange={() => setStructureType('acier')} />
-                    Acier galvanisé
-                  </label>
-                  <label className={`gen-radio${structureType === 'aluminium' ? ' selected' : ''}`}>
-                    <input type="radio" name="structure-type" value="aluminium"
-                           checked={structureType === 'aluminium'}
-                           onChange={() => setStructureType('aluminium')} />
-                    Aluminium
-                  </label>
-                </div>
+              <div className="grid gap-1.5">
+                <Label>Type de Structure</Label>
+                <Segmented
+                  options={[
+                    { value: 'acier', label: 'Acier galvanisé' },
+                    { value: 'aluminium', label: 'Aluminium' },
+                  ]}
+                  value={structureType}
+                  onChange={setStructureType}
+                />
               </div>
             </div>
             <div className="gen-slider-row">
@@ -1057,27 +1059,26 @@ export default function DevisGenerator({
                      onChange={e => setDayUsage(e.target.value)} />
               <span className="gen-slider-value">{dayUsage}%</span>
             </div>
-            <div className="gen-actions-right">
-              {errors.autofill && <span className="form-feedback">{errors.autofill}</span>}
-              <button type="button" className="btn gen-btn-orange" onClick={handleAutoFill}>
-                ⚡ Auto-remplir depuis le stock
-              </button>
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
+              {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
+              <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500" onClick={handleAutoFill}>
+                <Zap /> Auto-remplir depuis le stock
+              </Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}
         {modeInstallation !== 'agricole' && (
-        <div className="gen-card">
-          <div className="gen-card-header">
-            📊 Aperçu de la Simulation
+        <Card>
+          <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation">
             {/* Repliable sur téléphone uniquement (bouton caché sur bureau) */}
-            <button type="button" className="btn btn-sm btn-outline gen-preview-toggle"
+            <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
                     onClick={() => setPreviewCollapsed(v => !v)}>
               {previewCollapsed ? 'Afficher' : 'Replier'}
-            </button>
-          </div>
-          <div className={`gen-card-body gen-preview-body${previewCollapsed ? ' m-collapsed' : ''}`}>
+            </Button>
+          </GenCardHeader>
+          <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
             {etudeIndustrielle && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
                 <MetricCard label="Taux d'autoconsommation"
@@ -1099,7 +1100,7 @@ export default function DevisGenerator({
               </div>
             )}
             {!roi ? (
-              <p className="gen-hint" style={{ textAlign: 'center' }}>
+              <p className="text-center text-sm text-muted-foreground">
                 Renseignez le nombre de panneaux et les factures, puis la simulation
                 s'actualise automatiquement.
               </p>
@@ -1168,20 +1169,19 @@ export default function DevisGenerator({
                 </ResponsiveContainer>
               </>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
         )}
 
         {/* ── Lignes de produits ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">
-            🛒 Lignes de Produits
-            <button type="button" className="btn btn-sm btn-outline" onClick={addLine}>
-              + Ajouter ligne
-            </button>
-          </div>
-          <div className="gen-card-body" style={{ padding: 0 }}>
-            {errors.lines && <div className="form-feedback" style={{ padding: '8px 16px' }}>{errors.lines}</div>}
+        <Card>
+          <GenCardHeader icon={ShoppingCart} title="Lignes de Produits">
+            <Button type="button" size="sm" variant="outline" onClick={addLine}>
+              <Plus /> Ajouter ligne
+            </Button>
+          </GenCardHeader>
+          <CardContent className="px-0 pt-0">
+            {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
             <div className="lines-table-wrap">
               <table className="lines-table">
                 <thead>
@@ -1232,8 +1232,11 @@ export default function DevisGenerator({
                         </td>
                         <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
                         <td>
-                          <button type="button" className="btn-icon-danger"
-                                  onClick={() => removeLine(l._key)} title="Supprimer">✕</button>
+                          <IconButton type="button" label="Supprimer la ligne" size="sm"
+                                      className="text-destructive hover:bg-destructive/10"
+                                      onClick={() => removeLine(l._key)}>
+                            <Trash2 />
+                          </IconButton>
                         </td>
                       </tr>
                     )
@@ -1301,11 +1304,11 @@ export default function DevisGenerator({
                 <input type="number" min="0" step="any" className="gen-discount-input"
                        style={{ width: 100 }} placeholder="ex: 9000"
                        value={prixCible} onChange={e => setPrixCible(e.target.value)} />
-                <button type="button" className="btn btn-sm btn-outline"
+                <Button type="button" size="sm" variant="outline"
                         onClick={applyPrixCible}
                         disabled={!(kwp > 0) || prixCible === ''}>
                   Appliquer via remise
-                </button>
+                </Button>
               </div>
               {marge != null && (
                 <div className="gen-total-item">
@@ -1322,62 +1325,61 @@ export default function DevisGenerator({
               )}
             </div>
             {marge != null && marge < 0 && (
-              <div className="form-error-box" style={{ margin: '0 1.25rem 1rem' }}>
-                ⚠ Le total après remise est INFÉRIEUR au coût d'achat estimé — vous
+              <div className="mx-5 mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                Le total après remise est INFÉRIEUR au coût d'achat estimé — vous
                 vendez à perte. Réduisez la remise ou le prix cible.
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* ── Notes ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">📝 Notes</div>
-          <div className="gen-card-body">
-            <textarea className="form-control" rows={3} value={note}
+        <Card>
+          <GenCardHeader icon={StickyNote} title="Notes" />
+          <CardContent className="pt-4">
+            <Textarea rows={3} value={note}
                       onChange={e => setNote(e.target.value)}
                       placeholder="Conditions de paiement, remarques internes..." />
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
             clic silencieux sans effet. */}
         {(errors.submit || errors.lines || errors.client || errors.conso) && (
-          <div className="form-error-box">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             {errors.submit || errors.lines || errors.client || errors.conso}
           </div>
         )}
 
         {/* ── Création ── */}
-        <div className="gen-card">
-          <div className="gen-card-header">
-            {editDevis ? `📄 Modification du devis ${editDevis.reference}` : '📄 Création du Devis'}
-          </div>
-          <div className="gen-card-body">
-            <p className="gen-hint">
+        <Card>
+          <GenCardHeader icon={FileText}
+                         title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
+          <CardContent className="pt-4">
+            <p className="text-sm text-muted-foreground">
               {embedded
                 ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
                   + 'avec son PDF, sans quitter la fiche du lead.'
                 : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
                   + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
             </p>
-            <div className="gen-actions-right gen-actions-sticky">
+            <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
               {!embedded && (
-                <button type="button" className="btn btn-outline" onClick={handleReset}>
-                  🔄 Réinitialiser
-                </button>
+                <Button type="button" variant="outline" onClick={handleReset}>
+                  <RotateCcw /> Réinitialiser
+                </Button>
               )}
-              <button type="button" className="btn btn-outline" onClick={cancel}>
+              <Button type="button" variant="ghost" onClick={cancel}>
                 Annuler
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              </Button>
+              <Button type="submit" loading={saving}>
                 {saving
                   ? 'Enregistrement...'
-                  : (editDevis ? '💾 Enregistrer les modifications' : '☀️ Créer le devis')}
-              </button>
+                  : (editDevis ? <><Sun /> Enregistrer les modifications</> : <><Sun /> Créer le devis</>)}
+              </Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </form>
     </div>
   )

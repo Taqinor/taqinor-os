@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
+import { PartyPopper, FileText, MessageCircle } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
-
-const dh = (v) => `${Number(v ?? 0).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`
+import {
+  Button, Badge, Card, EmptyState, Spinner,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Label, Textarea,
+} from '../../ui'
+import { formatMAD } from '../../lib/format'
 
 export default function RelancesPage() {
   const [rows, setRows] = useState([])
@@ -51,79 +56,91 @@ export default function RelancesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Relances / Impayés <span className="count-badge">{rows.length}</span></h2>
+        <h2>
+          Relances / Impayés
+          <Badge tone="warning" className="ml-2 align-middle">{rows.length}</Badge>
+        </h2>
       </div>
-      <p className="gen-hint" style={{ marginBottom: 12 }}>
+      <p className="mb-3 text-sm text-muted-foreground">
         Vue de recouvrement — consigner et imprimer uniquement. Aucun envoi
         automatique (email/SMS) n'est effectué.
       </p>
-      {loading ? <p className="page-loading">Chargement…</p> : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Facture</th><th>Client</th><th>Échéance</th>
-              <th className="ta-right">Dû</th><th>Retard</th><th>Niveau</th>
-              <th>Relances</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.id}>
-                <td><strong>{r.reference}</strong></td>
-                <td>{r.client_nom}</td>
-                <td style={r.jours_retard > 0 ? { color: '#dc2626', fontWeight: 600 } : undefined}>
-                  {r.date_echeance || '—'}
-                </td>
-                <td className="ta-right">{dh(r.montant_du)}</td>
-                <td style={r.jours_retard > 0 ? { color: '#dc2626' } : undefined}>
-                  {r.jours_retard > 0 ? `${r.jours_retard} j` : '—'}
-                </td>
-                <td>{r.niveau ? r.niveau.nom : '—'}</td>
-                <td>{r.nb_relances}</td>
-                <td className="ta-right">
-                  <button className="btn btn-sm btn-primary" onClick={() => { setTarget(r); setNote('') }}>Relancer</button>
-                  <button className="btn btn-sm btn-outline" style={{ marginLeft: 6 }} onClick={() => whatsapp(r)} title="Rappel de paiement par WhatsApp">🟢 WhatsApp</button>
-                  <button className="btn btn-sm btn-outline" style={{ marginLeft: 6 }} onClick={() => lettre(r)}>Lettre</button>
-                  <button className="btn btn-sm btn-outline" style={{ marginLeft: 6 }} onClick={() => exclure(r)}>Exclure</button>
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
-                Aucune facture impayée. 🎉
-              </td></tr>
-            )}
-          </tbody>
-        </table>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+          <Spinner /> Chargement…
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={PartyPopper}
+          title="Aucune facture impayée"
+          description="Toutes les factures sont à jour — rien à relancer."
+          className="mt-1"
+        />
+      ) : (
+        <Card className="mt-1 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Facture</th><th>Client</th><th>Échéance</th>
+                  <th className="ta-right">Dû</th><th>Retard</th><th>Niveau</th>
+                  <th>Relances</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id}>
+                    <td><strong>{r.reference}</strong></td>
+                    <td>{r.client_nom}</td>
+                    <td className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
+                      {r.date_echeance || '—'}
+                    </td>
+                    <td className="ta-right tabular-nums">{formatMAD(r.montant_du)}</td>
+                    <td className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
+                      {r.jours_retard > 0 ? `${r.jours_retard} j` : '—'}
+                    </td>
+                    <td>{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
+                    <td>{r.nb_relances}</td>
+                    <td className="ta-right">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <Button size="sm" onClick={() => { setTarget(r); setNote('') }}>Relancer</Button>
+                        <Button size="sm" variant="outline" onClick={() => whatsapp(r)} title="Rappel de paiement par WhatsApp">
+                          <MessageCircle /> WhatsApp
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => lettre(r)}>
+                          <FileText /> Lettre
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => exclure(r)}>Exclure</Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
-      {target && (
-        <div className="modal-overlay" onClick={() => setTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Consigner une relance — {target.reference}</h3>
-              <button className="modal-close" onClick={() => setTarget(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p className="gen-hint">
-                {target.niveau ? `Niveau courant : ${target.niveau.nom}. ` : ''}
-                Cette action journalise la relance (aucun envoi).
-              </p>
-              <div className="form-group">
-                <label className="form-label">Note (appel, courrier remis…)</label>
-                <textarea className="form-control" rows={3} value={note}
-                          onChange={e => setNote(e.target.value)} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-outline" onClick={() => setTarget(null)}>Annuler</button>
-              <button className="btn btn-primary" disabled={busy} onClick={relancer}>
-                {busy ? '…' : 'Consigner'}
-              </button>
-            </div>
+      <Dialog open={!!target} onOpenChange={(o) => { if (!o) setTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Consigner une relance — {target?.reference}</DialogTitle>
+            <DialogDescription>
+              {target?.niveau ? `Niveau courant : ${target.niveau.nom}. ` : ''}
+              Cette action journalise la relance (aucun envoi).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="relance-note">Note (appel, courrier remis…)</Label>
+            <Textarea id="relance-note" rows={3} value={note} onChange={e => setNote(e.target.value)} />
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTarget(null)}>Annuler</Button>
+            <Button loading={busy} onClick={relancer}>Consigner</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
