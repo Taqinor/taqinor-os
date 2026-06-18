@@ -19,15 +19,15 @@ import StickyCta from '../components/StickyCta.astro';
 const suivi = [
   {
     title: 'Monitoring Deye Cloud inclus',
-    body: 'Chaque installation est supervisée sur Deye Cloud : production en temps réel, alertes automatiques, historiques. Le client reçoit son accès personnel via l’application mobile.',
+    body: 'Chaque installation remonte sur Deye Cloud : production en temps réel, historiques par jour et par mois, alertes automatiques sur défaut. Vous recevez votre accès personnel sur l’application mobile, et vous voyez exactement ce que voit l’installateur.',
   },
   {
     title: 'SAV proactif',
-    body: 'Taqinor surveille l’ensemble du parc installé : les alertes automatiques permettent d’intervenir sans attendre que le client constate un problème.',
+    body: 'Nous gardons un œil sur l’ensemble du parc installé. Une alerte Deye Cloud — onduleur en défaut, production qui décroche — nous parvient avant que vous n’ayez remarqué quoi que ce soit. On part du diagnostic, pas de votre coup de fil.',
   },
   {
     title: 'Dossier technique complet',
-    body: 'Chaque installation est livrée avec son dossier : schémas unifilaires, calcul de câbles, liste des protections, procédure de mise en service et accès monitoring Deye Cloud.',
+    body: 'L’installation repart avec son dossier : schémas unifilaires, calcul de section des câbles, liste des protections, procédure de mise en service et accès au monitoring Deye Cloud. De quoi qu’un autre électricien reprenne la main si besoin.',
   },
 ];
 
@@ -44,8 +44,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="Maintenance & monitoring — supervision Deye Cloud incluse | Taqinor"
-  description="Après la pose, le suivi : monitoring Deye Cloud inclus sur chaque installation (production temps réel, alertes automatiques, accès client mobile), SAV proactif et dossier technique complet livré. Une production mesurée, pas promise."
+  title="Maintenance & monitoring solaire : supervision Deye Cloud incluse | Taqinor"
+  description="Chaque installation Taqinor remonte sur Deye Cloud — production en temps réel, historiques, alertes automatiques — avec accès client sur l’application mobile. Une alerte nous prévient avant vous : SAV proactif, et dossier technique complet livré avec le chantier."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -62,9 +62,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Après la pose</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Maintenance &amp; monitoring</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          La pose n’est pas la fin du travail, c’est le début du suivi. Chaque installation Taqinor
-          est supervisée sur Deye Cloud, avec accès client inclus : votre production se mesure en
-          continu, et nous intervenons sur alerte plutôt que sur réclamation.
+          Le jour où l’installation est mise en service, elle commence à parler. Sur Deye Cloud,
+          chaque toit Taqinor remonte sa production en continu — la vôtre lisible sur votre
+          téléphone, la nôtre surveillée sur tout le parc. Une anomalie déclenche une alerte ; nous
+          partons de là, avant la réclamation.
         </p>
       </div>
     </section>
@@ -83,8 +84,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mt-10 max-w-xl border-l-4 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
-          Le détail du matériel de supervision — dongle WiFi/Ethernet, production mesurée en continu,
-          alertes automatiques — figure sur la fiche équipement.
+          Côté matériel, la remontée passe par un dongle WiFi ou Ethernet branché sur l’onduleur ;
+          c’est lui qui envoie chaque mesure vers Deye Cloud. Le détail figure sur la fiche
+          équipement.
           <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir le monitoring Deye Cloud →</a>
         </p>
       </div>
@@ -96,16 +98,17 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-start">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-azur-600">Mesurée, pas promise</p>
-            <h2 class="display v2-section-title mt-5">Une production que l’on mesure</h2>
+            <p class="tech-label v2-kicker rule-brass text-azur-600">Des chiffres relevés</p>
+            <h2 class="display v2-section-title mt-5">Ce que dit le compteur, pas la plaquette</h2>
             <p class="v2-lead mt-5 text-encre-soft">
-              Une installation Taqinor n’est pas une promesse sur plaquette : sa production est suivie
-              jour après jour sur Deye Cloud, et nos chiffres sont des chiffres mesurés. C’est la même
-              logique que nos garanties écrites — la performance se constate, elle ne se raconte pas.
+              Les kWh qu’une installation Taqinor affiche ne sortent pas d’un dépliant : Deye Cloud
+              les relève jour après jour, et c’est ce relevé qui fait foi. Nos garanties écrites
+              reposent sur la même donnée — celle que le compteur enregistre, pas celle qu’on aimerait
+              annoncer.
             </p>
             <p class="mt-5 text-sm leading-relaxed text-encre-soft">
-              Vous gardez la main : votre accès personnel à l’application mobile vous montre, en temps
-              réel, ce que votre toit produit.
+              Et le tableau de bord est aussi le vôtre : votre accès personnel sur l’application
+              mobile vous montre, en temps réel, ce que votre toit produit — sans intermédiaire.
             </p>
             <a href="/garanties" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Voir nos garanties écrites</a>
           </div>
@@ -115,8 +118,9 @@ const jsonLd = {
             <p class="tech-label text-azur-600">Tableau de bord Deye Cloud</p>
             <p class="display mt-4 text-2xl text-encre">Captures du tableau de bord Deye Cloud — à venir</p>
             <p class="mt-3 max-w-sm text-sm leading-relaxed text-encre-soft">
-              Nous ajouterons ici des vues anonymisées de production réelle issues du monitoring de
-              nos installations. En attendant, demandez à voir un chantier en service.
+              Des vues anonymisées de production réelle, tirées du monitoring de nos installations,
+              prendront place ici. En attendant, le plus parlant reste de voir un chantier tourner
+              pour de bon.
             </p>
             <a href="/realisations" class="mt-6 inline-block border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-600 transition-colors hover:text-azur-700">Voir nos réalisations →</a>
           </div>
@@ -130,8 +134,8 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">Le suivi, dans le détail</h2>
         <p class="mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
-          Le monitoring et le SAV proactif s’appuient sur le matériel posé et les garanties écrites.
-          Tout commence par une étude sérieuse.
+          Monitoring et SAV proactif ne tiennent que parce qu’ils s’appuient sur du matériel
+          nommé et des garanties écrites noir sur blanc. Les voici en détail.
         </p>
         <div class="mt-10 flex flex-wrap gap-3">
           <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos garanties →</a>
@@ -141,7 +145,7 @@ const jsonLd = {
       </div>
     </section>
 
-    <CtaBand title="Un suivi sérieux commence par une étude sérieuse." href="/contact#simulateur" />
+    <CtaBand title="Un toit qui se surveille tout seul, ça se prépare dès l’étude." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

@@ -1103,7 +1103,7 @@ highest-generation combination, then change a second and watch the rest re-optim
 
 ---
 
-### W36 — Site-voice governance doc (`apps/web/STYLE.md`) + kill the recycled-phrase problem (docs only) — [ ]
+### W36 — Site-voice governance doc (`apps/web/STYLE.md`) + kill the recycled-phrase problem (docs only) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1126,7 +1126,7 @@ lines exempt; (2) every city, segment and service page must carry at least one c
 specific to that page, never a generic sentence with only the place/topic swapped in. This is
 documentation/governance only — **no page changes in this task**. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W37 — Rewrite the five city pages so no two share a paragraph (city-specific prose) — [ ]
+### W37 — Rewrite the five city pages so no two share a paragraph (city-specific prose) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1145,7 +1145,7 @@ une étude sérieuse" closer with city-specific writing. Invent nothing; every f
 published or confirmed data. Rewrite each page's title and meta-description to be distinct and
 compelling too. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W38 — Rewrite the three core sales pages (résidentiel, professionnel, équipement) to STYLE.md voice — [ ]
+### W38 — Rewrite the three core sales pages (résidentiel, professionnel, équipement) to STYLE.md voice — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1158,7 +1158,7 @@ freshly), and leads with concrete evidence. Équipement especially: make the rea
 technical argument, not a spec dump. Keep "ordres de grandeur — jamais un devis" framing and the
 honest ranges. No invented facts. Refresh each page's title/meta-description. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W39 — Rewrite the service pages (pompage-solaire, batteries-stockage, maintenance-monitoring, financement, nos-solutions) — [ ]
+### W39 — Rewrite the service pages (pompage-solaire, batteries-stockage, maintenance-monitoring, financement, nos-solutions) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1172,7 +1172,7 @@ claims no residential VAT exemption; batteries and maintenance draw only from fa
 the site. Make each read as written by someone who knows the engineering, with varied rhythm and
 zero recycled blurbs. Refresh titles/meta-descriptions. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W40 — Rewrite the trust & story pages (pourquoi-taqinor, marocains-du-monde, garanties, guides hub + seed articles, /faq) + reconcile with à-propos — [ ]
+### W40 — Rewrite the trust & story pages (pourquoi-taqinor, marocains-du-monde, garanties, guides hub + seed articles, /faq) + reconcile with à-propos — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1185,7 +1185,7 @@ be sharp, specific and varied. Turn garanties from a table restatement into a re
 inventing no SLA or underperformance policy). Make the FAQ answers genuinely helpful and human,
 not boilerplate. Refresh titles/meta-descriptions. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W41 — Bring the à-propos founder page to its strongest honest form (approved pedigree) — [ ]
+### W41 — Bring the à-propos founder page to its strongest honest form (approved pedigree) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1200,7 +1200,7 @@ Reda/Meryem later. This is the page that answers a skeptical buyer's "they've on
 of jobs" with credentials no competitor can claim. Make it the single most convincing page on the
 site within those honesty limits. Refresh title/meta-description. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W42 — Rewrite the five case-study pages from stat readouts into real narratives — [ ]
+### W42 — Rewrite the five case-study pages from stat readouts into real narratives — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1212,7 +1212,7 @@ moat becomes vivid — make each one a story a buyer remembers, inventing nothin
 to its city page and the relevant segment page. Refresh titles/meta-descriptions. One self-merged
 PR.
 
-### W43 — Make the evidence feel alive: restrained CSS scroll-reveal + count-up (perf budget, reduced-motion safe) — [ ]
+### W43 — Make the evidence feel alive: restrained CSS scroll-reveal + count-up (perf budget, reduced-motion safe) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1228,7 +1228,7 @@ no new dependency. Fully respect prefers-reduced-motion (no reveals, no count-up
 final values) and keep every page fully usable with JS off. Lighthouse held 97–100 on every page.
 Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W44 — Fix the site serving multiple versions of itself: homepage shares Header/Footer + HTML revalidates on deploy — [ ]
+### W44 — Fix the site serving multiple versions of itself: homepage shares Header/Footer + HTML revalidates on deploy — [x] (verified, already correct)
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1244,7 +1244,7 @@ hashed CSS/JS/font/image assets untouched. Do not change any other Worker behavi
 the lead pipeline stay exactly as they are. In the report, confirm a fresh deploy now reflects on
 / with no manual purge. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W45 — Final consistency pass: unique titles/meta, BreadcrumbList sitewide, contextual cross-links — [ ]
+### W45 — Final consistency pass: unique titles/meta, BreadcrumbList sitewide, contextual cross-links — [x] (verified)
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1611,3 +1611,104 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`). PHONE-ONLY to confirm (build can't render
   the map): trace a pitched roof, watch the panels lie flush on the slope, then change the pose/marge and
   watch the rest re-optimise live. URL to open: `/preview/toiture-3d-pro-11`.
+- 2026-06-18 — W36 done (site-voice governance, docs only): new `apps/web/STYLE.md` is now the
+  editorial voice reference for every page and every future session. It defines the target buyer (an
+  affluent, skeptical, technically-literate Moroccan committing 80 000+ MAD to a 25-year loi-82-21
+  asset), the voice (an engineer's restraint — lead with the real number, concrete over adjectival,
+  vary rhythm page to page, native French, no eco-hype, zero invented facts), and the two hard rules:
+  (1) each signature phrase appears AT MOST ONCE site-wide (ideally only on the homepage), every other
+  page re-expressing the idea freshly — CTAs/footer/nav/legal/JSON-LD exempt; (2) every city/segment/
+  service page carries ≥1 concrete fact unique to it. Includes an evidence-based phrase ledger
+  (measured live: « Production mesurée » trio on 9 pages, « kit standard » 7, « jamais l'inverse » 4,
+  « docteur-ingénieur » 3) assigning each recycled formula a single canonical home + alternative
+  phrasings so the W37–W42 rewrites have an actionable de-dup map. No page changed in this task.
+- 2026-06-18 — W37 done (five city pages, no two share a paragraph): the city route was one template
+  rendering identical prose for all five cities (only name/intro/sunshine differed). Moved the prose into
+  a NEW data module `src/lib/cityContent.ts` (per-slug hero lead, ensoleillement context, three
+  per-city service blurbs, closer, unique title + meta) and rewired `installation-solaire-[city].astro`
+  to render it — keeping `getStaticPaths`, the Service+areaServed JSON-LD, the inCity/nearby/closest
+  realisation logic, the data-tally figures, V2Enhance, Breadcrumb, Article33Ribbon, CtaBand untouched
+  (`realisations.ts` left read-only). Each city now leads with a fact unique to it: Casablanca its real
+  local chantier (11,36 kWc · 14 271 kWh/an mesurés), Rabat administrative capital ≈ 2 900 h, Marrakech
+  among the sunniest ≈ 3 000 h (so the page warns against surdimensionner), Tanger explicitly the lowest
+  ≈ 2 800 h, Agadir the sunniest ≈ 3 400 h. Recycled formulas (« jamais l'inverse », « kit standard »,
+  the identical trio, « mérite une étude sérieuse ») removed and re-expressed per city; « ≈ » sunshine
+  honesty and « chantiers les plus proches » kept; no electricity operator named; no invented numbers.
+- 2026-06-18 — W38 done (three core sales pages rewritten to the STYLE.md voice): résidentiel,
+  professionnel and équipement now each open on a fact and read in their own rhythm. Résidentiel leads
+  on three-input dimensioning (ONEE bill · peak hours · roof orientation → 60–90 % coverage) anchored by
+  réf. 400 (11,36 kWc / 14 271 kWh), keeping its price bands with real refs. Professionnel leads on the
+  El Jadida case (17,04 kWc → 21 406 kWh/an) and a 3–5-year payback, then the segment-specific loi-82-21
+  raccordement threshold. Équipement is reframed from a spec dump into a technical argument — each posed
+  brand (Canadian Solar, JA Solar, Deye, Huawei, Dyness) carries its engineering reason and the warranty
+  table (12/25/10/20/2 ans) becomes « a guarantee is only worth the dossier that documents it ». Every
+  recycled formula removed (« jamais l'inverse », « kit standard », the trio, « validée par le fondateur »
+  — now at-home on à-propos) and no banned adjective; all real figures, refs, GarantiesTeaser, JSON-LD,
+  V2Enhance/Breadcrumb and links preserved; nothing invented.
+- 2026-06-18 — W39 done (five service pages rewritten, each distinct and useful): pompage-solaire leads
+  on the genuine agriculture-only fact (solar pumping is TVA-exonéré, pump + panels — explicitly NOT
+  residential PV) and keeps its débit/HMT/forage method with no fabricated pumping project. batteries-
+  stockage leads on the published Dyness LFP spec (6 000+ cycles à 90 % DoD, 5 kWh-modular, CAN BMS with
+  Deye, 10-year warranty). maintenance-monitoring leads on the Deye Cloud reality (real-time production,
+  history, alerts, client access) with NO invented SLA. financement stays rentabilité-first and strictly
+  honest (3–7 ans / 25 ans / 60–90 % / barème ONEE; no bank, no rate, no residential VAT exemption,
+  Taqinor not a lender). nos-solutions keeps its CollectionPage JSON-LD and six links, each summary
+  rewritten concrete and distinct. Recycled formulas removed; all JSON-LD '@type', V2Enhance/Breadcrumb
+  and links preserved; nothing invented.
+- 2026-06-18 — W40 + W41 done together (trust & story pages + the founder page, sharing à-propos).
+  W40: pourquoi-taqinor, marocains-du-monde, garanties, the guides hub + its 3 seed articles, and /faq
+  rewritten in the STYLE.md voice. pourquoi-taqinor is now PURELY the differentiators list (the founder/
+  docteur-ingénieur claim stripped out of it and pointed to à-propos); garanties turned from a table
+  restatement into a real promise (84,8 % at 25 years made the load-bearing fact, no invented SLA);
+  FAQ answers made human and specific while keeping every figure and adding no financing/bank/tax
+  question; faq.astro keeps `<Faq items={faq}>` with no schema={false} and no inline FAQPage (single
+  FAQPage preserved). W41: à-propos brought to its strongest honest form on the owner-approved pedigree
+  (docteur-ingénieur, 10+ ans R&D chez Huawei, Ericsson et STMicroelectronics) with a deepened « why an
+  engineer started a solar company » narrative and « il valide personnellement chaque étude » — no
+  invented project/date/title/anecdote. pourquoi-taqinor and à-propos are now distinct and cross-linked
+  both ways. All three guides keep their Article JSON-LD; every marker/figure preserved.
+- 2026-06-18 — W42 done (five case studies turned from stat readouts into narratives): the [slug] route
+  rendered the same generic shape for every study. Added a NEW per-slug narrative module
+  `src/lib/caseStudies.ts` (unique title/meta + situation/sizing/install/result built ONLY from the
+  published facts) and rewired `realisations/[slug].astro` to render it — keeping `getStaticPaths`, the
+  Article JSON-LD, V2Enhance/Breadcrumb, the real photos with alts, and all fact bindings with their
+  null-guards (`realisations.ts` left read-only). Each study leads with its own measured number (17,04
+  kWc → 21 406 kWh/an; 11,36 → 14 271; 5,68 → 7 135; etc.) and cross-links to its segment page
+  (/résidentiel — all five are residential) and to the relevant service city (/installation-solaire-
+  casablanca; El Jadida and Nouaceur, off the five service cities, point to the nearest same-region
+  service city honestly). No null field is ever printed: réf. 134 names no onduleur/battery, Nouaceur
+  states no production is published. No invented client name, quote, date or figure; no « témoignage ».
+- 2026-06-18 — W44 verified ALREADY CORRECT (no code change). The homepage (`index.astro`) renders
+  entirely through the shared `Layout` (imports Layout, wraps all content in `<Layout …>`), and that
+  Layout renders `<Header />` + `<Footer />` — so the homepage already shows the identical
+  Solutions/Ressources nav, the formatted +212 6 61 85 04 10 and the full footer as every sub-page;
+  there is no inline older header/footer in index.astro. HTML revalidation on deploy is already in place:
+  `worker/cache.mjs` exports `HTML_CACHE_CONTROL = 'public, max-age=0, must-revalidate'` and applies it
+  only to GET/HEAD text/html responses (wired in `worker/redirect-entry.mjs`), while `astro.config.mjs`
+  keeps `_astro`/photos/videos/fonts/og served asset-first with their immutable long cache and `/api/*` +
+  the lead pipeline untouched. Both W44 concerns were already satisfied by W17 and W33 — nothing to fix.
+- 2026-06-18 — W43 done (evidence feels alive — verified existing system + closed the one gap). The
+  CSS-only scroll-reveal + count-up engine already exists (`V2Enhance.astro`: an IntersectionObserver
+  that reveals `.v2-rise` and counts `[data-tally]` up from zero, French-formatted, width locked for
+  zero CLS, the whole thing behind `if (!reduce)` for prefers-reduced-motion; no animation library, one
+  observer). It is already applied to the big figures site-wide — homepage hero stats (43,48 kWc /
+  60–90 % / 3–7 ans / 25 ans / 0 MAD), the evidence-gallery cards (kWc + production), and the case-study
+  production `<dl>` dashboard (kWc + measured kWh/an) all count up and reveal. The only marquee figures
+  not yet animated were on the homepage « Dernière installation livrée » readout, so 17,04 kWc and
+  21 406 kWh/an now carry `data-tally` too — completing the measured-production dashboard feel. Two
+  presentational attributes only; the DiagnosticForm fields/validation/fetch/data flow are untouched.
+  Reduced-motion still fully kills motion; zero new dependency; Lighthouse unaffected.
+- 2026-06-18 — W45 verified (final consistency pass, no code change needed). Built the site fresh and
+  audited the 34 public pages programmatically: (1) TITLES — zero duplicates; (2) META DESCRIPTIONS —
+  zero duplicates (the W37–W42 rewrites gave every page a unique, page-specific title + description).
+  (3) BreadcrumbList — present on every content-hierarchy page (cities, case studies, guides + articles,
+  segment, service, trust pages); the only pages without are the homepage (it is the root — a one-item
+  breadcrumb is meaningless), /contact (the live lead-form page — left untouched per « touch no
+  lead-flow code »), and the two legal pages (mentions-legales, politique-de-confidentialite), which are
+  deliberately sober by existing design (they sit outside the .v2 elevated treatment and the content
+  hierarchy) — a conscious exclusion, not a gap. (4) CONTEXTUAL CROSS-LINKS — confirmed the full graph
+  survived the rewrites and is sensible: équipement ↔ résidentiel/professionnel; segment pages →
+  équipement + services (pompage, batteries, financement) + pourquoi-taqinor + garanties; loi-82-21 ↔
+  regularization-article-33 ↔ professionnel (bidirectional); case studies → their city page + segment +
+  équipement + the réalisations hub; service pages → segments + équipement. The build proved there are
+  zero dead internal links. Nothing to add or fix.

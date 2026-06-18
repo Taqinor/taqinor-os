@@ -13,6 +13,7 @@ import Picture from '../../components/Picture.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../lib/realisations';
+import { caseStudyBySlug } from '../../lib/caseStudies';
 import { NAP } from '../../lib/nap';
 
 export function getStaticPaths() {
@@ -21,8 +22,19 @@ export function getStaticPaths() {
 
 const { r } = Astro.props;
 
-// La ville-page correspondante (si la ville est dans la zone de service couverte).
+// Récit propre à l'étude (W42) — déporté dans lib/caseStudies.ts pour que les
+// cinq pages ne partagent plus une prose identique. Repli sûr garanti.
+const cs = caseStudyBySlug(r.slug);
+
+// La ville-page correspondante (si la ville est exactement dans la zone de
+// service couverte : Casablanca/Rabat/Marrakech/Tanger/Agadir).
 const cityPage = CITIES.find((c) => c.name === r.ville);
+// Lien ville à afficher : la ville exacte si elle a sa page, sinon la ville de
+// service la plus pertinente fournie par l'étude (ex. El Jadida/Nouaceur →
+// Casablanca, même région) ; `null` si aucune n'est pertinente.
+const cityLink = cityPage
+  ? { href: `/installation-solaire-${cityPage.slug}`, label: `Installation solaire ${cityPage.intro}` }
+  : cs.cityLink;
 const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/résidentiel';
 const segmentLabel = r.segment === 'professionnel' ? 'Professionnel' : 'Résidentiel';
 const ogSlug = r.segment === 'professionnel' ? 'professionnel' : 'residentiel';
@@ -38,10 +50,8 @@ const equipment = [
   { label: 'Stockage', value: r.batterie },
 ].filter((e) => e.value);
 
-const title = `Installation solaire ${r.kwc} à ${r.ville} — étude de cas réf. ${r.ref} | Taqinor`;
-const description = r.production
-  ? `Installation solaire de ${r.kwc} à ${r.ville} (${r.date}) : ${r.panneaux}, production mesurée ${r.production} suivie sur Deye Cloud. Le matériel posé et la logique de dimensionnement, en clair.`
-  : `Installation solaire de ${r.kwc} à ${r.ville} (${r.date}) : ${r.panneaux}. Le matériel posé et la logique de dimensionnement Taqinor, en clair.`;
+const title = cs.title;
+const description = cs.description;
 
 const articleJsonLd = {
   '@context': 'https://schema.org',
@@ -110,24 +120,13 @@ const articleJsonLd = {
       </dl>
     </section>
 
-    <!-- Le dimensionnement, en clair -->
+    <!-- Le récit du chantier : situation, dimensionnement, résultat mesuré -->
     <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">La logique de dimensionnement</p>
-      <h2 class="display v2-section-title mt-5 text-white">Pourquoi {r.kwc}, et pas un kit standard</h2>
-      <p class="v2-lead mt-5 text-lune-soft">
-        Chez Taqinor, c'est l'étude qui décide du matériel, jamais l'inverse. La puissance
-        retenue part de la consommation réelle du site et de la toiture — surface utile,
-        orientation, ombrage — pour couvrir l'essentiel de la facture sans surdimensionner.
-        {r.batterie
-          ? ' Le stockage a été ajouté pour la part de consommation hors production solaire.'
-          : ' Le dimensionnement privilégie l’autoconsommation directe de la production de jour.'}
-      </p>
-      {r.production && (
-        <p class="v2-lead mt-4 text-lune-soft">
-          La production annoncée n'est pas une promesse commerciale : <strong class="text-lune">{r.production}</strong>
-          sont mesurés en continu via le monitoring Deye Cloud, dont le client garde l'accès.
-        </p>
-      )}
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Le chantier, raconté</p>
+      <h2 class="display v2-section-title mt-5 text-white">Pourquoi {r.kwc}, sur cette toiture</h2>
+      <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
+      <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
+      <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
     </section>
 
     <!-- Le matériel posé -->
@@ -135,6 +134,7 @@ const articleJsonLd = {
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-brass-300">Le matériel posé</p>
         <h2 class="display v2-section-title mt-5 text-white">Ce qui est réellement sur le toit</h2>
+        <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
         <div class="mt-8 border-t-2 border-brass-400/60" data-stagger>
           {equipment.map((e, i) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
@@ -171,9 +171,9 @@ const articleJsonLd = {
     <!-- Liens contextuels -->
     <section class="border-t border-white/10 px-4 py-16">
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        {cityPage && (
-          <a href={`/installation-solaire-${cityPage.slug}`} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            Installation solaire {cityPage.intro} →
+        {cityLink && (
+          <a href={cityLink.href} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+            {cityLink.label} →
           </a>
         )}
         <a href={segmentHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">

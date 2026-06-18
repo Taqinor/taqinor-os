@@ -15,6 +15,7 @@ import Picture from '../components/Picture.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import { CITIES, REALISATIONS, realisationByRef } from '../lib/realisations';
+import { cityContentBySlug } from '../lib/cityContent';
 import { NAP } from '../lib/nap';
 
 export function getStaticPaths() {
@@ -30,10 +31,19 @@ const nearby = featured.filter((r) => r!.ville !== c.name);
 // proches (région Casablanca-Settat), clairement étiquetés comme tels.
 const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
 
-const title = `Installation solaire ${c.intro} — étude, pose et loi 82-21 | Taqinor`;
-const description = c.hasLocalInstall
-  ? `Installation solaire ${c.intro} : dimensionnement par l'ingénierie sur votre facture, pose et déclaration loi 82-21. Chantiers réels mesurés à ${c.name} et dans la région — production suivie sur Deye Cloud.`
-  : `Installation solaire ${c.intro} : Taqinor intervient ${c.intro} et partout au Maroc. Étude gratuite dimensionnée sur votre facture, pose, monitoring Deye Cloud et conformité loi 82-21.`;
+// Prose propre à la ville (W37) — déportée dans lib/cityContent.ts pour que les
+// cinq pages ne partagent plus un seul paragraphe. Le repli résout {intro}.
+const cc = cityContentBySlug(c.slug);
+const fillIntro = (s: string) => s.replaceAll('{intro}', c.intro);
+const heroLead = fillIntro(cc.heroLead);
+const sunshineContext = fillIntro(cc.sunshineContext);
+const closer = fillIntro(cc.closer);
+const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
+const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
+const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
+
+const title = fillIntro(cc.title);
+const description = fillIntro(cc.description);
 
 const serviceJsonLd = {
   '@context': 'https://schema.org',
@@ -76,11 +86,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
       <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Zone d'intervention · {c.name}</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">Installation solaire {c.intro}</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Taqinor conçoit, pose et déclare des installations solaires {c.intro} et partout au
-          Maroc. Le dimensionnement part de votre facture réelle — c'est l'étude qui décide du
-          matériel, jamais l'inverse.
-        </p>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroLead}</p>
       </div>
     </section>
 
@@ -92,9 +98,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <p class="fig lum mt-4 text-5xl sm:text-6xl">{c.sunshineHours} <span class="text-2xl">h/an</span></p>
           <p class="tech-label mt-2 text-lune-faint">Ensoleillement annuel indicatif · {c.name}</p>
           <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
-            Donnée météo publique, à titre indicatif. Le potentiel d'une toiture {c.intro} est
-            réel ; la production effective dépend toujours de l'orientation, de l'ombrage et de la
-            surface utile — c'est l'objet de l'étude.
+            Donnée météo publique, à titre indicatif. {sunshineContext}
           </p>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
@@ -185,16 +189,16 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
     <section class="border-t border-white/10 px-4 py-20 sm:py-24">
       <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
         <div class="v2-rise" style="--v2-i:0">
-          <h3 class="display text-xl text-white">L'étude d'abord</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Le dimensionnement part de votre facture et de votre toiture {c.intro} — pas d'un kit standard. Chaque étude est validée par le fondateur, docteur-ingénieur.</p>
+          <h3 class="display text-xl text-white">{pillarStudy.heading}</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarStudy.body}></p>
         </div>
         <div class="v2-rise" style="--v2-i:1">
-          <h3 class="display text-xl text-white">Production mesurée</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Monitoring Deye Cloud sur chaque installation, avec accès client inclus : la production se mesure, elle ne se promet pas.</p>
+          <h3 class="display text-xl text-white">{pillarMeasure.heading}</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarMeasure.body}></p>
         </div>
         <div class="v2-rise" style="--v2-i:2">
-          <h3 class="display text-xl text-white">Conforme loi 82-21</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Déclaration ou régularisation : nous préparons et déposons le dossier. <a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a></p>
+          <h3 class="display text-xl text-white">{pillarCompliance.heading}</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft" set:html={pillarCompliance.body}></p>
         </div>
       </div>
       <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
@@ -203,7 +207,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
       </div>
     </section>
 
-    <CtaBand title={`Votre toiture ${c.intro} mérite une étude sérieuse.`} href="/contact#simulateur" />
+    <CtaBand title={closer} href="/contact#simulateur" />
 
     <StickyCta />
   </div>

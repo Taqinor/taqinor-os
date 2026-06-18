@@ -29,24 +29,24 @@ const regimes = [
   {
     n: '01',
     title: 'Déclaration',
-    body: 'Pour les installations de moins de 11 kW raccordées en basse tension, ou les installations non raccordées au réseau (sites isolés). Une simple déclaration préalable suffit avant la mise en service — pas une autorisation. C’est le cas de la grande majorité des villas.',
+    body: 'En dessous de 11 kW en basse tension — ou hors réseau, sur un site isolé — vous n’avez rien à faire valider : une déclaration préalable, déposée avant la mise en service, suffit. C’est une formalité, pas une demande d’autorisation, et c’est le cas de la grande majorité des villas.',
   },
   {
     n: '02',
     title: 'Accord de raccordement',
-    body: 'Pour les installations raccordées au réseau, du seuil de déclaration jusqu’à 5 MW, en basse ou moyenne tension. Un accord de raccordement avec le gestionnaire de réseau est requis avant la mise en service. C’est le cas typique des sites professionnels.',
+    body: 'Au-dessus du seuil de déclaration et jusqu’à 5 MW, dès que l’on injecte sur le réseau en basse ou moyenne tension, il faut décrocher un accord de raccordement auprès du gestionnaire avant de démarrer. C’est le terrain habituel des sites professionnels.',
   },
   {
     n: '03',
     title: 'Autorisation',
-    body: 'Pour les installations de 5 MW et plus, raccordées en moyenne, haute ou très haute tension. Une autorisation préalable est exigée avant tout démarrage des travaux.',
+    body: 'À partir de 5 MW, en moyenne, haute ou très haute tension, on change d’échelle : une autorisation en bonne et due forme doit être obtenue avant le premier coup de pioche. Peu de toitures privées sont concernées.',
   },
 ];
 ---
 
 <Layout
   title="Loi 82-21 expliquée simplement — les 3 régimes | Taqinor"
-  description="Déclaration, accord de raccordement ou autorisation ? Les trois régimes de la loi 82-21 sur l'autoproduction d'électricité au Maroc, expliqués en langage clair — et comment savoir lequel vous concerne."
+  description="Le seuil de 11 kW décide presque tout : en dessous, en basse tension, une simple déclaration suffit, et c’est le cas de la plupart des villas. Au-dessus, accord de raccordement, puis autorisation à partir de 5 MW. Les trois régimes en clair, et comment vous situer."
   ogSlug="loi-82-21"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -60,10 +60,11 @@ const regimes = [
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Loi 82-21</p>
       <h1 class="display v2-page-title mt-5 text-white">Loi 82-21 expliquée simplement</h1>
       <p class="v2-lead mt-6 text-lune-soft">
-        La loi 82-21 sur l’autoproduction d’énergie électrique et son décret d’application
-        2-25-100 sont en vigueur depuis le 9 juin 2026. Depuis cette date, toute installation
-        d’autoproduction — nouvelle ou existante — relève de l’un des trois régimes ci-dessous,
-        selon sa puissance et son raccordement. Voici lequel vous concerne, sans jargon.
+        Depuis le 9 juin 2026, la loi 82-21 sur l’autoproduction d’énergie électrique et son décret
+        2-25-100 s’appliquent. La règle est plus simple qu’elle n’en a l’air : deux nombres — votre
+        puissance et votre niveau de raccordement — suffisent à vous ranger dans l’un des trois
+        régimes ci-dessous, que votre installation soit neuve ou déjà en place. Voici comment vous
+        situer, sans jargon.
       </p>
 
       <div class="mt-12 grid gap-6" data-stagger>
@@ -80,9 +81,10 @@ const regimes = [
 
       <h2 class="display v2-section-title mt-14 text-white">Et si mon installation existe déjà ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        L’Article 33 de la loi ouvre une fenêtre de régularisation de 18 mois pour les
-        installations existantes, ouverte depuis le 9 juin 2026. Une installation régularisée est
-        sécurisée juridiquement ; une installation non régularisée est en situation irrégulière.
+        La loi n’oublie pas les installations posées avant elle : son Article 33 ouvre, depuis le
+        9 juin 2026, une fenêtre de 18 mois pour les mettre en règle. Le calcul est binaire — une
+        installation régularisée dans ce délai est juridiquement à l’abri ; une installation
+        laissée hors des clous reste en situation irrégulière, avec ce que cela suppose de risques.
       </p>
       <div class="mt-8 flex flex-wrap gap-3">
         <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identifier mon régime en 3 questions →</a>

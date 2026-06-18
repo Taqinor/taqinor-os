@@ -14,29 +14,29 @@ import StickyCta from '../components/StickyCta.astro';
 const piliers = [
   {
     k: '01',
-    title: 'L’étude d’abord, le chantier ensuite',
-    body: 'Le dimensionnement part de votre consommation réelle et de votre toiture — c’est l’étude qui décide du matériel, jamais l’inverse. Chaque étude est validée par le fondateur, docteur-ingénieur avec plus de 10 ans d’expertise R&D. L’étude et le diagnostic sont à 0 MAD.',
-    href: '/résidentiel',
-    link: 'Voir le résidentiel',
+    title: 'On part de votre facture, pas d’un catalogue',
+    body: 'La puissance se déduit de votre consommation réelle et de votre toiture — surface utile, orientation, ombrage. Tant que ce calcul n’a pas justifié une référence, on ne la pose pas. Le diagnostic et l’étude sont à 0 MAD ; c’est le fondateur qui les signe (voir À propos).',
+    href: '/à-propos',
+    link: 'Le fondateur & la méthode',
   },
   {
     k: '02',
-    title: 'Une production qui se mesure, pas une promesse',
-    body: 'Chaque installation est supervisée sur Deye Cloud : production en temps réel, alertes automatiques, accès client inclus. Nos chiffres de production sont mesurés, pas estimés sur plaquette.',
+    title: 'Des chiffres relevés sur compteur, pas sur plaquette',
+    body: 'Chaque installation est reliée à Deye Cloud : production en temps réel, alertes automatiques, accès client inclus. Quand nous citons une production, elle vient d’un compteur réel — pas d’une projection de brochure.',
     href: '/realisations',
     link: 'Voir nos réalisations',
   },
   {
     k: '03',
-    title: 'Conforme loi 82-21, de bout en bout',
-    body: 'Déclaration (moins de 11 kW en basse tension), accord de raccordement ou autorisation : nous identifions le régime, préparons et déposons le dossier — y compris la régularisation des installations existantes via l’Article 33. Le régime est en vigueur depuis le 9 juin 2026.',
+    title: 'Le dossier loi 82-21, monté et déposé',
+    body: 'Déclaration (moins de 11 kW en basse tension), accord de raccordement ou autorisation : nous lisons votre cas, identifions le régime et déposons le dossier — régularisation des installations existantes par l’Article 33 comprise. La loi s’applique depuis le 9 juin 2026.',
     href: '/loi-82-21',
     link: 'Identifier mon régime',
   },
   {
     k: '04',
-    title: 'Matériel tier-1 uniquement',
-    body: 'Canadian Solar, JA Solar, Deye, Huawei, Dyness — sourcés via des distributeurs officiels au Maroc, garanties locales activables. Pas de catalogue infini, aucun matériel no-name. Garanties de 10 à 25 ans selon les composants.',
+    title: 'Une liste courte de marques tier-1',
+    body: 'Canadian Solar, JA Solar, Deye, Huawei, Dyness — sourcés chez des distributeurs officiels au Maroc, garanties activables sur place. Cinq noms, aucun matériel anonyme : la garantie couvre de 10 à 25 ans selon le composant.',
     href: '/équipement',
     link: 'Voir l’équipement',
   },
@@ -44,8 +44,8 @@ const piliers = [
 ---
 
 <Layout
-  title="Pourquoi Taqinor — l’ingénierie d’abord, la preuve ensuite | Taqinor"
-  description="Dimensionnement par l'ingénierie, production mesurée sur Deye Cloud, conformité loi 82-21 de bout en bout, matériel tier-1 et chantiers réels visitables : ce qui distingue Taqinor pour votre installation solaire au Maroc."
+  title="Pourquoi Taqinor — ce qui nous distingue, point par point | Taqinor"
+  description="Quatre différences concrètes : un dimensionnement déduit de votre facture, une production relevée sur Deye Cloud, le dossier loi 82-21 monté et déposé, et une liste courte de marques tier-1 garanties de 10 à 25 ans. Chantiers réels visitables sur demande."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -57,11 +57,12 @@ const piliers = [
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Pourquoi nous</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">L’ingénierie d’abord, la preuve ensuite</h1>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Ce qui nous distingue, point par point</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Une installation solaire est un placement sur 25 ans. Il mérite une étude sérieuse, du
-          matériel sérieux et des chiffres qu’on peut mesurer — pas des promesses. Voici ce qui
-          fait notre différence.
+          Beaucoup d’installateurs disent la même chose. Voici quatre différences que vous pouvez
+          vérifier vous-même : d’où sort la puissance proposée, d’où sortent nos chiffres de
+          production, qui s’occupe de votre dossier réglementaire, et ce qu’il y a vraiment sur le
+          toit. La personne derrière la méthode, elle, est sur la page <a href="/à-propos" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">À propos</a>.
         </p>
       </div>
     </section>
@@ -84,12 +85,12 @@ const piliers = [
     <section class="border-y border-white/10 px-4 py-16 sm:py-20">
       <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">La preuve, pas les promesses</p>
+          <p class="tech-label v2-kicker rule-brass text-brass-300">Allez les voir</p>
           <h2 class="display v2-section-title mt-5 text-white">Des chantiers réels, à voir sur demande</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            Casablanca, El Jadida, Nouaceur : nos installations existent et produisent déjà. Leur
-            production est suivie sur Deye Cloud. C’est la meilleure réponse à « est-ce que ça
-            marche vraiment ? » — on vous montre, on ne vous raconte pas.
+            Casablanca, El Jadida, Nouaceur : ces installations tournent déjà, et leur production
+            défile sur Deye Cloud. À la question « est-ce que ça marche vraiment ? », nous
+            répondons par une adresse, pas par un argumentaire. Demandez à visiter.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             <a href="/realisations" class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Voir nos réalisations</a>
@@ -117,7 +118,7 @@ const piliers = [
       </div>
     </section>
 
-    <CtaBand title="L’ingénierie d’abord : commencez par l’étude gratuite." href="/contact#simulateur" />
+    <CtaBand title="Jugez-nous sur le calcul : l’étude est gratuite." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

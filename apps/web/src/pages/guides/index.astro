@@ -16,17 +16,17 @@ const guides = [
   {
     href: '/guides/loi-82-21-expliquee',
     title: 'Loi 82-21 expliquée simplement',
-    summary: 'Les trois régimes de l’autoproduction — déclaration, accord de raccordement, autorisation — en clair, et à quel cas vous appartenez.',
+    summary: 'Déclaration, accord de raccordement ou autorisation : les trois régimes de l’autoproduction démêlés, avec le seuil de 11 kW qui range presque toutes les villas du bon côté.',
   },
   {
     href: '/guides/faut-il-des-batteries',
     title: 'Faut-il des batteries ?',
-    summary: 'Autoconsommation diurne ou stockage : comment se décide la présence de batteries dans une installation, et pourquoi c’est l’étude qui tranche.',
+    summary: 'Souvent non. Tout dépend de l’heure à laquelle vous consommez : on vous montre quand le stockage paie, et quand il ne fait qu’alourdir la facture.',
   },
   {
     href: '/guides/onduleur-hybride-ou-reseau',
     title: 'Onduleur hybride ou onduleur réseau ?',
-    summary: 'Deye hybride ou Huawei réseau : la différence tient à une question simple — stockez-vous l’énergie, oui ou non ?',
+    summary: 'Deye hybride ou Huawei SUN2000 réseau : tout le choix se résume à une question — stockez-vous l’énergie, oui ou non ?',
   },
 ];
 
@@ -39,8 +39,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="Guides & ressources solaires au Maroc | Taqinor"
-  description="Des explications claires et sans jargon sur le solaire au Maroc : loi 82-21 et ses régimes, batteries ou non, onduleur hybride ou réseau. Construites à partir de ce que le site documente déjà."
+  title="Guides solaires au Maroc — loi 82-21, batteries, onduleurs | Taqinor"
+  description="Trois questions qui reviennent avant de signer, traitées sans jargon : quel régime loi 82-21 vous concerne, si votre profil justifie des batteries, et ce qui sépare un onduleur hybride d’un onduleur réseau. De quoi décider en connaissance de cause."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -53,11 +53,11 @@ const jsonLd = {
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Guides & ressources</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Comprendre avant de se lancer</h1>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Comprendre avant de signer</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Des explications claires, sans jargon, construites à partir de ce que nous documentons
-          déjà sur le site. Pas de promesses chiffrées : seulement de quoi décider en connaissance
-          de cause.
+          Trois questions reviennent dans presque tous nos échanges. Plutôt que d’y répondre au
+          téléphone, nous les avons écrites ici, sans jargon et sans chiffre de prix lancé en
+          l’air. De quoi arriver à l’étude avec les bonnes questions déjà en tête.
         </p>
       </div>
     </section>
@@ -75,7 +75,7 @@ const jsonLd = {
       </div>
     </section>
 
-    <CtaBand title="Une question que les guides ne couvrent pas ? L’étude est gratuite." href="/contact#simulateur" />
+    <CtaBand title="Votre cas n’est pas dans les guides ? Posez-le à l’étude — c’est gratuit." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

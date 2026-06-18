@@ -18,41 +18,41 @@ const etapes = [
   {
     k: '01',
     title: 'Captage solaire',
-    body: 'Les panneaux photovoltaïques convertissent l’ensoleillement en électricité tout au long de la journée. La puissance du champ est calculée à partir de l’eau réellement nécessaire, pas à partir d’un kit standard.',
+    body: 'Les panneaux convertissent l’ensoleillement en électricité du lever au coucher du soleil. La puissance du champ se déduit du volume d’eau à délivrer : on remonte du besoin vers le nombre de panneaux, et non l’inverse.',
   },
   {
     k: '02',
     title: 'Pompage au fil du soleil',
-    body: 'Le plus souvent en entraînement direct, sans batteries : la pompe fonctionne pendant les heures d’ensoleillement et débite d’autant plus que le soleil est fort. On supprime ainsi le coût et l’entretien d’un parc de batteries.',
+    body: 'En entraînement direct, le plus souvent sans batteries : la pompe tourne pendant les heures de soleil et débite d’autant plus que le rayonnement est fort. Pas de parc de batteries à acheter, à refroidir ni à remplacer tous les huit ans.',
   },
   {
     k: '03',
     title: 'Stockage de l’eau, pas de l’énergie',
-    body: 'L’eau est stockée dans un bassin ou un réservoir au lieu d’être stockée dans des batteries. Le réservoir constitue la réserve : on pompe quand le soleil donne, on irrigue quand la culture en a besoin.',
+    body: 'La réserve, c’est le bassin, pas la batterie. On pompe à midi quand le champ donne sa pleine puissance, et on irrigue à l’heure où la culture le réclame. L’eau attend dans le réservoir ; elle ne se décharge pas et ne vieillit pas.',
   },
   {
     k: '04',
     title: 'Pilotage par variateur',
-    body: 'Un variateur (contrôleur) adapte la vitesse de la pompe à l’énergie disponible, démarre en douceur et protège le moteur (marche à sec, sous-tension). C’est lui qui rend le système robuste au fil des saisons.',
+    body: 'Le variateur module la vitesse de la pompe selon l’énergie disponible, lance le moteur en douceur et le coupe sur défaut — marche à sec, sous-tension, surcharge. C’est cette électronique qui encaisse les nuages de passage et les saisons.',
   },
 ];
 
 const variables = [
   {
     title: 'Débit',
-    body: 'Le volume d’eau à délivrer, exprimé en m³/h ou en m³/jour. Il découle des besoins de la culture et de la surface à irriguer, pas d’un catalogue.',
+    body: 'Le volume d’eau à délivrer, en m³/h ou en m³/jour. Il sort des besoins de la culture et de la surface à irriguer ; c’est la donnée qui commande toutes les autres.',
   },
   {
     title: 'HMT',
-    body: 'La hauteur manométrique totale : la hauteur réelle que la pompe doit vaincre — profondeur du niveau d’eau, dénivelé jusqu’au bassin et pertes de charge dans les conduites.',
+    body: 'La hauteur manométrique totale : tout ce que la pompe doit vaincre, additionné — profondeur du niveau d’eau dans le forage, dénivelé jusqu’au bassin, et pertes de charge dans les conduites. Sous-estimer la HMT, c’est sous-débiter tout l’été.',
   },
   {
     title: 'Profondeur du forage',
-    body: 'La profondeur du puits ou du forage et le niveau dynamique de l’eau conditionnent le choix de la pompe (immergée ou de surface) et la puissance du champ solaire.',
+    body: 'La profondeur du puits et surtout le niveau dynamique — celui que l’eau atteint pompe en marche — tranchent entre pompe immergée et pompe de surface, et fixent la puissance du champ.',
   },
   {
     title: 'Besoins en eau de la culture',
-    body: 'Le type de culture, la surface et la saison fixent la quantité d’eau visée. C’est le point de départ du calcul : tout le reste se dimensionne sur ce besoin.',
+    body: 'Le type de culture, la surface et la saison fixent le volume visé. C’est l’entrée du calcul : on part de là, et le reste — pompe, variateur, nombre de panneaux — en découle.',
   },
 ];
 
@@ -69,8 +69,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="Pompage solaire pour l’agriculture au Maroc | Taqinor"
-  description="Le pompage solaire expliqué honnêtement : panneaux qui entraînent la pompe au fil du soleil, eau stockée dans un bassin plutôt que dans des batteries, système dimensionné sur le débit, la HMT et les besoins de la culture. Exonération de TVA pour le pompage agricole au Maroc."
+  title="Pompage solaire agricole au Maroc : débit, HMT, forage | Taqinor"
+  description="Pompage solaire pour l’irrigation : la pompe tourne au fil du soleil, l’eau attend dans le bassin plutôt que dans des batteries, et le champ se calcule sur le débit, la HMT et le niveau du forage. Le pompage agricole solaire est exonéré de TVA au Maroc — un avantage propre à l’agriculture, pas au PV résidentiel."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -86,10 +86,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Nouveau service</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Pomper l’eau au soleil, pas au gasoil</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Pour l’agriculture et l’irrigation, le pompage solaire remplace le groupe diesel par
-          des panneaux qui entraînent directement la pompe. Comme pour nos installations en
-          toiture, la règle est la même : l’étude d’abord. Le système se calcule sur votre eau
-          réelle — débit, hauteur, profondeur, culture — jamais sur un kit standard.
+          Pour l’irrigation, le pompage solaire met fin au plein de gasoil : des panneaux
+          entraînent la pompe pendant que le soleil donne. Le champ ne sort pas d’un catalogue —
+          il se déduit de quatre mesures relevées sur votre parcelle : le débit visé, la hauteur
+          à vaincre, le niveau du forage et l’eau que la culture réclame.
         </p>
       </div>
     </section>
@@ -109,9 +109,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
-          Les ordres de grandeur dépendent entièrement de votre site : nous donnons une méthode,
-          jamais un devis avant l’étude. Le matériel solaire repose sur les mêmes marques tier-1 que
-          nos toitures — <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">voir l’équipement →</a>
+          Les ordres de grandeur tiennent entièrement à votre site : tant que le forage n’a pas
+          été relevé, il y a une méthode, pas un chiffre. Le champ et le variateur reposent sur les
+          mêmes marques tier-1 que nos toitures — <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">voir l’équipement →</a>
         </p>
       </div>
     </section>
@@ -120,11 +120,12 @@ const jsonLd = {
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-azur-600">L’étude d’abord</p>
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Quatre mesures</p>
         <h2 class="display v2-section-title mt-5">Ce qui décide du dimensionnement</h2>
         <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
-          Un système de pompage solaire ne se choisit pas sur étagère. La pompe et le champ
-          photovoltaïque sont calculés à partir de quatre variables concrètes, mesurées sur place.
+          Une pompe surdimensionnée gaspille des panneaux ; une pompe trop juste sèche en plein
+          juillet. Le bon point se trouve à l’intersection de quatre variables concrètes, relevées
+          sur place avant d’ouvrir le moindre catalogue.
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
           {variables.map((v, i) => (
@@ -135,8 +136,8 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          C’est l’étude qui décide du matériel, jamais l’inverse. Chaque dimensionnement part du
-          besoin en eau réel de votre exploitation. <a href="/contact#simulateur" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
+          Donnez-nous ces quatre chiffres et le système se dessine de lui-même ; il manque le
+          débit ou la HMT, et tout reste à deviner. On préfère mesurer. <a href="/contact#simulateur" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
         </p>
       </div>
     </section>
@@ -149,19 +150,20 @@ const jsonLd = {
             <p class="tech-label v2-kicker rule-brass text-brass-300">Avantage fiscal vérifié</p>
             <h2 class="display v2-section-title mt-5 text-white">Le pompage agricole exonéré de TVA</h2>
             <p class="v2-lead mt-5 text-lune-soft">
-              Au Maroc, les systèmes de pompage de l’eau fonctionnant à l’énergie solaire
-              bénéficient d’une exonération générale de TVA qui couvre la pompe et les panneaux
-              pour le pompage agricole. Concrètement, cela allège le coût d’investissement de
-              l’équipement de pompage solaire pour une exploitation.
+              Au Maroc, les systèmes de pompage de l’eau à l’énergie solaire sont exonérés de TVA —
+              et l’exonération couvre l’ensemble : la pompe comme les panneaux qui l’alimentent.
+              Pour une exploitation, c’est autant qui ne s’ajoute pas à la facture d’équipement, et
+              cela rapproche d’autant le moment où le système s’est payé en gasoil non brûlé.
             </p>
           </div>
           <div class="v2-rise cine-card p-7" style="--v2-i:1">
             <h3 class="display text-xl text-white">À ne pas confondre</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-              Cet avantage concerne le <strong class="text-white">pompage agricole</strong> — la pompe
-              et son champ solaire — et <strong class="text-white">pas le photovoltaïque résidentiel
-              en toiture</strong>. Une installation solaire sur le toit d’une maison ne relève pas de
-              cette exonération : ce sont deux régimes distincts, à ne pas mélanger.
+              L’exonération vise le <strong class="text-white">pompage agricole</strong> — la pompe
+              et son champ — et <strong class="text-white">elle ne s’étend pas au photovoltaïque
+              résidentiel en toiture</strong>. Le solaire sur le toit d’une maison reste soumis à la
+              TVA : deux régimes séparés, et nous ne vous promettrons jamais de transposer l’un sur
+              l’autre.
             </p>
           </div>
         </div>
@@ -174,9 +176,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">L’agriculture, un segment professionnel</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
-          Le pompage solaire s’adresse aux exploitations agricoles et aux professionnels. La
-          démarche reste la nôtre : étude technique d’abord, matériel tier-1 ensuite, dossier
-          complet à la livraison.
+          Le pompage solaire est une affaire d’exploitants et de professionnels, pas de kits grand
+          public. On relève le forage, on calcule, on pose du matériel tier-1, et l’installation
+          repart avec son dossier technique complet.
         </p>
         <div class="mt-10 flex flex-wrap gap-3">
           <a href="/contact#simulateur" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Demander un diagnostic →</a>
