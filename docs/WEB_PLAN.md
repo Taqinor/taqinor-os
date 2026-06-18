@@ -1126,7 +1126,7 @@ lines exempt; (2) every city, segment and service page must carry at least one c
 specific to that page, never a generic sentence with only the place/topic swapped in. This is
 documentation/governance only — **no page changes in this task**. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W37 — Rewrite the five city pages so no two share a paragraph (city-specific prose) — [ ]
+### W37 — Rewrite the five city pages so no two share a paragraph (city-specific prose) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1622,3 +1622,15 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   (measured live: « Production mesurée » trio on 9 pages, « kit standard » 7, « jamais l'inverse » 4,
   « docteur-ingénieur » 3) assigning each recycled formula a single canonical home + alternative
   phrasings so the W37–W42 rewrites have an actionable de-dup map. No page changed in this task.
+- 2026-06-18 — W37 done (five city pages, no two share a paragraph): the city route was one template
+  rendering identical prose for all five cities (only name/intro/sunshine differed). Moved the prose into
+  a NEW data module `src/lib/cityContent.ts` (per-slug hero lead, ensoleillement context, three
+  per-city service blurbs, closer, unique title + meta) and rewired `installation-solaire-[city].astro`
+  to render it — keeping `getStaticPaths`, the Service+areaServed JSON-LD, the inCity/nearby/closest
+  realisation logic, the data-tally figures, V2Enhance, Breadcrumb, Article33Ribbon, CtaBand untouched
+  (`realisations.ts` left read-only). Each city now leads with a fact unique to it: Casablanca its real
+  local chantier (11,36 kWc · 14 271 kWh/an mesurés), Rabat administrative capital ≈ 2 900 h, Marrakech
+  among the sunniest ≈ 3 000 h (so the page warns against surdimensionner), Tanger explicitly the lowest
+  ≈ 2 800 h, Agadir the sunniest ≈ 3 400 h. Recycled formulas (« jamais l'inverse », « kit standard »,
+  the identical trio, « mérite une étude sérieuse ») removed and re-expressed per city; « ≈ » sunshine
+  honesty and « chantiers les plus proches » kept; no electricity operator named; no invented numbers.
