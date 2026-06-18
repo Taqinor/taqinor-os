@@ -41,11 +41,15 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/commander-besoin/`,
       fournisseurId ? { fournisseur: fournisseurId } : {}),
 
-  // Interventions / ordres de travail
+  // Interventions (sorties chantier) — F3/F4
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),
   updateIntervention: (id, data) => api.patch(`/installations/interventions/${id}/`, data),
   deleteIntervention: (id) => api.delete(`/installations/interventions/${id}/`),
+  getInterventionHistorique: (id) =>
+    api.get(`/installations/interventions/${id}/historique/`),
+  noterIntervention: (id, body) =>
+    api.post(`/installations/interventions/${id}/noter/`, { body }),
 
   // Types d'intervention gérés (Paramètres → Chantiers). Types système protégés.
   getTypesIntervention: () => api.get('/installations/types-intervention/'),

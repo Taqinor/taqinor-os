@@ -9,14 +9,15 @@ from authentication.permissions import (
 from django.utils import timezone
 
 from . import activity
+from . import intervention_activity
 from .models import (
     Installation, Intervention, TypeIntervention, ChecklistTemplate,
     ChecklistEtapeModele,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
-    InstallationActivitySerializer, TypeInterventionSerializer,
-    ChecklistTemplateSerializer,
+    InstallationActivitySerializer, InterventionActivitySerializer,
+    TypeInterventionSerializer, ChecklistTemplateSerializer,
     ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
 )
 from .services import (
@@ -105,7 +106,15 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = Installation.objects.select_related(
         'client', 'devis', 'lead', 'technicien_responsable',
-    ).prefetch_related('interventions').all()
+    ).prefetch_related(
+        # F3 — l'InterventionSerializer imbriqué lit l'installation liée (réf,
+        # client, devis), la camionnette et l'équipe : on précharge pour éviter
+        # un N+1 sur la liste des chantiers.
+        'interventions__installation__client',
+        'interventions__installation__devis',
+        'interventions__camionnette',
+        'interventions__equipe',
+    ).all()
     serializer_class = InstallationSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
@@ -544,12 +553,16 @@ class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Ordres de travail rattachés à un chantier. Scopés à la société."""
+    """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
+    porte son propre statut (machine à états distincte du chantier et de
+    STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
+    la société ; l'acteur et la société sont posés côté serveur."""
     queryset = Intervention.objects.select_related(
-        'installation', 'technicien').all()
+        'installation', 'installation__client', 'installation__devis',
+        'technicien', 'camionnette').prefetch_related('equipe').all()
     serializer_class = InterventionSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation']
+    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation', 'statut']
     ordering = ['-date_prevue']
 
     def get_queryset(self):
@@ -558,38 +571,89 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         # son équipe. 'all' → inchangé.
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, self.request.user, ['technicien', 'created_by'])
-        installation = self.request.query_params.get('installation')
-        ticket = self.request.query_params.get('ticket')
+        params = self.request.query_params
+        installation = params.get('installation')
+        ticket = params.get('ticket')
+        statut = params.get('statut')
+        type_interv = params.get('type_intervention')
         if installation:
             qs = qs.filter(installation_id=installation)
         if ticket:
             qs = qs.filter(ticket_id=ticket)
+        if statut:
+            qs = qs.filter(statut=statut)
+        if type_interv:
+            qs = qs.filter(type_intervention=type_interv)
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + ['noter']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
-    def perform_create(self, serializer):
-        # Tenant safety : le chantier ciblé doit appartenir à la société.
+    def _check_tenant(self, serializer):
+        """Tenant safety : chantier, ticket SAV et camionnette ciblés doivent
+        appartenir à la société du user."""
         from rest_framework.exceptions import ValidationError
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
         installation = serializer.validated_data.get('installation')
         ticket = serializer.validated_data.get('ticket')
-        company = self.request.user.company
-        if installation is not None and installation.company_id != company.id:
+        camionnette = serializer.validated_data.get('camionnette')
+        if installation is not None and installation.company_id != cid:
             raise ValidationError({'installation': 'Chantier inconnu.'})
-        # Tenant safety : le ticket SAV lié doit aussi appartenir à la société.
-        if ticket is not None and ticket.company_id != company.id:
+        if ticket is not None and ticket.company_id != cid:
             raise ValidationError({'ticket': 'Ticket inconnu.'})
-        serializer.save(company=company, created_by=self.request.user)
-        # Trace l'ajout d'intervention dans le chatter du chantier.
+        if camionnette is not None and camionnette.company_id != cid:
+            raise ValidationError({'camionnette': 'Emplacement inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        company = self.request.user.company
+        installation = serializer.validated_data.get('installation')
+        interv = serializer.save(company=company, created_by=self.request.user)
+        # F3 — équipe par défaut = l'installateur du chantier quand aucune
+        # équipe n'a été fournie (posé côté serveur).
+        if not interv.equipe.exists() and installation is not None:
+            installer = installation.technicien_responsable
+            if installer is not None:
+                interv.equipe.add(installer)
+        # Chatter PROPRE de l'intervention + trace dans le chatter du chantier.
+        intervention_activity.log_creation(interv, self.request.user)
         if installation is not None:
             activity.log_note(
                 installation, self.request.user,
                 f"Intervention ajoutée : "
-                f"{serializer.instance.get_type_intervention_display()}")
+                f"{interv.get_type_intervention_display()}")
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        old = Intervention.objects.get(pk=serializer.instance.pk)
+        interv = serializer.save()
+        # F3 — journalise les changements (dont le statut) dans le chatter
+        # PROPRE de l'intervention. Ne touche JAMAIS le statut du chantier.
+        intervention_activity.log_changes(old, interv, self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
+    def historique(self, request, pk=None):
+        interv = self.get_object()
+        return Response(
+            InterventionActivitySerializer(
+                interv.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def noter(self, request, pk=None):
+        interv = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = intervention_activity.log_note(interv, request.user, body)
+        return Response(InterventionActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
