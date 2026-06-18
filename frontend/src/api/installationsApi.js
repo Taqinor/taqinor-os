@@ -20,11 +20,20 @@ const installationsApi = {
   cocherChecklist: (id, payload) =>
     api.post(`/installations/chantiers/${id}/cocher-checklist/`, payload),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
-  getChecklistEtapes: () => api.get('/installations/checklist-etapes/'),
+  getChecklistEtapes: (templateId) =>
+    api.get('/installations/checklist-etapes/',
+      templateId ? { params: { template: templateId } } : undefined),
   saveChecklistEtape: (id, data) => id
     ? api.patch(`/installations/checklist-etapes/${id}/`, data)
     : api.post('/installations/checklist-etapes/', data),
   deleteChecklistEtape: (id) => api.delete(`/installations/checklist-etapes/${id}/`),
+
+  // N74 — modèles nommés de checklist, auto-sélectionnés par type d'installation.
+  getChecklistTemplates: () => api.get('/installations/checklist-templates/'),
+  saveChecklistTemplate: (id, data) => id
+    ? api.patch(`/installations/checklist-templates/${id}/`, data)
+    : api.post('/installations/checklist-templates/', data),
+  deleteChecklistTemplate: (id) => api.delete(`/installations/checklist-templates/${id}/`),
 
   // N13 — besoin matériel (lecture seule) + création d'un BCF brouillon.
   besoinMateriel: (id) => api.get(`/installations/chantiers/${id}/besoin-materiel/`),

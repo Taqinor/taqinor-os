@@ -27,6 +27,7 @@ import ClientsSection from './ClientsSection'
 import DevisSection from './DevisSection'
 import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
+import ChecklistSection from './ChecklistSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import AvanceSection from './AvanceSection'
@@ -502,7 +503,9 @@ export default function ParametresEntreprise() {
           {tab === 'devis'    && <DevisSection {...ctx} />}
           {tab === 'stock'    && <StockSection {...ctx} />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
-          {tab === 'statuts'  && <StatutsSection />}
+          {tab === 'statuts'    && <StatutsSection />}
+          {/* N74 — éditeur de modèles de checklist par type d'installation. */}
+          {tab === 'checklists' && <ChecklistSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}

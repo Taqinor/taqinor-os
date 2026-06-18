@@ -372,3 +372,144 @@ class TestClientType(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['cin'], 'BK123456')
+
+
+class TestChecklistTemplates(TestCase):
+    """N74 — checklists configurables en modèles nommés, auto-sélectionnés par
+    type d'installation. Couvre : auto-sélection par type, repli sur « Défaut »,
+    préservation du comportement (pas de type correspondant → étapes par défaut),
+    isolation par société + société posée côté serveur."""
+
+    def setUp(self):
+        from apps.installations.models import (
+            ChecklistTemplate, ChecklistEtapeModele)
+        self.ChecklistTemplate = ChecklistTemplate
+        self.ChecklistEtapeModele = ChecklistEtapeModele
+        self.company = make_company(slug='cht-tmpl', nom='Tmpl')
+        self.admin = User.objects.create_user(
+            username='tmpl_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.admin)
+
+    def _make_inst(self, type_install):
+        """Crée un chantier (depuis un devis accepté) du type donné."""
+        devis, _, _ = make_accepted_devis(self.company)
+        devis.mode_installation = type_install
+        devis.save(update_fields=['mode_installation'])
+        r = self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        return Installation.objects.get(pk=r.data['id'])
+
+    def test_default_template_seeded_with_todays_steps(self):
+        # L'amorçage via l'endpoint Paramètres crée le modèle « Défaut » avec
+        # exactement les 7 étapes d'aujourd'hui.
+        r = self.api.get('/api/django/installations/checklist-templates/')
+        self.assertEqual(r.status_code, 200, r.data)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        defaut = [t for t in rows if t['type_installation'] in (None, '')]
+        self.assertEqual(len(defaut), 1)
+        self.assertEqual(defaut[0]['nom'], 'Défaut')
+        self.assertTrue(defaut[0]['protege'])
+        self.assertEqual(len(defaut[0]['etapes']), 7)
+
+    def test_no_matching_type_uses_default_steps(self):
+        # Comportement préservé : sans modèle typé, un chantier reçoit les 7
+        # étapes du modèle « Défaut » (identique à avant N74).
+        inst = self._make_inst('residentiel')
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{inst.id}/checklist/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data['items']), 7)
+        cles = {it['cle'] for it in r.data['items']}
+        self.assertIn('pv_reception_signe', cles)
+        self.assertIn('panneaux_poses', cles)
+
+    def test_template_auto_selected_by_type(self):
+        # Un modèle typé « agricole » avec ses propres étapes est
+        # auto-sélectionné pour un chantier agricole.
+        from apps.installations.services import ensure_default_template
+        ensure_default_template(self.company)
+        tmpl = self.ChecklistTemplate.objects.create(
+            company=self.company, nom='Pompage', type_installation='agricole',
+            ordre=1, actif=True)
+        for i, (cle, lib) in enumerate(
+                [('forage_ok', 'Forage vérifié'),
+                 ('pompe_posee', 'Pompe posée'),
+                 ('debit_mesure', 'Débit mesuré')]):
+            self.ChecklistEtapeModele.objects.create(
+                company=self.company, template=tmpl, cle=cle, libelle=lib,
+                ordre=i)
+        inst = self._make_inst('agricole')
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{inst.id}/checklist/')
+        self.assertEqual(r.status_code, 200, r.data)
+        cles = [it['cle'] for it in r.data['items']]
+        self.assertEqual(cles, ['forage_ok', 'pompe_posee', 'debit_mesure'])
+        # Et un chantier résidentiel garde, lui, le modèle « Défaut ».
+        inst_res = self._make_inst('residentiel')
+        r2 = self.api.get(
+            f'/api/django/installations/chantiers/{inst_res.id}/checklist/')
+        self.assertEqual(len(r2.data['items']), 7)
+
+    def test_inactive_typed_template_falls_back_to_default(self):
+        from apps.installations.services import ensure_default_template
+        ensure_default_template(self.company)
+        tmpl = self.ChecklistTemplate.objects.create(
+            company=self.company, nom='Indus (off)',
+            type_installation='industriel', ordre=1, actif=False)
+        self.ChecklistEtapeModele.objects.create(
+            company=self.company, template=tmpl, cle='etape_indus',
+            libelle='Étape indus', ordre=0)
+        inst = self._make_inst('industriel')
+        r = self.api.get(
+            f'/api/django/installations/chantiers/{inst.id}/checklist/')
+        # Modèle typé inactif → repli sur « Défaut » (7 étapes).
+        self.assertEqual(len(r.data['items']), 7)
+
+    def test_company_force_assigned_not_from_body(self):
+        # La société est posée côté serveur, jamais lue du corps.
+        other = make_company(slug='cht-tmpl-other', nom='Other')
+        r = self.api.post(
+            '/api/django/installations/checklist-templates/',
+            {'nom': 'Mon modèle', 'type_installation': 'residentiel',
+             'company': other.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        tmpl = self.ChecklistTemplate.objects.get(pk=r.data['id'])
+        self.assertEqual(tmpl.company_id, self.company.id)
+
+    def test_tenant_scoping_other_company_cannot_see_or_touch(self):
+        from apps.installations.services import ensure_default_template
+        ensure_default_template(self.company)
+        mine = self.ChecklistTemplate.objects.create(
+            company=self.company, nom='À moi', type_installation='residentiel')
+        b = make_company(slug='cht-tmpl-b', nom='B')
+        ub = User.objects.create_user(
+            username='tmpl_b', password='x', role_legacy='admin', company=b)
+        api_b = auth(ub)
+        # B ne voit pas le modèle de la société courante.
+        listed = api_b.get('/api/django/installations/checklist-templates/')
+        self.assertNotIn(mine.id, ids_of(listed))
+        # B ne peut pas le récupérer ni le modifier.
+        self.assertEqual(
+            api_b.get(
+                f'/api/django/installations/checklist-templates/{mine.id}/'
+            ).status_code, 404)
+        self.assertEqual(
+            api_b.patch(
+                f'/api/django/installations/checklist-templates/{mine.id}/',
+                {'nom': 'Piraté'}, format='json').status_code, 404)
+        # B ne peut pas créer une étape rattachée au modèle d'une autre société.
+        bad = api_b.post(
+            '/api/django/installations/checklist-etapes/',
+            {'template': mine.id, 'cle': 'x', 'libelle': 'X'}, format='json')
+        self.assertEqual(bad.status_code, 400, bad.data)
+
+    def test_default_template_is_protected_from_delete(self):
+        r = self.api.get('/api/django/installations/checklist-templates/')
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        defaut = next(t for t in rows if t['nom'] == 'Défaut')
+        d = self.api.delete(
+            f"/api/django/installations/checklist-templates/{defaut['id']}/")
+        self.assertEqual(d.status_code, 409, d.data)

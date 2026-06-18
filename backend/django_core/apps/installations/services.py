@@ -8,7 +8,8 @@ Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
 from apps.ventes.utils.references import create_with_reference
 from .models import (
-    Installation, ChecklistEtapeModele, ChantierChecklistItem,
+    Installation, ChecklistTemplate, ChecklistEtapeModele,
+    ChantierChecklistItem,
 )
 
 
@@ -40,26 +41,87 @@ DEFAULT_CHECKLIST_ETAPES = [
     ('pv_reception_signe', 'PV de réception signé', False),
 ]
 
+# N74 — nom du template de repli, sélectionné quand aucun template ne
+# correspond au type d'installation du chantier.
+DEFAULT_TEMPLATE_NOM = 'Défaut'
+
+
+def ensure_default_template(company):
+    """N74 — garantit l'existence du template « Défaut » de la société et qu'il
+    porte les étapes de checklist d'aujourd'hui (idempotent, additif).
+
+    Préserve le comportement historique : si la société a déjà des étapes
+    « orphelines » (template=NULL, amorcées avant N74), on les RATTACHE au
+    template « Défaut » plutôt que d'en créer de nouvelles — la checklist d'un
+    chantier reste donc identique. Sinon on amorce les étapes par défaut sous
+    ce template. Renvoie le template « Défaut »."""
+    if company is None:
+        return None
+    # Le « Défaut » canonique est le template PROTÉGÉ (un seul par société).
+    # On le cible par `protege=True` pour ne jamais le confondre avec un
+    # éventuel template utilisateur sans type d'installation.
+    template = ChecklistTemplate.objects.filter(
+        company=company, protege=True).order_by('ordre', 'id').first()
+    if template is None:
+        template = ChecklistTemplate.objects.create(
+            company=company, type_installation=None,
+            nom=DEFAULT_TEMPLATE_NOM, ordre=0, protege=True, actif=True)
+    # Rattache les étapes historiques (sans template) au template « Défaut ».
+    orphelines = ChecklistEtapeModele.objects.filter(
+        company=company, template__isnull=True)
+    if orphelines.exists():
+        orphelines.update(template=template)
+    # Aucune étape sous le Défaut (ni rattachée ni amorcée) → on amorce les
+    # étapes système par défaut. Idempotent : ne touche rien si déjà présent.
+    if not template.etapes.exists():
+        for i, (cle, libelle, capture) in enumerate(DEFAULT_CHECKLIST_ETAPES):
+            ChecklistEtapeModele.objects.get_or_create(
+                company=company, template=template, cle=cle,
+                defaults={'libelle': libelle, 'ordre': i,
+                          'capture_serie': capture, 'protege': True})
+    return template
+
 
 def seed_checklist_etapes(company):
-    """Amorce les étapes de checklist par défaut (idempotent, additif)."""
-    if company is None or ChecklistEtapeModele.objects.filter(company=company).exists():
-        return
-    for i, (cle, libelle, capture) in enumerate(DEFAULT_CHECKLIST_ETAPES):
-        ChecklistEtapeModele.objects.get_or_create(
-            company=company, cle=cle,
-            defaults={'libelle': libelle, 'ordre': i,
-                      'capture_serie': capture, 'protege': True})
+    """Amorce le template « Défaut » et ses étapes par défaut (idempotent,
+    additif). Conservé pour l'amorçage à l'affichage des Paramètres (N4)."""
+    ensure_default_template(company)
+
+
+def template_for_installation(installation):
+    """N74 — template de checklist auto-sélectionné pour un chantier :
+    celui (actif) dont `type_installation` correspond au type du chantier ;
+    sinon le template « Défaut » (actif), sinon n'importe quel « Défaut ».
+
+    Garantit toujours un template « Défaut » avec ses étapes (comportement
+    historique préservé pour un chantier sans type spécifique)."""
+    company = installation.company
+    if company is None:
+        return None
+    default = ensure_default_template(company)
+    type_install = installation.type_installation
+    if type_install:
+        match = ChecklistTemplate.objects.filter(
+            company=company, type_installation=type_install, actif=True
+        ).order_by('ordre', 'id').first()
+        if match is not None:
+            return match
+    return default
 
 
 def ensure_checklist_items(installation):
-    """Matérialise les étapes de checklist d'un chantier depuis les modèles
-    ACTIFS de sa société (création paresseuse, sans doublon). Renvoie la liste
+    """Matérialise les étapes de checklist d'un chantier depuis le template
+    auto-sélectionné par son type d'installation (N74) — création paresseuse,
+    sans doublon. À défaut de template typé, c'est le template « Défaut » (donc
+    les étapes d'aujourd'hui) : comportement préservé. Renvoie la liste
     ordonnée des items du chantier."""
     company = installation.company
-    seed_checklist_etapes(company)
+    template = template_for_installation(installation)
     existing = {it.cle for it in installation.checklist.all()}
-    modeles = ChecklistEtapeModele.objects.filter(company=company, actif=True)
+    modeles = ChecklistEtapeModele.objects.filter(
+        company=company, actif=True)
+    if template is not None:
+        modeles = modeles.filter(template=template)
     for m in modeles:
         if m.cle not in existing:
             ChantierChecklistItem.objects.create(
