@@ -50,6 +50,20 @@ export default function GlobalSearch() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
+  // ⌘K / Ctrl+K global → palette de commandes (construite par une autre lane,
+  // qui écoute cet événement exact). Ignoré si l'utilisateur tape déjà dans un
+  // champ pour ne pas voler la frappe.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        try { window.dispatchEvent(new CustomEvent('taqinor:command-palette')) } catch { /* no-op */ }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const go = (type, id) => {
     const make = ROUTE[type]
     if (make) navigate(make(id))
