@@ -1,10 +1,15 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { FileUpload } from '../../ui/FileUpload'
 import {
   processOcrStockDocument,
   clearStockOcrResult,
 } from '../../features/ia/store/iaSlice'
+
+// G26 — type/taille acceptés (inchangés vs. l'ancienne dropzone inline).
+const STOCK_OCR_ACCEPT = 'image/jpeg,image/png,image/tiff,image/webp,application/pdf'
+const STOCK_OCR_MAX_SIZE = 10 * 1024 * 1024 // 10 Mo
 import {
   fetchProduits,
   fetchFournisseurs,
@@ -152,7 +157,6 @@ function Stepper({ step }) {
 export default function OcrStockImport() {
   const dispatch   = useDispatch()
   const navigate   = useNavigate()
-  const inputRef   = useRef()
   const produitsRef     = useRef([])
   const fournisseursRef = useRef([])
 
@@ -168,7 +172,6 @@ export default function OcrStockImport() {
   // step: 1=type, 2=upload, 3=validation, 4=résultats
   const [step, setStep] = useState(1)
   const [docType, setDocType] = useState(null)
-  const [dragging, setDragging] = useState(false)
   const [mouvementType, setMouvementType]             = useState('entree')
   const [refDocument, setRefDocument]                 = useState('')
   const [fournisseurMode, setFournisseurMode]         = useState('none')
@@ -324,21 +327,14 @@ const cp = produitsRef.current
     dispatch(processOcrStockDocument({ file, docType: docType || '' }))
   }, [dispatch, docType])
 
-  const handleFileChange  = (e) => processFile(e.target.files?.[0])
-  const handleDrop        = (e) => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files?.[0]) }
-  const handleDragOver    = (e) => { e.preventDefault(); setDragging(true) }
-  const handleDragLeave   = () => setDragging(false)
-
   const handleReset = () => {
     dispatch(clearStockOcrResult())
     setStep(1); setDocType(null); setLignes([]); setResults([])
-    if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleNewFile = () => {
     dispatch(clearStockOcrResult())
     setStep(2); setLignes([]); setResults([])
-    if (inputRef.current) inputRef.current.value = ''
   }
 
   const updateLigne = (idx, updates) =>
@@ -491,10 +487,8 @@ const cp = produitsRef.current
         )}
         {step === 2 && (
           <Step1Upload
-            inputRef={inputRef} dragging={dragging}
             loading={stockOcrLoading} error={stockOcrError}
-            onFileChange={handleFileChange} onDrop={handleDrop}
-            onDragOver={handleDragOver} onDragLeave={handleDragLeave}
+            onFile={processFile}
             onReset={handleReset}
             docType={currentDocType}
           />
@@ -637,7 +631,7 @@ function Step0DocType({ selectedValue, onSelect }) {
 }
 
 // ── Étape 1 (ex-Step1) : Upload ───────────────────────────────────────────────
-function Step1Upload({ inputRef, dragging, loading, error, onFileChange, onDrop, onDragOver, onDragLeave, onReset, docType }) {
+function Step1Upload({ loading, error, onFile, onReset, docType }) {
 
   if (loading) return (
     <div style={{
@@ -723,61 +717,12 @@ function Step1Upload({ inputRef, dragging, loading, error, onFileChange, onDrop,
         </div>
       )}
 
-      <input
-        ref={inputRef} type="file"
-        accept="image/jpeg,image/png,image/tiff,image/webp,application/pdf"
-        style={{ display: 'none' }}
-        onChange={onFileChange}
+      {/* G26 — primitif FileUpload ; même dispatch OCR (onFile → processFile). */}
+      <FileUpload
+        accept={STOCK_OCR_ACCEPT}
+        maxSize={STOCK_OCR_MAX_SIZE}
+        onFiles={(files) => onFile(files[0])}
       />
-      <div
-        onClick={() => inputRef.current?.click()}
-        onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
-        style={{
-          minHeight: 260,
-          border: `2px dashed ${dragging ? '#1d4ed8' : '#cbd5e1'}`,
-          borderRadius: 16,
-          background: dragging ? '#eff6ff' : '#fafafa',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: 14, cursor: 'pointer', padding: '2.5rem',
-          transition: 'border-color 0.2s, background 0.2s, transform 0.15s',
-          transform: dragging ? 'scale(1.01)' : 'scale(1)',
-        }}
-      >
-        <div style={{
-          width: 72, height: 72, borderRadius: 18,
-          background: dragging ? '#dbeafe' : '#f1f5f9',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'background 0.2s',
-        }}>
-          <Ic size={32} color={dragging ? '#1d4ed8' : '#94a3b8'} sw={1.4}>
-            <polyline points="16 16 12 12 8 16"/>
-            <line x1="12" y1="12" x2="12" y2="21"/>
-            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
-          </Ic>
-        </div>
-
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#1e293b' }}>
-            {dragging ? 'Déposez le fichier ici' : docType ? `Glissez votre ${docType.label.toLowerCase()} ici` : 'Glissez votre document ici'}
-          </p>
-          <p style={{ margin: '6px 0 0', fontSize: '0.83rem', color: '#1d4ed8', fontWeight: 500 }}>
-            ou cliquez pour choisir
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {['JPEG', 'PNG', 'TIFF', 'WebP', 'PDF'].map(fmt => (
-            <span key={fmt} style={{
-              padding: '2px 10px', borderRadius: 20,
-              background: '#f1f5f9', border: '1px solid #e2e8f0',
-              fontSize: 11, color: '#64748b', fontWeight: 500,
-            }}>{fmt}</span>
-          ))}
-          <span style={{ padding: '2px 10px', borderRadius: 20, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 11, color: '#64748b' }}>
-            max 10 Mo
-          </span>
-        </div>
-      </div>
     </div>
   )
 }

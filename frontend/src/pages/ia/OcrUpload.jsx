@@ -1,5 +1,6 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { FileUpload } from '../../ui/FileUpload'
 import {
   processOcrDocument,
   saveOcrDocument,
@@ -7,6 +8,10 @@ import {
   fetchOcrDocuments,
   deleteOcrDocument,
 } from '../../features/ia/store/iaSlice'
+
+// G26 — type/taille acceptés (inchangés vs. l'ancienne dropzone inline).
+const OCR_ACCEPT = 'image/jpeg,image/png,image/tiff,image/webp,application/pdf'
+const OCR_MAX_SIZE = 10 * 1024 * 1024 // 10 Mo
 
 const TYPE_LABELS = {
   facture: 'Facture',
@@ -56,9 +61,7 @@ function AnalyseTab({ canSave }) {
   const { ocrResult, ocrLoading, ocrError, savedDocumentId, saveLoading, saveError } =
     useSelector((s) => s.ia)
 
-  const inputRef = useRef()
   const [currentFile, setCurrentFile] = useState(null)
-  const [dragging, setDragging] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const processFile = useCallback((file) => {
@@ -67,16 +70,10 @@ function AnalyseTab({ canSave }) {
     dispatch(processOcrDocument(file))
   }, [dispatch])
 
-  const handleFileChange = (e) => processFile(e.target.files?.[0])
-  const handleDrop = (e) => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files?.[0]) }
-  const handleDragOver = (e) => { e.preventDefault(); setDragging(true) }
-  const handleDragLeave = () => setDragging(false)
-
   const handleReset = () => {
     dispatch(clearOcrResult())
     setCurrentFile(null)
     setCopied(false)
-    if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleCopy = () => {
@@ -104,29 +101,13 @@ function AnalyseTab({ canSave }) {
 
   return (
     <div className="mt-4">
-      {/* Zone de dépôt */}
+      {/* Zone de dépôt (G26 — primitif FileUpload ; même dispatch OCR) */}
       {!ocrResult && !ocrLoading && (
-        <div
-          className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 transition-colors cursor-pointer
-            ${dragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'}`}
-          onClick={() => inputRef.current?.click()}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/tiff,image/webp,application/pdf"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <div className="text-4xl mb-3">📄</div>
-          <p className="text-sm font-medium text-gray-700">
-            Glissez un fichier ici ou <span className="text-blue-600 underline">cliquez pour choisir</span>
-          </p>
-          <p className="mt-1 text-xs text-gray-400">JPEG · PNG · TIFF · WebP · PDF — max 10 Mo</p>
-        </div>
+        <FileUpload
+          accept={OCR_ACCEPT}
+          maxSize={OCR_MAX_SIZE}
+          onFiles={(files) => processFile(files[0])}
+        />
       )}
 
       {ocrLoading && (
