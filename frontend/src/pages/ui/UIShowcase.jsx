@@ -21,6 +21,7 @@ import {
   DefinitionList, Tabs, TabsList, TabsTrigger, TabsContent,
   Accordion, AccordionItem, AccordionTrigger, AccordionContent, Progress,
 } from '../../ui'
+import { DataTableDemo } from './DataTableDemo'
 
 function Section({ id, title, children }) {
   return (
@@ -278,6 +279,21 @@ export function UIShowcase() {
               ]}
             />
           </Section>
+
+          <section id="datatable" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Tableau de données (moteur DataTable — Groupe H)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Grille réutilisable : tri multi-colonnes, recherche surlignée, filtres,
+              colonnes (afficher/masquer/épingler/réordonner/redimensionner), densité,
+              sélection + barre d'actions groupées, actions de ligne, édition en place,
+              lignes dépliables, sous-totaux TVA, vues sauvegardées, pagination
+              « X–Y sur N », persistance URL, virtualisation et repli mobile en cartes.
+            </p>
+            <Separator className="my-3" />
+            <DataTableDemo />
+          </section>
         </div>
       </div>
     </TooltipProvider>
