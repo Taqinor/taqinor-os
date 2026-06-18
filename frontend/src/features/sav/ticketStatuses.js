@@ -54,7 +54,30 @@ export const SOUS_GARANTIE_LABELS = {
   oui: 'Oui', non: 'Non', a_determiner: 'À déterminer',
 }
 
+// ── Couche de configuration N58 (libellé/ordre/visibilité, par société) ──────
+// PUREMENT COSMÉTIQUE : surcharge le libellé affiché et l'ordre d'affichage,
+// JAMAIS les clés canoniques (`TICKET_STATUSES`) ni la machine à états. Tant
+// qu'aucune config n'est chargée, tout retombe sur les défauts codés en dur.
+let _configLabels = null // { cle: libelle }
+let _configOrder = null // { cle: ordre }
+
+// Applique la liste effective renvoyée par l'API
+// (parametresApi.getStatutsEffective('sav')). `null`/`[]` = réinitialise.
+export function applyTicketStatutConfig(rows) {
+  if (!rows || !rows.length) { _configLabels = null; _configOrder = null; return }
+  const labels = {}
+  const order = {}
+  for (const r of rows) {
+    if (!r || !TICKET_STATUSES.includes(r.cle)) continue
+    if (r.libelle) labels[r.cle] = r.libelle
+    if (typeof r.ordre === 'number') order[r.cle] = r.ordre
+  }
+  _configLabels = Object.keys(labels).length ? labels : null
+  _configOrder = Object.keys(order).length ? order : null
+}
+
 export function statusLabel(key) {
+  if (_configLabels && _configLabels[key]) return _configLabels[key]
   return TICKET_STATUS_LABELS[key] ?? key ?? '—'
 }
 export function statusColor(key) {
@@ -62,8 +85,10 @@ export function statusColor(key) {
 }
 
 // Position dans l'entonnoir — pour TRIER les statuts dans l'ordre du funnel,
-// jamais alphabétiquement. Les inconnus vont en fin.
+// jamais alphabétiquement. Les inconnus vont en fin. L'ordre configuré (N58)
+// surcharge l'ordre canonique pour l'AFFICHAGE uniquement.
 export function statusOrder(key) {
+  if (_configOrder && typeof _configOrder[key] === 'number') return _configOrder[key]
   const i = TICKET_STATUSES.indexOf(key)
   return i === -1 ? TICKET_STATUSES.length : i
 }
