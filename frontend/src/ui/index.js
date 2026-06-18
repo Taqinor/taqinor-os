@@ -44,3 +44,6 @@ export * from './DefinitionList'
 export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
+
+// Données / listes (Groupe H — moteur DataTable réutilisable)
+export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'
