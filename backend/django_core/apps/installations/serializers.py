@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
 from .models import (
-    Installation, Intervention, InstallationActivity, TypeIntervention,
-    ChecklistTemplate, ChecklistEtapeModele, ChantierChecklistItem,
+    Installation, Intervention, InstallationActivity, InterventionActivity,
+    TypeIntervention, ChecklistTemplate, ChecklistEtapeModele,
+    ChantierChecklistItem,
 )
 
 
@@ -91,7 +92,30 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
 class InterventionSerializer(serializers.ModelSerializer):
     type_intervention_display = serializers.CharField(
         source='get_type_intervention_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    # F3 — position du statut dans la machine à états PROPRE de l'intervention
+    # (pour un tri kanban non-alphabétique). Aucun lien avec le chantier.
+    statut_ordre = serializers.SerializerMethodField()
     technicien_nom = serializers.SerializerMethodField()
+    equipe_noms = serializers.SerializerMethodField()
+    camionnette_nom = serializers.CharField(
+        source='camionnette.nom', read_only=True, default=None)
+    # Données héritées du chantier (lecture seule) : référence, client, devis,
+    # ville et GPS du site sont tirés de l'installation, jamais ressaisis.
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    client_nom = serializers.SerializerMethodField()
+    devis_reference = serializers.CharField(
+        source='installation.devis.reference', read_only=True, default=None)
+    site_ville = serializers.CharField(
+        source='installation.site_ville', read_only=True, default=None)
+    gps_lat = serializers.DecimalField(
+        source='installation.gps_lat', max_digits=9, decimal_places=6,
+        read_only=True, default=None)
+    gps_lng = serializers.DecimalField(
+        source='installation.gps_lng', max_digits=9, decimal_places=6,
+        read_only=True, default=None)
 
     class Meta:
         model = Intervention
@@ -99,8 +123,38 @@ class InterventionSerializer(serializers.ModelSerializer):
         # company/created_by posés côté serveur — jamais depuis le corps.
         read_only_fields = ['company', 'created_by', 'date_creation']
 
+    def get_statut_ordre(self, obj):
+        order = list(Intervention.STATUT_ORDER)
+        try:
+            return order.index(obj.statut)
+        except ValueError:
+            return len(order)
+
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien, 'username', None)
+
+    def get_equipe_noms(self, obj):
+        return [u.username for u in obj.equipe.all()]
+
+    def get_client_nom(self, obj):
+        c = getattr(obj.installation, 'client', None)
+        if not c:
+            return None
+        return f"{c.nom} {c.prenom or ''}".strip()
+
+
+class InterventionActivitySerializer(serializers.ModelSerializer):
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InterventionActivity
+        fields = [
+            'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user_nom', 'created_at',
+        ]
+
+    def get_user_nom(self, obj):
+        return getattr(obj.user, 'username', None)
 
 
 class InstallationSerializer(serializers.ModelSerializer):
