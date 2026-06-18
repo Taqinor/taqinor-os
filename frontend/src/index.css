@@ -43,6 +43,23 @@ html { scroll-behavior: smooth; }
   }
 }
 
+/* N63 — Plancher d'accessibilité : anneau de focus clavier global. Les
+   primitifs /src/ui ont déjà leur propre anneau `focus-visible` ; cette règle
+   couvre les éléments interactifs LEGACY qui n'en avaient pas. `:focus-visible`
+   n'apparaît qu'à la navigation clavier, donc le clic souris reste visuellement
+   identique (aucune régression bureau). Couleur = anneau du système de design,
+   bien visible sur fond clair. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 #root {
   width: 100%;
   min-height: 100vh;
