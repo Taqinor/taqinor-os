@@ -1228,7 +1228,7 @@ no new dependency. Fully respect prefers-reduced-motion (no reveals, no count-up
 final values) and keep every page fully usable with JS off. Lighthouse held 97–100 on every page.
 Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W44 — Fix the site serving multiple versions of itself: homepage shares Header/Footer + HTML revalidates on deploy — [ ]
+### W44 — Fix the site serving multiple versions of itself: homepage shares Header/Footer + HTML revalidates on deploy — [x] (verified, already correct)
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1678,3 +1678,12 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   casablanca; El Jadida and Nouaceur, off the five service cities, point to the nearest same-region
   service city honestly). No null field is ever printed: réf. 134 names no onduleur/battery, Nouaceur
   states no production is published. No invented client name, quote, date or figure; no « témoignage ».
+- 2026-06-18 — W44 verified ALREADY CORRECT (no code change). The homepage (`index.astro`) renders
+  entirely through the shared `Layout` (imports Layout, wraps all content in `<Layout …>`), and that
+  Layout renders `<Header />` + `<Footer />` — so the homepage already shows the identical
+  Solutions/Ressources nav, the formatted +212 6 61 85 04 10 and the full footer as every sub-page;
+  there is no inline older header/footer in index.astro. HTML revalidation on deploy is already in place:
+  `worker/cache.mjs` exports `HTML_CACHE_CONTROL = 'public, max-age=0, must-revalidate'` and applies it
+  only to GET/HEAD text/html responses (wired in `worker/redirect-entry.mjs`), while `astro.config.mjs`
+  keeps `_astro`/photos/videos/fonts/og served asset-first with their immutable long cache and `/api/*` +
+  the lead pipeline untouched. Both W44 concerns were already satisfied by W17 and W33 — nothing to fix.
