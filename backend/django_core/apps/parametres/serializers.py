@@ -1,64 +1,13 @@
-from rest_framework import serializers
-from .models import CompanyProfile, SettingsAuditLog
+"""Sérialiseurs de l'app Paramètres — surface d'import publique.
 
+Éclatés par domaine (un fichier par domaine) pour permettre des évolutions
+parallèles. Ré-exportés ici pour que
+``from apps.parametres.serializers import …`` continue de fonctionner à
+l'identique. Aucun changement de champ ni de comportement."""
+from .serializers_company import CompanyProfileSerializer
+from .serializers_audit import SettingsAuditLogSerializer
 
-class SettingsAuditLogSerializer(serializers.ModelSerializer):
-    user_nom = serializers.CharField(source='user.username', read_only=True)
-
-    class Meta:
-        model = SettingsAuditLog
-        fields = [
-            'id', 'section', 'field', 'field_label',
-            'old_value', 'new_value', 'user', 'user_nom', 'timestamp',
-        ]
-
-
-class CompanyProfileSerializer(serializers.ModelSerializer):
-    logo_url = serializers.SerializerMethodField()
-    signature_url = serializers.SerializerMethodField()
-    responsable_defaut_leads_nom = serializers.CharField(
-        source='responsable_defaut_leads.username', read_only=True
-    )
-    default_installer_nom = serializers.CharField(
-        source='default_installer.username', read_only=True
-    )
-
-    class Meta:
-        model = CompanyProfile
-        fields = '__all__'
-        read_only_fields = ['logo_key', 'signature_key']
-
-    def validate_responsable_defaut_leads(self, value):
-        # Le responsable par défaut doit appartenir à la même société.
-        request = self.context.get('request')
-        if value and request and value.company_id != request.user.company_id:
-            raise serializers.ValidationError('Utilisateur inconnu.')
-        return value
-
-    def validate_default_installer(self, value):
-        # L'installateur par défaut doit appartenir à la même société.
-        request = self.context.get('request')
-        if value and request and value.company_id != request.user.company_id:
-            raise serializers.ValidationError('Utilisateur inconnu.')
-        return value
-
-    def _presign(self, key):
-        if not key:
-            return None
-        try:
-            from apps.ventes.utils.minio_client import get_minio_client
-            from django.conf import settings
-            client = get_minio_client()
-            return client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': settings.MINIO_BUCKET_UPLOADS, 'Key': key},
-                ExpiresIn=3600,
-            )
-        except Exception:
-            return None
-
-    def get_logo_url(self, obj):
-        return self._presign(obj.logo_key)
-
-    def get_signature_url(self, obj):
-        return self._presign(obj.signature_key)
+__all__ = [
+    'CompanyProfileSerializer',
+    'SettingsAuditLogSerializer',
+]
