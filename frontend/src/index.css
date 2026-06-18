@@ -18,6 +18,15 @@ body {
   color: #1e293b;
 }
 
+/* M58 — Garde anti-défilement horizontal sur les flux principaux. Borné à la
+   racine (html/body) pour ne pas créer de conteneur de bloc qui casserait le
+   `position: sticky` de la sidebar / des en-têtes (un overflow ailleurs que sur
+   le viewport racine fige le sticky). Les médias et blocs larges qui débordent
+   sont contraints à la largeur de leur conteneur. Additif, sans régression
+   bureau : la mise en page existante ne dépasse jamais 100 % de toute façon. */
+html, body { max-width: 100%; overflow-x: hidden; }
+img, table, pre { max-width: 100%; }
+
 #root {
   width: 100%;
   min-height: 100vh;
@@ -1638,11 +1647,30 @@ textarea.form-control {
   /* ── Tactile : cibles ≥ 44 px, pas de défilement horizontal ── */
   .btn, .btn-sm, .form-select, .form-control, .pp-trigger { min-height: 44px; }
   .actions-cell { flex-wrap: wrap; gap: 6px; }
+
+  /* M58 — Champs de formulaire LEGACY (hors primitifs /src/ui) : 16px sur
+     mobile pour ne JAMAIS déclencher le zoom auto d'iOS au focus. Les
+     primitifs gèrent déjà ça via `text-base sm:text-sm`. */
+  input, select, textarea, .form-control, .form-select { font-size: 16px; }
+
+  /* M58 — Modales → feuilles inférieures (bottom sheets). La modale s'ancre en
+     bas de l'écran, pleine largeur, coins supérieurs arrondis, avec marge sûre
+     en bas (indicateur d'accueil iOS) ; les actions primaires restent à portée
+     de pouce. Le bureau (≥ 769 px) garde la modale centrée — voir plus haut. */
   .modal-overlay {
-    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
-             max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    align-items: flex-end;
+    padding: 0;
   }
-  .modal { max-height: calc(100dvh - 16px); }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 16px 16px 0 0;
+  }
+  .modal-lg, .modal-xl { max-width: 100%; }
+  /* Action primaire au pouce + dégagement de l'indicateur d'accueil iOS
+     (un seul inset, porté par le pied collé en bas). */
+  .modal-footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
 
   /* ── Listes (leads, devis, clients) : lignes → cartes ── */
   .data-table thead { display: none; }
