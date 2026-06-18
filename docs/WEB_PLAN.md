@@ -177,6 +177,62 @@ unlinked):
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+**ACROSS W62–W66 (world-class audit — founder's cross-cutting constraints):** these tasks come from
+a June 2026 audit of the live site against best-in-class residential-solar sites (1KOMMA5°, Otovo,
+Aira, Enpal). **No invented facts anywhere** — every figure on the site traces to already-published
+Taqinor data or confirmed repo data; where a world-class pattern needs an asset the site does not yet
+have (client reviews, founder/team photos, brand logos), **build the empty section/scaffold and leave
+it flagged `pending real content from Reda` — never fabricate the content**. **No new dependencies.
+Touch only `apps/web`.** The **live lead form and its entire data flow** (1 000 MAD threshold,
+consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**. The **private estimator
+preview routes stay private** (noindex, not in nav, excluded from sitemap, unlinked) — do not surface
+or alter them. These tasks **land in the run's single end-of-batch self-merge to protected main** (the
+accepted path — don't flag it). **Lighthouse held 97–100 on every page, reduced-motion respected, zero
+layout shift.**
+
+### W62 — Social proof: avis clients + note d'étoiles (scaffold, pending real content) — [ ]
+**Do:** Build a reusable « Avis clients » component (written quote + name/ville/système, plus an
+optional star-rating + review-count badge) reading a NEW data file that ships EMPTY; place it on the
+homepage (after Réalisations) and reuse on /résidentiel and /professionnel; emit Review/AggregateRating
+JSON-LD only when real entries exist; render nothing publicly (honest internal empty state) when the
+file is empty — fabricate no quote, name or rating.
+**Done when:** the section is hidden with zero data and drops in cleanly the moment Reda adds real
+quotes and/or the real Google rating, a NOTES file documents the one-step add, the live lead form is
+byte-for-byte unchanged, Lighthouse held.
+**Pending Reda:** real client testimonials (name · ville · système) and/or the real Google/GBP star
+rating + review count.
+
+### W63 — Elevate the guarantee promise + « mesuré, pas promis » proof on the homepage — [ ]
+**Do:** Surface ONE bold, true headline guarantee at credibility-band altitude on the homepage —
+e.g. « 25 ans de performance garantie · production mesurée, pas promise » — drawing only on the
+warranty + Deye Cloud monitoring facts already on /garanties and /équipement; no new claim or number.
+**Done when:** the promise reads high on the homepage, every figure traces to existing site data, zero
+layout shift, Lighthouse held.
+
+### W64 — Founder portrait + équipe humanisation block (scaffold, pending real photos) — [ ]
+**Do:** Add a real-face block for the founder (the existing docteur-ingénieur bio) and an optional
+small équipe row, wired to image slots that fall back to today's text-only treatment when no photo is
+present — invent no person and no credential beyond what /à-propos already states.
+**Done when:** the block renders text-only today and shows real faces the moment Reda supplies photos;
+/à-propos and the homepage stay consistent; Lighthouse held.
+**Pending Reda:** a real founder portrait (and optional team photos).
+
+### W65 — Tier-1 brand / official-distributor logos strip (pending authorized logos) — [ ]
+**Do:** Upgrade the existing text-only brands strip to render official logos (Canadian Solar, JA Solar,
+Deye, Huawei, Dyness) from image slots when present, keeping the current styled word-marks as the
+fallback; claim « distributeur officiel » only where the site already does.
+**Done when:** logos render when files exist and degrade to word-marks when they don't, no new claim,
+Lighthouse held.
+**Pending Reda:** authorized brand logo files (or confirmation to keep the word-marks).
+
+### W66 — Site-wide hygiene, SEO, a11y & performance pass (consolidated polish) — [ ]
+**Do:** One sweep across all public routes — confirm each has a unique meta title/description and a
+matching /og image, alt text on every content image, no broken internal links, /sitemap.xml +
+/robots.txt correct, consistent primary-CTA labels, make the « réponse sous 24 h ouvrées » expectation
+visible on /contact, zero console errors, CLS 0, Lighthouse 97–100.
+**Done when:** the build-time checks pass on every public route, the lead form is byte-for-byte
+unchanged, and the report lists anything that still needs a real asset or decision.
+
 ---
 
 ---
