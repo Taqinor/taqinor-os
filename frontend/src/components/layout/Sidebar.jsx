@@ -116,9 +116,9 @@ const NAV_SECTIONS = [
   {
     label: 'ADMINISTRATION',
     items: [
-      { to: '/admin/users',          label: 'Utilisateurs',     icon: I.utilisateurs,  roles: ['admin'] },
-      { to: '/admin/roles',          label: 'Rôles',            icon: I.roles_icon,    roles: ['admin'] },
-      { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['admin'] },
+      { to: '/admin/users',          label: 'Utilisateurs',     icon: I.utilisateurs,  roles: ['responsable','admin'] },
+      { to: '/admin/roles',          label: 'Rôles',            icon: I.roles_icon,    roles: ['responsable','admin'] },
+      { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['responsable','admin'] },
     ],
   },
 ]

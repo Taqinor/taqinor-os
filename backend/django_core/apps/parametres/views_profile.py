@@ -6,7 +6,7 @@ comportement."""
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminRole, IsAnyRole
+from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .models import SettingsAuditLog
 from .serializers import CompanyProfileSerializer
 from .views_common import _audit_company, _profile
@@ -76,7 +76,7 @@ def get_profile(request):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsAdminOrResponsableTier])
 def update_profile(request):
     profile = _profile(request)
     partial = request.method == 'PATCH'

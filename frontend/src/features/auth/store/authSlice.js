@@ -40,7 +40,8 @@ const authSlice = createSlice({
   reducers: {
     setCredentials: (state, action) => {
       state.user = action.payload.user
-      state.role = action.payload.role || 'normal'
+      // Palier de menu : on privilégie le signal dérivé du NOUVEAU rôle.
+      state.role = action.payload.menu_tier || action.payload.role || 'normal'
       state.role_nom = action.payload.role_nom || null
       state.permissions = action.payload.permissions || []
       state.isAuthenticated = true
@@ -62,7 +63,9 @@ const authSlice = createSlice({
       })
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.user = { username: action.payload.username }
-        state.role = action.payload.role_legacy || action.payload.role || 'normal'
+        // menu_tier (dérivé du nouveau rôle) fait autorité ; repli sur le legacy
+        // uniquement pour les comptes sans rôle.
+        state.role = action.payload.menu_tier || action.payload.role_legacy || action.payload.role || 'normal'
         state.role_nom = action.payload.role_nom || null
         state.permissions = action.payload.permissions || []
         state.isAuthenticated = true

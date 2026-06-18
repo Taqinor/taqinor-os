@@ -1,13 +1,13 @@
 """Vues des modèles de message WhatsApp (Paramètres → Messages).
 
 Domaine « Messages & relances ». Extrait de l'ancien ``views.py`` sans aucun
-changement d'endpoint, de permission ni de comportement (lecture tout rôle,
-écriture admin, mêmes défauts FR/Darija, même audit)."""
+changement d'endpoint ni de comportement (lecture tout rôle, écriture
+Administrateur + Responsable promu, mêmes défauts FR/Darija, même audit)."""
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminRole, IsAnyRole
+from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .models import (
     MESSAGE_TEMPLATE_DEFAULTS,
     MessageTemplate,
@@ -28,12 +28,13 @@ _MESSAGE_PLACEHOLDERS = {
 @api_view(['GET', 'PUT', 'PATCH'])
 @permission_classes([IsAnyRole])
 def messages_endpoint(request):
-    """GET : lecture (tout rôle). PUT/PATCH : enregistrement (admin only)."""
+    """GET : lecture (tout rôle). PUT/PATCH : enregistrement (Administrateur +
+    Responsable promu, jamais le palier limité)."""
     if request.method == 'GET':
         return _messages_list(request)
-    if not IsAdminRole().has_permission(request, None):
+    if not IsAdminOrResponsableTier().has_permission(request, None):
         return Response(
-            {'detail': "Réservé à l'administrateur."},
+            {'detail': "Réservé à l'administrateur ou au responsable."},
             status=status.HTTP_403_FORBIDDEN,
         )
     return _messages_save(request)
