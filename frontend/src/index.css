@@ -96,6 +96,12 @@ body {
   flex-shrink: 0;
 }
 
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
 .sidebar-company-name {
   font-weight: 700;
   font-size: 0.875rem;
@@ -104,6 +110,16 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 0.01em;
+}
+.sidebar-brand-sub {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-toggle {
@@ -221,19 +237,116 @@ body {
   flex-shrink: 0;
 }
 
+/* I35 — Groupes gauche (menu + titre/fil d'Ariane) et droite (recherche +
+   cloche + menu utilisateur). */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.header-heading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .header-title {
   font-size: 1.1rem;
   font-weight: 600;
   color: #1e293b;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* I35 — Fil d'Ariane (au-dessus du titre). */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  color: #94a3b8;
+  margin-bottom: 1px;
+}
+.breadcrumb-segment { display: inline-flex; align-items: center; gap: 0.15rem; }
+.breadcrumb-sep { color: #cbd5e1; flex-shrink: 0; }
+.breadcrumb-link {
+  color: #64748b;
+  text-decoration: none;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+.breadcrumb-link:hover { color: #1d4ed8; text-decoration: underline; }
+.breadcrumb-current { color: #64748b; font-weight: 600; }
+.breadcrumb-text { color: #94a3b8; }
+
+/* I35 — Déclencheur ⌘K (recherche + palette de commandes). */
+.header-cmdk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  border-radius: 8px;
+  padding: 6px 9px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.header-cmdk:hover { border-color: #94a3b8; background: #fff; color: #1e293b; }
+.header-cmdk-kbd {
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: #64748b;
+  background: #fff;
+  line-height: 1.2;
 }
 
 .header-user {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
+/* I35 — Déclencheur du menu utilisateur (avatar + nom). */
+.header-usermenu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.header-usermenu-trigger:hover { background: #f1f5f9; }
+
+.header-user-avatar-rt {
+  width: 32px;
+  height: 32px;
+  background: #3b82f6;
+}
+
+/* Ancien avatar « simple » conservé pour rétro-compat éventuelle. */
 .header-user-avatar {
   width: 32px;
   height: 32px;
@@ -251,6 +364,17 @@ body {
   font-size: 0.875rem;
   color: #475569;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.header-usermenu-email {
+  padding: 0 0.5rem 0.4rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Page layout ──────────────────────────────────────── */
@@ -270,6 +394,43 @@ body {
   font-weight: 700;
   color: #0f172a;
   margin: 0;
+}
+
+/* I35 — Motif d'en-tête de page réutilisable (composant PageHeader). Classes
+   préfixées `pageheader-` pour ne PAS entrer en conflit avec `.page-header`
+   ci-dessus, déjà utilisé tel quel par les pages existantes. */
+.pageheader { margin-bottom: 1.5rem; }
+.pageheader-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.pageheader-heading { min-width: 0; }
+.pageheader-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+.pageheader-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.pageheader-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.pageheader-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
 }
 
 .page-loading {
@@ -1338,21 +1499,34 @@ textarea.form-control {
 .pp-clear { color: #64748b; font-style: italic; }
 .pp-empty { padding: 12px; font-size: 0.78rem; color: #94a3b8; }
 
-/* ── Barre de progression de navigation (feedback instantané) ── */
+/* ── I36 — Barre de progression de navigation (feedback instantané) ──
+   Ancrée en haut de la zone de contenu (sticky) : reste visible même quand le
+   contenu défile. Piste fine + barre indéterminée qui glisse. */
 .route-progress {
-  position: fixed;
+  position: sticky;
   top: 0;
   left: 0;
   right: 0;
   height: 3px;
-  z-index: 2000;
+  z-index: 50;
+  margin: -2rem -2rem 0;   /* annule le padding de .layout-content en haut */
+  overflow: hidden;
+  background: rgba(29, 78, 216, 0.12);
+}
+.route-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: 0 2px 2px 0;
   background: linear-gradient(90deg, var(--cat-gold), var(--cat-navy));
-  animation: route-progress-slide 1s ease-in-out infinite;
-  background-size: 200% 100%;
+  animation: route-progress-slide 1.1s ease-in-out infinite;
 }
 @keyframes route-progress-slide {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0%   { left: -40%; width: 40%; }
+  50%  { left: 30%;  width: 55%; }
+  100% { left: 100%; width: 40%; }
 }
 
 /* ════ MOBILE (≤ 768 px) — tout vit DANS la media query : le bureau
@@ -1370,12 +1544,58 @@ textarea.form-control {
 }
 .drawer-overlay { display: none; }
 .gen-preview-toggle { display: none; }
+/* I36 — Barre d'onglets inférieure : masquée sur le bureau (≥ 769 px). */
+.bottom-tabbar { display: none; }
 
 @media (max-width: 768px) {
   html, body { overflow-x: hidden; }
 
   /* ── Coquille : sidebar → tiroir ── */
   .header-menu-btn { display: flex; align-items: center; }
+  /* La barre de recherche pleine largeur est masquée sur mobile ; le
+     déclencheur ⌘K compact prend le relais. */
+  .header-right .gs-wrap { display: none; }
+  .header-cmdk-kbd { display: none; }
+  .header-user-name { display: none; }
+
+  /* I36 — Barre d'onglets inférieure (navigation primaire au pouce). */
+  .bottom-tabbar {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    z-index: 1300;
+    background: #ffffff;
+    border-top: 1px solid #e2e8f0;
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.06);
+    padding-bottom: env(safe-area-inset-bottom);
+    flex-shrink: 0;
+  }
+  .bottom-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    /* Cible tactile confortable au pouce. */
+    min-height: 52px;
+    padding: 6px 2px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: #64748b;
+    text-decoration: none;
+    transition: color 0.12s;
+  }
+  .bottom-tab.active { color: #1d4ed8; }
+  .bottom-tab-label {
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  /* La barre de progression épouse le padding mobile (0.9rem) du contenu. */
+  .route-progress { margin: -0.9rem -0.9rem 0; }
   .sidebar {
     position: fixed;
     top: 0;
