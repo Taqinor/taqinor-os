@@ -6,6 +6,7 @@ import { fetchProfile } from '../../features/parametres/store/parametresSlice'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomTabBar from './BottomTabBar'
+import { OfflineBanner } from '../../ui/OfflineState'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
@@ -59,6 +60,9 @@ export default function Layout({ children }) {
       )}
       <div className="layout-main">
         <Header onMenu={() => setDrawerOpen(v => !v)} />
+        {/* M61 — Bannière hors-ligne visible sur tous les écrans authentifiés.
+            Inerte tant que la connexion est présente (rend null en ligne). */}
+        <OfflineBanner />
         <main className="layout-content">
           {/* I36 — Barre de progression de navigation : feedback instantané,
               plus d'écran périmé muet. Ancrée en haut de la zone de contenu. */}
