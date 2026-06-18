@@ -26,6 +26,7 @@ import LeadsSection from './LeadsSection'
 import ClientsSection from './ClientsSection'
 import DevisSection from './DevisSection'
 import StockSection from './StockSection'
+import ChecklistSection from './ChecklistSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import AvanceSection from './AvanceSection'
@@ -500,6 +501,7 @@ export default function ParametresEntreprise() {
           {tab === 'clients'  && <ClientsSection {...ctx} />}
           {tab === 'devis'    && <DevisSection {...ctx} />}
           {tab === 'stock'    && <StockSection {...ctx} />}
+          {tab === 'checklists' && <ChecklistSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}

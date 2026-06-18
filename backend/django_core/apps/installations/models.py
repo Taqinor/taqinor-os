@@ -324,14 +324,56 @@ class InstallationActivity(models.Model):
         return f"{self.installation_id} {self.kind} {self.field or ''}".strip()
 
 
+class ChecklistTemplate(models.Model):
+    """N74 — modèle NOMMÉ de checklist d'onboarding/chantier, configurable dans
+    Paramètres. Un template regroupe des étapes ordonnées (ChecklistEtapeModele)
+    et peut être rattaché à un `type_installation` : à la création d'un chantier,
+    le template dont le type correspond est sélectionné automatiquement ; sinon
+    on retombe sur le template « Défaut » (type_installation vide).
+
+    Le template « Défaut » est protégé et porte EXACTEMENT les étapes appliquées
+    aujourd'hui — un chantier sans type spécifique reçoit donc la même checklist
+    qu'avant (comportement préservé). Additif — aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='checklist_templates')
+    nom = models.CharField(max_length=120)
+    # Type d'installation qui auto-sélectionne ce template (résidentiel /
+    # industriel / agricole). Vide = template « Défaut » (repli générique).
+    type_installation = models.CharField(
+        max_length=20, choices=Installation.TypeInstallation.choices,
+        blank=True, null=True)
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    # `protege` verrouille le template « Défaut » système contre la suppression.
+    protege = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        verbose_name = "Modèle de checklist chantier"
+        verbose_name_plural = "Modèles de checklist chantier"
+
+    def __str__(self):
+        return self.nom
+
+
 class ChecklistEtapeModele(models.Model):
     """N4 — étape MODÈLE de la checklist d'exécution chantier, éditable dans
     Paramètres (libellé + ordre + activation). `capture_serie` marque les
     étapes où l'on saisit des numéros de série (N9 : panneaux/onduleur).
-    `protege` verrouille une étape système contre la suppression. Additif."""
+    `protege` verrouille une étape système contre la suppression. Additif.
+
+    N74 — chaque étape appartient à un `template` (nullable : les étapes
+    historiques sans template sont rattachées au template « Défaut » par la
+    migration de données / l'amorçage paresseux)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='checklist_etapes')
+    # N74 — template propriétaire (nullable pour la compat ; les étapes
+    # orphelines sont migrées vers le template « Défaut »).
+    template = models.ForeignKey(
+        ChecklistTemplate, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='etapes')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=120)
     ordre = models.PositiveIntegerField(default=0)
@@ -341,7 +383,10 @@ class ChecklistEtapeModele(models.Model):
 
     class Meta:
         ordering = ['ordre', 'libelle']
-        unique_together = [('company', 'cle')]
+        # N74 — la clé est unique PAR template (même cle réutilisable d'un
+        # template à l'autre). Les étapes historiques (template=NULL) gardent
+        # l'unicité par société jusqu'à leur rattachement au template « Défaut ».
+        unique_together = [('company', 'template', 'cle')]
         verbose_name = "Étape de checklist chantier"
         verbose_name_plural = "Étapes de checklist chantier"
 

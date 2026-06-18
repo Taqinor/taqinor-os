@@ -10,16 +10,18 @@ from django.utils import timezone
 
 from . import activity
 from .models import (
-    Installation, Intervention, TypeIntervention, ChecklistEtapeModele,
+    Installation, Intervention, TypeIntervention, ChecklistTemplate,
+    ChecklistEtapeModele,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
     InstallationActivitySerializer, TypeInterventionSerializer,
+    ChecklistTemplateSerializer,
     ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
 )
 from .services import (
     create_installation_from_devis, seed_checklist_etapes,
-    ensure_checklist_items,
+    ensure_checklist_items, ensure_default_template,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -460,13 +462,50 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data, status=status.HTTP_201_CREATED)
 
 
+class ChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """N74 — modèles NOMMÉS de checklist (Paramètres → Chantiers). Lecture tout
+    rôle, écriture admin. Chaque modèle peut viser un `type_installation` qui
+    l'auto-sélectionne à la création d'un chantier ; le modèle « Défaut » (type
+    vide, protégé) est le repli. Tout est scopé à la société ; la société est
+    posée côté serveur, jamais lue du corps."""
+    queryset = ChecklistTemplate.objects.prefetch_related('etapes').all()
+    serializer_class = ChecklistTemplateSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            ensure_default_template(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        template = self.get_object()
+        if template.protege:
+            return Response(
+                {'detail': "Le modèle « Défaut » est protégé — "
+                           "désactivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
+
 class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):
     """Étapes MODÈLE de la checklist d'exécution (Paramètres → Chantiers, N4).
     Lecture tout rôle, écriture admin. Une étape protégée garde sa clé ; la
     désactivation (actif=False) la retire des nouveaux chantiers sans toucher
-    aux chantiers existants (cohérent N57)."""
+    aux chantiers existants (cohérent N57). N74 — chaque étape appartient à un
+    `template` (filtrable via ?template=<id>)."""
     queryset = ChecklistEtapeModele.objects.all()
     serializer_class = ChecklistEtapeModeleSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        template = self.request.query_params.get('template')
+        if template:
+            qs = qs.filter(template_id=template)
+        return qs
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -477,6 +516,23 @@ class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):
         if request.user.company_id:
             seed_checklist_etapes(request.user.company)
         return super().list(request, *args, **kwargs)
+
+    def _check_template_tenant(self, serializer):
+        """Tenant safety : le template ciblé doit appartenir à la société."""
+        from rest_framework.exceptions import ValidationError
+        template = serializer.validated_data.get('template')
+        company = self.request.user.company
+        if template is not None and template.company_id != getattr(
+                company, 'id', None):
+            raise ValidationError({'template': 'Modèle inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_template_tenant(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._check_template_tenant(serializer)
+        super().perform_update(serializer)
 
     def destroy(self, request, *args, **kwargs):
         etape = self.get_object()

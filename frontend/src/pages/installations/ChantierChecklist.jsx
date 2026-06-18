@@ -66,7 +66,7 @@ export default function ChantierChecklist({ installationId, produits, onChanged 
         <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Aucune étape (configurez-les dans Paramètres → Chantiers).
+          Aucune étape (configurez les modèles dans Paramètres → Checklists).
         </p>
       ) : (
         <div className="flex flex-col">
