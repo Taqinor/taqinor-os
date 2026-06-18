@@ -206,7 +206,19 @@
     RIB : {{ rib }}{% if banque %} — {{ banque }}{% endif %}
   </div>
   {% endif %}
-
+{% if instructions_paiement %}
+  <!-- Instructions de paiement (Feature B) — rendues seulement si renseignées. -->
+  <div class="rib-block">
+    <strong>Instructions de paiement</strong>
+    <div style="white-space: pre-line;">{{ instructions_paiement }}</div>
+  </div>
+{% endif %}{% if conditions_generales %}
+  <!-- Conditions générales (Feature B) — rendues seulement si renseignées. -->
+  <div style="margin-top: 16px; background: #f8fafc; border-radius: 6px; padding: 14px 16px; font-size: 10.5px; line-height: 1.6; border-left: 3px solid #cbd5e1; color: #475569;">
+    <strong style="display: block; margin-bottom: 4px; color: #1e293b; font-size: 12px;">Conditions générales</strong>
+    <div style="white-space: pre-line;">{{ conditions_generales }}</div>
+  </div>
+{% endif %}
   <!-- Signature -->
   {% if signature_uri %}
   <div class="signature-section">

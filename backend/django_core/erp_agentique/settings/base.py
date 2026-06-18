@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'apps.records',
     'apps.customfields',
     'apps.documents',
+    'apps.audit',
 ]
 
 MIDDLEWARE = [
@@ -78,6 +79,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Porte la requête courante pour la capture du Journal d'activité (Feature G).
+    'apps.audit.middleware.AuditActorMiddleware',
 ]
 
 ROOT_URLCONF = 'erp_agentique.urls'

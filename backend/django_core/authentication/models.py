@@ -69,6 +69,20 @@ class CustomUser(AbstractUser):
     # récupération passe par l'accès SSH au serveur (management command), pas
     # par un secret en dur. Additif, défaut False.
     is_protected = models.BooleanField(default=False)
+    # Superviseur direct (hiérarchie d'équipe, Feature E). Auto-référence
+    # nullable : un Directeur/Admin l'assigne dans Paramètres → Équipe. L'« équipe »
+    # d'un utilisateur = tous ceux partageant son superviseur direct (ses pairs),
+    # plus — pour un responsable — tout son sous-arbre. Sert à la portée de
+    # visibilité des enregistrements (Feature F). Additif, défaut NULL : tant
+    # qu'aucun superviseur n'est posé, l'arbre est plat. SET_NULL : retirer un
+    # manager ne supprime jamais ses subordonnés.
+    supervisor = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='subordinates',
+    )
 
     @staticmethod
     def tier_for_role(role):
@@ -147,6 +161,41 @@ class CustomUser(AbstractUser):
         if self.role:
             return code in (self.role.permissions or [])
         return False
+
+    @property
+    def can_view_buy_prices(self):
+        """Voir les prix d'achat & marges (Feature D). Réservé par permission
+        explicite (Directeur/Admin), avec REPLI historique pour les comptes
+        SANS rôle fin (légacy) — comme ``HasPermissionOrLegacy`` : on ne retire
+        jamais l'accès aux comptes hérités."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'prix_achat_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
+    def can_view_activity_log(self):
+        """Voir le Journal d'activité (Feature G). Permission explicite
+        (Directeur par défaut). Superuser toujours autorisé."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'journal_activite_voir' in (self.role.permissions or [])
+        return False
+
+    def record_scope(self):
+        """'all' | 'subtree' | 'team' — portée de visibilité (Feature F).
+
+        Un rôle SANS marqueur de portée voit tout (légacy/personnalisé/admin)."""
+        from authentication.scoping import record_scope_for
+        return record_scope_for(self)
+
+    def visible_user_ids(self):
+        """Ensemble d'ids utilisateurs dont cet utilisateur peut voir les
+        enregistrements (lui-même toujours inclus). Voir ``scoping``."""
+        from authentication.scoping import visible_user_ids
+        return visible_user_ids(self)
 
     groups = models.ManyToManyField(
         Group,

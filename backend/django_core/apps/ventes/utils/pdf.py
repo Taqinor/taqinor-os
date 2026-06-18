@@ -96,6 +96,9 @@ def _company_context(company=None):
         ),
         'rib':    profile.rib,
         'banque': profile.banque,
+        # Feature B — blocs paiement & conditions (rendus seulement si non-vides).
+        'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
+        'conditions_generales': getattr(profile, 'conditions_generales', ''),
         'logo_uri':      None,
         'signature_uri': None,
     }

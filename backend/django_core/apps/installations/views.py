@@ -114,6 +114,12 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
+        # chantiers qu'il a créés ou dont il est le technicien responsable /
+        # ceux de son équipe. 'all' → inchangé.
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(
+            qs, self.request.user, ['technicien_responsable', 'created_by'])
         params = self.request.query_params
         statut = params.get('statut')
         technicien = params.get('technicien')
@@ -492,6 +498,10 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) — interventions du technicien / de
+        # son équipe. 'all' → inchangé.
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, self.request.user, ['technicien', 'created_by'])
         installation = self.request.query_params.get('installation')
         ticket = self.request.query_params.get('ticket')
         if installation:
