@@ -521,3 +521,127 @@ class TestChecklistTemplates(TestCase):
         d = self.api.delete(
             f"/api/django/installations/checklist-templates/{defaut['id']}/")
         self.assertEqual(d.status_code, 409, d.data)
+
+
+class TestInterventionF3(TestCase):
+    """F3 — Intervention (sortie chantier) : statut PROPRE (machine à états
+    distincte du chantier + STAGES.py), équipe par défaut = installateur,
+    camionnette scopée société, chatter propre, GPS/client/devis tirés du
+    chantier."""
+
+    def setUp(self):
+        from apps.stock.models import EmplacementStock
+        from apps.installations.models import InterventionActivity
+        self.InterventionActivity = InterventionActivity
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='interv_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+        devis, _, _ = make_accepted_devis(self.company)
+        # Sans installateur par défaut → technicien_responsable = créateur.
+        self.inst = Installation.objects.get(pk=self.api.post(
+            '/api/django/installations/chantiers/creer-depuis-devis/',
+            {'devis': devis.id}, format='json').data['id'])
+        self.camion = EmplacementStock.objects.create(
+            company=self.company, nom='Camionnette 1')
+
+    def _create_interv(self, **extra):
+        body = {'installation': self.inst.id, 'type_intervention': 'pose'}
+        body.update(extra)
+        return self.api.post(
+            '/api/django/installations/interventions/', body, format='json')
+
+    def test_statut_defaults_to_a_preparer(self):
+        r = self._create_interv()
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['statut'], 'a_preparer')
+        self.assertEqual(r.data['statut_ordre'], 0)
+
+    def test_equipe_defaults_to_chantier_installer(self):
+        r = self._create_interv()
+        self.assertEqual(r.status_code, 201, r.data)
+        # technicien_responsable du chantier = self.user (fallback créateur).
+        self.assertIn(self.user.id, r.data['equipe'])
+        self.assertIn(self.user.username, r.data['equipe_noms'])
+
+    def test_explicit_equipe_is_kept(self):
+        other = User.objects.create_user(
+            username='interv_tech', password='x', role_legacy='normal',
+            company=self.company)
+        r = self._create_interv(equipe=[other.id])
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(set(r.data['equipe']), {other.id})
+
+    def test_gps_client_devis_pulled_from_chantier(self):
+        r = self._create_interv()
+        self.assertEqual(r.data['installation_reference'], self.inst.reference)
+        # Le lead du devis porte un GPS (make_accepted_devis) → repris sur le
+        # chantier, exposé en lecture sur l'intervention.
+        self.assertIsNotNone(r.data['gps_lat'])
+        self.assertIsNotNone(r.data['gps_lng'])
+        self.assertTrue(r.data['client_nom'])
+
+    def test_statut_change_logs_own_chatter_not_chantier(self):
+        iid = self._create_interv().data['id']
+        chantier_statut_avant = self.inst.statut
+        r = self.api.patch(
+            f'/api/django/installations/interventions/{iid}/',
+            {'statut': 'en_route'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'en_route')
+        # Le chatter PROPRE de l'intervention a une ligne statut.
+        logged = self.InterventionActivity.objects.filter(
+            intervention_id=iid, field='statut')
+        self.assertTrue(logged.exists())
+        self.assertEqual(logged.first().new_value, 'En route')
+        # CRUCIAL : le statut du chantier n'a PAS bougé (séparation F3).
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, chantier_statut_avant)
+
+    def test_historique_and_noter_endpoints(self):
+        iid = self._create_interv().data['id']
+        # La création a écrit une ligne « creation » dans le chatter propre.
+        h = self.api.get(
+            f'/api/django/installations/interventions/{iid}/historique/')
+        self.assertEqual(h.status_code, 200)
+        self.assertTrue(any(e['kind'] == 'creation' for e in h.data))
+        n = self.api.post(
+            f'/api/django/installations/interventions/{iid}/noter/',
+            {'body': 'Prévoir une nacelle.'}, format='json')
+        self.assertEqual(n.status_code, 201, n.data)
+        h2 = self.api.get(
+            f'/api/django/installations/interventions/{iid}/historique/')
+        self.assertTrue(any(e['body'] == 'Prévoir une nacelle.' for e in h2.data))
+
+    def test_noter_rejects_empty(self):
+        iid = self._create_interv().data['id']
+        n = self.api.post(
+            f'/api/django/installations/interventions/{iid}/noter/',
+            {'body': '   '}, format='json')
+        self.assertEqual(n.status_code, 400)
+
+    def test_camionnette_assignable_and_scoped(self):
+        r = self._create_interv(camionnette=self.camion.id)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['camionnette'], self.camion.id)
+        self.assertEqual(r.data['camionnette_nom'], 'Camionnette 1')
+
+    def test_foreign_camionnette_rejected(self):
+        from apps.stock.models import EmplacementStock
+        b = make_company(slug='interv-b', nom='Interv B')
+        cam_b = EmplacementStock.objects.create(company=b, nom='Camion B')
+        r = self._create_interv(camionnette=cam_b.id)
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_statut_filter(self):
+        i1 = self._create_interv().data['id']
+        i2 = self._create_interv().data['id']
+        self.api.patch(
+            f'/api/django/installations/interventions/{i2}/',
+            {'statut': 'terminee'}, format='json')
+        r = self.api.get(
+            '/api/django/installations/interventions/?statut=terminee')
+        got = ids_of(r)
+        self.assertIn(i2, got)
+        self.assertNotIn(i1, got)

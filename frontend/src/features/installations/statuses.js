@@ -78,6 +78,51 @@ export const INTERVENTION_TYPES = [
   { value: 'depannage', label: 'Dépannage' },
 ]
 
+// ── F3 — statut PROPRE de l'intervention (sortie chantier) ───────────────────
+// Machine à états TOTALEMENT distincte de l'entonnoir chantier
+// (INSTALLATION_STATUSES) et du contrat STAGES.py — un kanban à part entière.
+export const INTERVENTION_STATUSES = [
+  'a_preparer',
+  'prete',
+  'en_route',
+  'sur_site',
+  'terminee',
+  'validee',
+]
+
+export const INTERVENTION_STATUS_LABELS = {
+  a_preparer: 'À préparer',
+  prete: 'Prête',
+  en_route: 'En route',
+  sur_site: 'Sur site',
+  terminee: 'Terminée',
+  validee: 'Validée',
+}
+
+export const INTERVENTION_STATUS_COLORS = {
+  a_preparer: '#64748b',
+  prete: '#3b82f6',
+  en_route: '#a855f7',
+  sur_site: '#f59e0b',
+  terminee: '#16a34a',
+  validee: '#15803d',
+}
+
+export function interventionStatusLabel(key) {
+  return INTERVENTION_STATUS_LABELS[key] ?? key ?? '—'
+}
+
+export function interventionStatusColor(key) {
+  return INTERVENTION_STATUS_COLORS[key] ?? '#64748b'
+}
+
+// Position dans la machine à états — pour ORDONNER les colonnes / bloquer un
+// recul côté UI (miroir de Intervention.STATUT_ORDER côté backend).
+export function interventionStatusRank(key) {
+  const i = INTERVENTION_STATUSES.indexOf(key)
+  return i === -1 ? INTERVENTION_STATUSES.length : i
+}
+
 // ── Couche de configuration N58 (libellé/ordre/visibilité, par société) ──────
 // PUREMENT COSMÉTIQUE : surcharge le libellé affiché et l'ordre d'affichage,
 // JAMAIS les clés canoniques ni la machine à états. Tant qu'aucune config n'est

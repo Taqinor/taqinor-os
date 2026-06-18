@@ -247,6 +247,24 @@ class Intervention(models.Model):
         CONTROLE = 'controle', 'Contrôle'
         DEPANNAGE = 'depannage', 'Dépannage'
 
+    class Statut(models.TextChoices):
+        # F3 — machine à états PROPRE à l'intervention (sortie chantier).
+        # TOTALEMENT séparée du statut chantier (Installation.Statut) et du
+        # contrat STAGES.py : changer ce statut ne touche JAMAIS le chantier.
+        A_PREPARER = 'a_preparer', 'À préparer'
+        PRETE = 'prete', 'Prête'
+        EN_ROUTE = 'en_route', 'En route'
+        SUR_SITE = 'sur_site', 'Sur site'
+        TERMINEE = 'terminee', 'Terminée'
+        VALIDEE = 'validee', 'Validée'
+
+    # Ordre de progression du statut intervention (pour un tri non-alphabétique
+    # et le kanban). Ne pilote AUCUNE logique chantier.
+    STATUT_ORDER = [
+        Statut.A_PREPARER, Statut.PRETE, Statut.EN_ROUTE,
+        Statut.SUR_SITE, Statut.TERMINEE, Statut.VALIDEE,
+    ]
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='interventions',
@@ -263,10 +281,25 @@ class Intervention(models.Model):
         null=True, blank=True, related_name='interventions',
     )
     type_intervention = models.CharField(max_length=20, choices=Type.choices)
+    # F3 — statut PROPRE de l'intervention. Défaut « À préparer » ⇒ toute
+    # intervention existante migrée prend ce statut (additif, non destructif).
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.A_PREPARER)
     date_prevue = models.DateField(null=True, blank=True)
     date_realisee = models.DateField(null=True, blank=True)
     technicien = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='interventions',
+    )
+    # F3 — équipe assignée (un+ employés). Défaut = l'installateur du chantier,
+    # posé côté serveur à la création quand l'équipe est laissée vide.
+    equipe = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='interventions_equipe',
+    )
+    # F3 — camionnette assignée : un emplacement de stock (dépôt/camionnette).
+    camionnette = models.ForeignKey(
+        'stock.EmplacementStock', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='interventions',
     )
     compte_rendu = models.TextField(blank=True, null=True)
@@ -277,12 +310,49 @@ class Intervention(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "Ordre de travail"
-        verbose_name_plural = "Ordres de travail"
+        verbose_name = "Intervention"
+        verbose_name_plural = "Interventions"
         ordering = ['-date_prevue', '-date_creation']
 
     def __str__(self):
         return f"{self.get_type_intervention_display()} — {self.installation_id}"
+
+
+class InterventionActivity(models.Model):
+    """Historique « chatter » d'une intervention — même patron que
+    InstallationActivity / LeadActivity. Entrées automatiques (création +
+    changements de champs suivis, dont le statut) et notes manuelles.
+    L'utilisateur et la société sont toujours posés côté serveur."""
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='intervention_activities',
+    )
+    intervention = models.ForeignKey(
+        Intervention, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='intervention_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité intervention'
+        verbose_name_plural = 'Activités intervention'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['intervention', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.intervention_id} {self.kind} {self.field or ''}".strip()
 
 
 class InstallationActivity(models.Model):
