@@ -1103,7 +1103,7 @@ highest-generation combination, then change a second and watch the rest re-optim
 
 ---
 
-### W36 — Site-voice governance doc (`apps/web/STYLE.md`) + kill the recycled-phrase problem (docs only) — [ ]
+### W36 — Site-voice governance doc (`apps/web/STYLE.md`) + kill the recycled-phrase problem (docs only) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1611,3 +1611,14 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`). PHONE-ONLY to confirm (build can't render
   the map): trace a pitched roof, watch the panels lie flush on the slope, then change the pose/marge and
   watch the rest re-optimise live. URL to open: `/preview/toiture-3d-pro-11`.
+- 2026-06-18 — W36 done (site-voice governance, docs only): new `apps/web/STYLE.md` is now the
+  editorial voice reference for every page and every future session. It defines the target buyer (an
+  affluent, skeptical, technically-literate Moroccan committing 80 000+ MAD to a 25-year loi-82-21
+  asset), the voice (an engineer's restraint — lead with the real number, concrete over adjectival,
+  vary rhythm page to page, native French, no eco-hype, zero invented facts), and the two hard rules:
+  (1) each signature phrase appears AT MOST ONCE site-wide (ideally only on the homepage), every other
+  page re-expressing the idea freshly — CTAs/footer/nav/legal/JSON-LD exempt; (2) every city/segment/
+  service page carries ≥1 concrete fact unique to it. Includes an evidence-based phrase ledger
+  (measured live: « Production mesurée » trio on 9 pages, « kit standard » 7, « jamais l'inverse » 4,
+  « docteur-ingénieur » 3) assigning each recycled formula a single canonical home + alternative
+  phrasings so the W37–W42 rewrites have an actionable de-dup map. No page changed in this task.
