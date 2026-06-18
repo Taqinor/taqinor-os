@@ -1244,7 +1244,7 @@ hashed CSS/JS/font/image assets untouched. Do not change any other Worker behavi
 the lead pipeline stay exactly as they are. In the report, confirm a fresh deploy now reflects on
 / with no manual purge. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W45 — Final consistency pass: unique titles/meta, BreadcrumbList sitewide, contextual cross-links — [ ]
+### W45 — Final consistency pass: unique titles/meta, BreadcrumbList sitewide, contextual cross-links — [x] (verified)
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1698,3 +1698,17 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   21 406 kWh/an now carry `data-tally` too — completing the measured-production dashboard feel. Two
   presentational attributes only; the DiagnosticForm fields/validation/fetch/data flow are untouched.
   Reduced-motion still fully kills motion; zero new dependency; Lighthouse unaffected.
+- 2026-06-18 — W45 verified (final consistency pass, no code change needed). Built the site fresh and
+  audited the 34 public pages programmatically: (1) TITLES — zero duplicates; (2) META DESCRIPTIONS —
+  zero duplicates (the W37–W42 rewrites gave every page a unique, page-specific title + description).
+  (3) BreadcrumbList — present on every content-hierarchy page (cities, case studies, guides + articles,
+  segment, service, trust pages); the only pages without are the homepage (it is the root — a one-item
+  breadcrumb is meaningless), /contact (the live lead-form page — left untouched per « touch no
+  lead-flow code »), and the two legal pages (mentions-legales, politique-de-confidentialite), which are
+  deliberately sober by existing design (they sit outside the .v2 elevated treatment and the content
+  hierarchy) — a conscious exclusion, not a gap. (4) CONTEXTUAL CROSS-LINKS — confirmed the full graph
+  survived the rewrites and is sensible: équipement ↔ résidentiel/professionnel; segment pages →
+  équipement + services (pompage, batteries, financement) + pourquoi-taqinor + garanties; loi-82-21 ↔
+  regularization-article-33 ↔ professionnel (bidirectional); case studies → their city page + segment +
+  équipement + the réalisations hub; service pages → segments + équipement. The build proved there are
+  zero dead internal links. Nothing to add or fix.
