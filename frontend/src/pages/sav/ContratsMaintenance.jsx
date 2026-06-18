@@ -46,7 +46,8 @@ export function Component() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [dueOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [dueOnly])
   useEffect(() => {
     crmApi.getClients().then((r) => setClients(r.data.results ?? r.data)).catch(() => {})
   }, [])

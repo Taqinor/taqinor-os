@@ -148,10 +148,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     garantie_mois:            produit?.garantie_mois != null ? String(produit.garantie_mois) : '',
     garantie_production_mois: produit?.garantie_production_mois != null ? String(produit.garantie_production_mois) : '',
   }
-  const initialRef = useRef(initialFields)
+  const [initialFieldsSnapshot] = useState(initialFields)
   const [fields, setFields] = useState(initialFields)
 
-  const dirty = isDirty(initialRef.current, fields)
+  const dirty = isDirty(initialFieldsSnapshot, fields)
   useDirtyGuard(dirty)
 
   useEffect(() => {
