@@ -1145,7 +1145,7 @@ une étude sérieuse" closer with city-specific writing. Invent nothing; every f
 published or confirmed data. Rewrite each page's title and meta-description to be distinct and
 compelling too. Part of the run's single end-of-run self-merge (no per-task merge).
 
-### W38 — Rewrite the three core sales pages (résidentiel, professionnel, équipement) to STYLE.md voice — [ ]
+### W38 — Rewrite the three core sales pages (résidentiel, professionnel, équipement) to STYLE.md voice — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1634,3 +1634,14 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
   ≈ 2 800 h, Agadir the sunniest ≈ 3 400 h. Recycled formulas (« jamais l'inverse », « kit standard »,
   the identical trio, « mérite une étude sérieuse ») removed and re-expressed per city; « ≈ » sunshine
   honesty and « chantiers les plus proches » kept; no electricity operator named; no invented numbers.
+- 2026-06-18 — W38 done (three core sales pages rewritten to the STYLE.md voice): résidentiel,
+  professionnel and équipement now each open on a fact and read in their own rhythm. Résidentiel leads
+  on three-input dimensioning (ONEE bill · peak hours · roof orientation → 60–90 % coverage) anchored by
+  réf. 400 (11,36 kWc / 14 271 kWh), keeping its price bands with real refs. Professionnel leads on the
+  El Jadida case (17,04 kWc → 21 406 kWh/an) and a 3–5-year payback, then the segment-specific loi-82-21
+  raccordement threshold. Équipement is reframed from a spec dump into a technical argument — each posed
+  brand (Canadian Solar, JA Solar, Deye, Huawei, Dyness) carries its engineering reason and the warranty
+  table (12/25/10/20/2 ans) becomes « a guarantee is only worth the dossier that documents it ». Every
+  recycled formula removed (« jamais l'inverse », « kit standard », the trio, « validée par le fondateur »
+  — now at-home on à-propos) and no banned adjective; all real figures, refs, GarantiesTeaser, JSON-LD,
+  V2Enhance/Breadcrumb and links preserved; nothing invented.
