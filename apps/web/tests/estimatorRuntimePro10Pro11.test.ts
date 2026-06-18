@@ -319,6 +319,29 @@ describe('runtime W35 (toit en pente) — l\'optimiseur pente se déclenche', ()
     expect(landscape.getAttribute('aria-pressed')).toBe('true');
     expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
   });
+
+  // W47 — en pente, les orientations IMPOSSIBLES (plein-sud tourné via data-family,
+  // tente Est-Ouest, azimut) sont confinées à #rp9-flat-only, masqué dès le passage en
+  // pente. « Alignée toit » est l'orientation de fait (coplanaire). Le toit plat les
+  // ré-offre quand on rebascule (rien n'est cassé).
+  it('W47 — passer en pente masque les orientations plates impossibles (flat-only caché)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0]);
+    // plat : les orientations sont offertes
+    expect((document.getElementById('rp9-flat-only') as HTMLElement).hidden).toBe(false);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    // pente : flat-only masqué → plein-sud tourné / Est-Ouest / azimut non offerts
+    expect((document.getElementById('rp9-flat-only') as HTMLElement).hidden).toBe(true);
+    expect((document.getElementById('rp9-pitched-controls') as HTMLElement).hidden).toBe(false);
+    // la carte pente est remplie (pose affleurante alignée toit par défaut)
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+    expect(txt('rp9-reco-title')).toMatch(/pente/i);
+    // rebascule plat : les orientations re-apparaissent (rien cassé)
+    document.querySelector<HTMLButtonElement>('[data-rooftype="flat"]')!.click();
+    expect((document.getElementById('rp9-flat-only') as HTMLElement).hidden).toBe(false);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════

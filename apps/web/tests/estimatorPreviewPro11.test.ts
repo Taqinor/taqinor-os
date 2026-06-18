@@ -114,6 +114,37 @@ describe('pro-11 — la pose AFFLEURANTE et la 3D pente restent INCHANGÉES (mod
   });
 });
 
+describe('pro-11 — W47 : « Alignée toit » présente/forcée en pente, orientations impossibles retirées', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+
+  it('le bloc pente PRÉSENTE « Alignée toit » comme orientation par défaut et FORCÉE (lecture seule)', () => {
+    const pitched = page.slice(page.indexOf('id="rp9-pitched-controls"'), page.indexOf('id="rp9-obs-edit"'));
+    expect(pitched).toContain('data-pitched-orient="aligned"');
+    expect(pitched).toContain('Alignée toit');
+    // forcée / lecture seule : pressée + désactivée (l\'utilisateur ne peut pas la changer)
+    expect(pitched).toMatch(/data-pitched-orient="aligned"[\s\S]{0,200}aria-pressed="true"/);
+    expect(pitched).toMatch(/data-pitched-orient="aligned"[\s\S]{0,200}disabled/);
+  });
+
+  it('les orientations PHYSIQUEMENT impossibles (plein-sud tourné, Est-Ouest) restent dans #rp9-flat-only (masqué en pente)', () => {
+    // famille (plein sud / Est-Ouest) + azimut sont confinés à #rp9-flat-only, que setRoofType
+    // masque en pente — donc jamais offerts au toit en pente.
+    const flatOnly = page.slice(page.indexOf('id="rp9-flat-only"'), page.indexOf('/rp9-flat-only'));
+    expect(flatOnly).toContain('data-family="eastwest"');
+    expect(flatOnly).toContain('data-family="south"');
+    expect(flatOnly).toContain('id="rp9-azimuth-group"');
+    // le bloc pente n\'offre AUCUNE de ces orientations impossibles
+    const pitched = page.slice(page.indexOf('id="rp9-pitched-controls"'), page.indexOf('id="rp9-obs-edit"'));
+    expect(pitched).not.toContain('data-family=');
+    expect(pitched).not.toContain('data-azimuth=');
+  });
+
+  it('setRoofType masque #rp9-flat-only en pente (orientations plates non offertes)', () => {
+    const script = read('../src/scripts/roof-tool-pro11.ts');
+    expect(script).toContain("flatOnlyEl.hidden = t !== 'flat'");
+  });
+});
+
 describe('pro-11 — le toit PLAT garde l\'optimiseur vivant W34 (V7) intact', () => {
   const script = read('../src/scripts/roof-tool-pro11.ts');
   it('V7 solveLive + liveResolveFlat toujours présents (toit plat inchangé)', () => {

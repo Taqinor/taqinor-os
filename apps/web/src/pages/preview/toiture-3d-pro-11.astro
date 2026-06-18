@@ -302,6 +302,20 @@ const chipClass =
                    et la face sont SAISIES (non mesurables sur l'imagerie marocaine) ;
                    elles IMPOSENT l'inclinaison et l'azimut de l'array (lecture seule). -->
               <div id="rp9-pitched-controls" hidden class="space-y-4">
+                <!-- W47 — Orientation en pente : « Alignée toit » est PRÉSENTE, par DÉFAUT et
+                     FORCÉE (lecture seule). Sur un toit en pente, chaque panneau est
+                     coplanaire au pan (normale panneau = normale du pan) : inclinaison = pente,
+                     azimut = face. Plein-sud tourné et tentes Est-Ouest sont PHYSIQUEMENT
+                     impossibles pour une pose affleurante → non proposés (≠ toit plat). -->
+                <div id="rp9-pitched-orientation" class="flex flex-wrap items-center gap-2">
+                  <span class="tech-label mr-1 text-lune-faint">Orientation</span>
+                  <button type="button" data-pitched-orient="aligned" class={chipClass}
+                    aria-pressed="true" aria-disabled="true" disabled
+                    title="Pose affleurante : les panneaux suivent le pan du toit (inclinaison = pente, azimut = face).">
+                    Alignée toit
+                  </button>
+                  <span class="text-xs text-lune-faint">imposée · panneaux coplanaires au pan</span>
+                </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="tech-label mr-1 text-lune-faint">Pente du toit</span>
                   <button type="button" data-pitch="15" class={chipClass} aria-pressed="false">~15°</button>

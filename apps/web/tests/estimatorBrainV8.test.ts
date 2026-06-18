@@ -166,4 +166,49 @@ describe('V8 — la pose AFFLEURANTE coplanaire est INCHANGÉE (géométrie V3 p
       expect(pointInPolygon([p.cx, p.cy], w.pack.ringENU)).toBe(true);
     }
   });
+
+  // W47 — « alignée toit » = chaque panneau COPLANAIRE au pan : normale panneau = normale
+  // du pan. La pose affleurante n'a qu'UN seul plan (pente, face) ; aucune ligne ne dévie
+  // (pas de rack triangulaire ni de tente). On reconstruit la normale du pan depuis (pente,
+  // face) et on vérifie que TOUTES les lignes partagent exactement ce plan.
+  it('W47 — normale panneau = normale du pan pour TOUTES les configs (un seul plan coplanaire)', () => {
+    const ring = squareRing(16);
+    // normale d'un pan : incliné de `pitch` autour de l'horizontale, faisant face à `facing`.
+    const planeNormal = (pitchDeg: number, facingAz: number): [number, number, number] => {
+      const p = (pitchDeg * Math.PI) / 180;
+      const a = (facingAz * Math.PI) / 180; // azimut boussole (0=N, 90=E, 180=S, 270=O)
+      // composante horizontale dans la direction de la face, composante verticale = cos(pente)
+      const horiz = Math.sin(p);
+      return [horiz * Math.sin(a), horiz * Math.cos(a), Math.cos(p)];
+    };
+    const want = planeNormal(PITCH, FACING);
+    for (const layout of ['portrait', 'landscape'] as const) {
+      for (const margin of ['keep', 'remove'] as const) {
+        const res = solveLivePitched(ring, LAT, BILL, PITCH, FACING, [], { layout, margin });
+        // chaque config rapporte EXACTEMENT le même (pente, face) → un seul plan, coplanaire
+        expect(res.winner.pack.pitchDeg).toBe(PITCH);
+        expect(res.winner.pack.facingAzimuthDeg).toBe(FACING);
+        const got = planeNormal(res.winner.pack.pitchDeg, res.winner.pack.facingAzimuthDeg);
+        for (let i = 0; i < 3; i++) expect(got[i]).toBeCloseTo(want[i], 9);
+      }
+    }
+    // aucune autre orientation n'existe : l'azimut suit la FACE (jamais 180 forcé ni tente E-O)
+    const east = solveLivePitched(ring, LAT, BILL, PITCH, 90, [], {});
+    expect(east.facingAzimuthDeg).toBe(90); // azimut = face Est, pas re-tourné plein sud
+  });
+
+  // W47 — l'azimut suit la face dans les QUATRE quadrants (mapping PVGIS S=0/E=−90/O=+90/N=180
+  // est testé côté V7 ; ici on ancre que la production en pente change BIEN avec la face).
+  it('W47 — la face pilote la production (pas d\'orientation forcée plein sud)', () => {
+    const ring = squareRing(16);
+    const recorded: Record<number, number> = {};
+    const fn: PitchedYieldFn = (_pitch, facing) => 1700 - Math.abs(((facing - 180 + 540) % 360) - 180) * 4;
+    for (const facing of [180, 135, 90]) {
+      const res = solveLivePitched(ring, LAT, BILL, PITCH, facing, [], { layout: 'portrait', margin: 'keep' }, { yieldFn: fn });
+      recorded[facing] = res.winner.perPanelYield;
+    }
+    // plein sud (180) rend plus que SE (135) qui rend plus que Est (90) → l'azimut suit la face
+    expect(recorded[180]).toBeGreaterThan(recorded[135]);
+    expect(recorded[135]).toBeGreaterThan(recorded[90]);
+  });
 });
