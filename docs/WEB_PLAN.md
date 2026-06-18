@@ -1506,6 +1506,156 @@ date.
 
 ---
 
+### W51 — Recolour the diagnostic form + "dernière installation livrée" side card + FAQ into the brand design system (visual-only, everywhere they appear) — [ ]
+
+> Added 2026-06-18 via "add to web plan". This batch (W51–W61) is a **visual-craft and content
+> elevation of the EXISTING homepage** (and the shared form/FAQ sitewide) — **read the repo and
+> edit in place, never rebuild a page**. Keep the existing **"Cinéma du chantier"** design
+> language — night-blue palette, Archivo/Hanken type, yellow/amber accent — **this is craft and
+> additions, not a redesign.**
+
+Recolour the **diagnostic form**, its **"dernière installation livrée" side card**, and the **FAQ**
+into the brand design system, **everywhere they appear**. Today they render on a **light background
+with royal-blue accents** — a different design language from the navy+gold site, so they read as a
+bolted-on third-party widget (the **worst visual break on the homepage**). Restyle them to the **dark
+navy palette and amber/gold accent using the existing theme tokens**, on the **homepage,
+/résidentiel, /professionnel and /contact**.
+
+**CRITICAL: change ONLY visual styling.** The form's **markup, its 3-step flow, every field, the
+consent checkbox and its gating, the "Recevoir mon étude sur WhatsApp" deeplink, the webhook, the
+Meta CAPI, the hidden fbclid/UTM fields and the 1 000 MAD threshold logic all stay byte-for-byte
+identical.** In the report, **confirm the form still advances through all three steps and the
+WhatsApp deeplink is intact** (without submitting it).
+
+### W52 — Tighten the homepage vertical rhythm (consistent, tighter section-spacing scale) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Tighten the homepage vertical rhythm. Several sections **float in oversized empty dark zones** — the
+**hero stat band**, and the gaps **above "Nos solutions"**, **above "Nos dernières réalisations"**,
+and **below "Fiches chantier"** — which makes the page feel sparse and under-designed. Establish a
+**consistent, tighter section-spacing scale** so sections no longer drift in dead space; keep
+whitespace **generous but intentional, not floating**. Some of the reclaimed space is filled by the
+new sections below (W55–W58).
+
+### W53 — Fix the "Nos dernières réalisations" card grid (equal-height, never overlaps the sticky CTA) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Fix the **"Nos dernières réalisations" card grid**: the three cards currently render at **staggered
+heights** and the third (**Nouaceur**) **collides with the sticky bottom-right CTA**. Align them to a
+**clean equal-height grid that never overlaps the sticky CTA at any viewport**.
+
+### W54 — Remove the duplicate installation listing on the homepage (fold data into the photo cards) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Remove the duplicate installation listing on the homepage. The same three flagship installs appear
+**twice** — as **photo cards ("Nos dernières réalisations")** and again as **data cards ("Fiches
+chantier")**. **Keep the photo gallery as the visual proof** and **fold the per-install
+measured-production data (kWc + measured kWh/an + equipment) into those photo cards**, then **drop the
+separate "Fiches chantier" section** — **OR** repurpose that freed slot for one of the new sections
+below (W55–W58), **whichever reads cleanest. State in the report which you did.** **Invent nothing;
+all five real installs stay visible and uncounted.**
+
+### W55 — ADD a founder-credibility section to the homepage — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+ADD a **founder-credibility section** to the homepage — the **strongest trust signal**, currently
+buried as a tiny stat pill. In the brand style: the **docteur-ingénieur credential**, the **10+ years
+of R&D at Huawei, Ericsson and STMicroelectronics**, and the **"chaque étude validée par le
+fondateur"** conviction, with a **link to /à-propos**. **If a real founder photo exists in the repo,
+use it; if not, ship the text band — no stock portrait, no invented bio, dates, titles or
+anecdotes.** Use only the **already-published, owner-approved facts**.
+
+### W56 — ADD an equipment brand-logo strip (tier-1 brands, link to /équipement) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+ADD an **equipment brand-logo strip** — **"Marques tier-1 · distributeurs officiels au Maroc"** —
+showing the **five real posed brands: Canadian Solar, JA Solar, Deye, Huawei, Dyness**, linking to
+**/équipement**. **Use official brand logos; if a logo asset isn't in the repo, render the brand name
+as a clean styled wordmark** rather than omitting or inventing one. Built entirely from brands
+already named on the site.
+
+### W57 — ADD a clear end-to-end process timeline (study → supervised production) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+ADD a clear **end-to-end process timeline**. The current **"Comment ça se passe"** covers only the
+WhatsApp flow. Add a **visual sequence of the real journey** from study to supervised production:
+**Diagnostic 60 s → Échange WhatsApp (photos toiture) → Visite technique & étude gratuite → Pose →
+Mise en service → Monitoring Deye Cloud (accès client inclus)**. **Integrate it near or into the
+existing section so the two don't repeat.** Use only facts already on the site; **invent no delays or
+SLAs**.
+
+### W58 — Enrich the "Nos solutions" cards with restrained iconography / visual treatment — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Enrich the **"Nos solutions" cards**, which are currently **flat text on dark with no visual
+interest**. Add **restrained iconography or a subtle visual treatment per card within the existing
+design language** — **no new dependency, no stock imagery** — so the section reads as **crafted rather
+than a plain list**.
+
+### W59 — Refine the sticky bottom-right "WhatsApp + Diagnostic gratuit" CTA so it never overlaps content — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Refine the **sticky bottom-right "WhatsApp + Diagnostic gratuit" CTA** so it **never overlaps page
+content at any viewport** (smaller footprint, a safe offset, or collapse-on-scroll). **Keep it
+functional and its links unchanged.**
+
+### W60 — Make count-up number animations safe (no malformed intermediate frame on ranges/text) — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Make the **count-up number animations safe** so **no malformed intermediate frame can ever show**.
+For any value that is a **range or contains text** (**"3 à 5 kWc"**, **"60–90 %"**, **"50 000 MAD –
+115 000 MAD"**), **do NOT digit-roll the compound string** — **reveal the final formatted value with
+a gentle fade/translate**, or **animate only an isolated leading numeral** with the rest of the string
+fixed and **final width reserved**. **Fully respect prefers-reduced-motion** (final values, no
+animation) and keep **zero layout shift**.
+
+### W61 — Hygiene (no decisions needed): sitemap.xml, phone format, remove placeholders & install counts — [ ]
+
+> Added 2026-06-18 via "add to web plan".
+
+Hygiene, **no decisions needed**:
+
+- **(a)** Generate the **missing `/sitemap.xml`** — it currently returns **404**, which slows
+  indexing for a new domain — **covering every public indexable page, excluding the private
+  `/preview` estimator routes and noindex pages, referenced from `robots.txt`; confirm it returns
+  200.**
+- **(b)** Format the phone as **"+212 6 61 85 04 10"** on the **Mentions légales** page and the
+  **Contact info block**, where it currently shows the bare **"0661850410"** (the **`tel:` target
+  unchanged**).
+- **(c)** Remove the **"Captures du tableau de bord Deye Cloud — à venir" placeholder** on the
+  **Maintenance & monitoring** page (**never announce a missing asset**), keeping the **real published
+  monitoring copy** and **inventing no imagery**.
+- **(d)** Remove any remaining **explicit installation count** or **"jeune entreprise / nos premières
+  installations / une petite installation / le format est modeste"** wording **sitewide**, keeping
+  **all five real installs visible**, **leading with the 17,04 kWc flagship**, replacing counts only
+  with framing **already true on the site** (**"43,48 kWc installés"**, **"chantiers visitables sur
+  demande"**), and **never implying more than the five real installations**.
+
+---
+
+**ACROSS W51–W61 (founder's cross-cutting constraints):** **no invented facts, reviews, testimonials,
+dashboard imagery or founder bio anywhere** — every figure traces to what is **already published**;
+the **five installations stay exactly five, just uncounted**. **No new dependencies. Touch only
+`apps/web`.** The **live lead form and its entire data flow stay byte-for-byte unchanged in
+behaviour** (the form change is **visual restyle only**). The **private estimator preview routes stay
+private** (noindex, not in nav, excluded from the sitemap, unlinked) — **do not touch them**. **Each
+task is its own self-merged PR to protected main** (the accepted path — don't flag it). **Lighthouse
+held 97–100 on every page, prefers-reduced-motion respected, zero layout shift.** **Plain-language
+report only** (no diffs or hashes): for each task, **what a visitor now sees differently**;
+**confirmation the form still advances all 3 steps with the deeplink intact**; **confirmation
+`/sitemap.xml` returns 200**; and **confirmation the five installs are all still shown with no count**.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
