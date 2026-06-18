@@ -1301,7 +1301,7 @@ matches the sub-pages, confirmation the live lead flow is untouched, and any one
 
 ---
 
-### W46 — Estimator optimizer: re-solve after EVERY lock (not just the first one or two) — diagnose the stop-after-two cause, fix to full depth — [ ]
+### W46 — Estimator optimizer: re-solve after EVERY lock (not just the first one or two) — diagnose the stop-after-two cause, fix to full depth — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1336,7 +1336,7 @@ when every axis is locked. **One self-merged PR.**
 
 ---
 
-### W47 — Pitched-roof flow: add "alignée toit" flush-coplanar as the default/forced orientation + drop the physically-impossible orientations — [ ]
+### W47 — Pitched-roof flow: add "alignée toit" flush-coplanar as the default/forced orientation + drop the physically-impossible orientations — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1368,7 +1368,7 @@ production uses `mountingplace="building"`. **One self-merged PR.**
 
 ---
 
-### W48 — Harden BOTH optimizers (flat + pitched): exhaustive defensive handling + fuzz/property tests — [ ]
+### W48 — Harden BOTH optimizers (flat + pitched): exhaustive defensive handling + fuzz/property tests — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1398,7 +1398,7 @@ asserting the invariants never break.
 
 ---
 
-### W49 — Server-side PVGIS production-data engine (yearly / monthly / typical-day / specific-date / daily) — [ ]
+### W49 — Server-side PVGIS production-data engine (yearly / monthly / typical-day / specific-date / daily) — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1443,7 +1443,7 @@ PR.**
 
 ---
 
-### W50 — Interactive "Production estimée" window (Année / Mois / Jour) driven by the production engine — [ ]
+### W50 — Interactive "Production estimée" window (Année / Mois / Jour) driven by the production engine — [x]
 
 > Added 2026-06-18 via "add to web plan".
 
@@ -1946,3 +1946,43 @@ date.
   regularization-article-33 ↔ professionnel (bidirectional); case studies → their city page + segment +
   équipement + the réalisations hub; service pages → segments + équipement. The build proved there are
   zero dead internal links. Nothing to add or fix.
+- 2026-06-18 — W46–W50 done (one run, IN PLACE on the existing private route `/preview/toiture-3d-pro-11`;
+  pro-3..pro-10 left byte-for-byte intact). Built with maximum-safe parallelism: 2 concurrent worktree
+  lanes (Lane A = W46→W47→W48 on the optimizer engines + the page script; Lane B = W49 on a new
+  server-side production engine, disjoint files), then W50 in a wave-2 worktree on top of the folded
+  result; one self-merge to main. **W46:** the live optimizer already re-solved over all locks — the real
+  defect was the tilt "Recommandé" button handler in `roof-tool-pro11.ts`, which called `pinned.clear()`
+  and reset every axis, wiping ALL accumulated locks (so after a couple of locks the screen reverted to
+  the global optimum). Fixed to `pinned.delete('tilt')` so freeing one axis HOLDS every other lock and
+  only re-optimizes the freed one; re-solve is now correct on the 3rd/4th/Nth lock and terminates when
+  all axes are locked. **W47:** the pitched (toit en pente) flow now surfaces « Alignée toit » as a
+  present, default, FORCED read-only orientation (panels coplanar, tilt = roof pitch, azimuth = roof
+  facing); the physically-impossible orientations (true-south rotate, est-ouest tents, the azimuth group)
+  are confined to the flat-only block hidden in pitched mode; production stays PVGIS at the single
+  (pitch, facing) pair with `mountingplace="building"`; the flush coplanar 3D is unchanged. **W48:** both
+  engines hardened at engine level only (no V2/V3 edits) — every resolved yield (incl. the committed-table
+  fallback) routed through a `safeYield` (finite & ≥ 0), a real NaN leak in V8 fixed, fit-count/kwc/annual
+  clamped; +42 fuzz/property + hardening tests (degenerate/self-intersecting/zero-area traces, obstacles
+  covering the roof, a roof too small for one panel, need-cap 0/huge, PVGIS NaN/Inf/negative/null/empty →
+  graceful « estimé » never a crash, the azimuth-sign mapping S=0/E=−90/O=+90/N=180 in all four quadrants,
+  invariants holding under randomized lock orders). Valid-input behaviour unchanged. **W49:** new
+  server-side PVGIS production-data engine — new `src/lib/productionEngine.ts` + new `/api/roof-production`
+  route + additive PVGIS helpers in `roofEstimate.ts` (monthly PVcalc, multi-year hourly seriescalc, DRcalc
+  shape fallback; existing `fetchPvgisAnnualKwhAtTilt` untouched, same v5_2 API + radiation DB). Computes
+  yearly / 12 monthly / per-month typical-day hourly / specific-date / daily, all per 1 kWc then scaled by
+  placed × 0,72 kWc (Canadian Solar 720 W); cached per rounded (lat, lon, tilt, azimuth, mounting);
+  reconciliation anchors the hourly shapes to PVcalc E_m/E_y so typical-day → daily → monthly → annual stay
+  consistent; graceful « estimé » fallback; ALL PVGIS calls server-side (browser CORS blocked). **W50:**
+  the interactive « Production estimée » window on pro-11 (Année = 12 monthly bars + annual total; Mois =
+  daily bars + month total with prev/next; Jour = a 24-h PV-power curve defaulting to the month's typical
+  day, with a specific-date picker), hand-built inline SVG (no chart library, no new dependency), reading
+  the live optimizer config (GPS/tilt/aspect/mounting/placed); editing the panel count rescales every
+  figure client-side via the engine helpers (no extra server call); reduced-motion respected, zero layout
+  shift; savings reuse the existing capped self-consumption model; the client only ever calls
+  `/api/roof-production`. No new dependencies; route stays private (noindex, not in nav, sitemap-excluded,
+  unlinked); live public site + lead form byte-for-byte unchanged. Full vitest suite 1299 green across 48
+  files; `astro build` + `tsc` clean. PHONE-ONLY to confirm (build can't render the map/3D): on
+  `/preview/toiture-3d-pro-11` lock 3–4 options on a flat roof and watch each re-optimize; switch to
+  pitched and confirm « Alignée toit » is the flush default with no racks/inter-row gaps; open the
+  Production window, cycle months/days, and compare a typical day vs a picked date; confirm PVGIS returns
+  real data for a Moroccan address. Map key read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`).
