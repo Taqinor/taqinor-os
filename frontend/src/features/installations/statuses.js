@@ -78,7 +78,38 @@ export const INTERVENTION_TYPES = [
   { value: 'depannage', label: 'Dépannage' },
 ]
 
+// ── Couche de configuration N58 (libellé/ordre/visibilité, par société) ──────
+// PUREMENT COSMÉTIQUE : surcharge le libellé affiché et l'ordre d'affichage,
+// JAMAIS les clés canoniques ni la machine à états. Tant qu'aucune config n'est
+// chargée, tout retombe sur les défauts codés en dur ci-dessus (comportement
+// byte-identique). `canonicalStatus` / `INSTALLATION_STATUSES` (utilisés par
+// les gardes de transition / le kanban) ne sont JAMAIS modifiés.
+let _configLabels = null // { cle: libelle }
+let _configOrder = null // { cle: ordre }
+
+// Applique la liste effective renvoyée par l'API
+// (parametresApi.getStatutsEffective('chantier')). `null`/`[]` = réinitialise
+// sur les défauts. Seules les clés canoniques connues sont prises en compte.
+export function applyStatutConfig(rows) {
+  if (!rows || !rows.length) { _configLabels = null; _configOrder = null; return }
+  const labels = {}
+  const order = {}
+  for (const r of rows) {
+    if (!r || !INSTALLATION_STATUSES.includes(r.cle)) continue
+    if (r.libelle) labels[r.cle] = r.libelle
+    if (typeof r.ordre === 'number') order[r.cle] = r.ordre
+  }
+  _configLabels = Object.keys(labels).length ? labels : null
+  _configOrder = Object.keys(order).length ? order : null
+}
+
 export function statusLabel(key) {
+  if (_configLabels && _configLabels[key]) return _configLabels[key]
+  // Un statut hérité hérite du libellé configuré de sa colonne canonique.
+  const canon = canonicalStatus(key)
+  if (_configLabels && _configLabels[canon] && canon !== key && !STATUS_LABELS[key]) {
+    return _configLabels[canon]
+  }
   return STATUS_LABELS[key] ?? key ?? '—'
 }
 
@@ -87,9 +118,12 @@ export function statusColor(key) {
 }
 
 // Position dans l'entonnoir — pour TRIER les statuts dans l'ordre du funnel,
-// jamais alphabétiquement. Les inconnus vont en fin.
+// jamais alphabétiquement. Les inconnus vont en fin. L'ordre configuré (N58)
+// surcharge l'ordre canonique pour l'AFFICHAGE uniquement.
 export function statusOrder(key) {
-  const i = INSTALLATION_STATUSES.indexOf(canonicalStatus(key))
+  const canon = canonicalStatus(key)
+  if (_configOrder && typeof _configOrder[canon] === 'number') return _configOrder[canon]
+  const i = INSTALLATION_STATUSES.indexOf(canon)
   return i === -1 ? INSTALLATION_STATUSES.length : i
 }
 
