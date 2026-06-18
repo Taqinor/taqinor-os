@@ -1506,8 +1506,7 @@ date.
 
 ---
 
-### W51 — Recolour the diagnostic form + "dernière installation livrée" side card + FAQ into the brand design system (visual-only, everywhere they appear) — [ ]
-
+### W51 — Recolour the diagnostic form + "dernière installation livrée" side card + FAQ into the brand design system (visual-only, everywhere they appear) — [x]
 > Added 2026-06-18 via "add to web plan". This batch (W51–W61) is a **visual-craft and content
 > elevation of the EXISTING homepage** (and the shared form/FAQ sitewide) — **read the repo and
 > edit in place, never rebuild a page**. Keep the existing **"Cinéma du chantier"** design
@@ -1527,8 +1526,7 @@ Meta CAPI, the hidden fbclid/UTM fields and the 1 000 MAD threshold logic all st
 identical.** In the report, **confirm the form still advances through all three steps and the
 WhatsApp deeplink is intact** (without submitting it).
 
-### W52 — Tighten the homepage vertical rhythm (consistent, tighter section-spacing scale) — [ ]
-
+### W52 — Tighten the homepage vertical rhythm (consistent, tighter section-spacing scale) — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Tighten the homepage vertical rhythm. Several sections **float in oversized empty dark zones** — the
@@ -1538,16 +1536,14 @@ and **below "Fiches chantier"** — which makes the page feel sparse and under-d
 whitespace **generous but intentional, not floating**. Some of the reclaimed space is filled by the
 new sections below (W55–W58).
 
-### W53 — Fix the "Nos dernières réalisations" card grid (equal-height, never overlaps the sticky CTA) — [ ]
-
+### W53 — Fix the "Nos dernières réalisations" card grid (equal-height, never overlaps the sticky CTA) — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Fix the **"Nos dernières réalisations" card grid**: the three cards currently render at **staggered
 heights** and the third (**Nouaceur**) **collides with the sticky bottom-right CTA**. Align them to a
 **clean equal-height grid that never overlaps the sticky CTA at any viewport**.
 
-### W54 — Remove the duplicate installation listing on the homepage (fold data into the photo cards) — [ ]
-
+### W54 — Remove the duplicate installation listing on the homepage (fold data into the photo cards) — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Remove the duplicate installation listing on the homepage. The same three flagship installs appear
@@ -1558,8 +1554,7 @@ separate "Fiches chantier" section** — **OR** repurpose that freed slot for on
 below (W55–W58), **whichever reads cleanest. State in the report which you did.** **Invent nothing;
 all five real installs stay visible and uncounted.**
 
-### W55 — ADD a founder-credibility section to the homepage — [ ]
-
+### W55 — ADD a founder-credibility section to the homepage — [x]
 > Added 2026-06-18 via "add to web plan".
 
 ADD a **founder-credibility section** to the homepage — the **strongest trust signal**, currently
@@ -1569,8 +1564,7 @@ fondateur"** conviction, with a **link to /à-propos**. **If a real founder phot
 use it; if not, ship the text band — no stock portrait, no invented bio, dates, titles or
 anecdotes.** Use only the **already-published, owner-approved facts**.
 
-### W56 — ADD an equipment brand-logo strip (tier-1 brands, link to /équipement) — [ ]
-
+### W56 — ADD an equipment brand-logo strip (tier-1 brands, link to /équipement) — [x]
 > Added 2026-06-18 via "add to web plan".
 
 ADD an **equipment brand-logo strip** — **"Marques tier-1 · distributeurs officiels au Maroc"** —
@@ -1579,8 +1573,7 @@ showing the **five real posed brands: Canadian Solar, JA Solar, Deye, Huawei, Dy
 as a clean styled wordmark** rather than omitting or inventing one. Built entirely from brands
 already named on the site.
 
-### W57 — ADD a clear end-to-end process timeline (study → supervised production) — [ ]
-
+### W57 — ADD a clear end-to-end process timeline (study → supervised production) — [x]
 > Added 2026-06-18 via "add to web plan".
 
 ADD a clear **end-to-end process timeline**. The current **"Comment ça se passe"** covers only the
@@ -1590,8 +1583,7 @@ Mise en service → Monitoring Deye Cloud (accès client inclus)**. **Integrate 
 existing section so the two don't repeat.** Use only facts already on the site; **invent no delays or
 SLAs**.
 
-### W58 — Enrich the "Nos solutions" cards with restrained iconography / visual treatment — [ ]
-
+### W58 — Enrich the "Nos solutions" cards with restrained iconography / visual treatment — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Enrich the **"Nos solutions" cards**, which are currently **flat text on dark with no visual
@@ -1599,16 +1591,14 @@ interest**. Add **restrained iconography or a subtle visual treatment per card w
 design language** — **no new dependency, no stock imagery** — so the section reads as **crafted rather
 than a plain list**.
 
-### W59 — Refine the sticky bottom-right "WhatsApp + Diagnostic gratuit" CTA so it never overlaps content — [ ]
-
+### W59 — Refine the sticky bottom-right "WhatsApp + Diagnostic gratuit" CTA so it never overlaps content — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Refine the **sticky bottom-right "WhatsApp + Diagnostic gratuit" CTA** so it **never overlaps page
 content at any viewport** (smaller footprint, a safe offset, or collapse-on-scroll). **Keep it
 functional and its links unchanged.**
 
-### W60 — Make count-up number animations safe (no malformed intermediate frame on ranges/text) — [ ]
-
+### W60 — Make count-up number animations safe (no malformed intermediate frame on ranges/text) — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Make the **count-up number animations safe** so **no malformed intermediate frame can ever show**.
@@ -1618,8 +1608,7 @@ a gentle fade/translate**, or **animate only an isolated leading numeral** with 
 fixed and **final width reserved**. **Fully respect prefers-reduced-motion** (final values, no
 animation) and keep **zero layout shift**.
 
-### W61 — Hygiene (no decisions needed): sitemap.xml, phone format, remove placeholders & install counts — [ ]
-
+### W61 — Hygiene (no decisions needed): sitemap.xml, phone format, remove placeholders & install counts — [x]
 > Added 2026-06-18 via "add to web plan".
 
 Hygiene, **no decisions needed**:
@@ -2136,3 +2125,16 @@ report only** (no diffs or hashes): for each task, **what a visitor now sees dif
   pitched and confirm « Alignée toit » is the flush default with no racks/inter-row gaps; open the
   Production window, cycle months/days, and compare a typical day vs a picked date; confirm PVGIS returns
   real data for a Moroccan address. Map key read = `PUBLIC_MAPTILER_KEY` (optional `PUBLIC_MAPBOX_TOKEN`).
+
+- 2026-06-18 — W51 done: diagnostic form (`DiagnosticForm.astro`), its homepage « dernière installation livrée » side card, and the FAQ (`Faq.astro`) recoloured from the bolted-on light/royal-blue look into the dark navy+gold system (existing tokens only: nuit/nuit-800/lune/brass; dark legible inputs with a brass focus ring) — so the form+FAQ now read as part of the site on the accueil, /résidentiel, /professionnel and /contact via the shared components. CSS-classes-ONLY change to the form: markup, 3-step flow, every field/name/id, consent+required, hidden fbclid/UTM, the /api/simulate script and the WhatsApp deeplink are byte-for-byte unchanged (verified by diff + a FROZEN test guard). Also removed the now-mismatched dark→light `v2-seam` above the dedicated `/faq` page's FAQ.
+- 2026-06-18 — W52 done: homepage vertical rhythm normalised to a consistent tighter spacing scale (content sections py-20 sm:py-28; compact bands py-16 sm:py-20) so sections no longer float in oversized dark zones.
+- 2026-06-18 — W53 done: « Nos dernières réalisations » gallery converted from CSS masonry (columns-*) to an equal-height grid (sm:grid-cols-2 lg:grid-cols-3, uniform aspect-[4/3]) with extra bottom breathing room so the last card never collides with the sticky CTA.
+- 2026-06-18 — W54 done: removed the duplicate « Fiches chantier » data-card section (and its `cases` array); the photo gallery is now the single proof and carries ville·kWc·measured kWh/an·equipment per card. All five installs stay visible and uncounted (Nouaceur keeps no production figure).
+- 2026-06-18 — W55 done: added a founder-credibility homepage section (docteur-ingénieur, 10+ ans R&D chez Huawei, Ericsson, STMicroelectronics, « chaque étude validée par le fondateur ») linking to /à-propos — wording mirrors /à-propos exactly, no portrait shipped (none in repo), nothing invented.
+- 2026-06-18 — W56 done: added an equipment brand strip « Marques tier-1 · distributeurs officiels au Maroc » naming the five real brands (Canadian Solar, JA Solar, Deye, Huawei, Dyness) as clean styled wordmarks (no logo assets in repo), linking to /équipement.
+- 2026-06-18 — W57 done: added an end-to-end process timeline (Diagnostic 60 s → Échange WhatsApp → Visite technique & étude gratuite → Pose → Mise en service → Monitoring Deye Cloud) integrated into the existing WhatsApp section so the two don't repeat; no invented delays/SLAs.
+- 2026-06-18 — W58 done: enriched the « Nos solutions » cards with a restrained inline-SVG icon per card (currentColor/brass), copy and links unchanged, no new dependency.
+- 2026-06-18 — W59 done: refined the sticky « WhatsApp + Diagnostic gratuit » CTA — more compact desktop pill, safe bottom-right offset, and collapse-on-scroll-down / re-show on scroll-up (transform-based, zero layout shift, motion-reduce safe); both links and the existing pastHero/formVisible hide logic unchanged.
+- 2026-06-18 — W60 done: count-up animations made safe — logic extracted to a unit-tested `src/lib/countup.ts`; compound/range values (« 60–90 % », « 3–7 ans », « 3 à 5 kWc », « 50 000 MAD – 115 000 MAD ») are no longer digit-rolled (revealed final, width reserved) so no malformed intermediate frame can show, while single clean values still roll. Fixed a latent regex bug that dropped the space before a unit mid-roll (« 10 703kWh/an »). reduced-motion + zero-CLS preserved.
+- 2026-06-18 — W61 done: (a) new prerendered `/sitemap.xml` endpoint returns a 200 `<sitemapindex>` → `sitemap-0.xml` (the real @astrojs/sitemap urlset, /preview & noindex already excluded), robots.txt now references /sitemap.xml; (b) phone shown as « +212 6 61 85 04 10 » (phoneDisplayIntl) on Mentions légales + the Contact info block, tel: target unchanged; (c) removed the « Captures Deye Cloud — à venir » placeholder on Maintenance & monitoring (real copy + both CTAs kept); (d) removed remaining install-count/belittling wording (« petite installation »/« format est modeste » in caseStudies.ts & realisations.ts; « 3 installations » in VideoChantier) — five installs stay five, uncounted.
+- 2026-06-18 — W51–W61 batch landed in one self-merge: 4 parallel lanes (homepage+form/FAQ · hygiene+count-sweep · sticky CTA · count-up safety), orchestrator-reviewed against the standing rules, full Vitest suite green (1347 tests, +4 new test files), astro build clean, /sitemap.xml verified 200. Live lead form + its data flow byte-for-byte unchanged; estimator /preview routes untouched. Auto-deploys via Cloudflare on push to main.

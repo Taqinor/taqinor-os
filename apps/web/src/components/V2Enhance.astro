@@ -25,45 +25,38 @@ import '../styles/v3-photo-motion.css';
 </script>
 
 <script>
+  import { formatFrame, shouldDigitRoll } from '../lib/countup';
+
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Espaces admis DANS un nombre : normal (0x20), insécable (0xA0), fine (0x202F).
-  // Construit via fromCharCode pour garder la source en ASCII pur.
-  const SP = ' ' + String.fromCharCode(0xa0, 0x202f);
-  const NUM_RE = new RegExp('\\d[\\d' + SP + ']*(?:,\\d+)?', 'g');
-  const GROUP_RE = new RegExp('\\d[' + SP + ']\\d');
-  const SP_RE = new RegExp('[' + SP + ']', 'g');
-
-  // Formatage français : virgule décimale, espace milliers (comme le site).
-  function frFormat(value: number, decimals: number, group: boolean): string {
-    let s = value.toFixed(decimals).replace('.', ',');
-    if (group) {
-      const [intPart, dec] = s.split(',');
-      s = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (dec ? ',' + dec : '');
-    }
-    return s;
-  }
-
-  // Anime chaque nombre du texte de 0 → sa valeur, en préservant tout le reste
-  // de la chaîne (unités, plages « X–Y », ponctuation). Largeur verrouillée.
-  function countUp(el: HTMLElement) {
-    const finalText = el.dataset.v2final ?? (el.dataset.v2final = el.textContent ?? '');
-    const tokens = [...finalText.matchAll(NUM_RE)].map((m) => {
-      const raw = m[0];
-      const decimals = (raw.split(',')[1] || '').length;
-      const group = GROUP_RE.test(raw);
-      const val = parseFloat(raw.replace(SP_RE, '').replace(',', '.'));
-      return { raw, idx: m.index ?? 0, decimals, group, val };
-    });
-    if (!tokens.length) return;
-
-    // Verrouille la largeur UNIQUEMENT pour les éléments inline (dans un flux de
-    // texte) : un élément de bloc a déjà une largeur stable, et changer son
-    // display provoquerait un décalage (CLS). Anti-CLS dans les deux cas.
+  // Verrouille la largeur d'un élément inline pour éviter tout décalage (CLS)
+  // pendant l'animation. Un élément de bloc a déjà une largeur stable.
+  function lockWidth(el: HTMLElement) {
     if (getComputedStyle(el).display.startsWith('inline')) {
       const w = el.getBoundingClientRect().width;
       el.style.display = 'inline-block';
       el.style.minWidth = w + 'px';
+    }
+  }
+
+  // Anime un nombre simple de 0 → sa valeur (unité préservée, largeur verrouillée).
+  // Pour une valeur COMPOSÉE / plage (« 60–90 % », « 3–7 ans », « 3 à 5 kWc »…),
+  // on ne roule RIEN : la largeur est réservée puis la valeur finale est révélée
+  // immédiatement (via .v2-in déjà posé), donc aucune image intermédiaire absurde
+  // ne peut apparaître. Voir src/lib/countup.ts.
+  function countUp(el: HTMLElement) {
+    const finalText = el.dataset.v2final ?? (el.dataset.v2final = el.textContent ?? '');
+    if (!finalText) return;
+
+    // Réserve la largeur finale dans tous les cas (anti-CLS), avant toute
+    // animation, donc même les valeurs composées ne provoquent aucun décalage.
+    lockWidth(el);
+
+    // Valeur composée / plage : aucune animation de chiffres — la valeur finale
+    // est déjà affichée (révélée par la classe .v2-in). On la laisse telle quelle.
+    if (!shouldDigitRoll(finalText)) {
+      el.textContent = finalText;
+      return;
     }
 
     const dur = 1100;
@@ -72,15 +65,7 @@ import '../styles/v3-photo-motion.css';
       if (start === null) start = t;
       const p = Math.min(1, (t - start) / dur);
       const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
-      let out = '';
-      let last = 0;
-      for (const tk of tokens) {
-        out += finalText.slice(last, tk.idx);
-        out += frFormat(tk.val * e, tk.decimals, tk.group);
-        last = tk.idx + tk.raw.length;
-      }
-      out += finalText.slice(last);
-      el.textContent = out;
+      el.textContent = formatFrame(finalText, e);
       if (p < 1) requestAnimationFrame(frame);
       else el.textContent = finalText; // valeur finale exacte
     }

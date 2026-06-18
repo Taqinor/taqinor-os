@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Refonte UI (Groupe F) — tokens de design + thème clair/sombre. Additif :
+   noms de tokens personnalisés, n'écrase aucun défaut Tailwind ni la police du
+   <body> ci-dessous, donc les écrans existants restent identiques. */
+@import "./design/tokens.css";
+/* Variante sombre pilotée par la classe .dark sur <html> (aucun `dark:` utilisé
+   ailleurs dans le code aujourd'hui → totalement inerte pour l'existant). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ── Reset & base ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 

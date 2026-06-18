@@ -33,25 +33,25 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 > **Renumbered on intake (2026-06-18):** the source proposal lettered these groups E–O, but `docs/PLAN2.md` already has a **Group E** (the E2E browser-test suite, tasks E1–E16). To keep every group/task id unique, the UI/UX-overhaul groups were shifted one letter to **F–P** (and their task ids re-prefixed to match) before being inserted here. Titles, content, and the running task numbers (14–69) are otherwise verbatim.
 
 ## Group F — Design foundation & tokens
-- [ ] **F14.** Audit + brand extraction: read every screen and the ~15 per-component .css files; pull the real Taqinor palette, the Archivo + Hanken Grotesk fonts, and the sun-with-bolt logo from apps/web so the ERP matches the brand. Map current styling to a token plan.
-- [ ] **F15.** Token system in Tailwind 4 @theme — primitive → semantic → component layers: a solar palette (warm amber/gold primary used sparingly as the energy accent; deep ink/graphite neutral base; clean grays; semantic success/warning/danger/info), plus spacing, radius, elevation/shadow, z-index, and motion scales. Full light + dark mode. Avoid the AI-default looks (cream+terracotta serif; near-black+acid-green; broadsheet hairlines).
-- [ ] **F16.** Typography: Archivo (display/headings), Hanken Grotesk (body/UI), tabular figures for all money/quantity numbers; self-host + preload fonts (no flash of unstyled text); a clear type scale with intentional weights.
-- [ ] **F17.** Icon system: standardize on lucide-react with one size/stroke convention; replace ad-hoc icons.
-- [ ] **F18.** Theming infra: light/dark toggle that also follows system preference and persists; correct theme-color and iOS status-bar meta per theme. (Default theme: follow-system unless Reda specifies otherwise.)
-- [ ] **F19.** Centralized format utilities: MAD currency, fr-FR number formatting, dd/mm/yyyy dates, Moroccan phone formatting — one source of truth used everywhere.
-- [ ] **F20.** Density modes (comfortable / compact) wired to tables and forms, with a user preference.
+- [x] **F14.** Audit + brand extraction: read every screen and the ~15 per-component .css files; pull the real Taqinor palette, the Archivo + Hanken Grotesk fonts, and the sun-with-bolt logo from apps/web so the ERP matches the brand. Map current styling to a token plan.
+- [x] **F15.** Token system in Tailwind 4 @theme — primitive → semantic → component layers: a solar palette (warm amber/gold primary used sparingly as the energy accent; deep ink/graphite neutral base; clean grays; semantic success/warning/danger/info), plus spacing, radius, elevation/shadow, z-index, and motion scales. Full light + dark mode. Avoid the AI-default looks (cream+terracotta serif; near-black+acid-green; broadsheet hairlines).
+- [x] **F16.** Typography: Archivo (display/headings), Hanken Grotesk (body/UI), tabular figures for all money/quantity numbers; self-host + preload fonts (no flash of unstyled text); a clear type scale with intentional weights.
+- [x] **F17.** Icon system: standardize on lucide-react with one size/stroke convention; replace ad-hoc icons.
+- [x] **F18.** Theming infra: light/dark toggle that also follows system preference and persists; correct theme-color and iOS status-bar meta per theme. (Default theme: follow-system unless Reda specifies otherwise.)
+- [x] **F19.** Centralized format utilities: MAD currency, fr-FR number formatting, dd/mm/yyyy dates, Moroccan phone formatting — one source of truth used everywhere.
+- [x] **F20.** Density modes (comfortable / compact) wired to tables and forms, with a user preference.
 
 ## Group G — Primitive component library (shadcn-based; one "definition of done" per component: states, dark mode, keyboard, ARIA)
-- [ ] **G21.** Buttons + IconButton (variants/sizes/loading/disabled), with consistent focus-visible rings.
-- [ ] **G22.** Inputs: text, textarea, number, currency (MAD), percentage, phone (MA) — with proper formatting and 16px font on mobile to prevent iOS zoom.
+- [x] **G21.** Buttons + IconButton (variants/sizes/loading/disabled), with consistent focus-visible rings.
+- [x] **G22.** Inputs: text, textarea, number, currency (MAD), percentage, phone (MA) — with proper formatting and 16px font on mobile to prevent iOS zoom.
 - [ ] **G23.** Select, Combobox/autocomplete (rebuild AssigneePicker and ProduitPicker on it), MultiSelect, with async search + empty/loading.
 - [ ] **G24.** Date picker, Date-range picker, Time picker (the last for relance scheduling).
-- [ ] **G25.** Checkbox, Radio group, Switch, Segmented control, Slider.
+- [x] **G25.** Checkbox, Radio group, Switch, Segmented control, Slider.
 - [ ] **G26.** File upload / dropzone (rebuild AttachmentsPanel + the OCR upload flows) with progress, type/size validation, and reliable open/download (this also resolves the Group B attachment bug at the component level).
 - [ ] **G27.** Form system: labels-above layout, sectioned forms, inline field validation + cross-field validation, required markers, an error summary, a dirty-state guard ("unsaved changes — leave?"), and a sticky save/cancel action bar (especially on mobile).
-- [ ] **G28.** Overlays: Dialog, Sheet (mobile bottom-drawer), AlertDialog (confirm destructive actions), Popover, HoverCard, Tooltip, DropdownMenu, ContextMenu — with focus trap + restore.
-- [ ] **G29.** Feedback + display: Toast/sonner (success/error/loading/undo), Badge + StatusPill (one status taxonomy for leads/devis/factures/chantiers/tickets), Tag/Chip, Avatar + AvatarGroup, Card, Stat/KPI card, Definition list, Tabs, Accordion, Progress, Separator.
-- [ ] **G30.** States kit: skeleton loaders per layout, EmptyState (message + clear next action), ErrorBoundary screen, 404, and an offline state — applied consistently across every screen.
+- [x] **G28.** Overlays: Dialog, Sheet (mobile bottom-drawer), AlertDialog (confirm destructive actions), Popover, HoverCard, Tooltip, DropdownMenu, ContextMenu — with focus trap + restore.
+- [x] **G29.** Feedback + display: Toast/sonner (success/error/loading/undo), Badge + StatusPill (one status taxonomy for leads/devis/factures/chantiers/tickets), Tag/Chip, Avatar + AvatarGroup, Card, Stat/KPI card, Definition list, Tabs, Accordion, Progress, Separator.
+- [x] **G30.** States kit: skeleton loaders per layout, EmptyState (message + clear next action), ErrorBoundary screen, 404, and an offline state — applied consistently across every screen.
 
 ## Group H — DataTable engine (TanStack Table, behind every list view)
 - [ ] **H31.** Core grid: sticky header, frozen first column, multi-column sort, per-column + global filter, column show/hide + reorder + resize + pin, density toggle, pagination with an "X–Y of N" count, and search-match highlighting.
@@ -107,7 +107,7 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## Group P — Consistency & cleanup
 - [ ] **P67.** Migrate and DELETE the ~15 ad-hoc per-component .css files into the token system + primitives as each screen is converted.
-- [ ] **P68.** Internal /ui component reference page (living style guide) so all future work stays on-system.
+- [x] **P68.** Internal /ui component reference page (living style guide) so all future work stays on-system.
 - [ ] **P69.** Document the token system in one reference file; save before/after screenshots of key screens to docs/ui-redesign/.
 
 ## Pending Reda (carry these in the plan)
@@ -296,6 +296,34 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-18 — Refonte UI, Groupes F + G (fondation + bibliothèque de primitifs).
+  Reda a approuvé les 7 nouvelles libs (shadcn/Radix, TanStack Table, lucide,
+  sonner, cva/clsx/tailwind-merge) → la file prioritaire de refonte est
+  débloquée. Livré ADDITIF, **zéro régression** : noms de tokens personnalisés,
+  aucun défaut Tailwind ni la police du body écrasés, aucun `dark:` ailleurs →
+  les écrans existants restent identiques jusqu'à leur migration (groupes J/P).
+  • Groupe F : F14 audit + extraction de marque (apps/web) → docs/ui-redesign/
+  tokens.md ; F15 système de tokens Tailwind 4 @theme (brass/nuit/azur/lune →
+  sémantique clair+sombre + densité + ombres/z-index/motion) ; F16 polices
+  Archivo + Hanken auto-hébergées + préchargées + chiffres tabulaires ; F17
+  lucide-react adopté comme système d'icônes des nouveaux primitifs (convention
+  taille/épaisseur unique ; le remplacement des icônes ad hoc des écrans
+  existants se fait à la migration J) ; F18 thème clair/sombre/système (défaut
+  système) + ThemeProvider/Toggle ; F19 utilitaires de formatage centralisés
+  (MAD/fr-FR/dates/tél. MA) ; F20 modes de densité confort/compact.
+  • Groupe G : G21 Button/IconButton/Spinner ; G22 Input/Textarea/Label +
+  Number/Currency/Percent/Phone (saisie sans perte, 16px mobile anti-zoom) ;
+  G25 Checkbox/Radio/Switch/Segmented/Slider ; G28 Dialog/Sheet/AlertDialog/
+  Popover/Tooltip/DropdownMenu/HoverCard/ContextMenu (focus trap via Radix) ;
+  G29 Toaster(sonner)/Badge/StatusPill(taxonomie unique)/Tag/Avatar/Card/Stat/
+  Tabs/Accordion/Progress/Separator/DefinitionList ; G30 Skeleton/EmptyState/
+  ErrorBoundary/NotFound/Offline. P68 vitrine vivante à la route /ui.
+  Vérif : build + eslint verts, 96 tests unitaires (.mjs) verts (dont format +
+  theme), et spec Playwright e2e/ui-system (thème/densité/dialog/toast/0 erreur
+  console) PASSÉE en navigateur local. RESTE OUVERT dans le Groupe G : G23
+  (Select/Combobox/MultiSelect), G24 (date pickers), G26 (upload/dropzone), G27
+  (form system) — plus complexes, prochaine vague ; puis H (DataTable), I (shell/
+  nav), J (restyle par module), K, L, M, N, O, P67/P69.
 - 2026-06-17 — E1–E16: end-to-end Playwright browser suite shipped and proven
   green in CI (all 18 specs). E1 = a new required `e2e` GitHub Actions job that
   reuses the same throwaway stack as backend-tests (Postgres+pgvector, Redis,

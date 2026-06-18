@@ -40,4 +40,14 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // Bibliothèque de primitifs UI (refonte) : par convention shadcn, ces fichiers
+  // ré-exportent des primitives Radix, des variantes `cva` et des helpers à côté
+  // des composants. La règle fast-refresh (HMR dev uniquement) n'a pas de sens
+  // ici — désactivée pour ce répertoire seulement.
+  {
+    files: ['src/ui/**/*.{js,jsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

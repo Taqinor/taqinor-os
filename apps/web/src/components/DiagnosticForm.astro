@@ -24,41 +24,48 @@ const VILLES = [
   'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
 ];
 
+// W51 — Le diagnostic vit désormais dans le système navy+or (champs sombres,
+// texte lune/blanc, accents laiton). Comportement, markup, attributs (hors
+// classes) et script INCHANGÉS.
 const inputClass =
-  'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
+  'w-full border border-white/15 bg-nuit-800 px-3 py-2.5 text-sm text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
 ---
 
-<!-- ACTE FINAL — la nuit s'ouvre : le diagnostic arrive en pleine lumière -->
-<div class="seam-lumiere" aria-hidden="true"></div>
-<section id="simulateur" class="scroll-mt-20 bg-blanc-azur px-4 pb-20 pt-12 text-encre sm:pb-24">
+<!-- ACTE FINAL — le diagnostic, dans la nuit éclairée d'or (W51). La couture
+     reste une lueur de laiton, mais sur la nuit (le diagnostic n'est plus la
+     « salle blanche » : il fait désormais partie du site navy+or). -->
+<div class="h-20 bg-[radial-gradient(60%_130%_at_50%_100%,rgb(232_181_74/0.16),transparent_70%)]" aria-hidden="true"></div>
+<section id="simulateur" class="scroll-mt-20 border-t border-white/10 bg-nuit px-4 pb-20 pt-12 text-lune sm:pb-24">
   <div class:list={['mx-auto grid items-start gap-6', Astro.slots.has('aside') ? 'max-w-5xl lg:grid-cols-[1.4fr_1fr]' : 'max-w-2xl']}>
-  <div class="border border-azur-900/15 bg-blanc shadow-[0_24px_60px_-28px_rgb(15_28_84/0.35)]">
-    <div class="border-b border-azur-900/10 px-6 py-5 sm:px-8">
-      <p class="tech-label text-azur-600">Diagnostic · sans engagement · aucune donnée vendue</p>
-      <h2 class="display mt-2 text-2xl sm:text-3xl">{heading}</h2>
+  <div class="cine-card">
+    <div class="border-b border-white/10 px-6 py-5 sm:px-8">
+      <p class="tech-label text-brass-300">Diagnostic · sans engagement · aucune donnée vendue</p>
+      <h2 class="display mt-2 text-2xl text-white sm:text-3xl">{heading}</h2>
 
-      <!-- Indicateur de progression -->
+      <!-- Indicateur de progression — l'état actif/inactif est piloté par le
+           script (bg-azur-600 / bg-azur-100, INCHANGÉ) ; les segments restent
+           lisibles sur la nuit. -->
       <div class="mt-5 flex items-center gap-3" aria-hidden="true">
         <span data-seg="1" class="h-1 flex-1 bg-azur-600 transition-colors"></span>
         <span data-seg="2" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
         <span data-seg="3" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
       </div>
-      <p id="diag-progress" class="tech-label mt-2 text-encre-faint" aria-live="polite">Étape 1 sur 3</p>
+      <p id="diag-progress" class="tech-label mt-2 text-lune-faint" aria-live="polite">Étape 1 sur 3</p>
     </div>
 
     <form id="lead-form" class="p-6 sm:p-8" novalidate>
       <!-- Étape 1 — la question de diagnostic, zéro donnée personnelle -->
       <fieldset data-step="1" class="flex flex-col gap-4 border-0 p-0">
-        <legend class="display mb-1 text-lg">Votre étude commence ici</legend>
+        <legend class="display mb-1 text-lg text-white">Votre étude commence ici</legend>
         <div>
-          <label for="lf-bill" class="mb-1 block text-sm font-semibold">Facture d'électricité mensuelle *</label>
+          <label for="lf-bill" class="mb-1 block text-sm font-semibold text-lune">Facture d'électricité mensuelle *</label>
           <select id="lf-bill" name="billRange" required class={inputClass}>
             <option value="" disabled selected>Choisir une tranche…</option>
             {BILL_RANGES.map((r) => <option value={r.id}>{r.label}</option>)}
           </select>
         </div>
         <div>
-          <label for="lf-roof" class="mb-1 block text-sm font-semibold">Type de toiture *</label>
+          <label for="lf-roof" class="mb-1 block text-sm font-semibold text-lune">Type de toiture *</label>
           <select id="lf-roof" name="roofType" required class={inputClass}>
             <option value="" disabled selected>Choisir…</option>
             {ROOF_TYPES.map((r) => <option value={r.id}>{r.label}</option>)}
@@ -68,41 +75,41 @@ const inputClass =
 
       <!-- Étape 2 — localisation + signal préliminaire en direct -->
       <fieldset data-step="2" class="hidden flex-col gap-4 border-0 p-0">
-        <legend class="display mb-1 text-lg">Votre commune</legend>
+        <legend class="display mb-1 text-lg text-white">Votre commune</legend>
         <div>
-          <label for="lf-city" class="mb-1 block text-sm font-semibold">Ville / commune *</label>
+          <label for="lf-city" class="mb-1 block text-sm font-semibold text-lune">Ville / commune *</label>
           <input id="lf-city" name="city" required autocomplete="address-level2" list="lf-villes" class={inputClass} />
           <datalist id="lf-villes">
             {VILLES.map((v) => <option value={v} />)}
           </datalist>
         </div>
-        <p id="diag-sun" class="hidden border-l-4 border-azur-600 bg-blanc-azur py-2.5 pl-4 pr-3 text-sm font-semibold text-azur-700" aria-live="polite"></p>
+        <p id="diag-sun" class="hidden border-l-4 border-brass-400 bg-white/5 py-2.5 pl-4 pr-3 text-sm font-semibold text-brass-300" aria-live="polite"></p>
       </fieldset>
 
       <!-- Étape 3 — identité, cadrée « Recevez votre étude sur WhatsApp » -->
       <fieldset data-step="3" class="hidden flex-col gap-4 border-0 p-0">
-        <legend class="display mb-1 text-lg">Recevez votre étude sur WhatsApp</legend>
+        <legend class="display mb-1 text-lg text-white">Recevez votre étude sur WhatsApp</legend>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label for="lf-name" class="mb-1 block text-sm font-semibold">Nom complet *</label>
+            <label for="lf-name" class="mb-1 block text-sm font-semibold text-lune">Nom complet *</label>
             <input id="lf-name" name="fullName" required autocomplete="name" class={inputClass} />
           </div>
           <div>
-            <label for="lf-phone" class="mb-1 block text-sm font-semibold">Téléphone *</label>
+            <label for="lf-phone" class="mb-1 block text-sm font-semibold text-lune">Téléphone *</label>
             <input id="lf-phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel"
               aria-describedby="lf-phone-err" placeholder="06 XX XX XX XX" class={inputClass} />
-            <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-600"></p>
+            <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-300"></p>
           </div>
         </div>
-        <label class="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-azur-600" checked />
+        <label class="flex items-start gap-2 text-sm text-lune">
+          <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-brass-400" checked />
           <span>Je préfère être contacté(e) par WhatsApp</span>
         </label>
-        <label class="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="consent" required class="mt-0.5 accent-azur-600" />
+        <label class="flex items-start gap-2 text-sm text-lune">
+          <input type="checkbox" name="consent" required class="mt-0.5 accent-brass-400" />
           <span>
             J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
-            demande d'étude solaire. * <a href="/politique-de-confidentialite" target="_blank" rel="noopener" class="text-encre-faint underline underline-offset-2 hover:text-azur-700">Politique de confidentialité</a>
+            demande d'étude solaire. * <a href="/politique-de-confidentialite" target="_blank" rel="noopener" class="text-lune-faint underline underline-offset-2 hover:text-brass-300">Politique de confidentialité</a>
           </span>
         </label>
       </fieldset>
@@ -115,11 +122,11 @@ const inputClass =
       <input type="hidden" name="utm_content" />
       <input type="hidden" name="utm_term" />
 
-      <p id="lf-err" role="alert" class="mt-4 hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
+      <p id="lf-err" role="alert" class="mt-4 hidden border border-alert-300/40 bg-alert-300/10 px-3 py-2 text-sm text-alert-300"></p>
 
       <div class="mt-6 flex items-center justify-between gap-3">
         <button type="button" id="diag-back"
-          class="invisible border border-azur-900/20 px-5 py-3 text-sm font-semibold text-encre-soft transition-colors hover:border-azur-600 hover:text-azur-700">
+          class="invisible border border-white/20 px-5 py-3 text-sm font-semibold text-lune-soft transition-colors hover:border-white hover:text-white">
           ← Retour
         </button>
         <button type="button" id="diag-next"
@@ -135,18 +142,18 @@ const inputClass =
 
     <!-- Extrait d'étude — l'état de résultat -->
     <div id="lf-success" class="hidden p-8">
-      <p class="tech-label rule-brass text-brass-600">Extrait d'étude préliminaire</p>
+      <p class="tech-label rule-brass text-brass-300">Extrait d'étude préliminaire</p>
       <div class="mt-6 grid gap-8 sm:grid-cols-2">
         <div>
-          <p id="lf-kwc" class="fig text-4xl text-azur-600 sm:text-5xl"></p>
-          <p class="tech-label mt-2 text-encre-faint">Puissance estimée</p>
+          <p id="lf-kwc" class="fig lum text-4xl sm:text-5xl"></p>
+          <p class="tech-label mt-2 text-lune-faint">Puissance estimée</p>
         </div>
         <div>
-          <p id="lf-roi" class="fig text-4xl text-azur-600 sm:text-5xl"></p>
-          <p class="tech-label mt-2 text-encre-faint">Retour sur investissement</p>
+          <p id="lf-roi" class="fig lum text-4xl sm:text-5xl"></p>
+          <p class="tech-label mt-2 text-lune-faint">Retour sur investissement</p>
         </div>
       </div>
-      <p class="mt-6 border-t border-azur-900/10 pt-5 text-sm leading-relaxed text-encre-soft">
+      <p class="mt-6 border-t border-white/10 pt-5 text-sm leading-relaxed text-lune-soft">
         Fourchette préliminaire calculée à partir de votre tranche de facture — le chiffrage
         précis est établi après visite technique. La suite se passe sur WhatsApp.
       </p>
