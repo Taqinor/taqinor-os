@@ -1,28 +1,33 @@
 /* Pièces jointes (style Odoo) pour n'importe quel enregistrement.
    Réutilisable : model ('crm.lead'…) + id. Ajout = Commerciale ; suppression
-   = admin (le backend l'impose ; on masque le bouton pour les autres). */
-import { useEffect, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
-import recordsApi from '../api/recordsApi'
+   = admin (le backend l'impose ; on masque le bouton pour les autres).
 
-const fmtSize = (n) => {
-  if (!n) return ''
-  if (n < 1024) return `${n} o`
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} Ko`
-  return `${(n / 1024 / 1024).toFixed(1)} Mo`
-}
+   G26 — reconstruit sur le primitif FileUpload (dropzone + validation). Les
+   appels réseau sont STRICTEMENT préservés : recordsApi.getAttachments /
+   uploadAttachment / deleteAttachment. Le téléchargement passe TOUJOURS par
+   `a.url` (= le proxy Django /records/attachments/<id>/download/ renvoyé par le
+   sérialiseur) — jamais une URL MinIO brute. */
+import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
+import { Paperclip, FileText, Trash2 } from 'lucide-react'
+import recordsApi from '../api/recordsApi'
+import { FileUpload } from '../ui/FileUpload'
+import { formatFileSize } from '../ui/file-utils'
+import { formatDate } from '../lib/format'
+
+const ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
+const MAX_SIZE = 10 * 1024 * 1024 // 10 Mo
 
 export default function AttachmentsPanel({ model, id, onChange }) {
-  const role = useSelector(s => s.auth.role)
+  const role = useSelector((s) => s.auth.role)
   const isAdmin = role === 'admin'
   const [items, setItems] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const fileRef = useRef(null)
 
   const load = () => {
     recordsApi.getAttachments(model, id)
-      .then(r => setItems(r.data.results ?? r.data)).catch(() => {})
+      .then((r) => setItems(r.data.results ?? r.data)).catch(() => {})
   }
   useEffect(() => { load() }, [model, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -43,32 +48,58 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   }
 
   return (
-    <div className="att-panel">
-      <div className="act-head">
-        <span className="act-count">📎 {items.length} pièce(s) jointe(s)</span>
-        <input ref={fileRef} type="file" style={{ display: 'none' }}
-               accept="application/pdf,image/png,image/jpeg,image/webp"
-               onChange={e => { upload(e.target.files?.[0]); e.target.value = '' }} />
-        <button type="button" className="btn btn-sm btn-primary" disabled={busy}
-                onClick={() => fileRef.current?.click()}>
-          {busy ? 'Envoi…' : '＋ Ajouter un fichier'}
-        </button>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
+        {items.length} pièce(s) jointe(s)
       </div>
-      {error && <div className="form-error-box" role="alert">{error}</div>}
-      <div className="att-list">
-        {items.length === 0 && <p className="gen-hint">Aucune pièce jointe.</p>}
-        {items.map(a => (
-          <div key={a.id} className="att-item">
-            <a href={a.url} target="_blank" rel="noopener noreferrer" className="att-name">
-              📄 {a.filename}
+
+      <FileUpload
+        accept={ACCEPT}
+        maxSize={MAX_SIZE}
+        busy={busy}
+        disabled={busy}
+        onFiles={(files) => upload(files[0])}
+        onReject={(rejected) => setError(rejected[0]?.error ?? 'Fichier refusé.')}
+      />
+
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {items.length === 0 && (
+          <p className="text-sm text-muted-foreground">Aucune pièce jointe.</p>
+        )}
+        {items.map((a) => (
+          <div key={a.id} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm">
+            {/* Téléchargement via le proxy Django (a.url) — jamais MinIO direct. */}
+            <a
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="att-name flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground hover:text-primary hover:underline"
+            >
+              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{a.filename}</span>
             </a>
-            <span className="att-meta">
-              {fmtSize(a.size)}{a.uploaded_by_nom ? ` · ${a.uploaded_by_nom}` : ''}
-              {a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('fr-FR')}` : ''}
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {formatFileSize(a.size)}
+              {a.uploaded_by_nom ? ` · ${a.uploaded_by_nom}` : ''}
+              {a.created_at ? ` · ${formatDate(a.created_at)}` : ''}
             </span>
             {isAdmin && (
-              <button type="button" className="btn-icon-danger" title="Supprimer"
-                      onClick={() => remove(a)}>✕</button>
+              <button
+                type="button"
+                title="Supprimer"
+                aria-label={`Supprimer ${a.filename}`}
+                onClick={() => remove(a)}
+                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Trash2 className="size-4" />
+              </button>
             )}
           </div>
         ))}

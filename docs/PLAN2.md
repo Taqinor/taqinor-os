@@ -34,14 +34,14 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## Group F — Design foundation & tokens
 ## Group G — Primitive component library (shadcn-based; one "definition of done" per component: states, dark mode, keyboard, ARIA)
-- [ ] **G23.** Select, Combobox/autocomplete (rebuild AssigneePicker and ProduitPicker on it), MultiSelect, with async search + empty/loading.
-- [ ] **G24.** Date picker, Date-range picker, Time picker (the last for relance scheduling).
-- [ ] **G26.** File upload / dropzone (rebuild AttachmentsPanel + the OCR upload flows) with progress, type/size validation, and reliable open/download (this also resolves the Group B attachment bug at the component level).
-- [ ] **G27.** Form system: labels-above layout, sectioned forms, inline field validation + cross-field validation, required markers, an error summary, a dirty-state guard ("unsaved changes — leave?"), and a sticky save/cancel action bar (especially on mobile).
+- [x] **G23.** Select, Combobox/autocomplete (rebuild AssigneePicker and ProduitPicker on it), MultiSelect, with async search + empty/loading.
+- [x] **G24.** Date picker, Date-range picker, Time picker (the last for relance scheduling).
+- [x] **G26.** File upload / dropzone (rebuild AttachmentsPanel + the OCR upload flows) with progress, type/size validation, and reliable open/download (this also resolves the Group B attachment bug at the component level).
+- [x] **G27.** Form system: labels-above layout, sectioned forms, inline field validation + cross-field validation, required markers, an error summary, a dirty-state guard ("unsaved changes — leave?"), and a sticky save/cancel action bar (especially on mobile).
 ## Group H — DataTable engine (TanStack Table, behind every list view)
-- [ ] **H31.** Core grid: sticky header, frozen first column, multi-column sort, per-column + global filter, column show/hide + reorder + resize + pin, density toggle, pagination with an "X–Y of N" count, and search-match highlighting.
-- [ ] **H32.** Actions + editing: hover-revealed row checkboxes; a floating contextual bulk-action bar (bottom on mobile) for assign / change stage / export / delete; up-to-3 row icons + an overflow menu; clickable rows → detail/quick-view/expandable; inline cell editing with validation, undo, and save feedback; summary/subtotal rows (totals + TVA).
-- [ ] **H33.** Scale + persistence: saved/preset views as tabs (e.g. "À relancer", "Signés", "En retard"); sort/filter/page persisted to the URL (survives refresh + deep-links); server-side sort/filter for >1000 rows; row virtualization for large lists (619-lead import); CSV/XLSX export (openpyxl server-side); and a mobile fallback (rows → cards, or priority columns + horizontal scroll with frozen first column).
+- [x] **H31.** Core grid: sticky header, frozen first column, multi-column sort, per-column + global filter, column show/hide + reorder + resize + pin, density toggle, pagination with an "X–Y of N" count, and search-match highlighting.
+- [x] **H32.** Actions + editing: hover-revealed row checkboxes; a floating contextual bulk-action bar (bottom on mobile) for assign / change stage / export / delete; up-to-3 row icons + an overflow menu; clickable rows → detail/quick-view/expandable; inline cell editing with validation, undo, and save feedback; summary/subtotal rows (totals + TVA).
+- [x] **H33.** Scale + persistence: saved/preset views as tabs (e.g. "À relancer", "Signés", "En retard"); sort/filter/page persisted to the URL (survives refresh + deep-links); server-side sort/filter for >1000 rows; row virtualization for large lists (619-lead import); CSV/XLSX export (openpyxl server-side); and a mobile fallback (rows → cards, or priority columns + horizontal scroll with frozen first column).
 
 ## Group I — App shell & navigation
 - [ ] **I34.** Sidebar: collapsible, grouped sections, clear active state, brand mark, fully scrollable inside the iOS safe area (resolves C6 menu cutoff).
@@ -147,3 +147,35 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-06-18 — Refonte UI, vague 2 : Groupe G terminé + Groupe H (moteur
+  DataTable). Deux lanes en worktrees isolés, fusionnées en un seul lot,
+  revues par un agent adversarial (API préservée 1:1, proxy de
+  téléchargement B1 intact, règles permanentes respectées, zéro nouvelle
+  dépendance), CI locale verte (eslint 0 erreur, build OK, 155 tests
+  unitaires). • Groupe G : G23 Select (Radix) + Combobox/MultiSelect
+  (recherche async + états vide/chargement/erreur) et AssigneePicker /
+  ProduitPicker reconstruits dessus, props/comportement à l'identique ;
+  G24 DatePicker/DateRangePicker/TimePicker bâtis sur Popover + calcul de
+  dates maison (AUCUNE librairie de dates ajoutée), fr-FR/jj-mm-aaaa ;
+  G26 FileUpload/dropzone (glisser-déposer, progression, validation
+  type/taille) avec AttachmentsPanel + flux OCR (IA + Stock) reconstruits
+  dessus, appels réseau et proxy de téléchargement inchangés ; G27 système
+  de formulaire composable (Form/FormSection/FormField/FormActions +
+  garde « modifications non enregistrées » + barre d'actions collante).
+  • Groupe H : un moteur <DataTable> réutilisable (TanStack Table, sans
+  nouvelle dépendance) — en-tête figé, 1re colonne gelée, tri multi-colonnes,
+  filtres colonne+global, gestion des colonnes (afficher/masquer/réordonner/
+  redimensionner/épingler), densité, pagination « X–Y sur N », surlignage,
+  cases de sélection au survol + barre d'actions en masse configurable,
+  actions de ligne + débordement, lignes cliquables/extensibles, édition
+  en ligne avec annulation + toast, lignes de sous-total (TVA), vues
+  enregistrées en onglets, état persistant dans l'URL, virtualisation maison
+  (619 lignes), export CSV + crochet XLSX, repli mobile en cartes — démo au
+  /ui. NUANCE : le moteur est ADDITIF et n'est PAS encore branché sur les
+  écrans réels (c'est le Groupe J) ; le tri/filtre côté serveur et l'export
+  XLSX serveur sont exposés en COUTURE (props/callbacks) et seront câblés
+  au back-office lors du branchement par module — aucun endpoint backend
+  ajouté dans cette vague. RESTE OUVERT : Groupe I (shell/nav), Groupe J
+  (restyle par module), K/L/M/N/O/P. D2 et D4 restent GATÉS (décision
+  fondateur). M59 reste bloqué (upload du logo).

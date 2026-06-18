@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  Trash2, Plus, Settings, Search, Download, Inbox, Pencil, Bell,
+  Trash2, Plus, Settings, Search, Download, Inbox, Pencil, Bell, Save,
 } from 'lucide-react'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
@@ -20,7 +20,40 @@ import {
   Toaster, toast, Tag, Avatar, AvatarFallback, AvatarGroup, initials,
   DefinitionList, Tabs, TabsList, TabsTrigger, TabsContent,
   Accordion, AccordionItem, AccordionTrigger, AccordionContent, Progress,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem, SelectLabel,
+  Combobox, MultiSelect, DatePicker, DateRangePicker, TimePicker,
+  FileUpload,
+  Form, FormSection, FormField, FormActions, FormErrorSummary, useDirtyGuard,
 } from '../../ui'
+import { DataTableDemo } from './DataTableDemo'
+import {
+  runValidation, errorSummary, isDirty, required, email,
+} from '../../ui/form-utils'
+
+// Données de démonstration pour les sélecteurs G23.
+const VILLES = [
+  { value: 'casa', label: 'Casablanca' },
+  { value: 'rabat', label: 'Rabat' },
+  { value: 'marrakech', label: 'Marrakech' },
+  { value: 'tanger', label: 'Tanger' },
+  { value: 'agadir', label: 'Agadir' },
+  { value: 'fes', label: 'Fès', description: 'Région Fès-Meknès' },
+]
+const TAGS = [
+  { value: 'residentiel', label: 'Résidentiel' },
+  { value: 'industriel', label: 'Industriel' },
+  { value: 'agricole', label: 'Agricole' },
+  { value: 'pompage', label: 'Pompage solaire' },
+  { value: 'batterie', label: 'Avec batterie' },
+]
+// Recherche asynchrone simulée (états chargement/vide/erreur du Combobox).
+const searchVilles = (q) =>
+  new Promise((resolve) => {
+    setTimeout(() => {
+      const n = q.trim().toLowerCase()
+      resolve(VILLES.filter((v) => v.label.toLowerCase().includes(n)))
+    }, 350)
+  })
 
 function Section({ id, title, children }) {
   return (
@@ -36,6 +69,32 @@ export function UIShowcase() {
   const { density, setDensity } = useDensity()
   const [radio, setRadio] = useState('a')
   const [seg, setSeg] = useState('liste')
+
+  // G23 — sélecteurs
+  const [marche, setMarche] = useState('')
+  const [ville, setVille] = useState(null)
+  const [villeAsync, setVilleAsync] = useState(null)
+  const [tags, setTags] = useState(['residentiel'])
+  // G24 — dates / heure
+  const [date, setDate] = useState(null)
+  const [periode, setPeriode] = useState({ start: null, end: null })
+  const [heure, setHeure] = useState('09:00')
+  // G27 — formulaire piloté
+  const [formValues, setFormValues] = useState({ nom: '', email: '' })
+  const [formErrors, setFormErrors] = useState({})
+  const initialForm = { nom: '', email: '' }
+  const dirty = isDirty(initialForm, formValues)
+  useDirtyGuard(dirty)
+  const formRules = { nom: [required('Le nom est obligatoire.')], email: [required('L’e-mail est obligatoire.'), email()] }
+  const submitDemo = (e) => {
+    e.preventDefault()
+    const errs = runValidation(formValues, formRules)
+    setFormErrors(errs)
+    if (Object.keys(errs).length === 0) {
+      toast.success('Formulaire valide')
+      setFormValues(initialForm)
+    }
+  }
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -155,6 +214,91 @@ export function UIShowcase() {
                 { value: 'calendrier', label: 'Calendrier' },
               ]}
             />
+          </Section>
+
+          <Section id="selects" title="Sélecteurs (G23)">
+            <div className="grid w-64 gap-1.5">
+              <Label htmlFor="g23-select">Marché (Select)</Label>
+              <Select value={marche} onValueChange={setMarche}>
+                <SelectTrigger id="g23-select"><SelectValue placeholder="Choisir un marché…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Type d’installation</SelectLabel>
+                    <SelectItem value="residentiel">Résidentiel</SelectItem>
+                    <SelectItem value="industriel">Industriel / Commercial</SelectItem>
+                    <SelectItem value="agricole">Agricole (pompage)</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid w-64 gap-1.5">
+              <Label>Ville (Combobox local)</Label>
+              <Combobox options={VILLES} value={ville} onChange={setVille} placeholder="Sélectionner une ville…" />
+            </div>
+            <div className="grid w-64 gap-1.5">
+              <Label>Ville (Combobox async)</Label>
+              <Combobox onSearch={searchVilles} value={villeAsync} onChange={setVilleAsync} placeholder="Rechercher (async)…" emptyText="Aucune ville" />
+            </div>
+            <div className="grid w-64 gap-1.5">
+              <Label>Étiquettes (MultiSelect)</Label>
+              <MultiSelect options={TAGS} value={tags} onChange={setTags} placeholder="Choisir des étiquettes…" />
+            </div>
+          </Section>
+
+          <Section id="dates" title="Dates & heure (G24)">
+            <div className="grid w-56 gap-1.5">
+              <Label>Date de relance</Label>
+              <DatePicker value={date} onChange={setDate} />
+            </div>
+            <div className="grid w-72 gap-1.5">
+              <Label>Période</Label>
+              <DateRangePicker value={periode} onChange={setPeriode} />
+            </div>
+            <div className="grid w-40 gap-1.5">
+              <Label>Heure (HH:mm)</Label>
+              <TimePicker value={heure} onChange={setHeure} step={30} />
+            </div>
+          </Section>
+
+          <Section id="upload" title="Téléversement (G26)">
+            <div className="w-full max-w-md">
+              <FileUpload
+                accept="application/pdf,image/png,image/jpeg"
+                maxSize={10 * 1024 * 1024}
+                onFiles={(files) => toast.success(`${files[0].name} prêt à l’envoi`)}
+                onReject={(r) => toast.error(r[0].error)}
+                hint="Démo : aucun envoi réseau"
+              />
+            </div>
+          </Section>
+
+          <Section id="form" title="Système de formulaire (G27)">
+            <Form onSubmit={submitDemo} className="w-full max-w-lg">
+              <FormErrorSummary errors={errorSummary(formErrors, ['nom', 'email'])} />
+              <FormSection title="Coordonnées" description="Disposition label-au-dessus, validation inline.">
+                <FormField label="Nom" required htmlFor="nom" error={formErrors.nom}>
+                  <Input
+                    id="nom"
+                    value={formValues.nom}
+                    invalid={!!formErrors.nom}
+                    onChange={(e) => setFormValues((v) => ({ ...v, nom: e.target.value }))}
+                  />
+                </FormField>
+                <FormField label="E-mail" required htmlFor="email" error={formErrors.email} hint="Format : nom@domaine.ma">
+                  <Input
+                    id="email"
+                    value={formValues.email}
+                    invalid={!!formErrors.email}
+                    onChange={(e) => setFormValues((v) => ({ ...v, email: e.target.value }))}
+                  />
+                </FormField>
+              </FormSection>
+              <FormActions sticky={false}>
+                {dirty && <span className="mr-auto text-xs text-amber-600">Modifications non enregistrées</span>}
+                <Button type="button" variant="ghost" onClick={() => { setFormValues(initialForm); setFormErrors({}) }}>Annuler</Button>
+                <Button type="submit"><Save /> Enregistrer</Button>
+              </FormActions>
+            </Form>
           </Section>
 
           <Section id="overlays" title="Overlays">
@@ -278,6 +422,21 @@ export function UIShowcase() {
               ]}
             />
           </Section>
+
+          <section id="datatable" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Tableau de données (moteur DataTable — Groupe H)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Grille réutilisable : tri multi-colonnes, recherche surlignée, filtres,
+              colonnes (afficher/masquer/épingler/réordonner/redimensionner), densité,
+              sélection + barre d'actions groupées, actions de ligne, édition en place,
+              lignes dépliables, sous-totaux TVA, vues sauvegardées, pagination
+              « X–Y sur N », persistance URL, virtualisation et repli mobile en cartes.
+            </p>
+            <Separator className="my-3" />
+            <DataTableDemo />
+          </section>
         </div>
       </div>
     </TooltipProvider>
