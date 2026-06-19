@@ -138,7 +138,28 @@ export function canonicalPhoneMA(value) {
   return String(value).replace(/[^\d+]/g, '')
 }
 
+/**
+ * Normalise un numéro marocain au format wa.me « 212XXXXXXXXX », ou null si
+ * vide/inexploitable. Miroir exact de `normalize_ma_phone`
+ * (apps/ventes/utils/phone.py) : sert à VALIDER côté front avant d'appeler les
+ * endpoints WhatsApp (un numéro non normalisable → bouton désactivé, pas
+ * d'aller-retour 400).
+ */
+export function normalizeMaPhone(value) {
+  if (!value) return null
+  let digits = String(value).replace(/\D/g, '') // ne garde que les chiffres
+  if (!digits) return null
+  if (digits.startsWith('00')) digits = digits.slice(2) // préfixe international 00
+  let local
+  if (digits.startsWith('212')) local = digits.slice(3)
+  else if (digits.startsWith('0')) local = digits.slice(1)
+  else local = digits
+  local = local.replace(/^0+/, '')
+  if (!local) return null
+  return '212' + local
+}
+
 export default {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
 }

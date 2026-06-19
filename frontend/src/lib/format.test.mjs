@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -64,4 +64,19 @@ test('canonicalPhoneMA: forme de stockage/dédup', () => {
   assert.equal(canonicalPhoneMA('06 12-34 56 78'), '+212612345678')
   assert.equal(canonicalPhoneMA('0712345678'), '+212712345678')
   assert.equal(canonicalPhoneMA(''), '')
+})
+
+// L853 — miroir exact de normalize_ma_phone (apps/ventes/utils/phone.py) :
+// sert à valider/désactiver le bouton WhatsApp côté front.
+test('normalizeMaPhone: format wa.me 212XXXXXXXXX ou null', () => {
+  assert.equal(normalizeMaPhone('0612345678'), '212612345678')
+  assert.equal(normalizeMaPhone('+212612345678'), '212612345678')
+  assert.equal(normalizeMaPhone(' +212 (6) 12-34-56-78 '), '212612345678')
+  assert.equal(normalizeMaPhone('00212612345678'), '212612345678')
+  assert.equal(normalizeMaPhone('612345678'), '212612345678')
+  // vide / non normalisable → null (bouton désactivé)
+  assert.equal(normalizeMaPhone(''), null)
+  assert.equal(normalizeMaPhone(null), null)
+  assert.equal(normalizeMaPhone('   '), null)
+  assert.equal(normalizeMaPhone('abc'), null)
 })

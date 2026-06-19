@@ -14,7 +14,11 @@ import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
 import { CONVERSION_STAGE } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
-import { Button, Input } from '../../ui'
+import {
+  Button, Input,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '../../ui'
+import { normalizeMaPhone } from '../../lib/format'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
 // un appel direct au showroom. Le webhook du site impose 'site_web' de son côté.
@@ -145,6 +149,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // Envoyer par WhatsApp : sélection multiple de devis du lead.
   const [waSelected, setWaSelected] = useState(() => new Set())
   const [waBusy, setWaBusy] = useState(false)
+  // L851 — langue du message ('fr' par défaut, 'darija' au choix).
+  const [waLangue, setWaLangue] = useState('fr')
+  // L852 — aperçu du message avant ouverture de wa.me.
+  const [waPreview, setWaPreview] = useState(null) // { message, links, wa_url }
 
   const toggleWaSelect = (id) => setWaSelected(prev => {
     const next = new Set(prev)
@@ -153,9 +161,15 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   })
 
   const leadPhone = (liveLead?.whatsapp || liveLead?.telephone || '').trim()
+  // L853 — téléphone normalisable côté front (miroir de normalize_ma_phone) :
+  // un numéro inexploitable désactive le bouton, sans aller-retour 400.
+  const leadPhoneOk = !!normalizeMaPhone(leadPhone)
 
+  // L852 — construit le message côté serveur puis affiche l'aperçu (FR/Darija)
+  // + le(s) lien(s) public(s) avant d'ouvrir wa.me. Le POST consigne aussi
+  // l'action au chatter du lead (côté serveur, L856).
   const envoyerWhatsApp = async () => {
-    if (!leadPhone) return
+    if (!leadPhoneOk) return
     if (waSelected.size === 0) {
       alert('Sélectionnez au moins un devis.')
       return
@@ -164,13 +178,24 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     try {
       const res = await crmApi.whatsappDevis(lead.id, {
         devis_ids: Array.from(waSelected),
+        langue: waLangue,
       })
-      if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+      setWaPreview({
+        message: res.data?.message ?? '',
+        links: res.data?.links ?? [],
+        wa_url: res.data?.wa_url ?? '',
+      })
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(false)
     }
+  }
+
+  // Ouvre wa.me avec le message pré-rempli après confirmation de l'aperçu.
+  const ouvrirWhatsApp = () => {
+    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
+    setWaPreview(null)
   }
 
   // Doublons probables (fusion sans perte).
@@ -890,24 +915,71 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
                   <>
-                    <div style={{ margin: '8px 0', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ margin: '8px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <Button
                         type="button"
                         variant="success"
                         loading={waBusy}
-                        disabled={!leadPhone || waBusy || waSelected.size === 0}
-                        title={leadPhone
-                          ? 'Ouvrir WhatsApp avec le(s) devis sélectionné(s)'
-                          : 'Aucun numéro de téléphone'}
+                        disabled={!leadPhoneOk || waBusy || waSelected.size === 0}
+                        title={!leadPhone
+                          ? 'Aucun numéro de téléphone'
+                          : !leadPhoneOk
+                            ? 'Numéro invalide'
+                            : 'Préparer le message WhatsApp pour le(s) devis sélectionné(s)'}
                         onClick={envoyerWhatsApp}>
-                        🟢 Envoyer par WhatsApp{waSelected.size > 0 ? ` (${waSelected.size})` : ''}
+                        {waBusy ? 'Préparation…' : '🟢'} Envoyer par WhatsApp{waSelected.size > 0 ? ` (${waSelected.size})` : ''}
                       </Button>
+                      {/* L851 — choix de la langue du message (FR par défaut). */}
+                      <div role="group" aria-label="Langue du message WhatsApp" style={{ display: 'inline-flex', gap: 4 }}>
+                        {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
+                          <Button key={val} type="button" size="sm"
+                                  variant={waLangue === val ? 'default' : 'outline'}
+                                  aria-pressed={waLangue === val}
+                                  onClick={() => setWaLangue(val)}>
+                            {label}
+                          </Button>
+                        ))}
+                      </div>
                       {!leadPhone && (
-                        <span className="gen-hint" style={{ marginLeft: 8 }}>
-                          Aucun numéro de téléphone
-                        </span>
+                        <span className="gen-hint">Aucun numéro de téléphone</span>
+                      )}
+                      {leadPhone && !leadPhoneOk && (
+                        <span className="gen-hint">Numéro invalide</span>
                       )}
                     </div>
+                    {/* L852 — aperçu du message WhatsApp avant ouverture de wa.me. */}
+                    <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Aperçu du message WhatsApp</DialogTitle>
+                          <DialogDescription>
+                            {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
+                            {' '}— vérifiez le texte et le(s) lien(s), puis ouvrez WhatsApp.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                          background: 'var(--muted, #f4f4f5)', padding: 12, borderRadius: 8,
+                          fontFamily: 'inherit', fontSize: 13, margin: 0 }}>
+                          {waPreview?.message}
+                        </pre>
+                        {(waPreview?.links?.length ?? 0) > 0 && (
+                          <ul className="gen-hint" style={{ margin: '8px 0 0', paddingLeft: 16 }}>
+                            {waPreview.links.map(l => (
+                              <li key={l.devis_id ?? l.url}>{l.reference} : {l.url}</li>
+                            ))}
+                          </ul>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                          <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>
+                            Annuler
+                          </Button>
+                          <Button type="button" variant="success" disabled={!waPreview?.wa_url}
+                                  onClick={ouvrirWhatsApp}>
+                            🟢 Ouvrir WhatsApp
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                     {devisActionMsg && (
                       <p className="gen-hint" role="status" style={{ margin: '4px 0' }}>
                         {devisActionMsg}
