@@ -216,6 +216,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_tenant(serializer)
         company = self.request.user.company
         self._resolve_from_equipement(serializer)
+        # client est optionnel au niveau sérialiseur (peut venir de l'équipement) ;
+        # s'il n'a pas pu être résolu, on rétablit l'exigence ici.
+        if not serializer.validated_data.get('client'):
+            raise ValidationError({'client': 'Ce champ est obligatoire.'})
         date_ouverture = (
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())
