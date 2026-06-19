@@ -183,3 +183,64 @@ describe('pro-11 — l\'existant est strictement préservé', () => {
     expect(route).toContain("body.mountingplace === 'free' ? 'free' : 'building'");
   });
 });
+
+describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma consommation »)', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('la page expose un contrôle « Affiner ma consommation » + le panneau d\'affinage', () => {
+    expect(page).toContain('Affiner ma consommation');
+    expect(page).toContain('id="rp9-cons-window"');
+    expect(page).toContain('id="rp9-cons-toggle"');
+    expect(page).toContain('id="rp9-cons-panel"');
+  });
+
+  it('édition à la main : graphe de barres glissables + saisie numérique des 24 h', () => {
+    expect(page).toContain('id="rp9-cons-graph"'); // barres glissables
+    expect(page).toContain('id="rp9-cons-inputs"'); // saisie numérique (mobile / mouvement réduit)
+    expect(page).toContain('Recaler sur ma facture');
+    expect(page).toContain('id="rp9-cons-recal"');
+  });
+
+  it('calculateur d\'appareils : sélecteur, saisie clim (BTU) et voiture (kW/km)', () => {
+    expect(page).toContain('id="rp9-appl-kind"');
+    expect(page).toContain('id="rp9-appl-add"');
+    expect(page).toContain('id="rp9-ac-btu"'); // climatisation par BTU
+    expect(page).toContain('id="rp9-ac-eer"'); // ÷ EER
+    expect(page).toContain('id="rp9-ev-kw"'); // chargeur kW
+    expect(page).toContain('id="rp9-ev-km"'); // ou km/jour
+  });
+
+  it('synthèse : total conso, autoconsommation, économies plafonnées, batterie', () => {
+    expect(page).toContain('id="rp9-cons-total"');
+    expect(page).toContain('id="rp9-cons-self"');
+    expect(page).toContain('id="rp9-cons-savings"');
+    expect(page).toContain('id="rp9-cons-batt"');
+  });
+
+  it('le script branche la logique PURE applianceConsumption (jamais dupliquée)', () => {
+    expect(script).toContain("from '../lib/applianceConsumption'");
+    expect(script).toContain('composeConsumption(');
+    expect(script).toContain('savingsFromHourly(');
+    expect(script).toContain('batterySizing(');
+    expect(script).toContain('rescaleToDaily(');
+  });
+
+  it('les deux voies alimentent le MÊME moteur (économies + sizing existants)', () => {
+    // économies via le modèle billMAD existant (annualSavingsMad sous savingsFromHourly),
+    // sizing via le besoin existant (neededPanelsForTarget → renderActive).
+    expect(script).toContain('applyConsumptionToSizing');
+    expect(script).toContain('neededPanelsForTarget(');
+    expect(script).toContain('renderActive()');
+  });
+
+  it('« sur ma facture » vs « déjà compris » + recalage sont câblés', () => {
+    expect(script).toContain('data-appl-toggle'); // bascule onTop / inBill
+    expect(script).toContain("billing === 'onTop'");
+    expect(script).toContain('consHandEdited'); // override manuel suivi
+  });
+
+  it('un fichier de sources d\'appareils existe (typiques éditables, jamais inventés)', () => {
+    expect(existsSync(fileURLToPath(new URL('../APPLIANCES_NOTES.md', import.meta.url)))).toBe(true);
+  });
+});
