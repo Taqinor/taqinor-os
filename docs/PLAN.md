@@ -725,7 +725,7 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Achats] [L4] [ROUTINE] Ajouter un bouton "Tout recevoir" dans BcfDetail qui pré-remplit chaque saisie de réception au reste dû. Fait = un clic remplit toutes les colonnes "À recevoir" avec quantite_restante.
 [x] [Stock/Achats] [L9] [ROUTINE] Afficher la date de création/d'envoi des BCF dans la liste (la colonne Date montre date_commande souvent vide). Fait = la liste BCF affiche une date pertinente (commande sinon création) jamais "—" quand un BCF existe.
 [x] [Stock/Achats] [L13] [ROUTINE] Ajouter un compteur/onglet de BCF "envoyés non reçus" en attente de réception. Fait = la page BCF montre le nombre de commandes envoyées en attente, filtrable en un clic.
-[ ] [Stock/Achats] [L1] [ROUTINE] Afficher la référence du chantier source sur un BCF créé depuis un besoin matériel (la note contient "chantier <ref>" mais non mise en avant). Fait = un BCF issu d'un chantier affiche un lien/étiquette vers le chantier d'origine.
+[x] [Stock/Achats] [L1] [ROUTINE] Afficher la référence du chantier source sur un BCF créé depuis un besoin matériel (la note contient "chantier <ref>" mais non mise en avant). Fait = un BCF issu d'un chantier affiche un lien/étiquette vers le chantier d'origine.
 [x] [Stock/Achats] [L7] [ROUTINE] Confirmer avant d'envoyer un BCF dont une ligne a un prix d'achat à 0 (cas pompes/placeholder). Fait = envoyer un BCF avec ligne(s) à prix 0 demande une confirmation FR.
 
 #### Listes de prix fournisseur (multi-fournisseur)

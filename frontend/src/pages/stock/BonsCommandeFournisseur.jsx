@@ -173,6 +173,12 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const total = useMemo(() => totalAchat(lignes), [lignes])
   const reception = useMemo(() => avancementReception(bcf?.lignes ?? lignes), [bcf, lignes])
+  // Chantier source (BCF issu d'un besoin matériel) : la note contient
+  // « chantier <ref> » — on l'extrait pour la mettre en avant (728).
+  const chantierRef = useMemo(() => {
+    const m = (bcf?.note ?? note ?? '').match(/chantier\s+([A-Za-z0-9\-/]+)/i)
+    return m ? m[1] : null
+  }, [bcf, note])
 
   const setLigne = (idx, patch) =>
     setLignes((ls) => ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
@@ -300,6 +306,11 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             {isNew ? 'Nouveau bon de commande fournisseur'
               : `Bon de commande — ${bcf.reference ?? ''}`}
             {!isNew && <StatusPill status={statut} label={bcfStatutLabel(statut)} />}
+            {chantierRef && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-info/30 bg-info/10 px-2 py-0.5 text-xs font-normal text-info">
+                <Package className="size-3" /> Chantier {chantierRef}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
             Document <strong>interne</strong> : les prix d&apos;achat n&apos;apparaissent
