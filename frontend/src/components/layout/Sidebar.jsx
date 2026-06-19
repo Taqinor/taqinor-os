@@ -40,6 +40,7 @@ const I = {
   equipements:  <Ic><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></Ic>,
   sav:          <Ic><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6a2 2 0 1 0 2.8 2.8l6-6a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.1-2.1 2.6-2.6z"/></Ic>,
   agenda:       <Ic><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Ic>,
+  carte:        <Ic><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></Ic>,
   journal:      <Ic><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></Ic>,
 }
 
@@ -72,6 +73,7 @@ const NAV_SECTIONS = [
       { to: '/calendrier',           label: 'Calendrier',       icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          icon: I.clients,      roles: ['normal','responsable','admin'] },
       { to: '/crm/leads',            label: 'Leads',            icon: I.leads,        roles: ['normal','responsable','admin'] },
+      { to: '/carte',                label: 'Carte',            icon: I.carte,        roles: ['normal','responsable','admin'] },
       { to: '/crm/parrainage',       label: 'Parrainage',       icon: I.clients,      roles: ['normal','responsable','admin'] },
     ],
   },

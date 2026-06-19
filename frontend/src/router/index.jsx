@@ -44,6 +44,7 @@ const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEn
 const Journal = lazy(() => import('../pages/Journal'))
 const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
 const CalendarPage = lazy(() => import('../pages/CalendarPage'))
+const CartePage = lazy(() => import('../pages/CartePage'))
 const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
@@ -126,6 +127,7 @@ const router = createBrowserRouter([
   { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadsPage /></WithLayout> },
   { path: '/activites', loader: authLoader, element: <WithLayout><MesActivitesPage /></WithLayout> },
   { path: '/calendrier', loader: authLoader, element: <WithLayout><CalendarPage /></WithLayout> },
+  { path: '/carte', loader: authLoader, element: <WithLayout><CartePage /></WithLayout> },
   { path: '/crm/parrainage', loader: authLoader, element: <WithLayout><ParrainagePage /></WithLayout> },
 
   // Ventes
