@@ -23,6 +23,9 @@ import { BILL_RANGES } from '../src/lib/billRange';
 import { ROOF_TYPES, validateLead, runSimulation, buildLeadRecord, forwardLead, fireCapi, type LeadEnv } from '../src/lib/lead';
 import { whatsappLink, leadWhatsappText } from '../src/lib/whatsapp';
 import { REALISATIONS, CITIES } from '../src/lib/realisations';
+import { ui } from '../src/i18n/ui';
+
+const uiFr = ui.fr as Record<string, string>;
 
 // ───────────────────────── chemins & build ─────────────────────────
 const webRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -181,10 +184,17 @@ describe('inventaire des routes (sortie construite réelle)', () => {
 });
 
 describe('chaque page publique — contrat SEO rendu', () => {
+  // Locale attendue d'après le préfixe de l'URL (FR à la racine, EN sous /en/,
+  // AR sous /ar/ avec dir=rtl). W67 : le site est multilingue, l'attribut lang
+  // n'est donc plus universellement « fr ».
+  const expectedLang = (path: string): 'fr' | 'en' | 'ar' =>
+    path.startsWith('/en/') ? 'en' : path.startsWith('/ar/') ? 'ar' : 'fr';
+
   it.each(publicHtml.map(({ r }) => r.path))('%s rend sans erreur (HTML non vide)', (p) => {
     const { h } = publicHtml.find((x) => x.r.path === p)!;
     expect(h.length).toBeGreaterThan(500);
-    expect(h).toContain('<html lang="fr"');
+    expect(h).toContain(`<html lang="${expectedLang(p)}"`);
+    if (expectedLang(p) === 'ar') expect(h).toContain('dir="rtl"');
     expect(h).toContain('</html>');
   });
 
@@ -426,7 +436,11 @@ describe('le formulaire — structure 3 étapes & champs requis', () => {
 
   it('expose 3 étapes (fieldsets data-step) avec indicateur « Étape 1 sur 3 »', () => {
     for (const n of [1, 2, 3]) expect(form).toContain(`data-step="${n}"`);
-    expect(form).toContain('Étape 1 sur 3');
+    // W67 — l'indicateur de progression est désormais traduit (dictionnaire) ;
+    // le FR reste « Étape 1 sur 3 » à la racine. On vérifie le gabarit FR du
+    // dictionnaire (source de vérité) et son rendu attendu.
+    expect(uiFr['form.progress']).toBe('Étape {step} sur 3');
+    expect(uiFr['form.progress'].replace('{step}', '1')).toBe('Étape 1 sur 3');
   });
 
   it('exige nom, téléphone (+212/E.164), ville, type de toit, tranche de facture et consentement', () => {

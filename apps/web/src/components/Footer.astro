@@ -10,32 +10,41 @@ import Logo from './Logo.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { CITIES } from '../lib/realisations';
+import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+
+// Locale courante déduite de l'URL ; libellés via dictionnaire (repli FR).
+// Le rendu FR reste byte-identique : t() rend les libellés FR existants et
+// localizeNavHref('/x','fr') renvoie '/x' inchangé.
+const locale = getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+const L = (href: string) => localizeNavHref(href, locale);
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
 
 // Colonne Solutions — VRAIS liens vers chaque service (W29).
 const solutions = [
-  { href: '/résidentiel', label: 'Résidentiel' },
-  { href: '/professionnel', label: 'Professionnel' },
-  { href: '/pompage-solaire', label: 'Pompage solaire' },
-  { href: '/batteries-stockage', label: 'Batteries & stockage' },
-  { href: '/maintenance-monitoring', label: 'Maintenance & monitoring' },
-  { href: '/regularization-article-33', label: 'Régularisation Loi 82-21' },
+  { href: '/résidentiel', label: t('nav.residential') },
+  { href: '/professionnel', label: t('nav.professional') },
+  { href: '/pompage-solaire', label: t('nav.pumping') },
+  { href: '/batteries-stockage', label: t('nav.batteries') },
+  { href: '/maintenance-monitoring', label: t('nav.maintenance') },
+  { href: '/regularization-article-33', label: t('nav.regularization') },
 ];
 
 // Colonne Ressources (W29) + équipement & garanties (pages existantes liées
 // ailleurs sur le site, conservées ici pour le maillage).
 const ressources = [
-  { href: '/realisations', label: 'Réalisations' },
-  { href: '/guides', label: 'Guides' },
-  { href: '/faq', label: 'FAQ' },
-  { href: '/loi-82-21', label: 'Loi 82-21 expliquée' },
-  { href: '/pourquoi-taqinor', label: 'Pourquoi Taqinor' },
-  { href: '/financement', label: 'Financement & rentabilité' },
-  { href: '/marocains-du-monde', label: 'Marocains du monde' },
-  { href: '/à-propos', label: 'À propos' },
-  { href: '/équipement', label: 'Équipement' },
-  { href: '/garanties', label: 'Nos garanties' },
+  { href: '/realisations', label: t('nav.realisations') },
+  { href: '/guides', label: t('nav.guides') },
+  { href: '/faq', label: t('nav.faq') },
+  { href: '/loi-82-21', label: t('nav.law') },
+  { href: '/pourquoi-taqinor', label: t('nav.why') },
+  { href: '/financement', label: t('nav.financing') },
+  { href: '/marocains-du-monde', label: t('nav.mre') },
+  { href: '/à-propos', label: t('nav.about') },
+  { href: '/équipement', label: t('nav.equipment') },
+  { href: '/garanties', label: t('footer.guarantees') },
 ];
 
 const linkClass = 'transition-colors hover:text-white';
@@ -46,49 +55,49 @@ const linkClass = 'transition-colors hover:text-white';
     <div>
       <Logo size={22} theme="dark" />
       <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-        Installations solaires dimensionnées par l'ingénierie, conformes à la loi 82-21.
+        {t('footer.tagline')}
       </p>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-brass-300">Solutions</h2>
+      <h2 class="tech-label mb-4 text-brass-300">{t('nav.solutions')}</h2>
       <ul class="space-y-2 text-sm">
-        {solutions.map((s) => <li><a href={s.href} class={linkClass}>{s.label}</a></li>)}
-        <li><a href="/nos-solutions" class={linkClass}>Toutes nos solutions</a></li>
+        {solutions.map((s) => <li><a href={L(s.href)} class={linkClass}>{s.label}</a></li>)}
+        <li><a href={L('/nos-solutions')} class={linkClass}>{t('nav.allSolutions')}</a></li>
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-brass-300">Ressources</h2>
+      <h2 class="tech-label mb-4 text-brass-300">{t('nav.resources')}</h2>
       <ul class="space-y-2 text-sm">
-        {ressources.map((r) => <li><a href={r.href} class={linkClass}>{r.label}</a></li>)}
-        <li><a href="/contact" class={linkClass}>Contact</a></li>
+        {ressources.map((r) => <li><a href={L(r.href)} class={linkClass}>{r.label}</a></li>)}
+        <li><a href={L('/contact')} class={linkClass}>{t('footer.contactLink')}</a></li>
       </ul>
     </div>
     <div>
-      <h2 class="tech-label mb-4 text-brass-300">Contact</h2>
+      <h2 class="tech-label mb-4 text-brass-300">{t('footer.contact')}</h2>
       <ul class="space-y-2 text-sm">
-        <li><a href={`tel:${NAP.phone}`} class={linkClass}>{NAP.phoneDisplayIntl}</a></li>
-        <li><a href={`mailto:${NAP.email}`} class={linkClass}>{NAP.email}</a></li>
-        <li><a href={wa} rel="noopener" class={linkClass}>WhatsApp</a></li>
-        <li class="text-lune-soft">Zone d'intervention : {NAP.serviceArea.slice(0, -1).join(', ')} — tout le Maroc</li>
+        <li><a href={`tel:${NAP.phone}`} class={linkClass} dir="ltr">{NAP.phoneDisplayIntl}</a></li>
+        <li><a href={`mailto:${NAP.email}`} class={linkClass} dir="ltr">{NAP.email}</a></li>
+        <li><a href={wa} rel="noopener" class={linkClass}>{t('common.whatsapp')}</a></li>
+        <li class="text-lune-soft">{t('footer.serviceArea')} : {NAP.serviceArea.slice(0, -1).join(', ')} — {t('footer.allMorocco')}</li>
       </ul>
     </div>
   </div>
   <div class="border-t border-white/10 px-4 py-6">
     <div class="mx-auto max-w-6xl">
-      <h2 class="tech-label mb-3 text-brass-300">Installation solaire par ville</h2>
+      <h2 class="tech-label mb-3 text-brass-300">{t('footer.byCity')}</h2>
       <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-lune-soft">
         {CITIES.map((c) => (
-          <li><a href={`/installation-solaire-${c.slug}`} class={linkClass}>Installation solaire {c.intro}</a></li>
+          <li><a href={`/installation-solaire-${c.slug}`} class={linkClass}>{t('footer.byCityItem')} {c.intro}</a></li>
         ))}
       </ul>
     </div>
   </div>
   <div class="space-y-1.5 border-t border-white/10 px-4 py-5 text-center text-xs text-lune-faint">
-    <p>TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067</p>
+    <p>{t('footer.legalLine')}</p>
     <p>
-      © 2026 {NAP.name}. Tous droits réservés ·
-      <a href="/mentions-legales" class="underline underline-offset-2 transition-colors hover:text-white">Mentions légales</a> ·
-      <a href="/politique-de-confidentialite" class="underline underline-offset-2 transition-colors hover:text-white">Confidentialité</a>
+      © 2026 {NAP.name}. {t('footer.rights')} ·
+      <a href={L('/mentions-legales')} class="underline underline-offset-2 transition-colors hover:text-white">{t('footer.legal')}</a> ·
+      <a href={L('/politique-de-confidentialite')} class="underline underline-offset-2 transition-colors hover:text-white">{t('footer.privacy')}</a>
     </p>
   </div>
 </footer>
