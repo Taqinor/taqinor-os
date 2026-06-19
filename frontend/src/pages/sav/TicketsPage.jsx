@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
-  Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History,
+  Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
+  ShieldCheck, ExternalLink, Zap,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
@@ -16,6 +18,7 @@ import {
   EMPTY_TICKET_FILTERS,
   TICKET_STATUSES,
   TICKET_STATUS_LABELS,
+  TICKET_STATUS_COLORS,
   TICKET_TYPES,
   TICKET_PRIORITES,
   TICKET_PRIORITE_LABELS,
@@ -24,6 +27,10 @@ import {
   filterTickets,
   sortTickets,
   statusLabel,
+  isStatusTransitionAllowed,
+  ticketAgeDays,
+  ticketSlaLevel,
+  statusCounts,
 } from '../../features/sav/ticketStatuses'
 import {
   TooltipProvider,
@@ -37,6 +44,7 @@ import {
   Textarea,
   Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Segmented,
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
@@ -58,6 +66,38 @@ const formatDateFR = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
+const todayISO = () => new Date().toISOString().slice(0, 10)
+
+// L302/L11 — libellés FR des champs pour transformer une erreur DRF brute
+// ({champ: [raison]}) en message lisible « Échec : {champ} — {raison} », au lieu
+// d'un JSON.stringify illisible.
+const FIELD_LABELS_FR = {
+  statut: 'Statut', type: 'Type', priorite: 'Priorité',
+  description: 'Description', sous_garantie: 'Sous garantie',
+  equipement: 'Équipement', technicien_responsable: 'Technicien responsable',
+  date_resolution: 'Date de résolution', cout: 'Coût',
+  detail: 'Erreur', non_field_errors: 'Erreur', body: 'Note', motif: 'Motif',
+  produit: 'Produit', quantite: 'Quantité',
+}
+function frError(err, fallback = 'Action impossible.') {
+  if (!err) return fallback
+  const data = err?.response?.data ?? err
+  if (typeof data === 'string') return data
+  if (data && typeof data === 'object') {
+    const parts = []
+    for (const [field, raison] of Object.entries(data)) {
+      const label = FIELD_LABELS_FR[field] ?? field
+      const txt = Array.isArray(raison) ? raison.join(' ') : String(raison)
+      parts.push(field === 'detail' || field === 'non_field_errors'
+        ? txt : `Échec : ${label} — ${txt}`)
+    }
+    if (parts.length) return parts.join(' · ')
+  }
+  return fallback
+}
+
+// L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
+const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
 
 // Statut de ticket → ton StatusPill (cycle de vie ticketStatuses.js : couche
 // indépendante du funnel lead et des statuts de document). La couleur n'est
@@ -87,8 +127,24 @@ function PrioriteBadge({ value }) {
   return <Badge tone={PRIORITE_TONES[value] ?? 'neutral'}>{TICKET_PRIORITE_LABELS[value] ?? value}</Badge>
 }
 
+// L298/L6 — badge SLA/âge des tickets ouverts (calculé à la lecture, sans
+// scheduler). Couleur escaladée pour les ouverts en retard. Rien sur les autres.
+function TicketSlaBadge({ ticket }) {
+  const age = ticketAgeDays(ticket)
+  const level = ticketSlaLevel(ticket)
+  if (age == null
+      || !['nouveau', 'planifie', 'en_cours'].includes(ticket?.statut)
+      || ticket?.annule) return null
+  return (
+    <Badge tone={SLA_TONES[level]}>
+      <Clock className="size-3" aria-hidden="true" /> ouvert depuis {age} j
+    </Badge>
+  )
+}
+
 function TicketDetail({ ticket, onClose, onSaved }) {
   const dispatch = useDispatch()
+  const allTickets = useSelector((s) => s.tickets.items)
   const id = ticket.id
   const [current, setCurrent] = useState(ticket)
   const F = (k, d = '') => current?.[k] ?? d
@@ -119,8 +175,12 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   const [equipements, setEquipements] = useState([])
   const [users, setUsers] = useState([])
   const [interventions, setInterventions] = useState([])
-  const [interv, setInterv] = useState({ type_intervention: 'depannage', date_prevue: '', compte_rendu: '' })
+  // L316 — date prévue pré-remplie à aujourd'hui (éditable).
+  const [interv, setInterv] = useState(
+    { type_intervention: 'depannage', date_prevue: todayISO(), compte_rendu: '' })
   const [intervBusy, setIntervBusy] = useState(false)
+  // L303/L11 — surface les échecs autrefois silencieux (note/intervention/pièce).
+  const [actionError, setActionError] = useState(null)
 
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
@@ -133,6 +193,7 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   const [pieceBusy, setPieceBusy] = useState(false)
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [motif, setMotif] = useState('')
+  const [confirmVide, setConfirmVide] = useState(false) // L300 — confirmation motif vide
 
   const loadPieces = () => {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
@@ -168,11 +229,20 @@ function TicketDetail({ ticket, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
+  const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
+
   const save = async () => {
     setSaving(true)
     setSaveError(null)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
+      // L297/L3 — auto-tamponner la date de résolution quand le statut passe à
+      // resolu/cloture et qu'elle est encore vide.
+      let dateResolution = fields.date_resolution
+      if (!dateResolution && ['resolu', 'cloture'].includes(fields.statut)) {
+        dateResolution = todayISO()
+      }
       const data = {
         statut: fields.statut,
         type: fields.type,
@@ -181,7 +251,7 @@ function TicketDetail({ ticket, onClose, onSaved }) {
         sous_garantie: fields.sous_garantie,
         equipement: fields.equipement === '' ? null : fields.equipement,
         technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
-        date_resolution: nullable(fields.date_resolution),
+        date_resolution: nullable(dateResolution),
         cout: nullable(fields.cout),
       }
       const updated = await dispatch(updateTicket({ id, data })).unwrap()
@@ -190,7 +260,7 @@ function TicketDetail({ ticket, onClose, onSaved }) {
       toast.success('Ticket mis à jour')
       onSaved?.()
     } catch (err) {
-      setSaveError(typeof err === 'object' ? JSON.stringify(err) : String(err))
+      setSaveError(frError(err, 'Échec de la mise à jour.'))
     } finally {
       setSaving(false)
     }
@@ -199,16 +269,18 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   const postNote = async () => {
     const body = noteBody.trim()
     if (!body) return
+    setActionError(null)
     try {
       const r = await savApi.noterTicket(id, body)
       setHistorique((h) => [r.data, ...h])
       setNoteBody('')
-    } catch { /* silencieux */ }
+    } catch (err) { setActionError(frError(err, "Échec de l'ajout de la note.")) }
   }
 
   const addIntervention = async () => {
     if (!interv.type_intervention) return
     setIntervBusy(true)
+    setActionError(null)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
       await installationsApi.createIntervention({
@@ -218,15 +290,30 @@ function TicketDetail({ ticket, onClose, onSaved }) {
         date_prevue: nullable(interv.date_prevue),
         compte_rendu: nullable(interv.compte_rendu),
       })
-      setInterv({ type_intervention: 'depannage', date_prevue: '', compte_rendu: '' })
+      setInterv({ type_intervention: 'depannage', date_prevue: todayISO(), compte_rendu: '' })
       loadInterventions()
       loadHistorique()
-    } catch { /* silencieux */ } finally { setIntervBusy(false) }
+    } catch (err) {
+      setActionError(frError(err, "Échec de l'ajout de l'intervention."))
+    } finally { setIntervBusy(false) }
   }
 
   const addPiece = async () => {
     if (!pieceForm.produit) return
+    // L309/L7 — garde anti-survente : si on décrémente le stock et que la qté
+    // demandée dépasse le stock disponible, avertir avant le POST.
+    if (pieceForm.decrement) {
+      const pr = produits.find((p) => String(p.id) === String(pieceForm.produit))
+      const dispo = Number(pr?.quantite_stock ?? 0)
+      const demande = Number(pieceForm.quantite || '1')
+      if (Number.isFinite(demande) && demande > dispo) {
+        setActionError(
+          `Stock insuffisant : ${dispo} en stock pour ${demande} demandé(s).`)
+        return
+      }
+    }
     setPieceBusy(true)
+    setActionError(null)
     try {
       await savApi.addTicketPiece(id, {
         produit: pieceForm.produit,
@@ -236,16 +323,21 @@ function TicketDetail({ ticket, onClose, onSaved }) {
       setPieceForm({ produit: '', quantite: '1', decrement: false })
       loadPieces()
       loadHistorique()
-    } catch { /* silencieux */ } finally { setPieceBusy(false) }
+    } catch (err) {
+      setActionError(frError(err, "Échec de l'ajout de la pièce."))
+    } finally { setPieceBusy(false) }
   }
   const removePiece = async (pieceId) => {
+    setActionError(null)
     try {
       await savApi.removeTicketPiece(id, pieceId)
       loadPieces()
-    } catch { /* silencieux */ }
+      loadHistorique()
+    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) }
   }
 
   const annuler = async () => {
+    setActionError(null)
     try {
       await savApi.annulerTicket(id, motif)
       setAnnulerOpen(false)
@@ -253,26 +345,60 @@ function TicketDetail({ ticket, onClose, onSaved }) {
       await reloadAll()
       loadHistorique()
       onSaved?.()
-    } catch { /* silencieux */ }
+    } catch (err) { setActionError(frError(err, "Échec de l'annulation.")) }
   }
   const reactiver = async () => {
+    setActionError(null)
     try {
       await savApi.reactiverTicket(id)
       await reloadAll()
       loadHistorique()
       onSaved?.()
-    } catch { /* silencieux */ }
+    } catch (err) { setActionError(frError(err, 'Échec de la réactivation.')) }
   }
   const telechargerRapport = async () => {
+    // L314/L11 — échec PDF affiché via le bloc d'erreur in-modal standard.
+    setActionError(null)
     try {
       const r = await savApi.rapportPdf(id)
       downloadBlob(r.data, `rapport-intervention-${current.reference || id}.pdf`)
-    } catch {
-      toast.error('Rapport indisponible.')
+    } catch (err) {
+      setActionError(frError(err, 'Rapport indisponible.'))
     }
   }
 
+  // L308 — options de technicien. Si /users/ renvoie vide (endpoint admin),
+  // on alimente le dropdown depuis les techniciens déjà assignés sur les
+  // tickets (id + nom) afin que les non-admins puissent quand même assigner.
+  const technicienOptions = useMemo(() => {
+    if (users.length) return users.map((u) => ({ id: u.id, label: u.username }))
+    const seen = new Map()
+    for (const t of allTickets ?? []) {
+      if (t.technicien_responsable && t.technicien_nom
+          && !seen.has(String(t.technicien_responsable))) {
+        seen.set(String(t.technicien_responsable),
+          { id: t.technicien_responsable, label: t.technicien_nom })
+      }
+    }
+    // Garder l'assigné courant même s'il n'apparaît pas ailleurs.
+    if (current.technicien_responsable && current.technicien_nom
+        && !seen.has(String(current.technicien_responsable))) {
+      seen.set(String(current.technicien_responsable),
+        { id: current.technicien_responsable, label: current.technicien_nom })
+    }
+    return [...seen.values()]
+  }, [users, allTickets, current.technicien_responsable, current.technicien_nom])
+
   const linkedEquip = equipements.find((e) => String(e.id) === String(fields.equipement))
+  // L307/L1 — quand un équipement est lié et porte une date de fin de garantie,
+  // la garantie effective est CALCULÉE. On la calcule à partir de l'équipement
+  // sélectionné pour griser et remplir le champ manuel à la bonne valeur.
+  const garantieCalculee = useMemo(() => {
+    if (!fields.equipement || !linkedEquip) return null
+    if (!linkedEquip.date_fin_garantie) return null
+    const fin = new Date(`${linkedEquip.date_fin_garantie}T00:00:00`)
+    return new Date() < fin ? 'oui' : 'non'
+  }, [fields.equipement, linkedEquip])
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -282,10 +408,24 @@ function TicketDetail({ ticket, onClose, onSaved }) {
             Ticket SAV — {current.reference ?? ''}
             <StatutPill statut={current.statut} />
             {current.annule && <Badge tone="danger">Annulé</Badge>}
+            <TicketSlaBadge ticket={current} />
           </SheetTitle>
           <SheetDescription>
             Suivi, équipement, interventions, pièces et historique du ticket.
           </SheetDescription>
+          {/* L299/L1 — compte-à-rebours de garantie de l'équipement lié. */}
+          {current.equipement_fin_garantie && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ShieldCheck className="size-3.5" aria-hidden="true" />
+              {(() => {
+                const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
+                const jours = Math.round((fin - new Date()) / 86400000)
+                return jours >= 0
+                  ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
+                  : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
+              })()}
+            </span>
+          )}
         </SheetHeader>
 
         {current.annule && (
@@ -306,7 +446,15 @@ function TicketDetail({ ticket, onClose, onSaved }) {
               <Input value={current.client_nom ?? '—'} readOnly />
             </FormField>
             <FormField label="Chantier">
-              <Input value={current.installation_reference ?? '—'} readOnly />
+              <div className="flex items-center gap-2">
+                <Input value={current.installation_reference ?? '—'} readOnly />
+                {current.installation && (
+                  // L312 — lien vers la page des chantiers.
+                  <Button asChild variant="ghost" size="sm" title="Ouvrir les chantiers">
+                    <Link to="/chantiers"><ExternalLink /></Link>
+                  </Button>
+                )}
+              </div>
             </FormField>
             <FormField label="Ouvert le">
               <Input value={formatDateFR(current.date_ouverture)} readOnly />
@@ -315,11 +463,23 @@ function TicketDetail({ ticket, onClose, onSaved }) {
               <Select value={fields.statut} onValueChange={(v) => set('statut', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TICKET_STATUSES.map((k) => (
-                    <SelectItem key={k} value={k}>{TICKET_STATUS_LABELS[k]}</SelectItem>
-                  ))}
+                  {TICKET_STATUSES.map((k) => {
+                    // L296 — signaler les sauts hors ordre depuis le statut actuel.
+                    const horsOrdre = !isStatusTransitionAllowed(current.statut, k)
+                    return (
+                      <SelectItem key={k} value={k}>
+                        {TICKET_STATUS_LABELS[k]}{horsOrdre ? ' (saut d’étape)' : ''}
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
+              {statutSautHorsOrdre && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle className="size-3" aria-hidden="true" />
+                  Saut d&apos;étape : passez par les statuts intermédiaires (ex. En cours).
+                </p>
+              )}
             </FormField>
             <FormField label="Type">
               <Select value={fields.type} onValueChange={(v) => set('type', v)}>
@@ -360,9 +520,17 @@ function TicketDetail({ ticket, onClose, onSaved }) {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="Sous garantie (si aucun équipement)" fullWidth>
-              <Select value={fields.sous_garantie} onValueChange={(v) => set('sous_garantie', v)}
-                      disabled={!!fields.equipement}>
+            <FormField
+              label={fields.equipement
+                ? 'Sous garantie (calculée — verrouillée)'
+                : 'Sous garantie (si aucun équipement)'}
+              fullWidth
+            >
+              <Select
+                value={fields.equipement ? (garantieCalculee || fields.sous_garantie) : fields.sous_garantie}
+                onValueChange={(v) => set('sous_garantie', v)}
+                disabled={!!fields.equipement}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {SOUS_GARANTIE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
@@ -378,6 +546,12 @@ function TicketDetail({ ticket, onClose, onSaved }) {
                     : "Garantie de l'équipement non renseignée."}
                 </span>
               )}
+              {current.equipement && (
+                // L312 — lien vers la page des équipements (parc).
+                <Button asChild variant="ghost" size="sm" title="Ouvrir le parc d'équipements">
+                  <Link to="/equipements"><ExternalLink /> Équipement</Link>
+                </Button>
+              )}
             </div>
           </FormSection>
 
@@ -389,7 +563,9 @@ function TicketDetail({ ticket, onClose, onSaved }) {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Non assigné —</SelectItem>
-                  {users.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.username}</SelectItem>)}
+                  {technicienOptions.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </FormField>
@@ -561,6 +737,16 @@ function TicketDetail({ ticket, onClose, onSaved }) {
           </div>
         </section>
 
+        {/* L303/L311/L314/L11 — échecs d'action (note/intervention/pièce/PDF)
+            surfacés ici plutôt qu'avalés silencieusement. */}
+        {actionError && (
+          <div role="alert"
+               className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+            <span>{actionError}</span>
+          </div>
+        )}
+
         <FormActions sticky={false}>
           {!current.annule && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
@@ -585,12 +771,22 @@ function TicketDetail({ ticket, onClose, onSaved }) {
             <div className="grid gap-1.5">
               <label htmlFor="motif-annulation" className="text-sm font-medium">Motif d'annulation</label>
               <Textarea id="motif-annulation" rows={2} value={motif}
-                        onChange={(e) => setMotif(e.target.value)}
-                        placeholder="Motif (optionnel)…" />
+                        onChange={(e) => { setMotif(e.target.value); setConfirmVide(false) }}
+                        placeholder="Motif (recommandé)…" />
+              {/* L300 — motif vide : demander confirmation au lieu d'accepter en silence. */}
+              {confirmVide && (
+                <p className="flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle className="size-3" aria-hidden="true" />
+                  Aucun motif saisi. Cliquez de nouveau pour annuler sans motif.
+                </p>
+              )}
             </div>
             <AlertDialogFooter>
-              <AlertDialogCancel>Revenir</AlertDialogCancel>
-              <AlertDialogAction onClick={annuler}>Annuler le ticket</AlertDialogAction>
+              <AlertDialogCancel onClick={() => setConfirmVide(false)}>Revenir</AlertDialogCancel>
+              <AlertDialogAction onClick={(e) => {
+                if (!motif.trim() && !confirmVide) { e.preventDefault(); setConfirmVide(true); return }
+                annuler()
+              }}>Annuler le ticket</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -599,11 +795,47 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   )
 }
 
+// L295 — colonne Kanban (un statut) : cartes ticket cliquables, couleur de
+// statut (TICKET_STATUS_COLORS) en bandeau de tête. Ordre funnel garanti par
+// l'appelant (TICKET_STATUSES). Couleur jamais le seul signal — le libellé reste.
+function KanbanColumn({ statut, tickets, onSelect }) {
+  return (
+    <div className="flex w-64 shrink-0 flex-col gap-2">
+      <div className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm font-semibold"
+           style={{ background: `${TICKET_STATUS_COLORS[statut]}1a`, color: TICKET_STATUS_COLORS[statut] }}>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full" style={{ background: TICKET_STATUS_COLORS[statut] }} />
+          {statusLabel(statut)}
+        </span>
+        <span className="rounded-full bg-card px-1.5 text-xs text-muted-foreground">{tickets.length}</span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {tickets.length === 0 && <p className="px-1 text-xs text-muted-foreground">—</p>}
+        {tickets.map((t) => (
+          <button key={t.id} type="button" onClick={() => onSelect(t)}
+                  className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-2.5 text-left text-sm hover:border-primary/40">
+            <span className="flex items-center gap-1.5 font-medium">
+              {t.reference}
+              {t.annule && <Badge tone="danger">Annulé</Badge>}
+            </span>
+            <span className="text-xs text-muted-foreground">{t.client_nom ?? '—'}</span>
+            <span className="flex flex-wrap items-center gap-1">
+              <PrioriteBadge value={t.priorite} />
+              <TicketSlaBadge ticket={t} />
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function TicketsPage() {
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector((s) => s.tickets)
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
   const [selected, setSelected] = useState(null)
+  const [view, setView] = useState('table') // L295 — 'table' | 'kanban'
 
   const reload = () => dispatch(fetchTickets())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -613,13 +845,37 @@ export default function TicketsPage() {
   const technicienOptions = useMemo(
     () => [...new Set(items.map((it) => it.technicien_nom).filter(Boolean))].sort(),
     [items])
+  // L317 — pour l'assignation en lot : techniciens (id+nom) disponibles.
+  const technicienById = useMemo(() => {
+    const m = new Map()
+    for (const it of items) {
+      if (it.technicien_responsable && it.technicien_nom) {
+        m.set(String(it.technicien_responsable), it.technicien_nom)
+      }
+    }
+    return m
+  }, [items])
 
   const rows = useMemo(
     () => sortTickets(filterTickets(items, filters), 'statut', 'asc'),
     [items, filters])
 
+  // L306/L314 — comptes par statut (ordre funnel) sur le jeu filtré.
+  const counts = useMemo(() => statusCounts(rows), [rows])
+
   const hasFilters = filters.q || filters.statut || filters.type || filters.priorite
     || filters.technicien || filters.sous_garantie || filters.ouvert !== 'ouverts'
+    || filters.annule || filters.urgent_garantie
+
+  // L317 — PATCH en lot (technicien ou statut) sur les tickets sélectionnés.
+  const bulkPatch = async (selectedKeys, data, clear) => {
+    try {
+      await Promise.all(selectedKeys.map((id) => dispatch(updateTicket({ id, data })).unwrap()))
+      toast.success('Tickets mis à jour')
+      clear?.()
+      reload()
+    } catch { toast.error('Mise à jour groupée impossible.') }
+  }
 
   const columns = useMemo(() => [
     {
@@ -643,6 +899,20 @@ export default function TicketsPage() {
       searchable: false,
       cell: (_v, row) => <StatutPill statut={row.statut} />,
       exportValue: (row) => statusLabel(row.statut),
+    },
+    {
+      // L298 — colonne SLA/âge (badge escaladé pour les ouverts en retard).
+      id: 'sla',
+      header: 'Âge',
+      width: 130,
+      searchable: false,
+      sortable: false,
+      cell: (_v, row) => <TicketSlaBadge ticket={row} />,
+      exportValue: (row) => {
+        const age = ticketAgeDays(row)
+        return age != null && ['nouveau', 'planifie', 'en_cours'].includes(row.statut) && !row.annule
+          ? `${age} j` : '—'
+      },
     },
     { id: 'type', header: 'Type', width: 110, accessor: (r) => r.type_display ?? r.type },
     {
@@ -673,12 +943,40 @@ export default function TicketsPage() {
               {rows.length} ticket{rows.length > 1 ? 's' : ''}
             </p>
           </div>
-          <Button variant="outline" size="sm"
-                  onClick={() => importApi.exportList('tickets', rows.map((r) => r.id))
-                    .then((r) => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
-            <Download /> Exporter Excel
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* L295 — bascule Table / Kanban. */}
+            <Segmented
+              size="sm"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'table', label: 'Table' },
+                { value: 'kanban', label: 'Kanban' },
+              ]}
+            />
+            <Button variant="outline" size="sm"
+                    onClick={() => importApi.exportList('tickets', rows.map((r) => r.id))
+                      .then((r) => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
+              <Download /> Exporter Excel
+            </Button>
+          </div>
         </header>
+
+        {/* L306/L314 — rangée de comptes par statut (ordre funnel). */}
+        {!loading && !error && (
+          <div className="flex flex-wrap gap-2">
+            {counts.map((c) => (
+              <button key={c.key} type="button"
+                      onClick={() => setF('statut', filters.statut === c.key ? '' : c.key)}
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        filters.statut === c.key ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
+                <span className="size-2 rounded-full" style={{ background: TICKET_STATUS_COLORS[c.key] }} />
+                {c.label}
+                <span className="font-semibold">{c.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── Filtres ── */}
         <div className="flex flex-wrap items-center gap-2">
@@ -686,6 +984,11 @@ export default function TicketsPage() {
             <Input placeholder="Rechercher (référence, client, chantier, description)…"
                    value={filters.q} onChange={(e) => setF('q', e.target.value)} />
           </div>
+          {/* L305 — puce rapide « urgent & sous garantie ». */}
+          <Button variant={filters.urgent_garantie ? 'default' : 'outline'} size="sm"
+                  onClick={() => setF('urgent_garantie', !filters.urgent_garantie)}>
+            <Zap /> Urgent & sous garantie
+          </Button>
           <Select value={filters.statut || '__all'}
                   onValueChange={(v) => setF('statut', v === '__all' ? '' : v)}>
             <SelectTrigger className="w-auto min-w-[130px]"><SelectValue placeholder="Tous statuts" /></SelectTrigger>
@@ -735,6 +1038,16 @@ export default function TicketsPage() {
               <SelectItem value="tous">Tous (incl. clôturés/annulés)</SelectItem>
             </SelectContent>
           </Select>
+          {/* L304 — filtre d'annulation (le backend supporte ?annule=only|sans). */}
+          <Select value={filters.annule || '__all'}
+                  onValueChange={(v) => setF('annule', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[150px]"><SelectValue placeholder="Annulés (tous)" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Annulés (tous)</SelectItem>
+              <SelectItem value="only">Annulés seulement</SelectItem>
+              <SelectItem value="sans">Sans annulés</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {loading ? (
@@ -749,26 +1062,52 @@ export default function TicketsPage() {
             action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
           />
         ) : rows.length === 0 ? (
+          // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
           <EmptyState
             icon={TicketIcon}
-            title="Aucun ticket"
+            title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
             description={hasFilters
-              ? 'Aucun ticket ne correspond à vos filtres.'
-              : "Aucun ticket. Ouvrez-en un depuis la fiche d'un chantier."}
+              ? 'Aucun ticket ne correspond aux filtres.'
+              : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
             action={hasFilters
               ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
               : undefined}
           />
+        ) : view === 'kanban' ? (
+          // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {TICKET_STATUSES.map((k) => (
+              <KanbanColumn key={k} statut={k}
+                            tickets={rows.filter((r) => r.statut === k)}
+                            onSelect={setSelected} />
+            ))}
+          </div>
         ) : (
           <DataTable
             data={rows}
             columns={columns}
             getRowId={(row) => row.id}
             searchable={false}
+            selectable
             onRowClick={(row) => setSelected(row)}
             exportName="tickets"
             emptyTitle="Aucun ticket"
             emptyDescription="Aucun ticket ne correspond à votre recherche."
+            bulkActions={(selRows, selKeys, clear) => [
+              // L317 — assignation technicien en lot.
+              ...[...technicienById.entries()].map(([tid, nom]) => ({
+                id: `tech-${tid}`,
+                label: `Assigner à ${nom}`,
+                icon: Wrench,
+                onClick: () => bulkPatch(selKeys, { technicien_responsable: tid }, clear),
+              })),
+              // L317 — changement de statut en lot.
+              ...TICKET_STATUSES.map((k) => ({
+                id: `statut-${k}`,
+                label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
+                onClick: () => bulkPatch(selKeys, { statut: k }, clear),
+              })),
+            ]}
           />
         )}
 
