@@ -1,13 +1,22 @@
 // Onglet « Messages & relances » de la page Paramètres (niveaux de relance,
 // modèles WhatsApp FR/Darija). Restylé sur le système de design (@/ui) ;
 // champs, libellés et comportement identiques.
-import { Check, Plus, Trash2 } from 'lucide-react'
+import { Check, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { Card, CardContent, Input, Textarea, Button, IconButton } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 
+// L774 — valeurs d'exemple pour l'aperçu rendu d'un modèle WhatsApp.
+const SAMPLE = {
+  civilite: 'M.', nom: 'Alami', reference: 'DEV-2026-0001',
+  lien: 'https://taqinor.ma/p/exemple', n: '2',
+}
+function renderPreview(corps) {
+  return (corps || '').replace(/\{(\w+)\}/g, (m, k) => (k in SAMPLE ? SAMPLE[k] : m))
+}
+
 export default function MessagesSection({
   niveaux, setNiveau, saveNiveaux, niveauxSaved, addNiveau, delNiveau, seedNiveaux,
-  messages, setMsgField, saveMessage, msgSavedCle,
+  messages, setMsgField, saveMessage, resetMessage, msgSavedCle,
 }) {
   return (
     <>
@@ -105,13 +114,31 @@ export default function MessagesSection({
                           value={m.corps_darija}
                           onChange={e => setMsgField(m.cle, 'corps_darija', e.target.value)} />
               </Field>
-              <Button type="button" size="sm" className="mt-0.5"
-                      variant={msgSavedCle === m.cle ? 'success' : 'default'}
-                      onClick={() => saveMessage(m)}>
-                {msgSavedCle === m.cle ? (
-                  <><Check className="size-3.5" aria-hidden="true" /> Enregistré</>
-                ) : 'Enregistrer'}
-              </Button>
+              {/* L774 — aperçu rendu avec valeurs d'exemple substituées. */}
+              <div className="mt-1 rounded-md border border-dashed border-border bg-muted/40 p-2">
+                <div className="mb-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Aperçu (exemple)
+                </div>
+                <p className="whitespace-pre-wrap text-[11.5px] text-foreground">
+                  {renderPreview(m.corps_darija || m.corps_fr)}
+                </p>
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                <Button type="button" size="sm"
+                        variant={msgSavedCle === m.cle ? 'success' : 'default'}
+                        onClick={() => saveMessage(m)}>
+                  {msgSavedCle === m.cle ? (
+                    <><Check className="size-3.5" aria-hidden="true" /> Enregistré</>
+                  ) : 'Enregistrer'}
+                </Button>
+                {/* L776 — réinitialiser ce modèle au texte par défaut. */}
+                {resetMessage && (
+                  <Button type="button" size="sm" variant="outline"
+                          onClick={() => resetMessage(m)}>
+                    <RotateCcw className="size-3.5" aria-hidden="true" /> Réinitialiser au modèle par défaut
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
           {messages.length === 0 && (

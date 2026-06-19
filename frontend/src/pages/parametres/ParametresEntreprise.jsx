@@ -358,6 +358,19 @@ export default function ParametresEntreprise() {
       alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     }
   }
+  // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
+  const resetMessage = async (m) => {
+    if (!window.confirm(`Réinitialiser le message « ${m.label} » au modèle par défaut ?`)) return
+    try {
+      const r = await parametresApi.saveMessage({ cle: m.cle, reset: true })
+      setMessages(ms => ms.map(x => (x.cle === m.cle
+        ? { ...x, corps_fr: r.data.corps_fr, corps_darija: r.data.corps_darija } : x)))
+      setMsgSavedCle(m.cle)
+      setTimeout(() => setMsgSavedCle(null), 2500)
+    } catch (e) {
+      alert(e?.response?.data?.detail ?? 'Réinitialisation impossible.')
+    }
+  }
 
   const addTag = async () => {
     const nom = newTag.trim()
@@ -626,7 +639,7 @@ export default function ParametresEntreprise() {
     niveaux, setNiveau, saveNiveaux, niveauxSaved, addNiveau, delNiveau, seedNiveaux,
     tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
     motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
-    messages, setMsgField, saveMessage, msgSavedCle,
+    messages, setMsgField, saveMessage, resetMessage, msgSavedCle,
     canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal, archiveCanal,
     refLoading,
     typesItv, newType, setNewType, addType, renameType, delType,
