@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
   Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
-  ShieldCheck, ExternalLink, Zap,
+  ShieldCheck, ExternalLink, Zap, ChevronRight,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
@@ -98,6 +98,21 @@ function frError(err, fallback = 'Action impossible.') {
 
 // L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
 const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
+
+// L313 — section repliable (usage terrain/mobile). Utilise <details> natif :
+// ouverte par défaut, le résumé fait office d'en-tête d'accordéon cliquable.
+function CollapsibleSection({ icon: Icon, title, children }) {
+  return (
+    <details open className="group flex flex-col gap-3 [&[open]>summary>svg.chevron]:rotate-90">
+      <summary className="flex cursor-pointer list-none items-center gap-2 font-display text-base font-semibold text-foreground">
+        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
+        <span className="flex-1">{title}</span>
+        <ChevronRight className="chevron size-4 rotate-0 text-muted-foreground transition-transform" aria-hidden="true" />
+      </summary>
+      <div className="flex flex-col gap-3 pt-2">{children}</div>
+    </details>
+  )
+}
 
 // Statut de ticket → ton StatusPill (cycle de vie ticketStatuses.js : couche
 // indépendante du funnel lead et des statuts de document). La couleur n'est
@@ -591,11 +606,8 @@ function TicketDetail({ ticket, onClose, onSaved }) {
           <AttachmentsPanel model="sav.ticket" id={id} />
         </section>
 
-        {/* ── Interventions ── */}
-        <section className="flex flex-col gap-3">
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold text-foreground">
-            <Wrench className="size-4 text-muted-foreground" /> Interventions
-          </h3>
+        {/* ── Interventions (L313 — repliable) ── */}
+        <CollapsibleSection icon={Wrench} title="Interventions">
           {interventions.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucune intervention rattachée.</p>
           ) : (
@@ -640,13 +652,10 @@ function TicketDetail({ ticket, onClose, onSaved }) {
               <Plus /> Ajouter une intervention
             </Button>
           </div>
-        </section>
+        </CollapsibleSection>
 
-        {/* ── Pièces consommées (N46) ── */}
-        <section className="flex flex-col gap-3">
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold text-foreground">
-            <Wrench className="size-4 text-muted-foreground" /> Pièces consommées
-          </h3>
+        {/* ── Pièces consommées (N46) — L313 repliable ── */}
+        <CollapsibleSection icon={Wrench} title="Pièces consommées">
           {pieces.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucune pièce enregistrée.</p>
           ) : (
@@ -695,13 +704,10 @@ function TicketDetail({ ticket, onClose, onSaved }) {
               <Plus /> Ajouter la pièce
             </Button>
           </div>
-        </section>
+        </CollapsibleSection>
 
-        {/* ── Historique (chatter) ── */}
-        <section className="flex flex-col gap-3">
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold text-foreground">
-            <History className="size-4 text-muted-foreground" /> Historique
-          </h3>
+        {/* ── Historique (chatter) — L313 repliable ── */}
+        <CollapsibleSection icon={History} title="Historique">
           <div className="flex gap-2">
             <Input placeholder="Écrire une note…" value={noteBody}
                    onChange={(e) => setNoteBody(e.target.value)}
@@ -735,7 +741,7 @@ function TicketDetail({ ticket, onClose, onSaved }) {
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
 
         {/* L303/L311/L314/L11 — échecs d'action (note/intervention/pièce/PDF)
             surfacés ici plutôt qu'avalés silencieusement. */}
