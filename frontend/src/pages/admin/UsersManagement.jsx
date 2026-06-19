@@ -28,6 +28,19 @@ const roleTone = (nom) => {
   return 'success'
 }
 
+// Libellé d'un rôle dans un sélecteur : nom + étiquette Système / Personnalisé.
+const roleOptionLabel = (r) =>
+  `${r.nom} ${r.est_systeme ? '(Système)' : '(Personnalisé)'}`
+
+// Un rôle « admin » est celui qui octroie roles_gerer (ou nommé Administrateur /
+// Directeur). Sert à garder un rôle admin au propriétaire protégé.
+const isAdminRole = (r) => {
+  if (!r) return false
+  if (Array.isArray(r.permissions) && r.permissions.includes('roles_gerer')) return true
+  const n = (r.nom || '').toLowerCase()
+  return n.includes('admin') || n.includes('directeur')
+}
+
 export default function UsersManagement() {
   const currentUsername = useSelector(s => s.auth.user?.username)
   const [users, setUsers] = useState([])
@@ -65,6 +78,14 @@ export default function UsersManagement() {
     if (editForm.password && editForm.password !== editForm.password2) {
       setEditError('Les deux mots de passe ne correspondent pas.')
       return
+    }
+    // Garde : le propriétaire protégé doit garder un rôle administrateur.
+    if (editUser.is_protected) {
+      const chosen = roles.find(r => String(r.id) === String(editForm.role))
+      if (!isAdminRole(chosen)) {
+        setEditError('Le propriétaire protégé doit conserver un rôle administrateur.')
+        return
+      }
     }
     setEditSaving(true)
     setEditError(null)
@@ -225,7 +246,7 @@ export default function UsersManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       {roles.map(r => (
-                        <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>
+                        <SelectItem key={r.id} value={String(r.id)}>{roleOptionLabel(r)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -424,14 +445,27 @@ export default function UsersManagement() {
                         <SelectValue placeholder="—" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">—</SelectItem>
-                        {roles.map(r => (
-                          <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>
+                        {/* Propriétaire protégé : pas d'option « Aucun rôle » et
+                            seuls les rôles admin sont proposés (il doit garder un
+                            accès administrateur). */}
+                        {!editUser.is_protected && <SelectItem value="__none__">—</SelectItem>}
+                        {(editUser.is_protected ? roles.filter(isAdminRole) : roles).map(r => (
+                          <SelectItem key={r.id} value={String(r.id)}>{roleOptionLabel(r)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </FormField>
                 </FormSection>
+
+                {editUser.is_protected && (
+                  <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                    <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      Propriétaire protégé : ce compte doit toujours conserver un
+                      rôle administrateur. Le rôle ne peut pas être retiré.
+                    </span>
+                  </p>
+                )}
 
                 <label className="flex items-center gap-2.5 text-sm text-foreground">
                   <Switch
