@@ -77,17 +77,20 @@ function StageTable({ title, rows, keyField, labelField }) {
       <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </div>
-      <table className="data-table">
-        <tbody>
-          {rows.map((s) => (
-            <tr key={s[keyField]}>
-              <td>{s[labelField]}</td>
-              <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(s.count)}</td>
-              <td className="ta-right font-semibold tabular-nums">{dh(s.valeur)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* L878 — table scrollable dans sa carte (pas de scroll horizontal de page sur 375px). */}
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <tbody>
+            {rows.map((s) => (
+              <tr key={s[keyField]}>
+                <td>{s[labelField]}</td>
+                <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(s.count)}</td>
+                <td className="ta-right font-semibold tabular-nums">{dh(s.valeur)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -135,17 +138,20 @@ function PipelineSection() {
                 <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Pertes par motif
                 </div>
-                <table className="data-table">
-                  <tbody>
-                    {p.perdus_par_motif.map((m) => (
-                      <tr key={m.motif}>
-                        <td>{m.motif}</td>
-                        <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(m.count)}</td>
-                        <td className="ta-right tabular-nums">{dh(m.valeur)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {/* L878 — table scrollable dans sa carte (pas de scroll horizontal de page sur 375px). */}
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <tbody>
+                      {p.perdus_par_motif.map((m) => (
+                        <tr key={m.motif}>
+                          <td>{m.motif}</td>
+                          <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(m.count)}</td>
+                          <td className="ta-right tabular-nums">{dh(m.valeur)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
