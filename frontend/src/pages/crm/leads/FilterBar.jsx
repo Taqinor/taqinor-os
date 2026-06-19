@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Search, SlidersHorizontal } from 'lucide-react'
 import {
   EMPTY_FILTERS,
-  CANAL_LABELS,
   PRIORITE_LABELS,
   STAGE_LABELS,
   PIPELINE_STAGES,
   TYPE_INSTALLATION_LABELS,
   tagList,
 } from '../../../features/crm/stages'
+import useCanaux from '../../../features/crm/useCanaux'
 import {
   Input, Button, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -39,6 +39,8 @@ function useIsMobile() {
 // Barre de recherche/filtres partagée par les quatre vues (façon Odoo).
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
 export default function FilterBar({ filters, setFilters, leads }) {
+  // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
+  const { options: canalOptions } = useCanaux()
   const owners = useMemo(() => {
     const set = new Set()
     for (const l of leads ?? []) {
@@ -129,8 +131,8 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>Tous les canaux</SelectItem>
-          {Object.entries(CANAL_LABELS).map(([k, v]) => (
-            <SelectItem key={k} value={k}>{v}</SelectItem>
+          {canalOptions.map(({ value, label }) => (
+            <SelectItem key={value} value={value}>{label}</SelectItem>
           ))}
         </SelectContent>
       </Select>
