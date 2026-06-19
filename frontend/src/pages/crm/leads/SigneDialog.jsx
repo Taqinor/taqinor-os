@@ -31,6 +31,23 @@ function selectableDevis(list) {
   )
 }
 
+// Devis le plus PERTINENT à présélectionner : le plus récent ENVOYÉ ; à défaut
+// d'un envoyé, celui au total le plus élevé. Ne mute pas la liste.
+function preselectDevis(list) {
+  if (!list || !list.length) return null
+  const total = (d) => {
+    const n = parseFloat(d.total_affiche ?? d.total_ttc)
+    return Number.isFinite(n) ? n : 0
+  }
+  const envoyes = list.filter((d) => d.statut === 'envoye')
+  if (envoyes.length) {
+    return [...envoyes].sort(
+      (a, b) => new Date(b.date_creation ?? 0) - new Date(a.date_creation ?? 0),
+    )[0]
+  }
+  return [...list].sort((a, b) => total(b) - total(a))[0]
+}
+
 function fmtMAD(value) {
   const n = parseFloat(value)
   return Number.isFinite(n)
@@ -40,6 +57,9 @@ function fmtMAD(value) {
 export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const [loading, setLoading] = useState(true)
   const [devisList, setDevisList] = useState([])
+  // Nombre TOTAL de devis du lead (avant filtrage) : distingue « aucun devis »
+  // de « aucun devis sélectionnable » (que des refusés/inactifs).
+  const [totalDevisCount, setTotalDevisCount] = useState(0)
   const [devisId, setDevisId] = useState('')
   // Choix explicite de l'option par l'utilisateur ('' = pas encore choisi) ;
   // l'option effective est dérivée (choix explicite, sinon celle déjà retenue
@@ -56,9 +76,14 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     ventesApi.getDevis({ lead: lead.id })
       .then((r) => {
         if (!alive) return
-        const list = selectableDevis(r.data.results ?? r.data)
+        const all = r.data.results ?? r.data
+        setTotalDevisCount((all ?? []).length)
+        const list = selectableDevis(all)
         setDevisList(list)
-        if (list.length) setDevisId(String(list[0].id))
+        // Présélection du devis le plus pertinent (envoyé récent, sinon total
+        // le plus élevé) au lieu du premier renvoyé par l'API.
+        const best = preselectDevis(list)
+        if (best) setDevisId(String(best.id))
       })
       .catch(() => {
         if (alive) setError('Impossible de charger les devis de ce lead.')
@@ -78,6 +103,13 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     if (!selected) return
     if (twoOptions && !option) {
       setError("Précisez l'option choisie par le client.")
+      return
+    }
+    // La date d'acceptation se propage en date de signature du chantier : une
+    // date dans le futur demande une confirmation explicite avant d'enregistrer.
+    const today = new Date().toISOString().slice(0, 10)
+    if (date > today
+        && !window.confirm('Date d\'acceptation dans le futur — confirmer ?')) {
       return
     }
     setBusy(true)
@@ -109,14 +141,30 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
 
           {!loading && devisList.length === 0 && (
             <div className="sd-empty" role="alert">
-              <p className="sd-empty-head">
-                <FileWarning className="size-4 shrink-0" aria-hidden="true" />
-                <strong>{leadNom}</strong> n'a aucun devis.
-              </p>
-              <p>
-                Créez ou sélectionnez d'abord un devis avant de passer ce lead
-                en « Signé ». L'étape ne sera pas modifiée.
-              </p>
+              {totalDevisCount === 0 ? (
+                <>
+                  <p className="sd-empty-head">
+                    <FileWarning className="size-4 shrink-0" aria-hidden="true" />
+                    <strong>{leadNom}</strong> n'a aucun devis.
+                  </p>
+                  <p>
+                    Créez ou sélectionnez d'abord un devis avant de passer ce
+                    lead en « Signé ». L'étape ne sera pas modifiée.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="sd-empty-head">
+                    <FileWarning className="size-4 shrink-0" aria-hidden="true" />
+                    Tous les devis sont refusés.
+                  </p>
+                  <p>
+                    <strong>{leadNom}</strong> n'a que des devis refusés —
+                    créez ou rouvrez un devis avant de passer en « Signé ».
+                    L'étape ne sera pas modifiée.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
