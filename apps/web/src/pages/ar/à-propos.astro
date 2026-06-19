@@ -1,0 +1,163 @@
+---
+/**
+ * AR — About / Our approach (W67, RTL). Faithful Arabic translation of
+ * /à-propos ; the founder pedigree (doctor-engineer, 10+ years R&D at Huawei,
+ * Ericsson and STMicroelectronics) and tier-1 brand names kept EXACT. Internal
+ * links via localizeNavHref. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const etapes = [
+  {
+    n: '01',
+    title: 'نقرأ السطح والفاتورة',
+    body: 'المساحة المفيدة، التوجيه، الظل، الاستهلاك الفعلي: هذه المعطيات الأربعة تحدّد القدرة والمعدات. نكتفي بقراءتها واستخلاص المقاس الصحيح. التشخيص والدراسة بـ 0 درهم.',
+  },
+  {
+    n: '02',
+    title: 'المؤسّس يوقّع الدراسة',
+    body: 'قبل أي طلبية، المؤسّس — دكتور مهندس، أكثر من 10 سنوات بحث وتطوير — يعيد قراءة المقاس ويصادق عليه شخصياً. الدراسة التي تخرج من هنا دافع عنها شخص يتحمّل مسؤولية الرقم.',
+  },
+  {
+    n: '03',
+    title: 'نركّب، والملف بين أيدينا',
+    body: 'علامات الصف الأول فقط، مركَّبة مع ملفها التقني الكامل: مخططات أحادية الخط، حساب الكوابل، الحمايات، التشغيل. أوراشنا بالدار البيضاء والجديدة والنواصر حقيقية وتُزار عند الطلب.',
+  },
+  {
+    n: '04',
+    title: 'العدّاد يأخذ المشعل',
+    body: 'بمجرد التشغيل، يقرأ Deye Cloud الإنتاج باستمرار ويحتفظ الزبون بولوجه — البرهان يحلّ محلّ الوعد. وبالموازاة، يُستكمَل ملف القانون 82-21: تصريح أو تسوية مُضمَّنة.',
+  },
+];
+---
+
+<Layout
+  title="من نحن — المؤسّس، دكتور مهندس، وراء كل دراسة | Taqinor"
+  description="مؤسّس تاكينور دكتور مهندس، قضى أكثر من عشر سنوات في البحث والتطوير لدى Huawei و Ericsson و STMicroelectronics. يصادق شخصياً على كل دراسة قبل أي طلبية معدات. إليك لماذا توجّه مهندس إلى الطاقة الشمسية، وما يغيّره ذلك بالنسبة لك."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'من نحن' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">المؤسّس</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">دكتور مهندس يصادق على كل دراسة، يدوياً</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          قضى مؤسّس تاكينور أكثر من عشر سنوات في البحث والتطوير لدى
+          <strong class="text-white">Huawei و Ericsson و STMicroelectronics</strong>. غادر ذلك
+          العالم نحو الطاقة الشمسية لأنه رأى، في كل مكان، الانعكاس نفسه: بيع طقم قبل إنجاز الحساب.
+          هنا، يُعكَس الترتيب — وهو من يوقّع الحساب.
+        </p>
+      </div>
+    </section>
+
+    <!-- المؤسّس — معاييره، لا سيرة ذاتية -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">مسار مهندس</p>
+        <h2 class="display v2-section-title mt-5">عشر سنوات من البحث والتطوير، في خدمة سطحك</h2>
+        <p class="v2-lead mt-5 text-encre-soft">
+          المؤسّس دكتور مهندس، قاد أكثر من عشر سنوات من البحث والتطوير لدى
+          <strong class="text-encre">Huawei و Ericsson و STMicroelectronics</strong>. ثلاث مؤسسات
+          لا يُتَّخذ فيها قرار تقني بالحدس: بل يُقاس، ويُتحقَّق منه، ويُدافَع عنه بالأرقام. وهذا
+          الانضباط بالضبط هو ما يطبّقه اليوم على تركيبة شمسية — وهي موضوع أبسط بكثير، لكن اقتصادها
+          يتوقف مع ذلك على بضع معطيات كثيراً ما يُهمَل حسابها.
+        </p>
+        <p class="mt-5 text-encre-soft">
+          عملياً، <strong class="text-encre">يصادق شخصياً على كل دراسة قبل طلب أي مرجع واحد</strong>.
+          القدرة المعتمدة، اختيار العاكس، جدوى البطارية: لا شيء يقرّره بائع مستعجل أو يُنسَخ من طقم.
+          كل شيء ينطلق من فاتورتك وسطحك، وكل شيء يحسمه شخص مهنته، منذ عشرين سنة، قراءة هذا النوع من
+          الحساب. هذا التوقيع هو ما يفصل المقاس عن التقدير الجزافي.
+        </p>
+        <p class="mt-5 text-encre-soft">
+          لماذا يترك مهندس بحثاً وتطويراً متقدّماً نحو الطاقة الشمسية بالمغرب؟ لأن الفجوة هناك صارت
+          غير محتملة: أصل يُلزِم الزبون لخمس وعشرين سنة، يُباع في ظهيرة كما يُباع جهاز كهرومنزلي.
+          الطاقة الشمسية أولاً مسألة قياس — كم تستهلك، ومتى، وعلى أي مساحة، وبأي ظل — وهذه المسألة
+          يعرف المهندس حلّها. تاكينور موجودة لتعامل كل سطح كملف تقني، لا كعملية بيع.
+        </p>
+        <p class="mt-5 max-w-xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          هذه الصرامة نفسها تقودنا أحياناً إلى نصحك بالعدول عن الطاقة الشمسية، حين لا تتبع الأرقام
+          ملمحك. المهندس لا يُؤجَر لوضع المعدات: بل ليحدّد المقاس بدقة، أو يقول لا.
+        </p>
+      </div>
+    </section>
+
+    <!-- المنهج — الدراسة أولاً، الورش ثانياً -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">المنهج</p>
+        <h2 class="display v2-section-title mt-5 text-white">أربع مراحل، والترتيب غير قابل للتفاوض</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          المنطق نفسه يجري من أول اتصال إلى متابعة الإنتاج. الحساب قبل عرض الثمن، عرض الثمن قبل
+          التركيب، القياس بعد التركيب: تبديل هذه المراحل عودة إلى الطقم الذي نسعى تحديداً لتجنّبه.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {etapes.map((e, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl" dir="ltr">{e.n}</p>
+              <h3 class="display mt-2 text-2xl text-white">{e.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{e.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- معاييرنا، باختصار + إحالة إلى «لماذا» -->
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">ما يُنتجه المنهج</p>
+          <h2 class="display v2-section-title mt-5 text-white">نفس الاشتراط، مترجَماً إلى أربعة التزامات</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            قناعة المؤسّس لا تبقى على هذه الصفحة: تُقرأ في الاختيارات الملموسة لكل ورش — معدات الصف
+            الأول، متابعة Deye Cloud بولوج للزبون، ملف القانون 82-21 مُستكمَل، تركيبات يمكن زيارتها.
+            تريد هذه الفروق مفصّلة، نقطة بنقطة؟ هذا موضوع صفحة <strong class="text-white">لماذا تاكينور</strong>.
+          </p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href={L('/pourquoi-taqinor')} class="bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">لماذا تاكينور →</a>
+            <a href={L('/realisations')} class="border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا →</a>
+          </div>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
+          <div class="v2-rise" style="--v2-i:0">
+            <dd class="font-display text-xl font-bold text-white">دكتور مهندس</dd>
+            <dt class="tech-label mt-2 text-lune-faint">+10 سنوات خبرة بحث وتطوير — كل دراسة مُصادَق عليها</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:1">
+            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dt class="tech-label mt-2 text-lune-faint">إنتاج مقيس، ولوج للزبون مُضمَّن</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="font-display text-xl font-bold text-white">Tier-1 only</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:3">
+            <dd class="font-display text-xl font-bold text-white">القانون 82-21</dd>
+            <dt class="tech-label mt-2 text-lune-faint">تصريح وتسوية، من البداية إلى النهاية</dt>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <CtaBand title="ضع المؤسّس على سطحك: الدراسة مجانية." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

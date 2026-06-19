@@ -12,7 +12,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { ui } from '../src/i18n/ui';
 
+const uiFr = ui.fr as Record<string, string>;
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const index = read('../src/pages/index.astro');
 const form = read('../src/components/DiagnosticForm.astro');
@@ -177,8 +179,10 @@ describe('FROZEN — le comportement du formulaire est inchangé (classes seules
 
   it('les 3 étapes (fieldset data-step) et le texte de soumission sont intacts', () => {
     for (const n of [1, 2, 3]) expect(form).toContain(`data-step="${n}"`);
-    expect(form).toContain('Recevoir mon étude sur WhatsApp');
-    expect(form).toContain('Étape 1 sur 3');
+    // W67 — les libellés visibles du formulaire viennent du dictionnaire (clés
+    // form.*) ; le FR reste byte-identique. On vérifie la source de vérité FR.
+    expect(uiFr['form.submit']).toBe('Recevoir mon étude sur WhatsApp');
+    expect(uiFr['form.progress'].replace('{step}', '1')).toBe('Étape 1 sur 3');
   });
 
   it('le script de progression (bg-azur-600/100) reste piloté tel quel', () => {

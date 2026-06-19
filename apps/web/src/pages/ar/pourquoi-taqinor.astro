@@ -1,0 +1,131 @@
+---
+/**
+ * AR — Why Taqinor (W67, RTL). Faithful Arabic translation of /pourquoi-taqinor ;
+ * no new figure or claim (43.48 kWc, 25 years, 0 MAD, 11 kW, 10–25 years,
+ * 9 June 2026 exact, Latin digits). Internal links via localizeNavHref. FR
+ * untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const piliers = [
+  {
+    k: '01',
+    title: 'ننطلق من فاتورتك، لا من كاطالوݣ',
+    body: 'تُستنتج القدرة من استهلاكك الفعلي وسطحك — المساحة المفيدة، التوجيه، الظل. ما لم يبرّر هذا الحساب مرجعاً، لا نركّبه. التشخيص والدراسة بـ 0 درهم؛ والمؤسّس هو من يوقّعهما (انظر «من نحن»).',
+    href: '/à-propos',
+    link: 'المؤسّس والمنهج',
+  },
+  {
+    k: '02',
+    title: 'أرقام مقروءة من العدّاد، لا من مطوية',
+    body: 'كل تركيبة موصولة بـ Deye Cloud: إنتاج في الزمن الحقيقي، تنبيهات تلقائية، ولوج للزبون مُضمَّن. حين نذكر رقم إنتاج، فهو من عدّاد حقيقي — لا من إسقاط مطوية.',
+    href: '/realisations',
+    link: 'انظر إنجازاتنا',
+  },
+  {
+    k: '03',
+    title: 'ملف القانون 82-21، مُعدّ ومُودَع',
+    body: 'تصريح (تحت 11 kW في الجهد المنخفض)، اتفاق ربط أو ترخيص: نقرأ حالتك، نحدّد النظام ونودِع الملف — بما في ذلك تسوية التركيبات القائمة عبر المادة 33. القانون سارٍ منذ 9 يونيو 2026.',
+    href: '/loi-82-21',
+    link: 'حدّد نظامي',
+  },
+  {
+    k: '04',
+    title: 'لائحة قصيرة من علامات الصف الأول',
+    body: 'Canadian Solar، JA Solar، Deye، Huawei، Dyness — مصدرها موزّعون رسميون بالمغرب، ضمانات قابلة للتفعيل محلياً. خمسة أسماء، لا معدات مجهولة: يغطّي الضمان من 10 إلى 25 سنة حسب المكوّن.',
+    href: '/équipement',
+    link: 'انظر المعدات',
+  },
+];
+---
+
+<Layout
+  title="لماذا تاكينور — ما يميّزنا، نقطة بنقطة | Taqinor"
+  description="أربعة فروق ملموسة: تحديد المقاس مستنتَج من فاتورتك، إنتاج مقروء على Deye Cloud، ملف القانون 82-21 مُعدّ ومُودَع، ولائحة قصيرة من علامات الصف الأول مضمونة من 10 إلى 25 سنة. تركيبات حقيقية، يمكن زيارتها عند الطلب."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'لماذا تاكينور' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">لماذا نحن</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">ما يميّزنا، نقطة بنقطة</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          كثير من المركّبين يقولون الشيء نفسه. إليك أربعة فروق يمكنك التحقق منها بنفسك: من أين تأتي
+          القدرة المقترحة، من أين تأتي أرقام إنتاجنا، من يتولّى ملفك التنظيمي، وما الموجود فعلاً على
+          السطح. أما الشخص وراء المنهج فهو في صفحة
+          <a href={L('/à-propos')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">من نحن</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- الركائز -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2" data-stagger>
+        {piliers.map((p, i) => (
+          <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <p class="fig lum text-3xl" dir="ltr">{p.k}</p>
+            <h2 class="display mt-2 text-2xl text-white">{p.title}</h2>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.body}</p>
+            <a href={L(p.href)} class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">{p.link} →</a>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- البرهان بدل الوعود -->
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">اذهب وعاينها</p>
+          <h2 class="display v2-section-title mt-5 text-white">تركيبات حقيقية، تُزار عند الطلب</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            الدار البيضاء، الجديدة، النواصر: هذه التركيبات تشتغل بالفعل، وإنتاجها يمرّ على Deye Cloud.
+            على سؤال «هل يعمل فعلاً؟» نجيب بعنوان، لا بحجج بيع. اطلب الزيارة.
+          </p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href={L('/realisations')} class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">انظر إنجازاتنا</a>
+            <a href={L('/à-propos')} class="inline-block border border-white/40 px-7 py-3.5 text-base font-bold text-white transition-colors hover:border-white hover:bg-white/10">المؤسّس والمنهج →</a>
+          </div>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
+          <div class="v2-rise" style="--v2-i:0">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>43,48 kWc</dd>
+            <dt class="tech-label mt-2 text-lune-faint">مركَّبة — الدار البيضاء، الجديدة، النواصر</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:1">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>25 ans</dd>
+            <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>0 MAD</dd>
+            <dt class="tech-label mt-2 text-lune-faint">الدراسة والتشخيص</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:3">
+            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dt class="tech-label mt-2 text-lune-faint">إنتاج مقيس، ولوج للزبون مُضمَّن</dt>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <CtaBand title="احكم علينا بالحساب: الدراسة مجانية." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

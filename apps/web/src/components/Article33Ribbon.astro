@@ -1,13 +1,21 @@
 ---
 // Ruban Article 33 — régime EN VIGUEUR depuis le 9 juin 2026.
 // Pas de compte à rebours, pas de date butoir imprimée (fin de fenêtre
-// en attente de confirmation juridique).
+// en attente de confirmation juridique). W67 : libellés traduits via le
+// dictionnaire (repli FR → rendu FR inchangé) ; le lien reste vers la page
+// FR /regularization-article-33 (localizeNavHref retombe sur le FR).
+import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+const href = localizeNavHref('/regularization-article-33', locale);
 ---
 
 <a
-  href="/regularization-article-33"
+  href={href}
   class="block border-b border-white/10 bg-nuit-800 px-4 py-2.5 text-center text-sm font-medium text-lune transition-colors hover:text-white"
 >
-  <span class="tech-label mr-3 inline-block bg-brass-400 px-2 py-0.5 text-azur-950">Loi 82-21</span>
-  Régime en vigueur depuis le 9 juin 2026 — installations existantes : régularisez maintenant →
+  <span class="tech-label me-3 inline-block bg-brass-400 px-2 py-0.5 text-azur-950">{t('ribbon.badge')}</span>
+  {t('ribbon.text')}
 </a>

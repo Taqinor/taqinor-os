@@ -10,7 +10,14 @@
  */
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
 
+// Le texte WhatsApp pré-rempli reste FR (il atteint l'équipe FR). Seuls le
+// libellé visible et le lien Diagnostic sont localisés (FR = inchangé).
+const locale = getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+const diagHref = localizeNavHref('/contact', locale) + '#simulateur';
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 ---
 
@@ -29,9 +36,9 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
     </a>
     <a
       id="sticky-diag"
-      href="/contact#simulateur"
+      href={diagHref}
       class="flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
-    >Diagnostic gratuit</a>
+    >{t('cta.stickyDiag')}</a>
   </div>
 </div>
 

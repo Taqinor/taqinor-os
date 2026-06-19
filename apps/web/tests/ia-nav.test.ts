@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { ui } from '../src/i18n/ui';
+
+const uiFr = ui.fr as Record<string, string>;
+
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
 const header = read('../src/components/Header.astro');
@@ -28,8 +32,10 @@ const RESSOURCES = ['/guides', '/faq', '/loi-82-21', '/pourquoi-taqinor', '/fina
 
 describe('W28 — en-tête : nav primaire + déroulants accessibles', () => {
   it('les deux déclencheurs sont de vrais liens vers leur hub (repli sans-JS)', () => {
-    expect(header).toContain('href="/nos-solutions"'); // Solutions → hub
-    expect(header).toContain('href="/guides"'); // Ressources → hub guides
+    // W67 — les href sont localisés via L('/x') (FR = chemin inchangé) ; on
+    // vérifie donc le chemin racine référencé, pas la forme href littérale.
+    expect(header).toContain("L('/nos-solutions')"); // Solutions → hub
+    expect(header).toContain("L('/guides')"); // Ressources → hub guides
     expect(header).toContain('data-dropdown');
     expect(header).toContain('aria-haspopup="true"');
   });
@@ -43,7 +49,8 @@ describe('W28 — en-tête : nav primaire + déroulants accessibles', () => {
   });
 
   it('À propos reste en nav primaire', () => {
-    expect(header).toContain('href="/à-propos"');
+    // W67 — lien localisé via L('/à-propos') (FR = '/à-propos' inchangé).
+    expect(header).toContain("L('/à-propos')");
   });
 
   it('accessibilité : révélation au focus (sans JS) + Échap referme (JS)', () => {
@@ -55,8 +62,11 @@ describe('W28 — en-tête : nav primaire + déroulants accessibles', () => {
 
   it('l’explainer Loi 82-21 sort de la nav de 1er niveau (plus de lien primaire « Loi 82-21 »)', () => {
     // Présent — mais uniquement comme item Ressources « Loi 82-21 expliquée ».
+    // W67 — le libellé vient désormais du dictionnaire (clé nav.law), dont la
+    // valeur FR reste « Loi 82-21 expliquée ».
     expect(header).toContain('/loi-82-21');
-    expect(header).toContain("label: 'Loi 82-21 expliquée'");
+    expect(header).toContain("t('nav.law')");
+    expect(uiFr['nav.law']).toBe('Loi 82-21 expliquée');
     // L’ancien lien primaire dont le libellé rendu était « Loi 82-21 » n’existe plus.
     expect(header).not.toMatch(/>Loi 82-21</);
   });
@@ -74,7 +84,8 @@ describe('W29 — pied de page : Solutions/Ressources en VRAIS liens', () => {
   });
 
   it('le hub solutions et les villes sont liés', () => {
-    expect(footer).toContain('href="/nos-solutions"');
+    // W67 — lien hub localisé via L('/nos-solutions') (FR inchangé).
+    expect(footer).toContain("L('/nos-solutions')");
     expect(footer).toContain('installation-solaire-');
   });
 

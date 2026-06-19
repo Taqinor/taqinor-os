@@ -1,0 +1,116 @@
+---
+/**
+ * AR — Our warranties (W67, RTL). Faithful Arabic translation of /garanties ;
+ * EVERY figure (12/25/10/20/2 years, 84.8 %) kept EXACT in Latin digits. No
+ * invented SLA. Internal links use localizeNavHref (FR fallback). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const warranties = [
+  { item: 'الألواح الكهروضوئية (المنتج)', years: '12 ans' },
+  { item: 'الألواح الكهروضوئية (الأداء)', years: '25 ans', note: '≥ 84,8 % من القدرة الأولية' },
+  { item: 'العاكسات (Deye، Huawei)', years: '10 ans' },
+  { item: 'بطاريات Dyness LFP', years: '10 ans' },
+  { item: 'الهيكل من الفولاذ المجلفن', years: '20 ans' },
+  { item: 'التركيب واليد العاملة لتاكينور', years: '2 ans' },
+];
+
+const engagements = [
+  {
+    title: 'ننظر إلى منحناك، لا إلى منحانا فقط',
+    body: 'كل تركيبة ترفع بياناتها إلى Deye Cloud: إنتاج في الزمن الحقيقي، سجلات، تنبيهات تلقائية. تتلقّى ولوجك الشخصي عبر التطبيق المحمول — ترى تماماً ما نراه، يوماً بعد يوم.',
+  },
+  {
+    title: 'نحن من يرصد الخلل، لا أنت',
+    body: 'نُبقي عيناً على كامل الأسطول المركَّب. حين ينطلق تنبيه، يصلنا — الفكرة أن نتحرك على انحراف قبل أن تلاحظ أي شيء في بيتك.',
+  },
+  {
+    title: 'الملف يبقى بين يديك',
+    body: 'عند التسليم، تغادر بكل شيء: مخططات أحادية الخط، حساب الكوابل، لائحة الحمايات، مسطرة التشغيل وولوج مراقبة Deye Cloud. ما يكفي لاستدعاء أي تقني، يوم تشاء.',
+  },
+];
+---
+
+<Layout
+  title="ضماناتنا — ما الذي يُغطّى، ولكم من السنوات | Taqinor"
+  description="تركيبة تاكينور تلتزم على المدى الطويل: 25 سنة أداء و12 سنة منتج على الألواح (≥ 84.8 % من القدرة عند 25 سنة)، 10 سنوات للعاكسات والبطاريات، 20 سنة للهيكل، سنتان للتركيب. ومراقبة ترصد الخلل قبلك، على Deye Cloud."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'ضماناتنا' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">التزامات تعاقدية</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">ما نلتزم به</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          الضمان لا قيمة له إلا إذا كان مكتوباً وقابلاً للتفعيل. ضماناتنا كذلك، مكوّناً بمكوّن، من
+          سنتين إلى 25 سنة — والذي يهم فعلاً في استثمار يمتد 25 سنة هو الأداء: ينبغي لألواحك أن تُعيد
+          <strong class="text-white">84.8 % على الأقل من قدرتها عند 25 سنة</strong>. الجدول أدناه
+          لا يخفي أي سطر.
+        </p>
+      </div>
+    </section>
+
+    <!-- جدول الضمانات -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">مدد الضمان</p>
+        <h2 class="display v2-section-title mt-5">كل مكوّن يحمل ضمانه</h2>
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {warranties.map((w, i) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
+              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir="ltr" data-tally>{w.years}</span>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-6 max-w-xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          التفصيل الذي يغيّر كل شيء: هذه العلامات من الصف الأول مصدرها موزّعون رسميون بالمغرب. الضمان
+          لا قيمة له إلا إذا أمكن تفعيله دون إرجاع لوح إلى الطرف الآخر من العالم — وهذه تُفعَّل محلياً.
+          <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">انظر المعدات المركَّبة →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- التزامات المتابعة -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">أبعد من المعدات</p>
+        <h2 class="display v2-section-title mt-5 text-white">المتابعة التي تُطيل الضمان</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          {engagements.map((e, i) => (
+            <div class="v2-rise cine-card p-7" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-white">{e.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{e.body}</p>
+            </div>
+          ))}
+        </div>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية السكنية →</a>
+          <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية المهنية →</a>
+          <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="ضمان 25 سنة يُكتسب بدراسة جادة. ودراستنا مجانية." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>
