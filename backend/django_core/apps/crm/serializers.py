@@ -50,6 +50,24 @@ class LeadSerializer(serializers.ModelSerializer):
     devis_auto = serializers.SerializerMethodField()
     next_activity = serializers.SerializerMethodField()
 
+    @staticmethod
+    def _canonical_phone(value):
+        """Forme canonique '212XXXXXXXXX' d'un numéro marocain saisi librement
+        (06 12-34 56 78, +212612…, 00212…). Source unique : le normaliseur des
+        ventes (apps.ventes.utils.phone) — pas de logique dupliquée ici. Vide
+        ou non normalisable → on conserve la valeur saisie telle quelle (jamais
+        de rejet : le formulaire est volontairement permissif)."""
+        if value in (None, ''):
+            return value
+        from apps.ventes.utils.phone import normalize_ma_phone
+        return normalize_ma_phone(value) or value
+
+    def validate_telephone(self, value):
+        return self._canonical_phone(value)
+
+    def validate_whatsapp(self, value):
+        return self._canonical_phone(value)
+
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""

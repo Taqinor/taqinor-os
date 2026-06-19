@@ -2722,6 +2722,40 @@ textarea.form-control {
 .lead-devis-menu-item:hover:not(:disabled) { background: var(--accent, #f1f5f9); }
 .lead-devis-menu-item:disabled { color: var(--muted-foreground, #94a3b8); cursor: not-allowed; }
 
+/* Affinages 2026-06 : avertissement doublon (non bloquant), lien carte GPS,
+   erreurs en ligne (facture inline, note). */
+.lead-dup-warning {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #92400e;
+}
+.lead-dup-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: #b45309;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.lead-gps-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2563eb;
+  text-decoration: none;
+}
+.lead-gps-link:hover { text-decoration: underline; }
+.lead-bill-error { color: #dc2626; font-size: 0.82rem; }
+.form-error { color: #dc2626; font-size: 0.85rem; margin: 4px 0 0; }
+
 /* A4 — actions en ligne sur les devis d'un lead (facture / chantier). */
 .lead-devis-actions {
   display: flex;

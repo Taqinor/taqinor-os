@@ -11,7 +11,15 @@ import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import LeadDevisPanel from './leads/LeadDevisPanel'
+import SigneDialog from './leads/SigneDialog'
+import { CONVERSION_STAGE } from '../../features/crm/stages'
 import { Button, Input } from '../../ui'
+
+// Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
+// un appel direct au showroom. Le webhook du site impose 'site_web' de son côté.
+const DEFAULT_CANAL = 'walk_in'
+// Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const STAGE_LABELS = {
   NEW: 'Nouveau',
@@ -68,7 +76,7 @@ const Sec = ({ title, children, id }) => (
 
 // Navigateur de sections (rail gauche) : libellé court → section du formulaire.
 // La liste est calculée dans le composant car Pompage n'apparaît qu'en agricole.
-const buildNavSections = ({ agricole, isEdit }) => {
+const buildNavSections = ({ agricole, isEdit, hasWebOrigin }) => {
   const secs = [
     ['contact', 'Contact'],
     ['pipeline', 'Suivi commercial'],
@@ -76,6 +84,7 @@ const buildNavSections = ({ agricole, isEdit }) => {
   ]
   if (agricole) secs.push(['pompage', 'Pompage'])
   secs.push(['toiture', 'Toiture & site'], ['visite', 'Visite'])
+  if (hasWebOrigin) secs.push(['origine', 'Origine web'])
   if (isEdit) secs.push(
     ['devis', 'Devis'], ['activites', 'Activités'],
     ['pieces', 'Pièces jointes'], ['doublons', 'Doublons'],
@@ -111,7 +120,7 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('fr-FR')
 }
 
-export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null }) {
+export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null }) {
   const dispatch = useDispatch()
   const isEdit = !!lead
 
@@ -174,6 +183,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
   const [billEditing, setBillEditing] = useState(false)
   const [billSaving, setBillSaving] = useState(false)
+  const [billError, setBillError] = useState(null)
   const [billHiver, setBillHiver] = useState('')
   const [billEte, setBillEte] = useState('')
 
@@ -186,7 +196,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     gps_lat: F('gps_lat'), gps_lng: F('gps_lng'),
     // Pipeline
     stage: F('stage', 'NEW'), owner: F('owner', '') ?? '',
-    canal: F('canal', '') ?? '', priorite: F('priorite', 'normale'),
+    // Canal prérempli à la création (jamais null) ; en édition on respecte la
+    // valeur du lead (y compris vide pour un ancien lead).
+    canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
+    priorite: F('priorite', 'normale'),
     tags: F('tags'), motif_perte: F('motif_perte'),
     perdu: lead?.perdu ?? false,
     relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
@@ -215,9 +228,16 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const [users, setUsers] = useState([])
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
+  const [noteError, setNoteError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [activeSec, setActiveSec] = useState('contact')
+  // Doublons probables détectés EN DIRECT depuis le téléphone/email saisi
+  // (avertissement NON bloquant, à la création comme à l'édition).
+  const [dupMatches, setDupMatches] = useState([])
+  // Dialogue « Signé » : passer l'étape à Signé via le select ouvre le
+  // dialogue d'acceptation (devis + option) au lieu d'enregistrer SIGNED.
+  const [signeOpen, setSigneOpen] = useState(false)
   // Champs personnalisés (T11).
   const [customData, setCustomData] = useState(lead?.custom_data || {})
   const bodyRef = useRef(null)
@@ -260,6 +280,27 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     }
   }, [isEdit, lead?.id])
 
+  // Avertissement doublon EN DIRECT (non bloquant) : dès qu'un téléphone ou un
+  // email est saisi, on interroge le serveur (société côté serveur). En édition
+  // on exclut le lead courant de ses propres doublons. Debounce léger.
+  const phoneKey = fields.telephone
+  const emailKey = fields.email
+  useEffect(() => {
+    const phone = (phoneKey ?? '').trim()
+    const email = (emailKey ?? '').trim()
+    if (!phone && !email) { setDupMatches([]); return undefined }
+    const t = setTimeout(() => {
+      const params = {}
+      if (phone) params.telephone = phone
+      if (email) params.email = email
+      if (isEdit) params.exclude = lead.id
+      crmApi.checkDuplicates(params)
+        .then(r => setDupMatches(r.data || []))
+        .catch(() => setDupMatches([]))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [phoneKey, emailKey, isEdit, lead?.id])
+
   const doMerge = async (otherId) => {
     if (!window.confirm('Fusionner ce doublon dans la fiche courante ? '
       + 'Le doublon sera archivé (jamais supprimé) et ses devis/activités '
@@ -270,7 +311,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       refreshLead()
       api.get(`/crm/leads/${lead.id}/historique/`)
         .then(r => setHistorique(r.data)).catch(() => {})
-    } catch { /* silencieux */ }
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
+    }
   }
 
   // Ouverture directe sur un mode devis (depuis le ⚡ d'une carte / liste).
@@ -296,6 +339,24 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
 
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const agricole = fields.type_installation === 'agricole'
+
+  // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
+  // jamais édités ici. La section est masquée si tous sont vides.
+  const WEB_ORIGIN_FIELDS = [
+    'bill_range_bucket', 'roi_band', 'utm_source', 'utm_medium',
+    'utm_campaign', 'fbclid',
+  ]
+  const webVal = (k) => {
+    const v = liveLead?.[k] ?? lead?.[k]
+    return v === undefined || v === null || v === '' ? '' : String(v)
+  }
+  const hasWebOrigin = WEB_ORIGIN_FIELDS.some(k => webVal(k) !== '')
+  const webRO = (k, label) => webVal(k) === '' ? null : (
+    <div className="form-group">
+      <label className="form-label">{label}</label>
+      <input className="form-control" value={webVal(k)} readOnly disabled />
+    </div>
+  )
 
   // Le devis se crée et s'affiche DANS la fiche (LeadDevisPanel) — on ne quitte
   // jamais le lead. Le verrouillage « prêt ? » suit la règle serveur exposée
@@ -363,6 +424,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   }
   const saveBill = async () => {
     setBillSaving(true)
+    setBillError(null)
     try {
       const payload = {
         facture_hiver: billHiver === '' ? null : billHiver,
@@ -376,8 +438,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       set('facture_ete', r.data.facture_ete ?? '')
       setBillEditing(false)
       onSaved?.()
-    } catch {
-      /* erreur silencieuse — la valeur reste éditable */
+    } catch (err) {
+      // La valeur reste éditable ; on explique l'échec au lieu de l'avaler.
+      setBillError(err?.response?.data?.detail
+        ?? "La facture n'a pas pu être enregistrée — réessayez.")
     } finally {
       setBillSaving(false)
     }
@@ -401,16 +465,40 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const postNote = async () => {
     const body = noteBody.trim()
     if (!body) return
+    setNoteError(null)
     try {
       const r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
       setHistorique(h => [r.data, ...h])
       setNoteBody('')
-    } catch { /* erreur silencieuse, la note reste saisie */ }
+    } catch (err) {
+      // La note reste saisie ; on explique l'échec au lieu de l'avaler.
+      setNoteError(err?.response?.data?.detail
+        ?? "La note n'a pas pu être enregistrée — réessayez.")
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!fields.nom.trim()) { setErrors({ nom: 'Nom requis' }); return }
+    // Validation côté client (le formulaire est noValidate) : on rassemble les
+    // erreurs bloquantes avant d'envoyer quoi que ce soit.
+    const ve = {}
+    if (!fields.nom.trim()) ve.nom = 'Nom requis'
+    const email = (fields.email ?? '').trim()
+    if (email && !EMAIL_RE.test(email)) ve.email = 'Email invalide'
+    // « Perdu ? » coché → le motif de perte est requis.
+    if (fields.perdu && !(fields.motif_perte ?? '').trim()) {
+      ve.motif_perte = 'Indiquez le motif de perte'
+    }
+    if (Object.keys(ve).length) { setErrors(ve); return }
+    // Passer manuellement en « Signé » via le select ne s'enregistre PAS : on
+    // ouvre le dialogue d'acceptation (devis + option) — l'acceptation fait
+    // avancer l'étape côté serveur (couches funnel/document séparées, #2/#4).
+    // Uniquement à l'édition (un nouveau lead n'a pas encore de devis).
+    if (isEdit && fields.stage === CONVERSION_STAGE
+        && lead.stage !== CONVERSION_STAGE) {
+      setSigneOpen(true)
+      return
+    }
     setSaving(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
@@ -514,6 +602,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                     : <span className="lead-bill-empty">+ Renseigner la facture ✎</span>}
                 </button>
               )}
+              {billError && (
+                <span className="lead-bill-error" role="alert">{billError}</span>
+              )}
             </div>
 
             <div className="lead-subbar-devis">
@@ -559,7 +650,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
         <form onSubmit={handleSubmit} noValidate>
           <div className="lead-form-layout">
             <nav className="lead-nav" aria-label="Sections du lead">
-              {buildNavSections({ agricole, isEdit }).map(([id, label]) => (
+              {buildNavSections({ agricole, isEdit, hasWebOrigin }).map(([id, label]) => (
                 <button key={id} type="button"
                         className={activeSec === id ? 'active' : ''}
                         onClick={() => jumpTo(id)}>
@@ -569,6 +660,23 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             </nav>
           <div className="modal-body" ref={bodyRef} onScroll={onBodyScroll}>
             <Sec id="contact" title="👤 Contact">
+              {dupMatches.length > 0 && (
+                <div className="lead-dup-warning" role="status">
+                  ⚠️ Un lead avec ce numéro existe déjà
+                  {dupMatches.length > 1 ? ` (${dupMatches.length})` : ''} :{' '}
+                  {dupMatches.slice(0, 3).map((d, i) => (
+                    <span key={d.id}>
+                      {i > 0 && ', '}
+                      <button type="button" className="lead-dup-link"
+                              onClick={() => onOpenDuplicate?.(d.id)}>
+                        {`${d.nom} ${d.prenom || ''}`.trim() || `#${d.id}`}
+                        {d.is_archived ? ' (archivé)' : ''}
+                      </button>
+                    </span>
+                  ))}
+                  {dupMatches.length > 3 && '…'}
+                </div>
+              )}
               <div className="form-row">
                 <div className="form-group fg-grow">
                   <label className="form-label">Nom <span className="req">*</span></label>
@@ -582,7 +690,14 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               <div className="form-row">
                 <Txt fields={fields} set={set} k="whatsapp" label="WhatsApp" />
                 <Txt fields={fields} set={set} k="ville" label="Ville / quartier" />
-                <Txt fields={fields} set={set} k="email" label="Email" type="email" />
+                <div className="form-group">
+                  <label className="form-label">Email</label>
+                  <input type="email"
+                         className={`form-control${errors.email ? ' is-invalid' : ''}`}
+                         value={fields.email ?? ''}
+                         onChange={e => set('email', e.target.value)} />
+                  {errors.email && <div className="form-feedback">{errors.email}</div>}
+                </div>
               </div>
               <div className="form-row">
                 <Txt fields={fields} set={set} k="societe" label="Société" />
@@ -590,6 +705,15 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 <Txt fields={fields} set={set} k="gps_lat" label="GPS lat." type="number" />
                 <Txt fields={fields} set={set} k="gps_lng" label="GPS long." type="number" />
               </div>
+              {fields.gps_lat && fields.gps_lng && (
+                <div className="form-row">
+                  <a className="lead-gps-link"
+                     href={`https://maps.google.com/?q=${encodeURIComponent(fields.gps_lat)},${encodeURIComponent(fields.gps_lng)}`}
+                     target="_blank" rel="noopener noreferrer">
+                    📍 Voir sur la carte
+                  </a>
+                </div>
+              )}
             </Sec>
 
             <Sec id="pipeline" title="📈 Suivi commercial">
@@ -631,10 +755,19 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                     quelle que soit l'étape. */}
                 {fields.perdu && (
                   <div className="form-group fg-grow">
-                    <Txt fields={fields} set={set} k="motif_perte" label="Motif de perte" list="ld-motifs" />
+                    <label className="form-label">
+                      Motif de perte <span className="req">*</span>
+                    </label>
+                    <input className={`form-control${errors.motif_perte ? ' is-invalid' : ''}`}
+                           value={fields.motif_perte ?? ''}
+                           onChange={e => set('motif_perte', e.target.value)}
+                           list="ld-motifs" />
                     <datalist id="ld-motifs">
                       {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
                     </datalist>
+                    {errors.motif_perte && (
+                      <div className="form-feedback">{errors.motif_perte}</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -727,6 +860,23 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 </div>
               </div>
             </Sec>
+
+            {/* ── Origine web (taqinor.ma) — lecture seule ; masquée si tout vide.
+                Ces champs sont capturés par le site et ne s'éditent pas ici. ── */}
+            {hasWebOrigin && (
+              <Sec id="origine" title="🌐 Origine (site web)">
+                <div className="form-row">
+                  {webRO('bill_range_bucket', 'Tranche de facture (site)')}
+                  {webRO('roi_band', 'Estimation ROI (site)')}
+                </div>
+                <div className="form-row">
+                  {webRO('utm_source', 'UTM source')}
+                  {webRO('utm_medium', 'UTM medium')}
+                  {webRO('utm_campaign', 'UTM campagne')}
+                  {webRO('fbclid', 'fbclid')}
+                </div>
+              </Sec>
+            )}
 
             <div className="form-group">
               <label className="form-label">Note générale</label>
@@ -885,6 +1035,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                     Noter
                   </Button>
                 </div>
+                {noteError && (
+                  <p className="form-error" role="alert">{noteError}</p>
+                )}
                 <div className="chatter-timeline">
                   {historique.length === 0 && (
                     <p className="gen-hint">Aucune activité pour le moment.</p>
@@ -936,6 +1089,18 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           existingDevisId={devisPanel === 'view' ? panelDevisId : null}
           onDevisChanged={refreshLead}
           onClose={() => { setDevisPanel(null); setPanelDevisId(null); refreshLead() }}
+        />
+      )}
+
+      {/* Dialogue « Signé » : ouvert quand on choisit Signé dans le select de
+          l'étape. L'acceptation d'un devis fait avancer l'étape côté serveur ;
+          on ne pose JAMAIS stage=SIGNED directement (couches funnel/document
+          séparées, #2/#4). Annuler remet l'étape à sa valeur courante. */}
+      {isEdit && signeOpen && (
+        <SigneDialog
+          lead={liveLead}
+          onClose={() => { set('stage', lead.stage); setSigneOpen(false) }}
+          onConfirmed={() => { setSigneOpen(false); onSaved?.(); onClose() }}
         />
       )}
     </div>
