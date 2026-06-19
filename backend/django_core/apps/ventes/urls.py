@@ -19,6 +19,7 @@ from .recouvrement import (
 )
 from .journal_view import journal_ventes
 from .numbering_view import numerotation_audit
+from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 
 router = DefaultRouter()
 router.register(r'devis', DevisViewSet)
@@ -44,5 +45,11 @@ urlpatterns = [
          name='client-releve-pdf'),
     path('factures/<int:facture_id>/lettre-relance-pdf/', lettre_relance_pdf,
          name='lettre-relance-pdf'),
+    # Documents premium ADDITIFS (langage visuel du devis) — rendus à la volée.
+    # Lettre de relance premium niveau 1/2/3 (?niveau=) et fiche de remise.
+    path('factures/<int:facture_id>/lettre-relance-premium/',
+         lettre_relance_premium, name='lettre-relance-premium'),
+    path('chantiers/<int:chantier_id>/fiche-remise-premium/',
+         fiche_remise_premium, name='fiche-remise-premium'),
     path('', include(router.urls)),
 ]

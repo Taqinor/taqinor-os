@@ -84,6 +84,14 @@ const ventesApi = {
   getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
   getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),
+  // Lettre de relance PREMIUM (langage visuel du devis) — niveau 1/2/3.
+  getLettreRelancePremiumPdf: (factureId, niveau = 1) =>
+    api.get(`/ventes/factures/${factureId}/lettre-relance-premium/`, {
+      params: { niveau }, responseType: 'blob',
+    }),
+  // Fiche de remise / garantie après-vente PREMIUM pour un chantier.
+  getFicheRemisePremiumPdf: (chantierId) =>
+    api.get(`/ventes/chantiers/${chantierId}/fiche-remise-premium/`, { responseType: 'blob' }),
   getNiveauxRelance: () => api.get('/ventes/niveaux-relance/'),
   saveNiveauRelance: (id, data) => id
     ? api.patch(`/ventes/niveaux-relance/${id}/`, data)
