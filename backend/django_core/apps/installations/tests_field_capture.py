@@ -486,6 +486,46 @@ class TestStatutIsolation(_Base):
         self.assertEqual(self.inst.statut, before)
 
 
+# ── F22 — rôle Technicien : ne voit QUE ses interventions, jamais les prix ──
+class TestTechnicienScope(TestCase):
+    def setUp(self):
+        self.company = make_company(slug='maj-co', nom='Ma Journée Co')
+        from apps.roles.models import Role, TECHNICIEN_PERMISSIONS
+        self.tech_role = Role.objects.create(
+            company=self.company, nom='Technicien', est_systeme=True,
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        self.admin = User.objects.create_user(
+            username='maj_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.tech = User.objects.create_user(
+            username='maj_tech', password='x', role_legacy='normal',
+            company=self.company, role=self.tech_role)
+        self.other_tech = User.objects.create_user(
+            username='maj_tech2', password='x', role_legacy='normal',
+            company=self.company, role=self.tech_role)
+        self.inst = make_chantier(self.company, self.admin, [])
+        # Une intervention assignée au technicien, une à un autre.
+        self.mine = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', technicien=self.tech,
+            created_by=self.admin)
+        self.theirs = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', technicien=self.other_tech,
+            created_by=self.admin)
+
+    def test_technicien_sees_only_own_interventions(self):
+        r = auth(self.tech).get('/api/django/installations/interventions/')
+        self.assertEqual(r.status_code, 200, r.data)
+        rows = r.data.get('results', r.data)
+        ids = {i['id'] for i in rows}
+        self.assertIn(self.mine.id, ids)
+        self.assertNotIn(self.theirs.id, ids)
+
+    def test_technicien_role_has_no_buy_price_permission(self):
+        self.assertNotIn('prix_achat_voir', self.tech_role.permissions)
+
+
 # ── Isolation multi-société ──────────────────────────────────────────────────
 class TestTenantIsolation(_Base):
     def test_other_company_cannot_see_serials(self):
