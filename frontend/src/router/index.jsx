@@ -33,6 +33,7 @@ const InstallationsPage = lazy(() => import('../pages/installations/Installation
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
 const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
+const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -143,6 +144,7 @@ const router = createBrowserRouter([
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
   { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
+  { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
   { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
 
   // Après-vente : parc d'équipements & tickets SAV
