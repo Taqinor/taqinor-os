@@ -735,9 +735,9 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Achats] [L16] [ROUTINE] Afficher la date du dernier achat formatée FR dans PrixFournisseursSection (aujourd'hui ISO brut ou "—"). Fait = la date du dernier achat s'affiche au format JJ/MM/AAAA.
 
 #### Valorisation
-[ ] [Stock/Achats] [L11] [ROUTINE] Gérer l'état vide de ValorisationModal (stock à zéro → tables vides sans message). Fait = sans stock valorisable, le modal affiche "Aucun stock à valoriser".
-[ ] [Stock/Achats] [L14] [ROUTINE] Permettre d'exporter la valorisation en Excel (données internes admin) depuis ValorisationModal. Fait = un bouton télécharge un .xlsx des lignes de valorisation (jamais client-facing).
-[ ] [Stock/Achats] [L16] [ROUTINE] Indiquer la source du coût moyen par ligne de valorisation (réceptions BCF vs prix_achat catalogue de repli). Fait = chaque ligne signale si le coût vient d'achats reçus ou du prix catalogue.
+[x] [Stock/Achats] [L11] [ROUTINE] Gérer l'état vide de ValorisationModal (stock à zéro → tables vides sans message). Fait = sans stock valorisable, le modal affiche "Aucun stock à valoriser".
+[x] [Stock/Achats] [L14] [ROUTINE] Permettre d'exporter la valorisation en Excel (données internes admin) depuis ValorisationModal. Fait = un bouton télécharge un .xlsx des lignes de valorisation (jamais client-facing).
+[x] [Stock/Achats] [L16] [ROUTINE] Indiquer la source du coût moyen par ligne de valorisation (réceptions BCF vs prix_achat catalogue de repli). Fait = chaque ligne signale si le coût vient d'achats reçus ou du prix catalogue.
 
 #### Retours fournisseur
 [x] [Stock/Achats] [L7] [ROUTINE] Plafonner la quantité retournée à la quantité reçue par ligne dans RetourModal (aujourd'hui input libre, le serveur décrémente sans plafond). Fait = le champ "À retourner" a max = quantite_recue et avertit si dépassé.

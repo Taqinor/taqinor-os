@@ -155,6 +155,14 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         from .services import stock_valuation_by_location
         return Response(stock_valuation_by_location(request.user.company))
 
+    @action(detail=False, methods=['get'], url_path='valorisation-xlsx',
+            permission_classes=[IsAdminRole])
+    def valorisation_xlsx(self, request):
+        """Export Excel de la valorisation du stock (admin/INTERNE) —
+        les prix d'achat/coûts ne sont jamais client-facing."""
+        from .services import export_valorisation_xlsx
+        return export_valorisation_xlsx(request.user.company)
+
     @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
             permission_classes=[IsAnyRole])
     def prix_fournisseurs(self, request, *args, **kwargs):

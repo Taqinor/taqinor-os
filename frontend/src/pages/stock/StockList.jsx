@@ -19,6 +19,7 @@ import InlineEdit from '../../components/InlineEdit'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
+import api from '../../api/axios'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
@@ -136,11 +137,26 @@ function InventaireModal({ produits, onClose, onDone }) {
 function ValorisationModal({ onClose }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
+  const [exporting, setExporting] = useState(false)
   useEffect(() => {
     stockApi.valorisation()
       .then((r) => setData(r.data))
       .catch(() => setError('Échec du chargement de la valorisation.'))
   }, [])
+  const isEmpty = data && (!data.lignes || data.lignes.length === 0)
+  const sourceLabel = (s) => (s === 'achats' ? 'Achats reçus' : s === 'catalogue' ? 'Prix catalogue' : '—')
+  // Export Excel (admin/INTERNE — coûts jamais client-facing).
+  const exportXlsx = async () => {
+    setExporting(true)
+    try {
+      const res = await api.get('/stock/valorisation-xlsx/', { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'valorisation.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { setError('Export indisponible.') } finally { setExporting(false) }
+  }
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
@@ -158,7 +174,11 @@ function ValorisationModal({ onClose }) {
         {!data && !error && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
         )}
-        {data && (
+        {isEmpty && (
+          <EmptyState icon={Wallet} title="Aucun stock à valoriser"
+                      description="Aucune quantité en stock à valoriser pour le moment." />
+        )}
+        {data && !isEmpty && (
           <>
             <MiniTable head={['Emplacement', 'Quantité', 'Valeur']}>
               {data.par_emplacement.map((t) => (
@@ -175,13 +195,14 @@ function ValorisationModal({ onClose }) {
               </tr>
             </MiniTable>
             <div className="max-h-80 overflow-auto">
-              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Coût moyen', 'Valeur']}>
+              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Coût moyen', 'Source', 'Valeur']}>
                 {data.lignes.map((l, i) => (
                   <tr key={`${l.produit_id}-${l.emplacement_nom}-${i}`} className="border-t border-border">
                     <td className="px-3 py-2">{l.designation}</td>
                     <td className="px-3 py-2">{l.emplacement_nom}</td>
                     <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
                     <td className="px-3 py-2 tabular-nums">{fmtNum2(l.cout_moyen)} DH</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{sourceLabel(l.source)}</td>
                     <td className="px-3 py-2 tabular-nums">{fmtNum2(l.valeur)} DH</td>
                   </tr>
                 ))}
@@ -191,6 +212,11 @@ function ValorisationModal({ onClose }) {
         )}
 
         <DialogFooter>
+          {data && !isEmpty && (
+            <Button type="button" variant="outline" loading={exporting} onClick={exportXlsx}>
+              <Download /> Exporter Excel
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
