@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
   Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
+  History,
 } from 'lucide-react'
 import {
   fetchProduits,
@@ -423,7 +424,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
 }
 
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, onInlineSave, selected, onToggleSelect }) {
+function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, categories, onInlineSave, selected, onToggleSelect }) {
   const spec = keySpec(p)
   const ttc = prixTtc(p)
   const catOptions = [{ value: '', label: '— Catégorie —' }]
@@ -529,6 +530,12 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        {onHistorique && (
+          <IconButton label="Historique des mouvements" variant="ghost" size="icon" className="size-8"
+                      onClick={() => onHistorique(p)}>
+            <History />
+          </IconButton>
+        )}
         {canWrite && (
           <IconButton label="Éditer" variant="ghost" size="icon" className="size-8" onClick={() => onEdit(p)}>
             <Pencil />
@@ -1122,6 +1129,7 @@ export default function StockList() {
                     {b.items.map(p => (
                       <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
                                     onEdit={openEdit} onDelete={handleDelete}
+                                    onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
                                     categories={categories}
                                     onInlineSave={canWrite ? onInlineSave : null}
                                     selected={visibleSelected.has(p.id)}
