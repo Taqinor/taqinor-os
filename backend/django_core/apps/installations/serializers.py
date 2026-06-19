@@ -295,6 +295,10 @@ class InstallationSerializer(serializers.ModelSerializer):
     # N43 — régime loi 82-21 suggéré pour la puissance du chantier (seuils
     # éditables). Lecture seule : un repère, le champ regime_8221 reste maître.
     regime_suggere = serializers.SerializerMethodField()
+    # Parc — état de garantie AGRÉGÉ du système (le PIRE état parmi ses
+    # équipements posés). Lecture seule : un repère pour la liste du parc, dérivé
+    # du même calcul que sav.Equipement.garantie_etat. None si aucun équipement.
+    parc_garantie_etat = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -320,6 +324,40 @@ class InstallationSerializer(serializers.ModelSerializer):
         code = suggest_for_company(obj.puissance_installee_kwc, obj.company)
         label = dict(Installation.Regime8221.choices).get(code, code)
         return {'code': code, 'label': label}
+
+    def get_parc_garantie_etat(self, obj):
+        # Pire état de garantie parmi les équipements EN SERVICE du système.
+        # Sévérité : hors_garantie > expire_bientot > non_renseignee >
+        # sous_garantie. Mêmes seuils que sav (90 j « expire bientôt »). None
+        # quand le système n'a encore aucun équipement enregistré.
+        from datetime import date
+        equipements = [
+            eq for eq in obj.equipements.all()
+            if eq.statut != 'remplace'
+        ]
+        if not equipements:
+            return None
+        today = date.today()
+        severity = {
+            'hors_garantie': 3, 'expire_bientot': 2,
+            'non_renseignee': 1, 'sous_garantie': 0,
+        }
+        worst = 'sous_garantie'
+        for eq in equipements:
+            fin = eq.date_fin_garantie
+            if not fin:
+                etat = 'non_renseignee'
+            else:
+                jours = (fin - today).days
+                if jours < 0:
+                    etat = 'hors_garantie'
+                elif jours <= 90:
+                    etat = 'expire_bientot'
+                else:
+                    etat = 'sous_garantie'
+            if severity[etat] > severity[worst]:
+                worst = etat
+        return worst
 
     def get_est_parc(self, obj):
         # Système installé = chantier réceptionné (ou clôturé) et toujours
