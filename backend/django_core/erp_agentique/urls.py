@@ -43,6 +43,10 @@ urlpatterns = [
     path('api/django/audit/', include('apps.audit.urls')),
     # Liens publics tokenisés (PDF client via WhatsApp) — sans login.
     path('api/django/public/', include('apps.ventes.public_urls')),
+    # N89 — API publique REST par clé d'API (données read-only).
+    path('api/public/', include('apps.publicapi.public_urls')),
+    # N89 — gestion des clés API & webhooks (session admin, Paramètres).
+    path('api/django/publicapi/', include('apps.publicapi.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

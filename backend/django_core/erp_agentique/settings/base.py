@@ -72,6 +72,8 @@ INSTALLED_APPS = [
     # N97 — import/export réutilisable. Enregistré pour exposer la commande
     # de gestion `export_company_data` (aucun modèle, donc aucune migration).
     'apps.dataimport',
+    # N89 — API publique REST (clés API, scopes, webhooks signés).
+    'apps.publicapi',
 ]
 
 MIDDLEWARE = [
@@ -165,6 +167,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/minute',   # 5 tentatives/min par IP sur /token/
         'register': '3/hour',  # 3 inscriptions/h par IP sur /register/
+        # N89 — débit de l'API publique, par CLÉ d'API (pas par IP).
+        'publicapi': '120/minute',
     },
 }
 
