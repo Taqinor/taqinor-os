@@ -207,3 +207,41 @@ class TestBulkExport(BulkLeadsBase):
         resp = self.api.post(
             '/api/django/crm/leads/export-xlsx/', {'ids': []}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+
+class TestBulkCanalPriorite(BulkLeadsBase):
+    def test_set_canal_en_masse(self):
+        a, b = self.mk(nom='A'), self.mk(nom='B')
+        resp = self.bulk(action='set_canal', ids=[a.id, b.id], canal='reference')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['updated'], 2)
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.canal, 'reference')
+        self.assertEqual(b.canal, 'reference')
+        # Journal « en masse ».
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=a, field='canal', bulk=True).exists())
+
+    def test_set_canal_unknown_when_referential_exists(self):
+        from apps.crm.models import Canal
+        Canal.objects.create(company=self.company, cle='reference',
+                             libelle='Référence')
+        a = self.mk(nom='A')
+        resp = self.bulk(action='set_canal', ids=[a.id], canal='inexistant')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_set_priorite_en_masse(self):
+        a, b = self.mk(nom='A', priorite='normale'), self.mk(nom='B')
+        resp = self.bulk(action='set_priorite', ids=[a.id, b.id], priorite='haute')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['updated'], 2)
+        a.refresh_from_db()
+        self.assertEqual(a.priorite, 'haute')
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=a, field='priorite', bulk=True).exists())
+
+    def test_set_priorite_invalid(self):
+        a = self.mk(nom='A')
+        resp = self.bulk(action='set_priorite', ids=[a.id], priorite='extreme')
+        self.assertEqual(resp.status_code, 400, resp.data)

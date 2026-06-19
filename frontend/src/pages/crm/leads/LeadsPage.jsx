@@ -155,6 +155,13 @@ export default function LeadsPage() {
     [selected, leads],
   )
 
+  // Au moins un lead archivé dans la sélection ? Sert à griser « Restaurer »
+  // (sans effet en vue « Actifs » où aucun lead n'est archivé).
+  const hasArchivedSelected = useMemo(
+    () => leads.some((l) => visibleSelected.has(l.id) && l.is_archived),
+    [leads, visibleSelected],
+  )
+
   const onToggleSelect = (id) => setSelected((s) => toggleId(s, id))
   const onToggleAll = (visibleIds) =>
     setSelected((s) => toggleAll(s, visibleIds))
@@ -338,6 +345,7 @@ export default function LeadsPage() {
           count={visibleSelected.size}
           users={users}
           canDelete={canDelete}
+          hasArchivedSelected={hasArchivedSelected}
           busy={bulkBusy}
           onAction={runBulk}
           onExport={exportSelection}
