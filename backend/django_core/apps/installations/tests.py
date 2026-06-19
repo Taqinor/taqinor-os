@@ -194,6 +194,11 @@ class TestStatusAndMES(TestCase):
         self.assertEqual(r.data['statut'], 'mise_en_service')
         self.assertEqual(r.data['date_mise_en_service'], '2026-06-20')
         self.assertEqual(Decimal(r.data['mes_production_test']), Decimal('32.50'))
+        # La note de chatter inclut les valeurs mesurées (production + tension).
+        note = self.inst.activites.filter(kind='note').order_by('-id').first()
+        self.assertIsNotNone(note)
+        self.assertIn('32.5', note.body)
+        self.assertIn('230', note.body)
 
     def test_cancel_is_a_flag_with_reason(self):
         r = self.api.post(

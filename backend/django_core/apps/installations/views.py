@@ -336,10 +336,18 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst.statut = Installation.Statut.MISE_EN_SERVICE
         inst.save()
         activity.log_changes(old, inst, request.user)
+        # Note de chatter explicite incluant les valeurs mesurées (production /
+        # tension) quand elles sont renseignées — pas seulement la date.
+        mesures = []
+        if inst.mes_production_test not in (None, ''):
+            mesures.append(f"production test {inst.mes_production_test}")
+        if inst.mes_tension not in (None, ''):
+            mesures.append(f"tension {inst.mes_tension}")
         activity.log_note(
             inst, request.user,
             "Mise en service enregistrée"
-            + (f" le {inst.date_mise_en_service}" if inst.date_mise_en_service else ""))
+            + (f" le {inst.date_mise_en_service}" if inst.date_mise_en_service else "")
+            + (f" — {', '.join(mesures)}" if mesures else ""))
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 

@@ -134,6 +134,24 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Intervention en cours d'ajout
   const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '' })
   const [intervBusy, setIntervBusy] = useState(false)
+  // N2 — types d'intervention gérés de la société (Paramètres → Chantiers) ;
+  // repli sur la liste en dur tant qu'aucun type géré n'est chargé.
+  const [typesInterv, setTypesInterv] = useState([])
+  const typeOptions = typesInterv.length
+    ? typesInterv.map((t) => ({ value: t.cle, label: t.libelle }))
+    : INTERVENTION_TYPES
+
+  // N3 — choisir le type « pose » pré-remplit la date prévue depuis la date de
+  // pose prévue du chantier (si le champ date est encore vide).
+  const onChangeIntervType = (value) => {
+    setInterv((s) => {
+      const next = { ...s, type_intervention: value }
+      if (value === 'pose' && !s.date_prevue && current?.date_pose_prevue) {
+        next.date_prevue = current.date_pose_prevue
+      }
+      return next
+    })
+  }
 
   // Mise en service
   const [mes, setMes] = useState({
@@ -182,6 +200,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     loadTickets()
     loadContrats()
     if (produits.length === 0) dispatch(fetchProduits())
+    installationsApi.getTypesIntervention()
+      .then((r) => setTypesInterv(
+        (r.data?.results ?? r.data ?? []).filter((t) => !t.archived)))
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -278,14 +300,34 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   const saveMes = async () => {
+    // N7 — la mise en service exige une date ; on avertit (sans bloquer) si le
+    // test de production ou la tension mesurée sont vides.
+    if (!mes.date_mise_en_service) {
+      setActionError('Indiquez une date de mise en service avant d’enregistrer.')
+      return
+    }
+    const manques = []
+    if (mes.mes_production_test === '' || mes.mes_production_test == null) {
+      manques.push('test de production')
+    }
+    if (mes.mes_tension === '' || mes.mes_tension == null) manques.push('tension')
+    if (manques.length
+        && !window.confirm(
+          `Champs non renseignés : ${manques.join(' et ')}. `
+          + 'Enregistrer quand même la mise en service ?')) {
+      return
+    }
     setMesBusy(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       const data = Object.fromEntries(
         Object.entries(mes).map(([k, v]) => [k, nullable(v)]))
       await installationsApi.miseEnService(id, data)
+      setActionError(null)
       onSaved?.()
-    } catch { /* erreur silencieuse */ } finally { setMesBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, 'Enregistrement de la mise en service impossible.'))
+    } finally { setMesBusy(false) }
   }
 
   const confirmAnnuler = async () => {
@@ -302,6 +344,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await installationsApi.reactiver(id)
       onSaved?.()
     } catch { /* erreur silencieuse */ }
+  }
+
+  // N7 — action rapide « Marquer réceptionné » : pose le statut Réceptionné
+  // (le serveur tamponne date_reception et journalise l'ajout au parc).
+  const [receptBusy, setReceptBusy] = useState(false)
+  const marquerReceptionne = async () => {
+    setReceptBusy(true)
+    try {
+      await dispatch(updateInstallation({
+        id, data: { statut: 'receptionne' },
+      })).unwrap()
+      setActionError(null)
+      onSaved?.()
+    } catch (err) {
+      setActionError(actionMsg(err, 'Passage à « Réceptionné » impossible.'))
+    } finally { setReceptBusy(false) }
   }
 
   const openDocument = async (kind, filename) => {
@@ -659,11 +717,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
               <FormField label="Type" htmlFor="iv-type">
                 <Select value={interv.type_intervention || ALL_NONE}
-                        onValueChange={(v) => setInterv(s => ({ ...s, type_intervention: v === ALL_NONE ? '' : v }))}>
+                        onValueChange={(v) => onChangeIntervType(v === ALL_NONE ? '' : v)}>
                   <SelectTrigger id="iv-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL_NONE}>—</SelectItem>
-                    {INTERVENTION_TYPES.map((t) => (
+                    {typeOptions.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -876,6 +934,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           {!current.annule && (
             <Button variant="destructive" className="sm:mr-auto" onClick={() => { setAnnulerMotif(''); setAnnulerOpen(true) }}>
               Annuler le chantier
+            </Button>
+          )}
+          {!current.annule && canMoveStatus(current.statut, 'receptionne') && (
+            <Button variant="success" loading={receptBusy} onClick={marquerReceptionne}>
+              Marquer réceptionné
             </Button>
           )}
           <Button variant="outline" onClick={onClose}>Fermer</Button>
