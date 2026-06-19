@@ -4,14 +4,24 @@ from .models import Role, ALL_PERMISSIONS
 
 class RoleSerializer(serializers.ModelSerializer):
     users_count = serializers.SerializerMethodField()
+    # Liste légère des utilisateurs portant ce rôle (id + nom d'affichage), pour
+    # l'expansion « Utilisateurs » dans l'éditeur de rôles (Feature RBAC).
+    users = serializers.SerializerMethodField()
 
     class Meta:
         model = Role
-        fields = ('id', 'nom', 'permissions', 'est_systeme', 'users_count')
-        read_only_fields = ('id', 'est_systeme', 'users_count')
+        fields = ('id', 'nom', 'permissions', 'est_systeme',
+                  'users_count', 'users')
+        read_only_fields = ('id', 'est_systeme', 'users_count', 'users')
 
     def get_users_count(self, obj):
         return obj.users.count()
+
+    def get_users(self, obj):
+        return [
+            {'id': u.id, 'username': u.username}
+            for u in obj.users.all()
+        ]
 
     def validate_permissions(self, value):
         invalid = [p for p in value if p not in ALL_PERMISSIONS]
