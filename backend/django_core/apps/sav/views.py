@@ -1,7 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
@@ -99,7 +99,14 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
-        serializer.save(company=company, created_by=self.request.user)
+        try:
+            serializer.save(company=company, created_by=self.request.user)
+        except IntegrityError:
+            # L636 — filet de course si la contrainte d'unicité DB se déclenche
+            # entre la validation serializer et l'écriture.
+            raise ValidationError(
+                {'numero_serie':
+                 'Ce numéro de série existe déjà dans votre société.'})
         # Calcul des horloges de garantie après la pose des FK.
         inst = serializer.instance
         inst.recompute_garanties()
@@ -108,7 +115,12 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
-        super().perform_update(serializer)
+        try:
+            super().perform_update(serializer)
+        except IntegrityError:
+            raise ValidationError(
+                {'numero_serie':
+                 'Ce numéro de série existe déjà dans votre société.'})
         inst = serializer.instance
         inst.recompute_garanties()
         inst.save(update_fields=[

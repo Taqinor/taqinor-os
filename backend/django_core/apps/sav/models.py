@@ -79,6 +79,17 @@ class Equipement(models.Model):
             models.Index(fields=['company', 'produit']),
             models.Index(fields=['company', 'date_fin_garantie']),
         ]
+        constraints = [
+            # L636 — un n° de série est unique par société. Conditionnel : les
+            # séries vides/NULL sont permises (un appareil peut être saisi sans
+            # série) et n'entrent pas dans la contrainte.
+            models.UniqueConstraint(
+                fields=['company', 'numero_serie'],
+                condition=models.Q(numero_serie__isnull=False)
+                & ~models.Q(numero_serie=''),
+                name='uniq_equipement_serie_par_societe',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.numero_serie or '—'} ({self.produit_id})"
