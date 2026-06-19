@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import ProduitPicker from '../../components/ProduitPicker'
@@ -491,12 +492,29 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 }
 
 export default function BonsCommandeFournisseur() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [fournisseurs, setFournisseurs] = useState([])
   const [produits, setProduits] = useState([])
   const [statutFiltre, setStatutFiltre] = useState('')
-  const [selected, setSelected] = useState(null) // bcf object or {} for new
+  // Réapprovisionnement (706) : un BCF brouillon pré-rempli demandé via l'état
+  // de navigation depuis le catalogue ouvre directement le détail.
+  const prefill = location.state?.prefillBcf ?? null
+  const [selected, setSelected] = useState(
+    () => (prefill
+      ? {
+          fournisseur: prefill.fournisseur ? String(prefill.fournisseur) : '',
+          lignes: [{ produit: String(prefill.produit), quantite: prefill.quantite || 1, prix_achat_unitaire: '' }],
+        }
+      : null), // bcf object or {} for new
+  )
+
+  // Nettoie l'état de navigation pour ne pas rouvrir le brouillon au retour.
+  useEffect(() => {
+    if (prefill) navigate(location.pathname, { replace: true, state: null })
+  }, [prefill, navigate, location.pathname])
 
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.

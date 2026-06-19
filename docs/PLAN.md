@@ -703,7 +703,7 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Mouvements] [L4] [ROUTINE] Afficher un avertissement de stock négatif dans le preview de MouvementForm pour le cas ajustement<0 (previewApres calcule déjà la valeur négative). Fait = une saisie menant à un stock négatif est signalée avant submit pour tous les types.
 [x] [Stock/Mouvements] [L16] [ROUTINE] Permettre de filtrer les mouvements par produit depuis CatalogueRow (lien "historique") vers MouvementsPage pré-filtré. Fait = cliquer "historique" sur un produit ouvre les mouvements filtrés sur ce produit.
 [x] [Stock/Mouvements] [L3] [ROUTINE] Pré-sélectionner le produit dans MouvementForm si la page est ouverte depuis un produit donné. Fait = ouvrir le formulaire depuis un produit pré-remplit le select Produit.
-[ ] [Stock/Mouvements] [L6] [ROUTINE] Ajouter un bouton "réapprovisionner" (next-best-action) sur les produits en stock bas de StockList ouvrant un BCF brouillon pré-rempli. Fait = un produit sous le seuil propose un BCF pré-rempli (produit + fournisseur catalogue/min) en un clic.
+[x] [Stock/Mouvements] [L6] [ROUTINE] Ajouter un bouton "réapprovisionner" (next-best-action) sur les produits en stock bas de StockList ouvrant un BCF brouillon pré-rempli. Fait = un produit sous le seuil propose un BCF pré-rempli (produit + fournisseur catalogue/min) en un clic.
 [x] [Stock/Catalogue] [L6] [ROUTINE] Afficher une suggestion de quantité à commander sur les produits en stock bas (ex. seuil − stock, ou seuil×2). Fait = le badge "stock bas" affiche un hint "commander ~N" dérivé de seuil_alerte et quantite_stock.
 
 #### Multi-emplacements & transferts

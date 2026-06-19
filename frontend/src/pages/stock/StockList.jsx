@@ -466,7 +466,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
 }
 
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, categories, onInlineSave, selected, onToggleSelect }) {
+function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, onReapprovisionner, categories, onInlineSave, selected, onToggleSelect }) {
   const spec = keySpec(p)
   const ttc = prixTtc(p)
   const catOptions = [{ value: '', label: '— Catégorie —' }]
@@ -556,6 +556,12 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, 
             </Badge>
             {suggestionCommande(p) > 0 && (
               <span className="text-xs text-muted-foreground">commander ~{suggestionCommande(p)}</span>
+            )}
+            {onReapprovisionner && (
+              <Button type="button" variant="outline" size="sm" className="h-7"
+                      onClick={() => onReapprovisionner(p)}>
+                Réapprovisionner
+              </Button>
             )}
           </div>
         )}
@@ -1220,6 +1226,13 @@ export default function StockList() {
                       <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
                                     onEdit={openEdit} onDelete={handleDelete}
                                     onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
+                                    onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
+                                      state: { prefillBcf: {
+                                        produit: prod.id,
+                                        fournisseur: prod.fournisseur?.id ?? null,
+                                        quantite: suggestionCommande(prod) || 1,
+                                      } },
+                                    }) : null}
                                     categories={categories}
                                     onInlineSave={canWrite ? onInlineSave : null}
                                     selected={visibleSelected.has(p.id)}
