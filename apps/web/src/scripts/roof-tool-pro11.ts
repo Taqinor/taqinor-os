@@ -159,6 +159,18 @@ import {
   type Appliance,
   type HourlyCurve,
 } from '../lib/applianceConsumption';
+import {
+  createLayoutState,
+  occupiedCount,
+  emptyIndices,
+  nearestEmptyCell,
+  movePanelToPoint,
+  movePanelToCell,
+  addFirstEmpty,
+  removeLast,
+  resetToOptimal,
+  type LayoutState,
+} from '../lib/layoutVariability';
 
 interface InitOptions {
   maptilerKey: string;
@@ -360,6 +372,19 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const evKmEl = $<HTMLInputElement>('rp9-ev-km');
   const applNoteEl = $('rp9-appl-note');
   const applListEl = $('rp9-appl-list');
+  // W69 — « Personnaliser la disposition » : déplacement/ajout/suppression sur la lattice.
+  const layoutWindowEl = $('rp9-layout-window');
+  const layoutToggleEl = $<HTMLButtonElement>('rp9-layout-toggle');
+  const layoutPanelEl = $('rp9-layout-panel');
+  const layoutCountEl = $('rp9-layout-count');
+  const layoutKwcEl = $('rp9-layout-kwc');
+  const layoutFreeEl = $('rp9-layout-free');
+  const layoutCoverEl = $('rp9-layout-cover');
+  const layoutMinusEl = $<HTMLButtonElement>('rp9-layout-minus');
+  const layoutPlusEl = $<HTMLButtonElement>('rp9-layout-plus');
+  const layoutResetEl = $<HTMLButtonElement>('rp9-layout-reset');
+  const layoutGridEl = $('rp9-layout-grid');
+  const layoutNoteEl = $('rp9-layout-note');
   if (!mapEl) return;
 
   const setStatus = (msg: string) => {
@@ -512,6 +537,20 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let consAppliances: Appliance[] = [];
   let consDailyTarget = 0; // socle journalier (kWh) dérivé de la facture
   let consApplCounter = 0;
+
+  // ═══════════ W69 — VARIABILITÉ de disposition (« Personnaliser la disposition ») ═══════════
+  // `layoutMode` : le mode est-il actif ? `layoutState` : la lattice (toutes cellules
+  // valides du pavage gagnant) + occupation. `layoutOptimalCount` : comptage de
+  // l'optimiseur (pour la réinitialisation). `layoutSel` : index du panneau sélectionné
+  // (repli tactile). `layoutPlan` : le pavage gagnant courant (pack + grid + tilt + family
+  // + flush) pour re-rendre la 3D avec l'occupation personnalisée.
+  let layoutMode = false;
+  let layoutState: LayoutState | null = null;
+  let layoutOptimalCount = 0;
+  let layoutSel: number | null = null;
+  let layoutPlan:
+    | { pack: PackResult; grid: PanelGrid; tiltDeg: number; family: ConfigFamily; flush: boolean }
+    | null = null;
 
   const prodPlaneKeyOf = (p: ProdPlaneKey): string =>
     `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}`;
@@ -785,8 +824,19 @@ export function initRoofToolPro8(opts: InitOptions): void {
   //   toit en pente) pose les panneaux AFFLEURANTS sur la pente : pas de châssis ni
   //   de lest, panneau couché à l'inclinaison du toit. flush=false ⇒ rendu toit plat
   //   octet pour octet identique à pro-5. —
-  function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false) {
+  function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false, occupiedSet?: Set<number>) {
     if (!sceneRoot || !sun) return;
+    // W69 — un rendu SANS occupation explicite vient de l'optimiseur : on mémorise le
+    // plan gagnant (pack/grid/tilt/family/flush) + le comptage optimal, pour pouvoir
+    // re-rendre une disposition PERSONNALISÉE (occupation non contiguë) sur le MÊME plan.
+    if (!occupiedSet) {
+      layoutPlan = { pack, grid, tiltDeg, family, flush };
+      layoutOptimalCount = Math.max(0, Math.min(grid.panels.length, Math.round(maxCount)));
+      // Un rendu optimiseur = le PLAN a (peut-être) changé : la disposition personnalisée
+      // courante n'a plus de sens (cellules différentes) → on la repart de l'optimum.
+      layoutState = null;
+      layoutSel = null;
+    }
     setOrigin(pack.origin);
     sceneOrigin = pack.origin;
     obstacleMeshes.clear();
@@ -862,7 +912,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
     const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
 
-    const panels = grid.panels.slice(0, Math.max(0, maxCount));
+    // W69 — disposition personnalisée : si un ensemble d'index occupés est fourni, on
+    // rend EXACTEMENT ces cellules (potentiellement non contiguës) ; sinon on garde le
+    // comportement historique (les `maxCount` premières cellules du pavage).
+    const panels = occupiedSet
+      ? grid.panels.filter((_, i) => occupiedSet.has(i))
+      : grid.panels.slice(0, Math.max(0, maxCount));
     const panelMatsArr: THREE.Matrix4[] = [];
     const frontMats: THREE.Matrix4[] = [];
     const backMats: THREE.Matrix4[] = [];
@@ -1631,9 +1686,17 @@ export function initRoofToolPro8(opts: InitOptions): void {
       prodPerKwc = null;
       prodPanels = 0;
       renderProdWindow();
+      renderLayoutPanel();
       return;
     }
-    updateProductionWindow(cfg);
+    // W69 — en mode disposition personnalisée, le NOMBRE posé vient de l'occupation
+    // éditée (pas de l'optimiseur) ; le plan (GPS/tilt/azimut) reste celui du gagnant.
+    if (layoutMode && layoutState) {
+      updateProductionWindow({ ...cfg, panels: occupiedCount(layoutState) });
+    } else {
+      updateProductionWindow(cfg);
+    }
+    renderLayoutPanel();
   }
 
   // ═══════════ W68 — « Affiner ma consommation » : logique de rendu/recompute ═══════════
@@ -1781,6 +1844,108 @@ export function initRoofToolPro8(opts: InitOptions): void {
         </li>`;
       })
       .join('');
+  }
+
+  // ═══════════ W69 — « Personnaliser la disposition » : lattice + 3D + recompute ═══════════
+
+  /** Plafond de comptage (besoin/footprint) pour l'ajout : on ne dépasse jamais ce qui
+   *  TIENT physiquement (grid.panels.length) ni le besoin si l'utilisateur l'a figé. */
+  function layoutCap(): number {
+    const fit = layoutPlan ? layoutPlan.grid.panels.length : 0;
+    // Le besoin plafonne aussi (taille-au-besoin) : on autorise jusqu'au max(besoin, fit
+    // optimal) mais jamais au-delà de ce qui tient — la lattice borne déjà tout.
+    return fit;
+  }
+
+  /** (Re)crée l'état de disposition depuis le plan gagnant courant (toutes cellules
+   *  valides occupées jusqu'au comptage optimal). */
+  function ensureLayoutState() {
+    if (!layoutPlan) {
+      layoutState = null;
+      return;
+    }
+    if (!layoutState) {
+      layoutState = createLayoutState(layoutPlan.grid.panels, layoutOptimalCount);
+      layoutSel = null;
+    }
+  }
+
+  /** Re-rend la 3D avec l'occupation PERSONNALISÉE courante (même plan, même rendement
+   *  par panneau ; seul le NOMBRE change), puis recompute la production/économies par le
+   *  chemin PVGIS-par-comptage existant (la fenêtre de production suit prodPanels). */
+  function renderCustomLayout() {
+    if (!layoutPlan || !layoutState) return;
+    const occ = new Set(layoutState.occupied);
+    renderScene(layoutPlan.pack, layoutPlan.grid, layoutPlan.tiltDeg, layoutPlan.family, occ.size, layoutPlan.flush, occ);
+    // Recompute par COMPTAGE (jamais un rendement inventé) : on met prodPanels au nombre
+    // posé et on laisse la fenêtre de production rescaler en kWc (linéaire) côté client.
+    const count = occ.size;
+    const cfg = prodConfigFromState();
+    if (cfg) updateProductionWindow({ ...cfg, panels: count });
+  }
+
+  /** Convertit un point ÉCRAN (carte) en coordonnées ENU relatives à l'origine de la
+   *  scène — c'est le « raycast sur le plan du toit » : on déprojette en lng/lat puis on
+   *  passe en mètres locaux (même repère que PackedPanel.cx/cy). */
+  function screenToENU(point: maplibregl.Point): { x: number; y: number } | null {
+    if (!layoutPlan) return null;
+    const ll = map.unproject(point);
+    const origin = layoutPlan.pack.origin;
+    const cosLat = Math.cos(origin[1] * DEG2RAD);
+    return { x: (ll.lng - origin[0]) * DEG2M * cosLat, y: (ll.lat - origin[1]) * DEG2M };
+  }
+
+  /** Rendu du plan tactile des emplacements (cellules occupées/libres) + synthèse. */
+  function renderLayoutPanel() {
+    if (!layoutWindowEl) return;
+    const ready = !!layoutPlan && layoutPlan.grid.panels.length > 0 && closed;
+    layoutWindowEl.hidden = !ready;
+    if (!ready) return;
+    if (!layoutMode) return;
+    ensureLayoutState();
+    if (!layoutState) return;
+
+    const count = occupiedCount(layoutState);
+    const free = emptyIndices(layoutState).length;
+    const kwc = count * PANEL_KWC;
+    if (layoutCountEl) layoutCountEl.textContent = fmt(count);
+    if (layoutKwcEl) layoutKwcEl.textContent = `${fmt1(kwc)} kWc`;
+    if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
+    const cover = neededPanels > 0 ? Math.round((count / neededPanels) * 100) : 0;
+    if (layoutCoverEl) layoutCoverEl.textContent = neededPanels > 0 ? `${cover} %` : '—';
+    if (layoutMinusEl) layoutMinusEl.disabled = count <= 0;
+    if (layoutPlusEl) layoutPlusEl.disabled = free <= 0 || count >= layoutCap();
+
+    // Mini-plan des cellules : occupées (bleu) / libres (gris→vert au survol).
+    if (layoutGridEl && layoutState) {
+      layoutGridEl.innerHTML = layoutState.cells
+        .map((c) => {
+          const occupied = layoutState!.occupied.has(c.index);
+          const selected = layoutSel === c.index;
+          return `<button type="button" class="rp9-layout-cell" data-cell="${c.index}" data-occupied="${occupied}" aria-pressed="${selected}" aria-label="${occupied ? 'Panneau' : 'Emplacement libre'} ${c.index + 1}"></button>`;
+        })
+        .join('');
+    }
+    if (layoutNoteEl && !layoutNoteEl.textContent) {
+      layoutNoteEl.textContent = 'Touchez un panneau (bleu) pour le sélectionner, puis un emplacement libre (vert) pour l’y déplacer. Ou utilisez + / −.';
+    }
+  }
+
+  /** Entrée/sortie du mode personnalisation. */
+  function setLayoutMode(on: boolean) {
+    layoutMode = on;
+    if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', String(on));
+    if (layoutPanelEl) layoutPanelEl.hidden = !on;
+    if (on) {
+      layoutState = null; // repart de l'optimum courant
+      ensureLayoutState();
+      renderCustomLayout();
+    } else {
+      // En sortant, on re-rend la disposition de l'optimiseur (recalc rebranche tout).
+      layoutSel = null;
+      if (closed) renderActive();
+    }
+    renderLayoutPanel();
   }
 
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
@@ -2701,6 +2866,16 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (consToggleEl) consToggleEl.setAttribute('aria-expanded', 'false');
     if (consPanelEl) consPanelEl.hidden = true;
     if (consWindowEl) consWindowEl.hidden = true;
+    // W69 — réinitialise la disposition personnalisée.
+    layoutMode = false;
+    layoutState = null;
+    layoutPlan = null;
+    layoutOptimalCount = 0;
+    layoutSel = null;
+    if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', 'false');
+    if (layoutPanelEl) layoutPanelEl.hidden = true;
+    if (layoutWindowEl) layoutWindowEl.hidden = true;
+    if (layoutNoteEl) layoutNoteEl.textContent = '';
     syncChips();
     const target = { pitch: 0, bearing: 0 } as const;
     if (opts.reducedMotion) map.jumpTo(target);
@@ -3136,6 +3311,140 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (consSavingsEl) consSavingsEl.textContent = annualCons > 0 ? fmtSavings(savings.low, savings.high) + ' MAD' : '—';
     if (consBattEl) consBattEl.textContent = batt.batteries > 0 ? `${batt.batteries} × 6 kWh` : 'aucune';
   }
+
+  // ═══════════ W69 — câblage « Personnaliser la disposition » ═══════════
+  layoutToggleEl?.addEventListener('click', () => setLayoutMode(!layoutMode));
+
+  // + / − : ajoute/retire un panneau (touch + mouvement réduit, sans glissé fin).
+  layoutPlusEl?.addEventListener('click', () => {
+    if (!layoutMode || !layoutState) return;
+    const r = addFirstEmpty(layoutState, layoutCap());
+    if (r.ok) {
+      if (layoutNoteEl) layoutNoteEl.textContent = `Panneau ajouté — ${r.count} posés.`;
+      renderCustomLayout();
+      renderLayoutPanel();
+    } else if (layoutNoteEl) {
+      layoutNoteEl.textContent = 'Plus d’emplacement valide disponible sur ce toit.';
+    }
+  });
+  layoutMinusEl?.addEventListener('click', () => {
+    if (!layoutMode || !layoutState) return;
+    const r = removeLast(layoutState);
+    if (r.ok) {
+      layoutSel = null;
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = neededPanels > 0 && r.count < neededPanels
+          ? `Panneau retiré — ${r.count} posés. La disposition ne couvre plus tout le besoin (${fmt(neededPanels)}).`
+          : `Panneau retiré — ${r.count} posés.`;
+      }
+      renderCustomLayout();
+      renderLayoutPanel();
+    }
+  });
+  // Réinitialiser la disposition optimale.
+  layoutResetEl?.addEventListener('click', () => {
+    if (!layoutState) return;
+    resetToOptimal(layoutState, layoutOptimalCount);
+    layoutSel = null;
+    if (layoutNoteEl) layoutNoteEl.textContent = `Disposition optimale restaurée — ${occupiedCount(layoutState)} panneaux.`;
+    renderCustomLayout();
+    renderLayoutPanel();
+  });
+
+  // Plan tactile : tap-sélection d'un panneau → tap-cible d'un emplacement libre.
+  layoutGridEl?.addEventListener('click', (e) => {
+    if (!layoutMode || !layoutState) return;
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-cell]');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.cell ?? '', 10);
+    if (!Number.isFinite(idx)) return;
+    const occupied = layoutState.occupied.has(idx);
+    if (layoutSel == null) {
+      // 1er tap : sélectionne un panneau OCCUPÉ.
+      if (occupied) {
+        layoutSel = idx;
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau sélectionné — touchez un emplacement libre (vert) pour l’y déplacer.';
+        renderLayoutPanel();
+      } else if (layoutNoteEl) {
+        layoutNoteEl.textContent = 'Touchez d’abord un panneau (bleu).';
+      }
+      return;
+    }
+    // 2e tap : déplace vers la cible si elle est VIDE valide ; sinon rejet (rouge).
+    const res = movePanelToCell(layoutState, layoutSel, idx);
+    if (res.ok) {
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
+      layoutSel = null;
+      renderCustomLayout();
+    } else {
+      if (layoutNoteEl) layoutNoteEl.textContent = occupied ? 'Emplacement déjà occupé — choisissez un emplacement libre.' : 'Cible invalide.';
+      // re-sélection si on a touché un autre panneau occupé
+      if (occupied) layoutSel = idx;
+      else layoutSel = null;
+    }
+    renderLayoutPanel();
+  });
+
+  // Glissé sur la 3D : raycast (déprojection) → snap à la cellule VIDE valide la plus
+  // proche, commit au relâchement. Désactive le pan de la carte pendant le glissé.
+  let layoutDrag: { from: number } | null = null;
+  function layoutPanelAt(point: maplibregl.Point): number | null {
+    if (!layoutState) return null;
+    const enu = screenToENU(point);
+    if (!enu) return null;
+    // Cellule OCCUPÉE la plus proche du point (le panneau qu'on saisit).
+    let best = -1;
+    let bestD = Infinity;
+    for (const c of layoutState.cells) {
+      if (!layoutState.occupied.has(c.index)) continue;
+      const d = (c.cx - enu.x) ** 2 + (c.cy - enu.y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = c.index;
+      }
+    }
+    // Seuil de saisie : ~1 panneau de rayon (sinon on considère qu'on n'a rien saisi).
+    const grabR2 = (PANEL2_LONG_M * 0.7) ** 2;
+    return best >= 0 && bestD <= grabR2 ? best : null;
+  }
+  map.on('mousedown', (e) => {
+    if (!layoutMode || obstacleMode || !layoutState) return;
+    const from = layoutPanelAt(e.point);
+    if (from == null) return;
+    layoutDrag = { from };
+    layoutSel = from;
+    map.dragPan.disable();
+    map.getCanvas().style.cursor = 'grabbing';
+    renderLayoutPanel();
+    e.preventDefault();
+  });
+  map.on('mousemove', (e) => {
+    if (!layoutDrag || !layoutState) return;
+    const enu = screenToENU(e.point);
+    if (!enu) return;
+    const target = nearestEmptyCell(layoutState, enu.x, enu.y);
+    if (layoutNoteEl) layoutNoteEl.textContent = target >= 0 ? 'Relâchez sur un emplacement valide (vert).' : 'Aucun emplacement libre — il reviendra à sa place.';
+  });
+  map.on('mouseup', (e) => {
+    if (!layoutDrag || !layoutState) {
+      return;
+    }
+    const enu = screenToENU(e.point);
+    if (enu) {
+      const res = movePanelToPoint(layoutState, layoutDrag.from, enu.x, enu.y);
+      if (res.ok && res.toIndex !== layoutDrag.from) {
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
+        renderCustomLayout();
+      } else if (layoutNoteEl) {
+        layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+      }
+    }
+    layoutDrag = null;
+    layoutSel = null;
+    map.dragPan.enable();
+    map.getCanvas().style.cursor = '';
+    renderLayoutPanel();
+  });
 
   // — Chips de config —
   function syncChips() {
