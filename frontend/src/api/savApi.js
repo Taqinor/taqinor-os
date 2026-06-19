@@ -35,9 +35,10 @@ const savApi = {
   deleteContrat: (id) => api.delete(`/sav/contrats-maintenance/${id}/`),
   genererVisitesDues: () => api.post('/sav/contrats-maintenance/generer-dus/'),
   // N47 — rapport court de visite de maintenance (PDF, sans prix d'achat).
-  maintenanceRapportPdf: (id) =>
+  // L675 — date de visite optionnelle (?date=AAAA-MM-JJ ; défaut derniere_visite).
+  maintenanceRapportPdf: (id, date) =>
     api.get(`/sav/contrats-maintenance/${id}/rapport-pdf/`,
-      { responseType: 'blob' }),
+      { responseType: 'blob', params: date ? { date } : {} }),
 }
 
 export default savApi
