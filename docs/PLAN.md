@@ -699,7 +699,7 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Stock/Achats] [L14] [ROUTINE] Afficher sur un fournisseur le nombre de produits liés et de BCF associés (lecture seule). Fait = la fiche fournisseur montre "X produits · Y bons de commande".
 
 #### Mouvements & low-stock
-[ ] [Stock/Mouvements] [L9] [ROUTINE] Ajouter l'onglet "Transferts" à MouvementsPage (TYPE_META.transfert existe mais aucun onglet ne le filtre, et les TransfertStock ne sont pas des MouvementStock). Fait = un onglet liste les transferts entre emplacements avec source→destination.
+[x] [Stock/Mouvements] [L9] [ROUTINE] Ajouter l'onglet "Transferts" à MouvementsPage (TYPE_META.transfert existe mais aucun onglet ne le filtre, et les TransfertStock ne sont pas des MouvementStock). Fait = un onglet liste les transferts entre emplacements avec source→destination.
 [x] [Stock/Mouvements] [L4] [ROUTINE] Afficher un avertissement de stock négatif dans le preview de MouvementForm pour le cas ajustement<0 (previewApres calcule déjà la valeur négative). Fait = une saisie menant à un stock négatif est signalée avant submit pour tous les types.
 [x] [Stock/Mouvements] [L16] [ROUTINE] Permettre de filtrer les mouvements par produit depuis CatalogueRow (lien "historique") vers MouvementsPage pré-filtré. Fait = cliquer "historique" sur un produit ouvre les mouvements filtrés sur ce produit.
 [x] [Stock/Mouvements] [L3] [ROUTINE] Pré-sélectionner le produit dans MouvementForm si la page est ouverte depuis un produit donné. Fait = ouvrir le formulaire depuis un produit pré-remplit le select Produit.
@@ -719,7 +719,7 @@ client-facing PDFs are GALLERY-gated).
 
 #### Bons de commande fournisseur
 [x] [Stock/Achats] [L11] [ROUTINE] Remplacer tous les JSON.stringify(err.response?.data) de BcfDetail (save/envoyer/recevoir/annuler) par des messages FR lisibles. Fait = une erreur de BCF affiche une phrase française.
-[ ] [Stock/Achats] [L3] [ROUTINE] Pré-remplir le prix d'achat unitaire d'une ligne BCF depuis le PrixFournisseur du fournisseur choisi (ou prix_achat catalogue) à l'ajout de ligne. Fait = sélectionner un produit pour un fournisseur connu pré-remplit le prix d'achat U. interne.
+[x] [Stock/Achats] [L3] [ROUTINE] Pré-remplir le prix d'achat unitaire d'une ligne BCF depuis le PrixFournisseur du fournisseur choisi (ou prix_achat catalogue) à l'ajout de ligne. Fait = sélectionner un produit pour un fournisseur connu pré-remplit le prix d'achat U. interne.
 [ ] [Stock/Achats] [L2] [ROUTINE] Rendre une ligne BCF sans prix d'achat possible mais signalée (BCF interne ≠ devis, les pompes sans prix de vente doivent rester commandables). Fait = un produit sans prix de vente est sélectionnable dans un BCF et n'est pas grisé "prix à renseigner" dans ce contexte d'achat.
 [x] [Stock/Achats] [L6] [ROUTINE] Afficher l'avancement de réception sur la liste et le détail BCF (reçu/commandé, %). Fait = chaque BCF envoyé montre "X/Y reçus" et une barre dérivée de quantite_recue/quantite.
 [x] [Stock/Achats] [L4] [ROUTINE] Ajouter un bouton "Tout recevoir" dans BcfDetail qui pré-remplit chaque saisie de réception au reste dû. Fait = un clic remplit toutes les colonnes "À recevoir" avec quantite_restante.

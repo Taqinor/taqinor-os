@@ -180,6 +180,22 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const removeLigne = (idx) =>
     setLignes((ls) => ls.filter((_, i) => i !== idx))
 
+  // Sélection d'un produit : pré-remplit le prix d'achat U. (interne) depuis le
+  // prix_achat catalogue quand la ligne n'en a pas encore — modifiable ensuite.
+  const pickProduit = (idx, produitId) => {
+    setLignes((ls) => ls.map((l, i) => {
+      if (i !== idx) return l
+      const next = { ...l, produit: produitId }
+      const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+      if (sansPrix) {
+        const prod = (produits ?? []).find((p) => String(p.id) === String(produitId))
+        const cat = prod ? Number(prod.prix_achat) : 0
+        if (cat > 0) next.prix_achat_unitaire = String(cat)
+      }
+      return next
+    }))
+  }
+
   const buildPayload = () => ({
     fournisseur: fournisseur || null,
     date_commande: dateCommande || null,
@@ -363,7 +379,7 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                       <td className="px-3 py-2">
                         {editableLignes ? (
                           <ProduitPicker produits={produits} value={l.produit}
-                                         onChange={(v) => setLigne(idx, { produit: v })} />
+                                         onChange={(v) => pickProduit(idx, v)} />
                         ) : (
                           <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
                         )}
