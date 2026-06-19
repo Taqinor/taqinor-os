@@ -439,7 +439,13 @@ export default function LeadsPage() {
         {view === 'kanban' && <KanbanView {...viewProps} />}
         {view === 'liste' && <ListView {...viewProps} />}
         {view === 'calendrier' && <CalendarView {...viewProps} />}
-        {view === 'graphique' && <ChartsView {...viewProps} />}
+        {view === 'graphique' && (
+          <ChartsView
+            {...viewProps}
+            totalLeads={leads.length}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+          />
+        )}
       </div>
 
       {(showForm || deepLead) && (
