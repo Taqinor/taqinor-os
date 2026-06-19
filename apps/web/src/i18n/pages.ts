@@ -26,6 +26,7 @@ const TRANSLATED: Record<string, readonly Locale[]> = {
   '/contact': ['fr', 'en', 'ar'],
   '/nos-solutions': ['fr', 'en', 'ar'],
   '/faq': ['fr', 'en', 'ar'],
+  '/garanties': ['fr', 'en', 'ar'],
   '/mentions-legales': ['fr', 'en', 'ar'],
   '/politique-de-confidentialite': ['fr', 'en', 'ar'],
 };
