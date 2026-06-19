@@ -19,6 +19,25 @@ import {
 } from '../../ui'
 import { isDirty } from '../../ui/form-utils'
 
+// Traduit une erreur serveur DRF en phrase française lisible (jamais de JSON brut).
+function frSubmitError(err) {
+  if (!err) return 'Une erreur est survenue. Réessayez.'
+  if (typeof err === 'string') return err
+  if (err.detail) return err.detail
+  if (err.non_field_errors?.[0]) return err.non_field_errors[0]
+  if (err.sku?.[0]) {
+    return /unique|already exists|existe/i.test(err.sku[0])
+      ? 'Ce SKU est déjà utilisé par un autre produit.'
+      : `SKU : ${err.sku[0]}`
+  }
+  // Premier message de champ disponible, sinon repli générique (jamais de JSON).
+  for (const v of Object.values(err)) {
+    const m = Array.isArray(v) ? v[0] : v
+    if (typeof m === 'string') return m
+  }
+  return "L'enregistrement a échoué. Vérifiez les champs et réessayez."
+}
+
 // N17 — listes de prix multi-fournisseurs par SKU. Le prix d'achat est INTERNE
 // (jamais sur un document client). Le moins cher est proposé en rédigeant un
 // bon de commande. Section éditable seulement en mode édition d'un produit.
@@ -116,7 +135,7 @@ function PrixFournisseursSection({ produitId, fournisseurs }) {
 
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
-  const { categories, fournisseurs } = useSelector(s => s.stock)
+  const { categories, fournisseurs, produits } = useSelector(s => s.stock)
   const isEdit = !!produit
 
   const [saving, setSaving] = useState(false)
@@ -140,7 +159,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
-    tva:            produit?.tva != null ? String(produit.tva) : '',
+    // Nouveau produit : TVA 20 % par défaut (cas le plus courant) ;
+    // l'édition conserve la valeur existante (y compris « Sans TVA »).
+    tva:            produit?.tva != null ? String(produit.tva) : (isEdit ? '' : '20'),
     quantite_stock: String(produit?.quantite_stock ?? '0'),
     seuil_alerte:   String(produit?.seuil_alerte  ?? '0'),
     categorie_id:   produit?.categorie?.id  ? String(produit.categorie.id) : '',
@@ -203,11 +224,23 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
 
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
 
+  // Doublon de SKU détecté localement (unicité ('company','sku') côté serveur).
+  // Le serveur reste l'autorité ; ceci évite un aller-retour pour un cas courant.
+  const skuTrimmed = fields.sku.trim().toLowerCase()
+  const skuDuplicate = skuTrimmed
+    ? (produits ?? []).find(
+        (p) => p.id !== produit?.id
+          && (p.sku ?? '').trim().toLowerCase() === skuTrimmed,
+      )
+    : null
+
   const validate = () => {
     const e = {}
     if (!fields.nom.trim())               e.nom        = 'Nom requis'
     if (!fields.prix_vente || isNaN(parseFloat(fields.prix_vente)))
                                            e.prix_vente = 'Prix de vente requis'
+    if (skuDuplicate)
+      e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -239,8 +272,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      setErrors(prev => ({ ...prev, submit: frSubmitError(err) }))
     } finally {
       setSaving(false)
     }
@@ -251,6 +283,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const achatN = parseFloat(fields.prix_achat)
   const tvaN   = fields.tva !== '' ? parseFloat(fields.tva) : null
   const marge  = (venteN > 0 && achatN > 0) ? ((venteN - achatN) / venteN) * 100 : null
+  const margeNegative = venteN > 0 && achatN > 0 && venteN < achatN
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -268,8 +301,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <Input id="pf-nom" invalid={!!errors.nom} value={fields.nom}
                      onChange={e => setField('nom', e.target.value)} placeholder="Nom du produit" />
             </FormField>
-            <FormField label="SKU / Référence" htmlFor="pf-sku">
-              <Input id="pf-sku" value={fields.sku}
+            <FormField label="SKU / Référence" htmlFor="pf-sku" error={errors.sku}>
+              <Input id="pf-sku" invalid={!!errors.sku} value={fields.sku}
                      onChange={e => setField('sku', e.target.value)} placeholder="REF-001" />
             </FormField>
 
@@ -364,6 +397,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <Input id="pf-vente" type="number" min="0" step="any" inputMode="decimal"
                      invalid={!!errors.prix_vente} value={fields.prix_vente}
                      onChange={e => setField('prix_vente', e.target.value)} />
+              {/* Avertissement marge négative — interne, jamais bloquant. */}
+              {margeNegative && (
+                <p className="mt-1 text-xs text-warning">
+                  Marge négative : le prix de vente est inférieur au prix d&apos;achat (interne).
+                </p>
+              )}
             </FormField>
             <FormField label="Prix d'achat HT" htmlFor="pf-achat" hint="Interne — jamais sur un document client.">
               <Input id="pf-achat" type="number" min="0" step="any" inputMode="decimal"
@@ -394,7 +433,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 )}
                 {marge !== null && (
                   <Badge tone={marge >= 0 ? 'success' : 'danger'}>
-                    Marge {marge.toFixed(1)} % (interne)
+                    Marge {(venteN - achatN).toFixed(2)} DH · {marge.toFixed(1)} % (interne)
                   </Badge>
                 )}
               </div>

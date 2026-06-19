@@ -677,11 +677,11 @@ client-facing PDFs are GALLERY-gated).
 ### Stock & Achats
 
 #### Catalogue — liste & form
-[ ] [Stock/Catalogue] [L7] [ROUTINE] Bloquer le SKU en doublon dès la saisie dans ProduitForm.jsx avant submit (l'unicité ('company','sku') ne remonte qu'en errors.submit brut). Fait = saisir un SKU déjà utilisé affiche un message FR inline sous le champ SKU ("SKU déjà utilisé par <nom>") sans soumettre.
-[ ] [Stock/Catalogue] [L11] [ROUTINE] Remplacer le JSON.stringify(err) de errors.submit (ProduitForm.handleSubmit) par un message FR lisible. Fait = une erreur serveur affiche une phrase française, jamais {"sku":["..."]} brut.
-[ ] [Stock/Catalogue] [L3] [ROUTINE] Pré-remplir la TVA par défaut à 20 % pour un nouveau produit (aujourd'hui tva:'' = "Sans TVA" par défaut). Fait = ouvrir "Nouveau produit" affiche TVA 20 % ; l'édition garde la valeur existante.
-[ ] [Stock/Catalogue] [L7] [ROUTINE] Avertir dans ProduitForm quand prix_vente < prix_achat (marge négative, indicateur générateur interne). Fait = une marge négative affiche un avertissement FR non bloquant sous le prix de vente.
-[ ] [Stock/Catalogue] [L6] [ROUTINE] Afficher un indicateur de marge (prix_vente − prix_achat, %) dans ProduitForm en mode édition. Fait = la marge en DH et % s'affiche, jamais exportée ni client-facing.
+[x] [Stock/Catalogue] [L7] [ROUTINE] Bloquer le SKU en doublon dès la saisie dans ProduitForm.jsx avant submit (l'unicité ('company','sku') ne remonte qu'en errors.submit brut). Fait = saisir un SKU déjà utilisé affiche un message FR inline sous le champ SKU ("SKU déjà utilisé par <nom>") sans soumettre.
+[x] [Stock/Catalogue] [L11] [ROUTINE] Remplacer le JSON.stringify(err) de errors.submit (ProduitForm.handleSubmit) par un message FR lisible. Fait = une erreur serveur affiche une phrase française, jamais {"sku":["..."]} brut.
+[x] [Stock/Catalogue] [L3] [ROUTINE] Pré-remplir la TVA par défaut à 20 % pour un nouveau produit (aujourd'hui tva:'' = "Sans TVA" par défaut). Fait = ouvrir "Nouveau produit" affiche TVA 20 % ; l'édition garde la valeur existante.
+[x] [Stock/Catalogue] [L7] [ROUTINE] Avertir dans ProduitForm quand prix_vente < prix_achat (marge négative, indicateur générateur interne). Fait = une marge négative affiche un avertissement FR non bloquant sous le prix de vente.
+[x] [Stock/Catalogue] [L6] [ROUTINE] Afficher un indicateur de marge (prix_vente − prix_achat, %) dans ProduitForm en mode édition. Fait = la marge en DH et % s'affiche, jamais exportée ni client-facing.
 [ ] [Stock/Catalogue] [L9] [ROUTINE] Ajouter un filtre "Sans prix (à renseigner)" dans le rail de StockList pour isoler les produits où sansPrix(p) (11 pompes OSP). Fait = un bouton liste uniquement les produits sans prix de vente ; le compteur reflète leur nombre.
 [ ] [Stock/Catalogue] [L14] [ROUTINE] Afficher un total de valeur de vente du catalogue filtré (somme prix_vente×quantite) en pied de StockList. Fait = un bandeau montre "Valeur vente du catalogue affiché : X DH HT" recalculé au filtre/recherche.
 [ ] [Stock/Catalogue] [L15] [ROUTINE] Signaler les produits sans SKU dans StockList. Fait = un produit sans sku porte un badge "SKU manquant" et un filtre rail "Sans SKU" les regroupe.
