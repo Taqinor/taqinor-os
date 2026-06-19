@@ -103,6 +103,14 @@ export const ui = {
     // Ruban Article 33
     'ribbon.badge': 'Loi 82-21',
     'ribbon.text': 'Régime en vigueur depuis le 9 juin 2026 — installations existantes : régularisez maintenant →',
+    // Bande CTA finale + CTA collant + fil d'Ariane
+    'cta.eyebrow': 'Étude gratuite',
+    'cta.title': 'Une étude technique gratuite, sans engagement.',
+    'cta.button': 'Recevez votre étude sur WhatsApp',
+    'cta.stickyDiag': 'Diagnostic gratuit',
+    'breadcrumb.label': "Fil d'Ariane",
+    'breadcrumb.home': 'Accueil',
+    'faq.heading': 'Questions fréquentes',
   },
   en: {
     'nav.solutions': 'Solutions',
@@ -189,6 +197,13 @@ export const ui = {
     'roof.autre': 'Other',
     'ribbon.badge': 'Law 82-21',
     'ribbon.text': 'In force since 9 June 2026 — existing installations: regularize now →',
+    'cta.eyebrow': 'Free study',
+    'cta.title': 'A free technical study, no commitment.',
+    'cta.button': 'Get your study on WhatsApp',
+    'cta.stickyDiag': 'Free assessment',
+    'breadcrumb.label': 'Breadcrumb',
+    'breadcrumb.home': 'Home',
+    'faq.heading': 'Frequently asked questions',
   },
   ar: {
     'nav.solutions': 'الحلول',
@@ -275,5 +290,12 @@ export const ui = {
     'roof.autre': 'أخرى',
     'ribbon.badge': 'القانون 82-21',
     'ribbon.text': 'سارٍ منذ 9 يونيو 2026 — التركيبات القائمة: سوِّ وضعك الآن →',
+    'cta.eyebrow': 'دراسة مجانية',
+    'cta.title': 'دراسة تقنية مجانية، بدون أي التزام.',
+    'cta.button': 'استلم دراستك على واتساب',
+    'cta.stickyDiag': 'تشخيص مجاني',
+    'breadcrumb.label': 'مسار التصفّح',
+    'breadcrumb.home': 'الرئيسية',
+    'faq.heading': 'الأسئلة المتكررة',
   },
 } as const;

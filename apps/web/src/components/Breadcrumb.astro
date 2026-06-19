@@ -5,6 +5,8 @@
  * courante (sans lien). Les `href` relatifs sont résolus en URL absolues pour
  * le JSON-LD (Astro.site).
  */
+import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+
 interface Crumb {
   label: string;
   href?: string;
@@ -15,6 +17,7 @@ interface Props {
   tone?: 'light' | 'dark';
 }
 const { items, tone = 'light' } = Astro.props;
+const t = useTranslations(getLocaleFromPath(Astro.url.pathname));
 
 const abs = (href?: string) => (href ? new URL(href, Astro.site).href : undefined);
 
@@ -35,7 +38,7 @@ const link = tone === 'dark' ? 'hover:text-encre' : 'hover:text-lune';
 
 <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
-<nav aria-label="Fil d'Ariane" class={`mx-auto max-w-6xl px-4 pt-6 text-xs ${txt}`}>
+<nav aria-label={t('breadcrumb.label')} class={`mx-auto max-w-6xl px-4 pt-6 text-xs ${txt}`}>
   <ol class="flex flex-wrap items-center gap-x-2 gap-y-1">
     {items.map((c, i) => (
       <li class="flex items-center gap-x-2">

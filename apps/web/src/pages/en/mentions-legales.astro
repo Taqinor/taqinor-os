@@ -1,0 +1,61 @@
+---
+/**
+ * EN — Legal notice (W67). Faithful translation of /mentions-legales ; every
+ * legal figure (RC, ICE, capital, names) stays EXACT. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import { NAP } from '../../lib/nap';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const privacyHref = localizeNavHref('/politique-de-confidentialite', getLocaleFromPath(Astro.url.pathname));
+
+// Legal data — 2026 company file. Values are exact; only labels are translated.
+const rows = [
+  { label: 'Company name', value: 'TAQINOR Solutions SARLAU' },
+  { label: 'Legal form', value: 'Single-member limited liability company' },
+  { label: 'Trade register', value: 'RC 691213 — Casablanca Commercial Court' },
+  { label: 'ICE', value: '003799642000067' },
+  { label: 'Share capital', value: '100 000,00 MAD' },
+  { label: 'Manager', value: 'Mr Reda Kasri' },
+  { label: 'Contact', value: `${NAP.email} · ${NAP.phoneDisplayIntl}` },
+  { label: 'Hosting', value: 'Cloudflare, Inc. — global network (cloudflare.com)' },
+];
+---
+
+<Layout
+  title="Legal notice | Taqinor"
+  description="Legal information for TAQINOR Solutions SARLAU — RC 691213 Casablanca, ICE 003799642000067."
+  ogSlug="accueil"
+>
+  <section class="px-4 py-14 text-white">
+    <div class="mx-auto max-w-3xl">
+      <p class="tech-label rule-brass cine-in text-brass-300">Legal information</p>
+      <h1 class="display cine-in mt-4 text-4xl [animation-delay:120ms]">Legal notice</h1>
+    </div>
+  </section>
+
+  <!-- The official document, in full light -->
+  <div class="seam-lumiere" aria-hidden="true"></div>
+  <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
+    ><div class="mx-auto max-w-3xl">
+    <div class="border-t-2 border-azur-900 bg-blanc">
+      {rows.map((r) => (
+        <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
+          <span class="tech-label text-encre-faint">{r.label}</span>
+          <span class="text-sm font-semibold">{r.value}</span>
+        </div>
+      ))}
+    </div>
+    <p class="mt-6 text-sm leading-relaxed text-encre-soft">
+      Taqinor operates in service-area mode (on-site work only, no public
+      reception): Casablanca, Rabat, Marrakech, Tanger, Agadir — travel across
+      all of Morocco.
+    </p>
+    <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+      For any question about personal data, see the
+      <a href={privacyHref} class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">privacy policy</a>.
+    </p>
+    </div>
+  </section>
+</Layout>

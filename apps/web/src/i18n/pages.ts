@@ -24,6 +24,8 @@ import { DEFAULT_LOCALE, isLocale, type Locale } from './config';
  */
 const TRANSLATED: Record<string, readonly Locale[]> = {
   '/contact': ['fr', 'en', 'ar'],
+  '/mentions-legales': ['fr', 'en', 'ar'],
+  '/politique-de-confidentialite': ['fr', 'en', 'ar'],
 };
 
 /** Normalise un chemin racine : retire le slash final (sauf la racine). */
