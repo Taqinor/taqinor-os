@@ -22,7 +22,21 @@ import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
 
 const VIEW_KEY = 'taqinor.leads.view'
+const FILTERS_KEY = 'taqinor.leads.filters'
 const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
+
+// Filtres persistés en localStorage : on fusionne avec EMPTY_FILTERS pour
+// tolérer un schéma plus ancien (clés manquantes/en trop ignorées).
+function loadFilters() {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY)
+    if (!raw) return EMPTY_FILTERS
+    const parsed = JSON.parse(raw)
+    return { ...EMPTY_FILTERS, ...(parsed && typeof parsed === 'object' ? parsed : {}) }
+  } catch {
+    return EMPTY_FILTERS
+  }
+}
 
 export default function LeadsPage() {
   const dispatch = useDispatch()
@@ -50,8 +64,14 @@ export default function LeadsPage() {
     try { localStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
   }, [view])
 
-  // Filtres partagés par les quatre vues.
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  // Filtres partagés par les quatre vues — persistés en localStorage (comme la
+  // vue active) pour survivre à un rechargement de page.
+  const [filters, setFilters] = useState(loadFilters)
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
+    } catch { /* stockage indisponible */ }
+  }, [filters])
   const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
 
   // Formulaire lead (création / édition).
@@ -61,6 +81,14 @@ export default function LeadsPage() {
   const [formDevisIntent, setFormDevisIntent] = useState(null)
   // Atelier doublons (modal).
   const [showDoublons, setShowDoublons] = useState(false)
+  // Nombre de groupes de doublons détectés (badge sur le bouton « Doublons »).
+  const [doublonsCount, setDoublonsCount] = useState(0)
+  const refreshDoublonsCount = () => {
+    crmApi.getDoublons()
+      .then(r => setDoublonsCount(Array.isArray(r.data) ? r.data.length : 0))
+      .catch(() => setDoublonsCount(0))
+  }
+  useEffect(() => { refreshDoublonsCount() }, [])
   // Import CSV/XLSX (T9).
   const [showImport, setShowImport] = useState(false)
 
@@ -287,6 +315,11 @@ export default function LeadsPage() {
           <Button onClick={openNew}>+ Nouveau lead</Button>
           <Button variant="outline" onClick={() => setShowDoublons(true)}>
             🔀 Doublons
+            {doublonsCount > 0 && (
+              <span className="count-badge" title="Groupes de doublons détectés">
+                {doublonsCount}
+              </span>
+            )}
           </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <Upload /> Importer
@@ -359,8 +392,8 @@ export default function LeadsPage() {
 
       {showDoublons && (
         <DoublonsPanel
-          onClose={() => setShowDoublons(false)}
-          onAnyMerge={refetch}
+          onClose={() => { setShowDoublons(false); refreshDoublonsCount() }}
+          onAnyMerge={() => { refetch(); refreshDoublonsCount() }}
         />
       )}
 

@@ -98,6 +98,45 @@ test('filterLeads : inclure / exclure / seulement les perdus', () => {
   assert.deepEqual(filterLeads(leads, { perdus: 'seuls' }).map((l) => l.id), [1])
 })
 
+test('filterLeads : recherche WhatsApp distinct du téléphone', () => {
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'A', telephone: '0611111111', whatsapp: '0622222222' },
+    { id: 2, stage: 'NEW', nom: 'B', telephone: '0633333333' },
+  ]
+  // Un numéro WhatsApp trouve le lead même si telephone diffère.
+  assert.deepEqual(filterLeads(leads, { q: '0622222222' }).map((l) => l.id), [1])
+})
+
+test('filterLeads : filtre par étape et par type d’installation', () => {
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'A', type_installation: 'agricole' },
+    { id: 2, stage: 'SIGNED', nom: 'B', type_installation: 'residentiel' },
+  ]
+  assert.deepEqual(filterLeads(leads, { stage: 'SIGNED' }).map((l) => l.id), [2])
+  assert.deepEqual(
+    filterLeads(leads, { type_installation: 'agricole' }).map((l) => l.id), [1])
+})
+
+test('filterLeads : relances en retard et cette semaine', () => {
+  const pad = (n) => String(n).padStart(2, '0')
+  const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const past = new Date(); past.setDate(past.getDate() - 5)
+  const todayD = new Date()
+  const future = new Date(); future.setDate(future.getDate() + 60)
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'Retard', relance_date: local(past) },
+    { id: 2, stage: 'NEW', nom: "Aujourd'hui", relance_date: local(todayD) },
+    { id: 3, stage: 'NEW', nom: 'Loin', relance_date: local(future) },
+    { id: 4, stage: 'NEW', nom: 'Sans' },
+  ]
+  assert.deepEqual(filterLeads(leads, { relance: 'retard' }).map((l) => l.id), [1])
+  // « cette semaine » inclut aujourd'hui, exclut le passé et le lointain.
+  const week = filterLeads(leads, { relance: 'semaine' }).map((l) => l.id)
+  assert.ok(week.includes(2))
+  assert.ok(!week.includes(1))
+  assert.ok(!week.includes(3))
+})
+
 test('helpers de carte : tags, initiales, total du dernier devis', () => {
   assert.deepEqual(tagList({ tags: ' VIP , 82-21 ,, ' }), ['VIP', '82-21'])
   assert.deepEqual(tagList({}), [])

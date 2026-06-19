@@ -4,6 +4,9 @@ import {
   EMPTY_FILTERS,
   CANAL_LABELS,
   PRIORITE_LABELS,
+  STAGE_LABELS,
+  PIPELINE_STAGES,
+  TYPE_INSTALLATION_LABELS,
   tagList,
 } from '../../../features/crm/stages'
 import {
@@ -54,6 +57,33 @@ export default function FilterBar({ filters, setFilters, leads }) {
         />
       </div>
 
+      <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
+        <SelectTrigger className="fb-select" aria-label="Filtrer par étape">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Toutes les étapes</SelectItem>
+          {PIPELINE_STAGES.map((k) => (
+            <SelectItem key={k} value={k}>{STAGE_LABELS[k] ?? k}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={toSel(filters.type_installation)}
+        onValueChange={(v) => setKey('type_installation')(fromSel(v))}
+      >
+        <SelectTrigger className="fb-select" aria-label="Filtrer par type d'installation">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les marchés</SelectItem>
+          {Object.entries(TYPE_INSTALLATION_LABELS).map(([k, v]) => (
+            <SelectItem key={k} value={k}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
       <Select value={toSel(filters.canal)} onValueChange={(v) => setKey('canal')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par canal">
           <SelectValue />
@@ -101,6 +131,18 @@ export default function FilterBar({ filters, setFilters, leads }) {
           ))}
         </SelectContent>
       </Select>
+
+      <Segmented
+        size="sm"
+        aria-label="Filtre relance"
+        value={filters.relance || ''}
+        onChange={setKey('relance')}
+        options={[
+          { value: '', label: 'Toutes relances' },
+          { value: 'retard', label: 'En retard' },
+          { value: 'semaine', label: 'Cette semaine' },
+        ]}
+      />
 
       <Segmented
         size="sm"
