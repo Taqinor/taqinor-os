@@ -202,6 +202,78 @@ class TestAttachments(TestCase):
                 f'/api/django/records/attachments/{att.id}/download/')
         self.assertEqual(dl.status_code, 404)
 
+    def test_upload_real_storage_persists_and_downloads(self):
+        """N104 — régression : exerce le VRAI chemin de stockage (storage.py),
+        pas un store mocké. Seul le client MinIO (boto3) est simulé par un
+        backend objet en mémoire, donc la validation par octets magiques, la
+        génération de clé et ``upload_fileobj``/``get_object`` s'exécutent
+        réellement. On vérifie 201, la persistance de la ligne Attachment, puis
+        que le proxy de téléchargement renvoie les octets exacts stockés."""
+        from io import BytesIO
+        png = (b'\x89PNG\r\n\x1a\n' + b'\x00' * 200)
+
+        # Backend objet en mémoire : upload_fileobj écrit, get_object relit.
+        objects = {}
+
+        def _upload_fileobj(fileobj, bucket, key, **kwargs):
+            objects[key] = fileobj.read()
+
+        def _get_object(Bucket=None, Key=None):
+            return {'Body': BytesIO(objects[Key])}
+
+        fake_client = mock.MagicMock()
+        fake_client.upload_fileobj.side_effect = _upload_fileobj
+        fake_client.get_object.side_effect = _get_object
+
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client):
+            up = BytesIO(png)
+            up.name = 'preuve.png'
+            resp = self.api.post('/api/django/records/attachments/', {
+                'model': 'crm.lead', 'id': self.lead.id, 'file': up,
+            }, format='multipart')
+            self.assertEqual(resp.status_code, 201, resp.data)
+            att_id = resp.data['id']
+
+            # La ligne persiste, scopée société, avec les métadonnées réelles.
+            att = Attachment.objects.get(id=att_id)
+            self.assertEqual(att.company_id, self.company.id)
+            self.assertEqual(att.mime, 'image/png')
+            self.assertEqual(att.size, len(png))
+            self.assertEqual(att.filename, 'preuve.png')
+            self.assertTrue(att.file_key.startswith('attachments/'))
+            self.assertTrue(att.file_key.endswith('.png'))
+            # Le fichier a bien été téléversé dans le stockage objet.
+            self.assertIn(att.file_key, objects)
+            self.assertEqual(objects[att.file_key], png)
+
+            # Le proxy de téléchargement (même origine) relit les octets exacts.
+            self.assertEqual(
+                resp.data['url'],
+                f'/api/django/records/attachments/{att_id}/download/')
+            dl = self.api.get(resp.data['url'])
+            self.assertEqual(dl.status_code, 200)
+            self.assertEqual(dl['Content-Type'], 'image/png')
+            self.assertEqual(dl.content, png)
+
+    def test_upload_rejects_unsupported_type_real_storage(self):
+        """N104 — la validation par octets magiques (storage.py réel) refuse un
+        binaire non supporté avec un 400 FR, sans rien téléverser."""
+        from io import BytesIO
+        bogus = b'PK\x03\x04 ceci est une archive zip, pas une image'
+
+        fake_client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client):
+            up = BytesIO(bogus)
+            up.name = 'archive.zip'
+            resp = self.api.post('/api/django/records/attachments/', {
+                'model': 'crm.lead', 'id': self.lead.id, 'file': up,
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(fake_client.upload_fileobj.called)
+        self.assertEqual(Attachment.objects.count(), 0)
+
 
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType

@@ -39,6 +39,25 @@ test('matchesAccept : *, mime exact, wildcard, extension, listes', () => {
   assert.equal(matchesAccept({ name: 'x.gif', type: 'image/gif' }, 'application/pdf,image/png'), false)
 })
 
+test('matchesAccept : type vide → repli sur extension (régression N104)', () => {
+  // Cas RÉEL : le navigateur ne fournit pas toujours le type MIME — certains
+  // .pdf/.png/.jpg sélectionnés (Windows/Linux) ou glissés depuis une autre app
+  // arrivent avec type === ''. Sans repli, ils étaient refusés AVANT envoi, ce
+  // qui bloquait l'ajout de pièces jointes partout.
+  const accept = 'application/pdf,image/png,image/jpeg,image/webp'
+  assert.equal(matchesAccept({ name: 'facture.pdf', type: '' }, accept), true)
+  assert.equal(matchesAccept({ name: 'scan.PNG', type: '' }, accept), true)
+  assert.equal(matchesAccept({ name: 'photo.jpg', type: '' }, accept), true)
+  assert.equal(matchesAccept({ name: 'photo.jpeg', type: '' }, accept), true)
+  assert.equal(matchesAccept({ name: 'image.webp', type: '' }, accept), true)
+  // Reste STRICT : un type vide avec une extension non autorisée est refusé.
+  assert.equal(matchesAccept({ name: 'archive.zip', type: '' }, accept), false)
+  assert.equal(matchesAccept({ name: 'sansext', type: '' }, accept), false)
+  // Wildcard 'image/*' : repli par extension d'image quand le type est absent.
+  assert.equal(matchesAccept({ name: 'p.png', type: '' }, 'image/*'), true)
+  assert.equal(matchesAccept({ name: 'd.pdf', type: '' }, 'image/*'), false)
+})
+
 test('validateFile : type refusé, taille dépassée, OK', () => {
   const accept = 'application/pdf,image/png,image/jpeg,image/webp'
   const okFile = { name: 'f.pdf', type: 'application/pdf', size: 2 * MB }
