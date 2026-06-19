@@ -13,6 +13,7 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
 import { CONVERSION_STAGE } from '../../features/crm/stages'
+import useCanaux from '../../features/crm/useCanaux'
 import { Button, Input } from '../../ui'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
@@ -35,11 +36,6 @@ const STATUT_DEVIS = {
   refuse: 'Refusé', expire: 'Expiré',
 }
 
-const CANAUX = {
-  meta_ads: 'Publicité Meta', whatsapp_ctwa: 'WhatsApp/CTWA',
-  site_web: 'Site web', reference: 'Référence', telephone: 'Téléphone',
-  walk_in: 'Visite/Walk-in', autre: 'Autre',
-}
 const PRIORITES = { basse: 'Basse', normale: 'Normale', haute: 'Haute' }
 const TYPES_INSTALLATION = {
   residentiel: 'Résidentiel', commercial: 'Commercial',
@@ -123,6 +119,9 @@ function timeAgo(iso) {
 export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null }) {
   const dispatch = useDispatch()
   const isEdit = !!lead
+  // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
+  // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
+  const { labels: canalLabels } = useCanaux()
 
   // Copie « vivante » du lead : reflète les enregistrements ponctuels faits
   // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au
@@ -732,7 +731,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               </div>
               <div className="form-row">
                 <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
-                <Sel fields={fields} set={set} k="canal" label="Canal" labels={CANAUX} />
+                <Sel fields={fields} set={set} k="canal" label="Canal" labels={canalLabels} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
                        placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />

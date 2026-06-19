@@ -8,7 +8,7 @@ import {
 import { FileUpload } from '../../ui/FileUpload'
 import {
   Button, Badge, Spinner, Card, EmptyState,
-  Input, Segmented,
+  Input, Segmented, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import {
@@ -115,6 +115,9 @@ export default function OcrStockImport() {
   const navigate   = useNavigate()
   const produitsRef     = useRef([])
   const fournisseursRef = useRef([])
+  // Fournisseur déjà résolu/créé lors d'une première application, réutilisé lors
+  // d'un réessai ciblé des échecs pour ne pas le recréer en double (750).
+  const resolvedFournisseurRef = useRef(null)
 
   const role = useSelector((s) => s.auth.role)
   const { stockOcrResult, stockOcrDocType, stockOcrLoading, stockOcrError } = useSelector((s) => s.ia)
@@ -136,6 +139,9 @@ export default function OcrStockImport() {
   const [lignes, setLignes]   = useState([])
   const [applying, setApplying] = useState(false)
   const [results, setResults]   = useState([])
+  // 751 — pour un document d'achat, créer un bon de commande fournisseur REÇU
+  // (réception en bloc) au lieu de mouvements d'entrée isolés. Off par défaut.
+  const [creerBcf, setCreerBcf] = useState(false)
 
   useEffect(() => {
     dispatch(fetchProduits())
@@ -288,20 +294,31 @@ const cp = produitsRef.current
   const handleReset = () => {
     dispatch(clearStockOcrResult())
     setStep(1); setDocType(null); setLignes([]); setResults([])
+    setCreerBcf(false); resolvedFournisseurRef.current = null
   }
 
   const handleNewFile = () => {
     dispatch(clearStockOcrResult())
     setStep(2); setLignes([]); setResults([])
+    setCreerBcf(false); resolvedFournisseurRef.current = null
   }
 
   const updateLigne = (idx, updates) =>
     setLignes(prev => prev.map((l, i) => i === idx ? { ...l, ...updates } : l))
 
-  const handleApply = async () => {
+  // `retryIds` (Set d'identifiants de ligne) limite l'application aux seules
+  // lignes demandées — utilisé pour « Réessayer les échecs » sans rejouer les
+  // lignes déjà réussies (750).
+  const handleApply = async (retryArg = null) => {
+    // onClick passe l'événement : on ne retient un argument que si c'est un Set
+    // d'identifiants de ligne (réessai ciblé des échecs).
+    const retryIds = retryArg instanceof Set ? retryArg : null
     setApplying(true)
     const log = []
     const categoryCache = {}  // nom → id, évite créations doublons dans un même import
+    const lignesACibler = retryIds
+      ? lignes.filter(l => retryIds.has(l.id))
+      : lignes
 
     const resolveCategorie = async (ligne) => {
       if (ligne.categorie_action === 'existing' && ligne.categorie_id) {
@@ -327,7 +344,11 @@ const cp = produitsRef.current
 
     try {
       let resolvedFournisseurId = null
-      if (fournisseurMode === 'existing' && fournisseurId) {
+      if (retryIds && resolvedFournisseurRef.current != null) {
+        // Réessai : on réutilise le fournisseur déjà résolu (pas de re-création
+        // ni d'entrée de journal en double).
+        resolvedFournisseurId = resolvedFournisseurRef.current
+      } else if (fournisseurMode === 'existing' && fournisseurId) {
         resolvedFournisseurId = parseInt(fournisseurId)
         const found = fournisseurs.find(f => f.id === resolvedFournisseurId)
         log.push({ ok: true, label: `Fournisseur "${found?.nom}"`, msg: 'Sélectionné' })
@@ -341,12 +362,22 @@ const cp = produitsRef.current
           log.push({ ok: false, label: `Fournisseur "${nouveauFournisseurNom.trim()}"`, msg })
         }
       }
-      for (const ligne of lignes) {
+      resolvedFournisseurRef.current = resolvedFournisseurId
+      // 751 — mode BCF : on collecte les lignes résolues plutôt que de créer des
+      // mouvements isolés ; le BCF est créé/reçu après la boucle (réception en
+      // bloc = mouvements d'ENTRÉE côté serveur). Réservé aux docs d'achat avec
+      // un fournisseur résolu.
+      const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
+      const modeBcf = creerBcf && isPurchaseDoc && resolvedFournisseurId
+      const bcfLignes = []  // { produit, quantite, prix_achat_unitaire, label, ligneId }
+      for (const ligne of lignesACibler) {
         const label = ligne.nom_ocr || ligne.ref_ocr || `Ligne #${ligne.id + 1}`
-        if (ligne.action === 'skip') { log.push({ ok: null, label, msg: 'Ignoré' }); continue }
+        // chaque entrée de ligne porte son ligneId pour permettre le réessai ciblé
+        const push = (entry) => log.push({ ligneId: ligne.id, ...entry })
+        if (ligne.action === 'skip') { push({ ok: null, label, msg: 'Ignoré' }); continue }
         let produitId = null
         if (ligne.action === 'match') {
-          if (!ligne.produit_id) { log.push({ ok: false, label, msg: 'Aucun produit sélectionné' }); continue }
+          if (!ligne.produit_id) { push({ ok: false, label, msg: 'Aucun produit sélectionné' }); continue }
           produitId = parseInt(ligne.produit_id)
           const patchData = {}
           // Mettre à jour la catégorie du produit existant si une est choisie
@@ -367,13 +398,12 @@ const cp = produitsRef.current
             try { await stockApi.patchProduit(produitId, patchData) } catch { /* patch optionnel */ }
           }
         } else {
-          if (!ligne.nouveau_nom.trim()) { log.push({ ok: false, label, msg: 'Nom du produit requis' }); continue }
-          const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
+          if (!ligne.nouveau_nom.trim()) { push({ ok: false, label, msg: 'Nom du produit requis' }); continue }
           const prixAchat = parseFloat(ligne.nouveau_prix_achat) || 0
           const prixVente = isPurchaseDoc
             ? (parseFloat(ligne.nouveau_prix_vente) || 0)
             : (parseFloat(ligne.nouveau_prix_vente) || prixAchat)
-          if (!isPurchaseDoc && prixVente <= 0) { log.push({ ok: false, label, msg: 'Prix de vente requis (> 0)' }); continue }
+          if (!isPurchaseDoc && prixVente <= 0) { push({ ok: false, label, msg: 'Prix de vente requis (> 0)' }); continue }
           try {
             const catId = await resolveCategorie(ligne)
             const payload = { nom: ligne.nouveau_nom.trim(), prix_achat: prixAchat, prix_vente: prixVente, quantite_stock: 0, seuil_alerte: 0 }
@@ -385,9 +415,21 @@ const cp = produitsRef.current
             produitId = res.data.id
           } catch (e) {
             const d = e.response?.data
-            log.push({ ok: false, label, msg: `Création produit : ${d?.nom?.[0] ?? d?.sku?.[0] ?? d?.detail ?? JSON.stringify(d ?? e.message)}` })
+            push({ ok: false, label, msg: `Création produit : ${d?.nom?.[0] ?? d?.sku?.[0] ?? d?.detail ?? JSON.stringify(d ?? e.message)}` })
             continue
           }
+        }
+        if (modeBcf) {
+          // On diffère l'entrée de stock : la ligne rejoint le BCF, reçu en bloc
+          // après la boucle. Le prix d'achat unitaire vient du produit résolu.
+          const prod = produitsRef.current.find(p => p.id === produitId)
+          const prixAchatU = parseFloat(ligne.nouveau_prix_achat)
+            || (prod ? parseFloat(prod.prix_achat) : 0) || 0
+          bcfLignes.push({
+            produit: produitId, quantite: ligne.quantite,
+            prix_achat_unitaire: prixAchatU, label, ligneId: ligne.id,
+          })
+          continue
         }
         try {
           // Référence du mouvement : saisie utilisateur, sinon référence
@@ -401,15 +443,57 @@ const cp = produitsRef.current
           if (prev && prev.label === label && prev.ok === true) {
             prev.msg += ` — ${typeLabel} ${delta >= 0 ? '+' : ''}${delta} (stock : ${mv.quantite_avant} → ${mv.quantite_apres})`
           } else {
-            log.push({ ok: true, label, msg: `${typeLabel} ${delta >= 0 ? '+' : ''}${delta} (stock : ${mv.quantite_avant} → ${mv.quantite_apres})` })
+            push({ ok: true, label, msg: `${typeLabel} ${delta >= 0 ? '+' : ''}${delta} (stock : ${mv.quantite_avant} → ${mv.quantite_apres})` })
           }
         } catch (e) {
           const d = e.response?.data
-          log.push({ ok: false, label, msg: `Mouvement : ${d?.detail ?? d?.quantite?.[0] ?? d?.non_field_errors?.[0] ?? JSON.stringify(d ?? e.message)}` })
+          push({ ok: false, label, msg: `Mouvement : ${d?.detail ?? d?.quantite?.[0] ?? d?.non_field_errors?.[0] ?? JSON.stringify(d ?? e.message)}` })
+        }
+      }
+
+      // 751 — création + réception du BCF une fois toutes les lignes résolues.
+      if (modeBcf && bcfLignes.length > 0) {
+        try {
+          const refDoc = refDocument.trim() || (stockOcrResult?.reference_document || '').trim()
+          const created = await stockApi.createBonCommandeFournisseur({
+            fournisseur: resolvedFournisseurId,
+            note: `Import OCR${refDoc ? ' — ' + refDoc : ''}`,
+            lignes: bcfLignes.map(l => ({
+              produit: l.produit, quantite: l.quantite,
+              prix_achat_unitaire: l.prix_achat_unitaire,
+            })),
+          })
+          const bcf = created.data
+          await stockApi.envoyerBcf(bcf.id)
+          // Réception totale : chaque ligne du BCF à sa quantité commandée.
+          const receptions = (bcf.lignes ?? []).map(l => ({
+            ligne: l.id, quantite: l.quantite,
+          }))
+          await stockApi.recevoirBcf(bcf.id, receptions)
+          for (const l of bcfLignes) {
+            log.push({ ligneId: l.ligneId, ok: true, label: l.label,
+              msg: `Reçu via le bon de commande ${bcf.reference}` })
+          }
+        } catch (e) {
+          const d = e.response?.data
+          const msg = `BCF : ${d?.detail ?? JSON.stringify(d ?? e.message)}`
+          for (const l of bcfLignes) {
+            log.push({ ligneId: l.ligneId, ok: false, label: l.label, msg })
+          }
         }
       }
     } finally {
-      setResults(log); setApplying(false); setStep(4)
+      if (retryIds) {
+        // Réessai ciblé : on remplace, dans le journal existant, les entrées des
+        // lignes rejouées par leur nouveau résultat (les autres restent intactes).
+        setResults(prev => [
+          ...prev.filter(r => !retryIds.has(r.ligneId)),
+          ...log,
+        ])
+      } else {
+        setResults(log)
+      }
+      setApplying(false); setStep(4)
       dispatch(fetchProduits()); dispatch(fetchFournisseurs()); dispatch(fetchCategories()); dispatch(fetchMouvements())
     }
   }
@@ -462,13 +546,20 @@ const cp = produitsRef.current
             nouveauFournisseurNom={nouveauFournisseurNom} setNouveauFournisseurNom={setNouveauFournisseurNom}
             lignes={lignes} updateLigne={updateLigne}
             onReset={handleReset} onApply={handleApply} applying={applying}
-            docType={docType}
+            docType={docType} creerBcf={creerBcf} setCreerBcf={setCreerBcf}
           />
         )}
         {step === 4 && (
           <Step3Results results={results} onReset={handleReset}
             onNewFile={handleNewFile}
             onViewMovements={() => navigate('/stock/mouvements')}
+            applying={applying}
+            onRetryFailed={() => {
+              const ids = new Set(
+                results.filter(r => r.ok === false && r.ligneId != null)
+                  .map(r => r.ligneId))
+              if (ids.size) handleApply(ids)
+            }}
           />
         )}
       </div>
@@ -598,9 +689,10 @@ function Step2Validate({
   fournisseurMode, setFournisseurMode, fournisseurId, setFournisseurId,
   nouveauFournisseurNom, setNouveauFournisseurNom,
   lignes, updateLigne, onReset, onApply, applying,
-  docType,
+  docType, creerBcf, setCreerBcf,
 }) {
   const showFournisseur = docType !== 'bon_sortie'
+  const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
   // For purchase/delivery docs, prix_vente is not required (falls back to prix_achat)
   const requiresPrixVente = docType === 'bon_sortie' || docType === 'autre' || !docType
 
@@ -663,6 +755,20 @@ function Step2Validate({
             <Input id="ocr-ref" value={refDocument} onChange={e => setRefDocument(e.target.value)} placeholder="N° BL, facture…" />
           </div>
         </div>
+        {/* 751 — créer un bon de commande fournisseur reçu au lieu d'entrées
+            isolées (doc d'achat uniquement ; nécessite un fournisseur). */}
+        {isPurchaseDoc && (
+          <label className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            <Checkbox checked={creerBcf} onCheckedChange={(v) => setCreerBcf(!!v)} className="mt-0.5" />
+            <span>
+              <span className="font-medium text-foreground">Créer un bon de commande fournisseur reçu</span>
+              <span className="block text-xs text-muted-foreground">
+                Au lieu de mouvements d&apos;entrée isolés, génère un BCF reçu (traçable, lié au fournisseur).
+                Sélectionnez un fournisseur ci-dessous.
+              </span>
+            </span>
+          </label>
+        )}
       </Card>
 
       {/* ── Fournisseur card — masqué pour bon de sortie ── */}
@@ -741,7 +847,9 @@ function Step2Validate({
           <ChevronLeft /> Recommencer
         </Button>
         <Button onClick={onApply} loading={applying} disabled={hasErrors || lignes.length === 0}>
-          {applying ? 'Application en cours…' : <>Appliquer les mouvements <ChevronRight /></>}
+          {applying
+            ? 'Application en cours…'
+            : <>{creerBcf && isPurchaseDoc ? 'Créer le bon de commande reçu' : 'Appliquer les mouvements'} <ChevronRight /></>}
         </Button>
       </div>
     </div>
@@ -959,11 +1067,46 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
 }
 
 // ── Étape 3 (ex-Step3) : Résultats ───────────────────────────────────────────
-function Step3Results({ results, onReset, onNewFile, onViewMovements }) {
-  const successCount = results.filter(r => r.ok === true).length
-  const errorCount   = results.filter(r => r.ok === false).length
-  const skipCount    = results.filter(r => r.ok === null).length
+// Une ligne de résultat (réutilisée par les groupes succès/échecs/ignorés).
+function ResultRow({ r }) {
+  return (
+    <div className={[
+      'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
+      r.ok === true ? 'border-success/30 bg-success/10'
+        : r.ok === false ? 'border-destructive/30 bg-destructive/10'
+          : 'border-border bg-muted/40',
+    ].join(' ')}>
+      <span className={[
+        'flex size-6 shrink-0 items-center justify-center rounded-md',
+        r.ok === true ? 'bg-success/20 text-success'
+          : r.ok === false ? 'bg-destructive/20 text-destructive'
+            : 'bg-muted text-muted-foreground',
+      ].join(' ')}>
+        {r.ok === true && <Check className="size-3.5" />}
+        {r.ok === false && <X className="size-3.5" />}
+        {r.ok === null && <ChevronRight className="size-3.5" />}
+      </span>
+      <div>
+        <span className={`font-semibold ${r.ok === true ? 'text-success' : r.ok === false ? 'text-destructive' : 'text-muted-foreground'}`}>
+          {r.label}
+        </span>
+        <span className="ml-2 text-muted-foreground">— {r.msg}</span>
+      </div>
+    </div>
+  )
+}
+
+function Step3Results({ results, onReset, onNewFile, onViewMovements, onRetryFailed, applying }) {
+  // 750 — groupe les résultats par statut (réussis / échoués / ignorés).
+  const reussis = results.filter(r => r.ok === true)
+  const echoues = results.filter(r => r.ok === false)
+  const ignores = results.filter(r => r.ok === null)
+  const successCount = reussis.length
+  const errorCount   = echoues.length
+  const skipCount    = ignores.length
   const allOk        = errorCount === 0
+  // Seuls les échecs RATTACHÉS à une ligne (ligneId) sont rejouables.
+  const retryable = echoues.some(r => r.ligneId != null)
 
   return (
     <div className="flex flex-col gap-4">
@@ -992,34 +1135,42 @@ function Step3Results({ results, onReset, onNewFile, onViewMovements }) {
         </div>
       </Card>
 
-      {/* Results list */}
-      <div className="flex flex-col gap-1.5">
-        {results.map((r, i) => (
-          <div key={i} className={[
-            'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
-            r.ok === true ? 'border-success/30 bg-success/10'
-              : r.ok === false ? 'border-destructive/30 bg-destructive/10'
-                : 'border-border bg-muted/40',
-          ].join(' ')}>
-            <span className={[
-              'flex size-6 shrink-0 items-center justify-center rounded-md',
-              r.ok === true ? 'bg-success/20 text-success'
-                : r.ok === false ? 'bg-destructive/20 text-destructive'
-                  : 'bg-muted text-muted-foreground',
-            ].join(' ')}>
-              {r.ok === true && <Check className="size-3.5" />}
-              {r.ok === false && <X className="size-3.5" />}
-              {r.ok === null && <ChevronRight className="size-3.5" />}
+      {/* Échecs en premier, avec réessai ciblé */}
+      {echoues.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-destructive">
+              Échecs ({errorCount})
             </span>
-            <div>
-              <span className={`font-semibold ${r.ok === true ? 'text-success' : r.ok === false ? 'text-destructive' : 'text-muted-foreground'}`}>
-                {r.label}
-              </span>
-              <span className="ml-2 text-muted-foreground">— {r.msg}</span>
-            </div>
+            {retryable && (
+              <Button size="sm" variant="outline" onClick={onRetryFailed} disabled={applying}>
+                <Repeat /> {applying ? 'Réessai en cours…' : 'Réessayer les échecs'}
+              </Button>
+            )}
           </div>
-        ))}
-      </div>
+          {echoues.map((r, i) => <ResultRow key={`e${i}`} r={r} />)}
+        </div>
+      )}
+
+      {/* Réussis */}
+      {reussis.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-success">
+            Réussis ({successCount})
+          </span>
+          {reussis.map((r, i) => <ResultRow key={`s${i}`} r={r} />)}
+        </div>
+      )}
+
+      {/* Ignorés */}
+      {ignores.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Ignorés ({skipCount})
+          </span>
+          {ignores.map((r, i) => <ResultRow key={`i${i}`} r={r} />)}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-1">

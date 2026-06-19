@@ -93,3 +93,55 @@ class TestJournalExport(TestCase):
         # Total HT (col index 8) et Total TTC (col index 11) sont négatifs.
         self.assertLess(avoir_rows[0][8], 0)
         self.assertLess(avoir_rows[0][11], 0)
+
+    def test_export_comptable_xlsx(self):
+        from datetime import timedelta
+        d = date.today()
+        start = d.strftime('%Y-%m-01')
+        end = (d + timedelta(days=1)).strftime('%Y-%m-%d')
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&fmt=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = (b''.join(resp.streaming_content)
+                if resp.streaming else resp.content)
+        self.assertTrue(body.startswith(b'PK'))
+        # Le contenu contient l'ICE client + une ligne TOTAL.
+        from openpyxl import load_workbook
+        from io import BytesIO
+        ws = load_workbook(BytesIO(body)).active
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        self.assertEqual(rows[0][4], 'ICE client')
+        self.assertIn('000111222', [r[4] for r in rows[1:] if r[4]])
+        self.assertTrue(any(r[0] == 'TOTAL' for r in rows))
+
+    def test_export_comptable_csv(self):
+        from datetime import timedelta
+        d = date.today()
+        start = d.strftime('%Y-%m-01')
+        end = (d + timedelta(days=1)).strftime('%Y-%m-%d')
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&fmt=csv')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('text/csv', resp['Content-Type'])
+        text = resp.content.decode('utf-8')
+        self.assertIn('ICE client', text)
+        self.assertIn('000111222', text)
+        self.assertIn('TOTAL', text)
+
+    def test_export_comptable_excludes_brouillon(self):
+        # Une facture brouillon ne doit jamais apparaître dans l'export.
+        from apps.crm.models import Client
+        Facture.objects.create(
+            company=self.company, reference='FAC-JR-DRAFT',
+            client=Client.objects.get(nom='C'), statut='brouillon',
+            taux_tva=Decimal('20'))
+        from datetime import timedelta
+        d = date.today()
+        start = d.strftime('%Y-%m-01')
+        end = (d + timedelta(days=1)).strftime('%Y-%m-%d')
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&fmt=csv')
+        self.assertNotIn('FAC-JR-DRAFT', resp.content.decode('utf-8'))

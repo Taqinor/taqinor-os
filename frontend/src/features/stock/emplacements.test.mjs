@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  quantiteEmplacement, totalVentile, validateTransfert,
+  quantiteEmplacement, totalVentile, validateTransfert, produitDansEmplacement,
 } from './emplacements.js'
 
 const breakdown = [
@@ -51,4 +51,15 @@ test('validateTransfert : refuse de dépasser le stock de la source', () => {
   assert.match(
     validateTransfert({ breakdown, source: 2, destination: 1, quantite: 5 }),
     /insuffisante/)
+})
+
+test('produitDansEmplacement : filtre catalogue par emplacement', () => {
+  const p = { stock_par_emplacement: breakdown }
+  assert.equal(produitDansEmplacement(p, ''), true)      // tous les emplacements
+  assert.equal(produitDansEmplacement(p, 1), true)       // dépôt principal (8)
+  assert.equal(produitDansEmplacement(p, '2'), true)     // camionnette (2)
+  assert.equal(produitDansEmplacement(p, 999), false)    // emplacement vide
+  // produit sans ventilation remontée → pas de stock dans un emplacement donné
+  assert.equal(produitDansEmplacement({}, 1), false)
+  assert.equal(produitDansEmplacement({}, ''), true)
 })

@@ -18,6 +18,14 @@ export function totalVentile(breakdown) {
   return (breakdown || []).reduce((s, b) => s + (Number(b.quantite) || 0), 0)
 }
 
+// N15 — un produit détient-il du stock dans l'emplacement choisi ? S'appuie sur
+// la ventilation `stock_par_emplacement` sérialisée sur le produit (les lignes à
+// 0 ne sont pas remontées). Sert au filtre catalogue « par emplacement ».
+export function produitDansEmplacement(produit, emplacementId) {
+  if (!emplacementId) return true // '' = tous les emplacements
+  return quantiteEmplacement(produit?.stock_par_emplacement, emplacementId) > 0
+}
+
 // Valide un transfert côté client AVANT l'appel API. Renvoie une chaîne
 // d'erreur en français, ou null si tout est bon. La règle serveur fait foi ;
 // ceci évite simplement des aller-retours inutiles et guide la saisie.

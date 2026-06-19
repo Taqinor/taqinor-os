@@ -444,7 +444,7 @@ COLD = 'COLD'  # état de PARKING (pas une régression) — cf. _rang_funnel.
 BULK_ACTIONS = {
     'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_canal',
     'set_priorite', 'set_relance', 'clear_relance', 'set_perdu',
-    'unset_perdu', 'archive', 'unarchive', 'delete',
+    'unset_perdu', 'archive', 'unarchive', 'delete', 'plan_activity',
 }
 
 # Priorités valides (clés du modèle Lead.Priorite).
@@ -486,6 +486,22 @@ def _parse_date(value):
     return parse_date(str(value))
 
 
+def _resolve_activity_type(company, type_id, type_nom):
+    """Type d'activité cible pour une planification en masse : par id (société
+    courante) sinon par nom (créé à la volée s'il manque), repli sur « À faire ».
+    """
+    from apps.records.models import ActivityType
+    if type_id not in (None, '', 'null'):
+        atype = ActivityType.objects.filter(id=type_id, company=company).first()
+        if atype is not None:
+            return atype
+    nom = (type_nom or 'À faire').strip() or 'À faire'
+    atype = ActivityType.objects.filter(company=company, nom=nom).first()
+    if atype is None:
+        atype = ActivityType.objects.create(company=company, nom=nom, ordre=50)
+    return atype
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -512,6 +528,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
     relance = None
     target_canal = None
     target_priorite = None
+    activity_type = None
+    activity_due = None
+    activity_summary = None
     if op == 'set_stage':
         target_stage = params.get('stage')
         if target_stage not in stages.STAGES:
@@ -539,6 +558,15 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         relance = _parse_date(params.get('relance_date'))
         if relance is None:
             raise ValueError("Date de relance invalide.")
+    elif op == 'plan_activity':
+        activity_due = _parse_date(params.get('due_date'))
+        if activity_due is None:
+            raise ValueError("Date d'échéance invalide.")
+        activity_summary = (params.get('summary') or '').strip()
+        if not activity_summary:
+            raise ValueError("Intitulé de l'activité vide.")
+        activity_type = _resolve_activity_type(
+            company, params.get('activity_type_id'), params.get('type_nom'))
 
     with transaction.atomic():
         for lead in leads:
@@ -680,6 +708,24 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 activity.log_bulk_note(
                     lead, user,
                     f"Lead restauré en masse par {getattr(user, 'username', '?')}")
+                updated += 1
+
+            elif op == 'plan_activity':
+                # Crée UNE activité ouverte (records.Activity) par lead, échéance
+                # + intitulé communs, assignée au responsable du lead (repli sur
+                # l'acteur). Aucune dédup : planifier deux fois crée deux rappels.
+                from django.contrib.contenttypes.models import ContentType
+                from apps.records.models import Activity
+                ct = ContentType.objects.get_for_model(lead.__class__)
+                Activity.objects.create(
+                    company=company, content_type=ct, object_id=lead.id,
+                    activity_type=activity_type, summary=activity_summary[:255],
+                    due_date=activity_due,
+                    assigned_to=lead.owner or user, created_by=user)
+                activity.log_bulk_note(
+                    lead, user,
+                    f"Activité « {activity_summary} » planifiée en masse "
+                    f"pour le {activity_due.isoformat()}")
                 updated += 1
 
             elif op == 'delete':

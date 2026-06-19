@@ -147,6 +147,9 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         'interventions__installation__devis',
         'interventions__camionnette',
         'interventions__equipe',
+        # Parc — l'état de garantie agrégé (parc_garantie_etat) lit les
+        # équipements posés du système : on précharge pour éviter un N+1.
+        'equipements',
     ).all()
     serializer_class = InstallationSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

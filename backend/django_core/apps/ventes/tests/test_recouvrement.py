@@ -76,6 +76,33 @@ class TestRecouvrement(TestCase):
         self.assertEqual(row['jours_retard'], 45)
         # 45 jours → niveau le plus haut atteint (J+30).
         self.assertEqual(row['niveau']['delai_jours'], 30)
+        # Le niveau courant porte sa clé message (pré-remplissage modale).
+        self.assertIn('message', row['niveau'])
+        # 45 j dépasse tous les seuils → pas de niveau suivant proposé.
+        self.assertIsNone(row['niveau_suivant'])
+
+    def test_next_level_suggested_for_mid_overdue(self):
+        # Configure un message sur le niveau courant et une facture à 10 j de
+        # retard : niveau courant = J+7 (avec message), suivant = J+15.
+        lvl7 = FollowupLevel.objects.get(company=self.company, delai_jours=7)
+        lvl7.message = 'Cher client, merci de régulariser.'
+        lvl7.save(update_fields=['message'])
+        from datetime import date, timedelta
+        f2 = Facture.objects.create(
+            company=self.company, reference='FAC-REC-0002',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'),
+            date_echeance=date.today() - timedelta(days=10))
+        LigneFacture.objects.create(
+            facture=f2, produit=self.produit, designation='Onduleur',
+            quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
+            taux_tva=Decimal('20.00'))
+        resp = self.api.get('/api/django/ventes/relances/')
+        row = next(r for r in resp.data if r['id'] == f2.id)
+        self.assertEqual(row['niveau']['delai_jours'], 7)
+        self.assertEqual(row['niveau']['message'],
+                         'Cher client, merci de régulariser.')
+        self.assertEqual(row['niveau_suivant']['delai_jours'], 15)
 
     def test_overdue_in_aged_balance_bucket(self):
         resp = self.api.get('/api/django/ventes/balance-agee/')

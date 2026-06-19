@@ -90,6 +90,10 @@ export default function CalendarPage() {
     return map
   }, [events, hidden])
 
+  // Aucun évènement visible ce mois-ci (après application des filtres de type).
+  const monthEmpty = useMemo(
+    () => Object.keys(byDay).length === 0, [byDay])
+
   const toggleType = (k) => setHidden(prev => {
     const next = new Set(prev)
     next.has(k) ? next.delete(k) : next.add(k)
@@ -181,6 +185,8 @@ export default function CalendarPage() {
           const key = ymd(d)
           const inMonth = d.getMonth() === cursor.month
           const isToday = key === ymd(today)
+          // Jour passé : date < aujourd'hui (comparaison de chaîne AAAA-MM-JJ).
+          const isPast = key < ymd(today)
           const dayEvents = byDay[key] || []
           return (
             <div key={key}
@@ -203,12 +209,17 @@ export default function CalendarPage() {
                   onDragStart={() => setDragId(ev.id)}
                   onClick={() => openEvent(ev)}
                   title={`${ev.type_label}${ev.assignee_nom
-                    ? ' — ' + ev.assignee_nom : ''}`}
+                    ? ' — ' + ev.assignee_nom : ''}${isPast
+                    ? ' (en retard / passé)' : ''}`}
                   style={{ background: COLOR[ev.type] || '#64748b',
                     color: '#fff', borderRadius: 4, padding: '2px 6px',
                     fontSize: '0.72rem', cursor: ev.editable ? 'grab'
                       : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden',
-                    textOverflow: 'ellipsis' }}>
+                    textOverflow: 'ellipsis',
+                    // Évènement passé (date < aujourd'hui) : atténué + bord rouge
+                    // pour signaler une pose passée ou une activité en retard.
+                    opacity: isPast ? 0.55 : 1,
+                    boxShadow: isPast ? 'inset 0 0 0 1.5px #dc2626' : 'none' }}>
                   {ev.title}
                 </div>
               ))}
@@ -216,6 +227,13 @@ export default function CalendarPage() {
           )
         })}
       </div>
+
+      {!loading && monthEmpty && (
+        <p style={{ marginTop: '0.75rem', textAlign: 'center',
+          color: '#64748b', fontSize: '0.9rem' }}>
+          Aucun évènement ce mois-ci
+        </p>
+      )}
     </div>
   )
 }

@@ -13,9 +13,9 @@ import { BarChart3 } from 'lucide-react'
 import {
   groupLeadsByStage,
   STAGE_COLORS,
-  CANAL_LABELS,
   formatMAD,
 } from '../../../../features/crm/stages'
+import useCanaux from '../../../../features/crm/useCanaux'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
 } from '../../../../ui'
@@ -45,6 +45,8 @@ export default function ChartsView({
   leads, totalLeads = null, onClearFilters,
 }) {
   const isMobile = useIsMobile()
+  // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
+  const { labels: canalLabels } = useCanaux()
 
   // Les 6 étapes canoniques, toujours dans l'ordre de l'entonnoir (même vides).
   const stageData = useMemo(() => groupLeadsByStage(leads ?? []), [leads])
@@ -88,16 +90,16 @@ export default function ChartsView({
   const canalData = useMemo(() => {
     const counts = new Map()
     for (const l of leads ?? []) {
-      const key = l?.canal && CANAL_LABELS[l.canal] ? l.canal : '__inconnu'
+      const key = l?.canal && canalLabels[l.canal] ? l.canal : '__inconnu'
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return [...counts.entries()]
       .map(([key, count]) => ({
-        label: key === '__inconnu' ? 'Non renseigné' : CANAL_LABELS[key],
+        label: key === '__inconnu' ? 'Non renseigné' : canalLabels[key],
         count,
       }))
       .sort((a, b) => b.count - a.count)
-  }, [leads])
+  }, [leads, canalLabels])
 
   if (!leads || leads.length === 0) {
     // Distingue « aucun lead du tout » de « aucun résultat pour ces filtres ».

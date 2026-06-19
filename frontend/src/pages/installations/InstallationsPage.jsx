@@ -367,7 +367,10 @@ export default function InstallationsPage() {
       )}
 
       <div className="lp-view-area">
-        {view === 'liste' && <ListView items={filtered} onOpen={onOpen} />}
+        {view === 'liste' && (
+          <ListView items={filtered} onOpen={onOpen} users={users}
+                    onChangeStatus={onChangeStatus} onReassign={onReassign} />
+        )}
         {view === 'kanban' && (
           <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
                       users={users} onReassign={onReassign} />

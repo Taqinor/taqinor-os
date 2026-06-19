@@ -1,17 +1,27 @@
 // N8 — Parc installé : base canonique des systèmes installés (chantiers
 // réceptionnés). Liste filtrable (client, ville, marque, tranche de puissance,
-// année d'installation) + vue « carte » par liens GPS. La carte à tuiles
-// interactive est différée (nécessiterait une nouvelle dépendance, leaflet).
+// année d'installation, régime/dossier loi 82-21, garantie) + vue « carte » par
+// liens GPS. La carte à tuiles interactive est différée (leaflet).
 // N10 — un clic ouvre la fiche système (InstallationDetail), le hub par actif.
 // J43 — portée sur le système de design (DataTable, Select, Input, Button).
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Search, ExternalLink } from 'lucide-react'
+import { Download, Search } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
-import { TYPE_LABELS } from '../../features/installations/statuses'
+import MapView from '../../components/MapView'
+import {
+  TYPE_LABELS,
+  REGIME_8221_LABELS,
+  DOSSIER_STATUT_LABELS,
+  PARC_GARANTIE_LABELS,
+  capacityBand,
+  CAPACITY_BANDS,
+  installYear,
+  parcSummary,
+} from '../../features/installations/statuses'
 import InstallationDetail from './InstallationDetail'
 import {
-  Button, Badge, Segmented, Spinner, EmptyState, Input,
+  Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DataTable, StatusPill,
 } from '../../ui'
@@ -23,46 +33,52 @@ const ALL = '__all__'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
 
-const installYear = (it) => {
-  const iso = it.date_reception || it.date_mise_en_service
-  if (!iso) return null
-  const y = parseInt(String(iso).slice(0, 4), 10)
-  return Number.isNaN(y) ? null : y
-}
-
-const capacityBand = (kwc) => {
-  const v = Number(kwc) || 0
-  if (v <= 0) return null
-  if (v < 3) return '< 3 kWc'
-  if (v < 10) return '3–10 kWc'
-  if (v < 50) return '10–50 kWc'
-  return '≥ 50 kWc'
-}
-
 const bomMarques = (it) =>
   [...new Set((it.bom ?? []).map((l) => l.marque).filter(Boolean))]
+
+// Couleur du marqueur carte selon l'état de garantie agrégé du système.
+const GARANTIE_MARKER_COLOR = {
+  sous_garantie: '#16a34a',
+  expire_bientot: '#f59e0b',
+  hors_garantie: '#dc2626',
+  non_renseignee: '#64748b',
+}
 
 export default function ParcInstallePage() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('liste')
-  const [filters, setFilters] = useState({ q: '', ville: '', marque: '', band: '', annee: '' })
+  const [filters, setFilters] = useState({
+    q: '', ville: '', marque: '', band: '', annee: '',
+    regime: '', dossier: '', garantie: '',
+  })
 
-  const reload = () => {
-    // Récupère toutes les pages des systèmes réceptionnés (?parc=1).
+  // Récupère toutes les pages des systèmes réceptionnés (?parc=1). Toute mise à
+  // jour d'état se fait dans des callbacks asynchrones (then/catch), jamais de
+  // façon synchrone : l'effet de montage peut donc l'appeler directement.
+  const load = () => {
     const all = []
     const fetchPage = (page) =>
       installationsApi.getInstallations({ parc: 1, page }).then((r) => {
         const d = r.data
         if (Array.isArray(d)) { all.push(...d); setItems([...all]); setLoading(false); return }
         all.push(...(d.results ?? []))
+        // N11 — progression : on affiche les pages déjà chargées au fil de l'eau.
+        setItems([...all])
         if (d.next && page < 50) return fetchPage(page + 1)
         setItems([...all]); setLoading(false)
       })
-    fetchPage(1).catch(() => setLoading(false))
+    fetchPage(1).catch(() => {
+      setError('Impossible de charger le parc installé. Réessayez.')
+      setLoading(false)
+    })
   }
-  useEffect(() => { reload() }, [])
+  // Rechargement explicite (retry/refresh) — gestionnaire d'événement : on peut
+  // repasser l'écran en chargement et effacer l'erreur de façon synchrone.
+  const reload = () => { setLoading(true); setError(null); load() }
+  useEffect(() => { load() }, [])
 
   const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
 
@@ -80,6 +96,9 @@ export default function ParcInstallePage() {
       if (filters.marque && !bomMarques(it).includes(filters.marque)) return false
       if (filters.band && capacityBand(it.puissance_installee_kwc) !== filters.band) return false
       if (filters.annee && String(installYear(it)) !== String(filters.annee)) return false
+      if (filters.regime && (it.regime_8221 ?? '') !== filters.regime) return false
+      if (filters.dossier && (it.dossier_statut ?? '') !== filters.dossier) return false
+      if (filters.garantie && (it.parc_garantie_etat ?? '') !== filters.garantie) return false
       if (!q) return true
       return (it.reference ?? '').toLowerCase().includes(q)
         || (it.client_nom ?? '').toLowerCase().includes(q)
@@ -87,15 +106,40 @@ export default function ParcInstallePage() {
     })
   }, [items, filters])
 
+  // N14 — synthèse Parc : total kWc + comptes par type et par tranche, calculés
+  // depuis les lignes filtrées (suit ce que l'utilisateur regarde).
+  const synthese = useMemo(() => parcSummary(rows), [rows])
+
   const located = rows.filter((it) => it.gps_lat && it.gps_lng)
+
+  // L4 — marqueurs Leaflet : un par système géolocalisé, coloré selon l'état de
+  // garantie agrégé ; cliquer ouvre la fiche système. Toujours filtrés par la
+  // société côté serveur (?parc=1 borné au queryset de l'utilisateur).
+  const markers = useMemo(() => located.map((it) => {
+    const g = PARC_GARANTIE_LABELS[it.parc_garantie_etat]
+    const ville = it.site_ville ? ` · ${it.site_ville}` : ''
+    const kwc = it.puissance_installee_kwc ? ` · ${it.puissance_installee_kwc} kWc` : ''
+    return {
+      id: it.id,
+      lat: Number(it.gps_lat),
+      lng: Number(it.gps_lng),
+      label: it.reference || it.client_nom || 'Système',
+      color: GARANTIE_MARKER_COLOR[it.parc_garantie_etat] ?? '#16a34a',
+      popupHtml: `<div style="margin-top:4px;color:#475569;font-size:0.8rem">`
+        + `${it.client_nom ?? ''}${ville}${kwc}`
+        + (g ? `<br/>${g.label}` : '')
+        + `</div>`,
+    }
+  }), [located])
 
   const columns = useMemo(
     () => [
       {
         id: 'reference', header: 'Référence', width: 180,
+        accessor: (r) => r.reference ?? '',
         cell: (v, r) => (
           <span className="flex flex-wrap items-center gap-1.5">
-            <span className="font-semibold">{v}</span>
+            <span className="font-semibold">{r.reference ?? '—'}</span>
             {bomVide(r) && <StatusPill tone="warning" label="Nomenclature absente" />}
           </span>
         ),
@@ -116,13 +160,31 @@ export default function ParcInstallePage() {
       },
       {
         id: 'annee', header: 'Année', width: 90, align: 'right',
-        accessor: (r) => installYear(r) ?? '',
+        accessor: (r) => installYear(r) ?? 0,
         cell: (v) => v || '—',
+        exportValue: (r) => installYear(r) ?? '',
+      },
+      {
+        id: 'garantie', header: 'Garantie', width: 180, searchable: false,
+        accessor: (r) => r.parc_garantie_etat ?? '',
+        cell: (v, r) => {
+          const g = PARC_GARANTIE_LABELS[r.parc_garantie_etat]
+          return g
+            ? <StatusPill tone={g.tone} label={g.label} />
+            : <span className="text-muted-foreground">—</span>
+        },
+        exportValue: (r) => PARC_GARANTIE_LABELS[r.parc_garantie_etat]?.label ?? '',
       },
       { id: 'technicien_nom', header: 'Installateur', width: 150, accessor: (r) => r.technicien_nom ?? '' },
     ],
     [],
   )
+
+  // N9 — tri par défaut : année d'installation la plus récente d'abord. Toutes
+  // les colonnes du DataTable sont triables (clic sur l'en-tête).
+  const savedViews = [
+    { id: 'recent', label: 'Récents', sorting: [{ id: 'annee', desc: true }], columnFilters: {}, query: '' },
+  ]
 
   const handleExport = (exportRows) => {
     importApi
@@ -185,7 +247,7 @@ export default function ParcInstallePage() {
           <SelectTrigger className="w-auto min-w-[9rem]" aria-label="Filtrer par puissance"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Toutes puissances</SelectItem>
-            {['< 3 kWc', '3–10 kWc', '10–50 kWc', '≥ 50 kWc'].map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+            {CAPACITY_BANDS.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={toSel(filters.annee)} onValueChange={(v) => setF('annee', fromSel(v))}>
@@ -195,10 +257,67 @@ export default function ParcInstallePage() {
             {anneeOptions.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={toSel(filters.regime)} onValueChange={(v) => setF('regime', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par régime loi 82-21"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tous les régimes</SelectItem>
+            {Object.entries(REGIME_8221_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={toSel(filters.dossier)} onValueChange={(v) => setF('dossier', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par statut de dossier"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tous les dossiers</SelectItem>
+            {Object.entries(DOSSIER_STATUT_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={toSel(filters.garantie)} onValueChange={(v) => setF('garantie', fromSel(v))}>
+          <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par garantie"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes garanties</SelectItem>
+            {Object.entries(PARC_GARANTIE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
-      {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+      {/* N14 — bande de synthèse : total kWc + comptes par type et tranche. */}
+      {!loading && !error && rows.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+            {synthese.totalKwc} kWc installés
+          </span>
+          {Object.entries(synthese.parType).map(([type, count]) => (
+            <span key={type}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-medium text-muted-foreground">
+              {TYPE_LABELS[type] ?? 'Autre'}
+              <span className="tabular-nums font-semibold text-foreground">{count}</span>
+            </span>
+          ))}
+          {CAPACITY_BANDS.filter((b) => synthese.parTranche[b]).map((b) => (
+            <span key={b}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-medium text-muted-foreground">
+              {b}
+              <span className="tabular-nums font-semibold text-foreground">{synthese.parTranche[b]}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {error ? (
+        <EmptyState
+          title="Erreur de chargement"
+          description={error}
+          action={<Button size="sm" onClick={reload}>Réessayer</Button>}
+          className="my-6 border-destructive/40"
+        />
+      ) : loading && items.length === 0 ? (
+        // N11 — squelette de chargement (aucune page encore reçue).
+        <div className="flex flex-col gap-2">
+          <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+          {Array.from({ length: 6 }).map((unused, i) => (
+            <Skeleton key={i} className="h-10 w-full rounded-lg" />
+          ))}
+        </div>
       ) : rows.length === 0 ? (
         <EmptyState
           title="Aucun système installé"
@@ -206,59 +325,43 @@ export default function ParcInstallePage() {
           className="my-6"
         />
       ) : view === 'liste' ? (
-        <DataTable
-          data={rows}
-          columns={columns}
-          getRowId={(row) => row.id}
-          searchable={false}
-          onRowClick={(row) => setSelected(row)}
-          onExport={handleExport}
-          exportName="parc-installe"
-          pageSize={25}
-          emptyTitle="Aucun système installé"
-          emptyDescription="Aucun système ne correspond aux filtres."
-          aria-label="Parc installé"
-        />
+        <>
+          {/* N11 — chargement partiel : pages restantes en cours. */}
+          {loading && (
+            <p className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner /> Chargement des pages suivantes…
+            </p>
+          )}
+          <DataTable
+            data={rows}
+            columns={columns}
+            getRowId={(row) => row.id}
+            searchable={false}
+            savedViews={savedViews}
+            onRowClick={(row) => setSelected(row)}
+            onExport={handleExport}
+            exportName="parc-installe"
+            pageSize={25}
+            emptyTitle="Aucun système installé"
+            emptyDescription="Aucun système ne correspond aux filtres."
+            aria-label="Parc installé"
+          />
+        </>
       ) : (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            {located.length} système(s) géolocalisé(s). Cliquez « Ouvrir sur la carte »
-            pour visualiser un site (la carte à tuiles intégrée sera ajoutée ultérieurement).
+            {located.length} système(s) géolocalisé(s). Cliquez un marqueur pour ouvrir la fiche.
           </p>
           {located.length === 0 ? (
             <EmptyState title="Aucun système géolocalisé" description="Renseignez les coordonnées GPS d'un chantier pour le voir ici." />
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
-              <table className="w-full border-collapse text-sm">
-                <thead className="bg-muted/60">
-                  <tr>
-                    {['Référence', 'Client', 'Ville', 'GPS', ''].map((h, i) => (
-                      <th key={i} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {located.map((it) => (
-                    <tr key={it.id} className="border-t border-border">
-                      <td className="px-3 py-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelected(it)}>{it.reference}</Button>
-                      </td>
-                      <td className="px-3 py-2">{it.client_nom ?? '—'}</td>
-                      <td className="px-3 py-2">{it.site_ville ?? '—'}</td>
-                      <td className="px-3 py-2 tabular-nums">{it.gps_lat}, {it.gps_lng}</td>
-                      <td className="px-3 py-2">
-                        <Button asChild size="sm" variant="outline">
-                          <a target="_blank" rel="noopener"
-                             href={`https://www.openstreetmap.org/?mlat=${it.gps_lat}&mlon=${it.gps_lng}#map=17/${it.gps_lat}/${it.gps_lng}`}>
-                            <ExternalLink /> Ouvrir sur la carte
-                          </a>
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <MapView
+              markers={markers}
+              onMarkerClick={(m) => {
+                const it = located.find((r) => r.id === m.id)
+                if (it) setSelected(it)
+              }}
+            />
           )}
         </div>
       )}

@@ -7,6 +7,7 @@ import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
+import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
 import { DataTable, Badge, Button, Spinner, Segmented } from '../../ui'
 
@@ -33,6 +34,8 @@ export default function ClientList() {
   const [deletingId, setDeletingId] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [typeFilter, setTypeFilter] = useState('tous')
+  // Panneau détail (lecture) : devis / factures / chantiers du client cliqué.
+  const [detailClient, setDetailClient] = useState(null)
 
   useEffect(() => { dispatch(fetchClients()) }, [dispatch])
 
@@ -330,11 +333,20 @@ export default function ClientList() {
             }] : undefined}
             onExport={exportRows}
             exportName="clients"
+            onRowClick={(c) => setDetailClient(c)}
             emptyTitle="Aucun résultat"
             emptyDescription="Aucun client ne correspond à ces filtres."
             aria-label="Liste des clients"
           />
         </>
+      )}
+
+      {detailClient && (
+        <ClientDetailPanel
+          client={detailClient}
+          onClose={() => setDetailClient(null)}
+          onNewDevis={(c) => navigate(`/ventes/devis/nouveau?client=${c.id}`)}
+        />
       )}
     </div>
   )

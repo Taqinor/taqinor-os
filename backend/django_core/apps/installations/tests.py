@@ -344,6 +344,30 @@ class TestChantierFunnelParcChecklist(TestCase):
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
         self.assertEqual(len(rows), 7)
 
+    def test_parc_garantie_etat_aggregates_worst(self):
+        # Parc — l'état de garantie du système est None sans équipement, puis le
+        # PIRE état parmi les équipements posés (hors_garantie > sous_garantie).
+        from datetime import date, timedelta
+        from apps.stock.models import Produit
+        from apps.sav.models import Equipement
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau X', prix_vente=Decimal('100'))
+        url = f'/api/django/installations/chantiers/{self.inst.id}/'
+        self.assertIsNone(self.api.get(url).data['parc_garantie_etat'])
+        today = date.today()
+        # Un équipement encore largement sous garantie.
+        Equipement.objects.create(
+            company=self.company, installation=self.inst, produit=produit,
+            date_fin_garantie=today + timedelta(days=400))
+        self.assertEqual(
+            self.api.get(url).data['parc_garantie_etat'], 'sous_garantie')
+        # Un second hors garantie → l'agrégat bascule sur le pire état.
+        Equipement.objects.create(
+            company=self.company, installation=self.inst, produit=produit,
+            date_fin_garantie=today - timedelta(days=10))
+        self.assertEqual(
+            self.api.get(url).data['parc_garantie_etat'], 'hors_garantie')
+
     def test_regulatory_dossier_and_filters(self):
         # N40/N42 — pose un régime + statut + drapeau Article 33.
         r = self.api.patch(

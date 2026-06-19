@@ -285,6 +285,70 @@ export const REGIME_8221_LABELS = {
   autorisation_anre: 'Autorisation ANRE (> 1 MW)',
 }
 
+// Statut du dossier réglementaire loi 82-21 (miroir de
+// Installation.DossierStatut côté backend) — sert au filtre Parc N41.
+export const DOSSIER_STATUT_LABELS = {
+  non_concerne: 'Non concerné',
+  a_deposer: 'À déposer',
+  depose: 'Déposé',
+  approuve: 'Approuvé',
+  compteur_pose: 'Compteur posé',
+}
+
+// ── Parc installé — helpers PURS (logique testable, sans React) ──────────────
+
+// Tranche de puissance d'un système (kWc) → libellé FR, ou null si ≤ 0.
+export function capacityBand(kwc) {
+  const v = Number(kwc) || 0
+  if (v <= 0) return null
+  if (v < 3) return '< 3 kWc'
+  if (v < 10) return '3–10 kWc'
+  if (v < 50) return '10–50 kWc'
+  return '≥ 50 kWc'
+}
+
+export const CAPACITY_BANDS = ['< 3 kWc', '3–10 kWc', '10–50 kWc', '≥ 50 kWc']
+
+// Année d'installation : date de réception en priorité, sinon mise en service
+// (les systèmes hérités sont stockés en « mise_en_service »). null si inconnue.
+export function installYear(it) {
+  const iso = it?.date_reception || it?.date_mise_en_service
+  if (!iso) return null
+  const y = parseInt(String(iso).slice(0, 4), 10)
+  return Number.isNaN(y) ? null : y
+}
+
+// Synthèse du parc : total kWc installé + comptes par type d'installation et par
+// tranche de puissance. Calcul à la lecture (aucun appel serveur en plus).
+export function parcSummary(items) {
+  let totalKwc = 0
+  const parType = {}
+  const parTranche = {}
+  for (const it of items ?? []) {
+    if (!it) continue
+    totalKwc += Number(it.puissance_installee_kwc) || 0
+    const type = it.type_installation || 'autre'
+    parType[type] = (parType[type] ?? 0) + 1
+    const band = capacityBand(it.puissance_installee_kwc)
+    if (band) parTranche[band] = (parTranche[band] ?? 0) + 1
+  }
+  return {
+    total: (items ?? []).length,
+    totalKwc: Math.round(totalKwc * 100) / 100,
+    parType,
+    parTranche,
+  }
+}
+
+// Libellés/couleurs de l'état de garantie AGRÉGÉ d'un système (parc_garantie_etat
+// renvoyé par le serializer). null = aucun équipement enregistré → pas de badge.
+export const PARC_GARANTIE_LABELS = {
+  sous_garantie: { label: 'Sous garantie', tone: 'success' },
+  expire_bientot: { label: 'Garantie expire bientôt', tone: 'warning' },
+  hors_garantie: { label: 'Hors garantie', tone: 'danger' },
+  non_renseignee: { label: 'Garantie non renseignée', tone: 'neutral' },
+}
+
 export const EMPTY_FILTERS = {
   q: '',
   statut: '',

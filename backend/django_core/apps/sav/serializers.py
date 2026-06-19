@@ -134,6 +134,10 @@ class TicketSerializer(serializers.ModelSerializer):
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
         ]
+        # client peut être déduit côté serveur d'un équipement lié (ticket
+        # ouvert depuis le parc) ; sinon il reste exigé — voir
+        # TicketViewSet.perform_create qui rejette un ticket sans client résolu.
+        extra_kwargs = {'client': {'required': False}}
 
     def get_statut_ordre(self, obj):
         order = list(Ticket.STATUT_ORDER)

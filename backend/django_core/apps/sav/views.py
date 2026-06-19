@@ -194,9 +194,32 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
 
+    def _resolve_from_equipement(self, serializer):
+        """Quand un ticket est ouvert depuis le parc (un équipement lié) sans
+        client ni chantier explicite, déduire l'installation et le client de
+        l'équipement — ainsi un ticket créé depuis un équipement porte
+        client + installation + equipement sans sélection manuelle."""
+        equipement = serializer.validated_data.get('equipement')
+        if equipement is None:
+            return
+        installation = getattr(equipement, 'installation', None)
+        if installation is None:
+            return
+        if serializer.validated_data.get('installation') is None:
+            serializer.validated_data['installation'] = installation
+        if serializer.validated_data.get('client') is None:
+            client = getattr(installation, 'client', None)
+            if client is not None:
+                serializer.validated_data['client'] = client
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
+        self._resolve_from_equipement(serializer)
+        # client est optionnel au niveau sérialiseur (peut venir de l'équipement) ;
+        # s'il n'a pas pu être résolu, on rétablit l'exigence ici.
+        if not serializer.validated_data.get('client'):
+            raise ValidationError({'client': 'Ce champ est obligatoire.'})
         date_ouverture = (
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())
