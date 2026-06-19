@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration du routeur (lazy imports + loaders), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
-import { createBrowserRouter, Navigate, redirect } from 'react-router-dom'
+import { createBrowserRouter, Navigate, redirect, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
 import { fetchMe } from '../features/auth/store/authSlice'
@@ -12,6 +12,9 @@ import { CommandPalette } from '../providers/CommandPalette'
 import { ShortcutsProvider } from '../providers/ShortcutsProvider'
 // O65 — Repli « skeleton-first » pendant le chargement lazy d'un bundle de page.
 import RouteFallback from '../components/RouteFallback'
+// L880 — Error-boundary de route globale : écran FR de récupération au lieu
+// d'une application blanche sur une erreur de rendu non capturée.
+import RouteErrorBoundary from '../components/RouteErrorBoundary'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -100,10 +103,18 @@ function WithLayout({ children }) {
   // routeur (navigation clavier / ouverture d'un enregistrement) et ne
   // concernent que les écrans authentifiés. La palette s'ouvre sur ⌘K et sur
   // l'événement window émis par le bouton ⌘K du Header (autre lane).
+  //
+  // L880 — La page est enveloppée d'une error-boundary keyée par chemin : une
+  // erreur de rendu non capturée affiche un écran FR de récupération (« Une
+  // erreur est survenue — recharger ») au lieu d'une app blanche, et naviguer
+  // ailleurs réinitialise la barrière (nouvelle key).
+  const { pathname } = useLocation()
   return (
     <ShortcutsProvider>
       <Layout>
-        <Suspense fallback={<Fallback />}>{children}</Suspense>
+        <RouteErrorBoundary key={pathname}>
+          <Suspense fallback={<Fallback />}>{children}</Suspense>
+        </RouteErrorBoundary>
       </Layout>
       <CommandPalette />
     </ShortcutsProvider>
