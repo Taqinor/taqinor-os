@@ -78,6 +78,8 @@ INSTALLED_APPS = [
     'apps.monitoring',
     # N75 — moteur de notifications unifié (in-app + canaux existants).
     'apps.notifications',
+    # N72 / N73 — moteur d'automatisations sans code (règles + approbations).
+    'apps.automation',
 ]
 
 MIDDLEWARE = [

@@ -43,6 +43,7 @@ urlpatterns = [
     path('api/django/audit/', include('apps.audit.urls')),
     path('api/django/monitoring/', include('apps.monitoring.urls')),
     path('api/django/notifications/', include('apps.notifications.urls')),
+    path('api/django/automation/', include('apps.automation.urls')),
     # Liens publics tokenisés (PDF client via WhatsApp) — sans login.
     path('api/django/public/', include('apps.ventes.public_urls')),
 ]

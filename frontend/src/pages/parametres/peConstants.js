@@ -37,6 +37,7 @@ export const TABS = [
   { key: 'checklists', label: 'Checklists' },
   { key: 'kits',       label: "Kits d'outillage" },
   { key: 'shotlist',   label: 'Documentation terrain' },
+  { key: 'automatisations', label: 'Automatisations' },
   { key: 'equipe',     label: 'Équipe & rôles' },
   { key: 'messages',   label: 'Messages & relances' },
   { key: 'email',      label: 'Email' },

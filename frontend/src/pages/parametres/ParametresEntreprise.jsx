@@ -33,6 +33,7 @@ import MonitoringSection from './MonitoringSection'
 import ChecklistSection from './ChecklistSection'
 import KitsSection from './KitsSection'
 import ShotListSection from './ShotListSection'
+import AutomatisationsSection from './AutomatisationsSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import EmailSection from './EmailSection'
@@ -522,6 +523,8 @@ export default function ParametresEntreprise() {
           {tab === 'kits'       && <KitsSection />}
           {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
           {tab === 'shotlist'   && <ShotListSection />}
+          {/* N72 / N73 — moteur d'automatisations + approbations. */}
+          {tab === 'automatisations' && <AutomatisationsSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}
