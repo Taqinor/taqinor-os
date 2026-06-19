@@ -5,6 +5,9 @@ import assert from 'node:assert/strict'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
 } from './catalogue.js'
+import {
+  classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
+} from '../ventes/solar.js'
 
 const CAT = {
   panneaux: { nom: 'Panneaux photovoltaïques', ordre: 10 },
@@ -60,4 +63,53 @@ test('spec clé par catégorie : Wc, kW+tension, CV/HMT/courbe', () => {
 test('prix vide : signalé, jamais sélectionnable comme produit chiffrable', () => {
   assert.equal(sansPrix(FIXTURE[5]), true)   // OSP à prix vide
   assert.equal(sansPrix(FIXTURE[0]), false)
+})
+
+// ── 762 — cohérence des familles : affichage catalogue ↔ classification PDF/
+// auto-fill. Le moteur PDF (quote_engine/builder.py) et l'auto-fill (solar.js)
+// partagent les MÊMES mots-clés de désignation (réseau/injection, hybride,
+// batterie, panneau) — vérifié par ailleurs côté ventes. Ici on garantit que la
+// taxonomie catalogue (catégorie réelle + keySpec) classe ces familles de la
+// même manière que solar.js, pour qu'un article affiché sous « Panneaux » soit
+// bien traité comme un panneau par le PDF, etc.
+// Mots-clés canoniques de builder.py (_is_panel/_is_battery/_is_reseau_inverter/
+// _is_hybrid_inverter), repris à l'identique par solar.js.
+const FAMILLES = [
+  {
+    cat: 'Panneaux photovoltaïques', nom: 'Panneau Jinko 710W',
+    classe: 'panneau', predicat: isPanel,
+  },
+  {
+    cat: 'Onduleurs réseau', nom: 'Onduleur réseau Huawei 10kW Triphasé',
+    classe: 'onduleur_reseau', predicat: isReseauInverter,
+  },
+  {
+    cat: 'Onduleurs hybrides', nom: 'Onduleur hybride Deye 5kW Monophasé',
+    classe: 'onduleur_hybride', predicat: isHybridInverter,
+  },
+  {
+    cat: 'Batteries', nom: 'Batterie Pylontech 5kWh',
+    classe: 'batterie', predicat: isBattery,
+  },
+]
+
+test('762 — familles catalogue alignées sur la classification solar.js/builder.py', () => {
+  for (const f of FAMILLES) {
+    // solar.js classe la désignation dans la bonne famille…
+    assert.equal(classifyProduct(f.nom), f.classe, `classifyProduct(${f.nom})`)
+    // …et le prédicat de désignation (mêmes mots-clés que builder.py) répond oui.
+    assert.equal(f.predicat(f.nom), true, `predicat ${f.classe}(${f.nom})`)
+    // La taxonomie catalogue produit bien une spec pour ces familles (l'article
+    // est reconnu, pas relégué dans « Autres » sans spec).
+    const p = { nom: f.nom, categorie: { nom: f.cat, ordre: 10 } }
+    assert.notEqual(keySpec(p), null, `keySpec famille ${f.classe}`)
+  }
+})
+
+test('762 — exclusivité : un onduleur réseau n\'est ni hybride ni batterie', () => {
+  const reseau = 'Onduleur réseau Huawei 10kW Triphasé'
+  assert.equal(isReseauInverter(reseau), true)
+  assert.equal(isHybridInverter(reseau), false)
+  assert.equal(isBattery(reseau), false)
+  assert.equal(isPanel(reseau), false)
 })

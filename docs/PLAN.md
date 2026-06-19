@@ -707,10 +707,10 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Catalogue] [L6] [ROUTINE] Afficher une suggestion de quantité à commander sur les produits en stock bas (ex. seuil − stock, ou seuil×2). Fait = le badge "stock bas" affiche un hint "commander ~N" dérivé de seuil_alerte et quantite_stock.
 
 #### Multi-emplacements & transferts
-[ ] [Stock/Emplacements] [L4] [ROUTINE] Afficher la ventilation par emplacement sur CatalogueRow (ou au survol) sans ouvrir le modal Transfert — l'endpoint produit/<id>/emplacements existe. Fait = un produit montre sa répartition dépôt/camionnette en lecture dans la liste.
+[x] [Stock/Emplacements] [L4] [ROUTINE] Afficher la ventilation par emplacement sur CatalogueRow (ou au survol) sans ouvrir le modal Transfert — l'endpoint produit/<id>/emplacements existe. Fait = un produit montre sa répartition dépôt/camionnette en lecture dans la liste.
 [x] [Stock/Emplacements] [L7] [ROUTINE] Pré-remplir et plafonner la quantité du transfert à la quantité disponible à la source dans TransfertModal (validateTransfert vérifie mais l'input n'a pas de max). Fait = le champ quantité du transfert porte max = stock source et affiche la dispo.
 [x] [Stock/Emplacements] [L11] [ROUTINE] Afficher un message FR explicite quand la suppression d'un emplacement est refusée (409 "détient du stock — transférez-le"). Fait = l'erreur de suppression s'affiche en clair dans le modal.
-[ ] [Stock/Emplacements] [L9] [ROUTINE] Ajouter un filtre/colonne par emplacement à la valorisation et au catalogue pour voir le stock d'un emplacement précis. Fait = on peut afficher uniquement le stock d'un emplacement choisi (ex. Camionnette).
+[x] [Stock/Emplacements] [L9] [ROUTINE] Ajouter un filtre/colonne par emplacement à la valorisation et au catalogue pour voir le stock d'un emplacement précis. Fait = on peut afficher uniquement le stock d'un emplacement choisi (ex. Camionnette).
 
 #### Inventaire
 [x] [Stock/Mouvements] [L4] [ROUTINE] Afficher l'écart (compté − stock) en direct par ligne dans InventaireModal pendant la saisie. Fait = chaque ligne montre un delta coloré (+/−) dès qu'une quantité comptée est tapée.
@@ -747,8 +747,8 @@ client-facing PDFs are GALLERY-gated).
 #### OCR import
 [x] [Stock/OCR] [L7] [ROUTINE] Bloquer/avertir avant d'appliquer un import OCR si plusieurs lignes "create" partagent le même SKU détecté (collision d'unicité). Fait = deux lignes au même SKU sont signalées avant application.
 [x] [Stock/OCR] [L3] [ROUTINE] Pré-remplir le prix de vente suggéré d'un produit créé via OCR (aujourd'hui nouveau_prix_vente vide → erreur "Prix de vente requis"). Fait = une ligne "create" propose un prix de vente par défaut (ex. = prix achat OCR) modifiable.
-[ ] [Stock/OCR] [L11] [ROUTINE] Améliorer le journal de résultats OCR (Step3) : grouper succès/échecs et permettre de relancer uniquement les lignes en échec. Fait = l'écran résultats sépare réussis/échoués et propose de réessayer les échecs.
-[ ] [Stock/OCR] [L1] [ROUTINE] Proposer de créer un BCF (entrée d'achat) à partir d'une facture/bon de livraison OCR plutôt que des mouvements isolés. Fait = pour un doc d'achat, une option crée un BCF reçu au lieu d'ENTRÉE directes.
+[x] [Stock/OCR] [L11] [ROUTINE] Améliorer le journal de résultats OCR (Step3) : grouper succès/échecs et permettre de relancer uniquement les lignes en échec. Fait = l'écran résultats sépare réussis/échoués et propose de réessayer les échecs.
+[x] [Stock/OCR] [L1] [ROUTINE] Proposer de créer un BCF (entrée d'achat) à partir d'une facture/bon de livraison OCR plutôt que des mouvements isolés. Fait = pour un doc d'achat, une option crée un BCF reçu au lieu d'ENTRÉE directes.
 [x] [Stock/OCR] [L16] [ROUTINE] Renseigner automatiquement la référence document OCR comme reference du mouvement quand l'utilisateur ne l'a pas saisie. Fait = un mouvement OCR sans référence saisie reprend reference_document détecté.
 
 #### Chatbot stock (agent IA / SQL)
@@ -759,7 +759,7 @@ client-facing PDFs are GALLERY-gated).
 #### Mobile & cohérence
 [x] [Stock] [L12] [ROUTINE] Rendre les tableaux larges (BCF lines-table, valorisation, inventaire) défilables/empilables sur mobile (~380px). Fait = sur viewport étroit, les tables stock défilent horizontalement ou s'empilent sans casser la mise en page.
 [x] [Stock] [L12] [ROUTINE] Adapter la barre d'actions de StockList (header-actions : 7+ boutons) en menu compact sur mobile. Fait = sur écran étroit, les actions stock se regroupent (menu "…").
-[ ] [Stock] [L8] [ROUTINE] Aligner les mots-clés de classification de catalogue.js (Panneaux/Onduleurs/Variateurs/Batteries/Pompes/Câbles) avec quote_engine/builder.py et solar.js. Fait = un test vérifie la cohérence des familles entre l'affichage catalogue et la classification PDF/auto-fill.
+[x] [Stock] [L8] [ROUTINE] Aligner les mots-clés de classification de catalogue.js (Panneaux/Onduleurs/Variateurs/Batteries/Pompes/Câbles) avec quote_engine/builder.py et solar.js. Fait = un test vérifie la cohérence des familles entre l'affichage catalogue et la classification PDF/auto-fill.
 
 ### Paramètres & Référentiels
 [ ] [Paramètres/Audit] [L16] [ROUTINE] Surfacer le journal d'audit des réglages existant (GET /parametres/audit/, N55) dans l'UI : ajouter getAudit() à parametresApi.js et un panneau "Journal des modifications" en lecture dans l'onglet Avancé (field_label/old→new/user/timestamp). Fait = un admin voit dans Paramètres → Avancé les derniers changements SettingsAuditLog, filtrables par section.

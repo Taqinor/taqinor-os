@@ -90,6 +90,10 @@ class ProduitSerializer(serializers.ModelSerializer):
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()
     derniere_date_mouvement = serializers.SerializerMethodField()
+    # N15 — ventilation du stock par emplacement dans la liste catalogue
+    # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
+    # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
+    stock_par_emplacement = serializers.SerializerMethodField()
 
     class Meta:
         model = Produit
@@ -124,6 +128,25 @@ class ProduitSerializer(serializers.ModelSerializer):
             return False
         disponible = obj.quantite_stock - self._reserved_map().get(obj.id, 0)
         return disponible <= obj.seuil_alerte
+
+    def _breakdown_map(self):
+        """Map {produit_id: [ventilation par emplacement]} calculée UNE fois
+        par sérialisation (évite un N+1 sur la liste produits)."""
+        cache = getattr(self, '_breakdown_map_cache', None)
+        if cache is not None:
+            return cache
+        from .services import stock_breakdown_map
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = stock_breakdown_map(company) if company is not None else {}
+        self._breakdown_map_cache = cache
+        return cache
+
+    def get_stock_par_emplacement(self, obj):
+        # Seuls les emplacements détenant du stock sont remontés, pour ne pas
+        # alourdir la liste. La camionnette à 0 n'apparaît donc pas.
+        rows = self._breakdown_map().get(obj.id, [])
+        return [r for r in rows if r['quantite']]
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
