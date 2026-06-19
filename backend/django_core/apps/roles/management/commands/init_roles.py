@@ -55,6 +55,15 @@ class Command(BaseCommand):
                     nom=nom,
                     defaults={'permissions': list(perms), 'est_systeme': True},
                 )
+                # Auto-réparation (N103) : une ligne du même nom laissée
+                # ``est_systeme=False`` (mapping rétroactif / rôle personnalisé
+                # ayant heurté un nom canonique) résoudrait à tort au palier
+                # limité — un Directeur/Administrateur perdrait alors l'accès aux
+                # écrans Utilisateurs/Rôles. On la promeut en rôle système.
+                # Additif : ne supprime rien.
+                if not created and not role.est_systeme:
+                    role.est_systeme = True
+                    role.save(update_fields=['est_systeme'])
                 if not created and role.est_systeme and \
                         role.permissions != list(perms):
                     role.permissions = list(perms)

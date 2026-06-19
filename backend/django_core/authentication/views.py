@@ -139,15 +139,25 @@ class RegisterView(generics.CreateAPIView):
 def _create_system_roles(company):
     """Create the canonical system roles for a newly created company (Feature D).
 
-    Seeds the seven roles + the two legacy ones; returns {nom: Role}."""
+    Seeds the seven roles + the two legacy ones; returns {nom: Role}.
+
+    Idempotent ET auto-réparateur (N103) : si une ligne du même nom préexiste
+    avec ``est_systeme=False`` (rôle personnalisé qui a heurté le nom canonique),
+    on la promeut en rôle système. Sans cela, un « Directeur »/« Administrateur »
+    laissé ``est_systeme=False`` résoudrait à tort au palier limité et perdrait
+    l'accès aux écrans Utilisateurs/Rôles. Additif : ne supprime jamais une ligne
+    et ne touche pas aux permissions déjà posées."""
     from apps.roles.models import Role, CANONICAL_SYSTEM_ROLES
     roles = {}
     for nom, perms in CANONICAL_SYSTEM_ROLES:
-        role, _ = Role.objects.get_or_create(
+        role, created = Role.objects.get_or_create(
             company=company,
             nom=nom,
             defaults={'permissions': list(perms), 'est_systeme': True},
         )
+        if not created and not role.est_systeme:
+            role.est_systeme = True
+            role.save(update_fields=['est_systeme'])
         roles[nom] = role
     return roles
 

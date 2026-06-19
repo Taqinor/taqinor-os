@@ -18,10 +18,28 @@ export function fileExtension(name) {
   return i > 0 && i < s.length - 1 ? s.slice(i + 1).toLowerCase() : ''
 }
 
+/* Extensions connues par type MIME, pour le REPLI quand le navigateur ne
+   fournit pas de `type` (cas réel : certains .pdf/.png/.jpg sélectionnés sous
+   Windows/Linux ou glissés depuis une autre app arrivent avec `type === ''`).
+   Sans ce repli, un fichier parfaitement valide était refusé côté client AVANT
+   tout envoi (« Type de fichier non autorisé »), bloquant l'ajout partout. Le
+   contrôle reste strict : un type vide n'est accepté QUE si l'extension
+   correspond à un type explicitement autorisé. Le serveur revérifie ensuite par
+   octets magiques — c'est lui qui fait foi. */
+const MIME_EXTENSIONS = {
+  'application/pdf': ['pdf'],
+  'image/png': ['png'],
+  'image/jpeg': ['jpg', 'jpeg'],
+  'image/webp': ['webp'],
+  'image/gif': ['gif'],
+  'image/tiff': ['tif', 'tiff'],
+}
+
 /**
  * Une spec `accept` (style <input accept>) accepte-t-elle ce fichier ?
  * Gère : '' (tout), 'image/*', 'application/pdf', '.pdf', listes séparées par
- * des virgules. `file` = { name, type }.
+ * des virgules. `file` = { name, type }. Repli par extension quand le navigateur
+ * ne renvoie pas de `type` (sinon des fichiers valides étaient refusés à tort).
  */
 export function matchesAccept(file, accept) {
   if (!accept || !accept.trim()) return true
@@ -30,8 +48,17 @@ export function matchesAccept(file, accept) {
   const specs = accept.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
   return specs.some((spec) => {
     if (spec.startsWith('.')) return spec.slice(1) === ext
-    if (spec.endsWith('/*')) return type.startsWith(spec.slice(0, -1)) // 'image/*'
-    return spec === type
+    if (spec.endsWith('/*')) {
+      // 'image/*' : par type si fourni, sinon par extension d'un type du groupe.
+      if (type) return type.startsWith(spec.slice(0, -1))
+      const prefix = spec.slice(0, -1) // ex. 'image/'
+      return Object.entries(MIME_EXTENSIONS).some(
+        ([mime, exts]) => mime.startsWith(prefix) && exts.includes(ext),
+      )
+    }
+    if (type) return spec === type
+    // Type absent : on accepte si l'extension correspond à ce type MIME précis.
+    return (MIME_EXTENSIONS[spec] || []).includes(ext)
   })
 }
 

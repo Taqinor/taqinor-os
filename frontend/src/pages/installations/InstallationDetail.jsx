@@ -409,11 +409,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Hint>Aucune ligne produit sur le devis source.</Hint>
               ) : (
                 <>
-                  <MiniTable head={['Article', 'Requis', 'Stock', 'Manque', 'Fournisseur']}>
+                  <MiniTable head={['Article', 'Requis', 'Réservé', 'Dispo', 'Manque', 'Fournisseur']}>
                     {besoin.items.map((it) => (
                       <tr key={it.produit_id} className={`border-t border-border ${it.manque > 0 ? 'bg-destructive/5' : ''}`}>
                         <td className="px-3 py-2">{it.designation}</td>
                         <td className="px-3 py-2">{it.requis}</td>
+                        <td className="px-3 py-2">{it.reserve > 0 ? it.reserve : '—'}</td>
                         <td className="px-3 py-2">{it.disponible}</td>
                         <td className="px-3 py-2">{it.manque > 0 ? <strong className="text-destructive">{it.manque}</strong> : '—'}</td>
                         <td className="px-3 py-2">{it.fournisseur_nom || '—'}</td>

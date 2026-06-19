@@ -158,6 +158,16 @@ class CompanyProfile(models.Model):
     referral_enabled = models.BooleanField(default=False)
     referral_reward = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── N105 — Capacité DGI LOCALE (interrupteur maître, défaut OFF) ──
+    # Unique commutateur, par société, qui ARME la capacité DGI locale (export
+    # UBL 2.1 conforme + validateur de conformité), atteignable UNIQUEMENT à la
+    # demande / par programme (commande de gestion ou endpoint gardé). Tant
+    # qu'il est False (défaut), la capacité est TOTALEMENT invisible et ne
+    # change RIEN au comportement actuel : aucune pastille, aucun statut, aucune
+    # colonne de liste, aucune modification du modèle Facture. Posé côté
+    # serveur, jamais lu du corps d'une requête métier. HORS PÉRIMÈTRE (gatés
+    # ailleurs) : transmission Simpl-TVA, signature électronique certifiée.
+    dgi_export_actif = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Profil entreprise'
