@@ -129,3 +129,33 @@ class TestAvoirs(TestCase):
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'x'}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_avoir_exceeding_remaining_rejected(self):
+        # Une ligne d'avoir à 20 000 HT (24 000 TTC) dépasse les 17 000 TTC
+        # créditables de la facture → 400, aucun avoir persisté.
+        api = self._api(self.admin)
+        resp = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Trop gros',
+             'lignes': [{'designation': 'X', 'quantite': '1',
+                         'prix_unitaire': '20000', 'taux_tva': '20'}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('dépasse', resp.data['detail'])
+        self.assertEqual(Avoir.objects.count(), 0)
+
+    def test_second_avoir_capped_by_first(self):
+        # 1er avoir total (17 000 TTC) → plus rien de créditable ; un 2e avoir
+        # partiel est refusé.
+        api = self._api(self.admin)
+        r1 = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Total'}, format='json')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
+            format='json')
+        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(Avoir.objects.count(), 1)
