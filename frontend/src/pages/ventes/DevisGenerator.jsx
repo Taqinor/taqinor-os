@@ -28,7 +28,7 @@ import {
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  isBattery, isHybridInverter, prixParKwc, discountForTarget,
+  isBattery, isHybridInverter, isPanel, prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc,
 } from '../../features/ventes/solar'
@@ -1354,6 +1354,20 @@ export default function DevisGenerator({
                                  style={{ width: 56, fontSize: '0.75rem', color: '#64748b' }}
                                  value={l.taux_tva ?? '20'}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
+                          {(() => {
+                            // Indice non bloquant : un panneau PV devrait porter
+                            // 10 % et une ligne non-panneau 20 % (réforme TVA).
+                            // On n'altère JAMAIS la valeur saisie.
+                            const t = parseFloat(l.taux_tva)
+                            const panel = isPanel(l.designation)
+                            if (panel && t === 20) {
+                              return <div className="mt-0.5 text-xs text-warning">Panneau PV : 10 % attendu</div>
+                            }
+                            if (!panel && t === 10 && (l.designation || '').trim()) {
+                              return <div className="mt-0.5 text-xs text-warning">Non-panneau : 20 % attendu</div>
+                            }
+                            return null
+                          })()}
                         </td>
                         <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
                         <td>
