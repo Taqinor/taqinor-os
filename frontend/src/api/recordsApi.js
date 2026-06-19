@@ -25,6 +25,9 @@ const recordsApi = {
     return api.post('/records/attachments/', fd)
   },
   deleteAttachment: (id) => api.delete(`/records/attachments/${id}/`),
+  // N5/L5 — re-tague la phase (avant/pendant/après) sans ré-uploader.
+  setAttachmentPhase: (id, phase) =>
+    api.patch(`/records/attachments/${id}/phase/`, { phase }),
 }
 
 export default recordsApi
