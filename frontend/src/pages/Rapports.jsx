@@ -22,7 +22,11 @@ const CHART_AXIS = 'var(--color-muted-foreground)'
 // Tableau de données restylé (conserve la classe sémantique .data-table).
 // Enveloppé dans un conteneur scrollable horizontalement pour les tables
 // multi-colonnes sur petits écrans.
-function Table({ headers, rows }) {
+//
+// L882 — `footer` (optionnel) : un tableau de cellules de pied « Total » rendu
+// dans un <tfoot>, calculé depuis les MÊMES données que les lignes. Masqué
+// quand il n'y a aucune ligne.
+function Table({ headers, rows, footer }) {
   return (
     <div className="overflow-x-auto">
       <table className="data-table mb-2">
@@ -37,10 +41,23 @@ function Table({ headers, rows }) {
             </tr>
           )}
         </tbody>
+        {footer && rows.length > 0 && (
+          <tfoot>
+            <tr className="font-semibold">
+              {footer.map((c, j) => (
+                <td key={j} data-label={headers[j]}>{c}</td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )
 }
+
+// Somme d'une colonne numérique depuis les objets-source (pas les lignes déjà
+// formatées) — base du pied « Total » L882.
+const sumBy = (arr, key) => (arr || []).reduce((s, o) => s + Number(o[key] || 0), 0)
 
 // Sous-titre interne d'une carte.
 function Subhead({ children }) {
@@ -238,20 +255,24 @@ export function Component() {
           {renderReportCard('sales', 'Ventes & pipeline', () => (
             <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
               <Table headers={['Étape', 'Leads']}
-                     rows={sales.funnel.map(f => [f.label, fmt(f.count)])} />
+                     rows={sales.funnel.map(f => [f.label, fmt(f.count)])}
+                     footer={['Total', fmt(sumBy(sales.funnel, 'count'))]} />
               {sales.devis_par_statut?.length > 0 && (
                 <>
                   <Subhead>Devis par statut</Subhead>
                   <Table headers={['Statut', 'Nombre']}
-                         rows={sales.devis_par_statut.map(d => [d.label, fmt(d.count)])} />
+                         rows={sales.devis_par_statut.map(d => [d.label, fmt(d.count)])}
+                         footer={['Total', fmt(sumBy(sales.devis_par_statut, 'count'))]} />
                 </>
               )}
               <Subhead>Par responsable</Subhead>
               <Table headers={['Responsable', 'Leads', 'Gagnés']}
-                     rows={sales.par_responsable.map(r => [r.owner__username || '—', fmt(r.count), fmt(r.gagnes)])} />
+                     rows={sales.par_responsable.map(r => [r.owner__username || '—', fmt(r.count), fmt(r.gagnes)])}
+                     footer={['Total', fmt(sumBy(sales.par_responsable, 'count')), fmt(sumBy(sales.par_responsable, 'gagnes'))]} />
               <Subhead>Pertes par motif</Subhead>
               <Table headers={['Motif', 'Nombre']}
-                     rows={sales.perdus_par_motif.map(r => [r.motif_perte || 'Non précisé', fmt(r.count)])} />
+                     rows={sales.perdus_par_motif.map(r => [r.motif_perte || 'Non précisé', fmt(r.count)])}
+                     footer={['Total', fmt(sumBy(sales.perdus_par_motif, 'count'))]} />
             </ReportCard>
           ))}
         </TabsContent>
@@ -266,7 +287,8 @@ export function Component() {
               </p>
               <Subhead>Par catégorie</Subhead>
               <Table headers={['Catégorie', 'Articles', 'Valeur vente HT']}
-                     rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])} />
+                     rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
+                     footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
               <Subhead>Stock bas</Subhead>
               <Table headers={['Produit', 'SKU', 'Stock', 'Seuil']}
                      rows={stock.bas_stock.map(p => [p.nom, p.sku || '—', fmt(p.quantite_stock), fmt(p.seuil_alerte)])} />
@@ -285,10 +307,12 @@ export function Component() {
               </p>
               <Subhead>Chantiers par statut</Subhead>
               <Table headers={['Statut', 'Nombre']}
-                     rows={service.chantiers_par_statut.map(c => [c.statut, fmt(c.count)])} />
+                     rows={service.chantiers_par_statut.map(c => [c.statut, fmt(c.count)])}
+                     footer={['Total', fmt(sumBy(service.chantiers_par_statut, 'count'))]} />
               <Subhead>Activité technicien</Subhead>
               <Table headers={['Technicien', 'Interventions']}
-                     rows={service.interventions_par_technicien.map(t => [t.technicien__username || '—', fmt(t.count)])} />
+                     rows={service.interventions_par_technicien.map(t => [t.technicien__username || '—', fmt(t.count)])}
+                     footer={['Total', fmt(sumBy(service.interventions_par_technicien, 'count'))]} />
             </ReportCard>
           ))}
         </TabsContent>
@@ -310,7 +334,8 @@ export function Component() {
                   </p>
                   <Subhead>Renouvellements / visites sous 90 jours</Subhead>
                   <Table headers={['Client', 'Périodicité', 'Prochaine visite', 'Mensuel équiv. (DH)']}
-                         rows={recurring.upcoming.map(c => [c.client, c.periodicite_label, c.prochaine_visite || '—', fmt(c.monthly_equivalent)])} />
+                         rows={recurring.upcoming.map(c => [c.client, c.periodicite_label, c.prochaine_visite || '—', fmt(c.monthly_equivalent)])}
+                         footer={[`Total (${recurring.upcoming.length})`, '', '', fmt(sumBy(recurring.upcoming, 'monthly_equivalent'))]} />
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
@@ -344,7 +369,11 @@ export function Component() {
                          rows={jobCosting.chantiers.map(c => [
                            c.ref, c.client, fmt(c.invoiced_ht), fmt(c.cost_estimate),
                            fmt(c.margin), `${c.margin_pct} %`,
-                         ])} />
+                         ])}
+                         footer={[`Total (${jobCosting.chantiers.length})`, '',
+                                  fmt(sumBy(jobCosting.chantiers, 'invoiced_ht')),
+                                  fmt(sumBy(jobCosting.chantiers, 'cost_estimate')),
+                                  fmt(sumBy(jobCosting.chantiers, 'margin')), '']} />
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
@@ -406,7 +435,10 @@ export function Component() {
                                    commissions.base_label, 'Commission (DH)']}
                          rows={commissions.rows.map(r => [
                            r.commercial, fmt(r.count), fmt(r.base), fmt(r.commission),
-                         ])} />
+                         ])}
+                         footer={['Total', fmt(sumBy(commissions.rows, 'count')),
+                                  fmt(sumBy(commissions.rows, 'base')),
+                                  fmt(sumBy(commissions.rows, 'commission'))]} />
                 </>
               )}
             </InsightCard>
