@@ -74,13 +74,18 @@ export default function CategoriesStock() {
       .finally(() => setLoading(false))
   }, [])
 
-  const draftFor = (c) => drafts[c.id] ?? {
+  const baseDraft = (c) => ({
     nom: c.nom ?? '',
     ordre: c.ordre ?? 100,
     type_equipement: c.type_equipement ?? '__none',
-  }
+  })
+  const draftFor = (c) => drafts[c.id] ?? baseDraft(c)
   const setDraft = (id, patch) =>
-    setDrafts((d) => ({ ...d, [id]: { ...draftFor(categories.find((c) => c.id === id)), ...d[id], ...patch } }))
+    setDrafts((d) => {
+      const cat = categories.find((c) => c.id === id)
+      const current = d[id] ?? (cat ? baseDraft(cat) : {})
+      return { ...d, [id]: { ...current, ...patch } }
+    })
 
   const isDirty = (c) => {
     const d = drafts[c.id]
