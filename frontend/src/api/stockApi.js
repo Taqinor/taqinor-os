@@ -81,6 +81,17 @@ const stockApi = {
   bcfPdf: (id) =>
     api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
 
+  // N20 — Étiquettes QR/CODE128 imprimables pour une sélection de SKU
+  // (jeton stable PRODUIT:<id>, jamais de prix d'achat) + résolveur de scan.
+  etiquettesProduits: (ids, { symbology = 'qr', sortie = 'pdf' } = {}) =>
+    api.get('/stock/produits/etiquettes/', {
+      params: { ids, symbology, sortie },
+      paramsSerializer: { indexes: null },
+      responseType: 'blob',
+    }),
+  resolveCode: (code) =>
+    api.get('/stock/produits/resolve/', { params: { code } }),
+
   // N19 — retours fournisseur (articles défectueux/erronés). La validation
   // décrémente le stock. Usage INTERNE (prix d'achat jamais client-facing).
   getRetoursFournisseur: (params) =>

@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
-  Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package,
+  Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
 } from 'lucide-react'
 import {
   fetchProduits,
@@ -23,6 +24,8 @@ import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
 import { validateTransfert, totalVentile } from '../../features/stock/emplacements'
+import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
+import { toastError, toastSuccess } from '../../lib/toast'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -544,6 +547,7 @@ function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
 // ── Page principale ────────────────────────────────────────────────────────
 export default function StockList() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { produits, produitsArchived, categories, loading, error } = useSelector(s => s.stock)
   const role = useSelector(s => s.auth.role)
   const permissions = useSelector(s => s.auth.permissions)
@@ -572,6 +576,11 @@ export default function StockList() {
   const [showInventaire, setShowInventaire] = useState(false)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
+  // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
+  const [labelsBusy, setLabelsBusy]   = useState(false)
+  const [scanOpen, setScanOpen]       = useState(false)
+  const [scanCode, setScanCode]       = useState('')
+  const [scanBusy, setScanBusy]       = useState(false)
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
@@ -608,6 +617,48 @@ export default function StockList() {
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch { setBulkMsg('Export indisponible.') } finally { setBulkBusy(false) }
+  }
+  // N20 — Imprime des étiquettes QR pour la sélection (PDF ; jamais de prix
+  // d'achat — l'étiquette ne porte que nom + SKU + jeton PRODUIT:<id>).
+  const printLabels = async () => {
+    if (!visibleSelected.size) return
+    setLabelsBusy(true)
+    try {
+      const res = await stockApi.etiquettesProduits([...visibleSelected])
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { toastError('Génération des étiquettes indisponible.') }
+    finally { setLabelsBusy(false) }
+  }
+  // N20 — Résout un code scanné/saisi (PRODUIT:<id> / SYSTEME:<id>) et navigue
+  // vers la fiche correspondante (lecture seule côté serveur).
+  const runScan = async () => {
+    const code = normalizeCode(scanCode)
+    if (!isValidCode(code)) {
+      toastError('Code illisible. Attendu : PRODUIT:<id> ou SYSTEME:<id>.')
+      return
+    }
+    setScanBusy(true)
+    try {
+      const { data } = await stockApi.resolveCode(code)
+      const target = resolveTarget(data)
+      if (!target) { toastError('Code introuvable.'); return }
+      setScanOpen(false); setScanCode('')
+      if (target.route === '/stock') {
+        // Reste sur le catalogue : on filtre sur le produit résolu.
+        setSearch(target.search); setActiveCat(''); setFilterLow(false)
+        toastSuccess(`Produit trouvé : ${data.label}`)
+      } else {
+        toastSuccess(`Système trouvé : ${data.label}`)
+        navigate(target.route)
+      }
+    } catch (e) {
+      const msg = e?.response?.status === 404
+        ? 'Aucun enregistrement pour ce code.'
+        : 'Résolution indisponible.'
+      toastError(msg)
+    } finally { setScanBusy(false) }
   }
   useEffect(() => {
     if (!bulkMsg) return undefined
@@ -804,6 +855,10 @@ export default function StockList() {
               <Truck /> Transférer
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
+                  title="Scanner un code QR / code-barres et ouvrir la fiche">
+            <ScanLine /> Scanner
+          </Button>
           <Button variant="outline" size="sm" onClick={exportFiltered}>
             <Download /> Exporter Excel
           </Button>
@@ -819,6 +874,27 @@ export default function StockList() {
           )}
         </div>
       </header>
+
+      {scanOpen && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3">
+          <QrCode className="size-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Scanner / saisir un code</span>
+          <Input
+            autoFocus className="h-9 w-64 font-mono"
+            placeholder="PRODUIT:123 ou SYSTEME:45"
+            value={scanCode}
+            onChange={(e) => setScanCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runScan() } }}
+          />
+          <Button size="sm" loading={scanBusy} disabled={!scanCode.trim()} onClick={runScan}>
+            Ouvrir la fiche
+          </Button>
+          <Button size="sm" variant="ghost"
+                  onClick={() => { setScanOpen(false); setScanCode('') }}>
+            Fermer
+          </Button>
+        </div>
+      )}
 
       {showImport && (
         <ExcelImport target="products" onClose={() => setShowImport(false)}
@@ -857,8 +933,10 @@ export default function StockList() {
           categories={categories}
           marques={marquesList}
           busy={bulkBusy}
+          labelsBusy={labelsBusy}
           onAction={runBulk}
           onExport={exportSelection}
+          onPrintLabels={printLabels}
           onClear={clearSelection}
         />
       )}
