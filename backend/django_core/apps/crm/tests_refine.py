@@ -213,3 +213,133 @@ class TestHistoriqueTracking(TestCase):
             self.assertTrue(
                 LeadActivity.objects.filter(lead=lead, field=field).exists(),
                 f'Historique manquant pour {field}')
+
+
+class TestStageGuardOnUpdate(TestCase):
+    """Garde funnel côté serveur sur un PATCH d'étape simple (parité bulk)."""
+
+    def setUp(self):
+        self.company = make_company('refine-stage-co', 'Refine Stage Co')
+        self.user = User.objects.create_user(
+            username='refine_stage', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+
+    def test_perdu_lead_stage_locked(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Perdu', stage='QUOTE_SENT', perdu=True)
+        r = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'stage': 'SIGNED'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, 'QUOTE_SENT')
+
+    def test_backward_stage_rejected(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Recul', stage='FOLLOW_UP')
+        r = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'stage': 'NEW'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, 'FOLLOW_UP')
+
+    def test_forward_stage_allowed(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Avance', stage='NEW')
+        r = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'stage': 'CONTACTED'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, 'CONTACTED')
+
+
+class TestCanalGuardOnUpdate(TestCase):
+    """Le canal doit appartenir au référentiel géré de la société."""
+
+    def setUp(self):
+        self.company = make_company('refine-canal-co', 'Refine Canal Co')
+        self.user = User.objects.create_user(
+            username='refine_canal', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+        from apps.crm.models import Canal
+        Canal.objects.create(
+            company=self.company, cle='telephone', libelle='Téléphone')
+
+    def test_unknown_canal_rejected(self):
+        lead = Lead.objects.create(company=self.company, nom='Canal')
+        r = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'canal': 'canal_bidon'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('canal', r.data)
+
+    def test_known_canal_accepted(self):
+        lead = Lead.objects.create(company=self.company, nom='Canal2')
+        r = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'canal': 'telephone'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.canal, 'telephone')
+
+
+class TestResolveClientLogsActivity(TestCase):
+    """La résolution/création du client au 1er devis écrit une note Historique."""
+
+    def setUp(self):
+        self.company = make_company('refine-resolve-co', 'Refine Resolve Co')
+
+    def test_creation_logs_client_lie(self):
+        from apps.crm.services import resolve_client_for_lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Tazi', prenom='Sara',
+            email='sara@example.com')
+        client = resolve_client_for_lead(lead)
+        act = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Client lié').first()
+        self.assertIsNotNone(act)
+        self.assertIn('Tazi', act.body)
+        self.assertIn(client.nom, act.body)
+
+
+class TestLeadExportColumns(TestCase):
+    """L'export leads contient « Modifié le » + le dernier devis (TTC/statut)."""
+
+    def setUp(self):
+        self.company = make_company('refine-exp-co', 'Refine Exp Co')
+
+    def test_lead_row_has_new_columns(self):
+        from apps.crm.exports import LEAD_EXPORT_HEADERS, lead_row
+        self.assertIn('Modifié le', LEAD_EXPORT_HEADERS)
+        self.assertIn('Dernier devis (TTC)', LEAD_EXPORT_HEADERS)
+        self.assertIn('Statut devis', LEAD_EXPORT_HEADERS)
+        lead = Lead.objects.create(company=self.company, nom='Exp')
+        row = lead_row(lead)
+        self.assertEqual(len(row), len(LEAD_EXPORT_HEADERS))
+
+
+class TestClientExportColumns(TestCase):
+    """L'export clients sort Type/ICE/IF/RC/CIN/RIB."""
+
+    def test_client_headers(self):
+        from apps.crm.exports import CLIENT_EXPORT_HEADERS
+        for col in ('Type', 'ICE', 'IF', 'RC', 'CIN', 'RIB'):
+            self.assertIn(col, CLIENT_EXPORT_HEADERS)
+
+    def test_client_row_values(self):
+        from apps.crm.exports import CLIENT_EXPORT_HEADERS
+        from apps.crm.models import Client
+        company = make_company('refine-cli-exp', 'Refine Cli Exp')
+        c = Client.objects.create(
+            company=company, nom='SARL Atlas', type_client='entreprise',
+            ice='001234567890123', if_fiscal='12345678', rc='RC-99')
+        # Reconstruit la ligne via la même logique que l'export.
+        from apps.crm.exports import export_clients_xlsx
+        resp = export_clients_xlsx([c])
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(CLIENT_EXPORT_HEADERS), 12)

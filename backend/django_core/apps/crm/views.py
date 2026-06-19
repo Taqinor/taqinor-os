@@ -56,7 +56,10 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nom', 'prenom', 'email', 'telephone']
+    search_fields = [
+        'nom', 'prenom', 'email', 'telephone',
+        'ice', 'if_fiscal', 'rc', 'cin',
+    ]
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
 

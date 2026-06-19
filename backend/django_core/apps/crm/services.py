@@ -393,6 +393,14 @@ def resolve_client_for_lead(lead: Lead) -> Client:
 
     lead.client = client
     lead.save(update_fields=['client'])
+    # Trace la résolution/création du client dans le chatter du lead (geste
+    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
+    # (résolution déclenchée par le générateur de devis) → entrée système.
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Client lié : {nom_client}")
     return client
 
 
