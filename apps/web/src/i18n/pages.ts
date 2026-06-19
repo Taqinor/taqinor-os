@@ -27,6 +27,9 @@ const TRANSLATED: Record<string, readonly Locale[]> = {
   '/nos-solutions': ['fr', 'en', 'ar'],
   '/faq': ['fr', 'en', 'ar'],
   '/garanties': ['fr', 'en', 'ar'],
+  '/financement': ['fr', 'en', 'ar'],
+  '/pourquoi-taqinor': ['fr', 'en', 'ar'],
+  '/à-propos': ['fr', 'en', 'ar'],
   '/mentions-legales': ['fr', 'en', 'ar'],
   '/politique-de-confidentialite': ['fr', 'en', 'ar'],
 };

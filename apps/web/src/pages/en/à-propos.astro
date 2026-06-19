@@ -1,0 +1,170 @@
+---
+/**
+ * EN — About / Our approach (W67). Faithful translation of /à-propos ; the
+ * founder pedigree (doctor-engineer, 10+ years R&D at Huawei, Ericsson and
+ * STMicroelectronics) and tier-1 brand names are kept EXACT. Internal links via
+ * localizeNavHref. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const etapes = [
+  {
+    n: '01',
+    title: 'We read the roof and the bill',
+    body: 'Usable area, orientation, shading, real consumption: these four data points set the power and the equipment. We simply read them and derive the right sizing. The assessment and the study are 0 MAD.',
+  },
+  {
+    n: '02',
+    title: 'The founder signs the study',
+    body: 'Before any order, the founder — doctor-engineer, more than 10 years of R&D — personally reviews and validates the sizing. A study that comes out of here has been defended by someone who answers for the figure.',
+  },
+  {
+    n: '03',
+    title: 'We install, file in hand',
+    body: 'Tier-1 brands only, installed with their complete technical file: single-line diagrams, cable sizing, protections, commissioning. Our installations in Casablanca, El Jadida and Nouaceur are real and visitable on request.',
+  },
+  {
+    n: '04',
+    title: 'The meter takes over',
+    body: 'Once in service, Deye Cloud reads the production continuously and the client keeps their access — proof replaces the promise. In parallel, the Law 82-21 file is carried through: declaration or regularization included.',
+  },
+];
+---
+
+<Layout
+  title="About — the founder, a doctor-engineer, behind every study | Taqinor"
+  description="Taqinor's founder is a doctor-engineer with more than ten years of R&D at Huawei, Ericsson and STMicroelectronics. He personally validates every study before any equipment order. Here is why an engineer turned to solar, and what it changes for you."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'About' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">The founder</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">A doctor-engineer validates every study, by hand</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Taqinor's founder spent more than ten years in research and development at
+          <strong class="text-white">Huawei, Ericsson and STMicroelectronics</strong>. He left that
+          world for solar because he saw, everywhere, the same reflex: selling a kit before doing the
+          calculation. Here, the order is reversed — and he is the one who signs the calculation.
+        </p>
+      </div>
+    </section>
+
+    <!-- The founder — his standards, not a biography -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">An engineer's path</p>
+        <h2 class="display v2-section-title mt-5">Ten years of R&D, put to work on your roof</h2>
+        <p class="v2-lead mt-5 text-encre-soft">
+          A doctor-engineer, the founder led more than ten years of research and development at
+          <strong class="text-encre">Huawei, Ericsson and STMicroelectronics</strong>. Three houses
+          where a technical decision is not taken on intuition: it is measured, verified, and
+          defended with figures. It is exactly this discipline he applies today to a solar
+          installation — a far simpler object, yet one whose economics hinge on a few parameters too
+          often left uncalculated.
+        </p>
+        <p class="mt-5 text-encre-soft">
+          Concretely, <strong class="text-encre">he personally validates every study before a single
+          product is ordered</strong>. The chosen power, the inverter choice, the case for a battery:
+          nothing is decided by a rushed salesperson or copied from a kit. Everything starts from your
+          bill and your roof, and everything is settled by someone whose job, for twenty years, has
+          been to read this kind of calculation. It is this signature that separates a sizing from a
+          guess.
+        </p>
+        <p class="mt-5 text-encre-soft">
+          Why does an engineer leave cutting-edge R&amp;D for solar in Morocco? Because the gap there
+          had become untenable: an asset that commits the client for twenty-five years, sold in an
+          afternoon as one sells a household appliance. Solar is first a measurement problem — how
+          much you consume, when, on what area, with what shading — and that problem, an engineer
+          knows how to solve. Taqinor exists to treat each roof as a technical file, not a sale.
+        </p>
+        <p class="mt-5 max-w-xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          That same rigour sometimes leads us to advise against solar, when the figures don't add up
+          for your profile. An engineer isn't paid to place hardware: he is there to size right, or
+          to say no.
+        </p>
+      </div>
+    </section>
+
+    <!-- The method — study first, project second -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">The method</p>
+        <h2 class="display v2-section-title mt-5 text-white">Four stages, and the order is non-negotiable</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          The same logic runs from first contact to production monitoring. The calculation comes
+          before the quote, the quote before the install, the measurement after the install:
+          swapping these stages is going back to the kit we are precisely trying to avoid.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {etapes.map((e, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl" dir="ltr">{e.n}</p>
+              <h3 class="display mt-2 text-2xl text-white">{e.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{e.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- Our standards, in brief + link to Why (differentiators) -->
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">What the method produces</p>
+          <h2 class="display v2-section-title mt-5 text-white">The same standard, in four commitments</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            The founder's conviction does not stay on this page: it shows in the concrete choices of
+            every project — tier-1 hardware, Deye Cloud monitoring with client access, the Law 82-21
+            file carried through, installations you can go and see. Want these differences detailed,
+            point by point? That is the purpose of the <strong class="text-white">Why Taqinor</strong> page.
+          </p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href={L('/pourquoi-taqinor')} class="bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Why Taqinor →</a>
+            <a href={L('/realisations')} class="border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our projects →</a>
+          </div>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
+          <div class="v2-rise" style="--v2-i:0">
+            <dd class="font-display text-xl font-bold text-white">Doctor-engineer</dd>
+            <dt class="tech-label mt-2 text-lune-faint">10+ years R&D expertise — every study validated</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:1">
+            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Measured production, client access included</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:2">
+            <dd class="font-display text-xl font-bold text-white">Tier-1 only</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
+          </div>
+          <div class="v2-rise" style="--v2-i:3">
+            <dd class="font-display text-xl font-bold text-white">Law 82-21</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Declaration and regularization, end to end</dt>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <CtaBand title="Put the founder on your roof: the study is free." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>
