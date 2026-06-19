@@ -571,7 +571,7 @@ client-facing PDFs are GALLERY-gated).
 [x] [Chantiers] [L2] [ROUTINE] Faire lire au sélecteur "type" d'intervention la liste TypeIntervention gérée de la société au lieu du tableau en dur INTERVENTION_TYPES de statuses.js. Fait = le dropdown type liste les TypeIntervention non archivés via getTypesIntervention.
 [ ] [Chantiers] [L15] [ROUTINE] Signaler les chantiers sans BOM gelé (bom vide, ex. créés sans devis). Fait = InstallationDetail.jsx montre un indice FR "Nomenclature absente" et le Parc marque ces systèmes.
 [ ] [Chantiers] [L7] [ROUTINE] Bloquer/avertir avant d'annuler un chantier déjà Réceptionné/Clôturé et actif au parc (l'annulation le masque du parc). Fait = annuler avertit en FR qu'un système installé quittera le parc et exige confirmation quand est_parc=true.
-[ ] [Chantiers] [L6] [ROUTINE] Conditionner les boutons PV de réception/handover jusqu'au jalon atteint (PV seulement une fois statut ≥ Installé et checklist quasi-complète). Fait = les boutons "Documents après-vente" sont désactivés avec un tooltip FR expliquant le prérequis.
+[x] [Chantiers] [L6] [ROUTINE] Conditionner les boutons PV de réception/handover jusqu'au jalon atteint (PV seulement une fois statut ≥ Installé et checklist quasi-complète). Fait = les boutons "Documents après-vente" sont désactivés avec un tooltip FR expliquant le prérequis.
 [ ] [Chantiers] [L4] [GALLERY] Ajouter un aperçu in-app des PDF client après-vente (PV de réception, bon de livraison, dossier de remise, attestation) avant téléchargement dans InstallationDetail.jsx. Fait = chaque bouton "Documents après-vente" ouvre un aperçu PDF inline au lieu de seulement downloadBlob, sans changer le contenu du PDF généré.
 
 #### Équipement
@@ -587,15 +587,15 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Chantiers/Équipement] [L16] [ROUTINE] Consigner au chatter quels séries/produits ont été capturés sur une étape de checklist (cocher_checklist ne journalise qu'un compte "+N équipement(s)"). Fait = la note d'historique liste le produit et la série capturés.
 
 #### Checklist
-[ ] [Chantiers/Checklist] [L7] [ROUTINE] Avertir (non bloquant) avant de passer un chantier à Réceptionné si la complétion de checklist est < 100 %. Fait = poser le statut Réceptionné demande une confirmation FR quand checklist_completion < 100, l'override restant possible.
-[ ] [Chantiers/Checklist] [L11] [ROUTINE] Améliorer l'état vide de la checklist quand aucune étape modèle n'existe en lien direct vers Paramètres → Chantiers. Fait = le message "Aucune étape" devient un lien/bouton FR ouvrant les réglages d'étapes.
-[ ] [Chantiers/Checklist] [L16] [ROUTINE] Montrer qui a complété chaque étape ET quand (fait_le est retourné mais seul fait_par_nom est rendu). Fait = chaque étape faite affiche "par X le <date>" via item.fait_le formaté en FR.
-[ ] [Chantiers/Checklist] [L12] [ROUTINE] Agrandir les cases et zones tactiles de la checklist pour usage terrain/gants sur mobile. Fait = les lignes de checklist utilisent des cases/labels tactiles plus grandes en largeur iPhone sans changer le desktop.
+[x] [Chantiers/Checklist] [L7] [ROUTINE] Avertir (non bloquant) avant de passer un chantier à Réceptionné si la complétion de checklist est < 100 %. Fait = poser le statut Réceptionné demande une confirmation FR quand checklist_completion < 100, l'override restant possible.
+[x] [Chantiers/Checklist] [L11] [ROUTINE] Améliorer l'état vide de la checklist quand aucune étape modèle n'existe en lien direct vers Paramètres → Chantiers. Fait = le message "Aucune étape" devient un lien/bouton FR ouvrant les réglages d'étapes.
+[x] [Chantiers/Checklist] [L16] [ROUTINE] Montrer qui a complété chaque étape ET quand (fait_le est retourné mais seul fait_par_nom est rendu). Fait = chaque étape faite affiche "par X le <date>" via item.fait_le formaté en FR.
+[x] [Chantiers/Checklist] [L12] [ROUTINE] Agrandir les cases et zones tactiles de la checklist pour usage terrain/gants sur mobile. Fait = les lignes de checklist utilisent des cases/labels tactiles plus grandes en largeur iPhone sans changer le desktop.
 
 #### Photos
-[ ] [Chantiers/Photos] [L4] [ROUTINE] Ajouter un lightbox/zoom au tap d'une vignette dans ChantierPhotos.jsx au lieu d'ouvrir l'URL brute dans un nouvel onglet. Fait = taper une image ouvre un visualiseur plein écran in-app avec préc/suiv dans la phase.
-[ ] [Chantiers/Photos] [L12] [ROUTINE] Utiliser l'attribut capture caméra sur l'input d'upload photo pour la prise directe sur site. Fait = les inputs fichier de ChantierPhotos.jsx ajoutent capture="environment" pour ouvrir la caméra sur téléphone, la sélection desktop restant possible.
-[ ] [Chantiers/Photos] [L11] [ROUTINE] Ajouter un retour de progression/erreur et un garde taille/type basique à ChantierPhotos.jsx (catch silencieux). Fait = un upload en échec ou trop volumineux montre un message FR et le bouton "＋" reflète la progression.
+[x] [Chantiers/Photos] [L4] [ROUTINE] Ajouter un lightbox/zoom au tap d'une vignette dans ChantierPhotos.jsx au lieu d'ouvrir l'URL brute dans un nouvel onglet. Fait = taper une image ouvre un visualiseur plein écran in-app avec préc/suiv dans la phase.
+[x] [Chantiers/Photos] [L12] [ROUTINE] Utiliser l'attribut capture caméra sur l'input d'upload photo pour la prise directe sur site. Fait = les inputs fichier de ChantierPhotos.jsx ajoutent capture="environment" pour ouvrir la caméra sur téléphone, la sélection desktop restant possible.
+[x] [Chantiers/Photos] [L11] [ROUTINE] Ajouter un retour de progression/erreur et un garde taille/type basique à ChantierPhotos.jsx (catch silencieux). Fait = un upload en échec ou trop volumineux montre un message FR et le bouton "＋" reflète la progression.
 [ ] [Chantiers/Photos] [L5] [ROUTINE] Permettre de déplacer une pièce jointe entre phases (avant/pendant/après) sans supprimer + ré-uploader. Fait = chaque vignette propose un sélecteur de phase qui re-tague la pièce via l'endpoint records.
 
 #### Planning

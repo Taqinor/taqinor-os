@@ -350,6 +350,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // (le serveur tamponne date_reception et journalise l'ajout au parc).
   const [receptBusy, setReceptBusy] = useState(false)
   const marquerReceptionne = async () => {
+    // Avertissement (non bloquant) si la checklist n'est pas à 100 %.
+    const comp = current.checklist_completion
+    if (Number.isInteger(comp) && comp < 100
+        && !window.confirm(
+          `La checklist n'est complétée qu'à ${comp} %. `
+          + 'Passer quand même le chantier à « Réceptionné » ?')) {
+      return
+    }
     setReceptBusy(true)
     try {
       await dispatch(updateInstallation({
@@ -404,6 +412,25 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   const interventions = current.interventions ?? []
+
+  // N6 — les documents après-vente (PV / handover) ne sont pertinents qu'une
+  // fois le jalon atteint : statut canonique ≥ « Installé » ET checklist
+  // quasi-complète (≥ 80 %). Sinon les boutons sont désactivés avec un tooltip.
+  const installeRank = INSTALLATION_STATUSES.indexOf('installe')
+  const statutOk = (() => {
+    const r = INSTALLATION_STATUSES.indexOf(current.statut)
+    // Statut hérité (hors liste) : pose/installe/mise_en_service/raccordement
+    // couvrent déjà le jalon « Installé ».
+    if (r === -1) {
+      return ['pose', 'mise_en_service', 'raccordement_onee'].includes(current.statut)
+    }
+    return r >= installeRank
+  })()
+  const pvComp = current.checklist_completion
+  const checklistOk = !Number.isInteger(pvComp) || pvComp >= 80
+  const pvReady = statutOk && checklistOk
+  const pvTooltip = pvReady ? undefined
+    : 'Disponible une fois le chantier installé et la checklist quasi-complète.'
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose?.() }}>
@@ -473,21 +500,25 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           {/* ── Documents après-vente (PDF régénérés à la demande) ── */}
           <Section icon={FileText} title="Documents après-vente">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline"
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`)}>
                 PV de réception
               </Button>
-              <Button size="sm" variant="outline"
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`)}>
                 Bon de livraison
               </Button>
-              <Button size="sm" variant="outline"
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`)}>
                 Dossier de remise
               </Button>
-              <Button size="sm" variant="outline" onClick={openFicheRemise}>
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                      onClick={openFicheRemise}>
                 Fiche de remise / garantie
               </Button>
+              {!pvReady && (
+                <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
+              )}
               <Button size="sm" variant="outline"
                       onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`)}>
                 Attestation

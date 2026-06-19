@@ -4,10 +4,12 @@
 // la complétion (cocher reste possible sans série).
 // J43 — portée sur le système de design (Progress, Checkbox, Input, Spinner).
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
 import ProduitPicker from '../../components/ProduitPicker'
 import { Progress, Checkbox, Input, Spinner } from '../../ui'
 import { cn } from '../../lib/cn'
+import { formatDate } from '../../lib/format'
 
 export default function ChantierChecklist({ installationId, produits, onChanged }) {
   const [items, setItems] = useState([])
@@ -66,14 +68,20 @@ export default function ChantierChecklist({ installationId, produits, onChanged 
         <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Aucune étape (configurez les modèles dans Paramètres → Checklists).
+          Aucune étape modèle.{' '}
+          <Link to="/parametres" className="font-medium text-primary underline">
+            Configurer les étapes (Paramètres → Chantiers)
+          </Link>
+          .
         </p>
       ) : (
         <div className="flex flex-col">
           {items.map((item) => (
-            <div key={item.id} className="border-b border-border py-1.5 last:border-0">
-              <label className="flex cursor-pointer items-center gap-2">
+            <div key={item.id} className="border-b border-border py-2.5 last:border-0">
+              {/* N12 — zones tactiles agrandies pour usage terrain/gants. */}
+              <label className="flex min-h-11 cursor-pointer items-center gap-3">
                 <Checkbox
+                  className="size-6"
                   checked={!!item.fait}
                   onCheckedChange={(c) => toggle(item, c === true)}
                 />
@@ -83,9 +91,10 @@ export default function ChantierChecklist({ installationId, produits, onChanged 
                 )}>
                   {item.libelle}
                 </span>
-                {item.fait && item.fait_par_nom && (
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    par {item.fait_par_nom}
+                {item.fait && (item.fait_par_nom || item.fait_le) && (
+                  <span className="ml-auto text-right text-xs text-muted-foreground">
+                    {item.fait_par_nom ? `par ${item.fait_par_nom}` : ''}
+                    {item.fait_le ? ` le ${formatDate(item.fait_le)}` : ''}
                   </span>
                 )}
               </label>
