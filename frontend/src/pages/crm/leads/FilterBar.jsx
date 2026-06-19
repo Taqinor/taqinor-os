@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Search } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Search, SlidersHorizontal } from 'lucide-react'
 import {
   EMPTY_FILTERS,
   CANAL_LABELS,
@@ -19,6 +19,22 @@ import {
 const ALL = '__all'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
+
+const MOBILE_QUERY = '(max-width: 768px)'
+
+// Vrai sous 768px — la barre de filtres se replie alors derrière un bouton.
+function useIsMobile() {
+  const [mobile, setMobile] = useState(
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY)
+    const onChange = (e) => setMobile(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return mobile
+}
 
 // Barre de recherche/filtres partagée par les quatre vues (façon Odoo).
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
@@ -45,6 +61,15 @@ export default function FilterBar({ filters, setFilters, leads }) {
 
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
+  const isMobile = useIsMobile()
+  const [open, setOpen] = useState(false)
+  // Sur mobile, on ne déplie les contrôles que si l'utilisateur ouvre le
+  // panneau ; sur desktop, ils sont toujours visibles.
+  const showControls = !isMobile || open
+  // Nombre de filtres actifs (hors recherche libre) — pastille sur le bouton.
+  const activeCount = Object.keys(EMPTY_FILTERS)
+    .filter((k) => k !== 'q' && filters[k] !== EMPTY_FILTERS[k]).length
+
   return (
     <div className="fb-bar">
       <div className="fb-search">
@@ -57,6 +82,20 @@ export default function FilterBar({ filters, setFilters, leads }) {
         />
       </div>
 
+      {isMobile && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <SlidersHorizontal /> Filtres
+          {activeCount > 0 && <span className="count-badge">{activeCount}</span>}
+        </Button>
+      )}
+
+      {!showControls ? null : <>
       <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par étape">
           <SelectValue />
@@ -179,6 +218,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
           Effacer les filtres
         </Button>
       )}
+      </>}
     </div>
   )
 }
