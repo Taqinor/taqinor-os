@@ -322,6 +322,12 @@ class TestChantierFunnelParcChecklist(TestCase):
         self.assertEqual(r.data['equipements_crees'], 1)
         self.assertTrue(Equipement.objects.filter(
             installation=self.inst, numero_serie='SN-001').exists())
+        # N16 — la note de chatter liste le produit et la série capturés.
+        note = self.inst.activites.filter(
+            kind='note', body__icontains='Checklist').order_by('-id').first()
+        self.assertIsNotNone(note)
+        self.assertIn('Onduleur X', note.body)
+        self.assertIn('SN-001', note.body)
 
     def test_serial_capture_optional_never_blocks(self):
         self.api.get(

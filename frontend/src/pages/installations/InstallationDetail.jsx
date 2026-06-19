@@ -167,7 +167,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Parc d'équipements & tickets SAV du chantier
   const produits = useSelector(s => s.stock.produits) ?? []
   const [equipements, setEquipements] = useState([])
-  const [equip, setEquip] = useState({ produit: '', numero_serie: '', date_pose: '' })
+  // N3 — la date de pose de l'équipement est pré-remplie depuis la date de pose
+  // réelle du chantier (miroir du fallback serveur de cocher_checklist).
+  const equipBlank = () => ({ produit: '', numero_serie: '', date_pose: F('date_pose_reelle') })
+  const [equip, setEquip] = useState(equipBlank)
   const [equipBusy, setEquipBusy] = useState(false)
   const [tickets, setTickets] = useState([])
   const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
@@ -222,7 +225,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         numero_serie: nullable(equip.numero_serie),
         date_pose: nullable(equip.date_pose),
       })
-      setEquip({ produit: '', numero_serie: '', date_pose: '' })
+      setEquip(equipBlank())
       setActionError(null)
       loadEquipements()
     } catch (err) {
@@ -416,6 +419,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   const interventions = current.interventions ?? []
+
+  // N7 — équipement : produit choisi, garantie manquante, n° série en doublon.
+  const equipProduit = produits.find((p) => String(p.id) === String(equip.produit))
+  const garantieManquante = equipProduit
+    && !equipProduit.garantie_mois && !equipProduit.garantie_production_mois
+  const serieSaisie = (equip.numero_serie || '').trim().toLowerCase()
+  const serieDoublon = !!serieSaisie && equipements.some(
+    (eq) => (eq.numero_serie || '').trim().toLowerCase() === serieSaisie)
 
   // N6 — les documents après-vente (PV / handover) ne sont pertinents qu'une
   // fois le jalon atteint : statut canonique ≥ « Installé » ET checklist
@@ -740,7 +751,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Checklist d'exécution (N4/N9) ── */}
           <Section icon={ClipboardList} title="Checklist d'exécution">
-            <ChantierChecklist installationId={id} produits={produits} onChanged={refreshInstallation} />
+            <ChantierChecklist installationId={id} produits={produits}
+                               series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
+                               onChanged={() => { refreshInstallation(); loadEquipements() }} />
           </Section>
 
           {/* ── Photos & fichiers avant/pendant/après (N5) ── */}
@@ -840,6 +853,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 Ajouter
               </Button>
             </div>
+            {garantieManquante && (
+              <p className="text-xs text-warning-foreground">
+                Garantie non renseignée pour ce produit — l&apos;horloge de garantie
+                restera vide.
+              </p>
+            )}
+            {serieDoublon && (
+              <p className="text-xs text-destructive">
+                Ce numéro de série existe déjà sur un équipement de ce chantier.
+              </p>
+            )}
           </Section>
 
           {/* ── Tickets SAV ── */}

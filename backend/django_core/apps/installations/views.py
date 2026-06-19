@@ -427,6 +427,7 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
 
         # N9 — saisie optionnelle de n° de série → équipements du parc.
         created_equip = 0
+        captures = []  # libellés « produit (n° série) » des relevés créés.
         for eq in (request.data.get('equipements') or []):
             produit_id = eq.get('produit')
             serie = (eq.get('numero_serie') or '').strip()
@@ -447,11 +448,17 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             equip.save(update_fields=[
                 'date_fin_garantie', 'date_fin_garantie_production'])
             created_equip += 1
+            captures.append(
+                f"{produit.nom}"
+                + (f" (n° {serie})" if serie else " (sans n° de série)"))
 
+        # N16 — la note liste les produits/séries capturés (pas juste un compte).
+        capture_txt = (f" — {', '.join(captures)}" if captures
+                       else (f" (+{created_equip} équipement(s))" if created_equip else ""))
         activity.log_note(
             inst, request.user,
             f"Checklist : « {item.libelle} » {'cochée' if fait else 'décochée'}"
-            + (f" (+{created_equip} équipement(s))" if created_equip else ""))
+            + capture_txt)
         items = list(inst.checklist.all())
         done = sum(1 for it in items if it.fait)
         return Response({

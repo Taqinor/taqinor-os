@@ -11,12 +11,20 @@ import { Progress, Checkbox, Input, Spinner } from '../../ui'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../lib/format'
 
-export default function ChantierChecklist({ installationId, produits, onChanged }) {
+export default function ChantierChecklist({
+  installationId, produits, series = [], onChanged,
+}) {
   const [items, setItems] = useState([])
   const [completion, setCompletion] = useState(null)
   const [loading, setLoading] = useState(true)
   // Saisies de série en attente, par clé d'étape : { produit, numero_serie }
   const [serie, setSerie] = useState({})
+  // N15 — n° de série déjà présents sur ce chantier (avertissement de doublon).
+  const seriesSet = new Set(series.map((s) => String(s).trim().toLowerCase()))
+  const isDoublon = (v) => {
+    const t = (v || '').trim().toLowerCase()
+    return !!t && seriesSet.has(t)
+  }
 
   const load = () => {
     installationsApi.getChecklist(installationId)
@@ -98,15 +106,21 @@ export default function ChantierChecklist({ installationId, produits, onChanged 
                   </span>
                 )}
               </label>
-              {/* N9 — saisie optionnelle de série sur les étapes concernées. */}
+              {/* N9 — saisie optionnelle de série sur les étapes concernées.
+                  N12 — empilé pleine largeur sur mobile, deux colonnes en sm+. */}
               {item.capture_serie && !item.fait && (
-                <div className="ml-7 mt-1.5 grid gap-2 sm:grid-cols-2">
+                <div className="ml-7 mt-1.5 flex flex-col gap-2 sm:grid sm:grid-cols-2">
                   <ProduitPicker produits={produits ?? []}
                                  value={serie[item.cle]?.produit ?? ''}
                                  onChange={(v) => setSerieField(item.cle, 'produit', v)} />
-                  <Input placeholder="N° de série (optionnel)"
+                  <Input className="w-full" placeholder="N° de série (optionnel)"
                          value={serie[item.cle]?.numero_serie ?? ''}
                          onChange={(e) => setSerieField(item.cle, 'numero_serie', e.target.value)} />
+                  {isDoublon(serie[item.cle]?.numero_serie) && (
+                    <span className="text-xs text-destructive sm:col-span-2">
+                      Ce numéro de série existe déjà sur ce chantier.
+                    </span>
+                  )}
                 </div>
               )}
             </div>
