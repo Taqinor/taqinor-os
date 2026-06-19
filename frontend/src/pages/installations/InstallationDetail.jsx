@@ -92,6 +92,15 @@ const Hint = ({ children }) => <p className="text-sm text-muted-foreground">{chi
 
 const ALL_NONE = '__none__'
 
+// N5 — statuts d'un équipement du parc (miroir de sav.Equipement.Statut).
+const EQUIP_STATUTS = [
+  { value: 'en_service', label: 'En service' },
+  { value: 'remplace', label: 'Remplacé' },
+  { value: 'hors_service', label: 'Hors service' },
+]
+const equipStatutLabel = (v) =>
+  EQUIP_STATUTS.find((s) => s.value === v)?.label ?? '—'
+
 export default function InstallationDetail({ installation, onClose, onSaved }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -266,6 +275,40 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // N5 — édition/suppression en place d'un équipement capturé.
+  const [editEquip, setEditEquip] = useState(null) // { id, numero_serie, statut }
+  const [editEquipBusy, setEditEquipBusy] = useState(false)
+  const startEditEquip = (eq) => setEditEquip({
+    id: eq.id,
+    numero_serie: eq.numero_serie ?? '',
+    statut: eq.statut ?? 'en_service',
+  })
+  const saveEditEquip = async () => {
+    if (!editEquip) return
+    setEditEquipBusy(true)
+    try {
+      await savApi.updateEquipement(editEquip.id, {
+        numero_serie: editEquip.numero_serie === '' ? null : editEquip.numero_serie,
+        statut: editEquip.statut,
+      })
+      setEditEquip(null)
+      setActionError(null)
+      loadEquipements()
+    } catch (err) {
+      setActionError(actionMsg(err, "Édition de l'équipement impossible."))
+    } finally { setEditEquipBusy(false) }
+  }
+  const deleteEquip = async (eq) => {
+    if (!window.confirm('Supprimer cet équipement du parc ?')) return
+    try {
+      await savApi.deleteEquipement(eq.id)
+      setActionError(null)
+      loadEquipements()
+    } catch (err) {
+      setActionError(actionMsg(err, "Suppression de l'équipement impossible."))
+    }
+  }
 
   const addEquipement = async () => {
     if (!equip.produit) return
@@ -964,19 +1007,61 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             {equipements.length === 0 ? (
               <Hint>Aucun équipement enregistré sur ce chantier.</Hint>
             ) : (
-              <MiniTable head={['Produit', 'N° série', 'Posé le', 'Garantie']}>
-                {equipements.map((eq) => (
-                  <tr key={eq.id} className="border-t border-border">
-                    <td className="px-3 py-2">{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
-                    <td className="px-3 py-2">{eq.numero_serie ?? '—'}</td>
-                    <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
-                    <td className="px-3 py-2">
-                      <span className="text-xs font-semibold" style={{ color: garantieColor(eq) }}>
-                        {garantieLabel(eq)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+              <MiniTable head={['Produit', 'N° série', 'Posé le', 'Statut', 'Garantie', '']}>
+                {equipements.map((eq) => {
+                  const editing = editEquip?.id === eq.id
+                  return (
+                    <tr key={eq.id} className="border-t border-border">
+                      <td className="px-3 py-2">{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Input value={editEquip.numero_serie}
+                                 onChange={(e) => setEditEquip(s => ({ ...s, numero_serie: e.target.value }))} />
+                        ) : (eq.numero_serie ?? '—')}
+                      </td>
+                      <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Select value={editEquip.statut}
+                                  onValueChange={(v) => setEditEquip(s => ({ ...s, statut: v }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {EQUIP_STATUTS.map((s) => (
+                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (eq.statut_display ?? equipStatutLabel(eq.statut))}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="text-xs font-semibold" style={{ color: garantieColor(eq) }}>
+                          {garantieLabel(eq)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {editing ? (
+                          <span className="flex gap-1">
+                            <Button size="sm" loading={editEquipBusy} onClick={saveEditEquip}>
+                              Enregistrer
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditEquip(null)}>
+                              Annuler
+                            </Button>
+                          </span>
+                        ) : (
+                          <span className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => startEditEquip(eq)}>
+                              Éditer
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteEquip(eq)}>
+                              Supprimer
+                            </Button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </MiniTable>
             )}
             <div className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
