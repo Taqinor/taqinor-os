@@ -13,6 +13,7 @@ import {
   genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import api from '../../api/axios'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
 import {
@@ -285,6 +286,29 @@ export default function FactureList() {
     return total
   }, [factures])
 
+  // Export comptable DGI (groundwork) : factures validées d'une plage, en
+  // .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux). Borné société.
+  const handleExportComptable = async () => {
+    const start = window.prompt('Export comptable — date de début (AAAA-MM-JJ) :',
+      new Date().toISOString().slice(0, 8) + '01')
+    if (!start) return
+    const end = window.prompt('Date de fin (exclue, AAAA-MM-JJ) :',
+      new Date().toISOString().slice(0, 10))
+    if (!end) return
+    const dl = async (format, ext) => {
+      const res = await api.get('/ventes/export-comptable/', {
+        params: { start, end, format }, responseType: 'blob',
+      })
+      openPdfBlob(res.data, `export-comptable-${start}_${end}.${ext}`)
+    }
+    try {
+      await dl('xlsx', 'xlsx')
+      await dl('csv', 'csv')
+    } catch {
+      alert('Export comptable impossible.')
+    }
+  }
+
   const openNew   = () => { setEditFacture(null); setShowForm(true) }
   const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }
@@ -463,6 +487,11 @@ export default function FactureList() {
                       .catch(() => {})
                   }}>
             <BookText /> Journal comptable
+          </Button>
+          <Button size="sm" variant="outline"
+                  title="Export comptable (factures validées d'une plage) — Excel + CSV"
+                  onClick={handleExportComptable}>
+            <Download /> Export comptable
           </Button>
           {isAdmin && (
             <Button size="sm" variant="outline" loading={auditBusy}
