@@ -227,7 +227,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // (nomenclature gelée `bom` vs lignes actuelles du devis).
   const [devisDivergent, setDevisDivergent] = useState(false)
   const checkDevisDivergence = () => {
-    if (!installation.devis) { setDevisDivergent(false); return }
+    if (!installation.devis) {
+      // Reset hors du corps synchrone de l'effet (évite un setState en cascade).
+      Promise.resolve().then(() => setDevisDivergent(false))
+      return
+    }
     ventesApi.getDevisById(installation.devis).then((r) => {
       const lignes = (r.data?.lignes ?? []).filter((l) => l.produit)
       const bom = Array.isArray(current.bom) ? current.bom : []

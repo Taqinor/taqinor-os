@@ -983,6 +983,66 @@ Tracked here so they aren't lost:
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state)*
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
+- 2026-06-19 — **REFINEMENT QUEUE — grand batch de 7 lanes worktree parallèles** (orchestrateur =
+  fold séquentiel + revue + lint/CI + bookkeeping centralisé ; PLAN2 déjà drainée). Sept lanes à
+  fichiers DISJOINTS, chacune propriétaire de son app Django + son dossier frontend de module,
+  draine sa section de la REFINEMENT QUEUE top-down (gatés `[SCHEMA]/[DEP]/[DECISION]/[GALLERY]`
+  laissés `[ ]`). **221 tâches `[ROUTINE]` cochées** (construites ou vérifiées déjà présentes).
+  **Lane CRM** (apps/crm + pages/features crm) : validation serveur étape/perdu + canal géré,
+  chatter « Client lié », colonnes export leads (Modifié le / Dernier devis TTC / Statut), recherche
+  & valeur client (ICE/IF/RC/CIN, total facturé/payé), export client ICE-inclusif, bulk
+  canal/priorité, atelier doublons enrichi (clés de rapprochement + aperçu de fusion + garde
+  survivant archivé), ListView (tel:/Ville/Facture inline/Prochaine activité), filtres
+  étape/type/relance + recherche WhatsApp + filtres persistés + vues enregistrées, CalendarView
+  couleur-par + visites prévues, SigneDialog (présélection intelligente, distinction tout-refusé,
+  confirmation date future), format MAD cohérent. **Lane VENTES** (apps/ventes hors quote_engine
+  + frontend ventes) : garde sur-paiement + plafond avoir (serveur), journal des ventes (colonne
+  Type + avoirs en négatif), relevé client détaillé (paiements + avoirs), `is_overdue` dérivé de
+  `jours_retard`, totaux BC, RelancesPage (buckets d'âge, filtre niveau + tri dû, total à
+  recouvrer, « À échoir »), FactureList (encaissé du mois, badge DGI, erreurs FR, format MAD),
+  AvoirsPage (recherche + filtre statut), FactureForm (TVA par ligne préremplie, date_livraison +
+  conditions_paiement, préremplissage lignes depuis BC, ventilation TVA, chips 20/10, avertissement
+  échéance passée), indices TVA-vs-classification + pompage sans-prix, test de parité des mots-clés
+  solar.js↔builder.py (lecture seule, moteur premium intouché). **Lane CHANTIERS** (apps/installations
+  + pages installations/interventions) : statut contraint ±1 (select + drag Kanban), pastilles
+  « pose en retard » + next-best-action, poses à venir + synthèse funnel, MES validée + note
+  production/tension, réconciliation BOM↔séries capturées, ProduitPicker scopé BOM, garde
+  garantie/série dupliquée, édition/suppression équipement & intervention (+ chatter), gating
+  PV jusqu'au jalon, recherche devis/installateur + « mes chantiers », checklist liens/horodatage,
+  galerie photos lightbox, auto-tampon date_realisee. **Lane SAV** (apps/sav + frontend sav) :
+  vue Kanban tickets, garde de transition + auto-tampon date_resolution, badge SLA/âge + compte à
+  rebours garantie, erreurs FR mappées, filtre annulé + chip urgent-sous-garantie, compteurs par
+  statut, garde stock insuffisant, liens chantier/équipement, sections repliables ; ContratsMaintenance
+  (édition inline, « à renouveler », revenu récurrent, « visite proche », états de chargement,
+  périodicité/notes). **Lane STOCK** (apps/stock + frontend stock) : garde SKU dupliqué + TVA 20 %
+  défaut + indicateur marge (DH+%), rails de filtres catalogue + pied valeur + seuil inline, BCF
+  (erreurs FR, barre de réception + « tout recevoir », compteur en attente, prix-0 confirmé, retour
+  plafonné), prix fournisseurs (édition inline + écart vs moins cher + garde doublon), valorisation
+  (export Excel + source par ligne via action DRF), mouvements (avertissement stock négatif, lien
+  historique produit, onglet Transferts, réapprovisionner→brouillon BCF), inventaire (delta live +
+  recherche), OCR (SKU dupliqué + prix suggéré), passes mobiles. **Lane REPORTING** (apps/reporting
+  + Reporting/Rapports) : erreurs/chargement par carte, export Excel job-costing + tableau de bord,
+  tables scrollables, `_ca_mensuel` corrigé en 12 mois calendaires, devis-par-statut (Expiré
+  on-the-fly), filtre période `?from=&to=`, visites maintenance visibles sous filtre assigné,
+  recherche globale étendue (BC, contrats, dossiers). **Lane RBAC** (apps/roles + pages/admin) :
+  catalogue de permissions piloté par l'endpoint existant, compteur + indicateur « modifié », gardes
+  FR (nom vide/zéro permission/doublon), liste des utilisateurs par rôle, réassignation avant
+  suppression, audit `SettingsAuditLog` sur create/update/delete, libellés Système/Personnalisé,
+  propriétaire protégé garde un rôle admin, état d'erreur + preset « Lecture seule » + grille
+  mobile. **Aucun nouveau modèle, aucune migration, aucune dépendance** (seulement des champs de
+  sérialiseur en lecture, des `@action` DRF sous routeur existant, et des query-params additifs) —
+  d'où `codemap_fingerprint --check` vert (structure + plan inchangés ; les tâches refinement sont
+  hors empreinte plan par conception). Validation orchestrateur sur l'arbre foldé : **flake8 backend
+  0**, **eslint frontend 0 erreur** (8 warnings legacy préexistants), **181 tests node front verts**,
+  **build vite+PWA OK**, **py_compile OK** sur les 36 fichiers backend modifiés, `check_stages` OK,
+  `codemap_fingerprint --check` OK ; suite backend complète (Postgres+MinIO) déléguée à la CI. Un
+  seul correctif d'intégration : `InstallationDetail.jsx` (setState synchrone en effet → différé en
+  microtâche). Additif, FR (identifiants EN), multi-tenant (société forcée serveur), prix d'achat
+  jamais client-facing, STAGES.py/funnel/DEBUG/déploiement/moteur premium intouchés. **RESTE OUVERT
+  (reprise idempotente)** : ~164 tâches `[ROUTINE]` restantes — surtout celles qui exigent des
+  fichiers PARTAGÉS (AttachmentsPanel, ProduitPicker, GlobalSearch, Header, Dashboard.jsx,
+  CalendarPage.jsx, parametres) ou un autre module, plus la lane Parc, et les gatés
+  `[SCHEMA]/[DEP]/[DECISION]/[GALLERY]`.
 - 2026-06-18 — F1 + F2 livrés (fondation du module field-execution / outillage — lane unique « Outillage » : F2 dépend de F1, mêmes fichiers, donc une seule lane séquentielle ; orchestrateur = build + revue adversariale + CI locale). **F1** : nouvelle app `apps.outillage` (modèle `Outillage` — équipement DURABLE strictement séparé du stock vendable : nom/catégorie/asset_tag/n° série/emplacement FK `stock.EmplacementStock`/statut Disponible·En intervention·En réparation·Perdu/date d'achat/note). Endpoints `/outillage/outils/` (TenantMixin, lecture tout rôle, écriture responsable/admin) filtrables `?statut=`/`?emplacement=` + recherche nom/asset_tag/n° série/catégorie. Page `/outillage` (menu CHANTIERS) : liste + filtres + création/édition en panneau (Sheet) + photo optionnelle via la pièce jointe générique (`outillage.outillage` ajouté à `records.ALLOWED_TARGETS`). Jamais consommé, jamais client-facing. **F2** : `KitOutillage` + `KitOutillageItem` (liste ordonnée d'outils du catalogue, `type_intervention` pré-sélecteur) ; 3 kits par défaut semés à la 1ʳᵉ liste (idempotent), pleinement éditables (renommer/réordonner/désactiver) ; endpoints `/outillage/kits/` + `/outillage/kit-items/` (écriture admin, société de l'item suivant le kit) ; onglet Paramètres → « Kits d'outillage ». Gate vert localement : flake8 0, eslint 0 erreur (6 warnings legacy Landing.jsx), build vite+PWA OK, 12 tests outillage + 8 records, makemigrations --check propre, check_stages OK. Additif, FR (identifiants EN), multi-tenant (société forcée serveur), aucune nouvelle dépendance, aucun PDF/STAGES.py/prix d'achat touché. F3–F24 + refinement queue + N gatés non entamés (fenêtre d'usage — reprise idempotente).
 - 2026-06-18 — N58 + N74 livrés (couche d'éditabilité, 2 lanes worktree parallèles à fichiers quasi-disjoints, orchestrateur = revue + intégration des registres partagés). **N58** : statuts chantier/SAV/bon-de-commande configurables (libellé, ordre, visibilité) par société via un nouveau `StatutConfig` (parametres, fichiers isolés `models_statuses.py`/`serializers_statuses.py`/`views_statuses.py`/`statuses_defaults.py`) ; couche d'AFFICHAGE seule — clés canoniques + machine à états intactes, défauts lus à la source ⇒ identique tant que rien n'est édité ; onglet Paramètres → Statuts ; endpoints `/parametres/statuts/` + `/effective/` + `/bulk/` ; écriture réservée admin/responsable, société forcée serveur (TenantMixin). **N74** : checklists chantier en modèles nommés (`ChecklistTemplate`, installations) auto-sélectionnés par type d'installation, repli « Défaut » protégé portant les 7 étapes actuelles (migration additive rattachant l'historique — comportement préservé) ; onglet Paramètres → Checklists ; endpoint `/installations/checklist-templates/`. Gate vert localement : flake8 0, eslint 0 erreur (6 warnings legacy Landing.jsx), 56 tests backend parametres+installations, 159+5 tests front, check_stages OK. **N14 bloqué** (= périmètre G6, décision comptable du founder requise). Aucune nouvelle dépendance, additif, FR, multi-tenant, aucun PDF/STAGES.py/prix d'achat touché. Reste de la file (F1–F24, refinement queue, N gatés) non entamé — pacé sur la fenêtre d'usage, reprise idempotente.
 - 2026-06-18 — F3 + F4 livrés (spine du module field-execution / interventions — lane unique « Interventions » : F4 dépend de l'API F3, mêmes fichiers backend/front couplés, donc une seule lane séquentielle ; orchestrateur = build + revue adversariale + CI locale). **F3** : le modèle `installations.Intervention` existant (« sortie chantier ») est ÉTENDU de façon ADDITIVE — nouveau `statut` (machine à états PROPRE `a_preparer/prete/en_route/sur_site/terminee/validee` + `STATUT_ORDER`, défaut `a_preparer`), `equipe` M2M→users (défaut = installateur du chantier, posé serveur), `camionnette` FK→`stock.EmplacementStock` (scopée société). Nouveau modèle chatter `InterventionActivity` + helper `intervention_activity.py` (création + changements de champs suivis dont le statut + notes, acteur/société serveur) ; endpoints `/installations/interventions/<id>/historique/` + `/noter/` ; filtres `?statut=`/`?type_intervention=`. Réf/client/devis/ville/GPS tirés du chantier (lecture seule). **GARANTIE clé : changer le statut intervention NE TOUCHE JAMAIS le statut chantier ni STAGES.py** (couvert par test). Migration additive `0007`. **F4** : nouvelle page `/interventions` (menu CHANTIERS) — vue Liste + vue Kanban par statut intervention (glisser-déposer via @dnd-kit, mêmes classes `kb-*`/`kc-*` que le kanban chantiers, AUCUNE nouvelle dépendance), réassignation du technicien par carte, filtres statut + type, panneau de détail (Sheet) avec Historique + ajout de note + changement statut/technicien ; cartes = chantier/client/ville/type/date prévue/équipe/statut. Gate vert localement : flake8 backend 0, 51 tests installations (dont 10 F3) + 122 tests installations/sav/reporting/outillage verts, `manage.py check` propre, makemigrations --check propre, eslint 0 erreur (6 warnings legacy Landing.jsx), build vite+PWA OK, codemap_fingerprint --check OK (structure + plan), check_stages OK. Additif, FR (identifiants EN), multi-tenant (société forcée serveur, camionnette scopée), aucune nouvelle dépendance, aucun PDF/PdfCanvas/page publique/STAGES.py/prix d'achat touché. F5 dépend de la réservation de stock (= N14/G6 gaté) ; F6–F24 + refinement queue + N gatés non entamés — pacé sur la fenêtre d'usage, reprise idempotente.
