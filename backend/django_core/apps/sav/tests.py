@@ -269,6 +269,48 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertTrue(Ticket.objects.filter(pk=tid).exists())
 
 
+class TestTicketPrefillFromEquipement(TestCase):
+    """Un ticket ouvert depuis le parc (équipement) porte client + installation
+    + equipement sans sélection manuelle (déduits côté serveur)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_prefill', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(
+            self.company, ref='CHT-PREFILL')
+        self.produit = make_produit(self.company, sku='OND-PREFILL',
+                                    garantie_mois=120)
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=self.inst,
+            numero_serie='EQ-PREFILL')
+
+    def test_equipement_only_resolves_client_and_installation(self):
+        r = self.api.post('/api/django/sav/tickets/', {
+            'equipement': self.eq.id,
+            'type': 'correctif', 'description': 'Panne depuis le parc',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['equipement'], self.eq.id)
+        self.assertEqual(r.data['installation'], self.inst.id)
+        self.assertEqual(r.data['client'], self.client_obj.id)
+
+    def test_explicit_client_and_installation_not_overwritten(self):
+        other = Client.objects.create(
+            company=self.company, nom='Autre', prenom='Client',
+            email='autre-prefill@example.invalid')
+        r = self.api.post('/api/django/sav/tickets/', {
+            'equipement': self.eq.id, 'client': other.id,
+            'type': 'correctif', 'description': 'Choix manuel',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['client'], other.id)
+        # L'installation reste déduite de l'équipement quand non fournie.
+        self.assertEqual(r.data['installation'], self.inst.id)
+
+
 class TestTicketInterventionLink(TestCase):
     def setUp(self):
         self.company = make_company()
