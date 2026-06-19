@@ -37,6 +37,21 @@ class ClientSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_by_nom = serializers.SerializerMethodField()
 
+    def validate(self, attrs):
+        # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
+        # client contre les définitions du module « client », même chemin que
+        # Lead. À la création on valide toujours (champs obligatoires) ; en
+        # mise à jour, uniquement si custom_data est fourni.
+        is_create = self.instance is None
+        if is_create or 'custom_data' in attrs:
+            from apps.customfields.serializers import validate_custom_data
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            if company is not None:
+                attrs['custom_data'] = validate_custom_data(
+                    'client', company, attrs.get('custom_data'))
+        return attrs
+
     class Meta:
         model = Client
         fields = '__all__'
@@ -243,18 +258,60 @@ class LeadSerializer(serializers.ModelSerializer):
         ]
 
 
+def _tag_en_usage(company, nom):
+    """Nombre de leads dont le champ texte ``tags`` référence ce libellé.
+
+    ``Lead.tags`` est un texte libre séparé par des virgules ; on compte les
+    leads qui portent ce libellé comme jeton (insensible à la casse)."""
+    from .models import Lead
+    nom = (nom or '').strip()
+    if not nom:
+        return 0
+    cible = nom.casefold()
+    n = 0
+    for raw in Lead.objects.filter(
+            company=company, tags__icontains=nom).values_list('tags', flat=True):
+        if any((t or '').strip().casefold() == cible
+               for t in (raw or '').split(',')):
+            n += 1
+    return n
+
+
+def _motif_en_usage(company, nom):
+    """Nombre de leads dont ``motif_perte`` (texte libre) vaut ce libellé."""
+    from .models import Lead
+    nom = (nom or '').strip()
+    if not nom:
+        return 0
+    return Lead.objects.filter(
+        company=company, motif_perte__iexact=nom).count()
+
+
 class LeadTagSerializer(serializers.ModelSerializer):
+    # Nombre de leads référençant cette étiquette — l'UI désactive la
+    # suppression et propose l'archivage si > 0 (L780).
+    en_usage = serializers.SerializerMethodField()
+
     class Meta:
         from .models import LeadTag
         model = LeadTag
-        fields = ['id', 'nom', 'couleur', 'archived']
+        fields = ['id', 'nom', 'couleur', 'archived', 'en_usage']
+
+    def get_en_usage(self, obj):
+        return _tag_en_usage(obj.company, obj.nom)
 
 
 class MotifPerteSerializer(serializers.ModelSerializer):
+    # Nombre de leads utilisant ce motif de perte (L779).
+    en_usage = serializers.SerializerMethodField()
+
     class Meta:
         from .models import MotifPerte
         model = MotifPerte
-        fields = ['id', 'nom', 'archived']
+        fields = ['id', 'nom', 'archived', 'en_usage']
+
+    def get_en_usage(self, obj):
+        return _motif_en_usage(obj.company, obj.nom)
 
 
 class CanalSerializer(serializers.ModelSerializer):

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import ProduitPicker from '../../components/ProduitPicker'
+import BcfProduitPicker from './BcfProduitPicker'
 import { downloadBlob } from '../../utils/downloadBlob'
 import {
   Button, IconButton, StatusPill, DataTable,
@@ -390,8 +390,8 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                     <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
                       <td className="px-3 py-2">
                         {editableLignes ? (
-                          <ProduitPicker produits={produits} value={l.produit}
-                                         onChange={(v) => pickProduit(idx, v)} />
+                          <BcfProduitPicker produits={produits} value={l.produit}
+                                            onChange={(v) => pickProduit(idx, v)} />
                         ) : (
                           <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
                         )}
@@ -405,9 +405,16 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                       </td>
                       <td className="px-3 py-2">
                         {editableLignes ? (
-                          <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
-                                 value={l.prix_achat_unitaire ?? ''}
-                                 onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
+                          <>
+                            <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
+                                   value={l.prix_achat_unitaire ?? ''}
+                                   onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
+                            {l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
+                              <p className="mt-1 text-xs text-warning">
+                                Sans prix d&apos;achat — commande possible (BCF interne).
+                              </p>
+                            )}
+                          </>
                         ) : fmtMad(l.prix_achat_unitaire)}
                       </td>
                       <td className="px-3 py-2 tabular-nums">{fmtMad(lineTotal)}</td>
