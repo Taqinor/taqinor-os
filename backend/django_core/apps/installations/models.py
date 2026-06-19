@@ -464,6 +464,56 @@ class ChecklistEtapeModele(models.Model):
         return self.libelle
 
 
+class StockReservation(models.Model):
+    """N14 — réservation de stock d'un chantier sur un SKU (produit catalogue).
+
+    À la création d'un chantier, on RÉSERVE auprès du stock les quantités
+    requises issues de la nomenclature GELÉE du devis lié (`Installation.bom`),
+    une ligne par produit. La réservation ENGAGE le stock sans le décrémenter :
+    le « disponible » d'un produit = `quantite_stock` − somme des réservations
+    actives non encore consommées (les vues stock + alertes de stock bas en
+    tiennent compte). Au passage du chantier à « Installé », la réservation est
+    CONSOMMÉE : un seul MouvementStock SORTIE par SKU, idempotent (le drapeau
+    `consomme` garantit qu'un re-passage par « Installé » ne re-décrémente
+    jamais). À l'annulation/clôture du chantier, la réservation NON consommée
+    est LIBÉRÉE (`active=False`) — le disponible revient.
+
+    Entièrement additif ; multi-tenant (société posée côté serveur).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='stock_reservations')
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE, related_name='reservations')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='reservations')
+    quantite = models.PositiveIntegerField(default=0)
+    # Réservation engagée tant que `active` ET non `consomme` : elle pèse alors
+    # sur le « disponible ». Libérée (annulation/clôture) ⇒ active=False.
+    active = models.BooleanField(default=True)
+    # Consommée au passage « Installé » : le stock A été décrémenté. Le drapeau
+    # est le verrou d'idempotence (jamais deux SORTIE pour la même réservation).
+    consomme = models.BooleanField(default=False)
+    date_consommation = models.DateTimeField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réservation de stock'
+        verbose_name_plural = 'Réservations de stock'
+        ordering = ['installation_id', 'id']
+        # Une seule réservation par (chantier, produit) — le réamorçage est
+        # idempotent (on met à jour la quantité plutôt que d'empiler).
+        unique_together = [('installation', 'produit')]
+        indexes = [
+            models.Index(fields=['produit', 'active', 'consomme']),
+        ]
+
+    def __str__(self):
+        return f'{self.installation_id} · {self.produit_id} × {self.quantite}'
+
+
 class ChantierChecklistItem(models.Model):
     """N4 — état d'une étape de checklist POUR un chantier donné : fait / par
     qui / quand. Le pourcentage d'avancement du chantier en dérive. Créés

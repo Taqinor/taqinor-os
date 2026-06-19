@@ -411,14 +411,73 @@ def apply_retour_fournisseur(retour, user):
     return retour
 
 
+# ── N14 — Réservé vs disponible : engagé-mais-non-consommé ───────────────────
+# Une réservation de chantier (installations.StockReservation) ENGAGE le stock
+# d'un SKU sans le décrémenter. Le « disponible » d'un produit en tient compte :
+#   disponible = quantite_stock − somme(réservations actives non consommées).
+# Les vues stock + alertes de stock bas s'appuient sur le disponible (N14). Le
+# modèle de réservation vit dans installations (qui dépend déjà de stock) ; on
+# l'importe PARESSEUSEMENT pour éviter toute dépendance d'app circulaire.
+
+def reserved_quantity(produit):
+    """Quantité de ce produit ENGAGÉE par des réservations de chantier actives
+    et non encore consommées (0 si aucune). Lecture seule."""
+    from django.db.models import Sum
+    from apps.installations.models import StockReservation
+    agg = (StockReservation.objects
+           .filter(produit=produit, active=True, consomme=False)
+           .aggregate(total=Sum('quantite')))
+    return agg['total'] or 0
+
+
+def reserved_quantities(company):
+    """Map {produit_id: quantité réservée active} pour toute la société — un
+    seul agrégat (évite un N+1 sur la liste produits). Lecture seule."""
+    from django.db.models import Sum
+    from apps.installations.models import StockReservation
+    rows = (StockReservation.objects
+            .filter(company=company, active=True, consomme=False)
+            .values('produit_id')
+            .annotate(total=Sum('quantite')))
+    return {r['produit_id']: (r['total'] or 0) for r in rows}
+
+
+def available_quantity(produit, reserved=None):
+    """Disponible = stock total − réservé (engagé-mais-non-consommé). `reserved`
+    peut être fourni (depuis `reserved_quantities`) pour éviter une requête."""
+    if reserved is None:
+        reserved = reserved_quantity(produit)
+    return produit.quantite_stock - reserved
+
+
+def _own_reservation_map(installation):
+    """Map {produit_id: quantité} des réservations actives non consommées
+    propres à CE chantier (pour ne pas les décompter de son propre disponible).
+    """
+    from apps.installations.models import StockReservation
+    rows = (StockReservation.objects
+            .filter(installation=installation, active=True, consomme=False)
+            .values_list('produit_id', 'quantite'))
+    return {pid: qte for pid, qte in rows}
+
+
+def is_low_stock_available(produit, reserved=None):
+    """Alerte de stock bas N14 : compare le DISPONIBLE (et non le stock brut) au
+    seuil d'alerte. Un seuil ≤ 0 désactive l'alerte (comportement historique)."""
+    if produit.seuil_alerte is None or produit.seuil_alerte <= 0:
+        return False
+    return available_quantity(produit, reserved) <= produit.seuil_alerte
+
+
 def compute_besoin_materiel(installation):
     """Agrège les besoins matériel d'un chantier depuis son devis source.
 
     Renvoie une liste de dicts triés par désignation :
       {produit, produit_id, sku, designation, requis, disponible,
-       manque, fournisseur_id, fournisseur_nom,
+       reserve, manque, fournisseur_id, fournisseur_nom,
        fournisseur_min_id, fournisseur_min_nom, prix_achat_min}
-    `manque` = max(requis - disponible, 0). Un manque > 0 = pénurie.
+    `disponible` = stock total − réservé (engagé non consommé). `manque` =
+    max(requis − disponible, 0). Un manque > 0 = pénurie.
     `fournisseur_min_*` = fournisseur le moins cher (N17), s'il existe.
 
     Les lignes sans produit (libre) sont ignorées : on ne peut pas
@@ -427,6 +486,10 @@ def compute_besoin_materiel(installation):
     devis = installation.devis
     if devis is None:
         return []
+    # N14 — réservations actives de la société, et la part réservée par CE
+    # chantier (pour ne pas la décompter deux fois de son propre disponible).
+    reserved_all = reserved_quantities(installation.company)
+    own_reserved = _own_reservation_map(installation)
     besoins = {}
     for ligne in devis.lignes.select_related('produit', 'produit__fournisseur'):
         produit = ligne.produit
@@ -438,13 +501,20 @@ def compute_besoin_materiel(installation):
             requis = int(float(ligne.quantite))
         entry = besoins.get(produit.id)
         if entry is None:
+            # Disponible pour CE chantier = stock total − réservé par les AUTRES
+            # chantiers (engagé non consommé) ; sa propre réservation n'est pas
+            # soustraite (sinon le besoin serait compté deux fois).
+            reserve_autres = max(
+                reserved_all.get(produit.id, 0)
+                - own_reserved.get(produit.id, 0), 0)
             besoins[produit.id] = {
                 'produit': produit,
                 'produit_id': produit.id,
                 'sku': produit.sku or '',
                 'designation': produit.nom,
                 'requis': requis,
-                'disponible': produit.quantite_stock,
+                'disponible': produit.quantite_stock - reserve_autres,
+                'reserve': reserved_all.get(produit.id, 0),
                 'fournisseur_id': produit.fournisseur_id,
                 'fournisseur_nom': (produit.fournisseur.nom
                                     if produit.fournisseur_id else None),

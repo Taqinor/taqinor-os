@@ -81,6 +81,12 @@ class ProduitSerializer(serializers.ModelSerializer):
             fields.pop('prix_achat', None)
         return fields
     is_low_stock = serializers.SerializerMethodField()
+    # N14 — quantité ENGAGÉE par des réservations de chantier (non consommée) et
+    # DISPONIBLE = stock total − réservé. Les vues stock + alertes de stock bas
+    # tiennent compte de l'engagé-mais-non-consommé.
+    quantite_reservee = serializers.SerializerMethodField()
+    quantite_disponible = serializers.SerializerMethodField()
+    is_low_stock_disponible = serializers.SerializerMethodField()
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()
     derniere_date_mouvement = serializers.SerializerMethodField()
@@ -89,8 +95,35 @@ class ProduitSerializer(serializers.ModelSerializer):
         model = Produit
         fields = '__all__'
 
+    def _reserved_map(self):
+        """Map {produit_id: quantité réservée} calculée UNE fois par sérialisation
+        (évite un N+1 sur la liste produits). Mémoïsée sur l'instance."""
+        cache = getattr(self, '_reserved_map_cache', None)
+        if cache is not None:
+            return cache
+        from .services import reserved_quantities
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = reserved_quantities(company) if company is not None else {}
+        self._reserved_map_cache = cache
+        return cache
+
+    def get_quantite_reservee(self, obj):
+        return self._reserved_map().get(obj.id, 0)
+
+    def get_quantite_disponible(self, obj):
+        return obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+
     def get_is_low_stock(self, obj):
+        # Comportement historique conservé (stock brut vs seuil).
         return obj.seuil_alerte > 0 and obj.quantite_stock <= obj.seuil_alerte
+
+    def get_is_low_stock_disponible(self, obj):
+        # N14 — alerte sur le DISPONIBLE (engagé-mais-non-consommé décompté).
+        if not obj.seuil_alerte or obj.seuil_alerte <= 0:
+            return False
+        disponible = obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+        return disponible <= obj.seuil_alerte
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
