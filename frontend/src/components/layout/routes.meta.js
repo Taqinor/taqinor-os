@@ -31,6 +31,7 @@ export const PAGE_TITLES = [
 
   // Chantiers
   ['/chantiers', 'Chantiers'],
+  ['/ma-journee', 'Ma journée'],
   ['/interventions', 'Interventions'],
   ['/parc', 'Parc installé'],
 
