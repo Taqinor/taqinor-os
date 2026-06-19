@@ -220,6 +220,31 @@ class TestStatusAndMES(TestCase):
         # L'ajout est tracé dans le chatter du chantier
         self.assertTrue(InstallationActivity.objects.filter(
             installation=self.inst, body__icontains='Intervention ajoutée').exists())
+        # Un compte rendu rempli sans date_realisee la tamponne côté serveur.
+        interv = Intervention.objects.get(installation=self.inst)
+        self.assertIsNotNone(interv.date_realisee)
+
+    def test_intervention_edit_and_delete_log_chantier_chatter(self):
+        created = self.api.post('/api/django/installations/interventions/', {
+            'installation': self.inst.id, 'type_intervention': 'controle',
+            'date_prevue': '2026-06-18',
+        }, format='json')
+        iv_id = created.data['id']
+        # Édition → note au chatter du chantier
+        r = self.api.patch(
+            f'/api/django/installations/interventions/{iv_id}/',
+            {'compte_rendu': 'RAS'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__icontains='Intervention modifiée').exists())
+        # Le compte rendu tamponne aussi la date réalisée.
+        self.assertIsNotNone(Intervention.objects.get(pk=iv_id).date_realisee)
+        # Suppression → note au chatter du chantier
+        r = self.api.delete(
+            f'/api/django/installations/interventions/{iv_id}/')
+        self.assertIn(r.status_code, (200, 204), getattr(r, 'data', None))
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__icontains='Intervention supprimée').exists())
 
 
 class TestChantierFunnelParcChecklist(TestCase):

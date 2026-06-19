@@ -691,6 +691,10 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
         interv = serializer.save(company=company, created_by=self.request.user)
+        # Auto-tampon date_realisee : un compte rendu rempli (ou un statut
+        # « Terminée »/« Validée ») sans date réalisée la pose à aujourd'hui,
+        # côté serveur (miroir de _stamp_statut_dates du chantier).
+        self._stamp_date_realisee(interv)
         # F3 — équipe par défaut = l'installateur du chantier quand aucune
         # équipe n'a été fournie (posé côté serveur).
         if not interv.equipe.exists() and installation is not None:
@@ -719,9 +723,41 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             if reason:
                 raise ValidationError({'statut': reason})
         interv = serializer.save()
+        # Auto-tampon date_realisee (compte rendu rempli / terminée) si vide.
+        self._stamp_date_realisee(interv)
         # F3 — journalise les changements (dont le statut) dans le chatter
         # PROPRE de l'intervention. Ne touche JAMAIS le statut du chantier.
         intervention_activity.log_changes(old, interv, self.request.user)
+        # Édition d'intervention → trace au chatter du CHANTIER (la création
+        # l'était déjà ; l'édition ne l'était pas).
+        if interv.installation_id:
+            activity.log_note(
+                interv.installation, self.request.user,
+                f"Intervention modifiée : "
+                f"{interv.get_type_intervention_display()}")
+
+    def perform_destroy(self, instance):
+        # Suppression d'intervention → trace au chatter du CHANTIER.
+        installation = instance.installation
+        type_label = instance.get_type_intervention_display()
+        super().perform_destroy(instance)
+        if installation is not None:
+            activity.log_note(
+                installation, self.request.user,
+                f"Intervention supprimée : {type_label}")
+
+    @staticmethod
+    def _stamp_date_realisee(interv):
+        """Pose date_realisee à aujourd'hui si elle est vide alors qu'un compte
+        rendu est renseigné OU que le statut est « Terminée »/« Validée »."""
+        if interv.date_realisee is not None:
+            return
+        cr = (interv.compte_rendu or '').strip()
+        done = interv.statut in (
+            Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+        if cr or done:
+            interv.date_realisee = timezone.localdate()
+            interv.save(update_fields=['date_realisee'])
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
