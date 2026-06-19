@@ -27,6 +27,10 @@ const reportingApi = {
   insightXlsx: (slug, params) =>
     api.get(`/reporting/insights/${slug}/`,
       { params: { ...(params || {}), export: 'xlsx' }, responseType: 'blob' }),
+  // Export .xlsx de la balance âgée (créances par client + tranches d'âge),
+  // borné à la société côté serveur.
+  balanceAgeeXlsx: () =>
+    api.get('/reporting/balance-agee/export/', { responseType: 'blob' }),
   // N32 — Archive documentaire (lecture seule) par client / par chantier.
   getArchiveClient: (id) => api.get(`/reporting/archive/client/${id}/`),
   getArchiveChantier: (id) => api.get(`/reporting/archive/chantier/${id}/`),
