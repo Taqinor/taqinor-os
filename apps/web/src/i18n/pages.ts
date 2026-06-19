@@ -25,6 +25,9 @@ import { DEFAULT_LOCALE, isLocale, type Locale } from './config';
 const TRANSLATED: Record<string, readonly Locale[]> = {
   '/contact': ['fr', 'en', 'ar'],
   '/nos-solutions': ['fr', 'en', 'ar'],
+  '/pompage-solaire': ['fr', 'en', 'ar'],
+  '/batteries-stockage': ['fr', 'en', 'ar'],
+  '/maintenance-monitoring': ['fr', 'en', 'ar'],
   '/faq': ['fr', 'en', 'ar'],
   '/garanties': ['fr', 'en', 'ar'],
   '/financement': ['fr', 'en', 'ar'],
