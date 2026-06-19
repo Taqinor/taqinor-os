@@ -27,6 +27,7 @@ export const PAGE_TITLES = [
   ['/ventes/bons-commande', 'Bons de commande'],
   ['/ventes/factures', 'Factures'],
   ['/ventes/avoirs', 'Avoirs'],
+  ['/ventes/paiements', 'Encaissements'],
   ['/ventes/relances', 'Relances / Impayés'],
 
   // Chantiers

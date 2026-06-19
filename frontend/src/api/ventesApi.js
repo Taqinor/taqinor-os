@@ -68,6 +68,9 @@ const ventesApi = {
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
+  // Encaissements : liste lecture seule de TOUS les paiements de la société
+  // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
+  getPaiements: (params) => api.get('/ventes/paiements/', { params }),
 
   // Avoirs (notes de crédit)
   creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),

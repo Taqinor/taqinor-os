@@ -1189,7 +1189,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     Visible par tout rôle authentifié ; tenant-scopé par société.
     """
     queryset = Paiement.objects.select_related(
-        'facture', 'created_by'
+        'facture', 'facture__client', 'created_by'
     ).all()
     serializer_class = PaiementSerializer
     filter_backends = [filters.OrderingFilter]
