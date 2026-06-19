@@ -17,6 +17,12 @@ from .views_documents import (
     get_document_templates,
     update_document_templates,
 )
+from .views_tariff import (
+    compute_roi,
+    get_productible,
+    get_tariff_settings,
+    update_tariff_settings,
+)
 
 __all__ = [
     'get_profile',
@@ -29,4 +35,8 @@ __all__ = [
     'settings_audit_log',
     'get_document_templates',
     'update_document_templates',
+    'get_tariff_settings',
+    'update_tariff_settings',
+    'compute_roi',
+    'get_productible',
 ]

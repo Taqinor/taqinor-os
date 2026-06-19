@@ -24,6 +24,11 @@ urlpatterns = [
     # D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis).
     path('document-templates/', views.get_document_templates),
     path('document-templates/update/', views.update_document_templates),
+    # N64/N65 — tarification ONEE + hypothèses ROI/productible éditables.
+    path('tarification/', views.get_tariff_settings),
+    path('tarification/update/', views.update_tariff_settings),
+    path('tarification/roi/', views.compute_roi),
+    path('tarification/productible/', views.get_productible),
     # N58 — statuts configurables (libellé/ordre/visibilité), couche affichage.
     path('', include(statuts_router.urls)),
 ]

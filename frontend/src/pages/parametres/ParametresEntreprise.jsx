@@ -26,6 +26,7 @@ import LeadsSection from './LeadsSection'
 import ClientsSection from './ClientsSection'
 import DevisSection from './DevisSection'
 import DocumentsSection from './DocumentsSection'
+import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
 import ChecklistSection from './ChecklistSection'
@@ -506,6 +507,8 @@ export default function ParametresEntreprise() {
           {tab === 'devis'    && <DevisSection {...ctx} />}
           {/* D2/N60/N67/N26/N59 — section autonome (textes éditables du devis). */}
           {tab === 'documents' && <DocumentsSection />}
+          {/* N64/N65 — section autonome (barème ONEE + ROI/productible). */}
+          {tab === 'tarification' && <TarificationSection />}
           {tab === 'stock'    && <StockSection {...ctx} />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
           {tab === 'statuts'    && <StatutsSection />}

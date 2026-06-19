@@ -21,6 +21,14 @@ const parametresApi = {
   getDocumentTemplates: () => api.get('/parametres/document-templates/'),
   updateDocumentTemplates: (data) =>
     api.patch('/parametres/document-templates/update/', data),
+  // N64/N65 — tarification ONEE + hypothèses ROI/productible éditables.
+  // Barème seedé sur les défauts ONEE TTC ; rien n'est codé en dur ailleurs.
+  getTariffSettings: () => api.get('/parametres/tarification/'),
+  updateTariffSettings: (data) =>
+    api.patch('/parametres/tarification/update/', data),
+  computeRoi: (data) => api.post('/parametres/tarification/roi/', data),
+  getProductible: (params) =>
+    api.get('/parametres/tarification/productible/', { params }),
 }
 
 export default parametresApi
