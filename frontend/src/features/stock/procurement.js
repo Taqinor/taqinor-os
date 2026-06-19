@@ -57,3 +57,32 @@ export function lignesEnPenurie(items = []) {
 export function nbPenuries(items = []) {
   return lignesEnPenurie(items).length
 }
+
+// Avancement de réception d'un BCF : quantités reçues / commandées + ratio.
+// Renvoie { recu, commande, taux } où taux ∈ [0, 1] (0 si rien commandé).
+export function avancementReception(lignes = []) {
+  let recu = 0
+  let commande = 0
+  for (const l of lignes || []) {
+    recu += Number(l.quantite_recue) || 0
+    commande += Number(l.quantite) || 0
+  }
+  return { recu, commande, taux: commande > 0 ? recu / commande : 0 }
+}
+
+// Date pertinente d'un BCF pour l'affichage liste : date de commande si
+// renseignée, sinon date de création — jamais vide quand un BCF existe.
+export function bcfDateAffichee(bcf) {
+  if (!bcf) return null
+  return bcf.date_commande || bcf.date_creation || null
+}
+
+// Un BCF a-t-il une ligne à prix d'achat nul/absent ? (placeholder/pompes)
+export function aLignePrixZero(lignes = []) {
+  return (lignes || []).some((l) => !(Number(l.prix_achat_unitaire) > 0))
+}
+
+// Nombre de BCF envoyés en attente de réception (statut « envoye »).
+export function nbEnvoyesNonRecus(bcfs = []) {
+  return (bcfs || []).filter((b) => b?.statut === 'envoye').length
+}

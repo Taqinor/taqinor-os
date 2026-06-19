@@ -718,15 +718,15 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Mouvements] [L11] [ROUTINE] Remplacer l'alert() de fin d'inventaire par un récapitulatif intégré (ajustés/inchangés) dans StockList. Fait = après inventaire, un bandeau FR résume le résultat sans popup navigateur.
 
 #### Bons de commande fournisseur
-[ ] [Stock/Achats] [L11] [ROUTINE] Remplacer tous les JSON.stringify(err.response?.data) de BcfDetail (save/envoyer/recevoir/annuler) par des messages FR lisibles. Fait = une erreur de BCF affiche une phrase française.
+[x] [Stock/Achats] [L11] [ROUTINE] Remplacer tous les JSON.stringify(err.response?.data) de BcfDetail (save/envoyer/recevoir/annuler) par des messages FR lisibles. Fait = une erreur de BCF affiche une phrase française.
 [ ] [Stock/Achats] [L3] [ROUTINE] Pré-remplir le prix d'achat unitaire d'une ligne BCF depuis le PrixFournisseur du fournisseur choisi (ou prix_achat catalogue) à l'ajout de ligne. Fait = sélectionner un produit pour un fournisseur connu pré-remplit le prix d'achat U. interne.
 [ ] [Stock/Achats] [L2] [ROUTINE] Rendre une ligne BCF sans prix d'achat possible mais signalée (BCF interne ≠ devis, les pompes sans prix de vente doivent rester commandables). Fait = un produit sans prix de vente est sélectionnable dans un BCF et n'est pas grisé "prix à renseigner" dans ce contexte d'achat.
-[ ] [Stock/Achats] [L6] [ROUTINE] Afficher l'avancement de réception sur la liste et le détail BCF (reçu/commandé, %). Fait = chaque BCF envoyé montre "X/Y reçus" et une barre dérivée de quantite_recue/quantite.
-[ ] [Stock/Achats] [L4] [ROUTINE] Ajouter un bouton "Tout recevoir" dans BcfDetail qui pré-remplit chaque saisie de réception au reste dû. Fait = un clic remplit toutes les colonnes "À recevoir" avec quantite_restante.
-[ ] [Stock/Achats] [L9] [ROUTINE] Afficher la date de création/d'envoi des BCF dans la liste (la colonne Date montre date_commande souvent vide). Fait = la liste BCF affiche une date pertinente (commande sinon création) jamais "—" quand un BCF existe.
-[ ] [Stock/Achats] [L13] [ROUTINE] Ajouter un compteur/onglet de BCF "envoyés non reçus" en attente de réception. Fait = la page BCF montre le nombre de commandes envoyées en attente, filtrable en un clic.
+[x] [Stock/Achats] [L6] [ROUTINE] Afficher l'avancement de réception sur la liste et le détail BCF (reçu/commandé, %). Fait = chaque BCF envoyé montre "X/Y reçus" et une barre dérivée de quantite_recue/quantite.
+[x] [Stock/Achats] [L4] [ROUTINE] Ajouter un bouton "Tout recevoir" dans BcfDetail qui pré-remplit chaque saisie de réception au reste dû. Fait = un clic remplit toutes les colonnes "À recevoir" avec quantite_restante.
+[x] [Stock/Achats] [L9] [ROUTINE] Afficher la date de création/d'envoi des BCF dans la liste (la colonne Date montre date_commande souvent vide). Fait = la liste BCF affiche une date pertinente (commande sinon création) jamais "—" quand un BCF existe.
+[x] [Stock/Achats] [L13] [ROUTINE] Ajouter un compteur/onglet de BCF "envoyés non reçus" en attente de réception. Fait = la page BCF montre le nombre de commandes envoyées en attente, filtrable en un clic.
 [ ] [Stock/Achats] [L1] [ROUTINE] Afficher la référence du chantier source sur un BCF créé depuis un besoin matériel (la note contient "chantier <ref>" mais non mise en avant). Fait = un BCF issu d'un chantier affiche un lien/étiquette vers le chantier d'origine.
-[ ] [Stock/Achats] [L7] [ROUTINE] Confirmer avant d'envoyer un BCF dont une ligne a un prix d'achat à 0 (cas pompes/placeholder). Fait = envoyer un BCF avec ligne(s) à prix 0 demande une confirmation FR.
+[x] [Stock/Achats] [L7] [ROUTINE] Confirmer avant d'envoyer un BCF dont une ligne a un prix d'achat à 0 (cas pompes/placeholder). Fait = envoyer un BCF avec ligne(s) à prix 0 demande une confirmation FR.
 
 #### Listes de prix fournisseur (multi-fournisseur)
 [ ] [Stock/Achats] [L6] [ROUTINE] Afficher l'écart de prix entre fournisseurs dans PrixFournisseursSection (% vs le moins cher ⭐). Fait = chaque ligne hors moins-cher montre "+X % vs le moins cher".
@@ -740,9 +740,9 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Stock/Achats] [L16] [ROUTINE] Indiquer la source du coût moyen par ligne de valorisation (réceptions BCF vs prix_achat catalogue de repli). Fait = chaque ligne signale si le coût vient d'achats reçus ou du prix catalogue.
 
 #### Retours fournisseur
-[ ] [Stock/Achats] [L7] [ROUTINE] Plafonner la quantité retournée à la quantité reçue par ligne dans RetourModal (aujourd'hui input libre, le serveur décrémente sans plafond). Fait = le champ "À retourner" a max = quantite_recue et avertit si dépassé.
+[x] [Stock/Achats] [L7] [ROUTINE] Plafonner la quantité retournée à la quantité reçue par ligne dans RetourModal (aujourd'hui input libre, le serveur décrémente sans plafond). Fait = le champ "À retourner" a max = quantite_recue et avertit si dépassé.
 [ ] [Stock/Achats] [L9] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — liste Retours) Exposer une page/liste des retours fournisseur (RetourFournisseurViewSet existe mais aucune liste consultable). Fait = un écran liste les retours (référence RF, fournisseur, statut, date) avec consultation. Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
-[ ] [Stock/Achats] [L11] [ROUTINE] Remplacer l'alert() de confirmation de retour par un retour intégré et afficher les erreurs FR (le catch fait JSON.stringify). Fait = valider un retour montre une confirmation/erreur FR sans popup ni JSON brut.
+[x] [Stock/Achats] [L11] [ROUTINE] Remplacer l'alert() de confirmation de retour par un retour intégré et afficher les erreurs FR (le catch fait JSON.stringify). Fait = valider un retour montre une confirmation/erreur FR sans popup ni JSON brut.
 
 #### OCR import
 [ ] [Stock/OCR] [L7] [ROUTINE] Bloquer/avertir avant d'appliquer un import OCR si plusieurs lignes "create" partagent le même SKU détecté (collision d'unicité). Fait = deux lignes au même SKU sont signalées avant application.
