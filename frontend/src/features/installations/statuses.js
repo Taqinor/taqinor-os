@@ -280,6 +280,7 @@ export const EMPTY_FILTERS = {
   regime: '',
   art33: '', // '' | 'seuls'
   annule: 'avec', // 'avec' | 'sans' | 'seuls'
+  mine: '', // '' | 'only' (filtre SERVEUR « Mes chantiers »)
 }
 
 export function filterInstallations(items, filters) {
@@ -297,7 +298,9 @@ export function filterInstallations(items, filters) {
     return (
       (it.reference ?? '').toLowerCase().includes(q) ||
       (it.client_nom ?? '').toLowerCase().includes(q) ||
-      (it.site_ville ?? '').toLowerCase().includes(q)
+      (it.site_ville ?? '').toLowerCase().includes(q) ||
+      (it.devis_reference ?? '').toLowerCase().includes(q) ||
+      (it.technicien_nom ?? '').toLowerCase().includes(q)
     )
   })
 }

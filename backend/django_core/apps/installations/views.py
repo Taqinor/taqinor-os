@@ -152,6 +152,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'reference', 'client__nom', 'client__prenom', 'site_ville',
+        # N9 — recherche aussi par référence du devis lié et par installateur.
+        'devis__reference', 'technicien_responsable__username',
     ]
     ordering_fields = ['reference', 'date_creation', 'date_pose_prevue', 'statut']
     ordering = ['-date_creation']
@@ -174,6 +176,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(technicien_responsable_id=technicien)
         if type_inst:
             qs = qs.filter(type_installation=type_inst)
+        # N9 — « Mes chantiers » : ceux dont l'utilisateur courant est
+        # l'installateur responsable (résolu côté serveur, jamais du corps).
+        if params.get('mine') in ('1', 'true', 'only'):
+            qs = qs.filter(technicien_responsable=self.request.user)
         # Annulé = drapeau, pas une étape (comme « Perdu »). Par défaut on
         # montre tout ; ?annule=only / ?annule=sans pour filtrer côté UI.
         annule = params.get('annule')

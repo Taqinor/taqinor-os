@@ -118,6 +118,17 @@ export default function FilterBar({ filters, setFilters, items }) {
         Art. 33
       </Button>
 
+      <Button
+        type="button"
+        size="sm"
+        variant={filters.mine === 'only' ? 'default' : 'outline'}
+        onClick={() => setKey('mine', filters.mine === 'only' ? '' : 'only')}
+        title="Chantiers dont je suis l'installateur responsable"
+        aria-pressed={filters.mine === 'only'}
+      >
+        Mes chantiers
+      </Button>
+
       <Segmented
         size="sm"
         value={filters.annule}

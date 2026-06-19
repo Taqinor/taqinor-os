@@ -28,11 +28,13 @@ import InstallationDetail from './InstallationDetail'
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
 
-// Paramètre SERVEUR dérivé du filtre « annulés ».
-const annuleParam = (annule) => {
-  if (annule === 'seuls') return { annule: 'only' }
-  if (annule === 'sans') return { annule: 'sans' }
-  return {}
+// Paramètres SERVEUR dérivés des filtres « annulés » et « Mes chantiers ».
+const serverParams = (filters) => {
+  const p = {}
+  if (filters.annule === 'seuls') p.annule = 'only'
+  else if (filters.annule === 'sans') p.annule = 'sans'
+  if (filters.mine === 'only') p.mine = 'only'
+  return p
 }
 
 // ── Calendrier (inline) — miroir de la vue CRM, posé sur date_pose_prevue ──
@@ -227,12 +229,12 @@ export default function InstallationsPage() {
   const onReassign = (inst, technicien) =>
     dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } }))
 
-  // Le filtre « annulés » est une dimension SERVEUR : on refait l'appel avec
-  // le bon paramètre quand il change (les autres filtres restent côté client).
-  const refetch = () => dispatch(fetchInstallations(annuleParam(filters.annule)))
+  // Les filtres « annulés » et « Mes chantiers » sont des dimensions SERVEUR :
+  // on refait l'appel quand ils changent (les autres filtres restent côté client).
+  const refetch = () => dispatch(fetchInstallations(serverParams(filters)))
   useEffect(() => {
-    dispatch(fetchInstallations(annuleParam(filters.annule)))
-  }, [dispatch, filters.annule])
+    dispatch(fetchInstallations(serverParams(filters)))
+  }, [dispatch, filters.annule, filters.mine])
 
   const onOpen = (it) => setSelected(it)
   const onClose = () => setSelected(null)
