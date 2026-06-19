@@ -182,6 +182,9 @@ export default function DevisGenerator({
 
   // ── Lignes (prix TTC, comme le simulateur) & remise ──
   const [lines, setLines] = useState([])
+  // Confirmation d'auto-remplissage agricole (m³/jour + champ PV) — affichée
+  // une fois l'auto-remplissage pompage réussi.
+  const [pompageAutoFilled, setPompageAutoFilled] = useState(false)
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
@@ -585,6 +588,7 @@ export default function DevisGenerator({
       setErrors(e => ({ ...e, autofill: null }))
       setLines(withKeys(generated))
       if (pompageSel) setNbPanneaux(String(pompageSel.dims.nbPanneaux))
+      setPompageAutoFilled(true)
       return
     }
     if (kwp <= 0) {
@@ -1176,6 +1180,16 @@ export default function DevisGenerator({
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
+            {modeInstallation === 'agricole' && pompageAutoFilled && pompageSel && (
+              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+                Auto-remplissage effectué —
+                {pompageSel.m3Jour != null && (
+                  <> <strong>≈ {pompageSel.m3Jour} m³/jour</strong> ·</>
+                )}
+                {' '}champ PV <strong>{pompageDims?.champKwc ?? pompageDims?.champKw} kWc</strong>
+                {' '}({pompageDims?.nbPanneaux} panneaux).
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1483,6 +1497,13 @@ export default function DevisGenerator({
                 : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
                   + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
             </p>
+            {modeInstallation === 'agricole' && pompageSel?.sansPrix?.length > 0 && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                Attention : seules des pompes <strong>sans prix renseigné</strong> conviennent
+                ({pompageSel.sansPrix.join(', ')}). Aucune pompe ne sera ajoutée au devis tant
+                que leur prix n'est pas saisi dans Stock.
+              </div>
+            )}
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
               {!embedded && (
                 <Button type="button" variant="outline" onClick={handleReset}>
