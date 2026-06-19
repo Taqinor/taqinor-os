@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText,
@@ -49,9 +50,24 @@ const TABS = [
   { key: 'brouillon', label: 'Brouillon' },
   { key: 'emise',     label: 'Émises' },
   { key: 'overdue',   label: 'En retard' },
+  { key: 'partielle', label: 'Partiellement payées' },
   { key: 'payee',     label: 'Payées' },
   { key: 'annulee',   label: 'Annulées' },
 ]
+
+// Filtre par type de facture d'échéancier (champ type_facture du modèle).
+const TYPES_FACTURE = [
+  { value: '',             label: 'Tous les types' },
+  { value: 'complete',     label: 'Complète' },
+  { value: 'acompte',      label: 'Acompte' },
+  { value: 'intermediaire', label: 'Intermédiaire' },
+  { value: 'solde',        label: 'Solde' },
+]
+
+// Facture à solde partiel : un acompte encaissé mais reste dû > 0.
+const isPartiallyPaid = f =>
+  toNumber(f.montant_paye) > 0 && toNumber(f.montant_du) > 0 &&
+  f.statut !== 'annulee'
 
 const MODES_PAIEMENT = [
   { value: 'especes',     label: 'Espèces' },
@@ -66,6 +82,17 @@ const today = new Date().toISOString().slice(0, 10)
 const isOverdue = f =>
   f.is_overdue ||
   (f.statut === 'emise' && f.date_echeance && f.date_echeance < today)
+
+// Prochaine action contextuelle (next-best-action) : clé de l'action mise en
+// avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
+// retard → Relancer ; une émise partiellement payée → Encaisser ; sinon null.
+function nextBestAction(f) {
+  if (f.statut === 'brouillon') return 'emettre'
+  if (f.statut === 'annulee' || f.statut === 'payee') return null
+  if (isOverdue(f)) return 'relancer'
+  if (toNumber(f.montant_paye) > 0 && toNumber(f.montant_du) > 0) return 'encaisser'
+  return null
+}
 
 function openPdfBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -85,17 +112,57 @@ export default function FactureList() {
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
 
-  const creerAvoir = async (f) => {
-    const motif = window.prompt(
-      `Créer un avoir TOTAL pour la facture ${f.reference} ?\n`
-      + 'Motif (optionnel) :', '')
-    if (motif === null) return
+  // ── Avoir (note de crédit) : modale total OU partiel ──
+  const [avoirTarget, setAvoirTarget] = useState(null) // facture ciblée
+  const [avoirMotif, setAvoirMotif]   = useState('')
+  const [avoirSaving, setAvoirSaving] = useState(false)
+  // Quantités à créditer par ligne (clé = id de ligne) ; vide = avoir total.
+  const [avoirQtes, setAvoirQtes]     = useState({})
+
+  const openAvoirModal = async (f) => {
+    setAvoirMotif('')
+    setAvoirQtes({})
+    // Charge le détail des lignes pour permettre un avoir partiel.
     try {
-      await ventesApi.creerAvoir(f.id, { motif })
+      const res = await ventesApi.getFacture(f.id)
+      setAvoirTarget(res.data)
+    } catch {
+      setAvoirTarget(f)
+    }
+  }
+
+  const handleCreerAvoir = async (mode) => {
+    if (!avoirTarget) return
+    setAvoirSaving(true)
+    try {
+      const payload = { motif: avoirMotif }
+      if (mode === 'partiel') {
+        const lignes = (avoirTarget.lignes || [])
+          .map(l => ({ ...l, _qte: parseFloat(avoirQtes[l.id] ?? 0) }))
+          .filter(l => l._qte > 0)
+          .map(l => ({
+            produit: l.produit ?? null,
+            designation: l.designation,
+            quantite: l._qte,
+            prix_unitaire: l.prix_unitaire,
+            remise: l.remise ?? 0,
+            taux_tva: l.taux_tva,
+          }))
+        if (lignes.length === 0) {
+          alert('Saisissez au moins une quantité à créditer.')
+          setAvoirSaving(false)
+          return
+        }
+        payload.lignes = lignes
+      }
+      await ventesApi.creerAvoir(avoirTarget.id, payload)
+      setAvoirTarget(null)
       dispatch(fetchFactures())
       alert('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
     } catch (err) {
       alert(err?.response?.data?.detail ?? "Création de l'avoir impossible.")
+    } finally {
+      setAvoirSaving(false)
     }
   }
 
@@ -103,6 +170,7 @@ export default function FactureList() {
   const [editFacture, setEditFacture] = useState(null)
   const [activeTab, setActiveTab]     = useState('toutes')
   const [search, setSearch]           = useState('')
+  const [typeFilter, setTypeFilter]   = useState('')
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
@@ -147,14 +215,41 @@ export default function FactureList() {
     }
   }
 
+  // ── Édition inline de la date d'échéance (facture émise) ──
+  const [echeanceEditId, setEcheanceEditId] = useState(null)
+  const [echeanceValue, setEcheanceValue]   = useState('')
+  const [echeanceSaving, setEcheanceSaving] = useState(false)
+
+  const startEditEcheance = (f) => {
+    setEcheanceEditId(f.id)
+    setEcheanceValue(f.date_echeance ?? '')
+  }
+  const saveEcheance = async (f) => {
+    setEcheanceSaving(true)
+    try {
+      await ventesApi.patchFacture(f.id, { date_echeance: echeanceValue || null })
+      setEcheanceEditId(null)
+      dispatch(fetchFactures())
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Mise à jour de l’échéance impossible.')
+    } finally {
+      setEcheanceSaving(false)
+    }
+  }
+
   useEffect(() => { dispatch(fetchFactures()) }, [dispatch])
 
   const filtered = useMemo(() => {
     let list = factures
     if (activeTab === 'overdue') {
       list = list.filter(isOverdue)
+    } else if (activeTab === 'partielle') {
+      list = list.filter(isPartiallyPaid)
     } else if (activeTab !== 'toutes') {
       list = list.filter(f => f.statut === activeTab)
+    }
+    if (typeFilter) {
+      list = list.filter(f => f.type_facture === typeFilter)
     }
     const q = search.trim().toLowerCase()
     if (q) {
@@ -164,13 +259,14 @@ export default function FactureList() {
       )
     }
     return list
-  }, [factures, activeTab, search])
+  }, [factures, activeTab, search, typeFilter])
 
   const counts = useMemo(() => ({
     toutes:    factures.length,
     brouillon: factures.filter(f => f.statut === 'brouillon').length,
     emise:     factures.filter(f => f.statut === 'emise' && !isOverdue(f)).length,
     overdue:   factures.filter(isOverdue).length,
+    partielle: factures.filter(isPartiallyPaid).length,
     payee:     factures.filter(f => f.statut === 'payee').length,
     annulee:   factures.filter(f => f.statut === 'annulee').length,
   }), [factures])
@@ -339,18 +435,38 @@ export default function FactureList() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <Select value={typeFilter || 'all'}
+                  onValueChange={v => setTypeFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="w-full sm:w-44" title="Filtrer par type de facture">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TYPES_FACTURE.map(t => (
+                <SelectItem key={t.value || 'all'} value={t.value || 'all'}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button size="sm" variant="outline"
                   onClick={() => importApi.exportList('factures', factures.map(f => f.id))
                     .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
             <Download /> Exporter Excel
           </Button>
-          <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable)"
+          <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable) — mois ou trimestre"
                   onClick={() => {
-                    const m = window.prompt('Mois du journal des ventes (AAAA-MM) :',
+                    const choix = window.prompt(
+                      'Période du journal des ventes :\n'
+                      + '— Mois : AAAA-MM (ex. 2026-06)\n'
+                      + '— Trimestre : AAAA-T (ex. 2026-2)',
                       new Date().toISOString().slice(0, 7))
-                    if (!m) return
-                    ventesApi.journalVentes({ month: m })
-                      .then(r => downloadXlsx(r.data, `journal-ventes-${m}.xlsx`))
+                    if (!choix) return
+                    const v = choix.trim()
+                    // Trimestre (AAAA-Q avec Q de 1 à 4) vs mois (AAAA-MM).
+                    const isQuarter = /^\d{4}-[1-4]$/.test(v)
+                    const params = isQuarter ? { quarter: v } : { month: v }
+                    ventesApi.journalVentes(params)
+                      .then(r => downloadXlsx(r.data, `journal-ventes-${v}.xlsx`))
                       .catch(() => {})
                   }}>
             <BookText /> Journal comptable
@@ -407,6 +523,87 @@ export default function FactureList() {
               <Button type="submit" loading={paySaving}>Enregistrer</Button>
             </FormActions>
           </Form>
+          {/* Historique des paiements déjà encaissés sur cette facture. */}
+          <div className="mt-1 border-t pt-3">
+            <p className="mb-2 text-sm font-medium">Paiements encaissés</p>
+            {(payTarget?.paiements?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun paiement enregistré.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {payTarget.paiements.map(p => (
+                  <li key={p.id} className="flex justify-between gap-3 tabular-nums">
+                    <span className="text-muted-foreground">
+                      {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : '—'}
+                      {p.mode_display ? ` · ${p.mode_display}` : ''}
+                      {p.reference ? ` · ${p.reference}` : ''}
+                    </span>
+                    <strong>{formatMAD(p.montant)}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modale d'avoir (total ou partiel par ligne) ── */}
+      <Dialog open={!!avoirTarget} onOpenChange={(o) => { if (!o) setAvoirTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Créer un avoir — {avoirTarget?.reference}</DialogTitle>
+            <DialogDescription>
+              Avoir total (toute la facture) ou partiel (quantités à créditer par ligne).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <FormField label="Motif (optionnel)" htmlFor="avoir-motif" fullWidth>
+              <Input id="avoir-motif" type="text" value={avoirMotif}
+                     onChange={e => setAvoirMotif(e.target.value)} />
+            </FormField>
+            {(avoirTarget?.lignes?.length ?? 0) > 0 && (
+              <div className="overflow-x-auto">
+                <table className="data-table text-sm">
+                  <thead>
+                    <tr>
+                      <th>Désignation</th>
+                      <th className="ta-right">Qté facturée</th>
+                      <th className="ta-right">Qté à créditer</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {avoirTarget.lignes.map(l => (
+                      <tr key={l.id}>
+                        <td>{l.designation}</td>
+                        <td className="ta-right tabular-nums">{l.quantite}</td>
+                        <td className="ta-right">
+                          <Input
+                            type="number" min="0" step="any"
+                            className="w-24"
+                            value={avoirQtes[l.id] ?? ''}
+                            max={l.quantite}
+                            onChange={e => setAvoirQtes(q => ({ ...q, [l.id]: e.target.value }))}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <FormActions sticky={false}>
+            <Button type="button" variant="ghost" onClick={() => setAvoirTarget(null)}>Annuler</Button>
+            {(avoirTarget?.lignes?.length ?? 0) > 0 && (
+              <Button type="button" variant="outline" loading={avoirSaving}
+                      onClick={() => handleCreerAvoir('partiel')}>
+                Avoir partiel
+              </Button>
+            )}
+            <Button type="button" loading={avoirSaving}
+                    onClick={() => handleCreerAvoir('total')}>
+              Avoir total
+            </Button>
+          </FormActions>
         </DialogContent>
       </Dialog>
 
@@ -467,14 +664,25 @@ export default function FactureList() {
                   const busy = actionId === f.id
                   const isGenerating = pdfGenerating[f.id]
                   const isDownloading = pdfDownloading[f.id]
+                  const nba = nextBestAction(f)
 
                   return (
                     <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
                       <td>
                         <strong>{f.reference}</strong>
-                        {f.type_facture_display && (
+                        {(f.type_facture_display || toNumber(f.pourcentage) > 0) && (
                           <div className="mt-0.5 text-xs text-muted-foreground">
                             {f.type_facture_display}
+                            {toNumber(f.pourcentage) > 0
+                              ? ` ${Math.round(toNumber(f.pourcentage))} %` : ''}
+                          </div>
+                        )}
+                        {f.devis_reference && f.devis && (
+                          <div className="mt-0.5 text-xs">
+                            <Link to={`/ventes/devis?ref=${encodeURIComponent(f.devis_reference)}`}
+                                  className="text-primary hover:underline">
+                              Devis {f.devis_reference}
+                            </Link>
                           </div>
                         )}
                         {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
@@ -491,11 +699,29 @@ export default function FactureList() {
                       <td>{f.client_nom ?? '—'}</td>
                       <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
                       <td>
-                        <span className={overdue ? 'font-semibold text-destructive' : undefined}>
-                          {f.date_echeance
-                            ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
-                            : '—'}
-                        </span>
+                        {echeanceEditId === f.id ? (
+                          <span className="flex items-center gap-1">
+                            <Input type="date" className="w-36" value={echeanceValue}
+                                   onChange={e => setEcheanceValue(e.target.value)} />
+                            <Button size="sm" loading={echeanceSaving} onClick={() => saveEcheance(f)}>OK</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEcheanceEditId(null)}>×</Button>
+                          </span>
+                        ) : (
+                          <span
+                            className={`${overdue ? 'font-semibold text-destructive' : ''}`
+                              + (['emise', 'en_retard'].includes(f.statut) || overdue
+                                ? ' cursor-pointer hover:underline' : '')}
+                            title={['emise', 'en_retard'].includes(f.statut) || overdue
+                              ? 'Cliquer pour modifier l’échéance' : undefined}
+                            onClick={() => {
+                              if (['emise', 'en_retard'].includes(f.statut) || overdue) startEditEcheance(f)
+                            }}
+                          >
+                            {f.date_echeance
+                              ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
+                              : '—'}
+                          </span>
+                        )}
                       </td>
                       <td className="ta-right tabular-nums">
                         {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
@@ -518,6 +744,12 @@ export default function FactureList() {
                         )}
                       </td>
                       <td>
+                        {nba === 'relancer' && (
+                          <Badge tone="warning" className="mb-1 block w-fit"
+                                 title="Facture échue — à relancer dans Relances / Impayés">
+                            À relancer
+                          </Badge>
+                        )}
                         <div className="flex flex-wrap items-center gap-2">
                           {f.statut === 'brouillon' && (
                             <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
@@ -525,7 +757,8 @@ export default function FactureList() {
                             </Button>
                           )}
                           {f.statut === 'brouillon' && (
-                            <Button size="sm" loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
+                            <Button size="sm" variant={nba === 'emettre' ? 'default' : 'outline'}
+                                    loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
                               Émettre
                             </Button>
                           )}
@@ -536,7 +769,8 @@ export default function FactureList() {
                             </Button>
                           )}
                           {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
-                            <Button size="sm" variant="outline" onClick={() => openPayModal(f)} title="Enregistrer un paiement">
+                            <Button size="sm" variant={nba === 'encaisser' ? 'default' : 'outline'}
+                                    onClick={() => openPayModal(f)} title="Enregistrer un paiement">
                               Enregistrer paiement
                             </Button>
                           )}
@@ -547,8 +781,8 @@ export default function FactureList() {
                             </Button>
                           )}
                           {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                            <Button size="sm" variant="outline" onClick={() => creerAvoir(f)}
-                                    title="Créer un avoir (note de crédit)">
+                            <Button size="sm" variant="outline" onClick={() => openAvoirModal(f)}
+                                    title="Créer un avoir (note de crédit, total ou partiel)">
                               Avoir
                             </Button>
                           )}
