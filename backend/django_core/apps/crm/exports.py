@@ -6,54 +6,18 @@ pas présente dans un contexte qui n'exporte jamais.
 
 Le helper `build_xlsx_response` est volontairement générique (en-têtes + lignes)
 pour être réutilisé par les autres exports à venir (clients, produits…).
+
+L879 : la construction du classeur vit désormais dans le builder PARTAGÉ
+``apps.records.xlsx`` ; cette fonction n'est qu'un alias mince pour préserver
+tous les appelants existants. Un seul format (en-têtes en gras, largeurs,
+coercition fr-MA) pour TOUS les exports de listes.
 """
-from django.http import HttpResponse
+from apps.records.xlsx import build_xlsx_response  # noqa: F401  (ré-export)
 
 from .stages import STAGE_LABELS
 
 # Libellés FR des canaux/priorités — alignés sur le modèle Lead. On lit les
 # choices du modèle quand c'est possible pour ne jamais diverger.
-
-
-def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
-    """Construit une réponse HTTP .xlsx à partir d'en-têtes + lignes.
-
-    headers : liste de chaînes (1re ligne, en gras).
-    rows    : liste de listes (valeurs déjà mises en forme, str/num/None).
-    """
-    from openpyxl import Workbook
-    from openpyxl.styles import Font
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = sheet_title[:31] or 'Export'
-
-    ws.append(list(headers))
-    bold = Font(bold=True)
-    for cell in ws[1]:
-        cell.font = bold
-
-    for row in rows:
-        ws.append(['' if v is None else v for v in row])
-
-    # Largeurs lisibles : on borne à la valeur la plus longue par colonne.
-    for idx, _ in enumerate(headers, start=1):
-        longest = len(str(headers[idx - 1]))
-        for row in rows:
-            if idx - 1 < len(row) and row[idx - 1] is not None:
-                longest = max(longest, len(str(row[idx - 1])))
-        ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = \
-            min(max(longest + 2, 10), 50)
-
-    response = HttpResponse(
-        content_type=(
-            'application/vnd.openxmlformats-officedocument.'
-            'spreadsheetml.sheet'
-        ),
-    )
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    wb.save(response)
-    return response
 
 
 LEAD_EXPORT_HEADERS = [
