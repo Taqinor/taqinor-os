@@ -53,6 +53,22 @@ class TestRecouvrement(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
+    def test_is_overdue_relies_on_jours_retard(self):
+        from apps.ventes.serializers import FactureSerializer
+        data = FactureSerializer(self.facture).data
+        self.assertTrue(data['is_overdue'])
+        self.assertEqual(data['jours_retard'], 45)
+        # Une facture sans échéance (donc jours_retard=0) n'est pas en retard.
+        f2 = Facture.objects.create(
+            company=self.company, reference='FAC-REC-0002',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=f2, produit=self.produit, designation='X',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('20.00'))
+        self.assertFalse(FactureSerializer(f2).data['is_overdue'])
+
     def test_overdue_in_relances_list_with_level(self):
         resp = self.api.get('/api/django/ventes/relances/')
         self.assertEqual(resp.status_code, 200, resp.data)

@@ -1,4 +1,3 @@
-from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
@@ -240,11 +239,10 @@ class FactureSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission']
 
     def get_is_overdue(self, obj):
-        return (
-            obj.statut == Facture.Statut.EMISE
-            and obj.date_echeance is not None
-            and obj.date_echeance < timezone.now().date()
-        )
+        # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,
+        # hors payée/annulée) — cohérent avec FactureList, Relances et la
+        # balance âgée, et couvre aussi le statut « En retard ».
+        return obj.jours_retard > 0
 
 
 class FactureWriteSerializer(serializers.ModelSerializer):
