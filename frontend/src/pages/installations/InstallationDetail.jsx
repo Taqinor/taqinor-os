@@ -184,6 +184,25 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
 
+  // N15 — détecte si le devis lié a divergé depuis la création du chantier
+  // (nomenclature gelée `bom` vs lignes actuelles du devis).
+  const [devisDivergent, setDevisDivergent] = useState(false)
+  const checkDevisDivergence = () => {
+    if (!installation.devis) { setDevisDivergent(false); return }
+    ventesApi.getDevisById(installation.devis).then((r) => {
+      const lignes = (r.data?.lignes ?? []).filter((l) => l.produit)
+      const bom = Array.isArray(current.bom) ? current.bom : []
+      const norm = (arr) => arr
+        .map((x) => `${x.produit ?? x.produit_id}:${Number(x.quantite) || 0}`)
+        .sort()
+        .join('|')
+      const devisKey = norm(lignes)
+      const bomKey = norm(bom)
+      // Un BOM vide (chantier sans devis d'origine) n'est pas une divergence.
+      setDevisDivergent(bom.length > 0 && devisKey !== bomKey)
+    }).catch(() => {})
+  }
+
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
       .then(r => setHistorique(r.data)).catch(() => {})
@@ -212,6 +231,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       .then((r) => setTypesInterv(
         (r.data?.results ?? r.data ?? []).filter((t) => !t.archived)))
       .catch(() => {})
+    checkDevisDivergence()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -494,6 +514,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info/10 p-3 text-sm" role="status">
               <strong className="text-info">Prochaine action&nbsp;:</strong>
               <span>{nextBestAction(current)}</span>
+            </div>
+          )}
+
+          {/* N15 — le devis lié a changé depuis la création du chantier. */}
+          {!current.annule && devisDivergent && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
+              <strong className="text-warning-foreground">Devis modifié&nbsp;:</strong>
+              <span>
+                le devis a changé depuis la création du chantier (la nomenclature
+                gelée diffère des lignes actuelles).
+              </span>
             </div>
           )}
 
