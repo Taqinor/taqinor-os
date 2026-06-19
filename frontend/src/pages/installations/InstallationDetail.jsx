@@ -9,6 +9,7 @@ import { updateInstallation } from '../../features/installations/store/installat
 import { fetchProduits } from '../../features/stock/store/stockSlice'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
+import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
@@ -137,6 +138,35 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Intervention en cours d'ajout
   const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '' })
   const [intervBusy, setIntervBusy] = useState(false)
+  // N5 — édition en place d'une intervention existante (ligne du tableau).
+  const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
+  const [editIntervBusy, setEditIntervBusy] = useState(false)
+  const [users, setUsers] = useState([])
+  const startEditInterv = (iv) => setEditInterv({
+    id: iv.id,
+    date_realisee: iv.date_realisee ?? '',
+    compte_rendu: iv.compte_rendu ?? '',
+    technicien: iv.technicien ? String(iv.technicien) : '',
+  })
+  const saveEditInterv = async () => {
+    if (!editInterv) return
+    setEditIntervBusy(true)
+    try {
+      const nullable = (v) => (v === '' || v === undefined) ? null : v
+      await installationsApi.updateIntervention(editInterv.id, {
+        date_realisee: nullable(editInterv.date_realisee),
+        compte_rendu: nullable(editInterv.compte_rendu),
+        technicien: nullable(editInterv.technicien),
+      })
+      setEditInterv(null)
+      setActionError(null)
+      await refreshInstallation()
+      loadHistorique()
+    } catch (err) {
+      setActionError(actionMsg(err, "Édition de l'intervention impossible."))
+    } finally { setEditIntervBusy(false) }
+  }
+
   // N2 — types d'intervention gérés de la société (Paramètres → Chantiers) ;
   // repli sur la liste en dur tant qu'aucun type géré n'est chargé.
   const [typesInterv, setTypesInterv] = useState([])
@@ -232,6 +262,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         (r.data?.results ?? r.data ?? []).filter((t) => !t.archived)))
       .catch(() => {})
     checkDevisDivergence()
+    crmApi.getAssignableUsers()
+      .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -818,16 +850,60 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             {interventions.length === 0 ? (
               <Hint>Aucune intervention.</Hint>
             ) : (
-              <MiniTable head={['Type', 'Prévue', 'Réalisée', 'Technicien', 'Compte rendu']}>
-                {interventions.map((iv) => (
-                  <tr key={iv.id} className="border-t border-border">
-                    <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
-                    <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
-                    <td className="px-3 py-2">{formatDate(iv.date_realisee)}</td>
-                    <td className="px-3 py-2">{iv.technicien_nom ?? '—'}</td>
-                    <td className="px-3 py-2">{iv.compte_rendu ?? '—'}</td>
-                  </tr>
-                ))}
+              <MiniTable head={['Type', 'Prévue', 'Réalisée', 'Technicien', 'Compte rendu', '']}>
+                {interventions.map((iv) => {
+                  const editing = editInterv?.id === iv.id
+                  return (
+                    <tr key={iv.id} className="border-t border-border">
+                      <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
+                      <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Input type="date" value={editInterv.date_realisee}
+                                 onChange={(e) => setEditInterv(s => ({ ...s, date_realisee: e.target.value }))} />
+                        ) : formatDate(iv.date_realisee)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Select value={editInterv.technicien || ALL_NONE}
+                                  onValueChange={(v) => setEditInterv(s => ({ ...s, technicien: v === ALL_NONE ? '' : v }))}>
+                            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={ALL_NONE}>—</SelectItem>
+                              {users.map((u) => (
+                                <SelectItem key={u.id} value={String(u.id)}>
+                                  {u.username ?? u.nom ?? `#${u.id}`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (iv.technicien_nom ?? '—')}
+                      </td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Input value={editInterv.compte_rendu}
+                                 onChange={(e) => setEditInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
+                        ) : (iv.compte_rendu ?? '—')}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {editing ? (
+                          <span className="flex gap-1">
+                            <Button size="sm" loading={editIntervBusy} onClick={saveEditInterv}>
+                              Enregistrer
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditInterv(null)}>
+                              Annuler
+                            </Button>
+                          </span>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>
+                            Éditer
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </MiniTable>
             )}
             <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
