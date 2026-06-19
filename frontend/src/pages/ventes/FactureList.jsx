@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
-  MessageCircle, Code2, Check, FileText, ReceiptText,
+  MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -22,6 +22,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   Form, FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { formatMAD, toNumber } from '../../lib/format'
 
@@ -174,8 +175,6 @@ export default function FactureList() {
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
-  const [waBusyId, setWaBusyId] = useState(null)
-  const [ublBusyId, setUblBusyId] = useState(null)
   const [auditBusy, setAuditBusy] = useState(false)
 
   // ── Enregistrement de paiement ──
@@ -347,27 +346,21 @@ export default function FactureList() {
   // Envoyer par WhatsApp : ouvre WhatsApp avec le message + lien public (PDF
   // client) pré-rempli ; le commercial appuie lui-même sur Envoyer.
   const handleWhatsApp = async (f, modele = 'facture') => {
-    setWaBusyId(f.id)
     try {
       const res = await ventesApi.whatsappFacture(f.id, { modele })
       if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
-    } finally {
-      setWaBusyId(null)
     }
   }
 
   // N38 — télécharge l'aperçu BROUILLON UBL 2.1 (XML) de la facture.
   const handleUbl = async (f) => {
-    setUblBusyId(f.id)
     try {
       const res = await ventesApi.telechargerUbl(f.id)
       openPdfBlob(res.data, `${f.reference}-ubl.xml`)
     } catch {
       alert("Génération de l'aperçu UBL impossible.")
-    } finally {
-      setUblBusyId(null)
     }
   }
 
@@ -774,32 +767,6 @@ export default function FactureList() {
                               Enregistrer paiement
                             </Button>
                           )}
-                          {f.statut !== 'payee' && f.statut !== 'annulee' && (
-                            <Button size="sm" variant="outline" loading={busy}
-                                    onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
-                              Annuler
-                            </Button>
-                          )}
-                          {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                            <Button size="sm" variant="outline" onClick={() => openAvoirModal(f)}
-                                    title="Créer un avoir (note de crédit, total ou partiel)">
-                              Avoir
-                            </Button>
-                          )}
-                          {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                            <Button size="sm" variant="outline" loading={waBusyId === f.id}
-                                    onClick={() => handleWhatsApp(f, 'facture')}
-                                    title="Envoyer par WhatsApp (lien vers le PDF client)">
-                              <MessageCircle /> WhatsApp
-                            </Button>
-                          )}
-                          {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                            <Button size="sm" variant="outline" loading={ublBusyId === f.id}
-                                    onClick={() => handleUbl(f)}
-                                    title="Aperçu BROUILLON UBL 2.1 (XML) — préparation e-facturation, non transmis">
-                              <Code2 /> UBL
-                            </Button>
-                          )}
                           {f.fichier_pdf ? (
                             <Button size="sm" variant="success" loading={isDownloading}
                                     onClick={() => handleTelechargerPdf(f)} title="Télécharger le PDF">
@@ -810,6 +777,41 @@ export default function FactureList() {
                                     onClick={() => handleGenererPdf(f)} title="Générer le PDF">
                               <FileText /> PDF
                             </Button>
+                          )}
+                          {/* Actions secondaires regroupées : tiennent sans déborder
+                              sur écran étroit (menu compact « Actions »). */}
+                          {(['emise', 'payee', 'en_retard'].includes(f.statut)
+                            || (f.statut !== 'payee' && f.statut !== 'annulee')) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline" title="Plus d'actions">
+                                  <MoreHorizontal /> Actions
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                                  <DropdownMenuItem onClick={() => openAvoirModal(f)}>
+                                    Avoir (note de crédit)
+                                  </DropdownMenuItem>
+                                )}
+                                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                                  <DropdownMenuItem onClick={() => handleWhatsApp(f, 'facture')}>
+                                    <MessageCircle /> WhatsApp
+                                  </DropdownMenuItem>
+                                )}
+                                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                                  <DropdownMenuItem onClick={() => handleUbl(f)}>
+                                    <Code2 /> Aperçu UBL
+                                  </DropdownMenuItem>
+                                )}
+                                {f.statut !== 'payee' && f.statut !== 'annulee' && (
+                                  <DropdownMenuItem
+                                    onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
+                                    Annuler la facture
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </div>
                       </td>
