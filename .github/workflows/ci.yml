@@ -1,8 +1,22 @@
 name: CI
 
 on:
+  # Run push-triggered CI ONLY on the integration branches. Feature/PR
+  # branches are fully covered by the pull_request trigger below, which diffs
+  # against the PR base (main) so the change-detector skips heavy jobs
+  # correctly. Without this filter every feature-branch push (branch creation,
+  # main-integration merges, each commit) re-ran the whole suite a second time
+  # with a stale baseline — pure waste. The PR run remains the merge gate.
   push:
+    branches: [main, dev]
   pull_request:
+
+# Cancel a superseded run on the same PR when a newer commit is pushed, so
+# rapid pushes don't pile up redundant runs. Never cancels push runs on
+# main/dev (those gate the deploy and must finish).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # NOTE on path filtering (see docs/CODEMAP.md §7):
 # We do NOT use top-level `on: paths`/`paths-ignore`. A workflow skipped by a
