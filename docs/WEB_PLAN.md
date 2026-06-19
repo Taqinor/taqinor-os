@@ -211,6 +211,118 @@ verified non-breaking increments (FR stays byte-identical, suite stays green): f
 
 ---
 
+### W68 — Task 4 : mode VARIABILITÉ de consommation (« Affiner ma consommation ») — [ ]
+**Do:** On the SAME current latest private preview route, **in place** (this builds on the
+consumption/savings engine and the Année/Mois/Jour graph from the earlier tasks — **read that
+engine first and reuse it; do NOT duplicate it**): add a consumption **VARIABILITY** mode the
+client can enter to refine the hourly curve, opened from a clear control (**"Affiner ma
+consommation"**). It has two ways in, **both feeding the SAME self-consumption + savings + sizing
+engine** so the graph, savings, recommended system size and battery sizing all recompute live.
+- **(A) Hand-edit:** the 24 hourly values are directly editable both by **dragging bars** AND by
+  **numeric entry** (numeric entry is required so it works on a phone and with reduced-motion),
+  with a live daily total in kWh and in the site's DH/MAD notation; a choice to **"Recaler sur ma
+  facture"** (rescale the edited curve so its daily total matches the bill-derived daily kWh) or
+  keep it as a free override.
+- **(B) Appliance calculator:** the client adds appliances; each contributes its energy across a
+  time-of-day window that reshapes the hourly curve, and each (or the calculator globally) carries
+  a choice — **"Sur ma facture actuelle"** (ADD on top of the bill baseline, for an appliance not
+  yet reflected in the bill, e.g. a newly bought AC or EV — this **raises** the daily total and
+  therefore the recommended system and battery sizing) versus **"Déjà compris dans ma facture"**
+  (use the appliance ONLY to reshape the existing hourly distribution while **holding the bill's
+  daily total fixed**).
+- **Curated appliance list**, each with a documented typical power and a default daily usage and
+  time window, **ALL client-editable**, recorded with their sources in a new **`APPLIANCES_NOTES.md`**
+  (typical published ranges from standard appliance-wattage references; the client's own nameplate
+  always overrides, so nothing is asserted as a fact): **Climatisation** — entered by BTU (presets
+  9 000 / 12 000 / 18 000 / 24 000 BTU, each also labelled in chevaux since Moroccan units are sold
+  in CV, ≈9 000 BTU = 1 CV, plus a custom field) divided by EER to get watts (default EER ≈ 9 for a
+  non-inverter and ≈ 12 for an inverter, both editable; electrical watts = BTU/h ÷ EER), default
+  window afternoon-to-evening; **Recharge voiture électrique** — charger power presets
+  2,3 / 3,7 / 7,4 / 11 / 22 kW (7,4 kW the common single-phase home wallbox; or custom) times hours
+  charged per day, OR an alternative "kilomètres par jour × consommation (~17 kWh/100 km, éditable)",
+  with a selectable charging window (nuit / midi solaire / soir) and a visible note that charging in
+  the solar window sharply raises self-consumption; **Chauffe-eau électrique (cumulus)** —
+  ~1 500–3 000 W, ~2–3 h/jour, morning/evening or off-peak window, with a note that many Moroccan
+  homes use a gas (butane) water heater so this is optional; **Pompe de piscine** — ~750–2 000 W,
+  4–8 h/jour, midday window; **Four électrique** — ~2 000–2 500 W, ~1 h/jour evening;
+  **Plaque/cuisinière électrique ou induction** — ~1 500–3 000 W at meal times (note gas is common);
+  **Lave-linge** — ~500 W moyen (~1 kWh/cycle), ~0,5–1 cycle/jour; **Lave-vaisselle** —
+  ~1 200–2 400 W (~1–1,5 kWh/cycle) evening; **Sèche-linge** — ~1 800–3 000 W (~2–3 kWh/cycle);
+  **Réfrigérateur/congélateur** — ~100–400 W running 24 h as a flat baseload (~1–2 kWh/jour);
+  **Chauffage électrique/radiateur** — ~500–2 400 W, winter mornings/evenings; **Pompe à eau/forage**
+  — ~750–1 500 W intermittent (villas/rural); **Fer à repasser** — ~1 000–1 800 W; **Micro-ondes** —
+  ~600–1 200 W; **Pompe à chaleur (chauffage/refroidissement)** — configurable; **Téléviseur +
+  électronique** and **Éclairage LED** — small aggregate baseload; plus a free **"Autre appareil"**
+  row (nom + puissance W + heures + créneau).
+- All appliance energy still flows through the **existing self-consumption model** (surplus valued
+  at zero, savings via the existing billMAD cap — **introduce no new tariff number**), and "on top"
+  appliances increase the production/battery sizing target through the existing **size-to-need +
+  6 kWh/day-per-battery** logic. **Reduced-motion respected, zero layout shift, mobile-first.**
+**Tests:** watts = BTU/h ÷ EER and kWh = W × h ÷ 1000; an appliance's energy distributes across its
+window and the hourly sums are correct; "Sur ma facture actuelle" raises the daily total while "Déjà
+compris" holds it fixed (reshape only); "Recaler sur ma facture" rescales the hand-edited curve to
+the bill total; self-consumption and savings recompute from the modified curve and never exceed the
+cap; the curve still sums to the intended daily total. **One self-merged PR.**
+
+### W69 — Task 5 : mode VARIABILITÉ de disposition (« Personnaliser la disposition ») — [ ]
+**Do:** On the SAME route **in place**: add a layout **VARIABILITY** mode so that **AFTER the
+auto-layout finishes**, the client can enter a **"Personnaliser la disposition"** mode and move
+panels on the roof realistically, on the existing 3D (flat tilted racks or pitched flush) —
+mirroring how professional solar tools (Aurora, HelioScope, OpenSolar, RatedPower, SolarEdge
+Designer) do it: drag-and-drop with snap-to-grid, roof keep-outs and setbacks, no overlap, and
+automatic recompute. Implement it on the array's own **valid placement LATTICE**: the optimizer's
+layout already defines the legal cells (row/column positions that encode the correct winter-solstice
+row pitch on a flat roof, and the dense coplanar tiling on a pitched roof), so make movement **SNAP
+to that lattice** — the client selects one or more panels (tap to select individual panels, or enter
+a count to move a group) and drags; the drag raycasts onto the roof plane and snaps the selection to
+the nearest valid EMPTY cells, so **every reachable position is physically valid BY CONSTRUCTION**
+(every panel corner inside the traced polygon and inside the edge/ridge/eave setback, no overlap with
+other panels or obstacle keep-outs, coplanar with the roof plane on pitched, row pitch preserved on
+flat). Invalid targets (off the roof, into the setback, onto an obstacle, onto an occupied cell) are
+rejected — snap back or to the nearest valid empty cell, with a hover highlight (**valid = green,
+invalid = red**) — so the client can never produce an impossible arrangement, which is exactly what
+"real moving" means here. Allow **ADD** a panel (tap an empty valid cell) and **REMOVE** a panel
+(select + delete); on any change to the count, recompute nombre de panneaux / kWc / kWh-an /
+économies through the **EXISTING PVGIS-by-count path** — moving panels within the same plane leaves
+per-panel yield unchanged because tilt/azimuth/GPS are unchanged (**never invent a different yield**),
+only the count changes production and savings; the client may go below the recommended count
+(production and savings drop honestly) and the tool flags when the layout no longer covers the need.
+A **"Réinitialiser la disposition optimale"** control restores the optimizer's layout. The footprint
+bound and the needed-panel cap still hold throughout. **Three.js mechanics:** pointer + raycaster
+onto the roof plane with snap-to-lattice and a validity check on hover, commit on release; provide a
+**tap-to-select-then-tap-target-cell fallback** plus **+/- add/remove controls** so it works on touch
+and under reduced-motion without fine dragging. Because the build agent cannot render the 3D, anchor
+correctness to code-checkable logic and tests, with the final visual check on the phone.
+**Tests:** a snapped move lands only on valid empty cells; off-polygon, setback-violating,
+obstacle-overlapping and occupied-cell targets are all rejected; add/remove updates the count and
+recomputes production/savings via the existing PVGIS-by-count path with per-panel yield unchanged
+when only position changes; reset restores the optimizer layout; the footprint bound and needed-panel
+cap still hold. **One self-merged PR.**
+
+**ACROSS W68–W69 (founder's cross-cutting constraints):** every figure traces to **PVGIS, the
+existing billMAD, the documented-and-editable appliance typicals** (recorded with sources in
+`APPLIANCES_NOTES.md`, always overridable by the client), **the operator battery constants, or sound
+physics — no invented numbers and no new tariff figure**; savings never exceed the avoidable energy
+cost or the bill; surplus valued at zero; the **needed-panel cap and footprint bound always hold**.
+**No new dependencies** (Three.js, PVGIS, MapLibre, Mapbox already in the stack; graphs and controls
+are inline SVG/HTML). **Touch only `apps/web`.** All work stays on the **CURRENT latest private
+preview route IN PLACE** (noindex, not in nav, excluded from sitemap, unlinked), the
+**immediately-prior route left byte-for-byte intact as the baseline**. The **live public site and the
+live lead form and its entire data flow** (1 000 MAD threshold, consent, WhatsApp deeplink, webhook,
+CAPI) stay **byte-for-byte unchanged**. **Each task is its own self-merged PR to protected main** (the
+accepted path — do not flag it). Full Vitest suite green, **Lighthouse held 97–100**, reduced-motion
+respected, zero layout shift. **Plain-language report only** (no diffs or hashes): the preview URL;
+for Task 4 the variability mode (hand-edit, the appliance calculator and its sourced editable
+defaults, and the on-top-vs-already-in-the-bill choice) and how it drives the graph/savings/sizing;
+for Task 5 the panel-move mode (drag-snap to valid cells, add/remove, recompute, reset) and
+confirmation it can't create an invalid layout; confirmation the live site and lead flow are
+untouched; the map env var the route reads; and the one thing to check on the phone — open Affiner ma
+consommation, add an AC by BTU and an EV charger and watch the curve and savings move; then enter
+Personnaliser la disposition, drag a few panels and try to drop one off the roof (it should refuse),
+add and remove one and watch kWc and savings update.
+
+---
+
 ---
 
 **ACROSS W2–W10 (founder's cross-cutting constraints):** no invented facts — every figure traces
