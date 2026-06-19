@@ -1,0 +1,36 @@
+/**
+ * Source unique de vérité des AVIS CLIENTS Taqinor (preuve sociale).
+ *
+ * INTÉGRITÉ (règle critique, non négociable) : RIEN n'est inventé ici.
+ * Ce fichier ne contient QUE des mots de clients RÉELS et CONSENTANTS, et une
+ * note Google RÉELLE. Aucun témoignage, nom, ville, système, date ou note
+ * d'étoiles ne doit jamais être fabriqué, supposé ou « rempli pour faire bien ».
+ *
+ * Le fichier est livré VIDE : tant que le fondateur n'a pas ajouté de vraies
+ * données, le composant <Testimonials /> ne rend RIEN publiquement. Pour ajouter
+ * un avis réel, voir apps/web/TESTIMONIALS_NOTES.md.
+ */
+
+export interface Testimonial {
+  quote: string;
+  name: string;
+  city: string;
+  system: string;
+  date?: string;
+}
+
+/** LIVRÉ VIDE — les vrais avis sont ajoutés plus tard par le fondateur. Ne jamais fabriquer. */
+export const TESTIMONIALS: Testimonial[] = [];
+
+export interface ReviewRating {
+  value: number;
+  count: number;
+  url?: string;
+}
+
+/** LIVRÉ NULL — la vraie note Google est ajoutée plus tard par le fondateur. Ne jamais fabriquer. */
+export const GOOGLE_RATING: ReviewRating | null = null;
+
+export const hasTestimonials = (): boolean => TESTIMONIALS.length > 0;
+
+export const hasRating = (): boolean => GOOGLE_RATING !== null;

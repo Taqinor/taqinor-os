@@ -177,6 +177,38 @@ unlinked):
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+**ACROSS W62–W66 (world-class audit — founder's cross-cutting constraints):** these tasks come from
+a June 2026 audit of the live site against best-in-class residential-solar sites (1KOMMA5°, Otovo,
+Aira, Enpal). **No invented facts anywhere** — every figure on the site traces to already-published
+Taqinor data or confirmed repo data; where a world-class pattern needs an asset the site does not yet
+have (client reviews, founder/team photos, brand logos), **build the empty section/scaffold and leave
+it flagged `pending real content from Reda` — never fabricate the content**. **No new dependencies.
+Touch only `apps/web`.** The **live lead form and its entire data flow** (1 000 MAD threshold,
+consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**. The **private estimator
+preview routes stay private** (noindex, not in nav, excluded from sitemap, unlinked) — do not surface
+or alter them. These tasks **land in the run's single end-of-batch self-merge to protected main** (the
+accepted path — don't flag it). **Lighthouse held 97–100 on every page, reduced-motion respected, zero
+layout shift.**
+
+> **W62–W66 archived to `docs/DONE.md` (shipped 2026-06-18).** See the DONE LOG below for the one-line
+> outcomes; full task text lives under "## Archived from WEB_PLAN.md" in `docs/DONE.md`.
+
+### W67 — English + Arabic versions of the public site (i18n, FR default) — [ ]
+**Do:** Add Astro's built-in i18n (FR default + EN + AR) — FAITHFUL translations of the EXISTING true
+copy (translate, never re-invent a claim; keep loi-82-21 wording and every figure exact), a language
+switcher in header + footer, correct `hreflang` + per-locale canonicals + sitemap entries, and **full
+RTL** for Arabic (`dir="rtl"`, mirrored layout). No new dependency (Astro i18n is native). The lead form
+and its entire data flow stay byte-for-byte unchanged in every locale.
+**Done when:** every public page resolves under /en/ and /ar/ with accurate translations, the switcher
+works, hreflang + sitemap are correct, Arabic renders RTL without layout breakage, Lighthouse held, the
+lead form is unchanged. (Large task — the autopilot may lane/stage it across pages.)
+**Decisions (Reda, 2026-06-18):** WHOLE SITE in one build (not staged); the diagnostic lead form's
+visible LABELS are translated per language while its payload, endpoint, 1 000 MAD threshold, consent,
+WhatsApp deeplink + CAPI stay byte-for-byte identical. Pre-publication translation review waived —
+build to a high bar and ship; keep loi-82-21 wording and every figure exact in EN + AR. Executed in
+verified non-breaking increments (FR stays byte-identical, suite stays green): foundation first
+(config + dictionary + utils + LanguageSwitcher + Layout hreflang/RTL), then page-by-page.
+
 ---
 
 ---
@@ -389,3 +421,16 @@ report only** (no diffs or hashes): for each task, **what a visitor now sees dif
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state of the site +
   preview lab)*
+- 2026-06-18 — W62 shipped: `Testimonials.astro` + `testimonials.ts` (ships EMPTY, renders nothing
+  until real avis added) on accueil/résidentiel/professionnel, Review/AggregateRating JSON-LD only on
+  real data, `TESTIMONIALS_NOTES.md` with a one-tap WhatsApp review-request message. No fabricated avis.
+- 2026-06-18 — W63 shipped: homepage guarantee band « 25 ans de performance garantie · production
+  mesurée, pas promise — monitoring Deye Cloud » (facts from /garanties + monitoring; no new number).
+- 2026-06-18 — W64 shipped: `FounderPortrait.astro` — photo-ready founder block, text-only fallback
+  identical to today until Reda's portrait file lands under `public/photos/` (FOUNDER_PHOTO=null).
+- 2026-06-18 — W65 shipped: `BrandStrip.astro` + `brands.ts` — 7 founder-confirmed tier-1 brands
+  (+ Jinko, Huawei, Nexans), official logos when a file exists else styled word-marks; /équipement intro
+  updated to name them (no invented model/spec). Logo files pending under `public/brands/`.
+- 2026-06-18 — W66 shipped: « réponse sous 48 h ouvrées » on /contact (corrected from 24 h); SEO/a11y/
+  hygiene guards (seo-pages, hygiene-w61, picture, photos-assets) green + clean production build.
+- 2026-06-18 — Verified: full Vitest suite 1364/1364 green, `astro build` clean, `tsc` check clean.

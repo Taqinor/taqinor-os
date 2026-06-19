@@ -1,0 +1,47 @@
+---
+/**
+ * Bande de marques tier-1 (distributeurs officiels au Maroc). Rend le logo
+ * officiel QUAND un fichier logo existe (`brand.logo`), sinon un word-mark
+ * stylisé en `font-display`. INTÉGRITÉ : noms / logos de marque uniquement,
+ * aucun numéro de modèle ni claim technique inventé.
+ */
+import { BRANDS } from '../lib/brands';
+
+interface Props {
+  heading?: string;
+}
+
+const { heading = 'Marques tier-1 · distributeurs officiels au Maroc' } = Astro.props;
+---
+
+<section class="border-t border-white/10 px-4 py-20 sm:py-28">
+  <div class="mx-auto max-w-6xl text-center">
+    <p class="tech-label v2-kicker rule-brass justify-center text-brass-300">{heading}</p>
+    <ul class="mt-10 flex flex-wrap items-center justify-center gap-x-10 gap-y-6 sm:gap-x-14" data-stagger>
+      {
+        BRANDS.map((brand, i) => (
+          <li class="v2-rise" style={`--v2-i:${i}`}>
+            {brand.logo ? (
+              <img
+                src={brand.logo}
+                alt={brand.name}
+                class="h-8 w-auto object-contain opacity-90 transition hover:opacity-100"
+                loading="lazy"
+              />
+            ) : (
+              <span class="font-display text-xl font-bold tracking-tight text-lune transition-colors hover:text-white sm:text-2xl">
+                {brand.name}
+              </span>
+            )}
+          </li>
+        ))
+      }
+    </ul>
+    <a
+      href="/équipement"
+      class="v2-rise mt-10 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300"
+    >
+      Voir notre équipement →
+    </a>
+  </div>
+</section>
