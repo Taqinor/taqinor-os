@@ -288,8 +288,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   useEffect(() => {
     const phone = (phoneKey ?? '').trim()
     const email = (emailKey ?? '').trim()
-    if (!phone && !email) { setDupMatches([]); return undefined }
     const t = setTimeout(() => {
+      if (!phone && !email) { setDupMatches([]); return }
       const params = {}
       if (phone) params.telephone = phone
       if (email) params.email = email

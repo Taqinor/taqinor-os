@@ -165,7 +165,7 @@ export default function ShotListSection() {
             <Select value={newPhase} onValueChange={setNewPhase}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {PHASES.map(([v, lbl]) => (
+                {PHASES.map(([v]) => (
                   <SelectItem key={v} value={v}>{PHASE_LABELS[v]}</SelectItem>
                 ))}
               </SelectContent>

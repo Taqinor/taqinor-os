@@ -117,7 +117,7 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ### Group D — Paramètres: split + far more editable settings (all in one pass)
 
-- [ ] **D2 — Quick settings.** Add:
+- [x] **D2 — Quick settings.** Add:
   - editable **conditions générales** + **quote validity** (printed on the devis PDF);
   - **consolidated defaults**: default responsable, default installer, default acompte %;
   - **client ICE** on the client record, surfaced on devis/factures and **carried through
@@ -160,6 +160,15 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-19 — **D2 (Quick settings — côté DEVIS)** livré dans le batch OS du 2026-06-19
+  (lane DOCLIT, voir `docs/PLAN.md` DONE LOG). Les littéraux éditables du devis (CGV, validité
+  « 30 jours », textes de garantie, libellé du tampon d'acceptation N26) sont câblés du moteur
+  premium vendoré vers des réglages versionnés par société (`parametres.DocumentTemplates`),
+  chaque défaut reproduisant EXACTEMENT le littéral actuel ⇒ PDF devis **byte-identique** tant
+  que rien n'est édité (vérifié par test). Onglet Paramètres → « Modèles de documents ». Le
+  côté FACTURE (RIB/instructions/CGV) existait déjà (Feature B / N36). Famille cohérente avec
+  N26/N59/N60/N67 de `docs/PLAN.md`. Additif, FR, société forcée serveur, aucun prix d'achat,
+  STAGES.py/DEBUG intouchés. PLAN2 reste drainée (seuls M59/D2→fait restent ; gatés Reda).
 - 2026-06-18 — RBAC + visibilité + audit + réglages facture + chart chantiers +
   icônes PWA (run « features A–G », un seul self-merge). **D4/N68/N69 (RBAC) :**
   7 rôles éditables (Directeur, Administrateur, Commercial responsable, Commercial,

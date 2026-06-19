@@ -29,7 +29,6 @@ export default function CartePage() {
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
     reportingApi.getGeoPoints()
       .then((r) => {
         if (!alive) return
