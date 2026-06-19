@@ -96,10 +96,14 @@ const stockApi = {
   // décrémente le stock. Usage INTERNE (prix d'achat jamais client-facing).
   getRetoursFournisseur: (params) =>
     api.get('/stock/retours-fournisseur/', { params }),
+  getRetourFournisseur: (id) =>
+    api.get(`/stock/retours-fournisseur/${id}/`),
   createRetourFournisseur: (data) =>
     api.post('/stock/retours-fournisseur/', data),
   validerRetourFournisseur: (id) =>
     api.post(`/stock/retours-fournisseur/${id}/valider/`),
+  annulerRetourFournisseur: (id) =>
+    api.post(`/stock/retours-fournisseur/${id}/annuler/`),
 }
 
 export default stockApi

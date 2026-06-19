@@ -3,6 +3,22 @@ from django.conf import settings
 
 
 class Categorie(models.Model):
+    # Tag de TYPE d'équipement optionnel et additif (L579) : permet de filtrer
+    # un emplacement (slot) d'équipement de chantier par TYPE indépendamment du
+    # libellé free-text de la catégorie (qu'une société peut renommer). Les
+    # catégories existantes restent NON typées (None) → comportement inchangé.
+    class TypeEquipement(models.TextChoices):
+        PANNEAU = 'panneau', 'Panneau'
+        ONDULEUR = 'onduleur', 'Onduleur'
+        BATTERIE = 'batterie', 'Batterie'
+        STRUCTURE = 'structure', 'Structure'
+        CABLE = 'cable', 'Câble'
+        PROTECTION = 'protection', 'Protection'
+        POMPE = 'pompe', 'Pompe'
+        VARIATEUR = 'variateur', 'Variateur'
+        COMPTEUR = 'compteur', 'Compteur'
+        ACCESSOIRE = 'accessoire', 'Accessoire'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -15,6 +31,14 @@ class Categorie(models.Model):
     ordre = models.PositiveSmallIntegerField(
         default=100,
         help_text="Ordre d'affichage délibéré (plus petit = plus haut).")
+    type_equipement = models.CharField(
+        max_length=20,
+        choices=TypeEquipement.choices,
+        null=True,
+        blank=True,
+        help_text="Type d'équipement (optionnel) pour filtrer les slots de "
+                  "chantier par TYPE, quel que soit le libellé de la "
+                  "catégorie. Vide = non typée (comportement historique).")
 
     class Meta:
         verbose_name = "Catégorie"

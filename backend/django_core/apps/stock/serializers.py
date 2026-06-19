@@ -25,9 +25,33 @@ class CategorieSerializer(serializers.ModelSerializer):
 
 
 class FournisseurSerializer(serializers.ModelSerializer):
+    # L699 — compteurs LECTURE SEULE : nombre de produits liés et de bons de
+    # commande fournisseur associés. Affichés « X produits · Y bons de
+    # commande » sur la fiche fournisseur. Annotés en amont quand disponibles
+    # (liste), sinon repli sur un count() direct (détail).
+    nb_produits = serializers.SerializerMethodField()
+    nb_bons_commande = serializers.SerializerMethodField()
+    # L698 — message FR explicite quand l'email saisi (création inline incluse)
+    # n'est pas un email valide.
+    email = serializers.EmailField(
+        required=False, allow_null=True, allow_blank=True,
+        error_messages={'invalid': 'Adresse email invalide.'})
+
     class Meta:
         model = Fournisseur
         fields = '__all__'
+
+    def get_nb_produits(self, obj):
+        annotated = getattr(obj, 'nb_produits_annot', None)
+        if annotated is not None:
+            return annotated
+        return obj.produits.count()
+
+    def get_nb_bons_commande(self, obj):
+        annotated = getattr(obj, 'nb_bons_commande_annot', None)
+        if annotated is not None:
+            return annotated
+        return obj.bons_commande.count()
 
 
 class MouvementStockSerializer(serializers.ModelSerializer):
@@ -94,6 +118,21 @@ class ProduitSerializer(serializers.ModelSerializer):
     # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
+
+    def validate(self, attrs):
+        # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
+        # produit contre les définitions du module « produit », même chemin que
+        # Lead. À la création on valide toujours (champs obligatoires) ; en
+        # mise à jour, uniquement si custom_data est fourni.
+        is_create = self.instance is None
+        if is_create or 'custom_data' in attrs:
+            from apps.customfields.serializers import validate_custom_data
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            if company is not None:
+                attrs['custom_data'] = validate_custom_data(
+                    'produit', company, attrs.get('custom_data'))
+        return attrs
 
     class Meta:
         model = Produit
