@@ -278,3 +278,61 @@ class TestAttachments(TestCase):
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType
     return ContentType.objects.get_for_model(Lead)
+
+
+class TestVentesAttachmentTargets(TestCase):
+    """ventes.devis et ventes.facture sont des cibles de pièce jointe valides :
+    on peut RÉELLEMENT y joindre un fichier (persiste + listable)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Vts Att', slug='vts-att')
+        from apps.roles.models import Role, COMMERCIAL_PERMISSIONS
+        role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=COMMERCIAL_PERMISSIONS, est_systeme=True)
+        self.user = User.objects.create_user(
+            username='vts_com', password='x', role=role, company=self.company)
+        self.api = auth(self.user)
+
+    def _client(self):
+        from apps.crm.models import Client
+        return Client.objects.create(company=self.company, nom='Cli VA')
+
+    def _upload(self, model, oid):
+        from io import BytesIO
+        pdf = b'%PDF-1.4\n%%EOF\n'
+
+        def fake_store(file):
+            return ({'file_key': f'attachments/{model}.pdf',
+                     'filename': 'piece.pdf', 'size': len(pdf),
+                     'mime': 'application/pdf'}, None)
+
+        with mock.patch('apps.records.views.store_attachment',
+                        side_effect=fake_store):
+            up = BytesIO(pdf)
+            up.name = 'piece.pdf'
+            return self.api.post('/api/django/records/attachments/', {
+                'model': model, 'id': oid, 'file': up,
+            }, format='multipart')
+
+    def test_attach_to_devis(self):
+        from apps.ventes.models import Devis
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-VA-1', client=self._client())
+        resp = self._upload('ventes.devis', devis.id)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            Attachment.objects.filter(object_id=str(devis.id)).count(), 1)
+        lst = self.api.get(
+            f'/api/django/records/attachments/?model=ventes.devis&id={devis.id}')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+
+    def test_attach_to_facture(self):
+        from apps.ventes.models import Facture
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-VA-1', client=self._client())
+        resp = self._upload('ventes.facture', facture.id)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            Attachment.objects.filter(object_id=str(facture.id)).count(), 1)

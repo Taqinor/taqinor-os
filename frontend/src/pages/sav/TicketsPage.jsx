@@ -10,6 +10,7 @@ import api from '../../api/axios'
 import { downloadBlob } from '../../utils/downloadBlob'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -408,6 +409,11 @@ function TicketDetail({ ticket, onClose, onSaved }) {
             )}
           </FormSection>
         </Form>
+
+        {/* ── Pièces jointes ── */}
+        <section className="flex flex-col gap-3">
+          <AttachmentsPanel model="sav.ticket" id={id} />
+        </section>
 
         {/* ── Interventions ── */}
         <section className="flex flex-col gap-3">

@@ -6,6 +6,7 @@ import {
   Input, Textarea, Segmented, Button, useDirtyGuard,
 } from '../../ui'
 import { canonicalPhoneMA } from '../../lib/format'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
 
 // Avertissements NON bloquants sur les identifiants marocains. Renvoie une
 // chaîne d'aide (ou null) — n'empêche JAMAIS l'enregistrement, sert juste à
@@ -311,6 +312,14 @@ export default function ClientForm({ client = null, onClose }) {
                 />
               </FormField>
             </FormSection>
+
+            {isEdit && client?.id && (
+              <FormSection title="Pièces jointes">
+                <div className="sm:col-span-2">
+                  <AttachmentsPanel model="crm.client" id={client.id} />
+                </div>
+              </FormSection>
+            )}
 
             {errors.submit && (
               <div className="form-error-box">{errors.submit}</div>
