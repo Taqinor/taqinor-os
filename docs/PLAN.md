@@ -983,6 +983,40 @@ Tracked here so they aren't lost:
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state)*
 - _next: the agent adds entries here, e.g. "2026-06-15 — T1 done: devis preview renders + downloads in all 3 formats; cache-busting added; deployed."_
+- 2026-06-19 — **REFINEMENT QUEUE — wave 2 : 6 lanes worktree parallèles** (orchestrateur =
+  fold séquentiel + revue + lint/CI + bookkeeping + refresh empreinte structure ; reprend là où la
+  wave 1 s'était arrêtée). **~49 tâches `[ROUTINE]` supplémentaires cochées** (Ventes 24, Chantiers+Parc
+  8, CRM 7, Stock 5, Reporting+Dashboard 3, SAV 1). **VENTES** : avoir partiel (modale au lieu de
+  prompt), échéance inline, historique des paiements dans la modale, journal trimestriel, réf devis
+  d'origine cliquable, %/type de tranche, next-best-action, onglet « Partiellement payées », filtre
+  type, menu Actions mobile ; Relances (préremplissage niveau+message+date, consigne en lot, historique,
+  relevé PDF) ; DevisGenerator (prix/kWc vert/rouge vs cible, indice désignation≠produit, table mobile) ;
+  DevisList (historique des versions) ; DevisForm (TVA par ligne) ; nouveau modèle **`FactureActivity`**
+  (chatter facture : création d'avoir + encaissement, acteur serveur) + endpoint `…/historique/` ;
+  **export comptable** (factures validées sur plage, TVA par ligne + ICE, xlsx ET csv) via
+  `GET /ventes/export-comptable/`. **CHANTIERS+PARC** : changement de statut + réassignation installateur
+  en lot (garde d'adjacence) ; vraie carte **Leaflet** du Parc (réutilise `MapView` existant, AUCUNE
+  nouvelle dépendance) + filtres régime/dossier + synthèse kWc + tri + badge garantie + états
+  chargement/erreur (champ sérialiseur lecture seule `parc_garantie_etat`). **CRM** : `Client.created_by`
+  + `date_modification` (migration crm/0018, forcés serveur) + panneau détail client
+  (`GET /crm/clients/<id>/documents/`) ; FilterBar repliable mobile + actions ListView en menu « ⋯ » ;
+  canal piloté par le référentiel géré (hook `useCanaux`) ; bulk « planifier une activité ». **STOCK** :
+  ventilation par emplacement (lecture seule, `stock_breakdown_map` sans N+1) + filtre catalogue par
+  emplacement ; OCR regroupé Échecs/Réussis/Ignorés + « réessayer les échecs » + création BCF reçu depuis
+  l'OCR ; test de familles catalogue↔solar.js. **REPORTING+DASHBOARD** : cartes KPI cliquables
+  (Dashboard + Reporting, navigation `?statut=`), CalendarPage état vide + évènements en retard estompés.
+  **SAV** : ticket ouvert depuis un équipement hérite client+installation (serveur). **Surface structurelle
+  additive** (2 migrations crm/0018 + ventes/0020, 1 nouveau modèle, 3 endpoints, champs sérialiseur) ⇒
+  **empreinte STRUCTURE du CODEMAP rafraîchie** (`--write`) ; empreinte plan inchangée (ticks refinement
+  hors empreinte). Validation orchestrateur sur l'arbre foldé : flake8 backend 0, eslint 0 erreur (8
+  warnings legacy), 189 tests node front, build vite+PWA OK, py_compile OK, `check_stages` OK,
+  `codemap_fingerprint --check` OK après refresh ; suite backend complète (Postgres+MinIO) en CI (la lane
+  Ventes a en plus fait tourner 258 tests ventes en local). Additif, FR, multi-tenant (société forcée
+  serveur), prix d'achat jamais client-facing, STAGES.py/funnel/DEBUG/moteur premium intouchés, AUCUNE
+  nouvelle dépendance. **RESTE OUVERT** : ~115 tâches `[ROUTINE]` — surtout celles à fichiers PARTAGÉS
+  (ProduitPicker, AttachmentsPanel, GlobalSearch/Header, router/sidebar, parametres, AgentChat,
+  fastapi_ia, DevisGenerator côté ventes) et les transverses (Documents/ChampsPerso/Transversal/WhatsApp/
+  Notifications/Recherche), plus les gatés `[SCHEMA]/[DEP]/[DECISION]/[GALLERY]`.
 - 2026-06-19 — **REFINEMENT QUEUE — grand batch de 7 lanes worktree parallèles** (orchestrateur =
   fold séquentiel + revue + lint/CI + bookkeeping centralisé ; PLAN2 déjà drainée). Sept lanes à
   fichiers DISJOINTS, chacune propriétaire de son app Django + son dossier frontend de module,
