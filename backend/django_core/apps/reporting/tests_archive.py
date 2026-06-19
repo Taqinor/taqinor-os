@@ -94,3 +94,59 @@ class ArchiveDocumentsTest(TestCase):
         r = self.api.get(
             f'/api/django/reporting/archive/chantier/{self.chantier.id}/')
         self.assertEqual(r.status_code, 404)
+
+    # ── L862 — filtrage par type + tri par date ──────────────────────
+    def test_archive_filter_by_type(self):
+        url = f'/api/django/reporting/archive/client/{self.client_obj.id}/'
+        r = self.api.get(url, {'type': 'devis'})
+        self.assertEqual(r.status_code, 200)
+        types = {d['type'] for d in r.data['documents']}
+        self.assertEqual(types, {'devis'})
+        # Le compte reflète le filtre.
+        self.assertEqual(r.data['count'], len(r.data['documents']))
+
+    def test_archive_sort_asc(self):
+        url = f'/api/django/reporting/archive/client/{self.client_obj.id}/'
+        dates = [d['date'] for d in self.api.get(
+            url, {'sort': 'asc'}).data['documents'] if d['date']]
+        self.assertEqual(dates, sorted(dates))
+
+    # ── L863 — bon de commande : pas de PDF explicite ────────────────
+    def test_bon_commande_has_pdf_false(self):
+        from apps.ventes.models import BonCommande
+        BonCommande.objects.create(
+            reference='BC-ARCH-0001', client=self.client_obj,
+            devis=self.devis, company=self.company)
+        url = f'/api/django/reporting/archive/client/{self.client_obj.id}/'
+        r = self.api.get(url, {'type': 'bon_commande'})
+        self.assertTrue(r.data['documents'])
+        bc = r.data['documents'][0]
+        self.assertFalse(bc['has_pdf'])
+        self.assertIsNone(bc['download_url'])
+
+    def test_devis_has_pdf_true(self):
+        url = f'/api/django/reporting/archive/client/{self.client_obj.id}/'
+        r = self.api.get(url, {'type': 'devis'})
+        self.assertTrue(r.data['documents'][0]['has_pdf'])
+
+    # ── L864 — export .xlsx de la liste ──────────────────────────────
+    def test_archive_export_xlsx(self):
+        url = f'/api/django/reporting/archive/client/{self.client_obj.id}/'
+        r = self.api.get(url, {'export': 'xlsx'})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('spreadsheetml', r['Content-Type'])
+        self.assertIn('.xlsx', r['Content-Disposition'])
+        self.assertTrue(r.content.startswith(b'PK'))
+
+    def test_archive_export_xlsx_respects_type_filter(self):
+        from openpyxl import load_workbook
+        import io
+        url = f'/api/django/reporting/archive/client/{self.client_obj.id}/'
+        r = self.api.get(url, {'export': 'xlsx', 'type': 'devis'})
+        ws = load_workbook(io.BytesIO(r.content)).active
+        # En-tête + lignes devis uniquement.
+        self.assertEqual(
+            [c.value for c in ws[1]], ['Type', 'Référence', 'Date'])
+        body_types = {ws.cell(row=i, column=1).value
+                      for i in range(2, ws.max_row + 1)}
+        self.assertTrue(body_types <= {'Devis'})
