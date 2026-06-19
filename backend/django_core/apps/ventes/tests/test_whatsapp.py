@@ -159,6 +159,41 @@ class TestPublicDocumentEndpoint(TestCase):
         resp = APIClient().get(f'/api/django/public/document/{link.token}/')
         self.assertEqual(resp.status_code, 404)
 
+    def test_expired_token_returns_clear_french_notice(self):
+        # L854 : l'avis FR invite à demander un lien frais, sans aucune donnée
+        # interne (référence, montants, etc.).
+        link = ShareLink.for_devis(self.devis)
+        link.expires_at = timezone.now() - timedelta(days=1)
+        link.save(update_fields=['expires_at'])
+        resp = APIClient().get(f'/api/django/public/document/{link.token}/')
+        self.assertEqual(resp.status_code, 404)
+        detail = resp.data['detail']
+        self.assertIn('expiré', detail)
+        self.assertIn('TAQINOR', detail)
+        # Aucune fuite de donnée interne dans l'avis.
+        self.assertNotIn(self.devis.reference, detail)
+
+    def test_unknown_token_returns_clear_french_notice(self):
+        resp = APIClient().get('/api/django/public/document/nope-nope/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('expiré', resp.data['detail'])
+
+    @patch('apps.ventes.public_views.download_pdf', return_value=b'%PDF-1.4 x')
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/1/DEV-PUB-1.pdf')
+    def test_pdf_response_carries_noindex_header(self, m_gen, m_dl):
+        # L855 : le PDF public porte X-Robots-Tag: noindex.
+        link = ShareLink.for_devis(self.devis)
+        resp = APIClient().get(f'/api/django/public/document/{link.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('noindex', resp['X-Robots-Tag'])
+
+    def test_error_response_carries_noindex_header(self):
+        # L855 : même les réponses d'erreur publiques restent non-indexables.
+        resp = APIClient().get('/api/django/public/document/nope-nope/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('noindex', resp['X-Robots-Tag'])
+
 
 class TestLeadWhatsAppEndpoint(TestCase):
     def setUp(self):
