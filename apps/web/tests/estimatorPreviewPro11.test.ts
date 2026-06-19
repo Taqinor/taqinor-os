@@ -183,3 +183,119 @@ describe('pro-11 — l\'existant est strictement préservé', () => {
     expect(route).toContain("body.mountingplace === 'free' ? 'free' : 'building'");
   });
 });
+
+describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma consommation »)', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('la page expose un contrôle « Affiner ma consommation » + le panneau d\'affinage', () => {
+    expect(page).toContain('Affiner ma consommation');
+    expect(page).toContain('id="rp9-cons-window"');
+    expect(page).toContain('id="rp9-cons-toggle"');
+    expect(page).toContain('id="rp9-cons-panel"');
+  });
+
+  it('édition à la main : graphe de barres glissables + saisie numérique des 24 h', () => {
+    expect(page).toContain('id="rp9-cons-graph"'); // barres glissables
+    expect(page).toContain('id="rp9-cons-inputs"'); // saisie numérique (mobile / mouvement réduit)
+    expect(page).toContain('Recaler sur ma facture');
+    expect(page).toContain('id="rp9-cons-recal"');
+  });
+
+  it('calculateur d\'appareils : sélecteur, saisie clim (BTU) et voiture (kW/km)', () => {
+    expect(page).toContain('id="rp9-appl-kind"');
+    expect(page).toContain('id="rp9-appl-add"');
+    expect(page).toContain('id="rp9-ac-btu"'); // climatisation par BTU
+    expect(page).toContain('id="rp9-ac-eer"'); // ÷ EER
+    expect(page).toContain('id="rp9-ev-kw"'); // chargeur kW
+    expect(page).toContain('id="rp9-ev-km"'); // ou km/jour
+  });
+
+  it('synthèse : total conso, autoconsommation, économies plafonnées, batterie', () => {
+    expect(page).toContain('id="rp9-cons-total"');
+    expect(page).toContain('id="rp9-cons-self"');
+    expect(page).toContain('id="rp9-cons-savings"');
+    expect(page).toContain('id="rp9-cons-batt"');
+  });
+
+  it('le script branche la logique PURE applianceConsumption (jamais dupliquée)', () => {
+    expect(script).toContain("from '../lib/applianceConsumption'");
+    expect(script).toContain('composeConsumption(');
+    expect(script).toContain('savingsFromHourly(');
+    expect(script).toContain('batterySizing(');
+    expect(script).toContain('rescaleToDaily(');
+  });
+
+  it('les deux voies alimentent le MÊME moteur (économies + sizing existants)', () => {
+    // économies via le modèle billMAD existant (annualSavingsMad sous savingsFromHourly),
+    // sizing via le besoin existant (neededPanelsForTarget → renderActive).
+    expect(script).toContain('applyConsumptionToSizing');
+    expect(script).toContain('neededPanelsForTarget(');
+    expect(script).toContain('renderActive()');
+  });
+
+  it('« sur ma facture » vs « déjà compris » + recalage sont câblés', () => {
+    expect(script).toContain('data-appl-toggle'); // bascule onTop / inBill
+    expect(script).toContain("billing === 'onTop'");
+    expect(script).toContain('consHandEdited'); // override manuel suivi
+  });
+
+  it('un fichier de sources d\'appareils existe (typiques éditables, jamais inventés)', () => {
+    expect(existsSync(fileURLToPath(new URL('../APPLIANCES_NOTES.md', import.meta.url)))).toBe(true);
+  });
+});
+
+describe('pro-11 — W69 : mode VARIABILITÉ de disposition (« Personnaliser la disposition »)', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('la page expose un contrôle « Personnaliser la disposition » + le panneau', () => {
+    expect(page).toContain('Personnaliser la disposition');
+    expect(page).toContain('id="rp9-layout-window"');
+    expect(page).toContain('id="rp9-layout-toggle"');
+    expect(page).toContain('id="rp9-layout-panel"');
+  });
+
+  it('boutons +/− (touch + mouvement réduit), réinitialiser, et plan tactile', () => {
+    expect(page).toContain('id="rp9-layout-plus"');
+    expect(page).toContain('id="rp9-layout-minus"');
+    expect(page).toContain('Réinitialiser la disposition optimale');
+    expect(page).toContain('id="rp9-layout-reset"');
+    expect(page).toContain('id="rp9-layout-grid"'); // plan des emplacements (tap-sélection → tap-cible)
+  });
+
+  it('synthèse de disposition : posés / kWc / libres / couverture', () => {
+    expect(page).toContain('id="rp9-layout-count"');
+    expect(page).toContain('id="rp9-layout-kwc"');
+    expect(page).toContain('id="rp9-layout-free"');
+    expect(page).toContain('id="rp9-layout-cover"');
+  });
+
+  it('le script branche la logique PURE layoutVariability (jamais dupliquée)', () => {
+    expect(script).toContain("from '../lib/layoutVariability'");
+    expect(script).toContain('createLayoutState(');
+    expect(script).toContain('movePanelToPoint('); // glissé-snap
+    expect(script).toContain('movePanelToCell('); // tap-cible
+    expect(script).toContain('resetToOptimal('); // réinitialiser
+  });
+
+  it('recompute par COMPTAGE via le chemin de production existant (rendement/panneau inchangé)', () => {
+    // déplacer dans le même plan → même rendement ; seul le nombre change la production.
+    expect(script).toContain('renderCustomLayout');
+    expect(script).toContain('updateProductionWindow('); // chemin PVGIS-par-comptage existant
+    // renderScene rend l'occupation personnalisée (cellules potentiellement non contiguës)
+    expect(script).toContain('occupiedSet');
+  });
+
+  it('glissé sur la 3D : déprojection → snap (raycast sur le plan du toit)', () => {
+    expect(script).toContain('screenToENU(');
+    expect(script).toContain('map.unproject('); // raycast → plan du toit
+    expect(script).toContain('nearestEmptyCell(');
+  });
+
+  it('le plan des emplacements signale valide (vert) / invalide (rouge) par CSS', () => {
+    expect(page).toContain("data-occupied='false']:hover"); // cible valide = vert
+    expect(page).toContain('rgb(74 222 128'); // vert (valide)
+    expect(page).toContain('rgb(248 113 113'); // rouge (invalide/occupée)
+  });
+});
