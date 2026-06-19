@@ -1,0 +1,61 @@
+---
+/**
+ * AR — Legal notice (W67, RTL). Faithful Arabic translation of
+ * /mentions-legales ; every legal figure (RC, ICE, capital, names) stays EXACT
+ * and LTR where needed. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import { NAP } from '../../lib/nap';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const privacyHref = localizeNavHref('/politique-de-confidentialite', getLocaleFromPath(Astro.url.pathname));
+
+// البيانات القانونية — ملف الشركة 2026. القيم دقيقة؛ تُترجم العناوين فقط.
+const rows = [
+  { label: 'الاسم التجاري', value: 'TAQINOR Solutions SARLAU' },
+  { label: 'الشكل القانوني', value: 'شركة ذات مسؤولية محدودة بشريك وحيد' },
+  { label: 'السجل التجاري', value: 'RC 691213 — المحكمة التجارية بالدار البيضاء' },
+  { label: 'ICE', value: '003799642000067' },
+  { label: 'رأس المال', value: '100 000,00 MAD' },
+  { label: 'المسيّر', value: 'السيد رضا قصري' },
+  { label: 'الاتصال', value: `${NAP.email} · ${NAP.phoneDisplayIntl}` },
+  { label: 'الاستضافة', value: 'Cloudflare, Inc. — شبكة عالمية (cloudflare.com)' },
+];
+---
+
+<Layout
+  title="إشعار قانوني | Taqinor"
+  description="معلومات قانونية لـ TAQINOR Solutions SARLAU — RC 691213 الدار البيضاء، ICE 003799642000067."
+  ogSlug="accueil"
+>
+  <section class="px-4 py-14 text-white">
+    <div class="mx-auto max-w-3xl">
+      <p class="tech-label rule-brass cine-in text-brass-300">معلومات قانونية</p>
+      <h1 class="display cine-in mt-4 text-4xl [animation-delay:120ms]">إشعار قانوني</h1>
+    </div>
+  </section>
+
+  <!-- الوثيقة الرسمية، في كامل الضوء -->
+  <div class="seam-lumiere" aria-hidden="true"></div>
+  <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
+    ><div class="mx-auto max-w-3xl">
+    <div class="border-t-2 border-azur-900 bg-blanc">
+      {rows.map((r) => (
+        <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
+          <span class="tech-label text-encre-faint">{r.label}</span>
+          <span class="text-sm font-semibold" dir={/^[A-Za-z0-9]/.test(r.value) ? 'ltr' : undefined}>{r.value}</span>
+        </div>
+      ))}
+    </div>
+    <p class="mt-6 text-sm leading-relaxed text-encre-soft">
+      تعمل تاكينور بنظام منطقة الخدمة (تدخّل ميداني فقط، دون استقبال للعموم):
+      الدار البيضاء، الرباط، مراكش، طنجة، أكادير — تنقّلات في كامل المغرب.
+    </p>
+    <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+      لأي سؤال يتعلق بالبيانات الشخصية، راجع
+      <a href={privacyHref} class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">سياسة الخصوصية</a>.
+    </p>
+    </div>
+  </section>
+</Layout>

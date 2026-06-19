@@ -1,0 +1,127 @@
+---
+/**
+ * EN — Solutions hub (W67). Faithful translation of /nos-solutions ; no new
+ * figure or claim. Solution-card links use localizeNavHref so they point to the
+ * EN page when it exists, else fall back to the existing FR page (never a dead
+ * link). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const solutions = [
+  {
+    href: '/résidentiel',
+    title: 'Residential solar',
+    summary:
+      'Villa or apartment: we size to your bill, not to a kit, and the Law 82-21 declaration goes out with the project.',
+  },
+  {
+    href: '/professionnel',
+    title: 'Business & industrial solar',
+    summary:
+      'Warehouses, factories, hotels, clinics: we tackle the electricity line, medium voltage if needed, within the rules of Law 82-21.',
+  },
+  {
+    href: '/pompage-solaire',
+    title: 'Solar pumping',
+    summary:
+      'Irrigation with the sun, most often without batteries, set to flow rate and total head — and VAT-exempt for agriculture.',
+  },
+  {
+    href: '/batteries-stockage',
+    title: 'Batteries & storage',
+    summary:
+      'Dyness LFP batteries for the evening dip or service continuity, when your consumption curve justifies it.',
+  },
+  {
+    href: '/maintenance-monitoring',
+    title: 'Maintenance & monitoring',
+    summary:
+      'Deye Cloud supervision with client access, after-sales that acts on alerts and a complete technical file — life after install.',
+  },
+  {
+    href: '/regularization-article-33',
+    title: 'Law 82-21 regularization',
+    summary:
+      'An existing installation brought back into line via Article 33.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Our solar solutions — Taqinor',
+  hasPart: solutions.map((s) => ({
+    '@type': 'Service',
+    name: s.title,
+    url: new URL(s.href, Astro.site).href,
+  })),
+};
+---
+
+<Layout
+  title="Our solar solutions in Morocco: six answers, one method | Taqinor"
+  description="The whole Taqinor offer at a glance: residential solar, business & industrial, agricultural pumping, LFP batteries & storage, Deye Cloud maintenance & monitoring, and Law 82-21 regularization. Six different projects, one shared starting point — your real, measured situation."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Our solutions' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Our solutions</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">A solar offer for every need</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          A villa and a warehouse aren't sized the same way; agricultural pumping and the
+          regularization of an existing installation even less so. Six different projects, then,
+          but a single starting point: your situation, measured, before any equipment choice.
+          Here's the whole picture.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
+        {solutions.map((s, i) => (
+          <a href={L(s.href)} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <p class="tech-label text-brass-300">Solution</p>
+            <h2 class="display mt-2 text-xl text-white" set:html={s.title.replace('&', '&amp;')} />
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>
+            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Discover →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-3xl text-center">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Where to start</p>
+        <h2 class="display v2-section-title mt-5 text-white">Not sure which solution you need?</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          No need to decide alone. Describe your situation and your consumption, and the free
+          assessment sorts it out: the solution that fits your case, and the Law 82-21 regime you
+          fall under. No commitment.
+        </p>
+        <a href={contactSim} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Start my free assessment</a>
+      </div>
+    </section>
+
+    <CtaBand title="The right solution comes out of the assessment, not a catalogue — and it's free." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

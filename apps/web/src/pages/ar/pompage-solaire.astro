@@ -1,0 +1,194 @@
+---
+/**
+ * AR — Solar pumping (W67, RTL). Faithful Arabic translation of /pompage-solaire ;
+ * a CAPABILITY page (no invented project/photo/production figure). The verified
+ * tax point is preserved EXACTLY: VAT exemption for AGRICULTURAL pumping only —
+ * never residential rooftop PV. Internal links via localizeNavHref. FR
+ * untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const etapes = [
+  {
+    k: '01',
+    title: 'الالتقاط الشمسي',
+    body: 'تحوّل الألواح أشعة الشمس إلى كهرباء من الشروق إلى الغروب. تُستنتج قدرة الحقل من حجم الماء الواجب توفيره: ننطلق من الحاجة نحو عدد الألواح، لا العكس.',
+  },
+  {
+    k: '02',
+    title: 'الضخ على إيقاع الشمس',
+    body: 'تشغيل مباشر، غالباً دون بطاريات: تدور المضخّة خلال ساعات الشمس وتصبّ بقدر ما يقوى الإشعاع. لا بنك بطاريات يُشترى أو يُبرَّد أو يُستبدَل كل ثماني سنوات.',
+  },
+  {
+    k: '03',
+    title: 'تخزين الماء، لا الطاقة',
+    body: 'الاحتياط هو الحوض، لا البطارية. نضخّ ظهراً حين يعطي الحقل كامل قدرته، ونسقي في الساعة التي يطلبها المحصول. الماء ينتظر في الخزان؛ لا يتفرّغ ولا يشيخ.',
+  },
+  {
+    k: '04',
+    title: 'التحكّم بالمغيّر',
+    body: 'يضبط المغيّر سرعة المضخّة حسب الطاقة المتاحة، يُشغّل المحرّك بسلاسة ويقطعه عند العطل — التشغيل على الجاف، انخفاض الجهد، الحمل الزائد. هذه الإلكترونيات هي ما يمتصّ الغيوم العابرة والفصول.',
+  },
+];
+
+const variables = [
+  {
+    title: 'الصبيب',
+    body: 'حجم الماء الواجب توفيره، بـ m³/h أو m³/يوم. يخرج من حاجات المحصول والمساحة الواجب سقيها؛ وهو المعطى الذي يأمر كل ما عداه.',
+  },
+  {
+    title: 'الارتفاع المانومتري الكلي (HMT)',
+    body: 'كل ما يجب على المضخّة تجاوزه، مجموعاً — عمق مستوى الماء في الثقب، فرق المستوى حتى الحوض، وضياعات الحمل في الأنابيب. الاستهانة بالـ HMT تعني صبيباً ناقصاً طوال الصيف.',
+  },
+  {
+    title: 'عمق الثقب',
+    body: 'عمق البئر وخاصة المستوى الديناميكي — الذي يبلغه الماء والمضخّة تشتغل — يحسمان بين مضخّة غاطسة ومضخّة سطحية، ويحدّدان قدرة الحقل.',
+  },
+  {
+    title: 'حاجات المحصول من الماء',
+    body: 'نوع المحصول والمساحة والفصل تحدّد الحجم المستهدف. هو مدخل الحساب: ننطلق من هناك، والباقي — مضخّة، مغيّر، عدد الألواح — يتبع.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  name: 'Solar pumping',
+  serviceType: 'الضخ الشمسي الكهروضوئي',
+  provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  areaServed: { '@type': 'Country', name: 'Maroc' },
+  description:
+    'دراسة وتحديد مقاس أنظمة الضخ الشمسي للفلاحة والسقي بالمغرب: مضخّة وحقل كهروضوئي محسوبان على الصبيب والـ HMT وحاجات الماء الفعلية.',
+};
+---
+
+<Layout
+  title="الضخ الشمسي الفلاحي بالمغرب: الصبيب، HMT، الثقب | Taqinor"
+  description="ضخ شمسي للسقي: تدور المضخّة على إيقاع الشمس، ينتظر الماء في الحوض عوض البطاريات، ويُحسب الحقل على الصبيب والـ HMT ومستوى الثقب. الضخ الشمسي الفلاحي مُعفى من الضريبة على القيمة المضافة بالمغرب — امتياز خاص بالفلاحة، لا بالكهروضوئي السكني."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الضخ الشمسي' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">خدمة جديدة</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">اضخّ الماء بالشمس، لا بالݣازوال</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          للسقي، يُنهي الضخ الشمسي تعبئة الݣازوال: ألواح تُحرّك المضخّة ما دامت الشمس تعطي. الحقل لا
+          يخرج من كاطالوݣ — بل يُستنتج من أربع قياسات تُؤخذ على قطعتك: الصبيب المستهدف، الارتفاع الواجب
+          تجاوزه، مستوى الثقب، والماء الذي يطلبه المحصول.
+        </p>
+      </div>
+    </section>
+
+    <!-- كيف يعمل -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">كيف يعمل</p>
+        <h2 class="display v2-section-title mt-5 text-white">من الشمس إلى الحقل، في أربع مراحل</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {etapes.map((e, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl" dir="ltr">{e.k}</p>
+              <h3 class="display mt-2 text-2xl text-white">{e.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{e.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
+          أرتاب الحجم تتوقف كلياً على موقعك: ما لم يُقَس الثقب، يوجد منهج لا رقم. الحقل والمغيّر يستندان
+          إلى علامات الصف الأول نفسها التي على أسطحنا — <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">انظر المعدات →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- متغيرات تحديد المقاس (خلفية فاتحة) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">أربع قياسات</p>
+        <h2 class="display v2-section-title mt-5">ما يقرّر تحديد المقاس</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          مضخّة مفرطة الحجم تُبدّد الألواح؛ ومضخّة ضيّقة جداً تجفّ في عزّ يوليوز. النقطة الصحيحة توجد
+          عند تقاطع أربعة متغيرات ملموسة، تُؤخذ ميدانياً قبل فتح أي كاطالوݣ.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {variables.map((v, i) => (
+            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-azur-700">{v.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{v.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          أعطنا هذه الأرقام الأربعة وينرسم النظام من تلقاء نفسه؛ ينقص الصبيب أو الـ HMT، ويبقى كل شيء
+          تخميناً. نفضّل القياس. <a href={contactSim} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">اطلب تشخيصاً →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- امتياز ضريبي: إعفاء من الضريبة (الضخ الفلاحي فقط) -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-brass-300">امتياز ضريبي مؤكَّد</p>
+            <h2 class="display v2-section-title mt-5 text-white">الضخ الفلاحي مُعفى من الضريبة على القيمة المضافة</h2>
+            <p class="v2-lead mt-5 text-lune-soft">
+              بالمغرب، أنظمة ضخ الماء بالطاقة الشمسية مُعفاة من الضريبة على القيمة المضافة — ويغطّي
+              الإعفاء المجموع: المضخّة كما الألواح التي تغذّيها. لاستغلالية فلاحية، هذا قدر لا يُضاف إلى
+              فاتورة المعدات، ويقرّب لحظة استرداد النظام لكلفته من ݣازوال لم يُحرَق.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">لا للخلط</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              يستهدف الإعفاء <strong class="text-white">الضخ الفلاحي</strong> — المضخّة وحقلها —
+              <strong class="text-white">ولا يمتدّ إلى الكهروضوئي السكني على السطح</strong>. الطاقة
+              الشمسية على سطح منزل تبقى خاضعة للضريبة: نظامان منفصلان، ولن نَعِدك أبداً بنقل أحدهما على
+              الآخر.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- كتلة روابط / القطاع المهني -->
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">للمزيد</p>
+        <h2 class="display v2-section-title mt-5 text-white">الفلاحة، قطاع مهني</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          الضخ الشمسي شأن مستغلّين ومهنيين، لا أطقم عامة الجمهور. نقيس الثقب، نحسب، نركّب معدات الصف
+          الأول، وتغادر التركيبة بملفها التقني الكامل.
+        </p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">اطلب تشخيصاً →</a>
+          <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية المهنية →</a>
+          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">انظر المعدات →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="مشروع ضخ شمسي؟ ابدأ بالدراسة المجانية." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -2,9 +2,14 @@
 // avec repli FR, et PARITÉ des clés FR/EN/AR (aucune clé non traduite dans le
 // chrome). Garde aussi que le FR reprend EXACTEMENT les libellés en ligne.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { DEFAULT_LOCALE, LOCALES, LOCALE_DIR, isLocale } from '../src/i18n/config';
 import { getLocaleFromPath, localizePath, stripLocale, useTranslations } from '../src/i18n/utils';
 import { ui } from '../src/i18n/ui';
+import { hasLocale, localesForPath, localizeNavHref } from '../src/i18n/pages';
+
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
 describe('config des locales', () => {
   it('FR par défaut, 3 locales, AR en rtl', () => {
@@ -76,5 +81,113 @@ describe('parité & fidélité du dictionnaire', () => {
     expect(ui.fr['footer.tagline']).toBe(
       "Installations solaires dimensionnées par l'ingénierie, conformes à la loi 82-21.",
     );
+  });
+
+  it('le FR du FORMULAIRE reprend EXACTEMENT les chaînes déjà en ligne', () => {
+    // Toute chaîne du formulaire déplacée dans le dictionnaire doit garder son
+    // libellé FR au caractère près (le rendu FR ne change pas d'un octet).
+    const fr = ui.fr as Record<string, string>;
+    expect(fr['form.progress'].replace('{step}', '1')).toBe('Étape 1 sur 3');
+    expect(fr['form.submit']).toBe('Recevoir mon étude sur WhatsApp');
+    expect(fr['form.heading']).toBe('Diagnostic solaire — 60 secondes');
+    expect(fr['form.step1.legend']).toBe('Votre étude commence ici');
+    expect(fr['form.bill.label']).toBe("Facture d'électricité mensuelle *");
+    expect(fr['form.roof.label']).toBe('Type de toiture *');
+    expect(fr['form.step3.legend']).toBe('Recevez votre étude sur WhatsApp');
+    expect(fr['form.consent.link']).toBe('Politique de confidentialité');
+    expect(fr['form.waOptIn']).toBe('Je préfère être contacté(e) par WhatsApp');
+    // Tranches & toitures : les libellés visibles FR = la source BILL_RANGES /
+    // ROOF_TYPES (1:1) — seules les VALUES (ids) sont soumises, jamais traduites.
+    expect(fr['bill.1000-1500']).toBe('1 000 – 1 500 MAD');
+    expect(fr['bill.lt800']).toBe('Moins de 800 MAD');
+    expect(fr['roof.villa']).toBe('Villa');
+    expect(fr['roof.hangar']).toBe('Hangar industriel');
+  });
+
+  it('chiffres & mentions légales conservés EXACTEMENT en EN et AR', () => {
+    // Aucun chiffre/claim n'est inventé ni altéré entre les langues : la ligne
+    // légale (RC/ICE) et les seuils MAD restent identiques.
+    for (const loc of LOCALES) {
+      const d = ui[loc] as Record<string, string>;
+      expect(d['footer.legalLine']).toBe(
+        'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+      );
+      // Le seuil et les paliers MAD restent en chiffres latins partout.
+      expect(d['bill.gt10000']).toMatch(/10[\s,]?000/);
+    }
+    // La loi 82-21 garde son numéro exact dans le ruban, toutes langues.
+    for (const loc of LOCALES) {
+      expect((ui[loc] as Record<string, string>)['ribbon.badge']).toContain('82-21');
+    }
+  });
+});
+
+describe("registre de disponibilité & alternates (anti-lien-mort)", () => {
+  it("le FR est toujours disponible ; une page non traduite renvoie ['fr']", () => {
+    expect(localesForPath('/contact')).toContain('fr');
+    expect(localesForPath('/page-inexistante')).toEqual(['fr']);
+    expect(hasLocale('/contact', 'fr')).toBe(true);
+  });
+
+  it("localizeNavHref préfixe seulement si la cible existe, sinon repli FR (jamais de lien mort)", () => {
+    // FR : jamais de préfixe.
+    expect(localizeNavHref('/contact', 'fr')).toBe('/contact');
+    // EN/AR : préfixe seulement si la page est traduite.
+    if (hasLocale('/contact', 'en')) {
+      expect(localizeNavHref('/contact', 'en')).toBe('/en/contact');
+    }
+    // Page sans traduction EN → repli FR (cible qui existe toujours).
+    expect(localizeNavHref('/guides', 'en')).toBe('/guides');
+    expect(localizeNavHref('/installation-solaire-casablanca', 'ar')).toBe('/installation-solaire-casablanca');
+  });
+
+  it('toute page listée traduite a réellement ses routes /en/ et /ar/ construites', () => {
+    // Garde anti-lien-mort au niveau source : chaque chemin déclaré en EN/AR
+    // doit avoir le fichier de page correspondant.
+    for (const root of ['/contact']) {
+      if (hasLocale(root, 'en')) {
+        const f = root === '/' ? 'index' : root.replace(/^\//, '');
+        expect(() => read(`../src/pages/en/${f}.astro`), `en/${f}`).not.toThrow();
+        expect(() => read(`../src/pages/ar/${f}.astro`), `ar/${f}`).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('formulaire de lead — flux de données IDENTIQUE dans toutes les langues', () => {
+  // Le composant partagé DiagnosticForm est rendu dans toutes les locales :
+  // sa charge utile, ses noms de champs, l'endpoint, le seuil et le deeplink
+  // ne dépendent JAMAIS de la locale. On l'affirme sur la SOURCE (une seule
+  // source pour toutes les langues) + les libellés d'options gardent l'id.
+  const form = read('../src/components/DiagnosticForm.astro');
+
+  it('noms de champs soumis inchangés (charge utile identique)', () => {
+    for (const name of ['fullName', 'phone', 'whatsappOptIn', 'city', 'roofType', 'billRange', 'consent',
+      'fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+      expect(form, name).toContain(`name="${name}"`);
+    }
+  });
+
+  it('endpoint unique /api/simulate — jamais dépendant de la locale', () => {
+    const fetches = [...form.matchAll(/fetch\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+    expect(fetches).toContain('/api/simulate');
+    for (const url of fetches) expect(url.startsWith('/api/')).toBe(true);
+  });
+
+  it('le seuil 1 000 MAD et le deeplink WhatsApp restent hors du formulaire (serveur)', () => {
+    // Le formulaire ne fixe ni seuil ni numéro WhatsApp : ils vivent côté
+    // serveur (lead.ts / billRange.ts / whatsappLink) — inchangés par locale.
+    expect(form).not.toContain('1000');
+    expect(form).not.toMatch(/wa\.me\//);
+    // Le deeplink renvoyé par le serveur est posé tel quel (data.whatsappUrl).
+    expect(form).toContain('waEl.href = data.whatsappUrl');
+  });
+
+  it("les VALUES des options restent l'id (jamais traduites) ; seul le libellé change", () => {
+    // value={r.id} pour les tranches et les toitures → la charge utile soumise
+    // est identique quelle que soit la langue d'affichage.
+    expect(form).toContain('value={r.id}');
+    expect(form).toContain('billLabel(r.id)');
+    expect(form).toContain('roofLabel(r.id)');
   });
 });

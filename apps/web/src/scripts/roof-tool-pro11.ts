@@ -136,6 +136,41 @@ import {
   type ProductionSource,
   type SvgBox,
 } from '../lib/productionWindow';
+import {
+  HOURS_PER_DAY,
+  emptyCurve,
+  curveTotal,
+  baselineCurve,
+  composeConsumption,
+  rescaleToDaily,
+  selfConsumptionDailyKwh,
+  savingsFromHourly,
+  annualConsumptionFromDaily,
+  batterySizing,
+  acWattsFromBtu,
+  kwhFromWattsHours,
+  evKwhFromDistance,
+  applianceFromTypical,
+  APPLIANCE_TYPICALS,
+  AC_BTU_PRESETS,
+  AC_EER_DEFAULT_NON_INVERTER,
+  EV_CHARGER_KW_PRESETS,
+  EV_KWH_PER_100KM_DEFAULT,
+  type Appliance,
+  type HourlyCurve,
+} from '../lib/applianceConsumption';
+import {
+  createLayoutState,
+  occupiedCount,
+  emptyIndices,
+  nearestEmptyCell,
+  movePanelToPoint,
+  movePanelToCell,
+  addFirstEmpty,
+  removeLast,
+  resetToOptimal,
+  type LayoutState,
+} from '../lib/layoutVariability';
 
 interface InitOptions {
   maptilerKey: string;
@@ -313,6 +348,43 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const prodGraphEl = $('rp9-prod-graph');
   const prodSourceEl = $('rp9-prod-source');
   const prodSavingsEl = $('rp9-prod-savings');
+  // W68 — « Affiner ma consommation » : courbe horaire éditable + calculateur d'appareils.
+  const consWindowEl = $('rp9-cons-window');
+  const consToggleEl = $<HTMLButtonElement>('rp9-cons-toggle');
+  const consPanelEl = $('rp9-cons-panel');
+  const consTotalEl = $('rp9-cons-total');
+  const consSelfEl = $('rp9-cons-self');
+  const consSavingsEl = $('rp9-cons-savings');
+  const consBattEl = $('rp9-cons-batt');
+  const consGraphEl = $('rp9-cons-graph');
+  const consInputsEl = $('rp9-cons-inputs');
+  const consRecalEl = $<HTMLButtonElement>('rp9-cons-recal');
+  const applKindEl = $<HTMLSelectElement>('rp9-appl-kind');
+  const applAddEl = $<HTMLButtonElement>('rp9-appl-add');
+  const applAcEl = $('rp9-appl-ac');
+  const acBtuEl = $<HTMLSelectElement>('rp9-ac-btu');
+  const acEerEl = $<HTMLInputElement>('rp9-ac-eer');
+  const acHoursEl = $<HTMLInputElement>('rp9-ac-hours');
+  const acWattsEl = $('rp9-ac-watts');
+  const applEvEl = $('rp9-appl-ev');
+  const evKwEl = $<HTMLSelectElement>('rp9-ev-kw');
+  const evHoursEl = $<HTMLInputElement>('rp9-ev-hours');
+  const evKmEl = $<HTMLInputElement>('rp9-ev-km');
+  const applNoteEl = $('rp9-appl-note');
+  const applListEl = $('rp9-appl-list');
+  // W69 — « Personnaliser la disposition » : déplacement/ajout/suppression sur la lattice.
+  const layoutWindowEl = $('rp9-layout-window');
+  const layoutToggleEl = $<HTMLButtonElement>('rp9-layout-toggle');
+  const layoutPanelEl = $('rp9-layout-panel');
+  const layoutCountEl = $('rp9-layout-count');
+  const layoutKwcEl = $('rp9-layout-kwc');
+  const layoutFreeEl = $('rp9-layout-free');
+  const layoutCoverEl = $('rp9-layout-cover');
+  const layoutMinusEl = $<HTMLButtonElement>('rp9-layout-minus');
+  const layoutPlusEl = $<HTMLButtonElement>('rp9-layout-plus');
+  const layoutResetEl = $<HTMLButtonElement>('rp9-layout-reset');
+  const layoutGridEl = $('rp9-layout-grid');
+  const layoutNoteEl = $('rp9-layout-note');
   if (!mapEl) return;
 
   const setStatus = (msg: string) => {
@@ -452,6 +524,33 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let prodTarget = 0; // besoin annuel (kWh) pour les économies plafonnées
   let prodPlaneKey = '';
   const SVG_BOX: SvgBox = DEFAULT_GRAPH_BOX;
+
+  // ═══════════ W68 — VARIABILITÉ de consommation (« Affiner ma consommation ») ═══════════
+  // `consCurve` = courbe horaire de conso (24 kWh) effectivement utilisée pour
+  // l'autoconsommation/les économies/la batterie. `consHandEdited` : l'utilisateur a édité
+  // la courbe à la main (sinon elle est recomposée du socle + appareils à chaque changement
+  // de facture). `consAppliances` : appareils ajoutés. `consDailyTarget` = kWh/jour issu de
+  // la facture (socle). `consMode` : le panneau « Affiner » est-il ouvert ?
+  let consMode = false;
+  let consCurve: HourlyCurve = emptyCurve();
+  let consHandEdited = false;
+  let consAppliances: Appliance[] = [];
+  let consDailyTarget = 0; // socle journalier (kWh) dérivé de la facture
+  let consApplCounter = 0;
+
+  // ═══════════ W69 — VARIABILITÉ de disposition (« Personnaliser la disposition ») ═══════════
+  // `layoutMode` : le mode est-il actif ? `layoutState` : la lattice (toutes cellules
+  // valides du pavage gagnant) + occupation. `layoutOptimalCount` : comptage de
+  // l'optimiseur (pour la réinitialisation). `layoutSel` : index du panneau sélectionné
+  // (repli tactile). `layoutPlan` : le pavage gagnant courant (pack + grid + tilt + family
+  // + flush) pour re-rendre la 3D avec l'occupation personnalisée.
+  let layoutMode = false;
+  let layoutState: LayoutState | null = null;
+  let layoutOptimalCount = 0;
+  let layoutSel: number | null = null;
+  let layoutPlan:
+    | { pack: PackResult; grid: PanelGrid; tiltDeg: number; family: ConfigFamily; flush: boolean }
+    | null = null;
 
   const prodPlaneKeyOf = (p: ProdPlaneKey): string =>
     `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}`;
@@ -725,8 +824,19 @@ export function initRoofToolPro8(opts: InitOptions): void {
   //   toit en pente) pose les panneaux AFFLEURANTS sur la pente : pas de châssis ni
   //   de lest, panneau couché à l'inclinaison du toit. flush=false ⇒ rendu toit plat
   //   octet pour octet identique à pro-5. —
-  function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false) {
+  function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false, occupiedSet?: Set<number>) {
     if (!sceneRoot || !sun) return;
+    // W69 — un rendu SANS occupation explicite vient de l'optimiseur : on mémorise le
+    // plan gagnant (pack/grid/tilt/family/flush) + le comptage optimal, pour pouvoir
+    // re-rendre une disposition PERSONNALISÉE (occupation non contiguë) sur le MÊME plan.
+    if (!occupiedSet) {
+      layoutPlan = { pack, grid, tiltDeg, family, flush };
+      layoutOptimalCount = Math.max(0, Math.min(grid.panels.length, Math.round(maxCount)));
+      // Un rendu optimiseur = le PLAN a (peut-être) changé : la disposition personnalisée
+      // courante n'a plus de sens (cellules différentes) → on la repart de l'optimum.
+      layoutState = null;
+      layoutSel = null;
+    }
     setOrigin(pack.origin);
     sceneOrigin = pack.origin;
     obstacleMeshes.clear();
@@ -802,7 +912,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
     const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
 
-    const panels = grid.panels.slice(0, Math.max(0, maxCount));
+    // W69 — disposition personnalisée : si un ensemble d'index occupés est fourni, on
+    // rend EXACTEMENT ces cellules (potentiellement non contiguës) ; sinon on garde le
+    // comportement historique (les `maxCount` premières cellules du pavage).
+    const panels = occupiedSet
+      ? grid.panels.filter((_, i) => occupiedSet.has(i))
+      : grid.panels.slice(0, Math.max(0, maxCount));
     const panelMatsArr: THREE.Matrix4[] = [];
     const frontMats: THREE.Matrix4[] = [];
     const backMats: THREE.Matrix4[] = [];
@@ -1430,6 +1545,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (prodGraphEl) prodGraphEl.innerHTML = graph;
     if (prodSourceEl) prodSourceEl.textContent = `Source : ${prodSourceLabel(prodSource)}`;
     if (prodSavingsEl) prodSavingsEl.textContent = savingsTxt;
+    // W68 — la fenêtre « Affiner ma consommation » suit le même plan/production.
+    renderConsumption();
   }
 
   /**
@@ -1569,9 +1686,266 @@ export function initRoofToolPro8(opts: InitOptions): void {
       prodPerKwc = null;
       prodPanels = 0;
       renderProdWindow();
+      renderLayoutPanel();
       return;
     }
-    updateProductionWindow(cfg);
+    // W69 — en mode disposition personnalisée, le NOMBRE posé vient de l'occupation
+    // éditée (pas de l'optimiseur) ; le plan (GPS/tilt/azimut) reste celui du gagnant.
+    if (layoutMode && layoutState) {
+      updateProductionWindow({ ...cfg, panels: occupiedCount(layoutState) });
+    } else {
+      updateProductionWindow(cfg);
+    }
+    renderLayoutPanel();
+  }
+
+  // ═══════════ W68 — « Affiner ma consommation » : logique de rendu/recompute ═══════════
+
+  /** kWh/jour dérivé de la facture (le socle). billToAnnualKwh ÷ 365. */
+  function billDailyKwh(): number {
+    const annual = billToAnnualKwh(monthlyBill());
+    return annual > 0 ? annual / 365 : 0;
+  }
+
+  /** Profil horaire de PUISSANCE (kW) du jour-type courant (production), aligné 24 h.
+   *  Source = la même production PVGIS que la fenêtre (jour-type du mois sélectionné,
+   *  ou la date précise). Vide si aucun plan n'est calculé. */
+  function productionHourly(): HourlyCurve {
+    if (!prodScaled) return emptyCurve();
+    if (prodSpecificDate && Array.isArray(prodSpecificDate.hourlyKw) && prodSpecificDate.hourlyKw.length === HOURS_PER_DAY) {
+      return prodSpecificDate.hourlyKw.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
+    }
+    const prof = prodScaled.typicalDayByMonth[prodMonth];
+    if (Array.isArray(prof) && prof.length === HOURS_PER_DAY) return prof.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
+    return emptyCurve();
+  }
+
+  /** Recompose la courbe de conso depuis le socle (facture) + appareils, SAUF si
+   *  l'utilisateur l'a éditée à la main (auquel cas on garde son override). */
+  function rebuildConsCurve() {
+    consDailyTarget = billDailyKwh();
+    if (consHandEdited) return; // override manuel respecté
+    const base = baselineCurve(consDailyTarget);
+    consCurve = composeConsumption(base, consAppliances);
+  }
+
+  /** Met à jour le besoin « panneaux nécessaires » quand des appareils « en plus »
+   *  augmentent la conso (taille-au-besoin via le chemin existant). N'agit qu'en mode
+   *  auto (l'utilisateur n'a pas figé le besoin). */
+  function applyConsumptionToSizing() {
+    if (!neededAuto) return;
+    const dailyTotal = curveTotal(consCurve);
+    const annualCons = annualConsumptionFromDaily(dailyTotal);
+    if (annualCons <= 0) return;
+    const n = neededPanelsForTarget(annualCons, centroidLat);
+    if (n > 0) {
+      const clamped = clampNeeded(n);
+      if (clamped !== neededPanels) {
+        neededPanels = clamped;
+        renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
+      }
+    }
+  }
+
+  /** Rendu du graphe de conso (barres glissables) + superposition production (or pâle). */
+  function renderConsGraph() {
+    if (!consGraphEl) return;
+    const W = 480;
+    const H = 160;
+    const padBottom = 16;
+    const padTop = 8;
+    const plotH = H - padTop - padBottom;
+    const prod = productionHourly();
+    const maxC = consCurve.reduce((m, v) => Math.max(m, v), 0);
+    const maxP = prod.reduce((m, v) => Math.max(m, v), 0);
+    const max = Math.max(maxC, maxP, 1e-6);
+    const slot = W / HOURS_PER_DAY;
+    const barW = slot * 0.74;
+    const yFor = (v: number) => padTop + (plotH - (v / max) * plotH);
+    // Aire de production (or pâle) en arrière-plan.
+    let prodPath = '';
+    prod.forEach((v, h) => {
+      const x = h * slot + slot / 2;
+      prodPath += `${h === 0 ? 'M' : 'L'}${x.toFixed(1)} ${yFor(v).toFixed(1)} `;
+    });
+    const baseY = (H - padBottom).toFixed(1);
+    const prodArea = maxP > 0
+      ? `<path d="${prodPath}L${(W).toFixed(1)} ${baseY} L0 ${baseY} Z" fill="var(--color-brass-400,#e8b54a)" fill-opacity="0.10"/><path d="${prodPath}" fill="none" stroke="var(--color-brass-400,#e8b54a)" stroke-opacity="0.4" stroke-width="1.5"/>`
+      : '';
+    // Barres de conso (glissables) — chacune porte data-hour.
+    const bars = consCurve
+      .map((v, h) => {
+        const x = h * slot + (slot - barW) / 2;
+        const y = yFor(v);
+        const barH = Math.max(0, H - padBottom - y);
+        return `<rect class="rp9-cons-bar" data-hour="${h}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="1" fill="var(--color-azur-300,#7fb4e8)" fill-opacity="0.85" tabindex="0" role="slider" aria-label="Consommation à ${h} h" aria-valuenow="${v.toFixed(2)}"><title>${h} h : ${v.toFixed(2)} kWh</title></rect>`;
+      })
+      .join('');
+    const ticks = [0, 6, 12, 18, 23]
+      .map((h) => `<text x="${(h * slot + slot / 2).toFixed(1)}" y="${(H - 4).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--color-lune-faint,#6f7791)">${h}h</text>`)
+      .join('');
+    consGraphEl.innerHTML = `<line x1="0" y1="${baseY}" x2="${W}" y2="${baseY}" stroke="var(--color-white,#fff)" stroke-opacity="0.12" stroke-width="1"/>${prodArea}${bars}${ticks}`;
+  }
+
+  /** Saisie numérique des 24 heures (obligatoire mobile + mouvement réduit). */
+  function renderConsInputs() {
+    if (!consInputsEl) return;
+    consInputsEl.innerHTML = consCurve
+      .map(
+        (v, h) =>
+          `<label class="rp9-cons-hour">${h}h<input type="text" inputmode="decimal" data-hour="${h}" value="${v.toFixed(2)}" aria-label="Consommation à ${h} h en kWh" /></label>`,
+      )
+      .join('');
+  }
+
+  /** Recompute complet de la conso (synthèse + graphe + saisie) + impact sizing/batterie. */
+  function renderConsumption() {
+    if (!consWindowEl) return;
+    // La fenêtre n'apparaît que lorsqu'un plan de production existe.
+    const ready = !!prodScaled && prodPanels > 0;
+    consWindowEl.hidden = !ready;
+    if (!ready) return;
+    rebuildConsCurve();
+    if (!consMode) return; // panneau replié : rien à dessiner
+
+    const prod = productionHourly();
+    const dailyTotal = curveTotal(consCurve);
+    const annualCons = annualConsumptionFromDaily(dailyTotal);
+    const selfDaily = selfConsumptionDailyKwh(consCurve, prod);
+    const savings = savingsFromHourly(consCurve, prod, annualCons, tariffForCity(undefined));
+    const batt = batterySizing(consCurve, prod);
+
+    if (consTotalEl) consTotalEl.textContent = `${fmt1(dailyTotal)} kWh`;
+    if (consSelfEl) consSelfEl.textContent = `${fmt1(selfDaily)} kWh/j`;
+    if (consSavingsEl) consSavingsEl.textContent = annualCons > 0 ? fmtSavings(savings.low, savings.high) + ' MAD' : '—';
+    if (consBattEl) consBattEl.textContent = batt.batteries > 0 ? `${batt.batteries} × 6 kWh` : 'aucune';
+
+    renderConsGraph();
+    renderConsInputs();
+    renderApplianceList();
+    applyConsumptionToSizing();
+  }
+
+  /** Liste des appareils ajoutés : créneau + bascule « en plus » / « déjà compris » + suppr. */
+  function renderApplianceList() {
+    if (!applListEl) return;
+    if (consAppliances.length === 0) {
+      applListEl.innerHTML = '<li class="text-xs text-lune-faint">Aucun appareil ajouté — votre courbe suit le type calé sur la facture.</li>';
+      return;
+    }
+    applListEl.innerHTML = consAppliances
+      .map((a, i) => {
+        const onTop = a.billing === 'onTop';
+        return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border border-white/10 bg-nuit-900/40 p-3 text-sm" data-appl="${i}">
+          <span class="font-semibold text-white">${esc(a.label)}</span>
+          <span class="text-xs text-lune-faint">${fmt1(a.dailyKwh)} kWh/j · ${a.startHour}h–${((a.endHour % 24) + 24) % 24}h</span>
+          <button type="button" data-appl-toggle="${i}" class="ml-auto border px-2.5 py-1 text-xs font-semibold transition-colors ${onTop ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${onTop ? 'En plus de la facture' : 'Déjà compris'}</button>
+          <button type="button" data-appl-del="${i}" aria-label="Supprimer" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>
+        </li>`;
+      })
+      .join('');
+  }
+
+  // ═══════════ W69 — « Personnaliser la disposition » : lattice + 3D + recompute ═══════════
+
+  /** Plafond de comptage (besoin/footprint) pour l'ajout : on ne dépasse jamais ce qui
+   *  TIENT physiquement (grid.panels.length) ni le besoin si l'utilisateur l'a figé. */
+  function layoutCap(): number {
+    const fit = layoutPlan ? layoutPlan.grid.panels.length : 0;
+    // Le besoin plafonne aussi (taille-au-besoin) : on autorise jusqu'au max(besoin, fit
+    // optimal) mais jamais au-delà de ce qui tient — la lattice borne déjà tout.
+    return fit;
+  }
+
+  /** (Re)crée l'état de disposition depuis le plan gagnant courant (toutes cellules
+   *  valides occupées jusqu'au comptage optimal). */
+  function ensureLayoutState() {
+    if (!layoutPlan) {
+      layoutState = null;
+      return;
+    }
+    if (!layoutState) {
+      layoutState = createLayoutState(layoutPlan.grid.panels, layoutOptimalCount);
+      layoutSel = null;
+    }
+  }
+
+  /** Re-rend la 3D avec l'occupation PERSONNALISÉE courante (même plan, même rendement
+   *  par panneau ; seul le NOMBRE change), puis recompute la production/économies par le
+   *  chemin PVGIS-par-comptage existant (la fenêtre de production suit prodPanels). */
+  function renderCustomLayout() {
+    if (!layoutPlan || !layoutState) return;
+    const occ = new Set(layoutState.occupied);
+    renderScene(layoutPlan.pack, layoutPlan.grid, layoutPlan.tiltDeg, layoutPlan.family, occ.size, layoutPlan.flush, occ);
+    // Recompute par COMPTAGE (jamais un rendement inventé) : on met prodPanels au nombre
+    // posé et on laisse la fenêtre de production rescaler en kWc (linéaire) côté client.
+    const count = occ.size;
+    const cfg = prodConfigFromState();
+    if (cfg) updateProductionWindow({ ...cfg, panels: count });
+  }
+
+  /** Convertit un point ÉCRAN (carte) en coordonnées ENU relatives à l'origine de la
+   *  scène — c'est le « raycast sur le plan du toit » : on déprojette en lng/lat puis on
+   *  passe en mètres locaux (même repère que PackedPanel.cx/cy). */
+  function screenToENU(point: maplibregl.Point): { x: number; y: number } | null {
+    if (!layoutPlan) return null;
+    const ll = map.unproject(point);
+    const origin = layoutPlan.pack.origin;
+    const cosLat = Math.cos(origin[1] * DEG2RAD);
+    return { x: (ll.lng - origin[0]) * DEG2M * cosLat, y: (ll.lat - origin[1]) * DEG2M };
+  }
+
+  /** Rendu du plan tactile des emplacements (cellules occupées/libres) + synthèse. */
+  function renderLayoutPanel() {
+    if (!layoutWindowEl) return;
+    const ready = !!layoutPlan && layoutPlan.grid.panels.length > 0 && closed;
+    layoutWindowEl.hidden = !ready;
+    if (!ready) return;
+    if (!layoutMode) return;
+    ensureLayoutState();
+    if (!layoutState) return;
+
+    const count = occupiedCount(layoutState);
+    const free = emptyIndices(layoutState).length;
+    const kwc = count * PANEL_KWC;
+    if (layoutCountEl) layoutCountEl.textContent = fmt(count);
+    if (layoutKwcEl) layoutKwcEl.textContent = `${fmt1(kwc)} kWc`;
+    if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
+    const cover = neededPanels > 0 ? Math.round((count / neededPanels) * 100) : 0;
+    if (layoutCoverEl) layoutCoverEl.textContent = neededPanels > 0 ? `${cover} %` : '—';
+    if (layoutMinusEl) layoutMinusEl.disabled = count <= 0;
+    if (layoutPlusEl) layoutPlusEl.disabled = free <= 0 || count >= layoutCap();
+
+    // Mini-plan des cellules : occupées (bleu) / libres (gris→vert au survol).
+    if (layoutGridEl && layoutState) {
+      layoutGridEl.innerHTML = layoutState.cells
+        .map((c) => {
+          const occupied = layoutState!.occupied.has(c.index);
+          const selected = layoutSel === c.index;
+          return `<button type="button" class="rp9-layout-cell" data-cell="${c.index}" data-occupied="${occupied}" aria-pressed="${selected}" aria-label="${occupied ? 'Panneau' : 'Emplacement libre'} ${c.index + 1}"></button>`;
+        })
+        .join('');
+    }
+    if (layoutNoteEl && !layoutNoteEl.textContent) {
+      layoutNoteEl.textContent = 'Touchez un panneau (bleu) pour le sélectionner, puis un emplacement libre (vert) pour l’y déplacer. Ou utilisez + / −.';
+    }
+  }
+
+  /** Entrée/sortie du mode personnalisation. */
+  function setLayoutMode(on: boolean) {
+    layoutMode = on;
+    if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', String(on));
+    if (layoutPanelEl) layoutPanelEl.hidden = !on;
+    if (on) {
+      layoutState = null; // repart de l'optimum courant
+      ensureLayoutState();
+      renderCustomLayout();
+    } else {
+      // En sortant, on re-rend la disposition de l'optimiseur (recalc rebranche tout).
+      layoutSel = null;
+      if (closed) renderActive();
+    }
+    renderLayoutPanel();
   }
 
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
@@ -2483,6 +2857,25 @@ export function initRoofToolPro8(opts: InitOptions): void {
     prodPanels = 0;
     prodPlaneKey = '';
     if (prodWindowEl) prodWindowEl.hidden = true;
+    // W68 — réinitialise l'affinage de consommation (courbe + appareils).
+    consMode = false;
+    consCurve = emptyCurve();
+    consHandEdited = false;
+    consAppliances = [];
+    consDailyTarget = 0;
+    if (consToggleEl) consToggleEl.setAttribute('aria-expanded', 'false');
+    if (consPanelEl) consPanelEl.hidden = true;
+    if (consWindowEl) consWindowEl.hidden = true;
+    // W69 — réinitialise la disposition personnalisée.
+    layoutMode = false;
+    layoutState = null;
+    layoutPlan = null;
+    layoutOptimalCount = 0;
+    layoutSel = null;
+    if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', 'false');
+    if (layoutPanelEl) layoutPanelEl.hidden = true;
+    if (layoutWindowEl) layoutWindowEl.hidden = true;
+    if (layoutNoteEl) layoutNoteEl.textContent = '';
     syncChips();
     const target = { pitch: 0, bearing: 0 } as const;
     if (opts.reducedMotion) map.jumpTo(target);
@@ -2668,6 +3061,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
     updateBillKwh();
     // Changer la facture = nouveau besoin : on relâche le réglage manuel éventuel.
     neededAuto = true;
+    // W68 — un nouveau socle de facture recompose la courbe de conso (override repris).
+    consHandEdited = false;
     if (closed) recalc();
   });
   updateBillKwh();
@@ -2688,6 +3083,367 @@ export function initRoofToolPro8(opts: InitOptions): void {
   });
   needInputEl?.addEventListener('blur', () => {
     if (needInputEl) needInputEl.value = neededPanels > 0 ? fmt(neededPanels) : '—';
+  });
+
+  // ═══════════ W68 — câblage « Affiner ma consommation » ═══════════
+  // Remplissage des selects (appareils, presets BTU, presets chargeur VE).
+  function populateConsSelects() {
+    if (applKindEl && applKindEl.options.length === 0) {
+      for (const t of APPLIANCE_TYPICALS) {
+        const o = document.createElement('option');
+        o.value = t.kind;
+        o.textContent = t.label;
+        applKindEl.appendChild(o);
+      }
+      const other = document.createElement('option');
+      other.value = 'autre';
+      other.textContent = 'Autre appareil…';
+      applKindEl.appendChild(other);
+    }
+    if (acBtuEl && acBtuEl.options.length === 0) {
+      for (const p of AC_BTU_PRESETS) {
+        const o = document.createElement('option');
+        o.value = String(p.btu);
+        o.textContent = `${fmt(p.btu)} BTU (≈ ${p.cv} CV)`;
+        acBtuEl.appendChild(o);
+      }
+    }
+    if (evKwEl && evKwEl.options.length === 0) {
+      for (const kw of EV_CHARGER_KW_PRESETS) {
+        const o = document.createElement('option');
+        o.value = String(kw);
+        o.textContent = `${fmt1(kw)} kW`;
+        evKwEl.appendChild(o);
+      }
+      evKwEl.value = '7.4';
+    }
+  }
+  populateConsSelects();
+
+  // Ouvrir / fermer le panneau d'affinage.
+  consToggleEl?.addEventListener('click', () => {
+    consMode = !consMode;
+    consToggleEl.setAttribute('aria-expanded', String(consMode));
+    if (consPanelEl) consPanelEl.hidden = !consMode;
+    renderConsumption();
+  });
+
+  // Saisie / preset spécifiques selon l'appareil choisi.
+  function syncApplianceInputs() {
+    const kind = applKindEl?.value ?? '';
+    if (applAcEl) applAcEl.hidden = kind !== 'clim';
+    if (applEvEl) applEvEl.hidden = kind !== 'ev';
+    if (kind === 'clim') refreshAcWatts();
+  }
+  applKindEl?.addEventListener('change', syncApplianceInputs);
+  syncApplianceInputs();
+
+  function readNum(el: HTMLInputElement | null, fallback: number): number {
+    const v = parseFloat((el?.value ?? '').replace(',', '.'));
+    return Number.isFinite(v) && v > 0 ? v : fallback;
+  }
+
+  function refreshAcWatts() {
+    const btu = readNum(acBtuEl as unknown as HTMLInputElement, 9000);
+    const eer = readNum(acEerEl, AC_EER_DEFAULT_NON_INVERTER);
+    const hours = readNum(acHoursEl, 6);
+    const watts = acWattsFromBtu(btu, eer);
+    const kwh = kwhFromWattsHours(watts, hours);
+    if (acWattsEl) acWattsEl.textContent = `≈ ${fmt(Math.round(watts))} W · ${fmt1(kwh)} kWh/j`;
+  }
+  acBtuEl?.addEventListener('change', refreshAcWatts);
+  acEerEl?.addEventListener('input', refreshAcWatts);
+  acHoursEl?.addEventListener('input', refreshAcWatts);
+
+  // Ajouter un appareil → recompose la courbe et recompute tout.
+  applAddEl?.addEventListener('click', () => {
+    const kind = applKindEl?.value ?? '';
+    let appliance: Appliance | null = null;
+    if (kind === 'clim') {
+      const btu = readNum(acBtuEl as unknown as HTMLInputElement, 9000);
+      const eer = readNum(acEerEl, AC_EER_DEFAULT_NON_INVERTER);
+      const hours = readNum(acHoursEl, 6);
+      const watts = acWattsFromBtu(btu, eer);
+      appliance = { kind: 'clim', label: `Climatisation ${fmt(btu)} BTU`, dailyKwh: kwhFromWattsHours(watts, hours), startHour: 13, endHour: 23, billing: 'onTop' };
+    } else if (kind === 'ev') {
+      const km = parseFloat((evKmEl?.value ?? '').replace(',', '.'));
+      let kwh: number;
+      if (Number.isFinite(km) && km > 0) {
+        kwh = evKwhFromDistance(km, EV_KWH_PER_100KM_DEFAULT);
+      } else {
+        const kw = readNum(evKwEl as unknown as HTMLInputElement, 7.4);
+        const hours = readNum(evHoursEl, 3);
+        kwh = kwhFromWattsHours(kw * 1000, hours);
+      }
+      appliance = { kind: 'ev', label: 'Recharge voiture électrique', dailyKwh: kwh, startHour: 11, endHour: 15, billing: 'onTop' };
+    } else if (kind === 'autre') {
+      appliance = { kind: 'autre', label: `Autre appareil ${++consApplCounter}`, dailyKwh: 1, startHour: 18, endHour: 22, billing: 'onTop' };
+    } else {
+      const t = APPLIANCE_TYPICALS.find((x) => x.kind === kind);
+      if (t) appliance = applianceFromTypical(t);
+    }
+    if (!appliance) return;
+    consAppliances.push(appliance);
+    consHandEdited = false; // un nouvel appareil recompose la courbe (l'override manuel est repris)
+    if (applNoteEl) applNoteEl.textContent = `${appliance.label} ajouté (${fmt1(appliance.dailyKwh)} kWh/j).`;
+    renderConsumption();
+  });
+
+  // Bascule « en plus » ↔ « déjà compris » et suppression d'un appareil (délégation).
+  applListEl?.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const toggle = t.closest<HTMLElement>('[data-appl-toggle]');
+    const del = t.closest<HTMLElement>('[data-appl-del]');
+    if (toggle) {
+      const i = parseInt(toggle.dataset.applToggle ?? '', 10);
+      const a = consAppliances[i];
+      if (a) {
+        a.billing = a.billing === 'onTop' ? 'inBill' : 'onTop';
+        consHandEdited = false;
+        renderConsumption();
+      }
+    } else if (del) {
+      const i = parseInt(del.dataset.applDel ?? '', 10);
+      if (i >= 0 && i < consAppliances.length) {
+        consAppliances.splice(i, 1);
+        consHandEdited = false;
+        renderConsumption();
+      }
+    }
+  });
+
+  // « Recaler sur ma facture » : remet le total de la courbe ÉDITÉE à la valeur facture.
+  consRecalEl?.addEventListener('click', () => {
+    consCurve = rescaleToDaily(consCurve, billDailyKwh());
+    consHandEdited = true; // c'est un override manuel recalé
+    renderConsumption();
+  });
+
+  // Saisie numérique des heures (délégation sur le conteneur).
+  consInputsEl?.addEventListener('input', (e) => {
+    const inp = e.target as HTMLInputElement;
+    const h = parseInt(inp.dataset.hour ?? '', 10);
+    if (!Number.isFinite(h) || h < 0 || h >= HOURS_PER_DAY) return;
+    const v = parseFloat((inp.value || '').replace(',', '.'));
+    consCurve[h] = Number.isFinite(v) && v >= 0 ? v : 0;
+    consHandEdited = true;
+    // On ne re-rend pas la saisie (curseur), seulement le reste de la synthèse.
+    renderConsGraph();
+    renderConsumptionSummaryOnly();
+  });
+
+  // Glissé d'une barre du graphe de conso (pointer) — fallback tactile + tap.
+  let consDragHour: number | null = null;
+  function hourFromEvent(target: EventTarget | null): number | null {
+    const rect = (target as HTMLElement | null)?.closest<HTMLElement>('[data-hour]');
+    if (!rect) return null;
+    const h = parseInt(rect.dataset.hour ?? '', 10);
+    return Number.isFinite(h) ? h : null;
+  }
+  function valueFromPointer(clientY: number): number {
+    if (!consGraphEl) return 0;
+    const box = consGraphEl.getBoundingClientRect();
+    const H = 160;
+    const padTop = 8;
+    const padBottom = 16;
+    const plotH = H - padTop - padBottom;
+    // Position relative dans le SVG (viewBox 0..160 en Y).
+    const yViewBox = ((clientY - box.top) / box.height) * H;
+    const frac = Math.max(0, Math.min(1, (H - padBottom - yViewBox) / plotH));
+    const prod = productionHourly();
+    const maxC = consCurve.reduce((m, v) => Math.max(m, v), 0);
+    const maxP = prod.reduce((m, v) => Math.max(m, v), 0);
+    const max = Math.max(maxC, maxP, 1);
+    return frac * max;
+  }
+  consGraphEl?.addEventListener('pointerdown', (e) => {
+    const h = hourFromEvent(e.target);
+    if (h == null) return;
+    consDragHour = h;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    consCurve[h] = valueFromPointer(e.clientY);
+    consHandEdited = true;
+    renderConsGraph();
+    renderConsumptionSummaryOnly();
+    e.preventDefault();
+  });
+  consGraphEl?.addEventListener('pointermove', (e) => {
+    if (consDragHour == null) return;
+    consCurve[consDragHour] = valueFromPointer(e.clientY);
+    renderConsGraph();
+    renderConsumptionSummaryOnly();
+  });
+  const endConsDrag = () => {
+    if (consDragHour == null) return;
+    consDragHour = null;
+    renderConsInputs(); // resynchronise la saisie numérique après un glissé
+    renderConsumption();
+  };
+  consGraphEl?.addEventListener('pointerup', endConsDrag);
+  consGraphEl?.addEventListener('pointercancel', endConsDrag);
+  // Clavier (mouvement réduit / accessibilité) : ↑/↓ ajuste la barre focalisée.
+  consGraphEl?.addEventListener('keydown', (e) => {
+    const h = hourFromEvent(e.target);
+    if (h == null) return;
+    const step = e.shiftKey ? 0.5 : 0.1;
+    if (e.key === 'ArrowUp') consCurve[h] += step;
+    else if (e.key === 'ArrowDown') consCurve[h] = Math.max(0, consCurve[h] - step);
+    else return;
+    consHandEdited = true;
+    e.preventDefault();
+    renderConsGraph();
+    renderConsInputs();
+    renderConsumptionSummaryOnly();
+  });
+
+  /** Recompute UNIQUEMENT la synthèse (total/autoconso/économies/batterie) sans
+   *  retoucher la saisie ni la liste — pour ne pas casser le focus pendant l'édition. */
+  function renderConsumptionSummaryOnly() {
+    if (!prodScaled || !consMode) return;
+    const prod = productionHourly();
+    const dailyTotal = curveTotal(consCurve);
+    const annualCons = annualConsumptionFromDaily(dailyTotal);
+    const selfDaily = selfConsumptionDailyKwh(consCurve, prod);
+    const savings = savingsFromHourly(consCurve, prod, annualCons, tariffForCity(undefined));
+    const batt = batterySizing(consCurve, prod);
+    if (consTotalEl) consTotalEl.textContent = `${fmt1(dailyTotal)} kWh`;
+    if (consSelfEl) consSelfEl.textContent = `${fmt1(selfDaily)} kWh/j`;
+    if (consSavingsEl) consSavingsEl.textContent = annualCons > 0 ? fmtSavings(savings.low, savings.high) + ' MAD' : '—';
+    if (consBattEl) consBattEl.textContent = batt.batteries > 0 ? `${batt.batteries} × 6 kWh` : 'aucune';
+  }
+
+  // ═══════════ W69 — câblage « Personnaliser la disposition » ═══════════
+  layoutToggleEl?.addEventListener('click', () => setLayoutMode(!layoutMode));
+
+  // + / − : ajoute/retire un panneau (touch + mouvement réduit, sans glissé fin).
+  layoutPlusEl?.addEventListener('click', () => {
+    if (!layoutMode || !layoutState) return;
+    const r = addFirstEmpty(layoutState, layoutCap());
+    if (r.ok) {
+      if (layoutNoteEl) layoutNoteEl.textContent = `Panneau ajouté — ${r.count} posés.`;
+      renderCustomLayout();
+      renderLayoutPanel();
+    } else if (layoutNoteEl) {
+      layoutNoteEl.textContent = 'Plus d’emplacement valide disponible sur ce toit.';
+    }
+  });
+  layoutMinusEl?.addEventListener('click', () => {
+    if (!layoutMode || !layoutState) return;
+    const r = removeLast(layoutState);
+    if (r.ok) {
+      layoutSel = null;
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = neededPanels > 0 && r.count < neededPanels
+          ? `Panneau retiré — ${r.count} posés. La disposition ne couvre plus tout le besoin (${fmt(neededPanels)}).`
+          : `Panneau retiré — ${r.count} posés.`;
+      }
+      renderCustomLayout();
+      renderLayoutPanel();
+    }
+  });
+  // Réinitialiser la disposition optimale.
+  layoutResetEl?.addEventListener('click', () => {
+    if (!layoutState) return;
+    resetToOptimal(layoutState, layoutOptimalCount);
+    layoutSel = null;
+    if (layoutNoteEl) layoutNoteEl.textContent = `Disposition optimale restaurée — ${occupiedCount(layoutState)} panneaux.`;
+    renderCustomLayout();
+    renderLayoutPanel();
+  });
+
+  // Plan tactile : tap-sélection d'un panneau → tap-cible d'un emplacement libre.
+  layoutGridEl?.addEventListener('click', (e) => {
+    if (!layoutMode || !layoutState) return;
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-cell]');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.cell ?? '', 10);
+    if (!Number.isFinite(idx)) return;
+    const occupied = layoutState.occupied.has(idx);
+    if (layoutSel == null) {
+      // 1er tap : sélectionne un panneau OCCUPÉ.
+      if (occupied) {
+        layoutSel = idx;
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau sélectionné — touchez un emplacement libre (vert) pour l’y déplacer.';
+        renderLayoutPanel();
+      } else if (layoutNoteEl) {
+        layoutNoteEl.textContent = 'Touchez d’abord un panneau (bleu).';
+      }
+      return;
+    }
+    // 2e tap : déplace vers la cible si elle est VIDE valide ; sinon rejet (rouge).
+    const res = movePanelToCell(layoutState, layoutSel, idx);
+    if (res.ok) {
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
+      layoutSel = null;
+      renderCustomLayout();
+    } else {
+      if (layoutNoteEl) layoutNoteEl.textContent = occupied ? 'Emplacement déjà occupé — choisissez un emplacement libre.' : 'Cible invalide.';
+      // re-sélection si on a touché un autre panneau occupé
+      if (occupied) layoutSel = idx;
+      else layoutSel = null;
+    }
+    renderLayoutPanel();
+  });
+
+  // Glissé sur la 3D : raycast (déprojection) → snap à la cellule VIDE valide la plus
+  // proche, commit au relâchement. Désactive le pan de la carte pendant le glissé.
+  let layoutDrag: { from: number } | null = null;
+  function layoutPanelAt(point: maplibregl.Point): number | null {
+    if (!layoutState) return null;
+    const enu = screenToENU(point);
+    if (!enu) return null;
+    // Cellule OCCUPÉE la plus proche du point (le panneau qu'on saisit).
+    let best = -1;
+    let bestD = Infinity;
+    for (const c of layoutState.cells) {
+      if (!layoutState.occupied.has(c.index)) continue;
+      const d = (c.cx - enu.x) ** 2 + (c.cy - enu.y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = c.index;
+      }
+    }
+    // Seuil de saisie : ~1 panneau de rayon (sinon on considère qu'on n'a rien saisi).
+    const grabR2 = (PANEL2_LONG_M * 0.7) ** 2;
+    return best >= 0 && bestD <= grabR2 ? best : null;
+  }
+  map.on('mousedown', (e) => {
+    if (!layoutMode || obstacleMode || !layoutState) return;
+    const from = layoutPanelAt(e.point);
+    if (from == null) return;
+    layoutDrag = { from };
+    layoutSel = from;
+    map.dragPan.disable();
+    map.getCanvas().style.cursor = 'grabbing';
+    renderLayoutPanel();
+    e.preventDefault();
+  });
+  map.on('mousemove', (e) => {
+    if (!layoutDrag || !layoutState) return;
+    const enu = screenToENU(e.point);
+    if (!enu) return;
+    const target = nearestEmptyCell(layoutState, enu.x, enu.y);
+    if (layoutNoteEl) layoutNoteEl.textContent = target >= 0 ? 'Relâchez sur un emplacement valide (vert).' : 'Aucun emplacement libre — il reviendra à sa place.';
+  });
+  map.on('mouseup', (e) => {
+    if (!layoutDrag || !layoutState) {
+      return;
+    }
+    const enu = screenToENU(e.point);
+    if (enu) {
+      const res = movePanelToPoint(layoutState, layoutDrag.from, enu.x, enu.y);
+      if (res.ok && res.toIndex !== layoutDrag.from) {
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
+        renderCustomLayout();
+      } else if (layoutNoteEl) {
+        layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+      }
+    }
+    layoutDrag = null;
+    layoutSel = null;
+    map.dragPan.enable();
+    map.getCanvas().style.cursor = '';
+    renderLayoutPanel();
   });
 
   // — Chips de config —
