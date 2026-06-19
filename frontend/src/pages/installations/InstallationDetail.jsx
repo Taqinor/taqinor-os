@@ -9,6 +9,7 @@ import { updateInstallation } from '../../features/installations/store/installat
 import { fetchProduits } from '../../features/stock/store/stockSlice'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
+import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
@@ -16,7 +17,11 @@ import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
   INTERVENTION_TYPES,
+  adjacentStatuses,
+  canMoveStatus,
+  nextBestAction,
 } from '../../features/installations/statuses'
+import ProduitPicker from '../../components/ProduitPicker'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierPhotos from './ChantierPhotos'
@@ -87,6 +92,15 @@ const Hint = ({ children }) => <p className="text-sm text-muted-foreground">{chi
 
 const ALL_NONE = '__none__'
 
+// N5 — statuts d'un équipement du parc (miroir de sav.Equipement.Statut).
+const EQUIP_STATUTS = [
+  { value: 'en_service', label: 'En service' },
+  { value: 'remplace', label: 'Remplacé' },
+  { value: 'hors_service', label: 'Hors service' },
+]
+const equipStatutLabel = (v) =>
+  EQUIP_STATUTS.find((s) => s.value === v)?.label ?? '—'
+
 export default function InstallationDetail({ installation, onClose, onSaved }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -108,6 +122,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     dossier_statut: F('dossier_statut', 'non_concerne'),
     dossier_reference: F('dossier_reference'),
     dossier_operateur: F('dossier_operateur'),
+    dossier_date_depot: F('dossier_date_depot'),
+    dossier_date_approbation: F('dossier_date_approbation'),
     art33_regularisation: current?.art33_regularisation ?? false,
     notes: F('notes'),
   }
@@ -118,6 +134,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // Retour FR explicite pour les actions secondaires (équipement / intervention
+  // / ticket / besoin) dont les échecs étaient avalés (catch vides).
+  const [actionError, setActionError] = useState(null)
+  const actionMsg = (err, fallback) =>
+    err?.response?.data?.detail || (typeof fallback === 'string' ? fallback : 'Action impossible.')
 
   // Historique (chatter)
   const [historique, setHistorique] = useState([])
@@ -126,6 +147,53 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Intervention en cours d'ajout
   const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '' })
   const [intervBusy, setIntervBusy] = useState(false)
+  // N5 — édition en place d'une intervention existante (ligne du tableau).
+  const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
+  const [editIntervBusy, setEditIntervBusy] = useState(false)
+  const [users, setUsers] = useState([])
+  const startEditInterv = (iv) => setEditInterv({
+    id: iv.id,
+    date_realisee: iv.date_realisee ?? '',
+    compte_rendu: iv.compte_rendu ?? '',
+    technicien: iv.technicien ? String(iv.technicien) : '',
+  })
+  const saveEditInterv = async () => {
+    if (!editInterv) return
+    setEditIntervBusy(true)
+    try {
+      const nullable = (v) => (v === '' || v === undefined) ? null : v
+      await installationsApi.updateIntervention(editInterv.id, {
+        date_realisee: nullable(editInterv.date_realisee),
+        compte_rendu: nullable(editInterv.compte_rendu),
+        technicien: nullable(editInterv.technicien),
+      })
+      setEditInterv(null)
+      setActionError(null)
+      await refreshInstallation()
+      loadHistorique()
+    } catch (err) {
+      setActionError(actionMsg(err, "Édition de l'intervention impossible."))
+    } finally { setEditIntervBusy(false) }
+  }
+
+  // N2 — types d'intervention gérés de la société (Paramètres → Chantiers) ;
+  // repli sur la liste en dur tant qu'aucun type géré n'est chargé.
+  const [typesInterv, setTypesInterv] = useState([])
+  const typeOptions = typesInterv.length
+    ? typesInterv.map((t) => ({ value: t.cle, label: t.libelle }))
+    : INTERVENTION_TYPES
+
+  // N3 — choisir le type « pose » pré-remplit la date prévue depuis la date de
+  // pose prévue du chantier (si le champ date est encore vide).
+  const onChangeIntervType = (value) => {
+    setInterv((s) => {
+      const next = { ...s, type_intervention: value }
+      if (value === 'pose' && !s.date_prevue && current?.date_pose_prevue) {
+        next.date_prevue = current.date_pose_prevue
+      }
+      return next
+    })
+  }
 
   // Mise en service
   const [mes, setMes] = useState({
@@ -139,7 +207,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Parc d'équipements & tickets SAV du chantier
   const produits = useSelector(s => s.stock.produits) ?? []
   const [equipements, setEquipements] = useState([])
-  const [equip, setEquip] = useState({ produit: '', numero_serie: '', date_pose: '' })
+  // N3 — la date de pose de l'équipement est pré-remplie depuis la date de pose
+  // réelle du chantier (miroir du fallback serveur de cocher_checklist).
+  const equipBlank = () => ({ produit: '', numero_serie: '', date_pose: F('date_pose_reelle') })
+  const [equip, setEquip] = useState(equipBlank)
   const [equipBusy, setEquipBusy] = useState(false)
   const [tickets, setTickets] = useState([])
   const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
@@ -149,6 +220,27 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Confirmations
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [annulerMotif, setAnnulerMotif] = useState('')
+  // N7 — confirmation supplémentaire si le système est actif au parc.
+  const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
+
+  // N15 — détecte si le devis lié a divergé depuis la création du chantier
+  // (nomenclature gelée `bom` vs lignes actuelles du devis).
+  const [devisDivergent, setDevisDivergent] = useState(false)
+  const checkDevisDivergence = () => {
+    if (!installation.devis) { setDevisDivergent(false); return }
+    ventesApi.getDevisById(installation.devis).then((r) => {
+      const lignes = (r.data?.lignes ?? []).filter((l) => l.produit)
+      const bom = Array.isArray(current.bom) ? current.bom : []
+      const norm = (arr) => arr
+        .map((x) => `${x.produit ?? x.produit_id}:${Number(x.quantite) || 0}`)
+        .sort()
+        .join('|')
+      const devisKey = norm(lignes)
+      const bomKey = norm(bom)
+      // Un BOM vide (chantier sans devis d'origine) n'est pas une divergence.
+      setDevisDivergent(bom.length > 0 && devisKey !== bomKey)
+    }).catch(() => {})
+  }
 
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
@@ -174,8 +266,49 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     loadTickets()
     loadContrats()
     if (produits.length === 0) dispatch(fetchProduits())
+    installationsApi.getTypesIntervention()
+      .then((r) => setTypesInterv(
+        (r.data?.results ?? r.data ?? []).filter((t) => !t.archived)))
+      .catch(() => {})
+    checkDevisDivergence()
+    crmApi.getAssignableUsers()
+      .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // N5 — édition/suppression en place d'un équipement capturé.
+  const [editEquip, setEditEquip] = useState(null) // { id, numero_serie, statut }
+  const [editEquipBusy, setEditEquipBusy] = useState(false)
+  const startEditEquip = (eq) => setEditEquip({
+    id: eq.id,
+    numero_serie: eq.numero_serie ?? '',
+    statut: eq.statut ?? 'en_service',
+  })
+  const saveEditEquip = async () => {
+    if (!editEquip) return
+    setEditEquipBusy(true)
+    try {
+      await savApi.updateEquipement(editEquip.id, {
+        numero_serie: editEquip.numero_serie === '' ? null : editEquip.numero_serie,
+        statut: editEquip.statut,
+      })
+      setEditEquip(null)
+      setActionError(null)
+      loadEquipements()
+    } catch (err) {
+      setActionError(actionMsg(err, "Édition de l'équipement impossible."))
+    } finally { setEditEquipBusy(false) }
+  }
+  const deleteEquip = async (eq) => {
+    if (!window.confirm('Supprimer cet équipement du parc ?')) return
+    try {
+      await savApi.deleteEquipement(eq.id)
+      setActionError(null)
+      loadEquipements()
+    } catch (err) {
+      setActionError(actionMsg(err, "Suppression de l'équipement impossible."))
+    }
+  }
 
   const addEquipement = async () => {
     if (!equip.produit) return
@@ -188,9 +321,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         numero_serie: nullable(equip.numero_serie),
         date_pose: nullable(equip.date_pose),
       })
-      setEquip({ produit: '', numero_serie: '', date_pose: '' })
+      setEquip(equipBlank())
+      setActionError(null)
       loadEquipements()
-    } catch { /* erreur silencieuse */ } finally { setEquipBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, "Ajout de l'équipement impossible."))
+    } finally { setEquipBusy(false) }
   }
 
   const openTicket = async () => {
@@ -205,8 +341,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         equipement: newTicket.equipement === '' ? null : newTicket.equipement,
       })
       setNewTicket({ type: 'correctif', description: '', equipement: '' })
+      setActionError(null)
       loadTickets()
-    } catch { /* erreur silencieuse */ } finally { setTicketBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, "Ouverture du ticket impossible."))
+    } finally { setTicketBusy(false) }
   }
 
   const refreshInstallation = async () => {
@@ -255,20 +394,43 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         compte_rendu: nullable(interv.compte_rendu),
       })
       setInterv({ type_intervention: '', date_prevue: '', compte_rendu: '' })
+      setActionError(null)
       await refreshInstallation()
       loadHistorique()
-    } catch { /* erreur silencieuse */ } finally { setIntervBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, "Ajout de l'intervention impossible."))
+    } finally { setIntervBusy(false) }
   }
 
   const saveMes = async () => {
+    // N7 — la mise en service exige une date ; on avertit (sans bloquer) si le
+    // test de production ou la tension mesurée sont vides.
+    if (!mes.date_mise_en_service) {
+      setActionError('Indiquez une date de mise en service avant d’enregistrer.')
+      return
+    }
+    const manques = []
+    if (mes.mes_production_test === '' || mes.mes_production_test == null) {
+      manques.push('test de production')
+    }
+    if (mes.mes_tension === '' || mes.mes_tension == null) manques.push('tension')
+    if (manques.length
+        && !window.confirm(
+          `Champs non renseignés : ${manques.join(' et ')}. `
+          + 'Enregistrer quand même la mise en service ?')) {
+      return
+    }
     setMesBusy(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       const data = Object.fromEntries(
         Object.entries(mes).map(([k, v]) => [k, nullable(v)]))
       await installationsApi.miseEnService(id, data)
+      setActionError(null)
       onSaved?.()
-    } catch { /* erreur silencieuse */ } finally { setMesBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, 'Enregistrement de la mise en service impossible.'))
+    } finally { setMesBusy(false) }
   }
 
   const confirmAnnuler = async () => {
@@ -285,6 +447,30 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await installationsApi.reactiver(id)
       onSaved?.()
     } catch { /* erreur silencieuse */ }
+  }
+
+  // N7 — action rapide « Marquer réceptionné » : pose le statut Réceptionné
+  // (le serveur tamponne date_reception et journalise l'ajout au parc).
+  const [receptBusy, setReceptBusy] = useState(false)
+  const marquerReceptionne = async () => {
+    // Avertissement (non bloquant) si la checklist n'est pas à 100 %.
+    const comp = current.checklist_completion
+    if (Number.isInteger(comp) && comp < 100
+        && !window.confirm(
+          `La checklist n'est complétée qu'à ${comp} %. `
+          + 'Passer quand même le chantier à « Réceptionné » ?')) {
+      return
+    }
+    setReceptBusy(true)
+    try {
+      await dispatch(updateInstallation({
+        id, data: { statut: 'receptionne' },
+      })).unwrap()
+      setActionError(null)
+      onSaved?.()
+    } catch (err) {
+      setActionError(actionMsg(err, 'Passage à « Réceptionné » impossible.'))
+    } finally { setReceptBusy(false) }
   }
 
   const openDocument = async (kind, filename) => {
@@ -330,6 +516,53 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   const interventions = current.interventions ?? []
 
+  // N1/N2 — produits du picker scopés à la nomenclature gelée du devis (BOM) ;
+  // repli sur tout le catalogue si le chantier n'a pas de BOM.
+  const bom = Array.isArray(current.bom) ? current.bom : []
+  const bomProduitIds = new Set(bom.map((l) => String(l.produit_id)).filter(Boolean))
+  const equipProduits = bomProduitIds.size
+    ? produits.filter((p) => bomProduitIds.has(String(p.id)))
+    : produits
+
+  // N8 — réconciliation : pour chaque ligne BOM, nb de séries capturées.
+  const bomReconciliation = bom.map((l) => {
+    const captured = equipements.filter(
+      (eq) => String(eq.produit) === String(l.produit_id)).length
+    return {
+      produit_id: l.produit_id,
+      designation: l.designation,
+      attendu: l.quantite ?? null,
+      captured,
+    }
+  })
+
+  // N7 — équipement : produit choisi, garantie manquante, n° série en doublon.
+  const equipProduit = produits.find((p) => String(p.id) === String(equip.produit))
+  const garantieManquante = equipProduit
+    && !equipProduit.garantie_mois && !equipProduit.garantie_production_mois
+  const serieSaisie = (equip.numero_serie || '').trim().toLowerCase()
+  const serieDoublon = !!serieSaisie && equipements.some(
+    (eq) => (eq.numero_serie || '').trim().toLowerCase() === serieSaisie)
+
+  // N6 — les documents après-vente (PV / handover) ne sont pertinents qu'une
+  // fois le jalon atteint : statut canonique ≥ « Installé » ET checklist
+  // quasi-complète (≥ 80 %). Sinon les boutons sont désactivés avec un tooltip.
+  const installeRank = INSTALLATION_STATUSES.indexOf('installe')
+  const statutOk = (() => {
+    const r = INSTALLATION_STATUSES.indexOf(current.statut)
+    // Statut hérité (hors liste) : pose/installe/mise_en_service/raccordement
+    // couvrent déjà le jalon « Installé ».
+    if (r === -1) {
+      return ['pose', 'mise_en_service', 'raccordement_onee'].includes(current.statut)
+    }
+    return r >= installeRank
+  })()
+  const pvComp = current.checklist_completion
+  const checklistOk = !Number.isInteger(pvComp) || pvComp >= 80
+  const pvReady = statutOk && checklistOk
+  const pvTooltip = pvReady ? undefined
+    : 'Disponible une fois le chantier installé et la checklist quasi-complète.'
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose?.() }}>
       <SheetContent side="right" className="w-[min(64rem,calc(100%-1.5rem))] sm:max-w-none">
@@ -347,6 +580,43 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               {current.motif_annulation ? <span>Motif : {current.motif_annulation}</span> : null}
               <Button size="sm" variant="outline" className="ml-auto" onClick={reactiver}>
                 Réactiver
+              </Button>
+            </div>
+          )}
+
+          {/* ── Prochaine action recommandée (N1) — bannière sous l'en-tête ── */}
+          {!current.annule && nextBestAction(current) && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info/10 p-3 text-sm" role="status">
+              <strong className="text-info">Prochaine action&nbsp;:</strong>
+              <span>{nextBestAction(current)}</span>
+            </div>
+          )}
+
+          {/* N15 — le devis lié a changé depuis la création du chantier. */}
+          {!current.annule && devisDivergent && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
+              <strong className="text-warning-foreground">Devis modifié&nbsp;:</strong>
+              <span>
+                le devis a changé depuis la création du chantier (la nomenclature
+                gelée diffère des lignes actuelles).
+              </span>
+            </div>
+          )}
+
+          {/* N15 — chantier sans nomenclature gelée (créé sans devis). */}
+          {!current.annule && Array.isArray(current.bom) && current.bom.length === 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
+              <strong className="text-warning-foreground">Nomenclature absente&nbsp;:</strong>
+              <span>ce chantier n&apos;a pas de nomenclature gelée (créé sans devis).</span>
+            </div>
+          )}
+
+          {/* Retour FR des actions secondaires (échecs auparavant silencieux). */}
+          {actionError && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+              <span>{actionError}</span>
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setActionError(null)}>
+                Fermer
               </Button>
             </div>
           )}
@@ -380,21 +650,25 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           {/* ── Documents après-vente (PDF régénérés à la demande) ── */}
           <Section icon={FileText} title="Documents après-vente">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline"
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`)}>
                 PV de réception
               </Button>
-              <Button size="sm" variant="outline"
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`)}>
                 Bon de livraison
               </Button>
-              <Button size="sm" variant="outline"
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`)}>
                 Dossier de remise
               </Button>
-              <Button size="sm" variant="outline" onClick={openFicheRemise}>
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                      onClick={openFicheRemise}>
                 Fiche de remise / garantie
               </Button>
+              {!pvReady && (
+                <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
+              )}
               <Button size="sm" variant="outline"
                       onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`)}>
                 Attestation
@@ -467,7 +741,19 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Input id="ch-tec" value={current.technicien_nom ?? '—'} readOnly />
               </FormField>
               <FormField label="Statut" htmlFor="ch-statut">
-                <Select value={fields.statut ?? ''} onValueChange={(v) => set('statut', v)}>
+                <Select
+                  value={fields.statut ?? ''}
+                  onValueChange={(v) => {
+                    // Garde de transition côté client : on n'accepte qu'un pas
+                    // (avant/arrière) depuis le statut STOCKÉ du chantier, ou la
+                    // valeur déjà sélectionnée. Un saut non-adjacent est empêché.
+                    if (v === fields.statut
+                        || canMoveStatus(current.statut, v)
+                        || v === current.statut) {
+                      set('statut', v)
+                    }
+                  }}
+                >
                   <SelectTrigger id="ch-statut"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
@@ -476,11 +762,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
                       </SelectItem>
                     )}
-                    {INSTALLATION_STATUSES.map((k) => (
+                    {/* Seuls le statut courant et ses voisins (±1) sont offerts. */}
+                    {adjacentStatuses(current.statut).map((k) => (
                       <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Le statut n&apos;avance ou ne recule que d&apos;une étape à la fois.
+                </p>
               </FormField>
               <FormField label="Adresse du site" htmlFor="ch-adr" className="sm:col-span-2">
                 <Input id="ch-adr" value={fields.site_adresse ?? ''}
@@ -574,13 +864,23 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Input id="ch-dop" value={fields.dossier_operateur ?? ''}
                        onChange={(e) => set('dossier_operateur', e.target.value)} />
               </FormField>
+              <FormField label="Date de dépôt" htmlFor="ch-ddep">
+                <Input id="ch-ddep" type="date" value={fields.dossier_date_depot ?? ''}
+                       onChange={(e) => set('dossier_date_depot', e.target.value)} />
+              </FormField>
+              <FormField label="Date d'approbation" htmlFor="ch-dapp">
+                <Input id="ch-dapp" type="date" value={fields.dossier_date_approbation ?? ''}
+                       onChange={(e) => set('dossier_date_approbation', e.target.value)} />
+              </FormField>
             </div>
             <Hint>Joignez les pièces du dossier dans « Photos &amp; fichiers » ci-dessous.</Hint>
           </Section>
 
           {/* ── Checklist d'exécution (N4/N9) ── */}
           <Section icon={ClipboardList} title="Checklist d'exécution">
-            <ChantierChecklist installationId={id} produits={produits} onChanged={refreshInstallation} />
+            <ChantierChecklist installationId={id} produits={produits}
+                               series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
+                               onChanged={() => { refreshInstallation(); loadEquipements() }} />
           </Section>
 
           {/* ── Photos & fichiers avant/pendant/après (N5) ── */}
@@ -593,26 +893,70 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             {interventions.length === 0 ? (
               <Hint>Aucune intervention.</Hint>
             ) : (
-              <MiniTable head={['Type', 'Prévue', 'Réalisée', 'Technicien', 'Compte rendu']}>
-                {interventions.map((iv) => (
-                  <tr key={iv.id} className="border-t border-border">
-                    <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
-                    <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
-                    <td className="px-3 py-2">{formatDate(iv.date_realisee)}</td>
-                    <td className="px-3 py-2">{iv.technicien_nom ?? '—'}</td>
-                    <td className="px-3 py-2">{iv.compte_rendu ?? '—'}</td>
-                  </tr>
-                ))}
+              <MiniTable head={['Type', 'Prévue', 'Réalisée', 'Technicien', 'Compte rendu', '']}>
+                {interventions.map((iv) => {
+                  const editing = editInterv?.id === iv.id
+                  return (
+                    <tr key={iv.id} className="border-t border-border">
+                      <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
+                      <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Input type="date" value={editInterv.date_realisee}
+                                 onChange={(e) => setEditInterv(s => ({ ...s, date_realisee: e.target.value }))} />
+                        ) : formatDate(iv.date_realisee)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Select value={editInterv.technicien || ALL_NONE}
+                                  onValueChange={(v) => setEditInterv(s => ({ ...s, technicien: v === ALL_NONE ? '' : v }))}>
+                            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={ALL_NONE}>—</SelectItem>
+                              {users.map((u) => (
+                                <SelectItem key={u.id} value={String(u.id)}>
+                                  {u.username ?? u.nom ?? `#${u.id}`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (iv.technicien_nom ?? '—')}
+                      </td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Input value={editInterv.compte_rendu}
+                                 onChange={(e) => setEditInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
+                        ) : (iv.compte_rendu ?? '—')}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {editing ? (
+                          <span className="flex gap-1">
+                            <Button size="sm" loading={editIntervBusy} onClick={saveEditInterv}>
+                              Enregistrer
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditInterv(null)}>
+                              Annuler
+                            </Button>
+                          </span>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>
+                            Éditer
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </MiniTable>
             )}
             <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
               <FormField label="Type" htmlFor="iv-type">
                 <Select value={interv.type_intervention || ALL_NONE}
-                        onValueChange={(v) => setInterv(s => ({ ...s, type_intervention: v === ALL_NONE ? '' : v }))}>
+                        onValueChange={(v) => onChangeIntervType(v === ALL_NONE ? '' : v)}>
                   <SelectTrigger id="iv-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL_NONE}>—</SelectItem>
-                    {INTERVENTION_TYPES.map((t) => (
+                    {typeOptions.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -635,38 +979,96 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Équipements (parc) ── */}
           <Section icon={Package} title="Équipements">
+            {/* N8 — réconciliation nomenclature gelée vs séries capturées. */}
+            {bomReconciliation.length > 0 && (
+              <div className="rounded-lg border border-border p-2">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Nomenclature vs séries capturées
+                </p>
+                <MiniTable head={['Composant', 'Attendu', 'Capturés']}>
+                  {bomReconciliation.map((b) => {
+                    const manque = b.captured === 0
+                    return (
+                      <tr key={b.produit_id ?? b.designation}
+                          className={`border-t border-border ${manque ? 'bg-warning/10' : ''}`}>
+                        <td className="px-3 py-2">{b.designation}</td>
+                        <td className="px-3 py-2">{b.attendu ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          {manque
+                            ? <strong className="text-warning-foreground">0</strong>
+                            : b.captured}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </MiniTable>
+              </div>
+            )}
             {equipements.length === 0 ? (
               <Hint>Aucun équipement enregistré sur ce chantier.</Hint>
             ) : (
-              <MiniTable head={['Produit', 'N° série', 'Posé le', 'Garantie']}>
-                {equipements.map((eq) => (
-                  <tr key={eq.id} className="border-t border-border">
-                    <td className="px-3 py-2">{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
-                    <td className="px-3 py-2">{eq.numero_serie ?? '—'}</td>
-                    <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
-                    <td className="px-3 py-2">
-                      <span className="text-xs font-semibold" style={{ color: garantieColor(eq) }}>
-                        {garantieLabel(eq)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+              <MiniTable head={['Produit', 'N° série', 'Posé le', 'Statut', 'Garantie', '']}>
+                {equipements.map((eq) => {
+                  const editing = editEquip?.id === eq.id
+                  return (
+                    <tr key={eq.id} className="border-t border-border">
+                      <td className="px-3 py-2">{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Input value={editEquip.numero_serie}
+                                 onChange={(e) => setEditEquip(s => ({ ...s, numero_serie: e.target.value }))} />
+                        ) : (eq.numero_serie ?? '—')}
+                      </td>
+                      <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <Select value={editEquip.statut}
+                                  onValueChange={(v) => setEditEquip(s => ({ ...s, statut: v }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {EQUIP_STATUTS.map((s) => (
+                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (eq.statut_display ?? equipStatutLabel(eq.statut))}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="text-xs font-semibold" style={{ color: garantieColor(eq) }}>
+                          {garantieLabel(eq)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {editing ? (
+                          <span className="flex gap-1">
+                            <Button size="sm" loading={editEquipBusy} onClick={saveEditEquip}>
+                              Enregistrer
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditEquip(null)}>
+                              Annuler
+                            </Button>
+                          </span>
+                        ) : (
+                          <span className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => startEditEquip(eq)}>
+                              Éditer
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteEquip(eq)}>
+                              Supprimer
+                            </Button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </MiniTable>
             )}
             <div className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
               <FormField label="Produit" htmlFor="eq-prod">
-                <Select value={equip.produit || ALL_NONE}
-                        onValueChange={(v) => setEquip(s => ({ ...s, produit: v === ALL_NONE ? '' : v }))}>
-                  <SelectTrigger id="eq-prod"><SelectValue placeholder="Choisir un produit" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_NONE}>— Choisir un produit —</SelectItem>
-                    {produits.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.nom}{p.marque ? ` (${p.marque})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ProduitPicker produits={equipProduits}
+                               value={equip.produit ?? ''}
+                               onChange={(v) => setEquip(s => ({ ...s, produit: v ?? '' }))} />
               </FormField>
               <FormField label="N° de série" htmlFor="eq-ns">
                 <Input id="eq-ns" value={equip.numero_serie}
@@ -680,6 +1082,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 Ajouter
               </Button>
             </div>
+            {garantieManquante && (
+              <p className="text-xs text-warning-foreground">
+                Garantie non renseignée pour ce produit — l&apos;horloge de garantie
+                restera vide.
+              </p>
+            )}
+            {serieDoublon && (
+              <p className="text-xs text-destructive">
+                Ce numéro de série existe déjà sur un équipement de ce chantier.
+              </p>
+            )}
           </Section>
 
           {/* ── Tickets SAV ── */}
@@ -823,8 +1236,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
         <FormActions>
           {!current.annule && (
-            <Button variant="destructive" className="sm:mr-auto" onClick={() => { setAnnulerMotif(''); setAnnulerOpen(true) }}>
+            <Button variant="destructive" className="sm:mr-auto"
+                    onClick={() => { setAnnulerMotif(''); setAnnulerParcConfirm(false); setAnnulerOpen(true) }}>
               Annuler le chantier
+            </Button>
+          )}
+          {!current.annule && canMoveStatus(current.statut, 'receptionne') && (
+            <Button variant="success" loading={receptBusy} onClick={marquerReceptionne}>
+              Marquer réceptionné
             </Button>
           )}
           <Button variant="outline" onClick={onClose}>Fermer</Button>
@@ -849,9 +1268,28 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                    onChange={(e) => setAnnulerMotif(e.target.value)}
                    placeholder="Ex. report client" />
           </div>
+          {current.est_parc && (
+            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
+              <p className="font-semibold text-warning-foreground">
+                Ce système est installé et actif au parc.
+              </p>
+              <p className="text-muted-foreground">
+                L&apos;annuler le masquera du parc installé.
+              </p>
+              <label className="mt-2 flex items-center gap-2">
+                <Checkbox checked={annulerParcConfirm}
+                          onCheckedChange={(c) => setAnnulerParcConfirm(c === true)} />
+                Je confirme retirer ce système du parc.
+              </label>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Retour</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmAnnuler}>Annuler le chantier</AlertDialogAction>
+            <AlertDialogAction
+              disabled={current.est_parc && !annulerParcConfirm}
+              onClick={confirmAnnuler}>
+              Annuler le chantier
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

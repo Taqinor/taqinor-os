@@ -152,6 +152,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'reference', 'client__nom', 'client__prenom', 'site_ville',
+        # N9 — recherche aussi par référence du devis lié et par installateur.
+        'devis__reference', 'technicien_responsable__username',
     ]
     ordering_fields = ['reference', 'date_creation', 'date_pose_prevue', 'statut']
     ordering = ['-date_creation']
@@ -174,6 +176,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(technicien_responsable_id=technicien)
         if type_inst:
             qs = qs.filter(type_installation=type_inst)
+        # N9 — « Mes chantiers » : ceux dont l'utilisateur courant est
+        # l'installateur responsable (résolu côté serveur, jamais du corps).
+        if params.get('mine') in ('1', 'true', 'only'):
+            qs = qs.filter(technicien_responsable=self.request.user)
         # Annulé = drapeau, pas une étape (comme « Perdu »). Par défaut on
         # montre tout ; ?annule=only / ?annule=sans pour filtrer côté UI.
         annule = params.get('annule')
@@ -336,10 +342,18 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst.statut = Installation.Statut.MISE_EN_SERVICE
         inst.save()
         activity.log_changes(old, inst, request.user)
+        # Note de chatter explicite incluant les valeurs mesurées (production /
+        # tension) quand elles sont renseignées — pas seulement la date.
+        mesures = []
+        if inst.mes_production_test not in (None, ''):
+            mesures.append(f"production test {inst.mes_production_test}")
+        if inst.mes_tension not in (None, ''):
+            mesures.append(f"tension {inst.mes_tension}")
         activity.log_note(
             inst, request.user,
             "Mise en service enregistrée"
-            + (f" le {inst.date_mise_en_service}" if inst.date_mise_en_service else ""))
+            + (f" le {inst.date_mise_en_service}" if inst.date_mise_en_service else "")
+            + (f" — {', '.join(mesures)}" if mesures else ""))
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -419,6 +433,7 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
 
         # N9 — saisie optionnelle de n° de série → équipements du parc.
         created_equip = 0
+        captures = []  # libellés « produit (n° série) » des relevés créés.
         for eq in (request.data.get('equipements') or []):
             produit_id = eq.get('produit')
             serie = (eq.get('numero_serie') or '').strip()
@@ -439,11 +454,17 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             equip.save(update_fields=[
                 'date_fin_garantie', 'date_fin_garantie_production'])
             created_equip += 1
+            captures.append(
+                f"{produit.nom}"
+                + (f" (n° {serie})" if serie else " (sans n° de série)"))
 
+        # N16 — la note liste les produits/séries capturés (pas juste un compte).
+        capture_txt = (f" — {', '.join(captures)}" if captures
+                       else (f" (+{created_equip} équipement(s))" if created_equip else ""))
         activity.log_note(
             inst, request.user,
             f"Checklist : « {item.libelle} » {'cochée' if fait else 'décochée'}"
-            + (f" (+{created_equip} équipement(s))" if created_equip else ""))
+            + capture_txt)
         items = list(inst.checklist.all())
         done = sum(1 for it in items if it.fait)
         return Response({
@@ -683,6 +704,10 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
         interv = serializer.save(company=company, created_by=self.request.user)
+        # Auto-tampon date_realisee : un compte rendu rempli (ou un statut
+        # « Terminée »/« Validée ») sans date réalisée la pose à aujourd'hui,
+        # côté serveur (miroir de _stamp_statut_dates du chantier).
+        self._stamp_date_realisee(interv)
         # F3 — équipe par défaut = l'installateur du chantier quand aucune
         # équipe n'a été fournie (posé côté serveur).
         if not interv.equipe.exists() and installation is not None:
@@ -711,9 +736,41 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             if reason:
                 raise ValidationError({'statut': reason})
         interv = serializer.save()
+        # Auto-tampon date_realisee (compte rendu rempli / terminée) si vide.
+        self._stamp_date_realisee(interv)
         # F3 — journalise les changements (dont le statut) dans le chatter
         # PROPRE de l'intervention. Ne touche JAMAIS le statut du chantier.
         intervention_activity.log_changes(old, interv, self.request.user)
+        # Édition d'intervention → trace au chatter du CHANTIER (la création
+        # l'était déjà ; l'édition ne l'était pas).
+        if interv.installation_id:
+            activity.log_note(
+                interv.installation, self.request.user,
+                f"Intervention modifiée : "
+                f"{interv.get_type_intervention_display()}")
+
+    def perform_destroy(self, instance):
+        # Suppression d'intervention → trace au chatter du CHANTIER.
+        installation = instance.installation
+        type_label = instance.get_type_intervention_display()
+        super().perform_destroy(instance)
+        if installation is not None:
+            activity.log_note(
+                installation, self.request.user,
+                f"Intervention supprimée : {type_label}")
+
+    @staticmethod
+    def _stamp_date_realisee(interv):
+        """Pose date_realisee à aujourd'hui si elle est vide alors qu'un compte
+        rendu est renseigné OU que le statut est « Terminée »/« Validée »."""
+        if interv.date_realisee is not None:
+            return
+        cr = (interv.compte_rendu or '').strip()
+        done = interv.statut in (
+            Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+        if cr or done:
+            interv.date_realisee = timezone.localdate()
+            interv.save(update_fields=['date_realisee'])
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])

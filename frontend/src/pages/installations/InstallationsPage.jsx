@@ -7,6 +7,9 @@ import {
   filterInstallations,
   statusLabel,
   statusColor,
+  upcomingPoses,
+  funnelSummary,
+  installerLoad,
 } from '../../features/installations/statuses'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import crmApi from '../../api/crmApi'
@@ -26,11 +29,13 @@ import InstallationDetail from './InstallationDetail'
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
 
-// Paramètre SERVEUR dérivé du filtre « annulés ».
-const annuleParam = (annule) => {
-  if (annule === 'seuls') return { annule: 'only' }
-  if (annule === 'sans') return { annule: 'sans' }
-  return {}
+// Paramètres SERVEUR dérivés des filtres « annulés » et « Mes chantiers ».
+const serverParams = (filters) => {
+  const p = {}
+  if (filters.annule === 'seuls') p.annule = 'only'
+  else if (filters.annule === 'sans') p.annule = 'sans'
+  if (filters.mine === 'only') p.mine = 'only'
+  return p
 }
 
 // ── Calendrier (inline) — miroir de la vue CRM, posé sur date_pose_prevue ──
@@ -47,12 +52,14 @@ function poseKey(it) {
   return localKey(y, m, d)
 }
 
-function Chip({ item, onOpen }) {
+function Chip({ item, onOpen, onDragStart }) {
   const dot = item.annule ? '#dc2626' : statusColor(item.statut)
   const name = item.reference || item.client_nom || '(Sans réf.)'
   return (
     <button
       type="button"
+      draggable={!item.annule}
+      onDragStart={(e) => onDragStart?.(e, item)}
       className={`cal-chip${item.annule ? ' cal-chip-perdu' : ''}`}
       title={`${name} — ${statusLabel(item.statut)}`}
       onClick={() => onOpen(item)}
@@ -63,12 +70,26 @@ function Chip({ item, onOpen }) {
   )
 }
 
-function CalendarView({ items, onOpen }) {
+function CalendarView({ items, onOpen, onReschedule }) {
   const [monthStart, setMonthStart] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
   const [expandedDays, setExpandedDays] = useState({})
+  const [dragId, setDragId] = useState(null)
+
+  // N4 — glisser-déposer : déposer une puce sur un autre jour met à jour
+  // date_pose_prevue via le parent (qui journalise le changement côté serveur).
+  const handleDragStart = (e, item) => {
+    setDragId(item.id)
+    try { e.dataTransfer.setData('text/plain', String(item.id)) } catch { /* */ }
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  const handleDrop = (cellKey) => {
+    const item = (items ?? []).find((it) => it.id === dragId)
+    setDragId(null)
+    if (item && poseKey(item) !== cellKey) onReschedule?.(item, cellKey)
+  }
 
   const goToday = () => {
     const now = new Date()
@@ -114,6 +135,11 @@ function CalendarView({ items, onOpen }) {
   const now = new Date()
   const todayKey = localKey(now.getFullYear(), now.getMonth() + 1, now.getDate())
 
+  // Aucune pose planifiée pour le mois affiché (aucune cellule du mois ne porte
+  // de chantier) → indice FR explicite plutôt qu'un calendrier vide silencieux.
+  const moisVide = cells.every(
+    (cell) => !cell.inMonth || (byDay.get(cell.key) ?? []).length === 0)
+
   return (
     <div className="cal-root">
       <div className="cal-header">
@@ -132,6 +158,12 @@ function CalendarView({ items, onOpen }) {
           Aujourd&apos;hui
         </Button>
       </div>
+
+      {moisVide && (
+        <p className="cal-empty-month py-2 text-center text-sm text-muted-foreground">
+          Aucune pose planifiée ce mois.
+        </p>
+      )}
 
       <div className="cal-grid" role="grid" aria-label={`Calendrier ${title}`}>
         {WEEKDAYS.map((day) => (
@@ -152,12 +184,15 @@ function CalendarView({ items, onOpen }) {
                 'cal-cell',
                 cell.inMonth ? '' : 'cal-cell-out',
                 cell.key === todayKey ? 'cal-cell-today' : '',
+                dragId ? 'cal-cell-droppable' : '',
               ].filter(Boolean).join(' ')}
+              onDragOver={(e) => { if (dragId) e.preventDefault() }}
+              onDrop={(e) => { e.preventDefault(); handleDrop(cell.key) }}
             >
               <span className="cal-day-number">{cell.dayNumber}</span>
               <div className="cal-chips">
                 {visible.map((it) => (
-                  <Chip key={it.id} item={it} onOpen={onOpen} />
+                  <Chip key={it.id} item={it} onOpen={onOpen} onDragStart={handleDragStart} />
                 ))}
                 {hidden > 0 && (
                   <button type="button" className="cal-more" onClick={() => toggleDay(cell.key)}>
@@ -197,6 +232,12 @@ export default function InstallationsPage() {
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const filtered = useMemo(() => filterInstallations(items, filters), [items, filters])
 
+  // N13/N14 — synthèses calculées à la lecture (aucun appel serveur en plus) :
+  // poses à venir (≤ 7 j) et répartition funnel + nombre en retard.
+  const aVenir = useMemo(() => upcomingPoses(items, 7), [items])
+  const synthese = useMemo(() => funnelSummary(items), [items])
+  const charge = useMemo(() => installerLoad(filtered, 14), [filtered])
+
   const [selected, setSelected] = useState(null)
   const [users, setUsers] = useState([])
   useEffect(() => {
@@ -208,13 +249,17 @@ export default function InstallationsPage() {
     dispatch(updateInstallation({ id: inst.id, data: { statut } }))
   const onReassign = (inst, technicien) =>
     dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } }))
+  // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
+  // journalise le changement de date dans le chatter).
+  const onReschedule = (inst, dateKey) =>
+    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: dateKey } }))
 
-  // Le filtre « annulés » est une dimension SERVEUR : on refait l'appel avec
-  // le bon paramètre quand il change (les autres filtres restent côté client).
-  const refetch = () => dispatch(fetchInstallations(annuleParam(filters.annule)))
+  // Les filtres « annulés » et « Mes chantiers » sont des dimensions SERVEUR :
+  // on refait l'appel quand ils changent (les autres filtres restent côté client).
+  const refetch = () => dispatch(fetchInstallations(serverParams(filters)))
   useEffect(() => {
-    dispatch(fetchInstallations(annuleParam(filters.annule)))
-  }, [dispatch, filters.annule])
+    dispatch(fetchInstallations(serverParams(filters)))
+  }, [dispatch, filters.annule, filters.mine])
 
   const onOpen = (it) => setSelected(it)
   const onClose = () => setSelected(null)
@@ -248,6 +293,16 @@ export default function InstallationsPage() {
         <h2 className="flex items-center gap-2">
           Chantiers
           <Badge tone="primary">{filtered.length}</Badge>
+          {aVenir.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-info/10 px-2 py-0.5 text-xs font-semibold text-info"
+              onClick={() => setFilters((f) => ({ ...f, statut: 'planifie' }))}
+              title="Filtrer les chantiers planifiés"
+            >
+              {aVenir.length} pose(s) à venir (≤ 7 j)
+            </button>
+          )}
         </h2>
         <div className="page-header-actions lp-header-actions flex flex-wrap items-center gap-2">
           <Button
@@ -275,6 +330,42 @@ export default function InstallationsPage() {
 
       <FilterBar filters={filters} setFilters={setFilters} items={items} />
 
+      {/* N14 — synthèse funnel : compte par statut + nb en retard. */}
+      <div className="flex flex-wrap items-center gap-2 py-1 text-xs">
+        {synthese.rows.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-medium text-muted-foreground hover:bg-muted"
+            onClick={() => setFilters((f) => ({ ...f, statut: r.key }))}
+            title={`Filtrer : ${r.label}`}
+          >
+            <span className="size-2 rounded-full" style={{ background: statusColor(r.key) }} />
+            {r.label}
+            <span className="tabular-nums font-semibold text-foreground">{r.count}</span>
+          </button>
+        ))}
+        {synthese.retard > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">
+            {synthese.retard} pose(s) en retard
+          </span>
+        )}
+      </div>
+
+      {/* N14 — charge installateur (poses à venir ≤ 14 j) sur Kanban/Calendrier. */}
+      {(view === 'kanban' || view === 'calendrier') && charge.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 py-1 text-xs">
+          <span className="font-semibold text-muted-foreground">Charge (≤ 14 j) :</span>
+          {charge.map((c) => (
+            <span key={c.nom}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5">
+              {c.nom}
+              <span className="tabular-nums font-semibold text-foreground">{c.count}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="lp-view-area">
         {view === 'liste' && <ListView items={filtered} onOpen={onOpen} />}
         {view === 'kanban' && (
@@ -291,7 +382,7 @@ export default function InstallationsPage() {
               />
             </Card>
           ) : (
-            <CalendarView items={filtered} onOpen={onOpen} />
+            <CalendarView items={filtered} onOpen={onOpen} onReschedule={onReschedule} />
           )
         )}
       </div>
