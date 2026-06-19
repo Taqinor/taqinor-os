@@ -23,6 +23,11 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ activity_type: '', summary: '', due_date: todayStr(), assigned_to: '', note: '' })
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  // Reprogrammation (« Reporter ») : id de l'activité en cours d'édition + la
+  // nouvelle échéance saisie. '' = aucune reprogrammation ouverte.
+  const [reschedId, setReschedId] = useState(null)
+  const [reschedDate, setReschedDate] = useState('')
 
   const load = () => {
     recordsApi.getActivities(model, id)
@@ -40,21 +45,57 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
 
   const create = async () => {
     if (!form.activity_type) return
+    // L'échéance ne peut pas être dans le passé : on bloque la création et on
+    // explique, sans jamais recaler la valeur saisie.
+    if (form.due_date && form.due_date < todayStr()) {
+      setError("L'échéance ne peut pas être dans le passé.")
+      return
+    }
     setBusy(true)
+    setError(null)
     try {
       await recordsApi.createActivity({ model, id, ...form, assigned_to: form.assigned_to || undefined })
       setForm(f => ({ ...f, summary: '', note: '', due_date: todayStr() }))
       setAdding(false)
       load(); onChange?.()
-    } catch { /* silencieux */ } finally { setBusy(false) }
+    } catch {
+      setError('Action impossible — réessayez.')
+    } finally { setBusy(false) }
   }
 
   const markDone = async (act) => {
-    try { await recordsApi.markActivityDone(act.id); load(); onChange?.() } catch { /* */ }
+    setError(null)
+    try { await recordsApi.markActivityDone(act.id); load(); onChange?.() } catch { setError('Action impossible — réessayez.') }
   }
   const remove = async (act) => {
     if (!window.confirm('Supprimer cette activité ?')) return
-    try { await recordsApi.deleteActivity(act.id); load(); onChange?.() } catch { /* */ }
+    setError(null)
+    try { await recordsApi.deleteActivity(act.id); load(); onChange?.() } catch { setError('Action impossible — réessayez.') }
+  }
+
+  // Reprogrammer (« Reporter ») : ouvre le date-picker pré-rempli sur l'échéance
+  // actuelle, puis PATCH la due_date sans supprimer/recréer l'activité.
+  const openResched = (act) => {
+    setReschedId(act.id)
+    setReschedDate(act.due_date || todayStr())
+    setError(null)
+  }
+  const cancelResched = () => { setReschedId(null); setReschedDate('') }
+  const saveResched = async (act) => {
+    if (!reschedDate) return
+    if (reschedDate < todayStr()) {
+      setError("L'échéance ne peut pas être dans le passé.")
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await recordsApi.updateActivity(act.id, { due_date: reschedDate })
+      cancelResched()
+      load(); onChange?.()
+    } catch {
+      setError('Action impossible — réessayez.')
+    } finally { setBusy(false) }
   }
 
   const open = activities.filter(a => !a.done)
@@ -81,7 +122,7 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
             </div>
             <div className="form-group">
               <label className="form-label">Échéance</label>
-              <input type="date" className="form-control" value={form.due_date}
+              <input type="date" className="form-control" min={todayStr()} value={form.due_date}
                      onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
             </div>
             <div className="form-group">
@@ -103,6 +144,8 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
         </div>
       )}
 
+      {error && <p className="form-error" role="alert">{error}</p>}
+
       <div className="act-list">
         {open.length === 0 && done.length === 0 && (
           <p className="gen-hint">Aucune activité planifiée.</p>
@@ -121,8 +164,21 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
                 </span>
               </span>
               <span className="act-actions">
-                <button type="button" className="btn btn-sm btn-outline" onClick={() => markDone(a)}>✓ Fait</button>
-                <button type="button" className="btn-icon-danger" title="Supprimer" onClick={() => remove(a)}>✕</button>
+                {reschedId === a.id ? (
+                  <>
+                    <input type="date" className="form-control form-control-sm" min={todayStr()}
+                           value={reschedDate} onChange={e => setReschedDate(e.target.value)} />
+                    <button type="button" className="btn btn-sm btn-primary" disabled={busy}
+                            onClick={() => saveResched(a)}>{busy ? '…' : 'OK'}</button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={cancelResched}>Annuler</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={() => markDone(a)}>✓ Fait</button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={() => openResched(a)}>Reporter</button>
+                    <button type="button" className="btn-icon-danger" title="Supprimer" onClick={() => remove(a)}>✕</button>
+                  </>
+                )}
               </span>
             </div>
           )
