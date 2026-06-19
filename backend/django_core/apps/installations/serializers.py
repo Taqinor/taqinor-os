@@ -3,7 +3,8 @@ from rest_framework import serializers
 from .models import (
     Installation, Intervention, InstallationActivity, InterventionActivity,
     TypeIntervention, ChecklistTemplate, ChecklistEtapeModele,
-    ChantierChecklistItem,
+    ChantierChecklistItem, ShotListSlot, InterventionPreparation,
+    PreparationMaterielLigne, PreparationOutilLigne,
 )
 
 
@@ -116,12 +117,25 @@ class InterventionSerializer(serializers.ModelSerializer):
     gps_lng = serializers.DecimalField(
         source='installation.gps_lng', max_digits=9, decimal_places=6,
         read_only=True, default=None)
+    # F6 — distance (km) entre la position d'arrivée et le GPS du chantier.
+    distance_site_km = serializers.SerializerMethodField()
+    # F5 — avancement de la préparation (0–100, ou null si pas de préparation).
+    preparation_completion = serializers.SerializerMethodField()
+    preparation_confirmee = serializers.SerializerMethodField()
+    # F8 — nombre de créneaux obligatoires sans photo (garde « Terminée »).
+    photos_obligatoires_manquantes = serializers.SerializerMethodField()
 
     class Meta:
         model = Intervention
         fields = '__all__'
-        # company/created_by posés côté serveur — jamais depuis le corps.
-        read_only_fields = ['company', 'created_by', 'date_creation']
+        # company/created_by posés côté serveur — jamais depuis le corps. Les
+        # horodatages F6 et les coordonnées d'arrivée sont posés par leurs
+        # endpoints dédiés (check-in/départ/retour), pas par un PATCH générique.
+        read_only_fields = [
+            'company', 'created_by', 'date_creation',
+            'depart_depot_le', 'arrivee_site_le', 'retour_depot_le',
+            'arrivee_gps_lat', 'arrivee_gps_lng',
+        ]
 
     def get_statut_ordre(self, obj):
         order = list(Intervention.STATUT_ORDER)
@@ -141,6 +155,90 @@ class InterventionSerializer(serializers.ModelSerializer):
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
+
+    def get_distance_site_km(self, obj):
+        from .field_services import distance_to_site
+        return distance_to_site(obj)
+
+    def get_preparation_completion(self, obj):
+        from .field_services import preparation_completion
+        prep = getattr(obj, 'preparation', None)
+        if prep is None:
+            return None
+        return preparation_completion(prep)
+
+    def get_preparation_confirmee(self, obj):
+        prep = getattr(obj, 'preparation', None)
+        return bool(prep and prep.tout_charge)
+
+    def get_photos_obligatoires_manquantes(self, obj):
+        from .field_services import missing_required_shots
+        return len(missing_required_shots(obj))
+
+
+class ShotListSlotSerializer(serializers.ModelSerializer):
+    phase_display = serializers.CharField(
+        source='get_phase_display', read_only=True)
+
+    class Meta:
+        model = ShotListSlot
+        fields = ['id', 'cle', 'libelle', 'phase', 'phase_display',
+                  'obligatoire', 'ordre', 'actif', 'protege']
+        read_only_fields = ['protege']
+
+    def validate_cle(self, value):
+        if self.instance and self.instance.protege and value != self.instance.cle:
+            raise serializers.ValidationError(
+                "La clé d'un créneau protégé ne peut pas être modifiée.")
+        return value
+
+    def validate_phase(self, value):
+        if value not in dict(ShotListSlot.Phase.choices):
+            raise serializers.ValidationError("Phase inconnue.")
+        return value
+
+
+class PreparationMaterielLigneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PreparationMaterielLigne
+        fields = ['id', 'produit', 'designation', 'quantite_requise',
+                  'charge', 'manquant', 'quantite_manquante', 'ordre']
+        read_only_fields = ['produit', 'designation', 'quantite_requise',
+                            'manquant', 'quantite_manquante', 'ordre']
+
+
+class PreparationOutilLigneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PreparationOutilLigne
+        fields = ['id', 'outil', 'libelle', 'coche', 'ordre']
+        read_only_fields = ['outil', 'libelle', 'ordre']
+
+
+class InterventionPreparationSerializer(serializers.ModelSerializer):
+    materiel = PreparationMaterielLigneSerializer(many=True, read_only=True)
+    outils = PreparationOutilLigneSerializer(many=True, read_only=True)
+    completion = serializers.SerializerMethodField()
+    confirme_par_nom = serializers.SerializerMethodField()
+    kit_nom = serializers.CharField(
+        source='kit.nom', read_only=True, default=None)
+    nb_manques = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InterventionPreparation
+        fields = ['id', 'intervention', 'kit', 'kit_nom', 'tout_charge',
+                  'confirme_par_nom', 'confirme_le', 'materiel', 'outils',
+                  'completion', 'nb_manques']
+        read_only_fields = ['intervention', 'tout_charge', 'confirme_le']
+
+    def get_completion(self, obj):
+        from .field_services import preparation_completion
+        return preparation_completion(obj)
+
+    def get_confirme_par_nom(self, obj):
+        return getattr(obj.confirme_par, 'username', None)
+
+    def get_nb_manques(self, obj):
+        return sum(1 for li in obj.materiel.all() if li.manquant)
 
 
 class InterventionActivitySerializer(serializers.ModelSerializer):

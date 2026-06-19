@@ -189,6 +189,14 @@ export default function LeadsPage() {
   }
   const onSaved = () => refetch()
 
+  // Ouvrir un doublon depuis l'avertissement du formulaire : on charge la fiche
+  // complète puis on bascule le formulaire dessus (même panneau, autre lead).
+  const onOpenDuplicate = (id) => {
+    crmApi.getLead(id)
+      .then(r => { setEditLead(r.data); setFormDevisIntent(null); setShowForm(true) })
+      .catch(() => {})
+  }
+
   // ⚡ depuis une carte / la liste : ouvre la FICHE et y lance le devis auto
   // (tout reste dans la fiche du lead — aucune navigation ailleurs).
   const onAutoQuote = (lead) => {
@@ -344,6 +352,7 @@ export default function LeadsPage() {
           lead={showForm ? editLead : deepLead}
           onClose={closeForm}
           onSaved={onSaved}
+          onOpenDuplicate={onOpenDuplicate}
           initialDevis={showForm ? formDevisIntent : null}
         />
       )}

@@ -264,9 +264,24 @@ def find_duplicate_clusters(company, include_archived=False):
 def find_duplicate_leads(lead):
     """Leads probablement en double : même téléphone OU email normalisé, même
     société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
-    phone = normalize_phone(lead.telephone)
-    email = normalize_email(lead.email)
-    qs = Lead.objects.filter(company=lead.company).exclude(pk=lead.pk)
+    return find_duplicates_by_contact(
+        lead.company, phone=lead.telephone, email=lead.email,
+        exclude_pk=lead.pk)
+
+
+def find_duplicates_by_contact(company, *, phone=None, email=None,
+                               exclude_pk=None):
+    """Leads d'une société partageant un téléphone OU un email normalisé avec
+    les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
+    détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
+    n'existe encore (d'où l'absence d'instance). Inclut les archivés."""
+    phone = normalize_phone(phone)
+    email = normalize_email(email)
+    if not phone and not email:
+        return []
+    qs = Lead.objects.filter(company=company)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
     candidates = []
     for other in qs:
         if phone and normalize_phone(other.telephone) == phone:

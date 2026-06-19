@@ -424,6 +424,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     from apps.ventes.utils.company_settings import payment_terms_for
     payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
 
+    # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
+    # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
+    # applique son littéral historique, donc le PDF reste byte-identique tant que
+    # rien n'est édité. Repli silencieux sur {} si la table n'existe pas encore.
+    doc_texts = {}
+    try:
+        from apps.parametres.models_documents import DocumentTemplates
+        doc_texts = DocumentTemplates.get(
+            company=getattr(devis, "company", None)).as_doc_texts()
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        doc_texts = {}
+
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
     # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
@@ -484,6 +496,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "payment_terms": payment_terms,
         "mode_installation": mode,
         "etude": etude,
+        # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
+        "doc_texts": doc_texts,
+        # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
+        # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
+        # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.
+        "accepte_par_nom": (getattr(devis, "accepte_par_nom", "") or ""),
+        "date_acceptation": (
+            devis.date_acceptation.strftime("%d/%m/%Y")
+            if getattr(devis, "date_acceptation", None) else ""),
     }
     return data
 

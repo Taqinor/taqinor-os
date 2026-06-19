@@ -12,3 +12,9 @@ class ParametresConfig(AppConfig):
         # (indépendance des lanes) ; importé ici pour qu'il soit enregistré
         # auprès du registre d'apps sans toucher à ``models.py``.
         import apps.parametres.models_statuses  # noqa: F401
+        # D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis),
+        # gardés dans un fichier dédié et enregistrés ici sans toucher models.py.
+        import apps.parametres.models_documents  # noqa: F401
+        # N64/N65 — tarification ONEE + hypothèses ROI/productible, gardées dans
+        # un fichier dédié et enregistrées ici sans toucher models.py.
+        import apps.parametres.models_tariff  # noqa: F401

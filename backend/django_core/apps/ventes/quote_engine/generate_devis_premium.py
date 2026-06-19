@@ -266,6 +266,109 @@ PAY_A, PAY_M, PAY_S = 30, 60, 10
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOC_TEXTS — portions de TEXTE éditables du devis (D2/N60/N67/N26/N59)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Chaque entrée est un fragment de texte INTÉRIEUR (le balisage/les styles qui
+# l'entourent restent codés en dur et inchangés). Le DÉFAUT ci-dessous reproduit
+# EXACTEMENT le littéral historique — au caractère et à l'entité HTML près — donc
+# tant qu'aucun réglage société n'est édité, le PDF est OCTET-POUR-OCTET identique.
+# Les valeurs portent les entités HTML telles quelles (&#8217; &#8201; &#160;
+# &#37; &#233; …) car le moteur n'échappe pas ces fragments : un défaut en
+# Unicode brut casserait l'identité du HTML rendu (cf. le test garantie 30 ans).
+# Les marqueurs {acompte}/{materiel}/{solde}/{tva_note} des puces CGV sont
+# substitués par le moteur (PAY_A/PAY_M/PAY_S/TVA_NOTE) — défauts inchangés.
+DEFAULT_DOC_TEXTS = {
+    # D2/N60 — validité de l'offre (3 emplacements, libellés distincts).
+    "validite_badge_p1": "Validit&#233;&#160;: 30 jours",
+    "validite_onepage": "&#183; Validit&#233;&#160;: 30 jours",
+    # D2/N60 — conditions générales (titre + 7 puces ; placeholders substitués).
+    "cgv_titre": "Conditions générales du devis",
+    "cgv_bullets": [
+        "Validité de l&#8217;offre&#160;: 30 jours",
+        "Acompte à la commande&#160;: {acompte}&#37;",
+        "{materiel}&#37; à la réception du matériel",
+        "{solde}&#37; après la mise en marche",
+        "Délai d&#8217;installation&#160;: 7–14 jours ouvrés",
+        "{tva_note}",
+        "Tarifs de référence&#160;: barème ONEE/SRM",
+    ],
+    # N67 — garanties (titre, détail, libellé performance). Entités HTML EXACTES.
+    "garantie_titre": "Garanties jusqu&#8217;à 30 ans",
+    "garantie_detail": ("Structure 20 ans, panneaux 12 ans produit + 30 ans "
+                        "performance (87,4&#8201;%), onduleur 10 ans. "
+                        "Sérénité totale."),
+    "garantie_perf_label": "Performance panneau (87,4&#8201;%)",
+    # D2/N60 — bloc « Bon pour accord » (titre + mention manuscrite).
+    "bpa_titre": "Bon pour accord",
+    "bpa_mention": ("Lu et approuvé — Signature précédée "
+                    "de « Bon pour accord »"),
+    # N26 — tampon d'acceptation. Rendu UNIQUEMENT quand le devis est accepté
+    # (nom + date présents) ; vide sinon → byte-identique au devis d'aujourd'hui.
+    # Marqueurs {date}/{nom} substitués par le moteur.
+    "acceptance_stamp": "Accepté le {date} par {nom}",
+}
+# Réglages effectifs (fusion défaut + surcharges société) — posés par
+# generate_premium_pdf depuis data["doc_texts"]. Défaut = littéraux historiques.
+DOC_TEXTS = dict(DEFAULT_DOC_TEXTS)
+# N26 — métadonnées d'acceptation (posées côté serveur, jamais du corps client).
+ACCEPTE_PAR_NOM = ""
+DATE_ACCEPTATION = ""
+
+
+def _doc_text(key):
+    """Fragment de texte éditable `key`, repli sur le littéral historique."""
+    val = DOC_TEXTS.get(key)
+    if val is None:
+        return DEFAULT_DOC_TEXTS.get(key, "")
+    return val
+
+
+def _cgv_bullets_html():
+    """Puces CGV éditables rendues avec le MÊME enrobage <li> qu'avant.
+
+    Les marqueurs {acompte}/{materiel}/{solde}/{tva_note} sont substitués par
+    les valeurs dynamiques (PAY_A/PAY_M/PAY_S/TVA_NOTE). Défaut → puces
+    identiques au caractère près.
+    """
+    bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
+    out = ""
+    for raw in bullets:
+        try:
+            txt = raw.format(acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
+                             tva_note=TVA_NOTE)
+        except (KeyError, IndexError, ValueError):
+            txt = raw
+        # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
+        # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
+        out += (f'\n        <li style="font-size:12px;color:{CG7};'
+                f'padding-left:12px;position:relative;line-height:1.4;">'
+                f'<span style="position:absolute;left:0;color:{CA};'
+                f'font-size:11pt;line-height:1.1;">·</span>{txt}</li>')
+    return out + "\n      "
+
+
+def _acceptance_stamp_html():
+    """Tampon « Accepté le … par … » — N26.
+
+    Rendu UNIQUEMENT lorsque nom ET date d'acceptation sont posés (devis
+    accepté). Sinon chaîne VIDE → bloc « Bon pour accord » byte-identique.
+    """
+    nom = (ACCEPTE_PAR_NOM or "").strip()
+    date = (DATE_ACCEPTATION or "").strip()
+    if not nom or not date:
+        return ""
+    tmpl = _doc_text("acceptance_stamp") or DEFAULT_DOC_TEXTS["acceptance_stamp"]
+    try:
+        txt = tmpl.format(date=date, nom=nom)
+    except (KeyError, IndexError, ValueError):
+        txt = tmpl
+    return (f'<div style="margin-bottom:6px;display:inline-block;'
+            f'background:{CAL};border:1px solid {CA};border-radius:6px;'
+            f'padding:4px 10px;font-size:8pt;font-weight:700;color:{CN};">'
+            f'{txt}</div>')
+
+
 # ── SVG equipment icons ──────────────────────────────────────────────────────
 _SVG = {
 "onduleur":     '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="6" fill="#1A2B4A"/><rect x="6" y="8" width="28" height="20" rx="3" fill="none" stroke="#F5A623" stroke-width="2"/><circle cx="14" cy="18" r="4" fill="none" stroke="#F5A623" stroke-width="1.5"/><path d="M22 14 L28 18 L22 22" fill="none" stroke="#F5A623" stroke-width="1.5" stroke-linejoin="round"/><rect x="10" y="30" width="20" height="3" rx="1.5" fill="#F5A623" opacity="0.6"/></svg>',
@@ -859,7 +962,7 @@ def page1():
         <div style="font-size:7pt;color:{CG4};margin-bottom:1px;">R&#233;f&#233;rence devis</div>
         <div class="serif" style="font-size:17.5pt;font-weight:400;color:{CA};line-height:0.90;letter-spacing:-1px;">N&#176;&nbsp;{REF}</div>
         <div style="font-size:8.5pt;color:rgba(255,255,255,0.82);margin-top:5px;">{DATE_STR}</div>
-        <div style="margin-top:5px;display:inline-block;background:{CA};color:{CN};border-radius:5px;padding:3px 10px;font-size:6.5pt;font-weight:700;">Validit&#233;&#160;: 30 jours</div>
+        <div style="margin-top:5px;display:inline-block;background:{CA};color:{CN};border-radius:5px;padding:3px 10px;font-size:6.5pt;font-weight:700;">{_doc_text("validite_badge_p1")}</div>
       </div>
 
     </div>
@@ -1262,8 +1365,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Garanties jusqu&#8217;\u00e0 30 ans</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Structure 20 ans, panneaux 12 ans produit + 30 ans performance (87,4&#8201;%), onduleur 10 ans. S\u00e9r\u00e9nit\u00e9 totale.</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_doc_text("garantie_titre")}</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_doc_text("garantie_detail")}</div>
         </div>
       </div>
 
@@ -1304,7 +1407,7 @@ def page3():
       <div style="flex:1;border:2px solid {CA};border-top:4px solid {CN};border-radius:8px;padding:6px 5px;text-align:center;background:{CAL};">
         <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">30</div>
         <div style="font-size:12px;font-weight:700;color:{CN};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Performance panneau (87,4&#8201;%)</div>
+        <div style="font-size:8pt;color:{CG4};margin-top:2px;">{_doc_text("garantie_perf_label")}</div>
       </div>
     </div>
   </div>
@@ -1312,16 +1415,8 @@ def page3():
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
-      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Conditions g\u00e9n\u00e9rales du devis</div>
-      <ul style="list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Validit\u00e9 de l&#8217;offre&#160;: 30 jours</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Acompte \u00e0 la commande&#160;: {PAY_A}&#37;</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{PAY_M}&#37; \u00e0 la r\u00e9ception du mat\u00e9riel</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{PAY_S}&#37; apr\u00e8s la mise en marche</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>D\u00e9lai d&#8217;installation&#160;: 7\u201314 jours ouvr\u00e9s</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>{TVA_NOTE}</li>
-        <li style="font-size:12px;color:{CG7};padding-left:12px;position:relative;line-height:1.4;"><span style="position:absolute;left:0;color:{CA};font-size:11pt;line-height:1.1;">\u00b7</span>Tarifs de r\u00e9f\u00e9rence&#160;: bar\u00e8me ONEE/SRM</li>
-      </ul>
+      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">{_doc_text("cgv_titre")}</div>
+      <ul style="list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">{_cgv_bullets_html()}</ul>
     </div>
   </div>
 
@@ -1370,8 +1465,8 @@ def page3():
   <!-- BON POUR ACCORD — always pinned above footer via position:absolute -->
   <div style="position:absolute;bottom:{'28' if DEVIS_FINAL else '43'}px;left:0;right:0;padding:0 24px;">
     <div style="border-left:4px solid {CA};padding-left:10px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">
-      <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">Bon pour accord</div>
-    </div>
+      <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">{_doc_text("bpa_titre")}</div>
+    </div>{_acceptance_stamp_html()}
     {_opt}
     {_payment_html}
     <div style="display:flex;gap:18px;margin-bottom:4px;">
@@ -1381,7 +1476,7 @@ def page3():
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Nom&#160;: <strong style="color:{CG7};">{CLIENT_NAME}</strong></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};">Date&#160;: _______________</div>
-        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">Lu et approuv\u00e9 \u2014 Signature pr\u00e9c\u00e9d\u00e9e de \u00ab\u00a0Bon pour accord\u00a0\u00bb</div>
+        <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text("bpa_mention")}</div>
       </div>
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
         <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature TAQINOR</div>
@@ -1758,7 +1853,7 @@ def page_onepage(items):
   <div style="padding:8px 24px;">
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option sans batterie. Une option avec batterie est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
-      <span style="margin-right:20px;">&#183; Validit&#233;&#160;: 30 jours</span>
+      <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
       <span style="margin-right:20px;">&#183; Acompte&#160;: {PAY_A}&#37;</span>
       <span style="margin-right:20px;">&#183; {PAY_M}&#37; &#224; la r&#233;ception du mat&#233;riel</span>
       <span style="margin-right:20px;">&#183; {PAY_S}&#37; apr&#232;s mise en marche</span>
@@ -1859,6 +1954,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
+    global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
 
     CLIENT_NAME  = data["client_name"]
     CLIENT_ADDR  = data["client_addr"]
@@ -1913,6 +2009,19 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     SANS_BULLETS = data.get("sans_bullets") or []
     AVEC_BULLETS = data.get("avec_bullets") or []
+    # D2/N60/N67/N59 — textes éditables du devis : fusion défaut + surcharges
+    # société. Toute clé absente/None retombe sur le littéral historique, donc
+    # un appel sans `doc_texts` (ou avec des surcharges vides) reste byte-identique.
+    _dt = data.get("doc_texts") or {}
+    DOC_TEXTS = dict(DEFAULT_DOC_TEXTS)
+    if isinstance(_dt, dict):
+        for k, v in _dt.items():
+            if v is not None:
+                DOC_TEXTS[k] = v
+    # N26 — métadonnées d'acceptation (posées côté serveur). Le tampon n'apparaît
+    # que si les DEUX sont présents ; sinon byte-identique au devis d'aujourd'hui.
+    ACCEPTE_PAR_NOM = (data.get("accepte_par_nom") or "")
+    DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
     # (l'étude insérée entre les pages 2 et 3 porte le total à 4).

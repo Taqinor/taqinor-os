@@ -25,12 +25,16 @@ import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
 import ClientsSection from './ClientsSection'
 import DevisSection from './DevisSection'
+import DocumentsSection from './DocumentsSection'
+import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
 import ChecklistSection from './ChecklistSection'
 import KitsSection from './KitsSection'
+import ShotListSection from './ShotListSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
+import EmailSection from './EmailSection'
 import AvanceSection from './AvanceSection'
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
@@ -502,6 +506,10 @@ export default function ParametresEntreprise() {
           {tab === 'leads'    && <LeadsSection {...ctx} />}
           {tab === 'clients'  && <ClientsSection {...ctx} />}
           {tab === 'devis'    && <DevisSection {...ctx} />}
+          {/* D2/N60/N67/N26/N59 — section autonome (textes éditables du devis). */}
+          {tab === 'documents' && <DocumentsSection />}
+          {/* N64/N65 — section autonome (barème ONEE + ROI/productible). */}
+          {tab === 'tarification' && <TarificationSection />}
           {tab === 'stock'    && <StockSection {...ctx} />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
           {tab === 'statuts'    && <StatutsSection />}
@@ -509,8 +517,12 @@ export default function ParametresEntreprise() {
           {tab === 'checklists' && <ChecklistSection />}
           {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}
           {tab === 'kits'       && <KitsSection />}
+          {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
+          {tab === 'shotlist'   && <ShotListSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
+          {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}
+          {tab === 'email'    && <EmailSection />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}

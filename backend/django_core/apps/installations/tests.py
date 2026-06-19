@@ -582,8 +582,18 @@ class TestInterventionF3(TestCase):
         self.assertIsNotNone(r.data['gps_lng'])
         self.assertTrue(r.data['client_nom'])
 
+    def _confirmer_preparation(self, iid):
+        """F5 — confirme « Tout est chargé » pour pouvoir quitter « À préparer »
+        (la nomenclature est vide dans ces tests → confirmation triviale)."""
+        from apps.installations.models import Intervention
+        from apps.installations import field_services
+        interv = Intervention.objects.get(pk=iid)
+        prep = field_services.ensure_preparation(interv)
+        field_services.confirm_charge(prep, self.user)
+
     def test_statut_change_logs_own_chatter_not_chantier(self):
         iid = self._create_interv().data['id']
+        self._confirmer_preparation(iid)  # F5 — garde de transition
         chantier_statut_avant = self.inst.statut
         r = self.api.patch(
             f'/api/django/installations/interventions/{iid}/',
@@ -635,11 +645,30 @@ class TestInterventionF3(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
 
     def test_statut_filter(self):
+        from unittest import mock
+        from apps.installations.models import Intervention, ShotListSlot
+        from apps.installations import field_services
         i1 = self._create_interv().data['id']
         i2 = self._create_interv().data['id']
-        self.api.patch(
-            f'/api/django/installations/interventions/{i2}/',
-            {'statut': 'terminee'}, format='json')
+        # F5/F8 — satisfaire les gardes : confirmer la préparation et déposer une
+        # photo par créneau obligatoire avant de pouvoir passer à « Terminée ».
+        self._confirmer_preparation(i2)
+        interv2 = Intervention.objects.get(pk=i2)
+        field_services.seed_shotlist_slots(self.company)
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        ct = ContentType.objects.get_for_model(Intervention)
+        for slot in ShotListSlot.objects.filter(
+                company=self.company, obligatoire=True, actif=True):
+            Attachment.objects.create(
+                company=self.company, content_type=ct, object_id=interv2.id,
+                file_key='k', filename=field_services.encode_slot_filename(
+                    slot.cle, 'p.png'), mime='image/png',
+                uploaded_by=self.user)
+        with mock.patch('apps.records.storage.get_minio_client'):
+            self.api.patch(
+                f'/api/django/installations/interventions/{i2}/',
+                {'statut': 'terminee'}, format='json')
         r = self.api.get(
             '/api/django/installations/interventions/?statut=terminee')
         got = ids_of(r)

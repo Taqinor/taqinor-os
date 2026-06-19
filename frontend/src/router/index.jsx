@@ -41,9 +41,11 @@ const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
 const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
+const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
 const Journal = lazy(() => import('../pages/Journal'))
 const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
 const CalendarPage = lazy(() => import('../pages/CalendarPage'))
+const CartePage = lazy(() => import('../pages/CartePage'))
 const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
@@ -126,6 +128,7 @@ const router = createBrowserRouter([
   { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadsPage /></WithLayout> },
   { path: '/activites', loader: authLoader, element: <WithLayout><MesActivitesPage /></WithLayout> },
   { path: '/calendrier', loader: authLoader, element: <WithLayout><CalendarPage /></WithLayout> },
+  { path: '/carte', loader: authLoader, element: <WithLayout><CartePage /></WithLayout> },
   { path: '/crm/parrainage', loader: authLoader, element: <WithLayout><ParrainagePage /></WithLayout> },
 
   // Ventes
@@ -162,6 +165,7 @@ const router = createBrowserRouter([
   { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },
   { path: '/admin/roles', loader: authLoader, element: <WithLayout><RolesManagement /></WithLayout> },
   { path: '/parametres', loader: authLoader, element: <WithLayout><ParametresEntreprise /></WithLayout> },
+  { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
   { path: '/journal', loader: authLoader, element: <WithLayout><Journal /></WithLayout> },
 
   // Catch-all

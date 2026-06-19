@@ -1,0 +1,225 @@
+"""N87 — Intégration email (Brevo) pour l'envoi de documents clients et de
+relances depuis un compte d'envoi configurable.
+
+Principe directeur (règle fondatrice) : **sans clé d'envoi configurée, l'envoi
+est un NO-OP qui préserve le comportement actuel** (backend console de Django).
+On ne lève jamais d'exception pour une absence de clé, et les tests n'exigent
+jamais de clé vivante : ils s'appuient sur le backend `locmem`/console de Django.
+
+Stack d'envoi :
+  - Backend de messagerie Django configuré (settings.EMAIL_BACKEND). En prod,
+    on pointe sur `anymail.backends.sendinblue.EmailBackend` (Brevo, ex-
+    Sendinblue) en passant la clé `BREVO_API_KEY`. `django-anymail` est déjà
+    installé ; aucune nouvelle dépendance pip.
+  - À défaut de clé Brevo/SMTP, Django reste sur le backend console : l'email
+    est « envoyé » sans appel réseau (NO-OP fonctionnel), exactement comme
+    aujourd'hui.
+
+Chaque envoi est consigné dans `EmailLog` (fil du client + document) ET, pour un
+devis, une note est ajoutée au chatter `DevisActivity` — on réutilise le patron
+d'activité existant, on n'invente pas de nouveau mécanisme de log.
+"""
+import logging
+
+from django.conf import settings
+from django.core.mail import EmailMessage, get_connection
+
+from .models import EmailLog
+
+logger = logging.getLogger(__name__)
+
+
+def is_email_configured():
+    """True si un compte d'envoi (Brevo ou SMTP) est réellement configuré.
+
+    Sert UNIQUEMENT à informer l'UI / décider d'un envoi réel ; l'absence de
+    configuration n'est jamais une erreur — on retombe sur le backend console
+    (NO-OP). On considère « configuré » : une clé Brevo, OU un backend non
+    console explicitement choisi (ex. SMTP avec hôte)."""
+    if (settings.ANYMAIL or {}).get('BREVO_API_KEY'):
+        return True
+    backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
+    if 'console' in backend or 'dummy' in backend:
+        return False
+    if 'locmem' in backend:
+        # Backend de test : non « configuré » au sens d'un compte réel, mais on
+        # laisse l'envoi se faire (les tests vérifient le contenu via locmem).
+        return False
+    if 'smtp' in backend:
+        return bool(getattr(settings, 'EMAIL_HOST', ''))
+    # Tout autre backend explicitement choisi (anymail prod) → configuré.
+    return True
+
+
+def _from_email():
+    return getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
+
+
+def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
+    """Envoie via le backend Django configuré. Retourne (ok, erreur).
+
+    Sans clé configurée → backend console → l'email est « envoyé » sans appel
+    réseau ni exception (NO-OP). Toute exception réelle est capturée et
+    renvoyée comme erreur, jamais propagée à l'appelant."""
+    try:
+        connection = get_connection(fail_silently=False)
+        msg = EmailMessage(
+            subject=sujet, body=corps, from_email=_from_email(),
+            to=[to_email], connection=connection)
+        if attachment and attachment_name:
+            msg.attach(attachment_name, attachment, 'application/pdf')
+        msg.send(fail_silently=False)
+        return True, ''
+    except Exception as exc:  # pragma: no cover - dépend du backend réel
+        logger.warning('Envoi email échoué vers %s : %s', to_email, exc)
+        return False, str(exc)
+
+
+def _document_pdf(document):
+    """Récupère les octets du PDF stocké d'un document (best-effort).
+
+    Renvoie (bytes, nom_fichier) ou (None, None). Jamais d'exception remontée :
+    un PDF indisponible n'empêche pas l'envoi du corps de l'email."""
+    key = getattr(document, 'fichier_pdf', None)
+    if not key:
+        return None, None
+    try:
+        from .utils.pdf import download_pdf
+        data = download_pdf(key)
+        ref = getattr(document, 'reference', 'document')
+        return data, f'{ref}.pdf'
+    except Exception as exc:
+        logger.warning('PDF indisponible pour pièce jointe : %s', exc)
+        return None, None
+
+
+def _chatter_note(devis, body, user):
+    """Ajoute une note au chatter du devis (réutilise DevisActivity)."""
+    try:
+        from .models import DevisActivity
+        DevisActivity.objects.create(
+            company=devis.company, devis=devis, user=user,
+            kind=DevisActivity.Kind.NOTE, body=body)
+    except Exception:  # pragma: no cover - le log email reste la source de vérité
+        pass
+
+
+def send_document_email(document, *, to_email=None, sujet=None, corps=None,
+                        user=None, attach_pdf=True):
+    """Envoie un document (Devis ou Facture) au client par email et consigne
+    l'envoi sur le fil (EmailLog + chatter du devis le cas échéant).
+
+    NO-OP réseau quand aucune clé n'est configurée (backend console) : l'email
+    est tout de même journalisé comme « envoyé » pour garder une trace lisible.
+    Templates FR par défaut. Renvoie l'EmailLog créé.
+    """
+    from .models import Devis, Facture
+    client = getattr(document, 'client', None)
+    dest = (to_email or (getattr(client, 'email', '') or '')).strip()
+    reference = getattr(document, 'reference', '') or ''
+    est_facture = isinstance(document, Facture)
+    type_doc = 'facture' if est_facture else 'devis'
+
+    if not sujet:
+        sujet = (f'Votre facture {reference}' if est_facture
+                 else f'Votre devis {reference}')
+    if not corps:
+        nom_client = ''
+        if client is not None:
+            nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+        salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        corps = (
+            f"{salut}\n\n"
+            f"Veuillez trouver ci-joint votre {type_doc} "
+            f"{reference}.\n\n"
+            f"Nous restons à votre disposition pour toute question.\n\n"
+            f"Cordialement,\nL'équipe TAQINOR"
+        )
+
+    attachment = attachment_name = None
+    if attach_pdf:
+        attachment, attachment_name = _document_pdf(document)
+
+    log = EmailLog(
+        company=getattr(document, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client,
+        devis=document if isinstance(document, Devis) else None,
+        facture=document if est_facture else None,
+        to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps,
+        reference=reference[:80],
+        piece_jointe=(attachment_name or '')[:255],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    if not dest:
+        # Pas de destinataire : on ne tente rien, on consigne l'échec.
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return log
+
+    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+
+    if isinstance(document, Devis):
+        etat = 'envoyé' if ok else 'échec d\'envoi'
+        _chatter_note(
+            document, f"Email du devis {reference} — {etat} (à {dest}).", user)
+    return log
+
+
+def send_relance_email(facture, *, niveau_nom='', message='', user=None,
+                       attach_pdf=False):
+    """Envoie un email de relance pour une facture impayée et le consigne.
+
+    Le corps reprend le message du niveau de relance configuré quand il est
+    fourni. NO-OP réseau sans clé (backend console). Renvoie l'EmailLog créé.
+    """
+    client = getattr(facture, 'client', None)
+    dest = (getattr(client, 'email', '') or '').strip()
+    reference = getattr(facture, 'reference', '') or ''
+    sujet = f'Rappel de paiement — facture {reference}'
+    if niveau_nom:
+        sujet = f'{niveau_nom} — facture {reference}'
+
+    nom_client = ''
+    if client is not None:
+        nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+    salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+    corps_msg = message.strip() if message else (
+        f"Sauf erreur de notre part, la facture {reference} reste impayée. "
+        f"Nous vous remercions de bien vouloir procéder à son règlement.")
+    corps = (
+        f"{salut}\n\n{corps_msg}\n\n"
+        f"Cordialement,\nL'équipe TAQINOR"
+    )
+
+    attachment = attachment_name = None
+    if attach_pdf:
+        attachment, attachment_name = _document_pdf(facture)
+
+    log = EmailLog(
+        company=getattr(facture, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client, facture=facture,
+        to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps, reference=reference[:80],
+        piece_jointe=(attachment_name or '')[:255],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return log
+
+    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return log

@@ -172,7 +172,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
-                                          'doublons', 'export_xlsx']:
+                                          'check_duplicates', 'doublons',
+                                          'export_xlsx']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
@@ -286,6 +287,34 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         from .services import find_duplicate_leads
         lead = self.get_object()
         dups = find_duplicate_leads(lead)
+        return Response([
+            {
+                'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+                'societe': d.societe, 'telephone': d.telephone,
+                'email': d.email, 'stage': d.stage,
+                'is_archived': d.is_archived,
+                'nb_devis': d.devis.count(),
+            }
+            for d in dups
+        ])
+
+    @action(detail=False, methods=['get'], url_path='check-duplicates',
+            permission_classes=[IsAnyRole])
+    def check_duplicates(self, request):
+        """Contrôle PRÉ-CRÉATION (et édition) : un téléphone/email saisi
+        correspond-il déjà à un lead de la société ? Avertissement NON bloquant
+        côté formulaire — la société vient du serveur, jamais du corps. Saisie
+        libre acceptée (mêmes normaliseurs que la détection de doublons).
+        ?exclude=<id> retire le lead en cours d'édition de ses propres doublons."""
+        from .services import find_duplicates_by_contact
+        phone = request.query_params.get('telephone') or \
+            request.query_params.get('phone')
+        email = request.query_params.get('email')
+        exclude = request.query_params.get('exclude')
+        exclude_pk = exclude if (exclude or '').isdigit() else None
+        dups = find_duplicates_by_contact(
+            request.user.company, phone=phone, email=email,
+            exclude_pk=exclude_pk)
         return Response([
             {
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,

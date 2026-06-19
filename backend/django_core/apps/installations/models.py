@@ -303,6 +303,21 @@ class Intervention(models.Model):
         null=True, blank=True, related_name='interventions',
     )
     compte_rendu = models.TextField(blank=True, null=True)
+
+    # ── F6 — horodatage du trajet & arrivée sur site (géolocalisation
+    #    navigateur, AUCUN service externe). Tout est ADDITIF et nullable :
+    #    une intervention existante n'est pas affectée. Le check-in pose une
+    #    position GPS d'arrivée (≠ GPS du chantier, qui reste la cible) ; on en
+    #    dérive une distance-au-site indicative côté API. Le départ-dépôt et le
+    #    retour bornent le temps de trajet. ──
+    depart_depot_le = models.DateTimeField(null=True, blank=True)
+    arrivee_site_le = models.DateTimeField(null=True, blank=True)
+    arrivee_gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    arrivee_gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    retour_depot_le = models.DateTimeField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',
@@ -541,3 +556,137 @@ class ChantierChecklistItem(models.Model):
 
     def __str__(self):
         return f"{self.installation_id} · {self.libelle} · {'✓' if self.fait else '—'}"
+
+
+# ── F7/F8 — Shot list (modèle de prises de vue guidées) ──────────────────────
+class ShotListSlot(models.Model):
+    """F7/F8 — emplacement (créneau) d'une SHOT LIST de documentation terrain,
+    configurable dans Paramètres. Chaque créneau définit une vue attendue lors
+    d'une intervention, groupée par PHASE (avant/pendant/après). `obligatoire`
+    pilote l'application F8 : une intervention ne peut passer à « Terminée » tant
+    qu'un créneau obligatoire n'a pas au moins une photo.
+
+    Les défauts sont semés au standard de documentation d'un chantier solaire.
+    `protege` verrouille un créneau système contre la suppression. Additif —
+    company-scopé, aucune migration destructive."""
+
+    class Phase(models.TextChoices):
+        AVANT = 'avant', 'Avant'
+        PENDANT = 'pendant', 'Pendant'
+        APRES = 'apres', 'Après'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='shotlist_slots')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=120)
+    phase = models.CharField(
+        max_length=8, choices=Phase.choices, default=Phase.AVANT)
+    # F8 — une photo de ce créneau est requise pour terminer l'intervention.
+    obligatoire = models.BooleanField(default=False)
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    protege = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'cle')]
+        verbose_name = 'Créneau de shot list'
+        verbose_name_plural = 'Créneaux de shot list'
+
+    def __str__(self):
+        return f'{self.get_phase_display()} · {self.libelle}'
+
+
+# ── F5 — Liste de préparation d'une intervention ─────────────────────────────
+class InterventionPreparation(models.Model):
+    """F5 — liste de préparation PROPRE à une intervention (une seule par
+    intervention). Le matériel provient de la nomenclature gelée du chantier
+    (`Installation.bom`, copiée du devis) ; les outils proviennent du kit
+    d'outillage sélectionné. La confirmation « Tout est chargé » (`tout_charge`)
+    est requise AVANT que l'intervention puisse quitter « À préparer ». Additif —
+    company-scopé, posé côté serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='intervention_preparations')
+    intervention = models.OneToOneField(
+        Intervention, on_delete=models.CASCADE, related_name='preparation')
+    # Kit d'outillage sélectionné (apps.outillage.KitOutillage). SET_NULL : si le
+    # kit est supprimé, la préparation et ses lignes outils restent.
+    kit = models.ForeignKey(
+        'outillage.KitOutillage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='preparations')
+    # F5 — confirmation « Tout est chargé ». Garde la transition de statut.
+    tout_charge = models.BooleanField(default=False)
+    confirme_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='preparations_confirmees')
+    confirme_le = models.DateTimeField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Préparation d'intervention"
+        verbose_name_plural = "Préparations d'intervention"
+        ordering = ['intervention_id']
+
+    def __str__(self):
+        return f'Préparation · intervention {self.intervention_id}'
+
+
+class PreparationMaterielLigne(models.Model):
+    """F5 — une ligne MATÉRIEL de la préparation : quantité requise (issue de la
+    nomenclature gelée du chantier) + une case « chargé ». `manquant` lie le
+    flux Besoin matériel / brouillon de bon de commande existant (un manque =
+    une rupture sur le disponible du SKU). Le produit catalogue est optionnel
+    (les lignes libres restent traçables par désignation)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='preparation_materiel_lignes')
+    preparation = models.ForeignKey(
+        InterventionPreparation, on_delete=models.CASCADE,
+        related_name='materiel')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='preparation_lignes')
+    designation = models.CharField(max_length=255)
+    quantite_requise = models.PositiveIntegerField(default=0)
+    charge = models.BooleanField(default=False)
+    # F5 — drapeau de pénurie au moment de la préparation (disponible < requis).
+    manquant = models.BooleanField(default=False)
+    quantite_manquante = models.PositiveIntegerField(default=0)
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        verbose_name = 'Ligne matériel de préparation'
+        verbose_name_plural = 'Lignes matériel de préparation'
+
+    def __str__(self):
+        return f'{self.designation} × {self.quantite_requise}'
+
+
+class PreparationOutilLigne(models.Model):
+    """F5 — une ligne OUTIL de la préparation : un outil du kit sélectionné, avec
+    une case « coché » (chargé dans la camionnette). Référence un outil du
+    catalogue Outillage (SET_NULL si l'outil est retiré du parc)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='preparation_outil_lignes')
+    preparation = models.ForeignKey(
+        InterventionPreparation, on_delete=models.CASCADE,
+        related_name='outils')
+    outil = models.ForeignKey(
+        'outillage.Outillage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='preparation_lignes')
+    libelle = models.CharField(max_length=255)
+    coche = models.BooleanField(default=False)
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        verbose_name = 'Ligne outil de préparation'
+        verbose_name_plural = 'Lignes outil de préparation'
+
+    def __str__(self):
+        return f'{self.libelle} · {"✓" if self.coche else "—"}'

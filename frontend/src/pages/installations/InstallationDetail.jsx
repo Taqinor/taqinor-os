@@ -10,6 +10,7 @@ import { fetchProduits } from '../../features/stock/store/stockSlice'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
 import documentsApi from '../../api/documentsApi'
+import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import {
   INSTALLATION_STATUSES,
@@ -295,6 +296,16 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     }
   }
 
+  // Fiche de remise / garantie après-vente PREMIUM (langage visuel du devis).
+  const openFicheRemise = async () => {
+    try {
+      const r = await ventesApi.getFicheRemisePremiumPdf(current.id)
+      downloadBlob(r.data, `Fiche_remise_${current.reference}.pdf`)
+    } catch {
+      alert('Document indisponible.')
+    }
+  }
+
   const [besoin, setBesoin] = useState(null)
   const [besoinLoading, setBesoinLoading] = useState(false)
   const chargerBesoin = async () => {
@@ -380,6 +391,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               <Button size="sm" variant="outline"
                       onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`)}>
                 Dossier de remise
+              </Button>
+              <Button size="sm" variant="outline" onClick={openFicheRemise}>
+                Fiche de remise / garantie
               </Button>
               <Button size="sm" variant="outline"
                       onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`)}>

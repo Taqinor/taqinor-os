@@ -80,10 +80,21 @@ const ventesApi = {
   relancerFacture: (id, data) => api.post(`/ventes/factures/${id}/relancer/`, data),
   exclureRelance: (id, exclu) => api.post(`/ventes/factures/${id}/exclure-relance/`, { exclu }),
   getRelancesFacture: (id) => api.get(`/ventes/factures/${id}/relances/`),
+  // N87 — fil des emails (envoyés/reçus) d'une facture + état du compte d'envoi.
+  getEmailsFacture: (id) => api.get(`/ventes/factures/${id}/emails/`),
+  getEmailConfig: () => api.get('/ventes/email-config/'),
   getBalanceAgee: () => api.get('/ventes/balance-agee/'),
   getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
   getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),
+  // Lettre de relance PREMIUM (langage visuel du devis) — niveau 1/2/3.
+  getLettreRelancePremiumPdf: (factureId, niveau = 1) =>
+    api.get(`/ventes/factures/${factureId}/lettre-relance-premium/`, {
+      params: { niveau }, responseType: 'blob',
+    }),
+  // Fiche de remise / garantie après-vente PREMIUM pour un chantier.
+  getFicheRemisePremiumPdf: (chantierId) =>
+    api.get(`/ventes/chantiers/${chantierId}/fiche-remise-premium/`, { responseType: 'blob' }),
   getNiveauxRelance: () => api.get('/ventes/niveaux-relance/'),
   saveNiveauRelance: (id, data) => id
     ? api.patch(`/ventes/niveaux-relance/${id}/`, data)

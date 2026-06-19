@@ -819,6 +819,72 @@ class RelanceLog(models.Model):
         return f'Relance {self.facture.reference} — {self.date}'
 
 
+class EmailLog(models.Model):
+    """Journal « chatter » des emails sortants ET entrants liés à un client /
+    document (devis, facture). Additif, scopé société. C'est la trace
+    réutilisée par l'intégration email (N87) et la capture entrante (N88) :
+    on consigne ce qui a été envoyé/reçu sur le fil du client/document. La
+    société et l'utilisateur sont posés côté serveur, jamais lus du corps de
+    la requête.
+
+    Sans clé d'envoi configurée, l'envoi reste un NO-OP (backend console par
+    défaut) mais l'entrée EmailLog est tout de même écrite avec
+    statut=ENVOYE pour garder la trace lisible côté fil."""
+    class Direction(models.TextChoices):
+        SORTANT = 'sortant', 'Sortant'
+        ENTRANT = 'entrant', 'Entrant'
+
+    class Statut(models.TextChoices):
+        ENVOYE = 'envoye', 'Envoyé'
+        ECHEC = 'echec', 'Échec'
+        RECU = 'recu', 'Reçu'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='email_logs')
+    direction = models.CharField(
+        max_length=10, choices=Direction.choices, default=Direction.SORTANT)
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ENVOYE)
+    # Cible du fil : client et/ou document. Tous optionnels — un email entrant
+    # peut n'être rattaché qu'au client si aucune référence document n'est lue.
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='email_logs')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='email_logs')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='email_logs')
+    to_email = models.CharField(max_length=254, blank=True, default='')
+    from_email = models.CharField(max_length=254, blank=True, default='')
+    sujet = models.CharField(max_length=300, blank=True, default='')
+    corps = models.TextField(blank=True, default='')
+    # Référence document reconnue dans un message entrant (ex. FAC-…/DEV-…).
+    reference = models.CharField(max_length=80, blank=True, default='')
+    # Nom de la pièce jointe envoyée (PDF), le cas échéant.
+    piece_jointe = models.CharField(max_length=255, blank=True, default='')
+    erreur = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='email_logs')
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Email'
+        indexes = [
+            models.Index(fields=['client', '-created_at'],
+                         name='ventes_emaillog_cli_idx'),
+            models.Index(fields=['facture', '-created_at'],
+                         name='ventes_emaillog_fac_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_direction_display()} {self.to_email or self.from_email}'
+
+
 # ── Liens publics tokenisés (Envoyer par WhatsApp) ───────────────────────────
 import secrets  # noqa: E402
 from datetime import timedelta  # noqa: E402

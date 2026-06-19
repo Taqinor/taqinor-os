@@ -174,6 +174,125 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         produit = self.get_object()
         return Response(stock_breakdown(produit))
 
+    @action(detail=False, methods=['get'], url_path='etiquettes',
+            permission_classes=[IsAnyRole])
+    def etiquettes(self, request):
+        """N20 — Étiquettes imprimables (QR/CODE128) pour une sélection de SKU.
+
+        Encode un jeton stable `PRODUIT:<id>` + un texte LISIBLE (nom + SKU).
+        Le jeton scanné est résolu par `resolve` (lecture seule). On n'imprime
+        JAMAIS de prix d'achat / marge — uniquement nom + SKU + jeton.
+
+        Paramètres :
+          - ``ids`` : liste d'identifiants (répétée ou séparée par virgules) ;
+          - ``symbology`` : ``qr`` (défaut) | ``code128`` ;
+          - ``sortie`` : ``html`` (aperçu) | ``pdf`` (défaut). On utilise
+            ``sortie`` et non ``format`` (réservé par DRF).
+        """
+        from . import labels
+        from apps.ventes.utils.pdf import _html_to_pdf
+
+        ids = request.query_params.getlist('ids')
+        if len(ids) == 1 and ',' in ids[0]:
+            ids = ids[0].split(',')
+        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
+        if not ids:
+            return Response({'detail': 'Sélectionnez au moins un produit.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        symbology = request.query_params.get('symbology', 'qr')
+        if symbology not in ('qr', 'code128'):
+            symbology = 'qr'
+
+        produits = (Produit.objects
+                    .filter(company=request.user.company, id__in=ids)
+                    .order_by('nom'))
+        items = [{
+            'token': labels.produit_token(p.id),
+            'titre': p.nom,
+            'sous_titre': p.sku or '',
+        } for p in produits]
+        if not items:
+            return Response({'detail': 'Aucun produit correspondant.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        html = labels.render_labels_html(items, symbology=symbology)
+        if request.query_params.get('sortie') == 'html':
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        pdf_bytes = _html_to_pdf(html)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="etiquettes-produits.pdf"')
+        return response
+
+    @action(detail=False, methods=['get'], url_path='resolve',
+            permission_classes=[IsAnyRole])
+    def resolve(self, request):
+        """N20 — Résout un code scanné (`PRODUIT:<id>` / `SYSTEME:<id>`) vers
+        l'enregistrement correspondant, STRICTEMENT scopé à la société.
+
+        Lecture seule : ne modifie JAMAIS d'installation (import paresseux,
+        aucune écriture). Renvoie ``{type, id, label, route}`` pour que le
+        front navigue vers la bonne fiche, ou 404 si le code est inconnu /
+        hors société."""
+        from . import labels
+
+        code = (request.query_params.get('code') or '').strip()
+        if not code or ':' not in code:
+            return Response(
+                {'detail': 'Code illisible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        prefix, _, raw_id = code.partition(':')
+        prefix = prefix.strip().upper()
+        raw_id = raw_id.strip()
+        if not raw_id.isdigit():
+            return Response(
+                {'detail': 'Code illisible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        obj_id = int(raw_id)
+
+        if prefix == labels.PRODUIT_PREFIX:
+            produit = (Produit.objects
+                       .filter(company=request.user.company, id=obj_id)
+                       .first())
+            if produit is None:
+                return Response(
+                    {'detail': 'Produit introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'type': 'produit',
+                'id': produit.id,
+                'label': produit.nom,
+                'sku': produit.sku or '',
+                'route': '/stock',
+            })
+
+        if prefix == labels.SYSTEME_PREFIX:
+            # Import paresseux : résolution en LECTURE SEULE, jamais d'écriture.
+            from apps.installations.models import Installation
+            inst = (Installation.objects
+                    .filter(company=request.user.company, id=obj_id)
+                    .select_related('client')
+                    .first())
+            if inst is None:
+                return Response(
+                    {'detail': 'Système installé introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            client_nom = getattr(inst.client, 'nom', '') if inst.client_id \
+                else ''
+            return Response({
+                'type': 'systeme',
+                'id': inst.id,
+                'label': inst.reference,
+                'client': client_nom,
+                'statut': inst.statut,
+                'route': '/chantiers',
+            })
+
+        return Response(
+            {'detail': 'Type de code inconnu.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['patch'], url_path='unarchive')
     def unarchive(self, request, *args, **kwargs):
         produit = self.get_object()

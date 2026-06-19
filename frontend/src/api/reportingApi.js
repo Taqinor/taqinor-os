@@ -34,6 +34,8 @@ const reportingApi = {
   getCalendar: (params) => api.get('/reporting/calendar/', { params }),
   rescheduleCalendar: (payload) =>
     api.post('/reporting/calendar/reschedule/', payload),
+  // N85 — Vue carte. Points géolocalisés ; filtres optionnels ?types=&statuts=.
+  getGeoPoints: (params) => api.get('/reporting/geo/', { params }),
 }
 
 export default reportingApi

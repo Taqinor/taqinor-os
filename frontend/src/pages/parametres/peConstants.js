@@ -29,12 +29,16 @@ export const TABS = [
   { key: 'leads',      label: 'Leads' },
   { key: 'clients',    label: 'Clients' },
   { key: 'devis',      label: 'Devis & Factures' },
+  { key: 'documents',  label: 'Modèles de documents' },
+  { key: 'tarification', label: 'Tarification & ROI' },
   { key: 'stock',      label: 'Stock' },
   { key: 'statuts',    label: 'Statuts' },
   { key: 'checklists', label: 'Checklists' },
   { key: 'kits',       label: "Kits d'outillage" },
+  { key: 'shotlist',   label: 'Documentation terrain' },
   { key: 'equipe',     label: 'Équipe & rôles' },
   { key: 'messages',   label: 'Messages & relances' },
+  { key: 'email',      label: 'Email' },
   { key: 'avance',     label: 'Avancé' },
 ]
 

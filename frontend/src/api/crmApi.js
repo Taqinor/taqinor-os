@@ -32,6 +32,9 @@ const crmApi = {
   // Export Excel (.xlsx) d'une sélection — réponse binaire (blob).
   exportLeadsXlsx: (ids) =>
     api.post('/crm/leads/export-xlsx/', { ids }, { responseType: 'blob' }),
+  // Contrôle pré-création/édition des doublons par téléphone/email (société
+  // côté serveur). Avertissement NON bloquant dans le formulaire de lead.
+  checkDuplicates: (params) => api.get('/crm/leads/check-duplicates/', { params }),
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
   // Atelier doublons : tous les clusters de la société (survivant suggéré).

@@ -300,3 +300,17 @@ class DevisActivitySerializer(serializers.ModelSerializer):
         fields = ['id', 'devis', 'kind', 'field', 'field_label',
                   'old_value', 'new_value', 'body', 'user_nom', 'created_at']
         read_only_fields = fields
+
+
+class EmailLogSerializer(serializers.ModelSerializer):
+    """Fil des emails (N87/N88) — lecture seule côté API."""
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import EmailLog
+        model = EmailLog
+        fields = ['id', 'direction', 'statut', 'client', 'devis', 'facture',
+                  'to_email', 'from_email', 'sujet', 'corps', 'reference',
+                  'piece_jointe', 'erreur', 'created_at', 'created_by_nom']
+        read_only_fields = fields

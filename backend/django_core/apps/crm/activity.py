@@ -31,6 +31,7 @@ TRACKED_FIELDS = {
     'facture_ete': 'Facture été',
     'ete_differente': 'Été différent',
     'conso_mensuelle_kwh': 'Conso mensuelle (kWh)',
+    'tranche_onee': 'Tarif / tranche ONEE',
     'pompe_cv': 'Pompe (CV)',
     'pompe_hmt_m': 'HMT (m)',
     'pompe_debit_m3h': 'Débit souhaité (m³/h)',
@@ -39,11 +40,18 @@ TRACKED_FIELDS = {
     'type_toiture': 'Type de toiture',
     'surface_toiture_m2': 'Surface toiture (m²)',
     'orientation': 'Orientation',
+    'inclinaison_deg': 'Inclinaison (°)',
     'ombrage': 'Ombrage',
+    'ombrage_notes': 'Notes ombrage',
+    'nb_etages': 'Étages / hauteur',
+    'structure_pref': 'Structure',
     'taille_souhaitee_kwc': 'Taille souhaitée (kWc)',
     'batterie_souhaitee': 'Batterie souhaitée',
+    'gps_lat': 'GPS latitude',
+    'gps_lng': 'GPS longitude',
     'visite_prevue_le': 'Visite prévue le',
     'visite_effectuee': 'Visite effectuée',
+    'visite_notes': 'Notes de visite',
 }
 
 _CHOICE_FIELDS = {

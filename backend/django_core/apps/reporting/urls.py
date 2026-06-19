@@ -8,6 +8,7 @@ from .insights import (
 )
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
+from .geo import geo_points
 
 urlpatterns = [
     path('dashboard/', dashboard, name='reporting-dashboard'),
@@ -16,6 +17,7 @@ urlpatterns = [
     path('calendar/', calendar_events, name='reporting-calendar'),
     path('calendar/reschedule/', calendar_reschedule,
          name='reporting-calendar-reschedule'),
+    path('geo/', geo_points, name='reporting-geo'),
     path('pipeline/', pipeline, name='reporting-pipeline'),
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),

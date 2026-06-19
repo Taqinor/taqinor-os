@@ -51,6 +51,46 @@ const installationsApi = {
   noterIntervention: (id, body) =>
     api.post(`/installations/interventions/${id}/noter/`, { body }),
 
+  // F5 — Liste de préparation (matériel du chantier + outils du kit).
+  getPreparation: (id) => api.get(`/installations/interventions/${id}/preparation/`),
+  choisirKit: (id, kit) =>
+    api.post(`/installations/interventions/${id}/choisir-kit/`, { kit }),
+  cocherMateriel: (id, ligne, charge) =>
+    api.post(`/installations/interventions/${id}/cocher-materiel/`, { ligne, charge }),
+  cocherOutil: (id, ligne, coche) =>
+    api.post(`/installations/interventions/${id}/cocher-outil/`, { ligne, coche }),
+  confirmerCharge: (id) =>
+    api.post(`/installations/interventions/${id}/confirmer-charge/`, {}),
+  commanderManques: (id, fournisseur) =>
+    api.post(`/installations/interventions/${id}/commander-manques/`,
+      fournisseur ? { fournisseur } : {}),
+
+  // F6 — Trajet & check-in GPS (géolocalisation navigateur, aucun service externe).
+  departDepot: (id) => api.post(`/installations/interventions/${id}/depart-depot/`, {}),
+  checkin: (id, lat, lng) =>
+    api.post(`/installations/interventions/${id}/checkin/`, { lat, lng }),
+  retourDepot: (id) => api.post(`/installations/interventions/${id}/retour/`, {}),
+
+  // F7/F8 — Photos guidées par shot list (stockage objet générique).
+  getPhotos: (id) => api.get(`/installations/interventions/${id}/photos/`),
+  ajouterPhoto: (id, file, slot, phase) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (slot) fd.append('slot', slot)
+    if (phase) fd.append('phase', phase)
+    return api.post(`/installations/interventions/${id}/ajouter-photo/`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  supprimerPhoto: (id, photo) =>
+    api.post(`/installations/interventions/${id}/supprimer-photo/`, { photo }),
+
+  // F7/F8 — Créneaux de shot list (Paramètres → Documentation terrain).
+  getShotlistSlots: () => api.get('/installations/shotlist-slots/'),
+  saveShotlistSlot: (id, data) => id
+    ? api.patch(`/installations/shotlist-slots/${id}/`, data)
+    : api.post('/installations/shotlist-slots/', data),
+  deleteShotlistSlot: (id) => api.delete(`/installations/shotlist-slots/${id}/`),
+
   // Types d'intervention gérés (Paramètres → Chantiers). Types système protégés.
   getTypesIntervention: () => api.get('/installations/types-intervention/'),
   saveTypeIntervention: (id, data) => id

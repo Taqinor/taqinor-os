@@ -12,18 +12,20 @@ from . import activity
 from . import intervention_activity
 from .models import (
     Installation, Intervention, TypeIntervention, ChecklistTemplate,
-    ChecklistEtapeModele,
+    ChecklistEtapeModele, ShotListSlot,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
     InstallationActivitySerializer, InterventionActivitySerializer,
     TypeInterventionSerializer, ChecklistTemplateSerializer,
     ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
+    ShotListSlotSerializer, InterventionPreparationSerializer,
 )
 from .services import (
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
 )
+from . import field_services
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -628,9 +630,13 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'preparation', 'photos']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['noter']:
+        elif self.action in WRITE_ACTIONS + [
+            'noter', 'cocher_materiel', 'cocher_outil', 'choisir_kit',
+            'confirmer_charge', 'commander_manques', 'depart_depot', 'checkin',
+            'retour', 'ajouter_photo', 'supprimer_photo',
+        ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsResponsableOrAdmin()]
@@ -672,8 +678,18 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                 f"{interv.get_type_intervention_display()}")
 
     def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
+        # F5/F8 — garde de transition de statut PROPRE à l'intervention :
+        # quitter « À préparer » exige « Tout est chargé » (F5) ; atteindre
+        # « Terminée » exige une photo par créneau obligatoire (F8). Ne lit/écrit
+        # JAMAIS le statut chantier ni STAGES.py.
+        new_statut = serializer.validated_data.get('statut', old.statut)
+        if new_statut != old.statut:
+            reason = field_services.transition_block_reason(old, new_statut)
+            if reason:
+                raise ValidationError({'statut': reason})
         interv = serializer.save()
         # F3 — journalise les changements (dont le statut) dans le chatter
         # PROPRE de l'intervention. Ne touche JAMAIS le statut du chantier.
@@ -698,3 +714,337 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         act = intervention_activity.log_note(interv, request.user, body)
         return Response(InterventionActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    # ── F5 — Liste de préparation ───────────────────────────────────────────
+    def _prep_response(self, interv):
+        prep = field_services.ensure_preparation(interv)
+        return Response(InterventionPreparationSerializer(
+            prep, context={'request': self.request}).data)
+
+    @action(detail=True, methods=['get'], url_path='preparation',
+            permission_classes=[IsAnyRole])
+    def preparation(self, request, pk=None):
+        """F5 — liste de préparation : matériel (nomenclature gelée du chantier)
+        + outils (kit). Matérialisée paresseusement à la première consultation,
+        puis renvoyée avec le pourcentage de complétion."""
+        return self._prep_response(self.get_object())
+
+    @action(detail=True, methods=['post'], url_path='choisir-kit',
+            permission_classes=[IsResponsableOrAdmin])
+    def choisir_kit(self, request, pk=None):
+        """F5 — sélectionne (ou retire) le kit d'outillage de la préparation et
+        resynchronise les lignes outils. Corps : {"kit": <id|null>}."""
+        from apps.outillage.models import KitOutillage
+        interv = self.get_object()
+        prep = field_services.ensure_preparation(interv)
+        kit_id = request.data.get('kit')
+        if kit_id in (None, '', 'null'):
+            prep.kit = None
+        else:
+            kit = KitOutillage.objects.filter(
+                id=kit_id, company=interv.company).first()
+            if kit is None:
+                return Response({'kit': 'Kit inconnu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            prep.kit = kit
+        # Changer de kit invalide la confirmation « Tout est chargé ».
+        prep.tout_charge = False
+        prep.confirme_par = None
+        prep.confirme_le = None
+        prep.save(update_fields=['kit', 'tout_charge', 'confirme_par',
+                                 'confirme_le'])
+        field_services._sync_outils(prep)
+        return self._prep_response(interv)
+
+    @action(detail=True, methods=['post'], url_path='cocher-materiel',
+            permission_classes=[IsResponsableOrAdmin])
+    def cocher_materiel(self, request, pk=None):
+        """F5 — coche/décoche une ligne matériel comme « chargée ».
+        Corps : {"ligne": <id>, "charge": <bool>}."""
+        interv = self.get_object()
+        prep = field_services.ensure_preparation(interv)
+        ligne = prep.materiel.filter(id=request.data.get('ligne')).first()
+        if ligne is None:
+            return Response({'detail': 'Ligne inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        charge = bool(request.data.get('charge', True))
+        ligne.charge = charge
+        ligne.save(update_fields=['charge'])
+        # Décocher une ligne retire la confirmation « Tout est chargé ».
+        if not charge and prep.tout_charge:
+            prep.tout_charge = False
+            prep.save(update_fields=['tout_charge'])
+        return self._prep_response(interv)
+
+    @action(detail=True, methods=['post'], url_path='cocher-outil',
+            permission_classes=[IsResponsableOrAdmin])
+    def cocher_outil(self, request, pk=None):
+        """F5 — coche/décoche un outil comme « chargé ».
+        Corps : {"ligne": <id>, "coche": <bool>}."""
+        interv = self.get_object()
+        prep = field_services.ensure_preparation(interv)
+        ligne = prep.outils.filter(id=request.data.get('ligne')).first()
+        if ligne is None:
+            return Response({'detail': 'Ligne inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        coche = bool(request.data.get('coche', True))
+        ligne.coche = coche
+        ligne.save(update_fields=['coche'])
+        if not coche and prep.tout_charge:
+            prep.tout_charge = False
+            prep.save(update_fields=['tout_charge'])
+        return self._prep_response(interv)
+
+    @action(detail=True, methods=['post'], url_path='confirmer-charge',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer_charge(self, request, pk=None):
+        """F5 — confirmation « Tout est chargé » : requise avant de quitter
+        « À préparer ». Refuse si toutes les lignes ne sont pas cochées."""
+        interv = self.get_object()
+        prep = field_services.ensure_preparation(interv)
+        try:
+            field_services.confirm_charge(prep, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        intervention_activity.log_note(
+            interv, request.user,
+            "Préparation confirmée — « Tout est chargé ».")
+        return self._prep_response(interv)
+
+    @action(detail=True, methods=['post'], url_path='commander-manques',
+            permission_classes=[IsResponsableOrAdmin])
+    def commander_manques(self, request, pk=None):
+        """F5 — crée un bon de commande fournisseur BROUILLON pour les manques
+        du chantier (réutilise le flux Besoin matériel existant). Corps :
+        {"fournisseur": <id>} optionnel."""
+        from apps.stock.services import (
+            draft_bcf_for_shortfall, resolve_fournisseur,
+        )
+        from apps.stock.serializers import BonCommandeFournisseurSerializer
+        interv = self.get_object()
+        inst = interv.installation
+        company = request.user.company
+        fournisseur = resolve_fournisseur(
+            company, request.data.get('fournisseur'), inst)
+        if fournisseur is None:
+            return Response(
+                {'detail': ('Aucun fournisseur indiqué et aucun fournisseur '
+                            'par défaut sur les produits manquants.')},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            bon, nb = draft_bcf_for_shortfall(
+                inst, fournisseur, request.user, company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = BonCommandeFournisseurSerializer(
+            bon, context={'request': request}).data
+        data['nb_lignes'] = nb
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    # ── F6 — Trajet & check-in GPS sur site ─────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='depart-depot',
+            permission_classes=[IsResponsableOrAdmin])
+    def depart_depot(self, request, pk=None):
+        """F6 — horodate le départ du dépôt (début du trajet)."""
+        interv = self.get_object()
+        interv.depart_depot_le = timezone.now()
+        interv.save(update_fields=['depart_depot_le'])
+        intervention_activity.log_note(
+            interv, request.user, "Départ dépôt enregistré.")
+        return Response(InterventionSerializer(
+            interv, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='checkin',
+            permission_classes=[IsResponsableOrAdmin])
+    def checkin(self, request, pk=None):
+        """F6 — check-in à l'arrivée : horodatage + position GPS (du navigateur,
+        aucun service externe). On en dérive une distance-au-site indicative.
+        Corps : {"lat": <num>, "lng": <num>}."""
+        interv = self.get_object()
+        lat = request.data.get('lat')
+        lng = request.data.get('lng')
+        interv.arrivee_site_le = timezone.now()
+        fields = ['arrivee_site_le']
+        if lat not in (None, '') and lng not in (None, ''):
+            try:
+                interv.arrivee_gps_lat = round(float(lat), 6)
+                interv.arrivee_gps_lng = round(float(lng), 6)
+                fields += ['arrivee_gps_lat', 'arrivee_gps_lng']
+            except (TypeError, ValueError):
+                return Response({'detail': 'Coordonnées invalides.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        interv.save(update_fields=fields)
+        dist = field_services.distance_to_site(interv)
+        intervention_activity.log_note(
+            interv, request.user,
+            "Arrivée sur site enregistrée"
+            + (f" (≈ {dist} km du chantier)" if dist is not None else "") + ".")
+        return Response(InterventionSerializer(
+            interv, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='retour',
+            permission_classes=[IsResponsableOrAdmin])
+    def retour(self, request, pk=None):
+        """F6 — horodate le retour au dépôt (fin du trajet)."""
+        interv = self.get_object()
+        interv.retour_depot_le = timezone.now()
+        interv.save(update_fields=['retour_depot_le'])
+        intervention_activity.log_note(
+            interv, request.user, "Retour dépôt enregistré.")
+        return Response(InterventionSerializer(
+            interv, context={'request': request}).data)
+
+    # ── F7/F8 — Photos guidées par shot list ────────────────────────────────
+    @action(detail=True, methods=['get'], url_path='photos',
+            permission_classes=[IsAnyRole])
+    def photos(self, request, pk=None):
+        """F7/F8 — galerie groupée avant/pendant/après + checklist des créneaux
+        obligatoires manquants (garde « Terminée »)."""
+        interv = self.get_object()
+        field_services.seed_shotlist_slots(interv.company)
+        slots = field_services.active_shotlist(interv.company)
+        by_slot = field_services.photos_by_slot(interv)
+
+        def photo_payload(att):
+            return {
+                'id': att.id,
+                'filename': field_services.display_filename(att),
+                'url': f'/api/django/records/attachments/{att.id}/download/',
+                'mime': att.mime,
+                'created_at': att.created_at,
+                'uploaded_by_nom': getattr(att.uploaded_by, 'username', None),
+            }
+
+        groups = {'avant': [], 'pendant': [], 'apres': []}
+        for slot in slots:
+            entry = {
+                'cle': slot.cle, 'libelle': slot.libelle, 'phase': slot.phase,
+                'obligatoire': slot.obligatoire,
+                'photos': [photo_payload(a) for a in by_slot.get(slot.cle, [])],
+            }
+            groups.setdefault(slot.phase, []).append(entry)
+        # Photos hors créneau (créneau supprimé/désactivé) — regroupées à part.
+        known = {s.cle for s in slots}
+        autres = []
+        for cle, atts in by_slot.items():
+            if cle and cle not in known:
+                autres.append({
+                    'cle': cle, 'libelle': cle, 'phase': '',
+                    'obligatoire': False,
+                    'photos': [photo_payload(a) for a in atts]})
+        sans_creneau = [photo_payload(a) for a in by_slot.get('', [])]
+        manquants = field_services.missing_required_shots(interv)
+        return Response({
+            'intervention': interv.id,
+            'groupes': groups,
+            'autres': autres,
+            'sans_creneau': sans_creneau,
+            'obligatoires_manquants': [
+                {'cle': s.cle, 'libelle': s.libelle, 'phase': s.phase}
+                for s in manquants],
+        })
+
+    @action(detail=True, methods=['post'], url_path='ajouter-photo',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_photo(self, request, pk=None):
+        """F7 — téléverse une photo, tagguée à un créneau de shot list, via le
+        stockage objet GÉNÉRIQUE existant (records.store_attachment + le modèle
+        records.Attachment). Le créneau est encodé dans le nom de fichier (pas
+        de nouveau champ croisé). La photo reste en stockage objet — jamais
+        commitée. Corps multipart : file, slot, phase."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import store_attachment
+        interv = self.get_object()
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        slot_cle = (request.data.get('slot') or '').strip()
+        # La phase suit le créneau choisi quand il existe ; sinon le corps.
+        phase = (request.data.get('phase') or '').strip().lower()
+        if slot_cle:
+            slot = ShotListSlot.objects.filter(
+                company=interv.company, cle=slot_cle).first()
+            if slot is not None:
+                phase = slot.phase
+        if phase not in ('avant', 'pendant', 'apres'):
+            phase = ''
+        meta, err = store_attachment(file)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Encode le créneau dans le filename pour réutiliser le modèle générique.
+        meta = dict(meta)
+        meta['filename'] = field_services.encode_slot_filename(
+            slot_cle, meta['filename'])
+        ct = ContentType.objects.get_for_model(Intervention)
+        att = Attachment.objects.create(
+            company=interv.company, content_type=ct, object_id=interv.id,
+            uploaded_by=request.user, phase=phase, **meta)
+        intervention_activity.log_note(
+            interv, request.user,
+            f"Photo ajoutée{(' — ' + slot_cle) if slot_cle else ''}.")
+        return Response({
+            'id': att.id,
+            'filename': field_services.display_filename(att),
+            'url': f'/api/django/records/attachments/{att.id}/download/',
+            'slot': slot_cle, 'phase': phase,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='supprimer-photo',
+            permission_classes=[IsResponsableOrAdmin])
+    def supprimer_photo(self, request, pk=None):
+        """F7 — supprime une photo de l'intervention (objet + enregistrement).
+        Corps : {"photo": <attachment_id>}."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import delete_attachment
+        interv = self.get_object()
+        ct = ContentType.objects.get_for_model(Intervention)
+        att = Attachment.objects.filter(
+            id=request.data.get('photo'), content_type=ct,
+            object_id=interv.id, company=interv.company).first()
+        if att is None:
+            return Response({'detail': 'Photo inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        delete_attachment(att.file_key)
+        att.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ShotListSlotViewSet(TenantMixin, viewsets.ModelViewSet):
+    """F7/F8 — créneaux de la shot list (Paramètres → Documentation terrain).
+    Lecture tout rôle, écriture admin. Le défaut est semé au standard de
+    documentation chantier solaire à la première liste. Un créneau protégé garde
+    sa clé ; `obligatoire` pilote l'application F8 (photo requise pour terminer).
+    Tout est scopé à la société ; la société est posée côté serveur."""
+    queryset = ShotListSlot.objects.all()
+    serializer_class = ShotListSlotSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        phase = self.request.query_params.get('phase')
+        if phase:
+            qs = qs.filter(phase=phase)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            field_services.seed_shotlist_slots(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        slot = self.get_object()
+        if slot.protege:
+            return Response(
+                {'detail': "Ce créneau est protégé — désactivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { PartyPopper, FileText, MessageCircle } from 'lucide-react'
+import { PartyPopper, FileText, MessageCircle, Mail } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, Card, EmptyState, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Label, Textarea,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 
@@ -41,6 +42,13 @@ export default function RelancesPage() {
     try {
       const res = await ventesApi.getLettreRelancePdf(r.id)
       openPdfBlob(res.data, `Relance_${r.reference}.pdf`)
+    } catch { alert('PDF indisponible.') }
+  }
+  // Lettre de relance premium (langage visuel du devis) — niveau 1/2/3.
+  const lettrePremium = async (r, niveau) => {
+    try {
+      const res = await ventesApi.getLettreRelancePremiumPdf(r.id, niveau)
+      openPdfBlob(res.data, `Relance_${r.reference}_N${niveau}.pdf`)
     } catch { alert('PDF indisponible.') }
   }
   // Rappel de paiement par WhatsApp : message « relance » + lien public.
@@ -111,6 +119,24 @@ export default function RelancesPage() {
                         <Button size="sm" variant="outline" onClick={() => lettre(r)}>
                           <FileText /> Lettre
                         </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" title="Lettre de relance premium">
+                              <Mail /> Relance premium
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => lettrePremium(r, 1)}>
+                              Niveau 1 — courtois
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => lettrePremium(r, 2)}>
+                              Niveau 2 — ferme
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => lettrePremium(r, 3)}>
+                              Niveau 3 — mise en demeure
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button size="sm" variant="outline" onClick={() => exclure(r)}>Exclure</Button>
                       </div>
                     </td>

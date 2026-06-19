@@ -855,6 +855,140 @@ class TestPdfFormats(TestCase):
         self.assertNotIn('junk', opts)
 
 
+class TestDocLiteralTemplates(TestCase):
+    """D2/N60/N67/N26/N59 — textes éditables du devis (couche éditoriale).
+
+    Garantit que (1) avec des réglages PAR DÉFAUT le HTML premium contient
+    EXACTEMENT les littéraux historiques (validité, puces CGV, « Bon pour
+    accord », garanties en entités HTML), donc le PDF est byte-identique ;
+    (2) éditer ``DocumentTemplates`` change réellement le rendu ; (3) le tampon
+    d'acceptation N26 n'apparaît QUE lorsque le devis est accepté.
+    """
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+        ('Structures acier', '14', '375'),
+        ('Socles', '30', '67'),
+        ('Accessoires', '1', '1667'),
+        ('Tableau De Protection AC/DC', '1', '1667'),
+        ('Installation', '1', '4000'),
+        ('Transport', '1', '1000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES)
+
+    def _render(self, pdf_options=None, devis=None):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        data = build_quote_data(devis or self.devis, pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_doclit_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html']
+
+    def test_default_settings_keep_exact_historical_literals(self):
+        """Réglages par défaut → tous les littéraux historiques présents au
+        caractère et à l'entité HTML près (preuve de byte-identité du devis)."""
+        html = self._render()
+        # Validité (badge page 1) + format une page
+        self.assertIn('Validit&#233;&#160;: 30 jours', html)
+        # Conditions générales — titre + puces (entités/accents EXACTS)
+        self.assertIn('Conditions générales du devis', html)
+        self.assertIn('Validité de l&#8217;offre&#160;: 30 jours', html)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html)
+        self.assertIn('60&#37; à la réception du matériel', html)
+        self.assertIn('10&#37; après la mise en marche', html)
+        self.assertIn('Délai d&#8217;installation&#160;: 7–14 jours ouvrés', html)
+        self.assertIn('Tarifs de référence&#160;: barème ONEE/SRM', html)
+        # Garanties — entités HTML EXACTES (cf. test garantie 30 ans)
+        self.assertIn('Garanties jusqu&#8217;à 30 ans', html)
+        self.assertIn('30 ans performance (87,4&#8201;%)', html)
+        self.assertIn('Performance panneau (87,4&#8201;%)', html)
+        # Bon pour accord — titre + mention manuscrite (espaces insécables)
+        self.assertIn('Bon pour accord', html)
+        self.assertIn(
+            'Lu et approuvé — Signature précédée de « Bon pour accord »',
+            html)
+
+    def test_onepage_default_validity_literal_preserved(self):
+        html = self._render({'pdf_mode': 'onepage'})
+        self.assertIn('&#183; Validit&#233;&#160;: 30 jours', html)
+
+    def test_editing_templates_changes_rendered_html(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        tpl = DocumentTemplates.get(company=self.company)
+        tpl.validite_badge_p1 = 'Validité : 45 jours'
+        tpl.cgv_titre = 'MES CONDITIONS'
+        tpl.cgv_bullets = ['Première puce', 'Acompte {acompte}&#37; à régler']
+        tpl.garantie_titre = 'Garanties étendues'
+        tpl.bpa_titre = 'ACCORD CLIENT'
+        tpl.save()
+        html = self._render()
+        self.assertIn('Validité : 45 jours', html)
+        self.assertIn('MES CONDITIONS', html)
+        self.assertIn('Première puce', html)
+        self.assertIn('Acompte 30&#37; à régler', html)
+        self.assertIn('Garanties étendues', html)
+        self.assertIn('ACCORD CLIENT', html)
+        # Les littéraux remplacés ne subsistent pas
+        self.assertNotIn('Validit&#233;&#160;: 30 jours', html)
+        self.assertNotIn('Conditions générales du devis', html)
+
+    def test_empty_template_falls_back_to_literal(self):
+        """Un enregistrement existant mais VIDE = aucun changement (byte-identique)."""
+        from apps.parametres.models_documents import DocumentTemplates
+        DocumentTemplates.get(company=self.company)  # crée la ligne, tout vide
+        html = self._render()
+        self.assertIn('Conditions générales du devis', html)
+        self.assertIn('Garanties jusqu&#8217;à 30 ans', html)
+
+    def test_acceptance_stamp_only_when_accepted(self):
+        # Non accepté → aucun tampon
+        html = self._render()
+        self.assertNotIn('Accepté le', html)
+        # Accepté (nom + date) → tampon visible avec date FR
+        import datetime
+        self.devis.accepte_par_nom = 'Reda Kasri'
+        self.devis.date_acceptation = datetime.date(2026, 6, 15)
+        self.devis.save(update_fields=['accepte_par_nom', 'date_acceptation'])
+        html2 = self._render()
+        self.assertIn('Accepté le 15/06/2026 par Reda Kasri', html2)
+        # Statuts du devis JAMAIS modifiés par le rendu (le moteur ne fait que
+        # rendre) — le statut reste « brouillon ».
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'brouillon')
+
+    def test_acceptance_stamp_absent_when_only_one_field_set(self):
+        self.devis.accepte_par_nom = 'Reda Kasri'
+        self.devis.save(update_fields=['accepte_par_nom'])
+        html = self._render()
+        self.assertNotIn('Accepté le', html)
+
+    def test_acceptance_stamp_label_is_editable(self):
+        import datetime
+        from apps.parametres.models_documents import DocumentTemplates
+        tpl = DocumentTemplates.get(company=self.company)
+        tpl.acceptance_stamp = 'Signé le {date} — {nom}'
+        tpl.save()
+        self.devis.accepte_par_nom = 'Karim'
+        self.devis.date_acceptation = datetime.date(2026, 1, 2)
+        self.devis.save(update_fields=['accepte_par_nom', 'date_acceptation'])
+        html = self._render()
+        self.assertIn('Signé le 02/01/2026 — Karim', html)
+
+
 class TestGeneratorQuoteFlow(TestCase):
     """End-to-end flow of the solar generator screen (/ventes/devis/nouveau):
     the screen creates a plain Devis via the REST API, then posts its lines via

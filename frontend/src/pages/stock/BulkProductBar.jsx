@@ -2,14 +2,15 @@
 // est coché. Prix (% ou fixe), garantie, catégorie, marque, export Excel. La
 // règle (prix d'achat jamais touché) est appliquée SERVEUR ; ici, UI seulement.
 import { useState } from 'react'
-import { Download, X } from 'lucide-react'
+import { Download, QrCode, X } from 'lucide-react'
 import {
   Button, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 
 export default function BulkProductBar({
-  count, categories = [], marques = [], busy, onAction, onExport, onClear,
+  count, categories = [], marques = [], busy, labelsBusy,
+  onAction, onExport, onPrintLabels, onClear,
 }) {
   const [panel, setPanel] = useState(null)
   const [priceMode, setPriceMode] = useState('percent')
@@ -55,6 +56,15 @@ export default function BulkProductBar({
         >
           <Download className="size-3.5" /> Exporter Excel
         </button>
+        {onPrintLabels && (
+          <button
+            type="button" disabled={busy || labelsBusy} onClick={onPrintLabels}
+            title="Étiquettes QR imprimables (nom + SKU + code à scanner)"
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+          >
+            <QrCode className="size-3.5" /> Imprimer étiquettes
+          </button>
+        )}
         <button
           type="button" disabled={busy} onClick={onClear}
           className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-white/70 transition-colors hover:text-white disabled:opacity-50"
