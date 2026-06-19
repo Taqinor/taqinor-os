@@ -2,6 +2,7 @@
 // SAV). Lecture seule ; chaque rapport est exportable en .xlsx. Données
 // agrégées côté serveur, bornées à la société.
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Download, BarChart3 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -18,6 +19,38 @@ import {
 const CHART_PRIMARY = 'var(--color-info)'
 const CHART_GRID = 'var(--color-border)'
 const CHART_AXIS = 'var(--color-muted-foreground)'
+
+// L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
+const AUDIT_TYPES = [
+  { value: 'lead', label: 'Lead' },
+  { value: 'devis', label: 'Devis' },
+  { value: 'chantier', label: 'Chantier' },
+  { value: 'sav', label: 'Ticket SAV' },
+  { value: 'parametres', label: 'Paramètres' },
+]
+
+// L16 — lien profond par type vers la fiche concernée. Le backend renvoie
+// `object_type` (clé de route) + `object_id` quand une cible existe.
+const AUDIT_ROUTE = {
+  lead: (id) => `/crm/leads?lead=${id}`,
+  devis: () => '/ventes/devis',
+  chantier: () => '/chantiers',
+  ticket: () => '/sav',
+}
+
+// Référence du Journal : un lien cliquable vers la fiche si une cible existe,
+// sinon le simple libellé textuel.
+function auditRef(it) {
+  const make = it.object_type && AUDIT_ROUTE[it.object_type]
+  if (make && it.object_id) {
+    return (
+      <Link to={make(it.object_id)} className="text-info hover:underline">
+        {it.object_ref}
+      </Link>
+    )
+  }
+  return it.object_ref
+}
 
 // Tableau de données restylé (conserve la classe sémantique .data-table).
 // Enveloppé dans un conteneur scrollable horizontalement pour les tables
@@ -151,6 +184,11 @@ export function Component() {
   // Période optionnelle (?from=&to=) appliquée à ventes/stock/service.
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  // L9 — filtres du Journal d'activité (l'endpoint accepte ?user, ?type,
+  // ?since) : pilotent l'affichage ET l'export .xlsx de la carte Journal.
+  const [auditUser, setAuditUser] = useState('')
+  const [auditType, setAuditType] = useState('')
+  const [auditSince, setAuditSince] = useState('')
 
   const setCardStatus = useCallback((key, value) => {
     setStatus((s) => ({ ...s, [key]: value }))
@@ -193,7 +231,6 @@ export function Component() {
   // Les insights (all-time) ne sont chargés qu'une fois.
   useEffect(() => {
     load('recurring', reportingApi.recurringRevenue(), setRecurring)
-    load('audit', reportingApi.auditLog(), setAudit)
     // Réservé owner/responsable — un refus (403) est traité comme « erreur ».
     load('jobCosting', reportingApi.jobCosting(), setJobCosting)
     load('analytics', reportingApi.analytics(), setAnalytics)
@@ -201,7 +238,33 @@ export function Component() {
     load('commissions', reportingApi.commissions(), setCommissions)
   }, [load])
 
-  const exportInsight = (slug) => () => reportingApi.insightXlsx(slug)
+  // Paramètres de filtre du Journal (envoyés à l'endpoint et à l'export).
+  const auditParams = {}
+  if (auditUser.trim()) auditParams.user = auditUser.trim()
+  if (auditType) auditParams.type = auditType
+  if (auditSince) auditParams.since = auditSince
+
+  // Le Journal se recharge quand un filtre change.
+  useEffect(() => {
+    const p = {}
+    if (auditUser.trim()) p.user = auditUser.trim()
+    if (auditType) p.type = auditType
+    if (auditSince) p.since = auditSince
+    load('audit', reportingApi.auditLog(p), setAudit)
+  }, [auditUser, auditType, auditSince, load])
+
+  // Remet la carte Journal en « chargement » quand on change un filtre.
+  const resetAuditCard = () => setStatus((s) => {
+    const next = { ...s }; delete next.audit; return next
+  })
+  const onAuditUser = (e) => { resetAuditCard(); setAuditUser(e.target.value) }
+  const onAuditType = (e) => { resetAuditCard(); setAuditType(e.target.value) }
+  const onAuditSince = (e) => { resetAuditCard(); setAuditSince(e.target.value) }
+  const onAuditClear = () => {
+    resetAuditCard(); setAuditUser(''); setAuditType(''); setAuditSince('')
+  }
+
+  const exportInsight = (slug, params) => () => reportingApi.insightXlsx(slug, params)
     .then(r => downloadXlsx(r.data, `${slug}.xlsx`)).catch(() => {})
 
   const periodParams = {}
@@ -341,14 +404,35 @@ export function Component() {
             </InsightCard>
 
             <InsightCard title="Journal d'activité (qui a fait quoi)"
-                         onExport={exportInsight('audit-log')}>
+                         onExport={exportInsight('audit-log', auditParams)}>
+              {/* L9 — filtres user / type / depuis pilotant l'endpoint et l'export. */}
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <Input value={auditUser} onChange={onAuditUser}
+                       placeholder="Utilisateur" aria-label="Filtrer par utilisateur"
+                       className="h-9 w-40" />
+                <select value={auditType} onChange={onAuditType}
+                        aria-label="Filtrer par type"
+                        className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+                  <option value="">Tous les types</option>
+                  {AUDIT_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <Input type="date" value={auditSince} onChange={onAuditSince}
+                       aria-label="Depuis la date" className="h-9 w-40" />
+                {(auditUser || auditType || auditSince) && (
+                  <Button variant="ghost" size="sm" onClick={onAuditClear}>
+                    Réinitialiser
+                  </Button>
+                )}
+              </div>
               {status.audit === 'error' ? (
                 <p className="text-sm text-destructive">Rapport indisponible</p>
               ) : audit ? (
                 <Table headers={['Date', 'Utilisateur', 'Type', 'Référence', 'Action']}
                        rows={audit.items.map(it => [
                          (it.date || '').replace('T', ' ').slice(0, 16),
-                         it.user || '—', it.type_label, it.object_ref, it.summary,
+                         it.user || '—', it.type_label, auditRef(it), it.summary,
                        ])} />
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
