@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Plus, ArrowDownUp } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, ArrowDownUp, X } from 'lucide-react'
+import stockApi from '../../api/stockApi'
 import {
   fetchMouvements,
   fetchProduits,
@@ -27,6 +29,7 @@ const TABS = [
   { value: 'entree',     label: 'Entrées' },
   { value: 'sortie',     label: 'Sorties' },
   { value: 'ajustement', label: 'Ajustements' },
+  { value: 'transfert',  label: 'Transferts' },
 ]
 
 export default function MouvementsPage() {
@@ -41,18 +44,60 @@ export default function MouvementsPage() {
     : (role === 'responsable' || role === 'admin')
 
   const [activeTab, setActiveTab] = useState('tous')
-  const [showForm, setShowForm]   = useState(false)
+  // Pré-filtre par produit (lien « historique » depuis le catalogue) + saisie
+  // pré-remplie (?nouveau=1) : un seul aller-retour depuis la fiche produit.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const produitParam = searchParams.get('produit')
+  // Ouvre le formulaire d'emblée si on arrive avec ?nouveau=1 (état initial).
+  const [showForm, setShowForm] = useState(
+    () => searchParams.get('nouveau') === '1' && canPostMouvement,
+  )
+
+  // Transferts entre emplacements : source de données distincte (TransfertStock,
+  // ce ne sont PAS des MouvementStock) — chargée à l'ouverture de l'onglet.
+  const [transferts, setTransferts] = useState([])
+  const [transfertsLoading, setTransfertsLoading] = useState(false)
 
   useEffect(() => {
     dispatch(fetchMouvements())
     if (!produits.length) dispatch(fetchProduits())
   }, [dispatch, produits.length])
 
-  const filtered = useMemo(() => (
-    activeTab === 'tous'
+  useEffect(() => {
+    if (activeTab !== 'transfert') return undefined
+    let cancelled = false
+    const load = async () => {
+      setTransfertsLoading(true)
+      try {
+        const r = await stockApi.getTransferts({ ordering: '-date' })
+        if (!cancelled) setTransferts(r.data?.results ?? r.data ?? [])
+      } catch {
+        if (!cancelled) setTransferts([])
+      } finally {
+        if (!cancelled) setTransfertsLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [activeTab])
+
+  const produitFiltre = useMemo(
+    () => produits.find(p => String(p.id) === String(produitParam)) ?? null,
+    [produits, produitParam],
+  )
+  const clearProduitFiltre = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('produit')
+    setSearchParams(next, { replace: true })
+  }
+
+  const filtered = useMemo(() => {
+    let list = activeTab === 'tous'
       ? mouvements
       : mouvements.filter(m => m.type_mouvement === activeTab)
-  ), [mouvements, activeTab])
+    if (produitParam) list = list.filter(m => String(m.produit) === String(produitParam))
+    return list
+  }, [mouvements, activeTab, produitParam])
 
   const counts = useMemo(() => ({
     tous:       mouvements.length,
@@ -126,6 +171,42 @@ export default function MouvementsPage() {
     },
   ], [])
 
+  // Colonnes de l'onglet Transferts (entre emplacements — source → destination).
+  const transfertColumns = useMemo(() => [
+    {
+      id: 'date', header: 'Date', width: 150, searchable: false,
+      accessor: (t) => t.date,
+      cell: (v) => (
+        <span className="whitespace-nowrap">
+          {new Date(v).toLocaleDateString('fr-FR')}{' '}
+          <span className="text-xs text-muted-foreground">
+            {new Date(v).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </span>
+      ),
+    },
+    { id: 'produit_nom', header: 'Produit', minWidth: 160, accessor: (t) => t.produit_nom ?? '' },
+    {
+      id: 'trajet', header: 'De → Vers', minWidth: 180, searchable: false,
+      accessor: (t) => `${t.source_nom ?? ''} → ${t.destination_nom ?? ''}`,
+      cell: (v) => <span className="whitespace-nowrap">{v}</span>,
+    },
+    { id: 'quantite', header: 'Qté', align: 'right', width: 80, searchable: false,
+      cell: (v) => <strong>{v}</strong> },
+    {
+      id: 'note', header: 'Note', minWidth: 140,
+      accessor: (t) => t.note ?? '',
+      cell: (v) => (v ? <span className="line-clamp-2">{v}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      id: 'created_by_username', header: 'Par', width: 120,
+      accessor: (t) => t.created_by_username ?? '',
+      cell: (v) => <span className="text-muted-foreground">{v || '—'}</span>,
+    },
+  ], [])
+
+  const isTransferts = activeTab === 'transfert'
+
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -150,26 +231,55 @@ export default function MouvementsPage() {
         className="flex-wrap"
       />
 
-      <DataTable
-        data={filtered}
-        columns={columns}
-        loading={loading}
-        error={error ? `Erreur : ${JSON.stringify(error)}` : null}
-        getRowId={(m) => m.id}
-        searchPlaceholder="Produit, référence, note…"
-        globalColumns={['produit_nom', 'reference', 'note']}
-        emptyTitle="Aucun mouvement"
-        emptyDescription={
-          activeTab !== 'tous'
-            ? 'Aucun mouvement dans cet onglet.'
-            : 'Aucun mouvement de stock enregistré.'
-        }
-        aria-label="Mouvements de stock"
-      />
+      {produitFiltre && (
+        <div className="flex items-center gap-2">
+          <Badge tone="primary" className="inline-flex items-center gap-1">
+            Produit : {produitFiltre.nom}
+            <button type="button" aria-label="Retirer le filtre produit"
+                    className="ml-0.5 rounded hover:opacity-70" onClick={clearProduitFiltre}>
+              <X className="size-3" />
+            </button>
+          </Badge>
+        </div>
+      )}
+
+      {isTransferts ? (
+        <DataTable
+          data={produitParam
+            ? transferts.filter(t => String(t.produit) === String(produitParam))
+            : transferts}
+          columns={transfertColumns}
+          loading={transfertsLoading}
+          getRowId={(t) => t.id}
+          searchPlaceholder="Produit, emplacement, note…"
+          globalColumns={['produit_nom', 'note']}
+          emptyTitle="Aucun transfert"
+          emptyDescription="Aucun transfert entre emplacements enregistré."
+          aria-label="Transferts entre emplacements"
+        />
+      ) : (
+        <DataTable
+          data={filtered}
+          columns={columns}
+          loading={loading}
+          error={error ? `Erreur : ${JSON.stringify(error)}` : null}
+          getRowId={(m) => m.id}
+          searchPlaceholder="Produit, référence, note…"
+          globalColumns={['produit_nom', 'reference', 'note']}
+          emptyTitle="Aucun mouvement"
+          emptyDescription={
+            activeTab !== 'tous'
+              ? 'Aucun mouvement dans cet onglet.'
+              : 'Aucun mouvement de stock enregistré.'
+          }
+          aria-label="Mouvements de stock"
+        />
+      )}
 
       {showForm && (
         <MouvementForm
           produits={produits}
+          initialProduit={produitParam ?? ''}
           onClose={() => setShowForm(false)}
           onSaved={() => { dispatch(fetchMouvements()); setShowForm(false) }}
         />
@@ -180,13 +290,14 @@ export default function MouvementsPage() {
 
 // ── Formulaire mouvement ────────────────────────────────────────────────────────
 
-function MouvementForm({ produits, onClose, onSaved }) {
+function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
   const dispatch = useDispatch()
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
 
   const [fields, setFields] = useState({
-    produit:        '',
+    // Pré-sélection du produit quand le formulaire est ouvert depuis sa fiche.
+    produit:        initialProduit ? String(initialProduit) : '',
     type_mouvement: 'entree',
     quantite:       '1',
     reference:      '',
@@ -289,13 +400,20 @@ function MouvementForm({ produits, onClose, onSaved }) {
           </FormField>
 
           {selectedProduit && previewApres !== null && (
-            <div className="sm:col-span-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-              <span>Stock actuel : <strong>{selectedProduit.quantite_stock}</strong></span>
-              <ArrowDownUp className="size-3.5 rotate-90 text-muted-foreground" aria-hidden="true" />
-              <span>
-                Après :{' '}
-                <strong className={previewApres < 0 ? 'text-destructive' : ''}>{previewApres}</strong>
-              </span>
+            <div className="sm:col-span-2 flex flex-col gap-1">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+                <span>Stock actuel : <strong>{selectedProduit.quantite_stock}</strong></span>
+                <ArrowDownUp className="size-3.5 rotate-90 text-muted-foreground" aria-hidden="true" />
+                <span>
+                  Après :{' '}
+                  <strong className={previewApres < 0 ? 'text-destructive' : ''}>{previewApres}</strong>
+                </span>
+              </div>
+              {previewApres < 0 && (
+                <p className="text-xs text-warning">
+                  Attention : cette saisie mène à un stock négatif ({previewApres}).
+                </p>
+              )}
             </div>
           )}
 

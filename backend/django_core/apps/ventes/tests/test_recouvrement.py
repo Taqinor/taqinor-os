@@ -53,6 +53,22 @@ class TestRecouvrement(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
+    def test_is_overdue_relies_on_jours_retard(self):
+        from apps.ventes.serializers import FactureSerializer
+        data = FactureSerializer(self.facture).data
+        self.assertTrue(data['is_overdue'])
+        self.assertEqual(data['jours_retard'], 45)
+        # Une facture sans échéance (donc jours_retard=0) n'est pas en retard.
+        f2 = Facture.objects.create(
+            company=self.company, reference='FAC-REC-0002',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=f2, produit=self.produit, designation='X',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('20.00'))
+        self.assertFalse(FactureSerializer(f2).data['is_overdue'])
+
     def test_overdue_in_relances_list_with_level(self):
         resp = self.api.get('/api/django/ventes/relances/')
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -77,6 +93,29 @@ class TestRecouvrement(TestCase):
         self.assertEqual(len(resp.data['lignes']), 1)
         self.assertEqual(resp.data['lignes'][0]['du'], '6000.00')
         self.assertEqual(resp.data['totaux']['du'], '6000.00')
+
+    def test_statement_details_payments_and_avoirs(self):
+        from apps.ventes.models import Avoir, LigneAvoir, Paiement
+        Paiement.objects.create(
+            company=self.company, facture=self.facture,
+            montant=Decimal('1000'), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AVO-REC-1', facture=self.facture,
+            client=self.client_obj, statut='emise', taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Geste', quantite=Decimal('1'),
+            prix_unitaire=Decimal('500'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        resp = self.api.get(
+            f'/api/django/ventes/clients/{self.client_obj.id}/releve/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data['paiements']), 1)
+        self.assertEqual(resp.data['paiements'][0]['montant'], '1000.00')
+        self.assertEqual(resp.data['paiements'][0]['mode'], 'Virement')
+        self.assertEqual(len(resp.data['avoirs']), 1)
+        self.assertEqual(resp.data['avoirs'][0]['reference'], 'AVO-REC-1')
+        self.assertEqual(resp.data['avoirs'][0]['total_ttc'], '600.00')
 
     def test_relancer_logs_and_sets_next(self):
         nxt = (date.today() + timedelta(days=7)).isoformat()

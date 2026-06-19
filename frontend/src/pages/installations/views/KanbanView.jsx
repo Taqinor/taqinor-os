@@ -21,6 +21,8 @@ import {
   STATUS_LABELS,
   STATUS_COLORS,
   canonicalStatus,
+  canMoveStatus,
+  isPoseEnRetard,
 } from '../../../features/installations/statuses'
 import {
   StatusPill,
@@ -54,6 +56,9 @@ function ChantierCard({ inst, users, onReassign }) {
         )}
         {formatDate(inst.date_pose_prevue) !== '—' && (
           <span className="kc-chip"><CalendarDays className="kc-chip-icon" aria-hidden="true" />{formatDate(inst.date_pose_prevue)}</span>
+        )}
+        {isPoseEnRetard(inst) && (
+          <StatusPill tone="danger" label="Pose en retard" dot={false} />
         )}
       </div>
       {Number.isInteger(inst.checklist_completion) && (
@@ -149,9 +154,16 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
   const handleDragEnd = ({ active: a, over }) => {
     setActive(null)
     const inst = a.data.current?.inst
-    if (inst && over && over.id !== canonicalStatus(inst.statut)) {
-      onChangeStatus?.(inst, over.id)
+    if (!inst || !over || over.id === canonicalStatus(inst.statut)) return
+    // N2 — n'accepte qu'un mouvement d'un seul pas sur l'entonnoir : un dépôt
+    // à plus d'un pas « snap back » (aucune mutation) avec un message FR.
+    if (!canMoveStatus(inst.statut, over.id)) {
+      window.alert(
+        'Mouvement impossible : un chantier ne peut avancer ou reculer que '
+        + "d'une étape à la fois dans l'entonnoir.")
+      return
     }
+    onChangeStatus?.(inst, over.id)
   }
 
   return (

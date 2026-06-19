@@ -22,7 +22,33 @@ import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
 
 const VIEW_KEY = 'taqinor.leads.view'
+const FILTERS_KEY = 'taqinor.leads.filters'
+const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
 const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
+
+// Vues enregistrées (N79, LOCAL uniquement) : nom → { filters, view }.
+function loadSavedViews() {
+  try {
+    const raw = localStorage.getItem(SAVED_VIEWS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+// Filtres persistés en localStorage : on fusionne avec EMPTY_FILTERS pour
+// tolérer un schéma plus ancien (clés manquantes/en trop ignorées).
+function loadFilters() {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY)
+    if (!raw) return EMPTY_FILTERS
+    const parsed = JSON.parse(raw)
+    return { ...EMPTY_FILTERS, ...(parsed && typeof parsed === 'object' ? parsed : {}) }
+  } catch {
+    return EMPTY_FILTERS
+  }
+}
 
 export default function LeadsPage() {
   const dispatch = useDispatch()
@@ -50,9 +76,38 @@ export default function LeadsPage() {
     try { localStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
   }, [view])
 
-  // Filtres partagés par les quatre vues.
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  // Filtres partagés par les quatre vues — persistés en localStorage (comme la
+  // vue active) pour survivre à un rechargement de page.
+  const [filters, setFilters] = useState(loadFilters)
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
+    } catch { /* stockage indisponible */ }
+  }, [filters])
   const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
+
+  // Vues enregistrées nommées (combinaison filtres + vue), LOCALES (sans email).
+  const [savedViews, setSavedViews] = useState(loadSavedViews)
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(savedViews))
+    } catch { /* stockage indisponible */ }
+  }, [savedViews])
+  const saveCurrentView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    setSavedViews((vs) => [
+      ...vs.filter((v) => v.name !== trimmed),
+      { name: trimmed, filters, view },
+    ])
+  }
+  const applySavedView = (v) => {
+    setFilters({ ...EMPTY_FILTERS, ...(v.filters || {}) })
+    if (VALID_VIEWS.includes(v.view)) setView(v.view)
+  }
+  const deleteSavedView = (name) =>
+    setSavedViews((vs) => vs.filter((v) => v.name !== name))
 
   // Formulaire lead (création / édition).
   const [showForm, setShowForm] = useState(false)
@@ -61,6 +116,14 @@ export default function LeadsPage() {
   const [formDevisIntent, setFormDevisIntent] = useState(null)
   // Atelier doublons (modal).
   const [showDoublons, setShowDoublons] = useState(false)
+  // Nombre de groupes de doublons détectés (badge sur le bouton « Doublons »).
+  const [doublonsCount, setDoublonsCount] = useState(0)
+  const refreshDoublonsCount = () => {
+    crmApi.getDoublons()
+      .then(r => setDoublonsCount(Array.isArray(r.data) ? r.data.length : 0))
+      .catch(() => setDoublonsCount(0))
+  }
+  useEffect(() => { refreshDoublonsCount() }, [])
   // Import CSV/XLSX (T9).
   const [showImport, setShowImport] = useState(false)
 
@@ -125,6 +188,13 @@ export default function LeadsPage() {
   const visibleSelected = useMemo(
     () => pruneSelection(selected, leads.map((l) => l.id)),
     [selected, leads],
+  )
+
+  // Au moins un lead archivé dans la sélection ? Sert à griser « Restaurer »
+  // (sans effet en vue « Actifs » où aucun lead n'est archivé).
+  const hasArchivedSelected = useMemo(
+    () => leads.some((l) => visibleSelected.has(l.id) && l.is_archived),
+    [leads, visibleSelected],
   )
 
   const onToggleSelect = (id) => setSelected((s) => toggleId(s, id))
@@ -287,6 +357,11 @@ export default function LeadsPage() {
           <Button onClick={openNew}>+ Nouveau lead</Button>
           <Button variant="outline" onClick={() => setShowDoublons(true)}>
             🔀 Doublons
+            {doublonsCount > 0 && (
+              <span className="count-badge" title="Groupes de doublons détectés">
+                {doublonsCount}
+              </span>
+            )}
           </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <Upload /> Importer
@@ -300,11 +375,31 @@ export default function LeadsPage() {
 
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
+      <div className="lp-saved-views">
+        <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
+          ⭐ Enregistrer cette vue
+        </Button>
+        {savedViews.map((v) => (
+          <span key={v.name} className="lp-saved-view-chip">
+            <button type="button" className="lp-saved-view-apply"
+                    onClick={() => applySavedView(v)} title="Appliquer cette vue">
+              {v.name}
+            </button>
+            <button type="button" className="lp-saved-view-del"
+                    onClick={() => deleteSavedView(v.name)}
+                    aria-label={`Supprimer la vue ${v.name}`}>
+              ✕
+            </button>
+          </span>
+        ))}
+      </div>
+
       {visibleSelected.size > 0 && (
         <BulkActionBar
           count={visibleSelected.size}
           users={users}
           canDelete={canDelete}
+          hasArchivedSelected={hasArchivedSelected}
           busy={bulkBusy}
           onAction={runBulk}
           onExport={exportSelection}
@@ -344,7 +439,13 @@ export default function LeadsPage() {
         {view === 'kanban' && <KanbanView {...viewProps} />}
         {view === 'liste' && <ListView {...viewProps} />}
         {view === 'calendrier' && <CalendarView {...viewProps} />}
-        {view === 'graphique' && <ChartsView {...viewProps} />}
+        {view === 'graphique' && (
+          <ChartsView
+            {...viewProps}
+            totalLeads={leads.length}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+          />
+        )}
       </div>
 
       {(showForm || deepLead) && (
@@ -359,8 +460,8 @@ export default function LeadsPage() {
 
       {showDoublons && (
         <DoublonsPanel
-          onClose={() => setShowDoublons(false)}
-          onAnyMerge={refetch}
+          onClose={() => { setShowDoublons(false); refreshDoublonsCount() }}
+          onAnyMerge={() => { refetch(); refreshDoublonsCount() }}
         />
       )}
 

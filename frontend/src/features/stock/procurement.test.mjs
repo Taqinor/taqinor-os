@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import {
   bcfStatutLabel, totalAchat, quantiteRestante, estEntierementRecu,
   buildReceptionPayload, lignesEnPenurie, nbPenuries,
+  avancementReception, bcfDateAffichee, aLignePrixZero, nbEnvoyesNonRecus,
 } from './procurement.js'
 
 test('bcfStatutLabel : libellés FR connus + repli', () => {
@@ -61,4 +62,36 @@ test('penuries : filtre manque > 0', () => {
   assert.deepEqual(lignesEnPenurie(items).map((i) => i.sku), ['A', 'C'])
   assert.equal(nbPenuries(items), 2)
   assert.equal(nbPenuries([]), 0)
+})
+
+test('avancementReception : reçu / commandé + taux', () => {
+  const lignes = [
+    { quantite: 10, quantite_recue: 4 },
+    { quantite: 6, quantite_recue: 6 },
+  ]
+  assert.deepEqual(avancementReception(lignes), { recu: 10, commande: 16, taux: 10 / 16 })
+  assert.deepEqual(avancementReception([]), { recu: 0, commande: 0, taux: 0 })
+})
+
+test('bcfDateAffichee : commande sinon création, jamais vide si dispo', () => {
+  assert.equal(bcfDateAffichee({ date_commande: '2026-06-10', date_creation: '2026-06-01' }), '2026-06-10')
+  assert.equal(bcfDateAffichee({ date_commande: null, date_creation: '2026-06-01' }), '2026-06-01')
+  assert.equal(bcfDateAffichee({ date_commande: '', date_creation: '' }), null)
+  assert.equal(bcfDateAffichee(null), null)
+})
+
+test('aLignePrixZero : détecte une ligne sans prix d\'achat', () => {
+  assert.equal(aLignePrixZero([{ prix_achat_unitaire: 10 }, { prix_achat_unitaire: 0 }]), true)
+  assert.equal(aLignePrixZero([{ prix_achat_unitaire: 10 }, { prix_achat_unitaire: 5 }]), false)
+  assert.equal(aLignePrixZero([{ prix_achat_unitaire: '' }]), true)
+  assert.equal(aLignePrixZero([]), false)
+})
+
+test('nbEnvoyesNonRecus : compte les BCF au statut envoye', () => {
+  const bcfs = [
+    { statut: 'brouillon' }, { statut: 'envoye' },
+    { statut: 'envoye' }, { statut: 'recu' },
+  ]
+  assert.equal(nbEnvoyesNonRecus(bcfs), 2)
+  assert.equal(nbEnvoyesNonRecus([]), 0)
 })

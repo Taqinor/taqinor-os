@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  RefreshCw, Wallet, Clock, Users, Package, BarChart3, AlertTriangle,
+  RefreshCw, Wallet, Clock, Users, Package, BarChart3, AlertTriangle, Download,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -9,6 +9,8 @@ import {
 } from 'recharts'
 import { fetchDashboard } from '../features/reporting/store/reportingSlice'
 import reportingApi from '../api/reportingApi'
+import api from '../api/axios'
+import { downloadXlsx } from '../api/importApi'
 import { formatMAD, formatNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardContent, CardDescription,
@@ -91,9 +93,25 @@ function StageTable({ title, rows, keyField, labelField }) {
 
 function PipelineSection() {
   const [p, setP] = useState(null)
+  // 'loading' | 'ok' | 'error' — distingue le chargement d'un échec de fetch.
+  const [phase, setPhase] = useState('loading')
   useEffect(() => {
-    reportingApi.getPipeline().then((r) => setP(r.data)).catch(() => setP(null))
+    reportingApi.getPipeline()
+      .then((r) => { setP(r.data); setPhase('ok') })
+      .catch(() => { setP(null); setPhase('error') })
   }, [])
+  if (phase === 'error') {
+    return (
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Valeur du pipeline</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">
+            Valeur du pipeline indisponible
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
   if (!p) return null
 
   return (
@@ -179,6 +197,12 @@ export function Component() {
     return data.ca_mensuel.slice(-n)
   }, [data, caWindowMonths])
 
+  // Export .xlsx (KPIs + créances clients), scopé société côté serveur.
+  const exportDashboard = () => api
+    .get('/reporting/dashboard/', { params: { export: 'xlsx' }, responseType: 'blob' })
+    .then((r) => downloadXlsx(r.data, 'reporting-dashboard.xlsx'))
+    .catch(() => {})
+
   if (loading) {
     return (
       <div className="ui-root page" style={{ maxWidth: 1200 }}>
@@ -215,9 +239,14 @@ export function Component() {
     <div className="ui-root page" style={{ maxWidth: 1200 }}>
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <h2>Reporting &amp; Analytics</h2>
-        <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
-          <RefreshCw /> Actualiser
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={exportDashboard}>
+            <Download /> Exporter Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
+            <RefreshCw /> Actualiser
+          </Button>
+        </div>
       </div>
 
       <PipelineSection />

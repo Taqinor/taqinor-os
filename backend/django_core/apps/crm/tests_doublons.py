@@ -182,3 +182,42 @@ class TestNwayMerge(TestCase):
         self.assertEqual(survivor.devis.count(), 2)
         self.assertEqual(Devis.objects.filter(lead=b).count(), 0)
         self.assertEqual(Devis.objects.filter(lead=c).count(), 0)
+
+
+class TestDoublonsEndpointEnrichment(TestCase):
+    """L'endpoint doublons expose match_keys, merge_preview et nb_activites."""
+
+    def setUp(self):
+        self.company = make_company('doublons-enrich', 'Doublons Enrich')
+        self.user = User.objects.create_user(
+            username='dbl_enrich', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+
+    def test_match_keys_and_preview(self):
+        from apps.crm.services import cluster_match_keys
+        a = Lead.objects.create(
+            company=self.company, nom='Alaoui', telephone='0612345678')
+        b = Lead.objects.create(
+            company=self.company, nom='Alaoui', telephone='0612345678',
+            email='a@x.com', ville='Rabat')
+        client = Client.objects.create(
+            company=self.company, nom='Cl', email='cl@x.com')
+        Devis.objects.create(company=self.company, reference='D-1',
+                             lead=b, client=client)
+        groups, _ = find_duplicate_clusters(self.company)
+        # téléphone partagé → 'telephone' dans les clés de rapprochement.
+        keys = cluster_match_keys([a, b])
+        self.assertIn('telephone', keys)
+
+        resp = self.api.get('/api/django/crm/leads/doublons/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data)
+        cluster = resp.data[0]
+        self.assertIn('match_keys', cluster)
+        self.assertIn('telephone', cluster['match_keys'])
+        self.assertIn('merge_preview', cluster)
+        self.assertIn('devis', cluster['merge_preview'])
+        # Chaque membre porte un compteur d'activités.
+        for m in cluster['members']:
+            self.assertIn('nb_activites', m)

@@ -1,21 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { FileX2, FileText } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { FileX2, FileText, Search } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
-  Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  Button, Badge, StatusPill, Card, EmptyState, Spinner, Input,
+  Tabs, TabsList, TabsTrigger,
   AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
   AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 
+const STATUT_TABS = [
+  { key: 'tous', label: 'Tous' },
+  { key: 'emise', label: 'Émis' },
+  { key: 'annulee', label: 'Annulés' },
+]
+
 export default function AvoirsPage() {
   const role = useSelector(s => s.auth.role)
   const isAdmin = role === 'admin'
+  const navigate = useNavigate()
   const [avoirs, setAvoirs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statutFilter, setStatutFilter] = useState('tous')
+  const [actionError, setActionError] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -27,14 +39,37 @@ export default function AvoirsPage() {
   useEffect(() => { load() }, [])
 
   const download = async (a) => {
+    setActionError('')
     try {
       const res = await ventesApi.telechargerAvoirPdf(a.id)
       openPdfBlob(res.data, `${a.reference}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch {
+      setActionError(`Téléchargement du PDF de l'avoir ${a.reference} impossible. Réessayez.`)
+    }
   }
   const annuler = async (a) => {
-    try { await ventesApi.annulerAvoir(a.id); load() } catch { /* */ }
+    setActionError('')
+    try {
+      await ventesApi.annulerAvoir(a.id)
+      load()
+    } catch {
+      setActionError(`Annulation de l'avoir ${a.reference} impossible. Réessayez.`)
+    }
   }
+
+  const filtered = useMemo(() => {
+    let list = avoirs
+    if (statutFilter !== 'tous') list = list.filter(a => a.statut === statutFilter)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(a =>
+        (a.reference ?? '').toLowerCase().includes(q) ||
+        (a.facture_reference ?? '').toLowerCase().includes(q) ||
+        (a.client_nom ?? '').toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [avoirs, search, statutFilter])
 
   return (
     <div className="page">
@@ -43,17 +78,48 @@ export default function AvoirsPage() {
           Avoirs (notes de crédit)
           {avoirs.length > 0 && <Badge tone="primary" className="ml-2 align-middle">{avoirs.length}</Badge>}
         </h2>
+        {avoirs.length > 0 && (
+          <Input
+            type="search"
+            className="w-full sm:w-64"
+            leading={<Search />}
+            placeholder="Référence, facture, client…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        )}
       </div>
+
+      {actionError && (
+        <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
+
+      {avoirs.length > 0 && (
+        <Tabs value={statutFilter} onValueChange={setStatutFilter} className="mt-3">
+          <TabsList className="flex-wrap">
+            {STATUT_TABS.map(t => (
+              <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
           <Spinner /> Chargement…
         </div>
-      ) : avoirs.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileX2}
-          title="Aucun avoir"
-          description="Créez-en un depuis une facture émise (bouton « Avoir » de la liste des factures)."
+          title={avoirs.length === 0 ? 'Aucun avoir' : 'Aucun résultat'}
+          description={avoirs.length === 0
+            ? "Créez-en un depuis une facture émise (bouton « Avoir » de la liste des factures)."
+            : 'Aucun avoir ne correspond à cette recherche ou ce filtre.'}
+          action={avoirs.length === 0
+            ? <Button onClick={() => navigate('/ventes/factures')}>Aller aux factures</Button>
+            : undefined}
           className="mt-4"
         />
       ) : (
@@ -68,7 +134,7 @@ export default function AvoirsPage() {
                 </tr>
               </thead>
               <tbody>
-                {avoirs.map(a => (
+                {filtered.map(a => (
                   <tr key={a.id}>
                     <td><strong>{a.reference}</strong></td>
                     <td>{a.facture_reference}</td>

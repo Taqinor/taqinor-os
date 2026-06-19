@@ -1,4 +1,3 @@
-from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
@@ -41,6 +40,20 @@ class DevisSerializer(serializers.ModelSerializer):
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+    # Contexte « quote-aware » du lead lié (profil énergétique) — lecture seule,
+    # pour un aperçu au survol dans la liste des devis. None si pas de lead.
+    lead_facture_hiver = serializers.SerializerMethodField()
+    lead_type_installation = serializers.SerializerMethodField()
+
+    def get_lead_facture_hiver(self, obj):
+        return str(obj.lead.facture_hiver) if obj.lead_id and \
+            obj.lead.facture_hiver is not None else None
+
+    def get_lead_type_installation(self, obj):
+        if not obj.lead_id:
+            return None
+        return obj.lead.get_type_installation_display() \
+            if obj.lead.type_installation else None
 
     def _display(self, obj):
         if not hasattr(obj, '_display_totals_cache'):
@@ -126,6 +139,11 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # Totaux du BC dérivés du devis lié (un BC reprend les lignes du devis).
+    # Aucun devis → None → l'UI affiche « — ». Affichage seulement.
+    total_ht = serializers.SerializerMethodField()
+    total_tva = serializers.SerializerMethodField()
+    total_ttc = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommande
@@ -135,6 +153,15 @@ class BonCommandeSerializer(serializers.ModelSerializer):
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()
+
+    def get_total_ht(self, obj):
+        return str(obj.devis.total_ht) if obj.devis_id else None
+
+    def get_total_tva(self, obj):
+        return str(obj.devis.total_tva) if obj.devis_id else None
+
+    def get_total_ttc(self, obj):
+        return str(obj.devis.total_ttc) if obj.devis_id else None
 
 
 class LigneFactureSerializer(serializers.ModelSerializer):
@@ -212,11 +239,10 @@ class FactureSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission']
 
     def get_is_overdue(self, obj):
-        return (
-            obj.statut == Facture.Statut.EMISE
-            and obj.date_echeance is not None
-            and obj.date_echeance < timezone.now().date()
-        )
+        # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,
+        # hors payée/annulée) — cohérent avec FactureList, Relances et la
+        # balance âgée, et couvre aussi le statut « En retard ».
+        return obj.jours_retard > 0
 
 
 class FactureWriteSerializer(serializers.ModelSerializer):

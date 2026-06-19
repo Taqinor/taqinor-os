@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { Search, Plus, FilePlus2, PackageX } from 'lucide-react'
 import {
   fetchBonsCommande,
@@ -20,6 +21,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Textarea, Label,
 } from '../../ui'
+import { formatMAD } from '../../lib/format'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -38,6 +40,7 @@ const TABS = [
 
 export default function BonCommandeList() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { bonsCommande, loading, error } = useSelector(s => s.ventes)
 
   const [activeTab, setActiveTab] = useState('tous')
@@ -45,6 +48,7 @@ export default function BonCommandeList() {
   const [actionId, setActionId]   = useState(null)
   const [showForm, setShowForm]   = useState(false)
   const [editBC, setEditBC]       = useState(null)
+  const [actionError, setActionError] = useState('')
 
   useEffect(() => { dispatch(fetchBonsCommande()) }, [dispatch])
 
@@ -73,10 +77,35 @@ export default function BonCommandeList() {
   const doAction = async (thunk, id, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return
     setActionId(id)
+    setActionError('')
     try {
       await dispatch(thunk(id)).unwrap()
     } catch (err) {
-      alert(err?.detail ?? JSON.stringify(err))
+      setActionError(err?.detail ?? "L'action a échoué. Réessayez.")
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  // Création de facture depuis un BC : message FR clair quand une facture
+  // existe déjà (le backend renvoie un 400), avec un raccourci vers les factures.
+  const handleCreerFacture = async (bc) => {
+    if (!window.confirm(`Créer une facture pour ${bc.reference} ?`)) return
+    setActionId(bc.id)
+    setActionError('')
+    try {
+      await dispatch(creerFactureFromBC(bc.id)).unwrap()
+      dispatch(fetchBonsCommande())
+    } catch (err) {
+      const detail = err?.detail ?? ''
+      if (/existe déjà/i.test(detail)) {
+        setActionError(`Une facture existe déjà pour le BC ${bc.reference}.`)
+        if (window.confirm('Une facture existe déjà pour ce BC. Ouvrir la liste des factures ?')) {
+          navigate('/ventes/factures')
+        }
+      } else {
+        setActionError(detail || 'Création de la facture impossible. Réessayez.')
+      }
     } finally {
       setActionId(null)
     }
@@ -97,7 +126,7 @@ export default function BonCommandeList() {
     return (
       <div className="page">
         <EmptyState icon={PackageX} title="Erreur de chargement"
-                    description={typeof error === 'string' ? error : JSON.stringify(error)} />
+                    description="Impossible de charger les bons de commande. Réessayez." />
       </div>
     )
   }
@@ -123,6 +152,12 @@ export default function BonCommandeList() {
           <Button onClick={openNew}><Plus /> Nouveau BC</Button>
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
 
       {showForm && (
         <BCForm
@@ -167,6 +202,7 @@ export default function BonCommandeList() {
                   <th>Référence</th>
                   <th>Client</th>
                   <th>Devis</th>
+                  <th className="ta-right">Total TTC</th>
                   <th>Livraison prévue</th>
                   <th>Statut</th>
                   <th>Facture</th>
@@ -181,6 +217,11 @@ export default function BonCommandeList() {
                       <td><strong>{bc.reference}</strong></td>
                       <td>{bc.client_nom ?? '—'}</td>
                       <td>{bc.devis_reference ?? <span className="text-muted-foreground">—</span>}</td>
+                      <td className="ta-right tabular-nums">
+                        {bc.total_ttc != null
+                          ? formatMAD(bc.total_ttc)
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td>
                         {bc.date_livraison_prevue
                           ? new Date(bc.date_livraison_prevue).toLocaleDateString('fr-FR')
@@ -214,7 +255,7 @@ export default function BonCommandeList() {
                           )}
                           {(bc.statut === 'confirme' || bc.statut === 'livre') && !bc.has_facture && (
                             <Button size="sm" variant="outline" loading={busy}
-                                    onClick={() => doAction(creerFactureFromBC, bc.id, `Créer une facture pour ${bc.reference} ?`)}>
+                                    onClick={() => handleCreerFacture(bc)}>
                               <FilePlus2 /> Facture
                             </Button>
                           )}

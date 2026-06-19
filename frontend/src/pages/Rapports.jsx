@@ -1,17 +1,18 @@
 // T13/T14/T15 — Hub « Rapports » : ventes/pipeline, stock, service (chantier +
 // SAV). Lecture seule ; chaque rapport est exportable en .xlsx. Données
 // agrégées côté serveur, bornées à la société.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Download, BarChart3 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
+import api from '../api/axios'
 import reportingApi from '../api/reportingApi'
 import { downloadXlsx } from '../api/importApi'
 import { formatNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState,
+  Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input,
 } from '../ui'
 
 const CHART_PRIMARY = 'var(--color-info)'
@@ -19,21 +20,25 @@ const CHART_GRID = 'var(--color-border)'
 const CHART_AXIS = 'var(--color-muted-foreground)'
 
 // Tableau de données restylé (conserve la classe sémantique .data-table).
+// Enveloppé dans un conteneur scrollable horizontalement pour les tables
+// multi-colonnes sur petits écrans.
 function Table({ headers, rows }) {
   return (
-    <table className="data-table mb-2">
-      <thead><tr>{headers.map(h => <th key={h}>{h}</th>)}</tr></thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={i}>{r.map((c, j) => <td key={j} data-label={headers[j]}>{c}</td>)}</tr>
-        ))}
-        {!rows.length && (
-          <tr>
-            <td colSpan={headers.length} className="text-muted-foreground">Aucune donnée.</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto">
+      <table className="data-table mb-2">
+        <thead><tr>{headers.map(h => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>{r.map((c, j) => <td key={j} data-label={headers[j]}>{c}</td>)}</tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td colSpan={headers.length} className="text-muted-foreground">Aucune donnée.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -47,9 +52,13 @@ function Subhead({ children }) {
 }
 
 // Carte de rapport T13/T14/T15 (export Excel via le chemin /reports/<kind>/).
-function ReportCard({ title, kind, children }) {
-  const onExport = () => reportingApi.reportXlsx(kind)
-    .then(r => downloadXlsx(r.data, `rapport-${kind}.xlsx`)).catch(() => {})
+// `params` (période) est transmis à l'export pour qu'il honore le filtre.
+function ReportCard({ title, kind, params, children }) {
+  const onExport = () => api
+    .get(`/reporting/reports/${kind}/`,
+      { params: { ...(params || {}), export: 'xlsx' }, responseType: 'blob' })
+    .then(r => downloadXlsx(r.data, `rapport-${kind}.xlsx`))
+    .catch(() => {})
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-3">
@@ -86,14 +95,26 @@ function InsightCard({ title, note, onExport, children }) {
 
 const fmt = (n) => formatNumber(n)
 
-// Squelette de carte pendant le chargement.
-function CardSkeleton() {
+// Carte d'erreur FR quand un rapport échoue (réseau / serveur).
+function ErrorCard({ title, message }) {
   return (
     <Card>
-      <CardHeader><Skeleton className="h-4 w-1/3" /></CardHeader>
-      <CardContent className="space-y-2">
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-24 w-full" />
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardContent>
+        <p className="text-sm text-destructive">{message || 'Rapport indisponible'}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Carte « chargement » explicite (libellé FR + squelette).
+function LoadingCard({ title }) {
+  return (
+    <Card>
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">Chargement…</p>
+        <Skeleton className="mt-2 h-24 w-full" />
       </CardContent>
     </Card>
   )
@@ -108,22 +129,78 @@ export function Component() {
   const [jobCosting, setJobCosting] = useState(null)
   const [analytics, setAnalytics] = useState(null)
   const [commissions, setCommissions] = useState(null)
+  // État par carte : 'loading' | 'ok' | 'error'.
+  const [status, setStatus] = useState({})
+  // Période optionnelle (?from=&to=) appliquée à ventes/stock/service.
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
-  useEffect(() => {
-    reportingApi.salesReport().then(r => setSales(r.data)).catch(() => {})
-    reportingApi.stockReport().then(r => setStock(r.data)).catch(() => {})
-    reportingApi.serviceReport().then(r => setService(r.data)).catch(() => {})
-    reportingApi.recurringRevenue().then(r => setRecurring(r.data)).catch(() => {})
-    reportingApi.auditLog().then(r => setAudit(r.data)).catch(() => {})
-    // Réservé owner/responsable — un refus (403) laisse simplement la carte vide.
-    reportingApi.jobCosting().then(r => setJobCosting(r.data)).catch(() => {})
-    reportingApi.analytics().then(r => setAnalytics(r.data)).catch(() => {})
-    // N99 — réservé admin ; un refus (403) laisse la carte vide.
-    reportingApi.commissions().then(r => setCommissions(r.data)).catch(() => {})
+  const setCardStatus = useCallback((key, value) => {
+    setStatus((s) => ({ ...s, [key]: value }))
   }, [])
+
+  // Repasse les cartes period-aware en « chargement » lors d'un changement de
+  // période (déclenché par l'utilisateur, hors effet → conforme aux règles).
+  const resetPeriodCards = () => {
+    setStatus((s) => {
+      const next = { ...s }
+      delete next.sales
+      delete next.stock
+      delete next.service
+      return next
+    })
+  }
+  const onFrom = (e) => { resetPeriodCards(); setFrom(e.target.value) }
+  const onTo = (e) => { resetPeriodCards(); setTo(e.target.value) }
+  const onClearPeriod = () => { resetPeriodCards(); setFrom(''); setTo('') }
+
+  // Charge un rapport et trace son état (ok/error) à la résolution. L'état
+  // « loading » est implicite : status[key] indéfini → carte « Chargement… »
+  // (on ne met pas setState de façon synchrone dans l'effet).
+  const load = useCallback((key, promise, setter) => (
+    promise
+      .then((r) => { setter(r.data); setCardStatus(key, 'ok') })
+      .catch(() => { setter(null); setCardStatus(key, 'error') })
+  ), [setCardStatus])
+
+  // Les rapports period-aware (ventes/stock/service) se rechargent au filtre.
+  useEffect(() => {
+    const params = {}
+    if (from) params.from = from
+    if (to) params.to = to
+    load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
+    load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
+    load('service', api.get('/reporting/reports/service/', { params }), setService)
+  }, [from, to, load])
+
+  // Les insights (all-time) ne sont chargés qu'une fois.
+  useEffect(() => {
+    load('recurring', reportingApi.recurringRevenue(), setRecurring)
+    load('audit', reportingApi.auditLog(), setAudit)
+    // Réservé owner/responsable — un refus (403) est traité comme « erreur ».
+    load('jobCosting', reportingApi.jobCosting(), setJobCosting)
+    load('analytics', reportingApi.analytics(), setAnalytics)
+    // N99 — réservé admin.
+    load('commissions', reportingApi.commissions(), setCommissions)
+  }, [load])
 
   const exportInsight = (slug) => () => reportingApi.insightXlsx(slug)
     .then(r => downloadXlsx(r.data, `${slug}.xlsx`)).catch(() => {})
+
+  const periodParams = {}
+  if (from) periodParams.from = from
+  if (to) periodParams.to = to
+
+  // Rendu d'une carte period-aware selon son état de chargement.
+  const renderReportCard = (key, title, render) => {
+    if (status[key] === 'loading' || status[key] === undefined) {
+      return <LoadingCard title={title} />
+    }
+    if (status[key] === 'error') {
+      return <ErrorCard title={title} message="Rapport indisponible" />
+    }
+    return render()
+  }
 
   return (
     <div className="ui-root page" style={{ maxWidth: 1100 }}>
@@ -139,12 +216,36 @@ export function Component() {
           <TabsTrigger value="insights">Insights</TabsTrigger>
         </TabsList>
 
+        {/* ── Filtre de période (ventes / stock / service) ── */}
+        <div className="my-3 flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-muted-foreground">Du</span>
+            <Input type="date" value={from} onChange={onFrom} />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-muted-foreground">Au</span>
+            <Input type="date" value={to} onChange={onTo} />
+          </label>
+          {(from || to) && (
+            <Button variant="outline" size="sm" onClick={onClearPeriod}>
+              Effacer la période
+            </Button>
+          )}
+        </div>
+
         {/* ── Ventes & pipeline ── */}
         <TabsContent value="ventes">
-          {sales ? (
-            <ReportCard title="Ventes & pipeline" kind="sales">
+          {renderReportCard('sales', 'Ventes & pipeline', () => (
+            <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
               <Table headers={['Étape', 'Leads']}
                      rows={sales.funnel.map(f => [f.label, fmt(f.count)])} />
+              {sales.devis_par_statut?.length > 0 && (
+                <>
+                  <Subhead>Devis par statut</Subhead>
+                  <Table headers={['Statut', 'Nombre']}
+                         rows={sales.devis_par_statut.map(d => [d.label, fmt(d.count)])} />
+                </>
+              )}
               <Subhead>Par responsable</Subhead>
               <Table headers={['Responsable', 'Leads', 'Gagnés']}
                      rows={sales.par_responsable.map(r => [r.owner__username || '—', fmt(r.count), fmt(r.gagnes)])} />
@@ -152,13 +253,13 @@ export function Component() {
               <Table headers={['Motif', 'Nombre']}
                      rows={sales.perdus_par_motif.map(r => [r.motif_perte || 'Non précisé', fmt(r.count)])} />
             </ReportCard>
-          ) : <CardSkeleton />}
+          ))}
         </TabsContent>
 
         {/* ── Stock ── */}
         <TabsContent value="stock">
-          {stock ? (
-            <ReportCard title="Stock" kind="stock">
+          {renderReportCard('stock', 'Stock', () => (
+            <ReportCard title="Stock" kind="stock" params={periodParams}>
               <p className="text-sm">
                 Valorisation (vente) : <strong className="tabular-nums">{fmt(stock.valorisation_vente)} DH</strong>
                 {' · '}achat (interne) : <span className="tabular-nums">{fmt(stock.valorisation_achat)} DH</span>
@@ -170,13 +271,13 @@ export function Component() {
               <Table headers={['Produit', 'SKU', 'Stock', 'Seuil']}
                      rows={stock.bas_stock.map(p => [p.nom, p.sku || '—', fmt(p.quantite_stock), fmt(p.seuil_alerte)])} />
             </ReportCard>
-          ) : <CardSkeleton />}
+          ))}
         </TabsContent>
 
         {/* ── Service ── */}
         <TabsContent value="service">
-          {service ? (
-            <ReportCard title="Service (chantiers + SAV)" kind="service">
+          {renderReportCard('service', 'Service (chantiers + SAV)', () => (
+            <ReportCard title="Service (chantiers + SAV)" kind="service" params={periodParams}>
               <p className="text-sm">
                 Tickets ouverts : <strong className="tabular-nums">{fmt(service.tickets_ouverts)}</strong>
                 {' · '}résolus : <span className="tabular-nums">{fmt(service.tickets_resolus)}</span>
@@ -189,7 +290,7 @@ export function Component() {
               <Table headers={['Technicien', 'Interventions']}
                      rows={service.interventions_par_technicien.map(t => [t.technicien__username || '—', fmt(t.count)])} />
             </ReportCard>
-          ) : <CardSkeleton />}
+          ))}
         </TabsContent>
 
         {/* ── Insights ── */}
@@ -197,7 +298,9 @@ export function Component() {
           <div className="space-y-6">
             <InsightCard title="Revenu récurrent (contrats de maintenance)"
                          onExport={exportInsight('recurring-revenue')}>
-              {recurring ? (
+              {status.recurring === 'error' ? (
+                <p className="text-sm text-destructive">Rapport indisponible</p>
+              ) : recurring ? (
                 <>
                   <p className="text-sm">
                     Mensuel équivalent : <strong className="tabular-nums">{fmt(recurring.monthly_total)} DH</strong>
@@ -209,23 +312,28 @@ export function Component() {
                   <Table headers={['Client', 'Périodicité', 'Prochaine visite', 'Mensuel équiv. (DH)']}
                          rows={recurring.upcoming.map(c => [c.client, c.periodicite_label, c.prochaine_visite || '—', fmt(c.monthly_equivalent)])} />
                 </>
-              ) : <Skeleton className="h-20 w-full" />}
+              ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
             <InsightCard title="Journal d'activité (qui a fait quoi)"
                          onExport={exportInsight('audit-log')}>
-              {audit ? (
+              {status.audit === 'error' ? (
+                <p className="text-sm text-destructive">Rapport indisponible</p>
+              ) : audit ? (
                 <Table headers={['Date', 'Utilisateur', 'Type', 'Référence', 'Action']}
                        rows={audit.items.map(it => [
                          (it.date || '').replace('T', ' ').slice(0, 16),
                          it.user || '—', it.type_label, it.object_ref, it.summary,
                        ])} />
-              ) : <Skeleton className="h-20 w-full" />}
+              ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
             <InsightCard title="Coût de revient par chantier"
-                         note="(interne — visible owner/responsable)">
-              {jobCosting && (
+                         note="(interne — visible owner/responsable)"
+                         onExport={jobCosting ? exportInsight('job-costing') : undefined}>
+              {status.jobCosting === 'error' ? (
+                <p className="text-sm text-muted-foreground">Réservé admin / responsable.</p>
+              ) : jobCosting ? (
                 <>
                   <p className="text-sm">
                     Facturé HT : <strong className="tabular-nums">{fmt(jobCosting.total_invoiced_ht)} DH</strong>
@@ -238,12 +346,14 @@ export function Component() {
                            fmt(c.margin), `${c.margin_pct} %`,
                          ])} />
                 </>
-              )}
+              ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
             <InsightCard title="Analytics (délais & kWc installés)"
                          onExport={exportInsight('analytics')}>
-              {analytics ? (
+              {status.analytics === 'error' ? (
+                <p className="text-sm text-destructive">Rapport indisponible</p>
+              ) : analytics ? (
                 <>
                   <p className="text-sm">
                     Délai moyen lead → signature : <strong className="tabular-nums">{analytics.avg_days_lead_to_signature ?? '—'} j</strong>
@@ -271,13 +381,16 @@ export function Component() {
                     <EmptyState icon={BarChart3} title="Aucune donnée" className="border-0 py-6" />
                   )}
                 </>
-              ) : <Skeleton className="h-20 w-full" />}
+              ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
             <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"
                          onExport={commissions?.enabled
                            ? exportInsight('commissions') : undefined}>
+              {status.commissions === 'error' && (
+                <p className="text-sm text-muted-foreground">Réservé admin.</p>
+              )}
               {commissions && !commissions.enabled && (
                 <p className="text-sm text-muted-foreground">
                   Commissions désactivées. Activez-les dans Paramètres → Devis &amp;

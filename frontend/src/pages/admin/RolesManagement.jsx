@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { ShieldPlus, ShieldCheck, Pencil, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, ChevronDown, Lock } from 'lucide-react'
+import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
 import {
   Button, Spinner, Badge,
@@ -9,10 +10,14 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Form, FormActions,
   Label, Input, Checkbox,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 
-// Grille module × action (Feature D) : tout est éditable ici. Les codes
-// inconnus du backend sont rejetés à l'enregistrement (validation serveur).
+// Grille module × action (Feature D/RBAC). La SOURCE des codes est l'endpoint
+// /roles/permissions-disponibles (models.ALL_PERMISSIONS) ; cette table ne sert
+// qu'à GROUPER et ÉTIQUETER les codes connus. Tout code renvoyé par le backend
+// mais absent d'ici est quand même rendu (groupe « Autres », libellé = code) —
+// l'éditeur reste donc synchronisé avec le backend sans tableau en dur.
 const PERMISSION_GROUPS = [
   {
     label: 'Stock',
@@ -120,6 +125,29 @@ const PERMISSION_GROUPS = [
 
 const EMPTY_FORM = { nom: '', permissions: [] }
 
+// Construit la grille de groupes à partir des codes RÉELS du backend : on garde
+// l'ordre/les libellés connus puis on ajoute un groupe « Autres » pour tout code
+// inattendu, afin que l'éditeur reste fidèle à ALL_PERMISSIONS.
+function buildGroups(availableCodes) {
+  if (!availableCodes || availableCodes.length === 0) return PERMISSION_GROUPS
+  const available = new Set(availableCodes)
+  const seen = new Set()
+  const groups = []
+  for (const g of PERMISSION_GROUPS) {
+    const codes = g.codes.filter(p => available.has(p.code))
+    codes.forEach(p => seen.add(p.code))
+    if (codes.length) groups.push({ label: g.label, codes })
+  }
+  const extras = availableCodes.filter(c => !seen.has(c))
+  if (extras.length) {
+    groups.push({
+      label: 'Autres',
+      codes: extras.map(c => ({ code: c, label: c })),
+    })
+  }
+  return groups
+}
+
 export default function RolesManagement() {
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -129,12 +157,29 @@ export default function RolesManagement() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [formError, setFormError] = useState(null)
+  // Catalogue de permissions chargé depuis le backend (source de vérité).
+  const [availableCodes, setAvailableCodes] = useState([])
+  // Ligne « Utilisateurs » dépliée (id du rôle) — tâche RBAC.
+  const [expandedUsers, setExpandedUsers] = useState(null)
+  // Dialogue de réassignation après une suppression bloquée.
+  const [reassign, setReassign] = useState(null) // { role, target }
+
+  const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
+  const viewCodes = useMemo(
+    () => availableCodes.filter(c => c.endsWith('_voir')),
+    [availableCodes],
+  )
 
   const load = async () => {
     setLoading(true)
+    setError(null)
     try {
-      const { data } = await rolesApi.getRoles()
-      setRoles(data.results ?? data)
+      const [rolesRes, permsRes] = await Promise.all([
+        rolesApi.getRoles(),
+        rolesApi.getPermissionsDisponibles(),
+      ])
+      setRoles(rolesRes.data.results ?? rolesRes.data)
+      setAvailableCodes(permsRes.data.permissions ?? [])
     } catch {
       setError('Impossible de charger les rôles.')
     } finally {
@@ -191,15 +236,54 @@ export default function RolesManagement() {
     }))
   }
 
+  // Préréglage « Lecture seule » : ne coche que les codes *_voir.
+  const applyReadOnly = () => {
+    setForm(f => ({ ...f, permissions: [...viewCodes] }))
+  }
+
+  // Indicateur « modifié » : true si le formulaire diffère du rôle édité.
+  const isDirty = useMemo(() => {
+    if (!editing) return form.nom.trim() !== '' || form.permissions.length > 0
+    const a = [...editing.permissions].sort()
+    const b = [...form.permissions].sort()
+    return editing.nom !== form.nom.trim()
+      || a.length !== b.length
+      || a.some((c, i) => c !== b[i])
+  }, [editing, form])
+
   const handleSave = async (e) => {
     e.preventDefault()
-    setSaving(true)
     setFormError(null)
+    // Garde côté client : nom obligatoire.
+    if (!form.nom.trim()) {
+      setFormError('Le nom du rôle est obligatoire.')
+      return
+    }
+    // Garde côté client : au moins une permission.
+    if (form.permissions.length === 0) {
+      setFormError('Sélectionnez au moins une permission.')
+      return
+    }
+    // Garde côté client : nom dupliqué dans la société (hors rôle édité).
+    const dup = roles.some(r =>
+      r.id !== editing?.id
+      && r.nom.trim().toLowerCase() === form.nom.trim().toLowerCase())
+    if (dup) {
+      setFormError('Un rôle portant ce nom existe déjà.')
+      return
+    }
+    setSaving(true)
     try {
+      const payload = { nom: form.nom.trim(), permissions: form.permissions }
       if (editing) {
-        await rolesApi.patchRole(editing.id, form)
+        // Le nom des rôles système est verrouillé : on n'envoie que les perms.
+        if (editing.est_systeme) {
+          await rolesApi.patchRole(editing.id, { permissions: form.permissions })
+        } else {
+          await rolesApi.patchRole(editing.id, payload)
+        }
       } else {
-        await rolesApi.createRole(form)
+        await rolesApi.createRole(payload)
       }
       cancel()
       await load()
@@ -219,7 +303,32 @@ export default function RolesManagement() {
       await rolesApi.deleteRole(role.id)
       await load()
     } catch (err) {
-      setError(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
+      // Suppression bloquée car des utilisateurs y sont assignés → proposer la
+      // réassignation dans le même dialogue (perform_destroy → PermissionDenied).
+      if (role.users_count > 0 && (role.users?.length ?? 0) > 0) {
+        setReassign({ role, target: '' })
+      } else {
+        setError(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
+      }
+    }
+  }
+
+  // Réassigne tous les utilisateurs du rôle bloqué vers `target`, puis supprime.
+  const handleReassignAndDelete = async () => {
+    const { role, target } = reassign
+    if (!target) return
+    setError(null)
+    try {
+      await Promise.all(
+        (role.users || []).map(u =>
+          api.patch(`/users/${u.id}/`, { role: Number(target) })),
+      )
+      await rolesApi.deleteRole(role.id)
+      setReassign(null)
+      await load()
+    } catch (err) {
+      setError(err.response?.data?.detail
+        || 'Échec de la réassignation des utilisateurs.')
     }
   }
 
@@ -251,30 +360,53 @@ export default function RolesManagement() {
       {/* ── Éditeur de rôle ── */}
       {showForm && (
         <Card className="p-4 sm:p-5">
-          <CardTitle className="mb-4">
-            {editing ? `Modifier : ${editing.nom}` : 'Nouveau rôle'}
-          </CardTitle>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>
+              {editing ? `Modifier : ${editing.nom}` : 'Nouveau rôle'}
+            </CardTitle>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                {form.permissions.length} permission{form.permissions.length !== 1 ? 's' : ''}
+              </span>
+              {isDirty && <Badge tone="warning">Modifié</Badge>}
+            </div>
+          </div>
           <Form onSubmit={handleSave} className="gap-5">
             <div className="flex flex-col gap-1.5 sm:max-w-xs">
-              <Label htmlFor="role-nom" required>Nom du rôle</Label>
+              <Label htmlFor="role-nom" required={!editing?.est_systeme}>Nom du rôle</Label>
               <Input
                 id="role-nom"
-                required
                 value={form.nom}
                 placeholder="ex: Comptable, Magasinier…"
+                disabled={!!editing?.est_systeme}
                 onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
               />
+              {editing?.est_systeme && (
+                <p className="text-xs text-muted-foreground">
+                  Nom verrouillé (rôle système) — les permissions restent éditables.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label>Permissions</Label>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {PERMISSION_GROUPS.map(group => {
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Permissions</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={applyReadOnly}
+                >
+                  <Eye /> Lecture seule
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {groups.map(group => {
                   const codes = group.codes.map(p => p.code)
                   const allSelected = codes.every(c => form.permissions.includes(c))
                   return (
                     <Card key={group.label} className="bg-muted/30 shadow-none">
-                      <CardHeader className="flex-row items-center justify-between p-3">
+                      <CardHeader className="flex-row items-center justify-between gap-2 p-3">
                         <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           {group.label}
                         </CardTitle>
@@ -282,7 +414,7 @@ export default function RolesManagement() {
                           type="button"
                           variant="link"
                           size="sm"
-                          className="h-auto p-0 text-xs"
+                          className="h-auto shrink-0 p-0 text-xs"
                           onClick={() => allSelected ? deselectAll(codes) : selectAll(codes)}
                         >
                           {allSelected ? 'Tout décocher' : 'Tout cocher'}
@@ -331,6 +463,13 @@ export default function RolesManagement() {
             <Skeleton className="h-9 w-full" />
           </div>
         </Card>
+      ) : error ? (
+        <EmptyState
+          icon={ShieldCheck}
+          title="Rôles indisponibles"
+          description={error}
+          action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
+        />
       ) : roles.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}
@@ -352,7 +491,7 @@ export default function RolesManagement() {
                 </tr>
               </thead>
               <tbody>
-                {roles.map((r) => (
+                {roles.map((r) => [
                   <tr key={r.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
                     <td className="px-4 py-2.5 font-medium text-foreground">{r.nom}</td>
                     <td className="px-4 py-2.5">
@@ -363,7 +502,23 @@ export default function RolesManagement() {
                     <td className="px-4 py-2.5 text-muted-foreground">
                       {r.permissions.length} permission{r.permissions.length !== 1 ? 's' : ''}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.users_count}</td>
+                    <td className="px-4 py-2.5">
+                      {r.users_count > 0 ? (
+                        <Button
+                          size="sm"
+                          variant="link"
+                          className="h-auto p-0 text-xs"
+                          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
+                        >
+                          {r.users_count} utilisateur{r.users_count !== 1 ? 's' : ''}
+                          <ChevronDown
+                            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
+                          />
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
@@ -380,7 +535,10 @@ export default function RolesManagement() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Le rôle « {r.nom} » sera définitivement supprimé.
+                                  {r.users_count > 0
+                                    ? `Le rôle « ${r.nom} » est porté par ${r.users_count} utilisateur(s). `
+                                      + 'Vous devrez les réassigner avant la suppression.'
+                                    : `Le rôle « ${r.nom} » sera définitivement supprimé.`}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -394,13 +552,75 @@ export default function RolesManagement() {
                         )}
                       </div>
                     </td>
-                  </tr>
-                ))}
+                  </tr>,
+                  expandedUsers === r.id ? (
+                    <tr key={`${r.id}-users`} className="border-b border-border/60 bg-muted/20">
+                      <td colSpan={5} className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1.5">
+                          {(r.users || []).map(u => (
+                            <Badge key={u.id} tone="neutral">{u.username}</Badge>
+                          ))}
+                          {(r.users?.length ?? 0) === 0 && (
+                            <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null,
+                ])}
               </tbody>
             </table>
           </div>
         </Card>
       )}
+
+      {/* ── Dialogue de réassignation (suppression bloquée) ── */}
+      <AlertDialog open={!!reassign} onOpenChange={(o) => { if (!o) setReassign(null) }}>
+        {reassign && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Réassigner avant de supprimer</AlertDialogTitle>
+              <AlertDialogDescription>
+                Le rôle « {reassign.role.nom} » est assigné à {reassign.role.users_count} utilisateur(s).
+                Choisissez un rôle de remplacement pour les réassigner, puis le rôle sera supprimé.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="reassign-target" className="flex items-center gap-1.5">
+                <Lock className="size-3.5" aria-hidden="true" /> Nouveau rôle
+              </Label>
+              <Select
+                value={reassign.target ? String(reassign.target) : undefined}
+                onValueChange={v => setReassign(s => ({ ...s, target: Number(v) }))}
+              >
+                <SelectTrigger id="reassign-target">
+                  <SelectValue placeholder="Choisir un rôle…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.filter(r => r.id !== reassign.role.id).map(r => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {r.nom} {r.est_systeme ? '(Système)' : '(Personnalisé)'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Utilisateurs concernés :{' '}
+                {(reassign.role.users || []).map(u => u.username).join(', ') || '—'}
+              </p>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={!reassign.target}
+                onClick={handleReassignAndDelete}
+              >
+                Réassigner et supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </div>
   )
 }

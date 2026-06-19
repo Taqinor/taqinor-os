@@ -77,3 +77,22 @@ class TestCalendar(TestCase):
             {'type': 'visite_maintenance', 'id': 1,
              'date': date.today().isoformat()}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_maintenance_visits_visible_when_filtering_by_assignee(self):
+        """Un filtre ?assignee= ne doit pas masquer les visites de maintenance
+        (calculées, sans responsable)."""
+        from apps.sav.models import ContratMaintenance
+        soon = date.today() + timedelta(days=10)
+        # Visite due dans la fenêtre : date_debut tel que +1 mois ≈ soon.
+        ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj,
+            periodicite='mensuel',
+            date_debut=date.today() - timedelta(days=20),
+            derniere_visite=soon - timedelta(days=30), actif=True)
+        resp = self.api.get(
+            f'/api/django/reporting/calendar/?assignee={self.user.pk}')
+        self.assertEqual(resp.status_code, 200)
+        visites = [e for e in resp.data['events']
+                   if e['type'] == 'visite_maintenance']
+        self.assertGreaterEqual(len(visites), 1)
+        self.assertIsNone(visites[0]['assignee_id'])

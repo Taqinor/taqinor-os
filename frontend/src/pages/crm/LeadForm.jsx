@@ -933,7 +933,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                             <td><strong>{d.reference}</strong></td>
                             <td>{STATUT_DEVIS[d.statut] ?? d.statut}</td>
                             <td className="ta-right">
-                              {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} DH
+                              {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} MAD
                             </td>
                             <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
                             <td className="ta-right">

@@ -774,6 +774,18 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': 'Le montant du paiement doit être positif.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Garde sur-paiement : refuser un encaissement qui dépasse le reste à
+        # payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour les
+        # arrondis ; un montant égal au reste passe (solde la facture).
+        reste = facture.montant_du
+        if montant - reste > Decimal('0.01'):
+            return Response(
+                {'detail': (
+                    f'Le paiement dépasse le reste à payer '
+                    f'({reste:.2f} MAD).'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         with transaction.atomic():
             serializer.save(
                 facture=facture,
@@ -965,6 +977,10 @@ class FactureViewSet(viewsets.ModelViewSet):
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         lignes = request.data.get('lignes')
+        # Plafond : un avoir ne peut pas dépasser le reste créditable de la
+        # facture (TTC − avoirs actifs déjà émis). Mesuré AVANT création.
+        from decimal import Decimal
+        reste_creditable = facture.total_ttc - facture.avoirs_total
 
         def _create(ref):
             avoir = Avoir.objects.create(
@@ -1009,6 +1025,16 @@ class FactureViewSet(viewsets.ModelViewSet):
 
         avoir = create_numbered(
             Avoir, company, 'avoir', _create)
+        # Garde plafond : si l'avoir créé dépasse le reste créditable, on le
+        # supprime (avec ses lignes) et on refuse — un avoir partiel correct
+        # passe inchangé. Tolérance d'un centime pour les arrondis.
+        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+            avoir.lignes.all().delete()
+            avoir.delete()
+            return Response(
+                {'detail': "L'avoir dépasse le montant restant de la facture "
+                           f"({reste_creditable:.2f} MAD)."},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             from .utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)

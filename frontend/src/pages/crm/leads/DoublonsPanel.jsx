@@ -11,15 +11,40 @@ import {
   Button, Spinner, Checkbox, RadioGroup, RadioGroupItem, Badge, EmptyState,
 } from '../../../ui'
 
+// Libellé FR de la clé de rapprochement (POURQUOI le groupe existe).
+const MATCH_KEY_LABELS = {
+  telephone: 'même téléphone',
+  email: 'même email',
+  nom: 'même nom',
+}
+
 function ClusterCard({ cluster, onMerged }) {
-  const [survivor, setSurvivor] = useState(cluster.suggested_survivor_id)
+  // Survivant initial : la suggestion serveur, sauf si elle est archivée alors
+  // qu'un membre actif existe (on ne garde jamais un archivé face à un actif).
+  const initialSurvivor = (() => {
+    const sug = cluster.members.find(m => m.id === cluster.suggested_survivor_id)
+    const active = cluster.members.filter(m => !m.is_archived)
+    if (active.length && sug?.is_archived) return active[0].id
+    return cluster.suggested_survivor_id
+  })()
+  const [survivor, setSurvivor] = useState(initialSurvivor)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [done, setDone] = useState(false)
 
-  const others = cluster.members
-    .filter(m => m.id !== survivor)
-    .map(m => m.id)
+  const otherMembers = cluster.members.filter(m => m.id !== survivor)
+  const others = otherMembers.map(m => m.id)
+  // Au moins un membre actif (non archivé) dans le groupe → on interdit de
+  // choisir un membre archivé comme survivant (absorber des actifs dans un
+  // archivé serait une régression). Sinon (tous archivés) : choix libre.
+  const hasActive = cluster.members.some(m => !m.is_archived)
+  // Aperçu de fusion calculé pour le survivant CHOISI (devis/activités migrés
+  // depuis les autres). Les champs comblés viennent du serveur (indicatif).
+  const devisMigres = otherMembers.reduce((s, m) => s + (m.nb_devis ?? 0), 0)
+  const activitesMigrees = otherMembers.reduce(
+    (s, m) => s + (m.nb_activites ?? 0), 0)
+  const champsCombles = cluster.merge_preview?.champs_combles ?? []
+  const matchKeys = cluster.match_keys ?? []
 
   const doMerge = async () => {
     if (!others.length) return
@@ -53,18 +78,39 @@ function ClusterCard({ cluster, onMerged }) {
 
   return (
     <div className="dbl-cluster">
+      {matchKeys.length > 0 && (
+        <div className="dbl-match-keys">
+          Regroupés par :{' '}
+          {matchKeys.map((k, i) => (
+            <span key={k}>
+              {i > 0 && ', '}
+              <Badge tone="neutral">{MATCH_KEY_LABELS[k] ?? k}</Badge>
+            </span>
+          ))}
+        </div>
+      )}
       <RadioGroup
         value={String(survivor)}
         onValueChange={(v) => setSurvivor(Number(v))}
         className="dbl-cluster-grid"
       >
-        {cluster.members.map(m => (
+        {cluster.members.map(m => {
+          // Un membre archivé ne peut pas être survivant tant qu'un actif existe.
+          const disabledKeep = hasActive && m.is_archived && m.id !== survivor
+          return (
           <label
             key={m.id}
             className={`dbl-member${m.id === survivor ? ' dbl-member-keep' : ''}`}
           >
             <div className="dbl-member-head">
-              <RadioGroupItem value={String(m.id)} />
+              <RadioGroupItem
+                value={String(m.id)}
+                disabled={disabledKeep}
+                title={disabledKeep
+                  ? 'Un lead archivé ne peut pas être le survivant tant '
+                    + "qu'un lead actif est présent"
+                  : undefined}
+              />
               <strong>{m.nom} {m.prenom || ''}</strong>
               {m.id === survivor && <Badge tone="primary" className="dbl-keep-tag">à garder</Badge>}
               {m.is_archived && <Badge tone="warning" className="dbl-arch-tag">archivé</Badge>}
@@ -75,11 +121,22 @@ function ClusterCard({ cluster, onMerged }) {
               <div>✉️ {m.email || '—'}</div>
               <div>📍 {m.ville || '—'}</div>
               <div>📊 {STAGE_LABELS[m.stage] ?? m.stage}</div>
-              <div>📄 {m.nb_devis} devis · {m.completeness} champs</div>
+              <div>📄 {m.nb_devis} devis · {m.nb_activites ?? 0} activités · {m.completeness} champs</div>
             </div>
           </label>
-        ))}
+          )
+        })}
       </RadioGroup>
+      {others.length > 0 && (
+        <div className="dbl-merge-preview" role="status">
+          Aperçu : {devisMigres} devis et {activitesMigrees} activité(s)
+          seront déplacés vers le survivant ; {others.length} fiche(s)
+          archivée(s).
+          {champsCombles.length > 0 && (
+            <> Champs comblés : {champsCombles.join(', ')}.</>
+          )}
+        </div>
+      )}
       {error && <div className="form-error-box">{error}</div>}
       <div className="dbl-cluster-actions">
         <Button

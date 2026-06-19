@@ -22,7 +22,7 @@ import {
   Form, FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, toNumber } from '../../lib/format'
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -30,6 +30,18 @@ const STATUT_DISPLAY = {
   payee:     'Payée',
   en_retard: 'En retard',
   annulee:   'Annulée',
+}
+
+// N39 — statut de télédéclaration DGI (purement informatif, lecture seule).
+const TELEDECLARATION_DISPLAY = {
+  non_soumise: 'DGI : Non soumise',
+  soumise:     'DGI : Soumise',
+  validee:     'DGI : Validée',
+}
+const TELEDECLARATION_TONE = {
+  non_soumise: 'neutral',
+  soumise:     'info',
+  validee:     'success',
 }
 
 const TABS = [
@@ -163,6 +175,21 @@ export default function FactureList() {
     annulee:   factures.filter(f => f.statut === 'annulee').length,
   }), [factures])
 
+  // Total encaissé du mois courant, dérivé on-the-fly des paiements des
+  // factures chargées (date_paiement dans le mois en cours).
+  const encaisseMois = useMemo(() => {
+    const ym = today.slice(0, 7)  // AAAA-MM
+    let total = 0
+    for (const f of factures) {
+      for (const p of (f.paiements || [])) {
+        if ((p.date_paiement || '').slice(0, 7) === ym) {
+          total += toNumber(p.montant) || 0
+        }
+      }
+    }
+    return total
+  }, [factures])
+
   const openNew   = () => { setEditFacture(null); setShowForm(true) }
   const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }
@@ -289,7 +316,7 @@ export default function FactureList() {
     return (
       <div className="page">
         <EmptyState icon={FileWarning} title="Erreur de chargement"
-                    description={typeof error === 'string' ? error : JSON.stringify(error)} />
+                    description="Impossible de charger les factures. Réessayez." />
       </div>
     )
   }
@@ -349,7 +376,7 @@ export default function FactureList() {
           <DialogHeader>
             <DialogTitle>Enregistrer un paiement — {payTarget?.reference}</DialogTitle>
             <DialogDescription>
-              Payé {payTarget?.montant_paye} / Dû {payTarget?.montant_du} MAD
+              Payé {formatMAD(payTarget?.montant_paye)} / Dû {formatMAD(payTarget?.montant_du)}
             </DialogDescription>
           </DialogHeader>
           <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
@@ -382,6 +409,13 @@ export default function FactureList() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {factures.length > 0 && (
+        <Card className="mt-3 w-fit px-4 py-2 text-sm">
+          <span className="text-muted-foreground">Encaissé ce mois : </span>
+          <strong className="tabular-nums">{formatMAD(encaisseMois)}</strong>
+        </Card>
+      )}
 
       {/* ── Tabs ── */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-1">
@@ -467,12 +501,21 @@ export default function FactureList() {
                         {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
                         {(f.montant_paye != null || f.montant_du != null) && (
                           <div className="mt-0.5 text-xs text-muted-foreground">
-                            Payé {f.montant_paye} / Dû {f.montant_du} MAD
+                            Payé {formatMAD(f.montant_paye)} / Dû {formatMAD(f.montant_du)}
                           </div>
                         )}
                       </td>
                       <td>
                         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
+                        {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
+                          <Badge
+                            tone={TELEDECLARATION_TONE[f.statut_teledeclaration] ?? 'neutral'}
+                            className="mt-1 block w-fit"
+                            title="Statut de télédéclaration DGI (informatif)"
+                          >
+                            {TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}
+                          </Badge>
+                        )}
                       </td>
                       <td>
                         <div className="flex flex-wrap items-center gap-2">

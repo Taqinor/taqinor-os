@@ -59,6 +59,112 @@ export function canonicalStatus(key) {
   return LEGACY_STATUT_MAP[key] ?? key
 }
 
+// Position CANONIQUE dans l'entonnoir chantier (−1 si inconnu/non canonique).
+// Sert aux gardes de transition : on raisonne TOUJOURS sur le statut canonique
+// pour couvrir les statuts hérités (mise_en_service → receptionne, etc.).
+export function canonicalRank(key) {
+  return INSTALLATION_STATUSES.indexOf(canonicalStatus(key))
+}
+
+// Un mouvement de statut est-il AUTORISÉ ? On n'autorise qu'un pas en avant ou
+// en arrière sur l'entonnoir canonique (|Δrang| ≤ 1). Rester sur place est
+// toujours permis. Un statut hérité déjà stocké (rang −1) ne peut pas être la
+// CIBLE d'un mouvement, mais peut en être la source (il se rabat sur sa colonne
+// canonique). Miroir conceptuel de Installation.STATUT_ORDER côté backend.
+export function canMoveStatus(from, to) {
+  if (from === to) return true
+  // La CIBLE doit être un statut canonique direct (jamais un statut hérité).
+  const b = INSTALLATION_STATUSES.indexOf(to)
+  if (b === -1) return false
+  const a = canonicalRank(from)
+  if (a === -1) return false // source hors entonnoir : pas de saut direct
+  return Math.abs(a - b) <= 1
+}
+
+// Statuts canoniques accessibles depuis `from` (courant ±1), pour alimenter un
+// sélecteur restreint. La valeur courante est toujours incluse.
+export function adjacentStatuses(from) {
+  return INSTALLATION_STATUSES.filter((s) => canMoveStatus(from, s) || s === from)
+}
+
+// Un chantier est « en retard » de pose quand la date prévue est passée, que la
+// pose réelle n'est pas saisie, et qu'il n'a pas encore atteint « Installé »
+// (donc ni installé/réceptionné/clôturé) et n'est pas annulé. Calcul à la
+// lecture (aucune donnée serveur supplémentaire).
+export function isPoseEnRetard(item, today = new Date()) {
+  if (!item || item.annule) return false
+  if (item.date_pose_reelle) return false
+  const prevue = item.date_pose_prevue
+  if (!prevue || typeof prevue !== 'string') return false
+  const rank = canonicalRank(item.statut)
+  const installeRank = INSTALLATION_STATUSES.indexOf('installe')
+  if (rank >= installeRank && rank !== -1) return false
+  const t = new Date(today)
+  const todayStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  return prevue < todayStr
+}
+
+// Prochaine action recommandée selon le statut canonique. Retourne un libellé FR
+// court, ou null si aucune action évidente.
+export function nextBestAction(item) {
+  if (!item || item.annule) return null
+  const canon = canonicalStatus(item.statut)
+  if (canon === 'signe') return 'Commander le matériel'
+  if (canon === 'materiel_commande') return 'Planifier la pose'
+  if (canon === 'planifie') return 'Démarrer le chantier'
+  if (canon === 'en_cours') return 'Marquer la pose installée'
+  if (canon === 'installe') return 'Planifier la réception'
+  if (canon === 'receptionne') return 'Clôturer le chantier'
+  return null
+}
+
+// N13 — poses « à venir » : chantiers PLANIFIÉ (canonique) dont la date prévue
+// tombe entre aujourd'hui et J+`days` inclus, non annulés. Calcul à la lecture.
+export function upcomingPoses(items, days = 7, today = new Date()) {
+  const t = new Date(today)
+  const start = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  const end = new Date(t)
+  end.setDate(end.getDate() + days)
+  const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
+  return (items ?? []).filter((it) => {
+    if (!it || it.annule) return false
+    if (canonicalStatus(it.statut) !== 'planifie') return false
+    const p = it.date_pose_prevue
+    if (!p || typeof p !== 'string') return false
+    return p >= start && p <= endStr
+  })
+}
+
+// N14 — charge par installateur : nb de poses À VENIR (≤ `days` j) par
+// technicien responsable. Renvoie [{ nom, count }] trié décroissant.
+export function installerLoad(items, days = 14, today = new Date()) {
+  const counts = new Map()
+  for (const it of upcomingPoses(items, days, today)) {
+    const nom = it.technicien_nom || 'Non assigné'
+    counts.set(nom, (counts.get(nom) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([nom, count]) => ({ nom, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+// N14 — synthèse funnel : compte des chantiers par statut canonique + total en
+// retard. Renvoie { rows: [{ key, label, count }], retard }.
+export function funnelSummary(items, today = new Date()) {
+  const counts = Object.fromEntries(INSTALLATION_STATUSES.map((s) => [s, 0]))
+  let retard = 0
+  for (const it of items ?? []) {
+    if (!it) continue
+    const canon = canonicalStatus(it.statut)
+    if (counts[canon] != null) counts[canon] += 1
+    if (isPoseEnRetard(it, today)) retard += 1
+  }
+  const rows = INSTALLATION_STATUSES.map((s) => ({
+    key: s, label: STATUS_LABELS[s], count: counts[s],
+  }))
+  return { rows, retard }
+}
+
 export const TYPE_LABELS = {
   residentiel: 'Résidentiel',
   industriel: 'Industriel / Commercial',
@@ -187,6 +293,7 @@ export const EMPTY_FILTERS = {
   regime: '',
   art33: '', // '' | 'seuls'
   annule: 'avec', // 'avec' | 'sans' | 'seuls'
+  mine: '', // '' | 'only' (filtre SERVEUR « Mes chantiers »)
 }
 
 export function filterInstallations(items, filters) {
@@ -204,7 +311,9 @@ export function filterInstallations(items, filters) {
     return (
       (it.reference ?? '').toLowerCase().includes(q) ||
       (it.client_nom ?? '').toLowerCase().includes(q) ||
-      (it.site_ville ?? '').toLowerCase().includes(q)
+      (it.site_ville ?? '').toLowerCase().includes(q) ||
+      (it.devis_reference ?? '').toLowerCase().includes(q) ||
+      (it.technicien_nom ?? '').toLowerCase().includes(q)
     )
   })
 }

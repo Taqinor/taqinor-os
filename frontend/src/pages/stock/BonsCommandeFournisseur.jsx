@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import ProduitPicker from '../../components/ProduitPicker'
@@ -15,10 +16,28 @@ import {
   totalAchat,
   quantiteRestante,
   buildReceptionPayload,
+  avancementReception,
+  bcfDateAffichee,
+  aLignePrixZero,
+  nbEnvoyesNonRecus,
 } from '../../features/stock/procurement'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
+
+// Traduit une erreur serveur DRF en phrase FR lisible (jamais de JSON brut).
+function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
+  const data = err?.response?.data
+  if (!data) return fallback
+  if (typeof data === 'string') return data
+  if (data.detail) return data.detail
+  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) return data.non_field_errors[0]
+  for (const v of Object.values(data)) {
+    const m = Array.isArray(v) ? v[0] : v
+    if (typeof m === 'string') return m
+  }
+  return fallback
+}
 
 const fmtMad = (v) => {
   const n = Number(v) || 0
@@ -46,7 +65,8 @@ function RetourModal({ bcf, onClose, onDone }) {
     const payloadLignes = lignes
       .map((l) => {
         const s = saisies[l.id] ?? {}
-        const qte = Math.floor(Number(s.qte))
+        // Plafonne au reçu : on ne retourne jamais plus que ce qui a été reçu.
+        const qte = Math.min(Math.floor(Number(s.qte)), Number(l.quantite_recue) || 0)
         return Number.isFinite(qte) && qte > 0
           ? { produit: l.produit, quantite: qte, motif: s.motif || '' }
           : null
@@ -62,12 +82,10 @@ function RetourModal({ bcf, onClose, onDone }) {
         lignes: payloadLignes,
       })
       await stockApi.validerRetourFournisseur(r.data.id)
-      onDone?.()
+      onDone?.('Retour fournisseur enregistré — le stock a été décrémenté.')
       onClose()
-      alert('Retour fournisseur enregistré — le stock a été décrémenté.')
     } catch (err) {
-      setError(err.response?.data?.detail
-        ?? JSON.stringify(err.response?.data ?? err.message))
+      setError(frBcfError(err, 'Échec du retour fournisseur.'))
     } finally { setBusy(false) }
   }
 
@@ -82,8 +100,8 @@ function RetourModal({ bcf, onClose, onDone }) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[34rem] text-sm">
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Produit</th>
@@ -98,9 +116,14 @@ function RetourModal({ bcf, onClose, onDone }) {
                   <td className="px-3 py-2">{l.produit_nom}</td>
                   <td className="px-3 py-2 tabular-nums">{l.quantite_recue}</td>
                   <td className="px-3 py-2">
-                    <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
+                    <Input type="number" min="0" max={l.quantite_recue ?? 0} inputMode="numeric" className="h-9 w-24"
                            value={saisies[l.id]?.qte ?? ''}
                            onChange={(e) => setLigne(l.id, { qte: e.target.value })} />
+                    {Number(saisies[l.id]?.qte) > (Number(l.quantite_recue) || 0) && (
+                      <p className="mt-1 text-xs text-warning">
+                        Max {l.quantite_recue ?? 0} (quantité reçue)
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <Input className="h-9"
@@ -146,8 +169,16 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [showRetour, setShowRetour] = useState(false)
+  const [info, setInfo] = useState(null)
 
   const total = useMemo(() => totalAchat(lignes), [lignes])
+  const reception = useMemo(() => avancementReception(bcf?.lignes ?? lignes), [bcf, lignes])
+  // Chantier source (BCF issu d'un besoin matériel) : la note contient
+  // « chantier <ref> » — on l'extrait pour la mettre en avant (728).
+  const chantierRef = useMemo(() => {
+    const m = (bcf?.note ?? note ?? '').match(/chantier\s+([A-Za-z0-9\-/]+)/i)
+    return m ? m[1] : null
+  }, [bcf, note])
 
   const setLigne = (idx, patch) =>
     setLignes((ls) => ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
@@ -155,6 +186,22 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setLignes((ls) => [...ls, { produit: '', quantite: 1, prix_achat_unitaire: '' }])
   const removeLigne = (idx) =>
     setLignes((ls) => ls.filter((_, i) => i !== idx))
+
+  // Sélection d'un produit : pré-remplit le prix d'achat U. (interne) depuis le
+  // prix_achat catalogue quand la ligne n'en a pas encore — modifiable ensuite.
+  const pickProduit = (idx, produitId) => {
+    setLignes((ls) => ls.map((l, i) => {
+      if (i !== idx) return l
+      const next = { ...l, produit: produitId }
+      const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+      if (sansPrix) {
+        const prod = (produits ?? []).find((p) => String(p.id) === String(produitId))
+        const cat = prod ? Number(prod.prix_achat) : 0
+        if (cat > 0) next.prix_achat_unitaire = String(cat)
+      }
+      return next
+    }))
+  }
 
   const buildPayload = () => ({
     fournisseur: fournisseur || null,
@@ -182,11 +229,16 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(JSON.stringify(err.response?.data ?? err.message))
+      setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
     } finally { setBusy(false) }
   }
 
   const envoyer = async () => {
+    // Confirme l'envoi si une ligne a un prix d'achat à 0 (pompes/placeholder).
+    if (aLignePrixZero(buildPayload().lignes)
+        && !window.confirm('Une ou plusieurs lignes ont un prix d\'achat à 0. Envoyer quand même ?')) {
+      return
+    }
     setBusy(true); setError(null)
     try {
       // En brouillon, on enregistre d'abord d'éventuelles modifications.
@@ -200,8 +252,18 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(JSON.stringify(err.response?.data ?? err.message))
+      setError(frBcfError(err, "L'envoi au fournisseur a échoué."))
     } finally { setBusy(false) }
+  }
+
+  // Tout recevoir : pré-remplit chaque saisie de réception au reste dû.
+  const toutRecevoir = () => {
+    const next = {}
+    for (const l of bcf?.lignes ?? []) {
+      const reste = quantiteRestante(l)
+      if (reste > 0) next[l.id] = String(reste)
+    }
+    setReceptions(next)
   }
 
   const recevoir = async () => {
@@ -213,7 +275,7 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(JSON.stringify(err.response?.data ?? err.message))
+      setError(frBcfError(err, 'La réception a échoué.'))
     } finally { setBusy(false) }
   }
 
@@ -225,7 +287,7 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(JSON.stringify(err.response?.data ?? err.message))
+      setError(frBcfError(err, "L'annulation a échoué."))
     } finally { setBusy(false) }
   }
 
@@ -233,7 +295,7 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     try {
       const r = await stockApi.bcfPdf(bcf.id)
       downloadBlob(r.data, `${bcf.reference ?? 'BCF'}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { setError('PDF indisponible.') }
   }
 
   return (
@@ -244,6 +306,11 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             {isNew ? 'Nouveau bon de commande fournisseur'
               : `Bon de commande — ${bcf.reference ?? ''}`}
             {!isNew && <StatusPill status={statut} label={bcfStatutLabel(statut)} />}
+            {chantierRef && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-info/30 bg-info/10 px-2 py-0.5 text-xs font-normal text-info">
+                <Package className="size-3" /> Chantier {chantierRef}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
             Document <strong>interne</strong> : les prix d&apos;achat n&apos;apparaissent
@@ -277,11 +344,27 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
               <Package className="size-4 text-muted-foreground" /> Lignes
             </span>
-            {editableLignes && (
-              <Button type="button" variant="outline" size="sm" onClick={addLigne}>
-                <Plus /> Ajouter une ligne
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {!isNew && (statut === 'envoye' || statut === 'recu') && reception.commande > 0 && (
+                <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  {reception.recu}/{reception.commande} reçus
+                  <span className="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                    <span className="block h-full bg-success"
+                          style={{ width: `${Math.round(reception.taux * 100)}%` }} />
+                  </span>
+                </span>
+              )}
+              {!isNew && statut === 'envoye' && (
+                <Button type="button" variant="outline" size="sm" onClick={toutRecevoir}>
+                  Tout recevoir
+                </Button>
+              )}
+              {editableLignes && (
+                <Button type="button" variant="outline" size="sm" onClick={addLigne}>
+                  <Plus /> Ajouter une ligne
+                </Button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
@@ -308,7 +391,7 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                       <td className="px-3 py-2">
                         {editableLignes ? (
                           <ProduitPicker produits={produits} value={l.produit}
-                                         onChange={(v) => setLigne(idx, { produit: v })} />
+                                         onChange={(v) => pickProduit(idx, v)} />
                         ) : (
                           <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
                         )}
@@ -370,6 +453,11 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             {error}
           </div>
         )}
+        {info && (
+          <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+            {info}
+          </div>
+        )}
 
         <DialogFooter className="flex-wrap">
           {!isNew && statut !== 'annule' && (
@@ -408,19 +496,36 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       </DialogContent>
       {showRetour && (
         <RetourModal bcf={bcf} onClose={() => setShowRetour(false)}
-                     onDone={() => { onSaved?.() }} />
+                     onDone={(msg) => { onSaved?.(); if (msg) setInfo(msg) }} />
       )}
     </Dialog>
   )
 }
 
 export default function BonsCommandeFournisseur() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [fournisseurs, setFournisseurs] = useState([])
   const [produits, setProduits] = useState([])
   const [statutFiltre, setStatutFiltre] = useState('')
-  const [selected, setSelected] = useState(null) // bcf object or {} for new
+  // Réapprovisionnement (706) : un BCF brouillon pré-rempli demandé via l'état
+  // de navigation depuis le catalogue ouvre directement le détail.
+  const prefill = location.state?.prefillBcf ?? null
+  const [selected, setSelected] = useState(
+    () => (prefill
+      ? {
+          fournisseur: prefill.fournisseur ? String(prefill.fournisseur) : '',
+          lignes: [{ produit: String(prefill.produit), quantite: prefill.quantite || 1, prix_achat_unitaire: '' }],
+        }
+      : null), // bcf object or {} for new
+  )
+
+  // Nettoie l'état de navigation pour ne pas rouvrir le brouillon au retour.
+  useEffect(() => {
+    if (prefill) navigate(location.pathname, { replace: true, state: null })
+  }, [prefill, navigate, location.pathname])
 
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
@@ -442,6 +547,8 @@ export default function BonsCommandeFournisseur() {
   const rows = useMemo(() => (
     statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
   ), [items, statutFiltre])
+  // BCF envoyés en attente de réception (raccourci de filtrage en un clic).
+  const attenteReception = useMemo(() => nbEnvoyesNonRecus(items), [items])
 
   // Ouvre le détail en rechargeant la version complète (lignes à jour).
   const openBcf = async (b) => {
@@ -461,7 +568,7 @@ export default function BonsCommandeFournisseur() {
       accessor: (b) => b.statut,
       cell: (v) => <StatusPill status={v} label={bcfStatutLabel(v)} /> },
     { id: 'date_commande', header: 'Date', width: 120, searchable: false,
-      accessor: (b) => b.date_commande,
+      accessor: (b) => bcfDateAffichee(b),
       cell: (v) => fmtDateFR(v) },
     { id: 'lignes', header: 'Lignes', align: 'right', width: 90, searchable: false,
       accessor: (b) => (b.lignes ?? []).length },
@@ -492,6 +599,13 @@ export default function BonsCommandeFournisseur() {
             </SelectContent>
           </Select>
         </div>
+        {attenteReception > 0 && (
+          <Button variant={statutFiltre === 'envoye' ? 'secondary' : 'outline'} size="sm"
+                  onClick={() => setStatutFiltre(statutFiltre === 'envoye' ? '' : 'envoye')}
+                  title="Bons de commande envoyés en attente de réception">
+            En attente de réception ({attenteReception})
+          </Button>
+        )}
         {statutFiltre && (
           <Button variant="ghost" size="sm" onClick={() => setStatutFiltre('')}>
             Réinitialiser

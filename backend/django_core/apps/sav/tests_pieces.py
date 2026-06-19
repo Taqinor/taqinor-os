@@ -10,7 +10,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.sav.models import Ticket, PieceConsommee, ContratMaintenance
+from apps.sav.models import (
+    Ticket, PieceConsommee, ContratMaintenance, TicketActivity)
 
 User = get_user_model()
 
@@ -65,6 +66,29 @@ class TestSavPieces(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, Decimal('10'))
         self.assertFalse(PieceConsommee.objects.filter(id=pid).exists())
+
+    def test_add_piece_logs_activity(self):
+        # L310 — l'ajout d'une pièce (avec décrément) journalise l'Historique.
+        r = self._add(quantite='2', decrement=True)
+        self.assertEqual(r.status_code, 201, r.data)
+        note = TicketActivity.objects.filter(
+            ticket=self.ticket, kind=TicketActivity.Kind.NOTE).first()
+        self.assertIsNotNone(note)
+        self.assertIn('Carte', note.body)
+        self.assertIn('stock', note.body)
+
+    def test_remove_piece_logs_activity(self):
+        # L310 — le retrait d'une pièce journalise aussi l'Historique.
+        r = self._add(quantite='1', decrement=True)
+        pid = r.data['id']
+        before = TicketActivity.objects.filter(ticket=self.ticket).count()
+        self.api.delete(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/{pid}/')
+        after = TicketActivity.objects.filter(ticket=self.ticket).count()
+        self.assertEqual(after, before + 1)
+        last = TicketActivity.objects.filter(
+            ticket=self.ticket).order_by('-id').first()
+        self.assertIn('retirée', last.body)
 
     def test_pieces_listed_with_designation(self):
         self._add(quantite='1')

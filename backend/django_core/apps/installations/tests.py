@@ -194,6 +194,11 @@ class TestStatusAndMES(TestCase):
         self.assertEqual(r.data['statut'], 'mise_en_service')
         self.assertEqual(r.data['date_mise_en_service'], '2026-06-20')
         self.assertEqual(Decimal(r.data['mes_production_test']), Decimal('32.50'))
+        # La note de chatter inclut les valeurs mesurées (production + tension).
+        note = self.inst.activites.filter(kind='note').order_by('-id').first()
+        self.assertIsNotNone(note)
+        self.assertIn('32.5', note.body)
+        self.assertIn('230', note.body)
 
     def test_cancel_is_a_flag_with_reason(self):
         r = self.api.post(
@@ -215,6 +220,31 @@ class TestStatusAndMES(TestCase):
         # L'ajout est tracé dans le chatter du chantier
         self.assertTrue(InstallationActivity.objects.filter(
             installation=self.inst, body__icontains='Intervention ajoutée').exists())
+        # Un compte rendu rempli sans date_realisee la tamponne côté serveur.
+        interv = Intervention.objects.get(installation=self.inst)
+        self.assertIsNotNone(interv.date_realisee)
+
+    def test_intervention_edit_and_delete_log_chantier_chatter(self):
+        created = self.api.post('/api/django/installations/interventions/', {
+            'installation': self.inst.id, 'type_intervention': 'controle',
+            'date_prevue': '2026-06-18',
+        }, format='json')
+        iv_id = created.data['id']
+        # Édition → note au chatter du chantier
+        r = self.api.patch(
+            f'/api/django/installations/interventions/{iv_id}/',
+            {'compte_rendu': 'RAS'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__icontains='Intervention modifiée').exists())
+        # Le compte rendu tamponne aussi la date réalisée.
+        self.assertIsNotNone(Intervention.objects.get(pk=iv_id).date_realisee)
+        # Suppression → note au chatter du chantier
+        r = self.api.delete(
+            f'/api/django/installations/interventions/{iv_id}/')
+        self.assertIn(r.status_code, (200, 204), getattr(r, 'data', None))
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__icontains='Intervention supprimée').exists())
 
 
 class TestChantierFunnelParcChecklist(TestCase):
@@ -292,6 +322,12 @@ class TestChantierFunnelParcChecklist(TestCase):
         self.assertEqual(r.data['equipements_crees'], 1)
         self.assertTrue(Equipement.objects.filter(
             installation=self.inst, numero_serie='SN-001').exists())
+        # N16 — la note de chatter liste le produit et la série capturés.
+        note = self.inst.activites.filter(
+            kind='note', body__icontains='Checklist').order_by('-id').first()
+        self.assertIsNotNone(note)
+        self.assertIn('Onduleur X', note.body)
+        self.assertIn('SN-001', note.body)
 
     def test_serial_capture_optional_never_blocks(self):
         self.api.get(

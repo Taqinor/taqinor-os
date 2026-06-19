@@ -11,6 +11,13 @@ import {
   filterInstallations,
   sortInstallations,
   EMPTY_FILTERS,
+  canMoveStatus,
+  adjacentStatuses,
+  isPoseEnRetard,
+  nextBestAction,
+  upcomingPoses,
+  funnelSummary,
+  installerLoad,
 } from './statuses.js'
 
 test('les 7 statuts chantier canoniques, dans l\'ordre d\'entonnoir', () => {
@@ -85,4 +92,88 @@ test('applyStatutConfig ignore les clés inconnues', () => {
   // Aucun effet : on reste sur les défauts.
   assert.equal(statusLabel('signe'), 'Signé')
   applyStatutConfig(null)
+})
+
+// ── Gardes de transition (N1/N2) : un seul pas sur l'entonnoir ──
+test('canMoveStatus : un seul pas avant/arrière, jamais de saut', () => {
+  assert.ok(canMoveStatus('signe', 'materiel_commande')) // +1
+  assert.ok(canMoveStatus('planifie', 'materiel_commande')) // −1
+  assert.ok(canMoveStatus('signe', 'signe')) // sur place
+  assert.equal(canMoveStatus('signe', 'planifie'), false) // saut +2
+  assert.equal(canMoveStatus('signe', 'cloture'), false) // saut lointain
+  // Un statut hérité (source) se rabat sur sa colonne canonique : mise_en_service
+  // → receptionne, donc avancer vers cloture (un pas) est permis.
+  assert.ok(canMoveStatus('mise_en_service', 'cloture'))
+  // Une cible non canonique est toujours refusée.
+  assert.equal(canMoveStatus('receptionne', 'mise_en_service'), false)
+})
+
+test('adjacentStatuses : courant ±1, valeur courante incluse', () => {
+  const adj = adjacentStatuses('planifie')
+  assert.ok(adj.includes('planifie'))
+  assert.ok(adj.includes('materiel_commande'))
+  assert.ok(adj.includes('en_cours'))
+  assert.equal(adj.includes('signe'), false)
+  assert.equal(adj.includes('installe'), false)
+})
+
+// ── Badge « pose en retard » (calcul à la lecture) ──
+test('isPoseEnRetard : prévue passée, réelle vide, pas encore installé', () => {
+  const today = new Date('2026-06-19')
+  assert.ok(isPoseEnRetard({ statut: 'planifie', date_pose_prevue: '2026-06-10' }, today))
+  // Pose réelle saisie → plus en retard.
+  assert.equal(isPoseEnRetard(
+    { statut: 'planifie', date_pose_prevue: '2026-06-10', date_pose_reelle: '2026-06-15' }, today), false)
+  // Déjà installé → plus en retard.
+  assert.equal(isPoseEnRetard({ statut: 'installe', date_pose_prevue: '2026-06-10' }, today), false)
+  // Annulé → jamais.
+  assert.equal(isPoseEnRetard(
+    { statut: 'planifie', date_pose_prevue: '2026-06-10', annule: true }, today), false)
+  // Date future → pas en retard.
+  assert.equal(isPoseEnRetard({ statut: 'planifie', date_pose_prevue: '2026-06-25' }, today), false)
+})
+
+test('nextBestAction : action FR par statut', () => {
+  assert.equal(nextBestAction({ statut: 'signe' }), 'Commander le matériel')
+  assert.equal(nextBestAction({ statut: 'installe' }), 'Planifier la réception')
+  assert.equal(nextBestAction({ statut: 'cloture' }), null)
+  assert.equal(nextBestAction({ statut: 'signe', annule: true }), null)
+})
+
+test('upcomingPoses : planifiés à ≤ J+7', () => {
+  const today = new Date('2026-06-19')
+  const rows = [
+    { id: 1, statut: 'planifie', date_pose_prevue: '2026-06-22' }, // dans la fenêtre
+    { id: 2, statut: 'planifie', date_pose_prevue: '2026-07-05' }, // hors fenêtre
+    { id: 3, statut: 'signe', date_pose_prevue: '2026-06-21' }, // pas planifié
+    { id: 4, statut: 'planifie', date_pose_prevue: '2026-06-22', annule: true }, // annulé
+  ]
+  assert.deepEqual(upcomingPoses(rows, 7, today).map((r) => r.id), [1])
+})
+
+test('installerLoad : compte des poses à venir par installateur', () => {
+  const today = new Date('2026-06-19')
+  const rows = [
+    { statut: 'planifie', date_pose_prevue: '2026-06-22', technicien_nom: 'Ali' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-24', technicien_nom: 'Ali' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-23', technicien_nom: 'Sara' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-23' }, // non assigné
+  ]
+  const load = installerLoad(rows, 14, today)
+  assert.equal(load[0].nom, 'Ali')
+  assert.equal(load[0].count, 2)
+  assert.ok(load.some((l) => l.nom === 'Non assigné' && l.count === 1))
+})
+
+test('funnelSummary : compte par statut + retard', () => {
+  const today = new Date('2026-06-19')
+  const rows = [
+    { statut: 'signe' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-10' }, // en retard
+    { statut: 'planifie' },
+  ]
+  const { rows: counts, retard } = funnelSummary(rows, today)
+  assert.equal(counts.find((r) => r.key === 'signe').count, 1)
+  assert.equal(counts.find((r) => r.key === 'planifie').count, 2)
+  assert.equal(retard, 1)
 })

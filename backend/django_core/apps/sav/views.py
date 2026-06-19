@@ -320,6 +320,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 produit.save(update_fields=['quantite_stock'])
                 piece.stock_decremente = True
                 piece.save(update_fields=['stock_decremente'])
+            # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
+            suffixe = ' (stock −)' if decrement else ''
+            activity.log_note(
+                ticket, request.user,
+                f'Pièce {produit.nom} ×{quantite} consommée{suffixe}')
         return Response(
             PieceConsommeeSerializer(piece).data, status=201)
 
@@ -350,5 +355,12 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     created_by=request.user)
                 produit.quantite_stock = qte_apres
                 produit.save(update_fields=['quantite_stock'])
+            # L310 — journaliser le retrait (et la ré-incrémentation éventuelle).
+            suffixe = ' (stock +)' if piece.stock_decremente else ''
+            nom = getattr(piece.produit, 'nom', '?')
+            qte = piece.quantite
+            activity.log_note(
+                ticket, request.user,
+                f'Pièce {nom} ×{qte} retirée{suffixe}')
             piece.delete()
         return Response(status=204)
