@@ -600,7 +600,7 @@ client-facing PDFs are GALLERY-gated).
 
 #### Planning
 [ ] [Chantiers/Planning] [L4] [ROUTINE] Permettre le drag-to-reschedule sur la vue Calendrier des chantiers (CalendarView) pour mettre à jour date_pose_prevue. Fait = glisser une puce à un autre jour met à jour date_pose_prevue via updateInstallation et journalise le changement.
-[ ] [Chantiers/Planning] [L14] [ROUTINE] Ajouter un indicateur de charge installateur (chantiers/poses par installateur sur la période). Fait = la vue Calendrier/Kanban montre un compte de poses à venir par installateur.
+[x] [Chantiers/Planning] [L14] [ROUTINE] Ajouter un indicateur de charge installateur (chantiers/poses par installateur sur la période). Fait = la vue Calendrier/Kanban montre un compte de poses à venir par installateur.
 [x] [Chantiers/Planning] [L11] [ROUTINE] Afficher un état vide clair sur la vue Calendrier quand aucun chantier du mois n'a de date_pose_prevue. Fait = CalendarView rend un indice FR "Aucune pose planifiée ce mois".
 
 #### Parc installé

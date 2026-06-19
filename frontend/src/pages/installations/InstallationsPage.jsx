@@ -9,6 +9,7 @@ import {
   statusColor,
   upcomingPoses,
   funnelSummary,
+  installerLoad,
 } from '../../features/installations/statuses'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import crmApi from '../../api/crmApi'
@@ -216,6 +217,7 @@ export default function InstallationsPage() {
   // poses à venir (≤ 7 j) et répartition funnel + nombre en retard.
   const aVenir = useMemo(() => upcomingPoses(items, 7), [items])
   const synthese = useMemo(() => funnelSummary(items), [items])
+  const charge = useMemo(() => installerLoad(filtered, 14), [filtered])
 
   const [selected, setSelected] = useState(null)
   const [users, setUsers] = useState([])
@@ -326,6 +328,20 @@ export default function InstallationsPage() {
           </span>
         )}
       </div>
+
+      {/* N14 — charge installateur (poses à venir ≤ 14 j) sur Kanban/Calendrier. */}
+      {(view === 'kanban' || view === 'calendrier') && charge.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 py-1 text-xs">
+          <span className="font-semibold text-muted-foreground">Charge (≤ 14 j) :</span>
+          {charge.map((c) => (
+            <span key={c.nom}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5">
+              {c.nom}
+              <span className="tabular-nums font-semibold text-foreground">{c.count}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="lp-view-area">
         {view === 'liste' && <ListView items={filtered} onOpen={onOpen} />}

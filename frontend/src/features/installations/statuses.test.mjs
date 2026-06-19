@@ -17,6 +17,7 @@ import {
   nextBestAction,
   upcomingPoses,
   funnelSummary,
+  installerLoad,
 } from './statuses.js'
 
 test('les 7 statuts chantier canoniques, dans l\'ordre d\'entonnoir', () => {
@@ -148,6 +149,20 @@ test('upcomingPoses : planifiés à ≤ J+7', () => {
     { id: 4, statut: 'planifie', date_pose_prevue: '2026-06-22', annule: true }, // annulé
   ]
   assert.deepEqual(upcomingPoses(rows, 7, today).map((r) => r.id), [1])
+})
+
+test('installerLoad : compte des poses à venir par installateur', () => {
+  const today = new Date('2026-06-19')
+  const rows = [
+    { statut: 'planifie', date_pose_prevue: '2026-06-22', technicien_nom: 'Ali' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-24', technicien_nom: 'Ali' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-23', technicien_nom: 'Sara' },
+    { statut: 'planifie', date_pose_prevue: '2026-06-23' }, // non assigné
+  ]
+  const load = installerLoad(rows, 14, today)
+  assert.equal(load[0].nom, 'Ali')
+  assert.equal(load[0].count, 2)
+  assert.ok(load.some((l) => l.nom === 'Non assigné' && l.count === 1))
 })
 
 test('funnelSummary : compte par statut + retard', () => {

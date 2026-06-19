@@ -135,6 +135,19 @@ export function upcomingPoses(items, days = 7, today = new Date()) {
   })
 }
 
+// N14 — charge par installateur : nb de poses À VENIR (≤ `days` j) par
+// technicien responsable. Renvoie [{ nom, count }] trié décroissant.
+export function installerLoad(items, days = 14, today = new Date()) {
+  const counts = new Map()
+  for (const it of upcomingPoses(items, days, today)) {
+    const nom = it.technicien_nom || 'Non assigné'
+    counts.set(nom, (counts.get(nom) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([nom, count]) => ({ nom, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
 // N14 — synthèse funnel : compte des chantiers par statut canonique + total en
 // retard. Renvoie { rows: [{ key, label, count }], retard }.
 export function funnelSummary(items, today = new Date()) {
