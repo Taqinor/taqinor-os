@@ -4498,3 +4498,8 @@ textarea.form-control {
   .pe-grid-4 { grid-template-columns: 1fr; }
   .pe-grid-relance { grid-template-columns: 1fr 1fr; }
 }
+/* L789 — sur petit téléphone (~380px), même pe-grid-relance passe en 1 colonne
+   (plus aucun débordement horizontal sur aucune carte Paramètres). */
+@media (max-width: 400px) {
+  .pe-grid-relance { grid-template-columns: 1fr; }
+}
