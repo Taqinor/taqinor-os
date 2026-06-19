@@ -80,6 +80,8 @@ INSTALLED_APPS = [
     'apps.notifications',
     # N72 / N73 — moteur d'automatisations sans code (règles + approbations).
     'apps.automation',
+    # N89 — API publique REST (clés API, scopes, webhooks signés).
+    'apps.publicapi',
 ]
 
 MIDDLEWARE = [
@@ -173,6 +175,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/minute',   # 5 tentatives/min par IP sur /token/
         'register': '3/hour',  # 3 inscriptions/h par IP sur /register/
+        # N89 — débit de l'API publique, par CLÉ d'API (pas par IP).
+        'publicapi': '120/minute',
     },
 }
 

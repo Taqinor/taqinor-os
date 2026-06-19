@@ -1,0 +1,80 @@
+"""Serializers de GESTION (écran Paramètres) pour clés API & webhooks (N89).
+
+Authentifiés par session/JWT normaux, palier admin. La clé en clair et le
+secret webhook ne sont JAMAIS renvoyés en lecture — uniquement une fois, à la
+création, par les vues dédiées.
+"""
+from rest_framework import serializers
+
+from .constants import ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES
+from .models import ApiKey, Webhook, WebhookDelivery
+
+
+class ApiKeySerializer(serializers.ModelSerializer):
+    """Représentation en lecture d'une clé (jamais le secret)."""
+    created_by_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ApiKey
+        fields = [
+            'id', 'label', 'prefix', 'scopes', 'enabled',
+            'created_by', 'created_by_nom', 'created_at', 'last_used_at',
+        ]
+        read_only_fields = fields
+
+    def get_created_by_nom(self, obj):
+        u = obj.created_by
+        if not u:
+            return ''
+        return (u.get_full_name() or u.username or u.email or '').strip()
+
+
+class ApiKeyCreateSerializer(serializers.Serializer):
+    """Entrée de création : libellé + scopes. Renvoie la clé en clair UNE fois."""
+    label = serializers.CharField(max_length=120)
+    scopes = serializers.ListField(
+        child=serializers.ChoiceField(choices=ALL_SCOPES),
+        allow_empty=True, default=list)
+
+    def validate_label(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Le libellé est obligatoire.')
+        return value
+
+
+class WebhookSerializer(serializers.ModelSerializer):
+    """Représentation en lecture d'un webhook (jamais le secret en clair)."""
+
+    class Meta:
+        model = Webhook
+        fields = [
+            'id', 'label', 'target_url', 'events', 'enabled',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate_events(self, value):
+        unknown = [e for e in value if e not in ALL_EVENTS]
+        if unknown:
+            raise serializers.ValidationError(
+                f'Évènements inconnus : {", ".join(unknown)}.')
+        return value
+
+
+def scope_catalogue():
+    """Catalogue scopes/évènements pour peupler l'écran Paramètres."""
+    return {
+        'scopes': [{'code': c, 'label': lbl} for c, lbl in SCOPE_CHOICES],
+        'events': [{'code': c, 'label': lbl} for c, lbl in EVENT_CHOICES],
+    }
+
+
+class WebhookDeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebhookDelivery
+        fields = [
+            'id', 'webhook', 'event', 'status', 'response_status',
+            'error', 'created_at',
+        ]
+        read_only_fields = fields

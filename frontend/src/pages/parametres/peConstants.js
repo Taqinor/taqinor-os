@@ -41,6 +41,7 @@ export const TABS = [
   { key: 'equipe',     label: 'Équipe & rôles' },
   { key: 'messages',   label: 'Messages & relances' },
   { key: 'email',      label: 'Email' },
+  { key: 'api',        label: 'API & Webhooks' },
   { key: 'avance',     label: 'Avancé' },
 ]
 

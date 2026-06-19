@@ -1,0 +1,185 @@
+"""Modèles de l'API publique (N89).
+
+- ApiKey : clé d'API rattachée à une société, avec scopes de lecture. Seul un
+  HASH de la clé est stocké ; la clé en clair n'est montrée qu'une seule fois,
+  à la création.
+- Webhook : abonnement sortant signé (HMAC-SHA256) à des évènements métier.
+- WebhookDelivery : journal best-effort des tentatives de livraison.
+
+Additif uniquement : nouveaux modèles, FK company obligatoire, aucune
+migration destructive.
+"""
+import hashlib
+import secrets
+
+from django.conf import settings
+from django.db import models
+
+from .constants import SCOPE_CHOICES, EVENT_CHOICES
+
+
+# Préfixe lisible de toute clé émise (aide au repérage côté client/logs).
+API_KEY_PREFIX = 'tqk_'
+# Longueur de la part visible (préfixe inclus) stockée en clair pour identifier
+# une clé sans jamais révéler le secret complet.
+VISIBLE_PREFIX_LEN = 12
+
+
+def hash_key(raw_key):
+    """Hash SHA-256 d'une clé en clair — c'est ce qui est stocké/comparé."""
+    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+
+
+def generate_raw_key():
+    """Génère une nouvelle clé en clair (préfixe + secret URL-safe)."""
+    return API_KEY_PREFIX + secrets.token_urlsafe(32)
+
+
+class ApiKey(models.Model):
+    """Clé d'API d'une société. Stocke le HASH, jamais le secret en clair."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='api_keys',
+    )
+    label = models.CharField(max_length=120)
+    # Hash SHA-256 (hex) de la clé en clair — unique pour la résolution rapide.
+    key_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    # Part visible (ex. « tqk_Ab12Cd34 ») affichée dans la liste des clés.
+    prefix = models.CharField(max_length=20)
+    # Scopes accordés à cette clé (sous-ensemble de constants.ALL_SCOPES).
+    scopes = models.JSONField(default=list, blank=True)
+    enabled = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='api_keys_crees',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Clé API'
+        verbose_name_plural = 'Clés API'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'enabled']),
+        ]
+
+    def __str__(self):
+        return f'{self.label} ({self.prefix}…)'
+
+    @classmethod
+    def issue(cls, *, company, label, scopes, created_by=None):
+        """Crée une clé et renvoie (instance, clé_en_clair).
+
+        La clé en clair n'est disponible qu'ici, à la création — elle n'est
+        jamais re-stockée. Seuls les scopes connus sont retenus.
+        """
+        from .constants import ALL_SCOPES
+        raw_key = generate_raw_key()
+        clean_scopes = [s for s in (scopes or []) if s in ALL_SCOPES]
+        instance = cls.objects.create(
+            company=company,
+            label=label,
+            key_hash=hash_key(raw_key),
+            prefix=raw_key[:VISIBLE_PREFIX_LEN],
+            scopes=clean_scopes,
+            created_by=created_by,
+        )
+        return instance, raw_key
+
+    def has_scope(self, scope):
+        return scope in (self.scopes or [])
+
+
+class Webhook(models.Model):
+    """Abonnement webhook sortant d'une société. Le secret signe chaque envoi."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='webhooks',
+    )
+    label = models.CharField(max_length=120, blank=True, default='')
+    target_url = models.URLField(max_length=500)
+    # Secret partagé : sert à signer le corps en HMAC-SHA256. Généré côté
+    # serveur ; renvoyé une fois à la création/rotation.
+    secret = models.CharField(max_length=128)
+    # Évènements auxquels ce webhook est abonné (sous-ensemble de ALL_EVENTS).
+    events = models.JSONField(default=list, blank=True)
+    enabled = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='webhooks_crees',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Webhook'
+        verbose_name_plural = 'Webhooks'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'enabled']),
+        ]
+
+    def __str__(self):
+        return self.label or self.target_url
+
+    @staticmethod
+    def generate_secret():
+        return secrets.token_urlsafe(32)
+
+    def subscribes_to(self, event):
+        return event in (self.events or [])
+
+
+class WebhookDelivery(models.Model):
+    """Journal best-effort d'une tentative de livraison de webhook."""
+
+    class Statut(models.TextChoices):
+        SUCCESS = 'success', 'Succès'
+        FAILED = 'failed', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='webhook_deliveries',
+    )
+    webhook = models.ForeignKey(
+        Webhook,
+        on_delete=models.CASCADE,
+        related_name='deliveries',
+    )
+    event = models.CharField(max_length=50)
+    # Charge utile envoyée (telle quelle) — pour rejouer/diagnostiquer.
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.FAILED)
+    # Code HTTP renvoyé par la cible (NULL si la requête a échoué avant réponse).
+    response_status = models.IntegerField(null=True, blank=True)
+    error = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Livraison webhook'
+        verbose_name_plural = 'Livraisons webhook'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.event} → {self.status}'
+
+
+# Re-export pour confort (utilisé par admin/serializers/tests).
+__all__ = [
+    'ApiKey', 'Webhook', 'WebhookDelivery',
+    'hash_key', 'generate_raw_key',
+    'API_KEY_PREFIX', 'SCOPE_CHOICES', 'EVENT_CHOICES',
+]

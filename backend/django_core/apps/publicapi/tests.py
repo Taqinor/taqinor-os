@@ -1,0 +1,307 @@
+"""Tests de l'API publique (N89).
+
+Couvre : authentification par clé (succès, clé invalide, clé désactivée),
+scoping par société (A ne voit jamais B), gating par scope (read:leads ≠
+read:devis), absence de prix d'achat dans toute charge utile, gestion des clés/
+webhooks réservée à l'admin, signature HMAC d'un webhook et livraison
+best-effort (échec non bloquant + journalisé).
+"""
+import hashlib
+import hmac
+import json
+from unittest import mock
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from authentication.models import Company
+from apps.crm.models import Client, Lead
+from apps.ventes.models import Devis, LigneDevis, Facture
+from apps.installations.models import Installation
+from apps.stock.models import Produit
+
+from .constants import (
+    SCOPE_READ_LEADS, SCOPE_READ_DEVIS, SCOPE_READ_FACTURES,
+    SCOPE_READ_CHANTIERS, EVENT_LEAD_CREATED, EVENT_FACTURE_PAID,
+)
+from .models import ApiKey, Webhook, WebhookDelivery, hash_key
+from . import delivery
+
+User = get_user_model()
+
+
+def make_company(slug, nom):
+    company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
+    return company
+
+
+def make_user(company, username, role='admin'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def session_auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+def key_client(raw_key):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Api-Key {raw_key}')
+    return api
+
+
+def rows(resp):
+    data = resp.data
+    return data['results'] if isinstance(data, dict) and 'results' in data else data
+
+
+class ApiKeyAuthTests(TestCase):
+    def setUp(self):
+        self.co_a = make_company('pa-a', 'PA A')
+        self.co_b = make_company('pa-b', 'PA B')
+        self.lead_a = Lead.objects.create(company=self.co_a, nom='Alpha')
+        self.lead_b = Lead.objects.create(company=self.co_b, nom='Beta')
+        self.key_a, self.raw_a = ApiKey.issue(
+            company=self.co_a, label='A',
+            scopes=[SCOPE_READ_LEADS, SCOPE_READ_DEVIS])
+
+    def test_valid_key_reads_leads(self):
+        resp = key_client(self.raw_a).get('/api/public/leads/')
+        self.assertEqual(resp.status_code, 200)
+        names = [r['nom'] for r in rows(resp)]
+        self.assertEqual(names, ['Alpha'])
+
+    def test_no_key_is_rejected(self):
+        resp = APIClient().get('/api/public/leads/')
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_bad_key_is_rejected(self):
+        resp = key_client('tqk_does_not_exist').get('/api/public/leads/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_disabled_key_is_rejected(self):
+        self.key_a.enabled = False
+        self.key_a.save(update_fields=['enabled'])
+        resp = key_client(self.raw_a).get('/api/public/leads/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_company_scoping_no_cross_tenant(self):
+        # La clé A ne voit JAMAIS le lead de la société B.
+        resp = key_client(self.raw_a).get('/api/public/leads/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.lead_a.id, ids)
+        self.assertNotIn(self.lead_b.id, ids)
+
+    def test_scope_gating(self):
+        # Clé sans read:factures → 403 sur /factures/, 200 sur /leads/.
+        self.assertEqual(
+            key_client(self.raw_a).get('/api/public/leads/').status_code, 200)
+        self.assertEqual(
+            key_client(self.raw_a).get('/api/public/factures/').status_code, 403)
+
+    def test_last_used_at_updated(self):
+        self.assertIsNone(self.key_a.last_used_at)
+        key_client(self.raw_a).get('/api/public/leads/')
+        self.key_a.refresh_from_db()
+        self.assertIsNotNone(self.key_a.last_used_at)
+
+    def test_only_hash_stored_never_raw(self):
+        # Le hash stocké correspond bien à la clé ; la clé brute n'est nulle part.
+        self.assertEqual(self.key_a.key_hash, hash_key(self.raw_a))
+        self.assertNotEqual(self.key_a.key_hash, self.raw_a)
+
+
+class NoBuyPriceTests(TestCase):
+    def setUp(self):
+        self.co = make_company('pa-np', 'PA NP')
+        self.client_obj = Client.objects.create(company=self.co, nom='Cli')
+        self.produit = Produit.objects.create(
+            company=self.co, nom='Panneau', prix_achat=500, prix_vente=900)
+        self.devis = Devis.objects.create(
+            company=self.co, reference='DV-1', client=self.client_obj)
+        LigneDevis.objects.create(
+            devis=self.devis, produit=self.produit, designation='Panneau',
+            quantite=2, prix_unitaire=900)
+        self.key, self.raw = ApiKey.issue(
+            company=self.co, label='K',
+            scopes=[SCOPE_READ_DEVIS])
+
+    def test_no_prix_achat_in_devis_payload(self):
+        resp = key_client(self.raw).get('/api/public/devis/')
+        self.assertEqual(resp.status_code, 200)
+        blob = json.dumps(resp.data)
+        # Jamais de prix d'achat / marge ; le prix de vente (900) est OK.
+        self.assertNotIn('prix_achat', blob)
+        self.assertNotIn('500', blob)
+        self.assertIn('900', blob)
+
+
+class CompletenessReadTests(TestCase):
+    """Les quatre objets cœur sont lisibles avec le bon scope."""
+    def setUp(self):
+        self.co = make_company('pa-rd', 'PA RD')
+        self.client_obj = Client.objects.create(company=self.co, nom='Cli')
+        self.lead = Lead.objects.create(company=self.co, nom='L')
+        self.devis = Devis.objects.create(
+            company=self.co, reference='DV-9', client=self.client_obj)
+        self.facture = Facture.objects.create(
+            company=self.co, reference='FA-9', client=self.client_obj)
+        self.chantier = Installation.objects.create(
+            company=self.co, reference='CH-9', client=self.client_obj)
+        self.key, self.raw = ApiKey.issue(
+            company=self.co, label='all',
+            scopes=[SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
+                    SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS])
+
+    def test_all_endpoints_ok(self):
+        for path in ('leads', 'devis', 'factures', 'chantiers'):
+            resp = key_client(self.raw).get(f'/api/public/{path}/')
+            self.assertEqual(resp.status_code, 200, path)
+            self.assertEqual(len(rows(resp)), 1, path)
+
+
+class ManagementEndpointTests(TestCase):
+    def setUp(self):
+        self.co = make_company('pa-mg', 'PA MG')
+        self.admin = make_user(self.co, 'pa-admin', 'admin')
+        self.normal = make_user(self.co, 'pa-normal', 'normal')
+
+    def test_admin_creates_key_returns_raw_once(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/keys/', {
+            'label': 'Intégration', 'scopes': [SCOPE_READ_LEADS]}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('key', resp.data)
+        raw = resp.data['key']
+        # La clé en clair fonctionne et est rattachée à la société de l'admin.
+        key = ApiKey.objects.get(key_hash=hash_key(raw))
+        self.assertEqual(key.company, self.co)
+        # La lecture suivante ne ré-expose jamais la clé.
+        listing = api.get('/api/django/publicapi/keys/')
+        for r in rows(listing):
+            self.assertNotIn('key', r)
+
+    def test_non_admin_forbidden(self):
+        api = session_auth(self.normal)
+        resp = api.get('/api/django/publicapi/keys/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_revoke_disables_key(self):
+        api = session_auth(self.admin)
+        key, _ = ApiKey.issue(company=self.co, label='x', scopes=[])
+        resp = api.post(f'/api/django/publicapi/keys/{key.id}/revoke/')
+        self.assertEqual(resp.status_code, 200)
+        key.refresh_from_db()
+        self.assertFalse(key.enabled)
+
+    def test_create_webhook_returns_secret_once(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'target_url': 'https://example.test/hook',
+            'events': [EVENT_LEAD_CREATED]}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('secret', resp.data)
+        hook = Webhook.objects.get(id=resp.data['id'])
+        self.assertEqual(hook.company, self.co)
+        # Lecture suivante : pas de secret.
+        listing = api.get('/api/django/publicapi/webhooks/')
+        for r in rows(listing):
+            self.assertNotIn('secret', r)
+
+    def test_catalogue(self):
+        api = session_auth(self.admin)
+        resp = api.get('/api/django/publicapi/catalogue/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('scopes', resp.data)
+        self.assertIn('events', resp.data)
+
+
+class WebhookDeliveryTests(TestCase):
+    def setUp(self):
+        self.co = make_company('pa-wh', 'PA WH')
+        self.hook = Webhook.objects.create(
+            company=self.co, target_url='https://example.test/hook',
+            secret='s3cr3t', events=[EVENT_LEAD_CREATED, EVENT_FACTURE_PAID],
+            enabled=True)
+
+    def test_signature_is_correct_hmac(self):
+        payload = {'event': EVENT_LEAD_CREATED, 'id': 1}
+        body = json.dumps(payload, default=str, sort_keys=True).encode('utf-8')
+        captured = {}
+
+        def fake_post(url, content=None, headers=None, timeout=None):
+            captured['headers'] = headers
+            captured['content'] = content
+            return mock.Mock(status_code=200)
+
+        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):
+            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, payload)
+
+        sent_sig = captured['headers'][delivery.SIGNATURE_HEADER]
+        expected = hmac.new(b's3cr3t', body, hashlib.sha256).hexdigest()
+        self.assertEqual(sent_sig, expected)
+        self.assertEqual(WebhookDelivery.objects.filter(
+            status=WebhookDelivery.Statut.SUCCESS).count(), 1)
+
+    def test_delivery_only_to_subscribed_events(self):
+        # Webhook NON abonné à facture.paid ? il l'est ici ; en revanche un
+        # évènement non listé n'est jamais livré.
+        with mock.patch.object(delivery.httpx, 'post') as m:
+            m.return_value = mock.Mock(status_code=200)
+            delivery.dispatch_event(self.co.id, 'devis.accepted', {})
+        self.assertEqual(WebhookDelivery.objects.count(), 0)
+
+    def test_failed_delivery_is_logged_not_raised(self):
+        # httpx lève → la livraison ne propage jamais et journalise un échec.
+        with mock.patch.object(delivery.httpx, 'post',
+                               side_effect=RuntimeError('boom')):
+            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED,
+                                    {'event': EVENT_LEAD_CREATED})
+        d = WebhookDelivery.objects.get()
+        self.assertEqual(d.status, WebhookDelivery.Statut.FAILED)
+        self.assertIn('boom', d.error)
+
+    def test_disabled_webhook_not_delivered(self):
+        self.hook.enabled = False
+        self.hook.save(update_fields=['enabled'])
+        with mock.patch.object(delivery.httpx, 'post') as m:
+            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {})
+        m.assert_not_called()
+
+
+class SignalTriggerTests(TestCase):
+    """Les évènements métier déclenchent dispatch_event (best-effort)."""
+    def setUp(self):
+        self.co = make_company('pa-sg', 'PA SG')
+        self.client_obj = Client.objects.create(company=self.co, nom='Cli')
+
+    def test_lead_creation_dispatches(self):
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            Lead.objects.create(company=self.co, nom='New')
+        d.assert_called_once()
+        args = d.call_args[0]
+        self.assertEqual(args[0], self.co.id)
+        self.assertEqual(args[1], EVENT_LEAD_CREATED)
+
+    def test_facture_paid_transition_dispatches(self):
+        facture = Facture.objects.create(
+            company=self.co, reference='FA-7', client=self.client_obj,
+            statut=Facture.Statut.EMISE)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            facture.statut = Facture.Statut.PAYEE
+            facture.save()
+        d.assert_called_once()
+        self.assertEqual(d.call_args[0][1], EVENT_FACTURE_PAID)
+
+    def test_no_dispatch_when_status_unchanged(self):
+        facture = Facture.objects.create(
+            company=self.co, reference='FA-8', client=self.client_obj,
+            statut=Facture.Statut.PAYEE)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            facture.note = 'edit'
+            facture.save()
+        d.assert_not_called()
