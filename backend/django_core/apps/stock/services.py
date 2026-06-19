@@ -321,10 +321,12 @@ def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
 # le prix d'achat catalogue. Valorisation = quantité par emplacement × coût
 # moyen. INTERNE uniquement (les prix d'achat ne sont jamais client-facing).
 
-def average_cost(produit):
-    """Coût moyen d'achat pondéré d'un produit, depuis l'historique des
-    réceptions de bons de commande fournisseur ; repli sur le prix d'achat
-    catalogue si aucun achat reçu. INTERNE."""
+def average_cost_with_source(produit):
+    """Coût moyen d'achat pondéré + sa SOURCE.
+
+    Renvoie (cout, source) où source vaut 'achats' (dérivé des réceptions de
+    bons de commande fournisseur) ou 'catalogue' (repli sur prix_achat quand
+    aucun achat reçu). INTERNE."""
     from .models import LigneBonCommandeFournisseur
     lignes = LigneBonCommandeFournisseur.objects.filter(
         produit=produit, quantite_recue__gt=0).values_list(
@@ -334,8 +336,15 @@ def average_cost(produit):
         total_q += q
         total_v += q * (pu or Decimal('0'))
     if total_q:
-        return (total_v / total_q).quantize(Decimal('0.01'))
-    return produit.prix_achat or Decimal('0')
+        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
+    return (produit.prix_achat or Decimal('0')), 'catalogue'
+
+
+def average_cost(produit):
+    """Coût moyen d'achat pondéré d'un produit, depuis l'historique des
+    réceptions de bons de commande fournisseur ; repli sur le prix d'achat
+    catalogue si aucun achat reçu. INTERNE."""
+    return average_cost_with_source(produit)[0]
 
 
 def stock_valuation_by_location(company):
@@ -357,7 +366,7 @@ def stock_valuation_by_location(company):
     produits = (Produit.objects.filter(company=company, is_archived=False)
                 .prefetch_related('stocks_emplacement'))
     for p in produits:
-        cout = average_cost(p)
+        cout, source = average_cost_with_source(p)
         for b in stock_breakdown(p):
             if b['quantite'] == 0:
                 continue
@@ -371,10 +380,33 @@ def stock_valuation_by_location(company):
                 'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
                 'emplacement_nom': b['emplacement_nom'],
                 'quantite': b['quantite'], 'cout_moyen': cout, 'valeur': valeur,
+                'source': source,
             })
     lignes.sort(key=lambda x: (x['designation'].lower(), x['emplacement_nom']))
     return {'par_emplacement': list(totals.values()),
             'total': grand_total, 'lignes': lignes}
+
+
+VALORISATION_EXPORT_HEADERS = [
+    'Produit', 'SKU', 'Emplacement', 'Quantité',
+    'Coût moyen (HT)', 'Valeur (HT)', 'Source du coût',
+]
+_SOURCE_LABELS = {'achats': 'Achats reçus', 'catalogue': 'Prix catalogue'}
+
+
+def export_valorisation_xlsx(company):
+    """Réponse .xlsx de la valorisation du stock (admin/INTERNE — jamais
+    client-facing). Reprend les lignes de stock_valuation_by_location."""
+    from apps.crm.exports import build_xlsx_response
+    data = stock_valuation_by_location(company)
+    rows = [[
+        ligne['designation'], ligne['sku'], ligne['emplacement_nom'],
+        ligne['quantite'], str(ligne['cout_moyen']), str(ligne['valeur']),
+        _SOURCE_LABELS.get(ligne.get('source'), ''),
+    ] for ligne in data['lignes']]
+    return build_xlsx_response(
+        'valorisation.xlsx', VALORISATION_EXPORT_HEADERS, rows,
+        sheet_title='Valorisation')
 
 
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
   Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
+  History,
 } from 'lucide-react'
 import {
   fetchProduits,
@@ -19,11 +20,12 @@ import InlineEdit from '../../components/InlineEdit'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
+import api from '../../api/axios'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
-import { validateTransfert, totalVentile } from '../../features/stock/emplacements'
+import { validateTransfert, totalVentile, quantiteEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import { toastError, toastSuccess } from '../../lib/toast'
 import {
@@ -33,15 +35,26 @@ import {
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   EmptyState, DataTable,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
+import { MoreHorizontal } from 'lucide-react'
 
 const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Suggestion de quantité à commander pour un produit en stock bas :
+// vise un réassort à 2× le seuil d'alerte, jamais négative.
+const suggestionCommande = (p) => {
+  const seuil = Number(p.seuil_alerte) || 0
+  const stock = Number(p.quantite_stock) || 0
+  return Math.max(seuil * 2 - stock, 0)
+}
+
 // Petit tableau interne stylé (lecture seule) — utilisé dans les modals.
+// overflow-x-auto : défile horizontalement sur mobile sans casser la mise en page.
 function MiniTable({ head, children, className = '' }) {
   return (
-    <div className={`overflow-hidden rounded-lg border border-border ${className}`}>
-      <table className="w-full text-sm">
+    <div className={`overflow-x-auto rounded-lg border border-border ${className}`}>
+      <table className="w-full min-w-[28rem] text-sm">
         <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>{head.map((h, i) => <th key={i} className="px-3 py-2 text-left font-semibold">{h}</th>)}</tr>
         </thead>
@@ -57,10 +70,17 @@ function InventaireModal({ produits, onClose, onDone }) {
   const [counts, setCounts] = useState({}) // { produitId: '12' }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  const rows = (produits ?? []).filter((p) => !p.is_archived)
+  const [recherche, setRecherche] = useState('')
+  const allRows = (produits ?? []).filter((p) => !p.is_archived)
+  // Recherche interne (grand catalogue) sur nom/SKU.
+  const rows = recherche.trim()
+    ? searchCatalogue(allRows, recherche)
+    : allRows
 
   const submit = async () => {
-    const lignes = rows
+    // On collecte sur TOUT le catalogue (les comptages saisis avant un filtre
+    // de recherche ne doivent pas être perdus).
+    const lignes = allRows
       .filter((p) => counts[p.id] !== undefined && counts[p.id] !== '')
       .map((p) => ({ produit: p.id, quantite_comptee: parseInt(counts[p.id], 10) }))
       .filter((l) => Number.isInteger(l.quantite_comptee) && l.quantite_comptee >= 0)
@@ -68,9 +88,8 @@ function InventaireModal({ produits, onClose, onDone }) {
     setSaving(true); setError(null)
     try {
       const r = await stockApi.inventaire({ motif, lignes })
-      onDone?.()
+      onDone?.(r.data)
       onClose()
-      alert(`Inventaire enregistré : ${r.data.ajustes} ajustement(s), ${r.data.inchanges} inchangé(s).`)
     } catch (err) {
       setError(err.response?.data?.detail ?? "Échec de l'inventaire.")
     } finally { setSaving(false) }
@@ -93,21 +112,39 @@ function InventaireModal({ produits, onClose, onDone }) {
                  placeholder="Ex. comptage annuel" />
         </div>
 
+        <Input type="search" leading={<Package className="size-4" />}
+               placeholder="Filtrer les produits à compter…"
+               value={recherche} onChange={(e) => setRecherche(e.target.value)} />
+
         <div className="max-h-80 overflow-auto">
-          <MiniTable head={['Produit', 'SKU', 'Stock actuel', 'Compté']}>
-            {rows.map((p) => (
-              <tr key={p.id} className="border-t border-border">
-                <td className="px-3 py-2">{p.nom}</td>
-                <td className="px-3 py-2 font-mono text-xs">{p.sku ?? '—'}</td>
-                <td className="px-3 py-2 tabular-nums">{p.quantite_stock}</td>
-                <td className="px-3 py-2">
-                  <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
-                         value={counts[p.id] ?? ''}
-                         placeholder={String(p.quantite_stock)}
-                         onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
-                </td>
-              </tr>
-            ))}
+          <MiniTable head={['Produit', 'SKU', 'Stock actuel', 'Compté', 'Écart']}>
+            {rows.map((p) => {
+              const saisie = counts[p.id]
+              const compte = saisie === undefined || saisie === '' ? null : parseInt(saisie, 10)
+              const delta = compte === null || Number.isNaN(compte) ? null : compte - p.quantite_stock
+              return (
+                <tr key={p.id} className="border-t border-border">
+                  <td className="px-3 py-2">{p.nom}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{p.sku ?? '—'}</td>
+                  <td className="px-3 py-2 tabular-nums">{p.quantite_stock}</td>
+                  <td className="px-3 py-2">
+                    <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
+                           value={counts[p.id] ?? ''}
+                           placeholder={String(p.quantite_stock)}
+                           onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {delta === null
+                      ? <span className="text-muted-foreground">—</span>
+                      : (
+                        <span className={delta > 0 ? 'text-success' : delta < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                          {delta > 0 ? '+' : ''}{delta}
+                        </span>
+                      )}
+                  </td>
+                </tr>
+              )
+            })}
           </MiniTable>
         </div>
         {error && (
@@ -129,11 +166,26 @@ function InventaireModal({ produits, onClose, onDone }) {
 function ValorisationModal({ onClose }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
+  const [exporting, setExporting] = useState(false)
   useEffect(() => {
     stockApi.valorisation()
       .then((r) => setData(r.data))
       .catch(() => setError('Échec du chargement de la valorisation.'))
   }, [])
+  const isEmpty = data && (!data.lignes || data.lignes.length === 0)
+  const sourceLabel = (s) => (s === 'achats' ? 'Achats reçus' : s === 'catalogue' ? 'Prix catalogue' : '—')
+  // Export Excel (admin/INTERNE — coûts jamais client-facing).
+  const exportXlsx = async () => {
+    setExporting(true)
+    try {
+      const res = await api.get('/stock/valorisation-xlsx/', { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'valorisation.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { setError('Export indisponible.') } finally { setExporting(false) }
+  }
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
@@ -151,7 +203,11 @@ function ValorisationModal({ onClose }) {
         {!data && !error && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
         )}
-        {data && (
+        {isEmpty && (
+          <EmptyState icon={Wallet} title="Aucun stock à valoriser"
+                      description="Aucune quantité en stock à valoriser pour le moment." />
+        )}
+        {data && !isEmpty && (
           <>
             <MiniTable head={['Emplacement', 'Quantité', 'Valeur']}>
               {data.par_emplacement.map((t) => (
@@ -168,13 +224,14 @@ function ValorisationModal({ onClose }) {
               </tr>
             </MiniTable>
             <div className="max-h-80 overflow-auto">
-              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Coût moyen', 'Valeur']}>
+              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Coût moyen', 'Source', 'Valeur']}>
                 {data.lignes.map((l, i) => (
                   <tr key={`${l.produit_id}-${l.emplacement_nom}-${i}`} className="border-t border-border">
                     <td className="px-3 py-2">{l.designation}</td>
                     <td className="px-3 py-2">{l.emplacement_nom}</td>
                     <td className="px-3 py-2 tabular-nums">{l.quantite}</td>
                     <td className="px-3 py-2 tabular-nums">{fmtNum2(l.cout_moyen)} DH</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{sourceLabel(l.source)}</td>
                     <td className="px-3 py-2 tabular-nums">{fmtNum2(l.valeur)} DH</td>
                   </tr>
                 ))}
@@ -184,6 +241,11 @@ function ValorisationModal({ onClose }) {
         )}
 
         <DialogFooter>
+          {data && !isEmpty && (
+            <Button type="button" variant="outline" loading={exporting} onClick={exportXlsx}>
+              <Download /> Exporter Excel
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
@@ -255,10 +317,21 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   }
   const removeEmplacement = async (id) => {
     try { await stockApi.deleteEmplacement(id); await loadEmplacements() }
-    catch (err) { setError(err.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (err) { setError(messageSuppressionEmplacement(err)) }
   }
 
   const empOptions = emplacements.filter((e) => !e.archived)
+  // Quantité disponible à la source (plafonne et guide la saisie — N15).
+  const dispoSource = quantiteEmplacement(breakdown, source)
+
+  // Améliore le message FR si une suppression d'emplacement échoue (409).
+  const messageSuppressionEmplacement = (err) => {
+    const detail = err.response?.data?.detail
+    if (err.response?.status === 409 || /stock|transf/i.test(detail || '')) {
+      return detail || 'Cet emplacement détient du stock — transférez-le d\'abord.'
+    }
+    return detail || 'Suppression impossible.'
+  }
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -325,8 +398,11 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
           </div>
           <div className="w-28 flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="tr-qte">Quantité</label>
-            <Input id="tr-qte" type="number" min="1" inputMode="numeric" value={quantite}
-                   onChange={(e) => setQuantite(e.target.value)} />
+            <Input id="tr-qte" type="number" min="1" max={dispoSource || undefined} inputMode="numeric"
+                   value={quantite} onChange={(e) => setQuantite(e.target.value)} />
+            {source && (
+              <span className="text-xs text-muted-foreground">dispo : {dispoSource}</span>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -390,7 +466,7 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
 }
 
 // ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, onInlineSave, selected, onToggleSelect }) {
+function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, onReapprovisionner, categories, onInlineSave, selected, onToggleSelect }) {
   const spec = keySpec(p)
   const ttc = prixTtc(p)
   const catOptions = [{ value: '', label: '— Catégorie —' }]
@@ -404,7 +480,9 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium text-foreground">{p.nom}</div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          {p.sku && <span className="font-mono">{p.sku}</span>}
+          {p.sku
+            ? <span className="font-mono">{p.sku}</span>
+            : <Badge tone="warning">SKU manquant</Badge>}
           {parseFloat(p.prix_achat) > 0 && (
             <span>· achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
           )}
@@ -464,12 +542,48 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
           </div>
         )}
         {p.is_low_stock && (
-          <div className="mt-0.5">
-            <Badge tone="danger"><AlertTriangle className="size-3" /> seuil {p.seuil_alerte}</Badge>
+          <div className="mt-0.5 flex flex-col items-end gap-0.5">
+            <Badge tone="danger">
+              <AlertTriangle className="size-3" />{' seuil '}
+              {onInlineSave ? (
+                <InlineEdit
+                  value={p.seuil_alerte}
+                  type="number"
+                  display={String(p.seuil_alerte)}
+                  onSave={(v) => onInlineSave(p, 'seuil_alerte', v)}
+                />
+              ) : p.seuil_alerte}
+            </Badge>
+            {suggestionCommande(p) > 0 && (
+              <span className="text-xs text-muted-foreground">commander ~{suggestionCommande(p)}</span>
+            )}
+            {onReapprovisionner && (
+              <Button type="button" variant="outline" size="sm" className="h-7"
+                      onClick={() => onReapprovisionner(p)}>
+                Réapprovisionner
+              </Button>
+            )}
+          </div>
+        )}
+        {!p.is_low_stock && onInlineSave && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            seuil{' '}
+            <InlineEdit
+              value={p.seuil_alerte}
+              type="number"
+              display={String(p.seuil_alerte)}
+              onSave={(v) => onInlineSave(p, 'seuil_alerte', v)}
+            />
           </div>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        {onHistorique && (
+          <IconButton label="Historique des mouvements" variant="ghost" size="icon" className="size-8"
+                      onClick={() => onHistorique(p)}>
+            <History />
+          </IconButton>
+        )}
         {canWrite && (
           <IconButton label="Éditer" variant="ghost" size="icon" className="size-8" onClick={() => onEdit(p)}>
             <Pencil />
@@ -562,6 +676,9 @@ export default function StockList() {
   const [showForm, setShowForm]       = useState(false)
   const [editProduit, setEditProduit] = useState(null)
   const [filterLow, setFilterLow]     = useState(false)
+  const [filterNoPrice, setFilterNoPrice] = useState(false)  // produits sans prix de vente
+  const [filterNoSku, setFilterNoSku]     = useState(false)  // produits sans SKU
+  const [filterMarque, setFilterMarque]   = useState('')     // '' = toutes les marques
   const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
   const [showArchived, setShowArchived]   = useState(false)
   const [archiveNotif, setArchiveNotif]   = useState(null)
@@ -574,6 +691,7 @@ export default function StockList() {
   const [bulkMsg, setBulkMsg]     = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [showInventaire, setShowInventaire] = useState(false)
+  const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
@@ -682,9 +800,26 @@ export default function StockList() {
   const searching = search.trim().length > 0
   const filtered = useMemo(() => {
     let list = filterLow ? actifs.filter(p => p.is_low_stock) : actifs
+    if (filterNoPrice) list = list.filter(p => sansPrix(p))
+    if (filterNoSku) list = list.filter(p => !(p.sku ?? '').trim())
+    if (filterMarque) list = list.filter(p => ((p.marque || '').trim() || 'Génériques') === filterMarque)
     list = searchCatalogue(list, search)
     return list
-  }, [actifs, search, filterLow])
+  }, [actifs, search, filterLow, filterNoPrice, filterNoSku, filterMarque])
+
+  // Compteurs des filtres rail (sur le catalogue actif complet).
+  const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
+  const noSkuCount = useMemo(() => actifs.filter(p => !(p.sku ?? '').trim()).length, [actifs])
+  // Liste des marques présentes (pour le filtre par marque).
+  const marquesPresentes = useMemo(() => {
+    const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [actifs])
+  // Valeur de vente HT du catalogue affiché (somme prix_vente × quantité).
+  const valeurVenteFiltree = useMemo(
+    () => filtered.reduce((sum, p) => sum + (parseFloat(p.prix_vente) || 0) * (Number(p.quantite_stock) || 0), 0),
+    [filtered],
+  )
   // Export Excel de la liste filtrée courante (T9) — défini après `filtered`.
   const exportFiltered = async () => {
     const ids = filtered.map(p => p.id)
@@ -831,42 +966,90 @@ export default function StockList() {
               <AlertTriangle /> Stock bas ({lowCount})
             </Button>
           )}
-          {role === 'admin' && (
-            <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
-                    onClick={() => setShowArchived(v => !v)}>
-              <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
+          {/* Actions secondaires : inline sur écran large, repliées en menu « … » sur mobile. */}
+          <div className="hidden flex-wrap items-center gap-2 sm:flex">
+            {role === 'admin' && (
+              <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
+                      onClick={() => setShowArchived(v => !v)}>
+                <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
+              </Button>
+            )}
+            {role === 'admin' && (
+              <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
+                      title="Inventaire physique : saisir un comptage et ajuster le stock">
+                <Calculator /> Inventaire
+              </Button>
+            )}
+            {role === 'admin' && (
+              <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
+                      title="Valorisation du stock par emplacement (coût moyen, interne)">
+                <Wallet /> Valorisation
+              </Button>
+            )}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowTransfert(true)}
+                      title="Transférer du stock entre emplacements (dépôt / camionnette)">
+                <Truck /> Transférer
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
+                    title="Scanner un code QR / code-barres et ouvrir la fiche">
+              <ScanLine /> Scanner
             </Button>
-          )}
-          {role === 'admin' && (
-            <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
-                    title="Inventaire physique : saisir un comptage et ajuster le stock">
-              <Calculator /> Inventaire
+            <Button variant="outline" size="sm" onClick={exportFiltered}>
+              <Download /> Exporter Excel
             </Button>
-          )}
-          {role === 'admin' && (
-            <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
-                    title="Valorisation du stock par emplacement (coût moyen, interne)">
-              <Wallet /> Valorisation
-            </Button>
-          )}
-          {canWrite && (
-            <Button variant="outline" size="sm" onClick={() => setShowTransfert(true)}
-                    title="Transférer du stock entre emplacements (dépôt / camionnette)">
-              <Truck /> Transférer
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
-                  title="Scanner un code QR / code-barres et ouvrir la fiche">
-            <ScanLine /> Scanner
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportFiltered}>
-            <Download /> Exporter Excel
-          </Button>
-          {canWrite && (
-            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
-              <Upload /> Importer
-            </Button>
-          )}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+                <Upload /> Importer
+              </Button>
+            )}
+          </div>
+
+          {/* Menu compact « … » — uniquement sur mobile. */}
+          <div className="sm:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="Plus d'actions">
+                  <MoreHorizontal /> Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {role === 'admin' && (
+                  <DropdownMenuItem onSelect={() => setShowArchived(v => !v)}>
+                    <Archive /> {showArchived ? 'Masquer archivés' : 'Archivés'}
+                  </DropdownMenuItem>
+                )}
+                {role === 'admin' && (
+                  <DropdownMenuItem onSelect={() => setShowInventaire(true)}>
+                    <Calculator /> Inventaire
+                  </DropdownMenuItem>
+                )}
+                {role === 'admin' && (
+                  <DropdownMenuItem onSelect={() => setShowValorisation(true)}>
+                    <Wallet /> Valorisation
+                  </DropdownMenuItem>
+                )}
+                {canWrite && (
+                  <DropdownMenuItem onSelect={() => setShowTransfert(true)}>
+                    <Truck /> Transférer
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={() => setScanOpen(v => !v)}>
+                  <ScanLine /> Scanner
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={exportFiltered}>
+                  <Download /> Exporter Excel
+                </DropdownMenuItem>
+                {canWrite && (
+                  <DropdownMenuItem onSelect={() => setShowImport(true)}>
+                    <Upload /> Importer
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           {canWrite && (
             <Button onClick={openNew}>
               <Plus /> Nouveau produit
@@ -903,7 +1086,19 @@ export default function StockList() {
 
       {showInventaire && (
         <InventaireModal produits={filtered} onClose={() => setShowInventaire(false)}
-                         onDone={() => dispatch(fetchProduits())} />
+                         onDone={(res) => {
+                           dispatch(fetchProduits())
+                           if (res) {
+                             setInvMsg(`Inventaire enregistré : ${res.ajustes} ajustement(s), ${res.inchanges} inchangé(s).`)
+                             setTimeout(() => setInvMsg(null), 8000)
+                           }
+                         }} />
+      )}
+
+      {invMsg && (
+        <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+          {invMsg}
+        </div>
       )}
 
       {showTransfert && (
@@ -972,6 +1167,39 @@ export default function StockList() {
               <Badge>{c.count}</Badge>
             </button>
           ))}
+
+          {/* Filtres transverses : qualité de catalogue (prix/SKU manquants) + marque. */}
+          <div className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
+            <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filtres</span>
+            {noPriceCount > 0 && (
+              <button type="button"
+                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${filterNoPrice ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                      onClick={() => setFilterNoPrice(v => !v)}>
+                <span>Sans prix (à renseigner)</span>
+                <Badge tone="warning">{noPriceCount}</Badge>
+              </button>
+            )}
+            {noSkuCount > 0 && (
+              <button type="button"
+                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${filterNoSku ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                      onClick={() => setFilterNoSku(v => !v)}>
+                <span>Sans SKU</span>
+                <Badge tone="warning">{noSkuCount}</Badge>
+              </button>
+            )}
+            {marquesPresentes.length > 1 && (
+              <div className="px-1 pt-1">
+                <Select value={filterMarque || '__all'}
+                        onValueChange={v => setFilterMarque(v === '__all' ? '' : v)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Toutes les marques" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">Toutes les marques</SelectItem>
+                    {marquesPresentes.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         </aside>
 
         <main className="min-w-0 flex-1">
@@ -997,6 +1225,14 @@ export default function StockList() {
                     {b.items.map(p => (
                       <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
                                     onEdit={openEdit} onDelete={handleDelete}
+                                    onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
+                                    onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
+                                      state: { prefillBcf: {
+                                        produit: prod.id,
+                                        fournisseur: prod.fournisseur?.id ?? null,
+                                        quantite: suggestionCommande(prod) || 1,
+                                      } },
+                                    }) : null}
                                     categories={categories}
                                     onInlineSave={canWrite ? onInlineSave : null}
                                     selected={visibleSelected.has(p.id)}
@@ -1007,21 +1243,42 @@ export default function StockList() {
               </section>
             ))}
           </div>
+          {/* Valeur de vente HT du catalogue affiché (recalculée au filtre/recherche). */}
+          {filtered.length > 0 && (
+            <div className="mt-4 flex justify-end border-t border-border pt-3 text-sm text-muted-foreground">
+              Valeur vente du catalogue affiché :{' '}
+              <strong className="ml-1 text-foreground tabular-nums">{fmtNum2(valeurVenteFiltree)} DH HT</strong>
+            </div>
+          )}
           {filtered.length === 0 && !loading && (
-            <EmptyState
-              icon={PackageOpen}
-              title={filterLow
-                ? 'Aucun produit en stock bas'
-                : search ? 'Aucun résultat' : 'Aucun produit'}
-              description={filterLow
-                ? 'Tous les produits sont au-dessus de leur seuil d’alerte.'
-                : search
-                  ? `Aucun résultat pour « ${search} »`
-                  : 'Créez votre premier produit pour démarrer le catalogue.'}
-              action={canWrite && !search && !filterLow
-                ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
-                : undefined}
-            />
+            actifs.length === 0 ? (
+              // Catalogue réellement vide : encart d'amorçage.
+              <EmptyState
+                icon={PackageOpen}
+                title="Aucun produit"
+                description="Créez votre premier produit pour démarrer le catalogue."
+                action={canWrite
+                  ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
+                  : undefined}
+              />
+            ) : (
+              // Vide après filtre/recherche : on propose d'effacer les filtres.
+              <EmptyState
+                icon={PackageOpen}
+                title={filterLow ? 'Aucun produit en stock bas' : 'Aucun résultat'}
+                description={filterLow
+                  ? 'Tous les produits sont au-dessus de leur seuil d’alerte.'
+                  : search
+                    ? `Aucun résultat pour « ${search} » avec ces filtres`
+                    : 'Aucun produit ne correspond aux filtres actifs.'}
+                action={(
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setSearch(''); setFilterLow(false); setFilterNoPrice(false)
+                    setFilterNoSku(false); setFilterMarque(''); setActiveCat('')
+                  }}>Effacer les filtres</Button>
+                )}
+              />
+            )
           )}
         </main>
       </div>

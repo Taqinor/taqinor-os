@@ -677,19 +677,19 @@ client-facing PDFs are GALLERY-gated).
 ### Stock & Achats
 
 #### Catalogue — liste & form
-[ ] [Stock/Catalogue] [L7] [ROUTINE] Bloquer le SKU en doublon dès la saisie dans ProduitForm.jsx avant submit (l'unicité ('company','sku') ne remonte qu'en errors.submit brut). Fait = saisir un SKU déjà utilisé affiche un message FR inline sous le champ SKU ("SKU déjà utilisé par <nom>") sans soumettre.
-[ ] [Stock/Catalogue] [L11] [ROUTINE] Remplacer le JSON.stringify(err) de errors.submit (ProduitForm.handleSubmit) par un message FR lisible. Fait = une erreur serveur affiche une phrase française, jamais {"sku":["..."]} brut.
-[ ] [Stock/Catalogue] [L3] [ROUTINE] Pré-remplir la TVA par défaut à 20 % pour un nouveau produit (aujourd'hui tva:'' = "Sans TVA" par défaut). Fait = ouvrir "Nouveau produit" affiche TVA 20 % ; l'édition garde la valeur existante.
-[ ] [Stock/Catalogue] [L7] [ROUTINE] Avertir dans ProduitForm quand prix_vente < prix_achat (marge négative, indicateur générateur interne). Fait = une marge négative affiche un avertissement FR non bloquant sous le prix de vente.
-[ ] [Stock/Catalogue] [L6] [ROUTINE] Afficher un indicateur de marge (prix_vente − prix_achat, %) dans ProduitForm en mode édition. Fait = la marge en DH et % s'affiche, jamais exportée ni client-facing.
-[ ] [Stock/Catalogue] [L9] [ROUTINE] Ajouter un filtre "Sans prix (à renseigner)" dans le rail de StockList pour isoler les produits où sansPrix(p) (11 pompes OSP). Fait = un bouton liste uniquement les produits sans prix de vente ; le compteur reflète leur nombre.
-[ ] [Stock/Catalogue] [L14] [ROUTINE] Afficher un total de valeur de vente du catalogue filtré (somme prix_vente×quantite) en pied de StockList. Fait = un bandeau montre "Valeur vente du catalogue affiché : X DH HT" recalculé au filtre/recherche.
-[ ] [Stock/Catalogue] [L15] [ROUTINE] Signaler les produits sans SKU dans StockList. Fait = un produit sans sku porte un badge "SKU manquant" et un filtre rail "Sans SKU" les regroupe.
-[ ] [Stock/Catalogue] [L5] [ROUTINE] Rendre le seuil d'alerte éditable en place (InlineEdit) dans CatalogueRow comme le prix et la quantité. Fait = cliquer le seuil dans la liste permet de le modifier via PATCH sans ouvrir le formulaire.
-[ ] [Stock/Catalogue] [L11] [ROUTINE] Distinguer l'état "vide réel" de "vide après filtre" dans l'empty-state de StockList quand actifs.length===0. Fait = catalogue totalement vide affiche un encart d'amorçage, distinct du "Aucun résultat pour …".
+[x] [Stock/Catalogue] [L7] [ROUTINE] Bloquer le SKU en doublon dès la saisie dans ProduitForm.jsx avant submit (l'unicité ('company','sku') ne remonte qu'en errors.submit brut). Fait = saisir un SKU déjà utilisé affiche un message FR inline sous le champ SKU ("SKU déjà utilisé par <nom>") sans soumettre.
+[x] [Stock/Catalogue] [L11] [ROUTINE] Remplacer le JSON.stringify(err) de errors.submit (ProduitForm.handleSubmit) par un message FR lisible. Fait = une erreur serveur affiche une phrase française, jamais {"sku":["..."]} brut.
+[x] [Stock/Catalogue] [L3] [ROUTINE] Pré-remplir la TVA par défaut à 20 % pour un nouveau produit (aujourd'hui tva:'' = "Sans TVA" par défaut). Fait = ouvrir "Nouveau produit" affiche TVA 20 % ; l'édition garde la valeur existante.
+[x] [Stock/Catalogue] [L7] [ROUTINE] Avertir dans ProduitForm quand prix_vente < prix_achat (marge négative, indicateur générateur interne). Fait = une marge négative affiche un avertissement FR non bloquant sous le prix de vente.
+[x] [Stock/Catalogue] [L6] [ROUTINE] Afficher un indicateur de marge (prix_vente − prix_achat, %) dans ProduitForm en mode édition. Fait = la marge en DH et % s'affiche, jamais exportée ni client-facing.
+[x] [Stock/Catalogue] [L9] [ROUTINE] Ajouter un filtre "Sans prix (à renseigner)" dans le rail de StockList pour isoler les produits où sansPrix(p) (11 pompes OSP). Fait = un bouton liste uniquement les produits sans prix de vente ; le compteur reflète leur nombre.
+[x] [Stock/Catalogue] [L14] [ROUTINE] Afficher un total de valeur de vente du catalogue filtré (somme prix_vente×quantite) en pied de StockList. Fait = un bandeau montre "Valeur vente du catalogue affiché : X DH HT" recalculé au filtre/recherche.
+[x] [Stock/Catalogue] [L15] [ROUTINE] Signaler les produits sans SKU dans StockList. Fait = un produit sans sku porte un badge "SKU manquant" et un filtre rail "Sans SKU" les regroupe.
+[x] [Stock/Catalogue] [L5] [ROUTINE] Rendre le seuil d'alerte éditable en place (InlineEdit) dans CatalogueRow comme le prix et la quantité. Fait = cliquer le seuil dans la liste permet de le modifier via PATCH sans ouvrir le formulaire.
+[x] [Stock/Catalogue] [L11] [ROUTINE] Distinguer l'état "vide réel" de "vide après filtre" dans l'empty-state de StockList quand actifs.length===0. Fait = catalogue totalement vide affiche un encart d'amorçage, distinct du "Aucun résultat pour …".
 
 #### Catégories & marques
-[ ] [Stock/Catalogue] [L9] [ROUTINE] Ajouter une recherche/filtre marque au rail de StockList (les marques structurent l'affichage via groupCatalogue mais ne sont pas filtrables seules). Fait = on peut filtrer le catalogue par marque depuis le rail.
+[x] [Stock/Catalogue] [L9] [ROUTINE] Ajouter une recherche/filtre marque au rail de StockList (les marques structurent l'affichage via groupCatalogue mais ne sont pas filtrables seules). Fait = on peut filtrer le catalogue par marque depuis le rail.
 [ ] [Stock/Catalogue] [L8] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — UI gestion catégories) Offrir un écran Paramètres → Stock de gestion des catégories (renommer/ordre/archiver) — CategorieViewSet expose update/destroy mais aucune UI dédiée. Fait = un panneau Paramètres liste les catégories avec édition du nom et de ordre, conforme au free-text par société. Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
 [ ] [Stock/Catalogue] [L11] [ROUTINE] Afficher un message FR clair quand la suppression d'une marque est refusée (409 "utilisée par des produits"). Fait = tenter de supprimer une marque en usage montre "archivez-la plutôt".
 
@@ -699,57 +699,57 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Stock/Achats] [L14] [ROUTINE] Afficher sur un fournisseur le nombre de produits liés et de BCF associés (lecture seule). Fait = la fiche fournisseur montre "X produits · Y bons de commande".
 
 #### Mouvements & low-stock
-[ ] [Stock/Mouvements] [L9] [ROUTINE] Ajouter l'onglet "Transferts" à MouvementsPage (TYPE_META.transfert existe mais aucun onglet ne le filtre, et les TransfertStock ne sont pas des MouvementStock). Fait = un onglet liste les transferts entre emplacements avec source→destination.
-[ ] [Stock/Mouvements] [L4] [ROUTINE] Afficher un avertissement de stock négatif dans le preview de MouvementForm pour le cas ajustement<0 (previewApres calcule déjà la valeur négative). Fait = une saisie menant à un stock négatif est signalée avant submit pour tous les types.
-[ ] [Stock/Mouvements] [L16] [ROUTINE] Permettre de filtrer les mouvements par produit depuis CatalogueRow (lien "historique") vers MouvementsPage pré-filtré. Fait = cliquer "historique" sur un produit ouvre les mouvements filtrés sur ce produit.
-[ ] [Stock/Mouvements] [L3] [ROUTINE] Pré-sélectionner le produit dans MouvementForm si la page est ouverte depuis un produit donné. Fait = ouvrir le formulaire depuis un produit pré-remplit le select Produit.
-[ ] [Stock/Mouvements] [L6] [ROUTINE] Ajouter un bouton "réapprovisionner" (next-best-action) sur les produits en stock bas de StockList ouvrant un BCF brouillon pré-rempli. Fait = un produit sous le seuil propose un BCF pré-rempli (produit + fournisseur catalogue/min) en un clic.
-[ ] [Stock/Catalogue] [L6] [ROUTINE] Afficher une suggestion de quantité à commander sur les produits en stock bas (ex. seuil − stock, ou seuil×2). Fait = le badge "stock bas" affiche un hint "commander ~N" dérivé de seuil_alerte et quantite_stock.
+[x] [Stock/Mouvements] [L9] [ROUTINE] Ajouter l'onglet "Transferts" à MouvementsPage (TYPE_META.transfert existe mais aucun onglet ne le filtre, et les TransfertStock ne sont pas des MouvementStock). Fait = un onglet liste les transferts entre emplacements avec source→destination.
+[x] [Stock/Mouvements] [L4] [ROUTINE] Afficher un avertissement de stock négatif dans le preview de MouvementForm pour le cas ajustement<0 (previewApres calcule déjà la valeur négative). Fait = une saisie menant à un stock négatif est signalée avant submit pour tous les types.
+[x] [Stock/Mouvements] [L16] [ROUTINE] Permettre de filtrer les mouvements par produit depuis CatalogueRow (lien "historique") vers MouvementsPage pré-filtré. Fait = cliquer "historique" sur un produit ouvre les mouvements filtrés sur ce produit.
+[x] [Stock/Mouvements] [L3] [ROUTINE] Pré-sélectionner le produit dans MouvementForm si la page est ouverte depuis un produit donné. Fait = ouvrir le formulaire depuis un produit pré-remplit le select Produit.
+[x] [Stock/Mouvements] [L6] [ROUTINE] Ajouter un bouton "réapprovisionner" (next-best-action) sur les produits en stock bas de StockList ouvrant un BCF brouillon pré-rempli. Fait = un produit sous le seuil propose un BCF pré-rempli (produit + fournisseur catalogue/min) en un clic.
+[x] [Stock/Catalogue] [L6] [ROUTINE] Afficher une suggestion de quantité à commander sur les produits en stock bas (ex. seuil − stock, ou seuil×2). Fait = le badge "stock bas" affiche un hint "commander ~N" dérivé de seuil_alerte et quantite_stock.
 
 #### Multi-emplacements & transferts
 [ ] [Stock/Emplacements] [L4] [ROUTINE] Afficher la ventilation par emplacement sur CatalogueRow (ou au survol) sans ouvrir le modal Transfert — l'endpoint produit/<id>/emplacements existe. Fait = un produit montre sa répartition dépôt/camionnette en lecture dans la liste.
-[ ] [Stock/Emplacements] [L7] [ROUTINE] Pré-remplir et plafonner la quantité du transfert à la quantité disponible à la source dans TransfertModal (validateTransfert vérifie mais l'input n'a pas de max). Fait = le champ quantité du transfert porte max = stock source et affiche la dispo.
-[ ] [Stock/Emplacements] [L11] [ROUTINE] Afficher un message FR explicite quand la suppression d'un emplacement est refusée (409 "détient du stock — transférez-le"). Fait = l'erreur de suppression s'affiche en clair dans le modal.
+[x] [Stock/Emplacements] [L7] [ROUTINE] Pré-remplir et plafonner la quantité du transfert à la quantité disponible à la source dans TransfertModal (validateTransfert vérifie mais l'input n'a pas de max). Fait = le champ quantité du transfert porte max = stock source et affiche la dispo.
+[x] [Stock/Emplacements] [L11] [ROUTINE] Afficher un message FR explicite quand la suppression d'un emplacement est refusée (409 "détient du stock — transférez-le"). Fait = l'erreur de suppression s'affiche en clair dans le modal.
 [ ] [Stock/Emplacements] [L9] [ROUTINE] Ajouter un filtre/colonne par emplacement à la valorisation et au catalogue pour voir le stock d'un emplacement précis. Fait = on peut afficher uniquement le stock d'un emplacement choisi (ex. Camionnette).
 
 #### Inventaire
-[ ] [Stock/Mouvements] [L4] [ROUTINE] Afficher l'écart (compté − stock) en direct par ligne dans InventaireModal pendant la saisie. Fait = chaque ligne montre un delta coloré (+/−) dès qu'une quantité comptée est tapée.
-[ ] [Stock/Mouvements] [L9] [ROUTINE] Filtrer/limiter les produits de l'InventaireModal par recherche (aujourd'hui il prend `filtered` sans recherche interne sur grand catalogue). Fait = un champ de recherche dans le modal réduit la liste des lignes à compter.
-[ ] [Stock/Mouvements] [L11] [ROUTINE] Remplacer l'alert() de fin d'inventaire par un récapitulatif intégré (ajustés/inchangés) dans StockList. Fait = après inventaire, un bandeau FR résume le résultat sans popup navigateur.
+[x] [Stock/Mouvements] [L4] [ROUTINE] Afficher l'écart (compté − stock) en direct par ligne dans InventaireModal pendant la saisie. Fait = chaque ligne montre un delta coloré (+/−) dès qu'une quantité comptée est tapée.
+[x] [Stock/Mouvements] [L9] [ROUTINE] Filtrer/limiter les produits de l'InventaireModal par recherche (aujourd'hui il prend `filtered` sans recherche interne sur grand catalogue). Fait = un champ de recherche dans le modal réduit la liste des lignes à compter.
+[x] [Stock/Mouvements] [L11] [ROUTINE] Remplacer l'alert() de fin d'inventaire par un récapitulatif intégré (ajustés/inchangés) dans StockList. Fait = après inventaire, un bandeau FR résume le résultat sans popup navigateur.
 
 #### Bons de commande fournisseur
-[ ] [Stock/Achats] [L11] [ROUTINE] Remplacer tous les JSON.stringify(err.response?.data) de BcfDetail (save/envoyer/recevoir/annuler) par des messages FR lisibles. Fait = une erreur de BCF affiche une phrase française.
-[ ] [Stock/Achats] [L3] [ROUTINE] Pré-remplir le prix d'achat unitaire d'une ligne BCF depuis le PrixFournisseur du fournisseur choisi (ou prix_achat catalogue) à l'ajout de ligne. Fait = sélectionner un produit pour un fournisseur connu pré-remplit le prix d'achat U. interne.
+[x] [Stock/Achats] [L11] [ROUTINE] Remplacer tous les JSON.stringify(err.response?.data) de BcfDetail (save/envoyer/recevoir/annuler) par des messages FR lisibles. Fait = une erreur de BCF affiche une phrase française.
+[x] [Stock/Achats] [L3] [ROUTINE] Pré-remplir le prix d'achat unitaire d'une ligne BCF depuis le PrixFournisseur du fournisseur choisi (ou prix_achat catalogue) à l'ajout de ligne. Fait = sélectionner un produit pour un fournisseur connu pré-remplit le prix d'achat U. interne.
 [ ] [Stock/Achats] [L2] [ROUTINE] Rendre une ligne BCF sans prix d'achat possible mais signalée (BCF interne ≠ devis, les pompes sans prix de vente doivent rester commandables). Fait = un produit sans prix de vente est sélectionnable dans un BCF et n'est pas grisé "prix à renseigner" dans ce contexte d'achat.
-[ ] [Stock/Achats] [L6] [ROUTINE] Afficher l'avancement de réception sur la liste et le détail BCF (reçu/commandé, %). Fait = chaque BCF envoyé montre "X/Y reçus" et une barre dérivée de quantite_recue/quantite.
-[ ] [Stock/Achats] [L4] [ROUTINE] Ajouter un bouton "Tout recevoir" dans BcfDetail qui pré-remplit chaque saisie de réception au reste dû. Fait = un clic remplit toutes les colonnes "À recevoir" avec quantite_restante.
-[ ] [Stock/Achats] [L9] [ROUTINE] Afficher la date de création/d'envoi des BCF dans la liste (la colonne Date montre date_commande souvent vide). Fait = la liste BCF affiche une date pertinente (commande sinon création) jamais "—" quand un BCF existe.
-[ ] [Stock/Achats] [L13] [ROUTINE] Ajouter un compteur/onglet de BCF "envoyés non reçus" en attente de réception. Fait = la page BCF montre le nombre de commandes envoyées en attente, filtrable en un clic.
-[ ] [Stock/Achats] [L1] [ROUTINE] Afficher la référence du chantier source sur un BCF créé depuis un besoin matériel (la note contient "chantier <ref>" mais non mise en avant). Fait = un BCF issu d'un chantier affiche un lien/étiquette vers le chantier d'origine.
-[ ] [Stock/Achats] [L7] [ROUTINE] Confirmer avant d'envoyer un BCF dont une ligne a un prix d'achat à 0 (cas pompes/placeholder). Fait = envoyer un BCF avec ligne(s) à prix 0 demande une confirmation FR.
+[x] [Stock/Achats] [L6] [ROUTINE] Afficher l'avancement de réception sur la liste et le détail BCF (reçu/commandé, %). Fait = chaque BCF envoyé montre "X/Y reçus" et une barre dérivée de quantite_recue/quantite.
+[x] [Stock/Achats] [L4] [ROUTINE] Ajouter un bouton "Tout recevoir" dans BcfDetail qui pré-remplit chaque saisie de réception au reste dû. Fait = un clic remplit toutes les colonnes "À recevoir" avec quantite_restante.
+[x] [Stock/Achats] [L9] [ROUTINE] Afficher la date de création/d'envoi des BCF dans la liste (la colonne Date montre date_commande souvent vide). Fait = la liste BCF affiche une date pertinente (commande sinon création) jamais "—" quand un BCF existe.
+[x] [Stock/Achats] [L13] [ROUTINE] Ajouter un compteur/onglet de BCF "envoyés non reçus" en attente de réception. Fait = la page BCF montre le nombre de commandes envoyées en attente, filtrable en un clic.
+[x] [Stock/Achats] [L1] [ROUTINE] Afficher la référence du chantier source sur un BCF créé depuis un besoin matériel (la note contient "chantier <ref>" mais non mise en avant). Fait = un BCF issu d'un chantier affiche un lien/étiquette vers le chantier d'origine.
+[x] [Stock/Achats] [L7] [ROUTINE] Confirmer avant d'envoyer un BCF dont une ligne a un prix d'achat à 0 (cas pompes/placeholder). Fait = envoyer un BCF avec ligne(s) à prix 0 demande une confirmation FR.
 
 #### Listes de prix fournisseur (multi-fournisseur)
-[ ] [Stock/Achats] [L6] [ROUTINE] Afficher l'écart de prix entre fournisseurs dans PrixFournisseursSection (% vs le moins cher ⭐). Fait = chaque ligne hors moins-cher montre "+X % vs le moins cher".
-[ ] [Stock/Achats] [L7] [ROUTINE] Empêcher dans PrixFournisseursSection d'ajouter un prix pour un fournisseur déjà listé (unicité ('produit','fournisseur')). Fait = tenter un doublon affiche un message FR, jamais une erreur brute.
-[ ] [Stock/Achats] [L5] [ROUTINE] Rendre le prix d'achat d'un PrixFournisseur éditable en place (aujourd'hui supprimer + recréer seulement). Fait = un prix fournisseur existant peut être modifié sans le supprimer.
-[ ] [Stock/Achats] [L16] [ROUTINE] Afficher la date du dernier achat formatée FR dans PrixFournisseursSection (aujourd'hui ISO brut ou "—"). Fait = la date du dernier achat s'affiche au format JJ/MM/AAAA.
+[x] [Stock/Achats] [L6] [ROUTINE] Afficher l'écart de prix entre fournisseurs dans PrixFournisseursSection (% vs le moins cher ⭐). Fait = chaque ligne hors moins-cher montre "+X % vs le moins cher".
+[x] [Stock/Achats] [L7] [ROUTINE] Empêcher dans PrixFournisseursSection d'ajouter un prix pour un fournisseur déjà listé (unicité ('produit','fournisseur')). Fait = tenter un doublon affiche un message FR, jamais une erreur brute.
+[x] [Stock/Achats] [L5] [ROUTINE] Rendre le prix d'achat d'un PrixFournisseur éditable en place (aujourd'hui supprimer + recréer seulement). Fait = un prix fournisseur existant peut être modifié sans le supprimer.
+[x] [Stock/Achats] [L16] [ROUTINE] Afficher la date du dernier achat formatée FR dans PrixFournisseursSection (aujourd'hui ISO brut ou "—"). Fait = la date du dernier achat s'affiche au format JJ/MM/AAAA.
 
 #### Valorisation
-[ ] [Stock/Achats] [L11] [ROUTINE] Gérer l'état vide de ValorisationModal (stock à zéro → tables vides sans message). Fait = sans stock valorisable, le modal affiche "Aucun stock à valoriser".
-[ ] [Stock/Achats] [L14] [ROUTINE] Permettre d'exporter la valorisation en Excel (données internes admin) depuis ValorisationModal. Fait = un bouton télécharge un .xlsx des lignes de valorisation (jamais client-facing).
-[ ] [Stock/Achats] [L16] [ROUTINE] Indiquer la source du coût moyen par ligne de valorisation (réceptions BCF vs prix_achat catalogue de repli). Fait = chaque ligne signale si le coût vient d'achats reçus ou du prix catalogue.
+[x] [Stock/Achats] [L11] [ROUTINE] Gérer l'état vide de ValorisationModal (stock à zéro → tables vides sans message). Fait = sans stock valorisable, le modal affiche "Aucun stock à valoriser".
+[x] [Stock/Achats] [L14] [ROUTINE] Permettre d'exporter la valorisation en Excel (données internes admin) depuis ValorisationModal. Fait = un bouton télécharge un .xlsx des lignes de valorisation (jamais client-facing).
+[x] [Stock/Achats] [L16] [ROUTINE] Indiquer la source du coût moyen par ligne de valorisation (réceptions BCF vs prix_achat catalogue de repli). Fait = chaque ligne signale si le coût vient d'achats reçus ou du prix catalogue.
 
 #### Retours fournisseur
-[ ] [Stock/Achats] [L7] [ROUTINE] Plafonner la quantité retournée à la quantité reçue par ligne dans RetourModal (aujourd'hui input libre, le serveur décrémente sans plafond). Fait = le champ "À retourner" a max = quantite_recue et avertit si dépassé.
+[x] [Stock/Achats] [L7] [ROUTINE] Plafonner la quantité retournée à la quantité reçue par ligne dans RetourModal (aujourd'hui input libre, le serveur décrémente sans plafond). Fait = le champ "À retourner" a max = quantite_recue et avertit si dépassé.
 [ ] [Stock/Achats] [L9] [ROUTINE] (UNGATED 2026-06-18, pré-approuvé — liste Retours) Exposer une page/liste des retours fournisseur (RetourFournisseurViewSet existe mais aucune liste consultable). Fait = un écran liste les retours (référence RF, fournisseur, statut, date) avec consultation. Règles permanentes : FR ; FK company respectée ; additif ; STAGES.py/funnel intouchés ; DEBUG/déploiement/sécurité inchangés.
-[ ] [Stock/Achats] [L11] [ROUTINE] Remplacer l'alert() de confirmation de retour par un retour intégré et afficher les erreurs FR (le catch fait JSON.stringify). Fait = valider un retour montre une confirmation/erreur FR sans popup ni JSON brut.
+[x] [Stock/Achats] [L11] [ROUTINE] Remplacer l'alert() de confirmation de retour par un retour intégré et afficher les erreurs FR (le catch fait JSON.stringify). Fait = valider un retour montre une confirmation/erreur FR sans popup ni JSON brut.
 
 #### OCR import
-[ ] [Stock/OCR] [L7] [ROUTINE] Bloquer/avertir avant d'appliquer un import OCR si plusieurs lignes "create" partagent le même SKU détecté (collision d'unicité). Fait = deux lignes au même SKU sont signalées avant application.
-[ ] [Stock/OCR] [L3] [ROUTINE] Pré-remplir le prix de vente suggéré d'un produit créé via OCR (aujourd'hui nouveau_prix_vente vide → erreur "Prix de vente requis"). Fait = une ligne "create" propose un prix de vente par défaut (ex. = prix achat OCR) modifiable.
+[x] [Stock/OCR] [L7] [ROUTINE] Bloquer/avertir avant d'appliquer un import OCR si plusieurs lignes "create" partagent le même SKU détecté (collision d'unicité). Fait = deux lignes au même SKU sont signalées avant application.
+[x] [Stock/OCR] [L3] [ROUTINE] Pré-remplir le prix de vente suggéré d'un produit créé via OCR (aujourd'hui nouveau_prix_vente vide → erreur "Prix de vente requis"). Fait = une ligne "create" propose un prix de vente par défaut (ex. = prix achat OCR) modifiable.
 [ ] [Stock/OCR] [L11] [ROUTINE] Améliorer le journal de résultats OCR (Step3) : grouper succès/échecs et permettre de relancer uniquement les lignes en échec. Fait = l'écran résultats sépare réussis/échoués et propose de réessayer les échecs.
 [ ] [Stock/OCR] [L1] [ROUTINE] Proposer de créer un BCF (entrée d'achat) à partir d'une facture/bon de livraison OCR plutôt que des mouvements isolés. Fait = pour un doc d'achat, une option crée un BCF reçu au lieu d'ENTRÉE directes.
-[ ] [Stock/OCR] [L16] [ROUTINE] Renseigner automatiquement la référence document OCR comme reference du mouvement quand l'utilisateur ne l'a pas saisie. Fait = un mouvement OCR sans référence saisie reprend reference_document détecté.
+[x] [Stock/OCR] [L16] [ROUTINE] Renseigner automatiquement la référence document OCR comme reference du mouvement quand l'utilisateur ne l'a pas saisie. Fait = un mouvement OCR sans référence saisie reprend reference_document détecté.
 
 #### Chatbot stock (agent IA / SQL)
 [ ] [Stock] [L9] [ROUTINE] Ajouter des suggestions orientées stock à AgentChat (SUGGESTIONS a "en rupture de stock" mais pas valorisation/réappro). Fait = au moins deux suggestions stock supplémentaires (ex. "Valeur totale du stock ?", "Quels produits sous le seuil d'alerte ?").
@@ -757,8 +757,8 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Stock] [L17] [ROUTINE] Garantir que les réponses du chatbot stock n'exposent jamais le prix d'achat/marge (le SQL agent peut interroger Produit.prix_achat). Fait = un test/garde confirme que prix_achat n'est pas restitué dans les réponses client-facing de l'agent.
 
 #### Mobile & cohérence
-[ ] [Stock] [L12] [ROUTINE] Rendre les tableaux larges (BCF lines-table, valorisation, inventaire) défilables/empilables sur mobile (~380px). Fait = sur viewport étroit, les tables stock défilent horizontalement ou s'empilent sans casser la mise en page.
-[ ] [Stock] [L12] [ROUTINE] Adapter la barre d'actions de StockList (header-actions : 7+ boutons) en menu compact sur mobile. Fait = sur écran étroit, les actions stock se regroupent (menu "…").
+[x] [Stock] [L12] [ROUTINE] Rendre les tableaux larges (BCF lines-table, valorisation, inventaire) défilables/empilables sur mobile (~380px). Fait = sur viewport étroit, les tables stock défilent horizontalement ou s'empilent sans casser la mise en page.
+[x] [Stock] [L12] [ROUTINE] Adapter la barre d'actions de StockList (header-actions : 7+ boutons) en menu compact sur mobile. Fait = sur écran étroit, les actions stock se regroupent (menu "…").
 [ ] [Stock] [L8] [ROUTINE] Aligner les mots-clés de classification de catalogue.js (Panneaux/Onduleurs/Variateurs/Batteries/Pompes/Câbles) avec quote_engine/builder.py et solar.js. Fait = un test vérifie la cohérence des familles entre l'affichage catalogue et la classification PDF/auto-fill.
 
 ### Paramètres & Référentiels

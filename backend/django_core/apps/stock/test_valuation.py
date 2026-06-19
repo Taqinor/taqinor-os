@@ -19,8 +19,8 @@ from apps.stock.models import (
     EmplacementStock,
 )
 from apps.stock.services import (
-    average_cost, stock_valuation_by_location, transfer_stock,
-    ensure_emplacements,
+    average_cost, average_cost_with_source, stock_valuation_by_location,
+    export_valorisation_xlsx, transfer_stock, ensure_emplacements,
 )
 
 User = get_user_model()
@@ -65,6 +65,17 @@ class TestAverageCost(ValuationBase):
         # (1800 + 3000) / 10 = 480.00
         self.assertEqual(average_cost(self.produit), Decimal('480.00'))
 
+    def test_source_is_catalogue_without_receipts(self):
+        cout, source = average_cost_with_source(self.produit)
+        self.assertEqual(cout, Decimal('500'))
+        self.assertEqual(source, 'catalogue')
+
+    def test_source_is_achats_with_receipts(self):
+        self._bcf_recu(4, '450')
+        cout, source = average_cost_with_source(self.produit)
+        self.assertEqual(source, 'achats')
+        self.assertEqual(cout, Decimal('450.00'))
+
 
 class TestValuationByLocation(ValuationBase):
     def test_valuation_splits_across_locations(self):
@@ -85,3 +96,11 @@ class TestValuationByLocation(ValuationBase):
         self.assertEqual(by_name['Camionnette']['quantite'], 3)
         self.assertEqual(by_name['Camionnette']['valeur'], Decimal('1500.00'))
         self.assertEqual(result['total'], Decimal('5000.00'))
+        # Chaque ligne porte la source du coût (ici catalogue, aucun achat reçu).
+        self.assertTrue(all(line['source'] == 'catalogue' for line in result['lignes']))
+
+    def test_export_xlsx_returns_spreadsheet(self):
+        ensure_emplacements(self.company)
+        resp = export_valorisation_xlsx(self.company)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('spreadsheet', resp['Content-Type'])
