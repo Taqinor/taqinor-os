@@ -51,7 +51,7 @@ function preselectDevis(list) {
 function fmtMAD(value) {
   const n = parseFloat(value)
   return Number.isFinite(n)
-    ? `${Math.round(n).toLocaleString('fr-FR')} MAD` : '—'
+    ? `${Math.round(n).toLocaleString('fr-MA')} MAD` : '—'
 }
 
 export default function SigneDialog({ lead, onClose, onConfirmed }) {

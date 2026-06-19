@@ -23,7 +23,19 @@ import ChartsView from './views/ChartsView'
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
+const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
 const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
+
+// Vues enregistrées (N79, LOCAL uniquement) : nom → { filters, view }.
+function loadSavedViews() {
+  try {
+    const raw = localStorage.getItem(SAVED_VIEWS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 // Filtres persistés en localStorage : on fusionne avec EMPTY_FILTERS pour
 // tolérer un schéma plus ancien (clés manquantes/en trop ignorées).
@@ -73,6 +85,29 @@ export default function LeadsPage() {
     } catch { /* stockage indisponible */ }
   }, [filters])
   const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
+
+  // Vues enregistrées nommées (combinaison filtres + vue), LOCALES (sans email).
+  const [savedViews, setSavedViews] = useState(loadSavedViews)
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(savedViews))
+    } catch { /* stockage indisponible */ }
+  }, [savedViews])
+  const saveCurrentView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    setSavedViews((vs) => [
+      ...vs.filter((v) => v.name !== trimmed),
+      { name: trimmed, filters, view },
+    ])
+  }
+  const applySavedView = (v) => {
+    setFilters({ ...EMPTY_FILTERS, ...(v.filters || {}) })
+    if (VALID_VIEWS.includes(v.view)) setView(v.view)
+  }
+  const deleteSavedView = (name) =>
+    setSavedViews((vs) => vs.filter((v) => v.name !== name))
 
   // Formulaire lead (création / édition).
   const [showForm, setShowForm] = useState(false)
@@ -339,6 +374,25 @@ export default function LeadsPage() {
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
+
+      <div className="lp-saved-views">
+        <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
+          ⭐ Enregistrer cette vue
+        </Button>
+        {savedViews.map((v) => (
+          <span key={v.name} className="lp-saved-view-chip">
+            <button type="button" className="lp-saved-view-apply"
+                    onClick={() => applySavedView(v)} title="Appliquer cette vue">
+              {v.name}
+            </button>
+            <button type="button" className="lp-saved-view-del"
+                    onClick={() => deleteSavedView(v.name)}
+                    aria-label={`Supprimer la vue ${v.name}`}>
+              ✕
+            </button>
+          </span>
+        ))}
+      </div>
 
       {visibleSelected.size > 0 && (
         <BulkActionBar
