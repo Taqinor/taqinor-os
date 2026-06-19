@@ -126,6 +126,11 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # Totaux du BC dérivés du devis lié (un BC reprend les lignes du devis).
+    # Aucun devis → None → l'UI affiche « — ». Affichage seulement.
+    total_ht = serializers.SerializerMethodField()
+    total_tva = serializers.SerializerMethodField()
+    total_ttc = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommande
@@ -135,6 +140,15 @@ class BonCommandeSerializer(serializers.ModelSerializer):
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()
+
+    def get_total_ht(self, obj):
+        return str(obj.devis.total_ht) if obj.devis_id else None
+
+    def get_total_tva(self, obj):
+        return str(obj.devis.total_tva) if obj.devis_id else None
+
+    def get_total_ttc(self, obj):
+        return str(obj.devis.total_ttc) if obj.devis_id else None
 
 
 class LigneFactureSerializer(serializers.ModelSerializer):

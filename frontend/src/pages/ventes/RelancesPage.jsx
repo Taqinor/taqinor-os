@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PartyPopper, FileText, MessageCircle, Mail } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -8,7 +8,18 @@ import {
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, toNumber } from '../../lib/format'
+
+// Balance âgée : libellé du bucket d'ancienneté dérivé des jours de retard,
+// cohérent avec /reporting/balance-agee (0–30 / 31–60 / 61–90 / 90+).
+function ageBucket(joursRetard) {
+  const jr = Number(joursRetard) || 0
+  if (jr <= 0) return null
+  if (jr <= 30) return '0–30 j'
+  if (jr <= 60) return '31–60 j'
+  if (jr <= 90) return '61–90 j'
+  return '90+ j'
+}
 
 export default function RelancesPage() {
   const [rows, setRows] = useState([])
@@ -16,6 +27,8 @@ export default function RelancesPage() {
   const [target, setTarget] = useState(null)  // facture being relancée
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [niveauFilter, setNiveauFilter] = useState('')  // '' = tous
+  const [sortByDu, setSortByDu] = useState(false)  // tri par montant dû décroissant
 
   const load = () => {
     setLoading(true)
@@ -61,6 +74,32 @@ export default function RelancesPage() {
     }
   }
 
+  // Niveaux distincts présents (pour le filtre).
+  const niveaux = useMemo(() => {
+    const map = new Map()
+    rows.forEach(r => { if (r.niveau) map.set(r.niveau.ordre, r.niveau.nom) })
+    return [...map.entries()].sort((a, b) => a[0] - b[0])
+  }, [rows])
+
+  // Lignes affichées : filtre par niveau courant + tri optionnel par dû.
+  const displayed = useMemo(() => {
+    let list = rows
+    if (niveauFilter === 'none') list = list.filter(r => !r.niveau)
+    else if (niveauFilter !== '') {
+      list = list.filter(r => r.niveau && String(r.niveau.ordre) === niveauFilter)
+    }
+    if (sortByDu) {
+      list = [...list].sort(
+        (a, b) => (toNumber(b.montant_du) || 0) - (toNumber(a.montant_du) || 0))
+    }
+    return list
+  }, [rows, niveauFilter, sortByDu])
+
+  // Encours total à recouvrer (somme des montants dus affichés).
+  const totalDu = useMemo(
+    () => displayed.reduce((s, r) => s + (toNumber(r.montant_du) || 0), 0),
+    [displayed])
+
   return (
     <div className="page">
       <div className="page-header">
@@ -73,6 +112,30 @@ export default function RelancesPage() {
         Vue de recouvrement — consigner et imprimer uniquement. Aucun envoi
         automatique (email/SMS) n'est effectué.
       </p>
+
+      {!loading && rows.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <Card className="px-4 py-2 text-sm">
+            <span className="text-muted-foreground">Total à recouvrer : </span>
+            <strong className="tabular-nums">{formatMAD(totalDu)}</strong>
+            <span className="text-muted-foreground"> sur {displayed.length} facture{displayed.length > 1 ? 's' : ''}</span>
+          </Card>
+          <label className="flex items-center gap-1.5 text-sm">
+            Niveau&nbsp;:
+            <select
+              className="rounded border px-2 py-1"
+              value={niveauFilter}
+              onChange={e => setNiveauFilter(e.target.value)}
+            >
+              <option value="">Tous</option>
+              <option value="none">Sans niveau</option>
+              {niveaux.map(([ordre, nom]) => (
+                <option key={ordre} value={String(ordre)}>{nom}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -92,12 +155,19 @@ export default function RelancesPage() {
               <thead>
                 <tr>
                   <th>Facture</th><th>Client</th><th>Échéance</th>
-                  <th className="ta-right">Dû</th><th>Retard</th><th>Niveau</th>
+                  <th
+                    className="ta-right cursor-pointer select-none"
+                    onClick={() => setSortByDu(v => !v)}
+                    title="Trier par montant dû décroissant"
+                  >
+                    Dû{sortByDu ? ' ↓' : ''}
+                  </th>
+                  <th>Retard</th><th>Âge</th><th>Niveau</th>
                   <th>Relances</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r => (
+                {displayed.map(r => (
                   <tr key={r.id}>
                     <td><strong>{r.reference}</strong></td>
                     <td>{r.client_nom}</td>
@@ -106,8 +176,13 @@ export default function RelancesPage() {
                     </td>
                     <td className="ta-right tabular-nums">{formatMAD(r.montant_du)}</td>
                     <td className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
-                      {r.jours_retard > 0 ? `${r.jours_retard} j` : '—'}
+                      {r.jours_retard > 0
+                        ? `${r.jours_retard} j`
+                        : <span className="text-muted-foreground">À échoir</span>}
                     </td>
+                    <td>{ageBucket(r.jours_retard)
+                      ? <Badge tone="warning">{ageBucket(r.jours_retard)}</Badge>
+                      : '—'}</td>
                     <td>{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
                     <td>{r.nb_relances}</td>
                     <td className="ta-right">

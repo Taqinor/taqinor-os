@@ -257,6 +257,28 @@ class TestPermissions(TestCase):
         self.assertEqual(Paiement.objects.count(), 0)
 
 
+class TestBonCommandeTotaux(TestCase):
+    """Le BC expose les totaux HT/TVA/TTC dérivés du devis lié."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        self.resp = User.objects.create_user(
+            username='bc_resp', password='x', role_legacy='responsable',
+            company=self.company,
+        )
+        self.api = auth(self.resp)
+        self.devis = make_accepted_devis(self.company, self.client_obj)
+
+    def test_bc_carries_devis_totals(self):
+        bc = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/convertir-bc/')
+        self.assertEqual(bc.status_code, 201, bc.data)
+        self.assertEqual(Decimal(bc.data['total_ht']), Decimal('15000.00'))
+        self.assertEqual(Decimal(bc.data['total_tva']), Decimal('2000.00'))
+        self.assertEqual(Decimal(bc.data['total_ttc']), Decimal('17000.00'))
+
+
 class TestSurPaiementGuard(TestCase):
     """Garde sur-paiement : un encaissement > reste à payer est refusé."""
 
