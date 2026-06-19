@@ -52,12 +52,14 @@ function poseKey(it) {
   return localKey(y, m, d)
 }
 
-function Chip({ item, onOpen }) {
+function Chip({ item, onOpen, onDragStart }) {
   const dot = item.annule ? '#dc2626' : statusColor(item.statut)
   const name = item.reference || item.client_nom || '(Sans réf.)'
   return (
     <button
       type="button"
+      draggable={!item.annule}
+      onDragStart={(e) => onDragStart?.(e, item)}
       className={`cal-chip${item.annule ? ' cal-chip-perdu' : ''}`}
       title={`${name} — ${statusLabel(item.statut)}`}
       onClick={() => onOpen(item)}
@@ -68,12 +70,26 @@ function Chip({ item, onOpen }) {
   )
 }
 
-function CalendarView({ items, onOpen }) {
+function CalendarView({ items, onOpen, onReschedule }) {
   const [monthStart, setMonthStart] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
   const [expandedDays, setExpandedDays] = useState({})
+  const [dragId, setDragId] = useState(null)
+
+  // N4 — glisser-déposer : déposer une puce sur un autre jour met à jour
+  // date_pose_prevue via le parent (qui journalise le changement côté serveur).
+  const handleDragStart = (e, item) => {
+    setDragId(item.id)
+    try { e.dataTransfer.setData('text/plain', String(item.id)) } catch { /* */ }
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  const handleDrop = (cellKey) => {
+    const item = (items ?? []).find((it) => it.id === dragId)
+    setDragId(null)
+    if (item && poseKey(item) !== cellKey) onReschedule?.(item, cellKey)
+  }
 
   const goToday = () => {
     const now = new Date()
@@ -168,12 +184,15 @@ function CalendarView({ items, onOpen }) {
                 'cal-cell',
                 cell.inMonth ? '' : 'cal-cell-out',
                 cell.key === todayKey ? 'cal-cell-today' : '',
+                dragId ? 'cal-cell-droppable' : '',
               ].filter(Boolean).join(' ')}
+              onDragOver={(e) => { if (dragId) e.preventDefault() }}
+              onDrop={(e) => { e.preventDefault(); handleDrop(cell.key) }}
             >
               <span className="cal-day-number">{cell.dayNumber}</span>
               <div className="cal-chips">
                 {visible.map((it) => (
-                  <Chip key={it.id} item={it} onOpen={onOpen} />
+                  <Chip key={it.id} item={it} onOpen={onOpen} onDragStart={handleDragStart} />
                 ))}
                 {hidden > 0 && (
                   <button type="button" className="cal-more" onClick={() => toggleDay(cell.key)}>
@@ -230,6 +249,10 @@ export default function InstallationsPage() {
     dispatch(updateInstallation({ id: inst.id, data: { statut } }))
   const onReassign = (inst, technicien) =>
     dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } }))
+  // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
+  // journalise le changement de date dans le chatter).
+  const onReschedule = (inst, dateKey) =>
+    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: dateKey } }))
 
   // Les filtres « annulés » et « Mes chantiers » sont des dimensions SERVEUR :
   // on refait l'appel quand ils changent (les autres filtres restent côté client).
@@ -359,7 +382,7 @@ export default function InstallationsPage() {
               />
             </Card>
           ) : (
-            <CalendarView items={filtered} onOpen={onOpen} />
+            <CalendarView items={filtered} onOpen={onOpen} onReschedule={onReschedule} />
           )
         )}
       </div>
