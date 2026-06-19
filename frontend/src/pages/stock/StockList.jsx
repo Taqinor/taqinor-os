@@ -67,10 +67,17 @@ function InventaireModal({ produits, onClose, onDone }) {
   const [counts, setCounts] = useState({}) // { produitId: '12' }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  const rows = (produits ?? []).filter((p) => !p.is_archived)
+  const [recherche, setRecherche] = useState('')
+  const allRows = (produits ?? []).filter((p) => !p.is_archived)
+  // Recherche interne (grand catalogue) sur nom/SKU.
+  const rows = recherche.trim()
+    ? searchCatalogue(allRows, recherche)
+    : allRows
 
   const submit = async () => {
-    const lignes = rows
+    // On collecte sur TOUT le catalogue (les comptages saisis avant un filtre
+    // de recherche ne doivent pas être perdus).
+    const lignes = allRows
       .filter((p) => counts[p.id] !== undefined && counts[p.id] !== '')
       .map((p) => ({ produit: p.id, quantite_comptee: parseInt(counts[p.id], 10) }))
       .filter((l) => Number.isInteger(l.quantite_comptee) && l.quantite_comptee >= 0)
@@ -102,21 +109,39 @@ function InventaireModal({ produits, onClose, onDone }) {
                  placeholder="Ex. comptage annuel" />
         </div>
 
+        <Input type="search" leading={<Package className="size-4" />}
+               placeholder="Filtrer les produits à compter…"
+               value={recherche} onChange={(e) => setRecherche(e.target.value)} />
+
         <div className="max-h-80 overflow-auto">
-          <MiniTable head={['Produit', 'SKU', 'Stock actuel', 'Compté']}>
-            {rows.map((p) => (
-              <tr key={p.id} className="border-t border-border">
-                <td className="px-3 py-2">{p.nom}</td>
-                <td className="px-3 py-2 font-mono text-xs">{p.sku ?? '—'}</td>
-                <td className="px-3 py-2 tabular-nums">{p.quantite_stock}</td>
-                <td className="px-3 py-2">
-                  <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
-                         value={counts[p.id] ?? ''}
-                         placeholder={String(p.quantite_stock)}
-                         onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
-                </td>
-              </tr>
-            ))}
+          <MiniTable head={['Produit', 'SKU', 'Stock actuel', 'Compté', 'Écart']}>
+            {rows.map((p) => {
+              const saisie = counts[p.id]
+              const compte = saisie === undefined || saisie === '' ? null : parseInt(saisie, 10)
+              const delta = compte === null || Number.isNaN(compte) ? null : compte - p.quantite_stock
+              return (
+                <tr key={p.id} className="border-t border-border">
+                  <td className="px-3 py-2">{p.nom}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{p.sku ?? '—'}</td>
+                  <td className="px-3 py-2 tabular-nums">{p.quantite_stock}</td>
+                  <td className="px-3 py-2">
+                    <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
+                           value={counts[p.id] ?? ''}
+                           placeholder={String(p.quantite_stock)}
+                           onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {delta === null
+                      ? <span className="text-muted-foreground">—</span>
+                      : (
+                        <span className={delta > 0 ? 'text-success' : delta < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                          {delta > 0 ? '+' : ''}{delta}
+                        </span>
+                      )}
+                  </td>
+                </tr>
+              )
+            })}
           </MiniTable>
         </div>
         {error && (

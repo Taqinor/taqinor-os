@@ -713,8 +713,8 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Stock/Emplacements] [L9] [ROUTINE] Ajouter un filtre/colonne par emplacement à la valorisation et au catalogue pour voir le stock d'un emplacement précis. Fait = on peut afficher uniquement le stock d'un emplacement choisi (ex. Camionnette).
 
 #### Inventaire
-[ ] [Stock/Mouvements] [L4] [ROUTINE] Afficher l'écart (compté − stock) en direct par ligne dans InventaireModal pendant la saisie. Fait = chaque ligne montre un delta coloré (+/−) dès qu'une quantité comptée est tapée.
-[ ] [Stock/Mouvements] [L9] [ROUTINE] Filtrer/limiter les produits de l'InventaireModal par recherche (aujourd'hui il prend `filtered` sans recherche interne sur grand catalogue). Fait = un champ de recherche dans le modal réduit la liste des lignes à compter.
+[x] [Stock/Mouvements] [L4] [ROUTINE] Afficher l'écart (compté − stock) en direct par ligne dans InventaireModal pendant la saisie. Fait = chaque ligne montre un delta coloré (+/−) dès qu'une quantité comptée est tapée.
+[x] [Stock/Mouvements] [L9] [ROUTINE] Filtrer/limiter les produits de l'InventaireModal par recherche (aujourd'hui il prend `filtered` sans recherche interne sur grand catalogue). Fait = un champ de recherche dans le modal réduit la liste des lignes à compter.
 [x] [Stock/Mouvements] [L11] [ROUTINE] Remplacer l'alert() de fin d'inventaire par un récapitulatif intégré (ajustés/inchangés) dans StockList. Fait = après inventaire, un bandeau FR résume le résultat sans popup navigateur.
 
 #### Bons de commande fournisseur
