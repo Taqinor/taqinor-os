@@ -128,6 +128,9 @@ const NAV_SECTIONS = [
       // (Directeur par défaut), indépendamment du palier de menu.
       { to: '/journal',              label: "Journal d'activité", icon: I.journal,    roles: ['normal','responsable','admin'], perm: 'journal_activite_voir' },
       { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['responsable','admin'] },
+      // N97 — export configurable & sauvegarde : réservé à l'administrateur
+      // (l'endpoint backend exige le rôle admin).
+      { to: '/parametres/export',    label: 'Export / Sauvegarde', icon: I.parametres, roles: ['admin'] },
     ],
   },
 ]

@@ -69,6 +69,9 @@ INSTALLED_APPS = [
     'apps.customfields',
     'apps.documents',
     'apps.audit',
+    # N97 — import/export réutilisable. Enregistré pour exposer la commande
+    # de gestion `export_company_data` (aucun modèle, donc aucune migration).
+    'apps.dataimport',
 ]
 
 MIDDLEWARE = [
