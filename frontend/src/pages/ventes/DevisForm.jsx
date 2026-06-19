@@ -17,6 +17,7 @@ import {
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -378,6 +379,13 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {errors.submit}
             </p>
+          )}
+
+          {isEdit && devis?.id && (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
+              <AttachmentsPanel model="ventes.devis" id={devis.id} />
+            </div>
           )}
 
           <FormActions sticky={false}>
