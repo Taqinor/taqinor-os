@@ -30,6 +30,9 @@ export default function BulkActionBar({
   const [tag, setTag] = useState('')
   const [relance, setRelance] = useState('')
   const [motif, setMotif] = useState('')
+  // Planifier une activité en masse (records.Activity) : intitulé + échéance.
+  const [actSummary, setActSummary] = useState('Appeler')
+  const [actDue, setActDue] = useState('')
 
   const toggle = (name) => setPanel((p) => (p === name ? null : name))
   const run = (action, params) => { onAction(action, params); setPanel(null) }
@@ -64,6 +67,10 @@ export default function BulkActionBar({
         <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('relance')} disabled={busy}>
           Relance
+        </Button>
+        <Button type="button" size="sm" variant="outline"
+                onClick={() => toggle('activity')} disabled={busy}>
+          Planifier activité
         </Button>
         <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('perdu')} disabled={busy}>
@@ -207,6 +214,25 @@ export default function BulkActionBar({
                   onClick={() => run('clear_relance')}>
             Effacer la relance
           </Button>
+        </div>
+      )}
+
+      {panel === 'activity' && (
+        <div className="bulk-panel">
+          <Input className="bulk-field" placeholder="Intitulé (ex. Appeler)"
+                 value={actSummary} onChange={(e) => setActSummary(e.target.value)} />
+          <Input type="date" className="bulk-field"
+                 value={actDue} onChange={(e) => setActDue(e.target.value)} />
+          <Button type="button" size="sm"
+                  disabled={!actSummary.trim() || !actDue}
+                  onClick={() => run('plan_activity', {
+                    summary: actSummary.trim(), due_date: actDue,
+                  })}>
+            Planifier
+          </Button>
+          <span className="bulk-hint">
+            Crée une activité ouverte sur chaque lead, assignée à son responsable.
+          </span>
         </div>
       )}
 

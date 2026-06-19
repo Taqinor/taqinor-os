@@ -353,10 +353,10 @@ class TestClientTracabilite(TestCase):
         self.company = make_company('refine-cli-trace', 'Refine Cli Trace')
         self.admin = User.objects.create_user(
             username='trace-admin', password='x', company=self.company,
-            role='admin')
+            role_legacy='admin')
         self.autre = User.objects.create_user(
             username='trace-autre', password='x', company=self.company,
-            role='admin')
+            role_legacy='admin')
         self.api = make_api(self.admin)
 
     def test_created_by_forced_to_request_user(self):
@@ -391,7 +391,7 @@ class TestClientDocumentsPanel(TestCase):
         self.company = make_company('refine-cli-docs', 'Refine Cli Docs')
         self.admin = User.objects.create_user(
             username='docs-admin', password='x', company=self.company,
-            role='admin')
+            role_legacy='admin')
         self.api = make_api(self.admin)
         from apps.crm.models import Client
         self.client_obj = Client.objects.create(
