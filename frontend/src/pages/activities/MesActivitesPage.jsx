@@ -16,8 +16,8 @@ const todayStr = () => {
 
 // Compteur d'activités EN RETARD par responsable, à partir de la liste complète
 // des activités de la société (ouvertes, échéance dépassée). Logique pure →
-// testable et réutilisée telle quelle par le panneau « Charge de l'équipe ».
-export function overdueByResponsable(activities, today = todayStr()) {
+// alimente le panneau admin « Charge de l'équipe ».
+function overdueByResponsable(activities, today = todayStr()) {
   const counts = new Map()
   for (const a of activities ?? []) {
     if (a.done) continue
