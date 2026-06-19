@@ -68,7 +68,9 @@ describe('W55/W64 — bande de crédibilité du fondateur (composant FounderPort
   it('nomme le parcours approuvé (docteur-ingénieur + 3 maisons) et lie /à-propos', () => {
     expect(founderPortrait).toContain('Le fondateur');
     expect(founderPortrait).toContain('Huawei, Ericsson et STMicroelectronics');
-    expect(founderPortrait).toContain('href="/à-propos"');
+    // W67 : le lien est désormais localisé via localizeNavHref('/à-propos', locale)
+    // (FR inchangé). On vérifie la cible /à-propos plutôt que href="/à-propos".
+    expect(founderPortrait).toContain('/à-propos');
     // La conviction « chaque étude validée par le fondateur ».
     expect(founderPortrait).toContain('Chaque étude validée par le fondateur');
   });
@@ -93,7 +95,9 @@ describe('W56/W65 — bande de marques tier-1 (composant BrandStrip + brands.ts)
     for (const b of ['Canadian Solar', 'JA Solar', 'Deye', 'Huawei', 'Dyness', 'Jinko', 'Nexans']) {
       expect(brandsLib, `marque manquante : ${b}`).toContain(b);
     }
-    expect(brandStrip).toContain('href="/équipement"');
+    // W67 : le lien est désormais localisé via localizeNavHref('/équipement', locale)
+    // (FR inchangé : /équipement n'est pas traduit → repli FR, jamais de lien mort).
+    expect(brandStrip).toContain('/équipement');
   });
 });
 

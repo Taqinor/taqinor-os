@@ -8,33 +8,102 @@
  * /garanties. Pensé pour les sections sombres (accueil, résidentiel,
  * professionnel) ; `seam` ajoute une bordure haute si la section précédente est
  * elle aussi sombre.
+ *
+ * W67 — i18n : prose/labels traduits (FR/EN/AR), CHIFFRES identiques dans
+ * toutes les langues (12 ans / 25 ans / 84,8 % / Deye Cloud restent à
+ * l'identique). Le rendu FR reste byte-identique (branche `fr` = strings
+ * actuels mot pour mot ; `localizeNavHref('/garanties','fr') === '/garanties'`).
  */
+import { getLocaleFromPath } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+import type { Locale } from '../i18n/config';
+
 interface Props {
   /** Bordure haute de séparation (défaut true). */
   seam?: boolean;
 }
 const { seam = true } = Astro.props;
 
-// Chiffres STRICTEMENT identiques au tableau de /garanties (source publiée).
-const items = [
-  { years: '12 ans', label: 'Produit panneaux' },
-  { years: '25 ans', label: 'Performance ≥ 84,8 %' },
-  { years: '10 ans', label: 'Onduleur & batterie' },
-  { years: '20 ans', label: 'Structure acier' },
-  { years: '2 ans', label: 'Main-d’œuvre Taqinor' },
-];
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+// Chiffres STRICTEMENT identiques au tableau de /garanties (source publiée) —
+// les valeurs (« 12 ans », « 84,8 % »…) ne sont JAMAIS traduites, seuls les
+// libellés le sont.
+// `monitoring` est scindé autour du nom de marque « Deye Cloud » (invariant
+// dans toutes les locales) : seuls les mots autour sont traduits, le littéral
+// « Deye Cloud » reste dans le corps rendu (et donc identique partout).
+const STR: Record<
+  Locale,
+  {
+    eyebrow: string;
+    title: string;
+    monitoringBefore: string;
+    monitoringAfter: string;
+    cta: string;
+    labels: string[];
+  }
+> = {
+  fr: {
+    eyebrow: 'Garanties écrites',
+    title: 'De 2 à 25 ans, noir sur blanc',
+    monitoringBefore: 'Et un monitoring',
+    monitoringAfter: 'avec accès client inclus sur chaque installation.',
+    cta: 'Voir toutes nos garanties →',
+    labels: [
+      'Produit panneaux',
+      'Performance ≥ 84,8 %',
+      'Onduleur & batterie',
+      'Structure acier',
+      'Main-d’œuvre Taqinor',
+    ],
+  },
+  en: {
+    eyebrow: 'Written warranties',
+    title: 'From 2 to 25 years, in black and white',
+    monitoringBefore: 'Plus',
+    monitoringAfter: 'monitoring with client access included on every installation.',
+    cta: 'See all our warranties →',
+    labels: [
+      'Panel product',
+      'Performance ≥ 84,8 %',
+      'Inverter & battery',
+      'Steel structure',
+      'Taqinor labour',
+    ],
+  },
+  ar: {
+    eyebrow: 'ضمانات مكتوبة',
+    title: 'من سنتين إلى 25 سنة، مكتوبة بوضوح',
+    monitoringBefore: 'بالإضافة إلى مراقبة',
+    monitoringAfter: 'مع وصول العميل المضمَّن في كل تركيب.',
+    cta: 'اطّلع على جميع ضماناتنا →',
+    labels: [
+      'منتج الألواح',
+      'الأداء ≥ 84,8 %',
+      'العاكس والبطارية',
+      'الهيكل الفولاذي',
+      'يد عاملة Taqinor',
+    ],
+  },
+};
+const s = STR[locale] ?? STR.fr;
+
+// Les CHIFFRES (years) sont identiques dans toutes les locales : seul le label change.
+const years = ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans'];
+const items = years.map((yrs, i) => ({ years: yrs, label: s.labels[i] }));
 ---
 
 <section class={`px-4 py-16 sm:py-20${seam ? ' border-t border-white/10' : ''}`}>
   <div class="mx-auto max-w-6xl">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div class="v2-rise">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Garanties écrites</p>
-        <h2 class="display v2-section-title mt-5 text-white">De 2 à 25 ans, noir sur blanc</h2>
+        <p class="tech-label v2-kicker rule-brass text-brass-300">{s.eyebrow}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{s.title}</h2>
       </div>
       <p class="v2-rise max-w-sm text-sm leading-relaxed text-lune-soft">
-        Et un monitoring Deye Cloud avec accès client inclus sur chaque installation.
-        <a href="/garanties" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir toutes nos garanties →</a>
+        {s.monitoringBefore} Deye Cloud {s.monitoringAfter}
+        <a href={L('/garanties')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">{s.cta}</a>
       </p>
     </div>
     <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5" data-stagger>

@@ -1,0 +1,92 @@
+---
+/**
+ * AR — Projects hub (W67, RTL). Faithful Arabic (MSA) translation of the FR
+ * `realisations/index.astro`. Indexed gallery of the real installations, each
+ * card linked to its case study. Numeric data from `realisations.ts`
+ * (untouched, Latin digits); translated card summaries + alts from
+ * `caseStudyBySlug`. Layout auto-sets lang=ar + dir=rtl. Internal links via
+ * localizeNavHref. FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import Picture from '../../../components/Picture.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { REALISATIONS } from '../../../lib/realisations';
+import { caseStudyBySlug } from '../../../lib/caseStudies';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
+// Chiffres en latin partout (intégrité W67) : on garde le format en-US.
+const totalLabel = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+
+const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
+---
+
+<Layout
+  title="إنجازاتنا الشمسية بالمغرب — تركيبات مقيسة | Taqinor"
+  description="التركيبات الشمسية التي ركّبتها تاكينور وقاستها فعلاً: فيلات بالدار البيضاء والجديدة والنواصر، القدرة، الإنتاج المُتابَع على Deye Cloud والعتاد فوق السطح. دراسات حالة مفصّلة."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الإنجازات' }]} />
+
+    <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">إنجازات حديثة</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">آخر إنجازاتنا</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          أوراش حقيقية، يمكن زيارتها عند الطلب — الدار البيضاء، الجديدة، النواصر. كل دراسة حالة تتناول
+          القدرة المُركَّبة والعتاد، وحين يكون الإنتاج مقيساً، الإنتاج المُتابَع على Deye Cloud. لا شيء
+          مُضاف، لا شيء مَحذوف.
+        </p>
+        <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
+          <div>
+            <dt class="tech-label text-lune-faint">القدرة المُركَّبة</dt>
+            <dd class="fig lum text-3xl">{totalLabel}</dd>
+          </div>
+          <div>
+            <dt class="tech-label text-lune-faint">المدن</dt>
+            <dd class="fig lum text-3xl">{villesCount}</dd>
+          </div>
+          <div>
+            <dt class="tech-label text-lune-faint">الأوراش</dt>
+            <dd class="font-display text-2xl font-bold text-white">قابلة للزيارة عند الطلب</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+        {REALISATIONS.map((r, i) => (
+          <a href={L(`/realisations/${r.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
+            <Picture name={r.photos[0].name} alt={altOf(r)} widths={r.photos[0].widths} ratio={r.photos[0].ratio}
+              sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+              class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
+              <span class="tech-label block text-brass-300">{r.ville} · {r.date}</span>
+              <span class="fig mt-1 block text-2xl text-white">{r.kwc}{r.production ? ` · ${r.production}` : ''}</span>
+              <span class="mt-1 block text-xs text-lune">{r.panneaux}</span>
+              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة →</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <CtaBand title="دراسة الحالة المقبلة قد تكون سطحك." href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

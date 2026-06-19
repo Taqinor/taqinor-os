@@ -1,0 +1,106 @@
+---
+/**
+ * EN — Guide (W67): Law 82-21 explained simply. Faithful translation of
+ * /guides/loi-82-21-expliquee ; no figure beyond the law's own thresholds
+ * (11 kW, 5 MW) and the date (9 June 2026), no price/cost claim. Internal links
+ * use localizeNavHref (EN/AR if available, else the existing FR page — never a
+ * dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Law 82-21 explained simply',
+  description: 'The three regimes of electricity self-production in Morocco (declaration, connection agreement, authorisation) explained in plain language.',
+  about: { '@type': 'Thing', name: 'Law 82-21 — self-production of electrical energy' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+const regimes = [
+  {
+    n: '01',
+    title: 'Declaration',
+    body: "Below 11 kW at low voltage — or off-grid, on an isolated site — you have nothing to get validated: a prior declaration, filed before commissioning, is enough. It's a formality, not a request for authorisation, and it's the case for the vast majority of villas.",
+  },
+  {
+    n: '02',
+    title: 'Connection agreement',
+    body: 'Above the declaration threshold and up to 5 MW, as soon as you inject onto the grid at low or medium voltage, you need to obtain a connection agreement from the operator before starting. This is the usual ground for business sites.',
+  },
+  {
+    n: '03',
+    title: 'Authorisation',
+    body: 'From 5 MW, at medium, high or very high voltage, the scale changes: a full authorisation must be obtained before the first stroke of the pickaxe. Few private rooftops are concerned.',
+  },
+];
+---
+
+<Layout
+  title="Law 82-21 explained simply — the 3 regimes | Taqinor"
+  description="The 11 kW threshold decides almost everything: below it, at low voltage, a simple declaration is enough, and that's the case for most villas. Above it, a connection agreement, then authorisation from 5 MW. The three regimes in plain terms, and how to place yourself."
+  ogSlug="loi-82-21"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Law 82-21 explained simply' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Law 82-21</p>
+      <h1 class="display v2-page-title mt-5 text-white">Law 82-21 explained simply</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Since 9 June 2026, Law 82-21 on the self-production of electrical energy and its decree
+        2-25-100 apply. The rule is simpler than it looks: two numbers — your power and your
+        connection level — are enough to place you in one of the three regimes below, whether
+        your installation is new or already in place. Here's how to place yourself, without
+        jargon.
+      </p>
+
+      <div class="mt-12 grid gap-6" data-stagger>
+        {regimes.map((r, i) => (
+          <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
+            <span class="fig lum text-4xl" aria-hidden="true">{r.n}</span>
+            <div>
+              <h2 class="display text-xl text-white">{r.title}</h2>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h2 class="display v2-section-title mt-14 text-white">And if my installation already exists?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The law does not forget the installations put in place before it: its Article 33 opens,
+        since 9 June 2026, an 18-month window to bring them into line. The calculation is binary —
+        an installation regularized within this deadline is legally safe; an installation left out
+        of bounds stays in an irregular situation, with all the risks that implies.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identify my regime in 3 questions →</a>
+        <a href={L('/regularization-article-33')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Regularize my installation →</a>
+        <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">All the guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Unsure about your regime? We check it for free." buttonLabel="Have my file checked" href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

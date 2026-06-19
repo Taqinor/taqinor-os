@@ -193,7 +193,7 @@ layout shift.**
 > **W62–W66 archived to `docs/DONE.md` (shipped 2026-06-18).** See the DONE LOG below for the one-line
 > outcomes; full task text lives under "## Archived from WEB_PLAN.md" in `docs/DONE.md`.
 
-### W67 — English + Arabic versions of the public site (i18n, FR default) — [ ] (partial 2026-06-19: i18n foundation + EN/AR for 12 pages shipped; resume the ~13 remaining below)
+### W67 — English + Arabic versions of the public site (i18n, FR default) — [x]
 **Do:** Add Astro's built-in i18n (FR default + EN + AR) — FAITHFUL translations of the EXISTING true
 copy (translate, never re-invent a claim; keep loi-82-21 wording and every figure exact), a language
 switcher in header + footer, correct `hreflang` + per-locale canonicals + sitemap entries, and **full
@@ -572,3 +572,18 @@ report only** (no diffs or hashes): for each task, **what a visitor now sees dif
   (FR unchanged), a clean next increment. W67 stays unticked.
 - 2026-06-19 — Verified over the folded batch: full Vitest suite 1657/1657 green, `astro build` clean,
   `tsc` check clean, sitemap has the EN/AR pages with 0 `/preview/` leaks.
+- 2026-06-19 — W67 COMPLETE: the remaining ~13 pages now ship in EN (`/en/`) + AR (`/ar/`, full RTL),
+  built by 6 parallel worktree lanes. (1) Foundation lane made the 6 figure-bearing shared components
+  locale-aware via inline `{fr,en,ar}` objects — GarantiesTeaser, BrandStrip, FounderPortrait,
+  VideoChantier, WhatsAppMock, Testimonials — with FR rendered output byte-identical (links localized via
+  `localizeNavHref`; figures/brands/Deye Cloud kept literal). (2) Home (`/en/`, `/ar/`), (3) résidentiel/
+  professionnel/marocains-du-monde, (4) équipement/regularization-article-33/the 4 guides, (5) loi-82-21 +
+  locale-aware `RegimeSelector`/`regime.ts` (additive `regimesFor(locale)`), (6) the 5 city pages + the
+  réalisations hub + the 5 case studies, with locale-aware `cityContent.ts`/`caseStudies.ts`
+  (`realisations.ts` untouched — translated `resume`/alts live in `caseStudies.ts`). Central registry
+  `src/i18n/pages.ts` now lists all paths (dynamic city/case-study paths derived from CITIES/REALISATIONS),
+  with `TRANSLATED_PATHS` exported and `tests/i18n.test.ts` extended to assert every registered path has its
+  EN + AR source (incl. dynamic templates) and that nav links localize (no dead links). Lead form payload/
+  endpoint/threshold/deeplink invariant across locales; every figure/law-number/legal-line/brand kept exact
+  in Latin digits; no fabricated content. Folded batch verified: full Vitest suite **2245/2245 green**,
+  `tsc` clean, sitemap = 34 EN + 34 AR public URLs, **0 `/preview/` leaks**. FR pages byte-for-byte unchanged.

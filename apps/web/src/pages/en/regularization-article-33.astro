@@ -1,0 +1,174 @@
+---
+/**
+ * EN — Article 33 regularization (W67). Faithful translation of
+ * /regularization-article-33 ; no new figure or claim (law number 82-21,
+ * Article 33, decree 2-25-100, date 9 June 2026 and all amounts kept exact).
+ * Internal links use localizeNavHref (EN/AR if available, else the existing FR
+ * page — never a dead link). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+
+const steps = [
+  { title: 'Technical inventory', body: 'Survey of the existing installation: installed power, connection mode, voltage level, protection and metering equipment.' },
+  { title: 'Determining the regime', body: 'Depending on the power and the connection, the installation falls under declaration, connection agreement or authorisation (decree 2-25-100).' },
+  { title: 'Building the file', body: 'Technical data sheets, single-line diagram, conformity certificates and the forms for the applicable regime — prepared by us.' },
+  { title: 'Filing the regularization request', body: 'Filed with the grid operator or the competent authority, within the window opened by Article 33.' },
+  { title: 'Follow-up through to compliance', body: 'Tracking the review, responding to requests for additional documents, and where applicable a technical upgrade of the installation.' },
+];
+
+const sanctions = [
+  { title: 'Irregular situation', body: 'An existing installation that has not been regularized is in an irregular situation under Law 82-21, now in force.' },
+  { title: 'Fines — article 28', body: 'From 2,000 to 5,000 MAD for operating without the required declaration.' },
+  { title: 'Fines — article 29', body: 'From 100,000 to 1,000,000 MAD for operating without a connection agreement or without authorisation.' },
+  { title: 'Formal notice and shutdown — articles 25 and 27', body: 'Risk of a formal notice followed by an ordered shutdown of the installation.' },
+  { title: 'Disconnection from the grid — article 32', body: 'The grid operator may disconnect a non-compliant installation.' },
+];
+---
+
+<Layout
+  title="Article 33 regularization — existing solar installations | Taqinor"
+  description="Law 82-21 has been in force since 9 June 2026. Article 33 opens an 18-month window to regularize existing solar installations: a 5-step procedure, the penalties at stake, and full handling of the file."
+  ogSlug="article-33"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Article 33 regularization' }]} />
+
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Law 82-21 — Article 33</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Does your solar installation already exist? Regularize it now.</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Decree 2-25-100 and ANRE decision 04/26 came into force on 9 June 2026.
+          Since that date, the Law 82-21 regime applies to all self-production installations —
+          including those installed before the law.
+        </p>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-3xl px-4 py-16">
+      <div class="v2-rise">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">The text</p>
+        <h2 class="display v2-section-title mt-4 text-white">What Article 33 says</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Article 33 of Law 82-21 grants operators of existing installations a
+          window of <strong class="fig lum text-xl">18 months</strong> to file a regularization request.
+          This window has been open since 9 June 2026: file now. A regularized installation is
+          legally secure; an installation that is not regularized is in an irregular situation.
+        </p>
+      </div>
+
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">Who is concerned?</h2>
+      <ul class="v2-rise mt-5 space-y-2.5 text-sm leading-relaxed text-lune-soft">
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Any self-production solar installation commissioned before the regime came into force — villa, warehouse, hotel, farm.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Grid-connected or off-grid, whatever the power.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Without a declaration, without a connection agreement or without authorisation under the applicable regime.</span></li>
+      </ul>
+
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">Regularization in 5 steps</h2>
+      <ol class="mt-8 border-l-2 border-brass-400/60" data-stagger>
+        {steps.map((s, i) => (
+          <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
+            <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+            <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </li>
+        ))}
+      </ol>
+
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">What you risk by doing nothing</h2>
+      <p class="v2-rise mt-2 text-sm text-lune-soft">Penalties provided for by Law 82-21:</p>
+      <div class="mt-5 grid gap-4 sm:grid-cols-2" data-stagger>
+        {sanctions.map((s, i) => (
+          <div class="v2-rise cine-card border-alert-300/30 p-5" style={`--v2-i:${i}`}>
+            <h3 class="font-display text-sm font-bold text-alert-300">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The 3 regimes of Law 82-21 →</a>
+        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Regularizing a business site →</a>
+      </div>
+    </section>
+
+    <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <ZelligeDivider />
+        <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
+          <p class="tech-label text-azur-600">Full handling</p>
+          <h2 class="display v2-section-title mt-2">Hand us the file</h2>
+          <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">
+            Two questions, and your WhatsApp message goes out already complete — we identify
+            the applicable regime and build the file.
+          </p>
+          <div class="mt-6 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">Approximate power (kWc)</label>
+              <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="e.g. 5"
+                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+              <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
+                <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
+                I don't know the power
+              </label>
+            </div>
+            <div>
+              <label for="rg33-ville" class="mb-1 block text-sm font-semibold">City of the installation</label>
+              <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="e.g. Casablanca"
+                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+            </div>
+          </div>
+          <a id="rg33-go" href={waFallback} rel="noopener"
+            class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >Start on WhatsApp</a>
+        </div>
+      </div>
+    </section>
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<script>
+  import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
+  import { WHATSAPP_LEADS } from '../../lib/nap';
+
+  // Le lien se met à jour en direct : le client n'édite JAMAIS le message.
+  const kwcEl = document.getElementById('rg33-kwc') as HTMLInputElement;
+  const unknownEl = document.getElementById('rg33-unknown') as HTMLInputElement;
+  const villeEl = document.getElementById('rg33-ville') as HTMLInputElement;
+  const goEl = document.getElementById('rg33-go') as HTMLAnchorElement;
+
+  function refresh() {
+    kwcEl.disabled = unknownEl.checked;
+    if (unknownEl.checked) kwcEl.value = '';
+    goEl.href = whatsappLink(
+      WHATSAPP_LEADS,
+      regularizationWhatsappText({
+        kwc: unknownEl.checked ? '' : kwcEl.value,
+        ville: villeEl.value,
+      }),
+    );
+  }
+  for (const el of [kwcEl, unknownEl, villeEl]) el.addEventListener('input', refresh);
+  refresh();
+</script>

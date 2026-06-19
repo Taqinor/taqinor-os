@@ -1,0 +1,88 @@
+---
+/**
+ * AR — Guide (W67, RTL): Hybrid inverter or grid-tied inverter? Faithful Arabic
+ * translation of /guides/onduleur-hybride-ou-reseau ; no figure beyond the
+ * already published ranges (5–30 kW), no price/cost claim. Internal links use
+ * localizeNavHref (EN/AR if available, else the existing FR page — never a dead
+ * link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'عاكس هجين أم عاكس شبكة؟',
+  description: 'عاكس Deye هجين أم عاكس Huawei شبكة: الفرق يعود إلى سؤال بسيط — هل تخزّن الطاقة، نعم أم لا؟',
+  about: { '@type': 'Thing', name: 'العاكسات الشمسية' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="عاكس هجين أم عاكس شبكة؟ | Taqinor"
+  description="عاكس Deye هجين (مع تخزين، استمرارية خدمة) أم عاكس Huawei SUN2000 شبكة (استهلاك ذاتي دون بطارية): كيف يُتّخذ الاختيار، مشروحاً ببساطة."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'عاكس هجين أم شبكة؟' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">دليل · العتاد</p>
+      <h1 class="display v2-page-title mt-5 text-white">عاكس هجين أم عاكس شبكة؟</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        العاكس هو القطعة التي تحوّل التيار المستمر للألواح إلى تيار قابل للاستعمال عندك: بدونه، لا
+        شيء يعمل. النقاش بين
+        <strong class="text-lune">الهجين</strong> و <strong class="text-lune">الشبكة</strong> قد
+        يبدو تقنياً، لكنه يُختزل في سؤال واحد: هل تخزّن الطاقة، نعم أم لا؟
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">العاكس الهجين (Deye)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        أجِب «نعم» للتخزين، وأنت على هجين. عاكسات Deye (أحادية وثلاثية الطور، من 5 إلى 30 kW) تقود
+        في الوقت نفسه الألواح وبطارية، بتدبير CAN BMS مدمج. لها معنى حين تريد ادّخار طاقة النهار
+        لاستهلاكها مساءً، أو إبقاء التيار أثناء انقطاع.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">عاكس الشبكة (Huawei SUN2000)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        أجِب «لا»، وعاكس الشبكة يكفي. عاكسات Huawei SUN2000 (من نوع string) مُفصّلة للاستهلاك الذاتي
+        دون بطارية، من السكني إلى أسطح القطاع الثالث. إنه الخيار حين يكون استهلاكك أساساً نهارياً:
+        لا تخزين تؤدّي ثمنه لطاقة تستعملها أصلاً على إيقاع الشمس.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">كيف نختار</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        اختيار العاكس إذن ليس الأول، بل الأخير: ينبثق من قرار التخزين، الذي ينبثق بدوره من ملفّ
+        استهلاكك. نصعد السلسلة في الاتجاه الصحيح — فاتورتك أولاً، العتاد بعدها — بدل الانطلاق من
+        طراز مُقرَّر سلفاً.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">هل تحتاج بطاريات؟ →</a>
+        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهد العتاد →</a>
+        <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">كل الأدلّة →</a>
+      </div>
+    </article>
+
+    <CtaBand title="نحسم هجين أم شبكة في الدراسة — وهي مجانية." href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>
