@@ -134,7 +134,10 @@ def calendar_events(request):
             })
 
     # ── Visites de maintenance préventive (calculées) ─────────────────────
-    if want('visite_maintenance') and not assignee_id:
+    # Les visites de maintenance n'ont pas de responsable assigné : un filtre
+    # par responsable ne doit donc PAS les masquer en silence — on les garde
+    # visibles (sans assignee) même quand ?assignee= est posé.
+    if want('visite_maintenance'):
         from apps.sav.models import ContratMaintenance
         contrats = (ContratMaintenance.objects.filter(**co, actif=True)
                     .select_related('client'))

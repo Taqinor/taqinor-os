@@ -43,6 +43,31 @@ class TestGlobalSearch(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['groups'], [])
 
+    def test_search_finds_bon_commande_by_reference(self):
+        from apps.ventes.models import BonCommande
+        client = Client.objects.create(company=self.company, nom='CliBC')
+        BonCommande.objects.create(
+            company=self.company, reference='BC-2026-007', client=client)
+        resp = self.api.get('/api/django/reporting/search/?q=BC-2026-007')
+        self.assertEqual(resp.status_code, 200)
+        group = next((g for g in resp.data['groups']
+                      if g['type'] == 'bon_commande'), None)
+        self.assertIsNotNone(group)
+        self.assertEqual(group['results'][0]['label'], 'BC-2026-007')
+
+    def test_search_finds_contrat_by_client(self):
+        from apps.sav.models import ContratMaintenance
+        client = Client.objects.create(company=self.company, nom='MaintCli')
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='annuel',
+            date_debut=date.today(), actif=True)
+        resp = self.api.get('/api/django/reporting/search/?q=MaintCli')
+        self.assertEqual(resp.status_code, 200)
+        group = next((g for g in resp.data['groups']
+                      if g['type'] == 'contrat'), None)
+        self.assertIsNotNone(group)
+        self.assertIn('MaintCli', group['results'][0]['sublabel'])
+
 
 class TestNotifications(TestCase):
     def setUp(self):

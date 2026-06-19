@@ -117,6 +117,42 @@ def global_search(request):
         for t in tickets
     ])
 
+    # ── Bons de commande (devis → BC) ────────────────────────────────────
+    from apps.ventes.models import BonCommande
+    bons = BonCommande.objects.filter(**co).filter(
+        Q(reference__icontains=q) | Q(client__nom__icontains=q)
+    ).select_related('client').order_by('-id')[:PER]
+    add('bon_commande', 'Bons de commande', [
+        {'id': b.id, 'label': b.reference,
+         'sublabel': getattr(b.client, 'nom', '') or ''}
+        for b in bons
+    ])
+
+    # ── Contrats de maintenance ──────────────────────────────────────────
+    from apps.sav.models import ContratMaintenance
+    contrats = ContratMaintenance.objects.filter(**co).filter(
+        Q(client__nom__icontains=q) | Q(notes__icontains=q)
+    ).select_related('client').order_by('-id')[:PER]
+    add('contrat', 'Contrats de maintenance', [
+        {'id': c.id,
+         'label': f"Contrat #{c.id}",
+         'sublabel': getattr(c.client, 'nom', '') or ''}
+        for c in contrats
+    ])
+
+    # ── Dossiers réglementaires (référence/opérateur sur le chantier) ─────
+    dossiers = Installation.objects.filter(**co).filter(
+        Q(dossier_reference__icontains=q) | Q(dossier_operateur__icontains=q)
+    ).exclude(dossier_reference__isnull=True).exclude(
+        dossier_reference=''
+    ).order_by('-id')[:PER]
+    add('dossier', 'Dossiers réglementaires', [
+        {'id': i.id,
+         'label': i.dossier_reference or i.reference,
+         'sublabel': i.dossier_operateur or i.reference}
+        for i in dossiers
+    ])
+
     return Response({'query': q, 'groups': groups})
 
 

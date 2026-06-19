@@ -149,6 +149,27 @@ def dashboard(request):
         reverse=True,
     )[:10]
 
+    # ── Export .xlsx (KPIs + créances clients) — scopé société ────────────
+    if request.query_params.get('export') == 'xlsx':
+        from apps.crm.exports import build_xlsx_response
+        headers = ['Section', 'Libellé', 'Valeur', 'Détail']
+        rows = [
+            ['KPI', 'CA encaissé (DH)', float(ca_paye), 'Factures payées'],
+            ['KPI', 'En attente de paiement (DH)', float(ca_attente),
+             'Émises + en retard'],
+            ['KPI', 'Clients actifs', nb_clients, 'Total base clients'],
+            ['KPI', 'Valeur du stock (DH)', float(valeur_stock_dh),
+             'Prix vente × quantité'],
+        ]
+        for c in creances_list:
+            rows.append([
+                'Créance', c['client'], c['montant_total'],
+                f"{c['nb_factures']} facture(s) · retard max "
+                f"{c['jours_retard_max']} j",
+            ])
+        return build_xlsx_response(
+            'reporting-dashboard.xlsx', headers, rows, sheet_title='Reporting')
+
     return Response({
         'kpis': {
             'ca_paye': float(ca_paye),
@@ -208,9 +229,15 @@ def _ca_mensuel(factures_qs):
     }
 
     result = []
-    today = date.today()
-    for i in range(11, -1, -1):
-        d = (today.replace(day=1) - timedelta(days=i * 30)).replace(day=1)
+    # Recule de mois CALENDAIRES (12 mois distincts finissant ce mois) — un
+    # recul en jours (i*30) dérive et peut sauter ou dupliquer un mois.
+    cur = date.today().replace(day=1)
+    months = []
+    for _ in range(12):
+        months.append(cur)
+        # Mois précédent : le 1er du mois courant moins un jour, ramené au 1er.
+        cur = (cur - timedelta(days=1)).replace(day=1)
+    for d in reversed(months):
         cle = d.strftime('%Y-%m')
         mois_num = d.strftime('%m')
         label = f"{mois_labels[mois_num]} {d.year}"
