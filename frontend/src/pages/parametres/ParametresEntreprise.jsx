@@ -32,6 +32,7 @@ import StatutsSection from './StatutsSection'
 import ChecklistSection from './ChecklistSection'
 import KitsSection from './KitsSection'
 import ShotListSection from './ShotListSection'
+import SecuriteTerrainSection from './SecuriteTerrainSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import EmailSection from './EmailSection'
@@ -519,6 +520,8 @@ export default function ParametresEntreprise() {
           {tab === 'kits'       && <KitsSection />}
           {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
           {tab === 'shotlist'   && <ShotListSection />}
+          {/* F18/F12/F14/F20 — consignes de sécurité + seuil dépassement + services swappables. */}
+          {tab === 'securite'   && <SecuriteTerrainSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}

@@ -182,6 +182,9 @@ const installationsApi = {
   compteRenduUrl: (id) =>
     `/api/django/installations/interventions/${id}/compte-rendu/`,
 
+  // ── F20 — Contrôle qualité IA des photos (vision swappable, no-op) ──
+  getPhotoQa: (id) => api.get(`/installations/interventions/${id}/photo-qa/`),
+
   // ── F23 — Code/QR de l'intervention ──
   getCode: (id) => api.get(`/installations/interventions/${id}/code/`),
 }

@@ -640,6 +640,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             # Lectures du module de capture F9–F19 + F23.
             'serials', 'consommation', 'memos', 'reserves', 'tool_return',
             'safety', 'crew_time', 'compte_rendu', 'overage_review', 'code',
+            'photo_qa',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -1675,6 +1676,29 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'intervention': interv.id,
             'token': token,
             'qr_svg': labels.qr_svg(token),
+        })
+
+    # ── F20 — contrôle qualité IA des photos (interface vision swappable) ────
+    @action(detail=True, methods=['get'], url_path='photo-qa',
+            permission_classes=[IsAnyRole])
+    def photo_qa(self, request, pk=None):
+        """F20 — signale les photos obligatoires probablement manquantes ou de
+        mauvaise qualité via l'interface de VISION SWAPPABLE (réutilise le patron
+        Claude déjà dans la stack). N'ajoute aucun identifiant externe par
+        défaut, no-op (liste vide) quand désactivé, et ne BLOQUE JAMAIS la
+        complétion. Renvoie {actif, signalements}."""
+        from . import swappable
+        interv = self.get_object()
+        photos = []
+        for slot in field_services.active_shotlist(interv.company):
+            atts = field_services.photos_by_slot(interv).get(slot.cle, [])
+            photos.append({
+                'cle': slot.cle, 'libelle': slot.libelle,
+                'obligatoire': slot.obligatoire, 'nb_photos': len(atts)})
+        flags = swappable.review_photos(interv.company, photos)
+        return Response({
+            'actif': swappable.photo_qa_active(interv.company),
+            'signalements': flags,
         })
 
 

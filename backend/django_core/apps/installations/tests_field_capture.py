@@ -435,6 +435,22 @@ class TestCompteRendu(_Base):
             installation=self.inst, numero_serie='SN-X').exists())
 
 
+# ── F20 — contrôle qualité IA des photos (vision swappable no-op) ────────────
+class TestPhotoQa(_Base):
+    def test_photo_qa_noop_when_disabled(self):
+        self.assertFalse(swappable.photo_qa_active(self.company))
+        r = self.api.get(f'{self.url}/photo-qa/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['actif'])
+        self.assertEqual(r.data['signalements'], [])
+
+    def test_review_photos_never_raises(self):
+        # No-op renvoie toujours [] sans fournisseur (jamais bloquant).
+        self.assertEqual(swappable.review_photos(self.company, []), [])
+        self.assertEqual(
+            swappable.review_photos(self.company, [{'cle': 'x'}]), [])
+
+
 # ── F23 — code/QR + résolution scan ──────────────────────────────────────────
 class TestCode(_Base):
     def test_code_token(self):
