@@ -41,9 +41,16 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
   Textarea,
   toast,
 } from '../../ui'
+import {
+  PreparationPanel, TrajetPanel, PhotosPanel,
+} from '../../features/installations/InterventionFieldExecution'
 import { formatDate, formatDateTime } from '../../lib/format'
 
 const TYPE_LABELS = Object.fromEntries(
@@ -287,6 +294,11 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
 
   const techValue = intervention.technicien ? String(intervention.technicien) : NO_TECH
 
+  // Badges d'alerte F5/F8 sur les onglets : préparation non confirmée, photos
+  // obligatoires manquantes.
+  const prepPct = intervention.preparation_completion
+  const photosManquantes = intervention.photos_obligatoires_manquantes ?? 0
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
@@ -296,6 +308,35 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           </SheetTitle>
         </SheetHeader>
 
+        <Tabs defaultValue="detail" className="mt-2">
+          <TabsList className="flex w-full justify-start overflow-x-auto">
+            <TabsTrigger value="detail" className="shrink-0">Détail</TabsTrigger>
+            <TabsTrigger value="preparation" className="shrink-0">
+              Préparation
+              {!intervention.preparation_confirmee && prepPct != null && (
+                <Badge tone="warning" className="ml-1.5">{prepPct}%</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="trajet" className="shrink-0">Trajet</TabsTrigger>
+            <TabsTrigger value="photos" className="shrink-0">
+              Photos
+              {photosManquantes > 0 && (
+                <Badge tone="danger" className="ml-1.5">{photosManquantes}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="preparation">
+            <PreparationPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="trajet">
+            <TrajetPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="photos">
+            <PhotosPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+
+          <TabsContent value="detail">
         <div className="flex flex-col gap-4 py-2 text-sm">
           <div className="flex flex-col gap-1">
             <span className="text-muted-foreground">Client</span>
@@ -376,6 +417,8 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
             </Button>
           </div>
         </div>
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   )

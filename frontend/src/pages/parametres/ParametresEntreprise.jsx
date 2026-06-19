@@ -29,6 +29,7 @@ import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
 import ChecklistSection from './ChecklistSection'
 import KitsSection from './KitsSection'
+import ShotListSection from './ShotListSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import AvanceSection from './AvanceSection'
@@ -509,6 +510,8 @@ export default function ParametresEntreprise() {
           {tab === 'checklists' && <ChecklistSection />}
           {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}
           {tab === 'kits'       && <KitsSection />}
+          {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
+          {tab === 'shotlist'   && <ShotListSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
