@@ -212,6 +212,38 @@ def stock_breakdown(produit):
     return out
 
 
+def stock_breakdown_map(company):
+    """Ventilation par emplacement pour TOUS les produits d'une société, en une
+    passe (évite un N+1 quand la liste catalogue veut la répartition par produit).
+
+    Renvoie {produit_id: [{emplacement_id, emplacement_nom, is_principal,
+    quantite}]} — le principal détient total − somme(non principaux), comme
+    `stock_breakdown` mais sans requête par produit."""
+    from .models import EmplacementStock, Produit, StockEmplacement
+    if company is None:
+        return {}
+    ensure_emplacements(company)
+    emplacements = list(EmplacementStock.objects.filter(
+        company=company, archived=False))
+    # {produit_id: {emplacement_id: quantite}} pour les non principaux
+    records = {}
+    for se in StockEmplacement.objects.filter(
+            produit__company=company, emplacement__archived=False):
+        records.setdefault(se.produit_id, {})[se.emplacement_id] = se.quantite
+    out = {}
+    for p in Produit.objects.filter(company=company).only('id', 'quantite_stock'):
+        rec = records.get(p.id, {})
+        autres = sum(rec.get(e.id, 0) for e in emplacements if not e.is_principal)
+        out[p.id] = [{
+            'emplacement_id': e.id,
+            'emplacement_nom': e.nom,
+            'is_principal': e.is_principal,
+            'quantite': (p.quantite_stock - autres) if e.is_principal
+            else rec.get(e.id, 0),
+        } for e in emplacements]
+    return out
+
+
 def transfer_stock(*, company, user, produit_id, source_id, destination_id,
                    quantite, note=''):
     """Transfère `quantite` d'un produit de l'emplacement source vers la

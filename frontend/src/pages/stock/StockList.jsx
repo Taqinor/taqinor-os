@@ -25,7 +25,7 @@ import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
-import { validateTransfert, totalVentile, quantiteEmplacement } from '../../features/stock/emplacements'
+import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import { toastError, toastSuccess } from '../../lib/toast'
 import {
@@ -541,6 +541,17 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, 
             {p.quantite_reservee} réservé · {p.quantite_disponible} dispo
           </div>
         )}
+        {/* N15 — ventilation par emplacement en lecture (dépôt/camionnette),
+            affichée seulement quand le stock est réparti sur ≥2 emplacements. */}
+        {Array.isArray(p.stock_par_emplacement) && p.stock_par_emplacement.length > 1 && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {p.stock_par_emplacement.map((b) => (
+              <span key={b.emplacement_id} className="ml-1.5 first:ml-0">
+                {b.emplacement_nom} {b.quantite}
+              </span>
+            ))}
+          </div>
+        )}
         {p.is_low_stock && (
           <div className="mt-0.5 flex flex-col items-end gap-0.5">
             <Badge tone="danger">
@@ -679,6 +690,8 @@ export default function StockList() {
   const [filterNoPrice, setFilterNoPrice] = useState(false)  // produits sans prix de vente
   const [filterNoSku, setFilterNoSku]     = useState(false)  // produits sans SKU
   const [filterMarque, setFilterMarque]   = useState('')     // '' = toutes les marques
+  const [filterEmplacement, setFilterEmplacement] = useState('') // '' = tous les emplacements
+  const [emplacementsList, setEmplacementsList]   = useState([])
   const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
   const [showArchived, setShowArchived]   = useState(false)
   const [archiveNotif, setArchiveNotif]   = useState(null)
@@ -703,6 +716,9 @@ export default function StockList() {
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
     stockApi.getMarques().then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
+    stockApi.getEmplacements()
+      .then(r => setEmplacementsList((r.data.results ?? r.data).filter(e => !e.archived)))
+      .catch(() => {})
   }, [dispatch])
 
   // Sélection effective (élague les produits disparus après refetch/filtre).
@@ -803,9 +819,10 @@ export default function StockList() {
     if (filterNoPrice) list = list.filter(p => sansPrix(p))
     if (filterNoSku) list = list.filter(p => !(p.sku ?? '').trim())
     if (filterMarque) list = list.filter(p => ((p.marque || '').trim() || 'Génériques') === filterMarque)
+    if (filterEmplacement) list = list.filter(p => produitDansEmplacement(p, filterEmplacement))
     list = searchCatalogue(list, search)
     return list
-  }, [actifs, search, filterLow, filterNoPrice, filterNoSku, filterMarque])
+  }, [actifs, search, filterLow, filterNoPrice, filterNoSku, filterMarque, filterEmplacement])
 
   // Compteurs des filtres rail (sur le catalogue actif complet).
   const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
@@ -1199,6 +1216,22 @@ export default function StockList() {
                 </Select>
               </div>
             )}
+            {/* N15 — filtre par emplacement : ne montre que le stock détenu dans
+                l'emplacement choisi (ex. Camionnette). */}
+            {emplacementsList.length > 1 && (
+              <div className="px-1 pt-1">
+                <Select value={filterEmplacement || '__all'}
+                        onValueChange={v => setFilterEmplacement(v === '__all' ? '' : v)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Tous les emplacements" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">Tous les emplacements</SelectItem>
+                    {emplacementsList.map(e => (
+                      <SelectItem key={e.id} value={String(e.id)}>{e.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -1274,7 +1307,7 @@ export default function StockList() {
                 action={(
                   <Button size="sm" variant="outline" onClick={() => {
                     setSearch(''); setFilterLow(false); setFilterNoPrice(false)
-                    setFilterNoSku(false); setFilterMarque(''); setActiveCat('')
+                    setFilterNoSku(false); setFilterMarque(''); setFilterEmplacement(''); setActiveCat('')
                   }}>Effacer les filtres</Button>
                 )}
               />
