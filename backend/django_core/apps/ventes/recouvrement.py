@@ -133,6 +133,9 @@ def relances_list(request):
             'id': f.id, 'reference': f.reference,
             'client_id': f.client_id,
             'client_nom': f"{f.client.nom} {f.client.prenom or ''}".strip(),
+            # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
+            # côté front (aucun envoi ici ; affichage/validation seulement).
+            'client_telephone': f.client.telephone if f.client_id else None,
             'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
             'montant_du': _s(f.montant_du),
             'jours_retard': jr,

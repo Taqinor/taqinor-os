@@ -51,6 +51,23 @@ def log_facture_avoir(facture, user, avoir):
     )
 
 
+def log_facture_whatsapp(facture, user, modele='facture'):
+    """Consigne la génération d'un lien WhatsApp dans le chatter de la facture.
+
+    L'app n'envoie RIEN (ouvre wa.me) ; on trace que le commercial a préparé le
+    message. Acteur et société posés côté serveur, jamais du corps de requête.
+    """
+    from .models import FactureActivity
+    quoi = 'rappel' if modele == 'relance' else 'facture'
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.NOTE,
+        body=f'Lien WhatsApp ({quoi}) généré pour {facture.reference} '
+             f'par {qui}.',
+    )
+
+
 def log_facture_paiement(facture, user, paiement):
     """Consigne l'encaissement d'un paiement dans le chatter de la facture."""
     from .models import FactureActivity

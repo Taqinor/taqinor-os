@@ -323,6 +323,13 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.WHATSAPP, instance=lead,
                detail=f'Lien WhatsApp devis préparé ({len(devis_list)})')
+        # L856 — trace l'action dans le chatter du lead (Historique). Acteur et
+        # société posés côté serveur, jamais lus du corps de la requête.
+        refs = ', '.join(d.reference for d in devis_list)
+        activity.log_note(
+            lead, request.user,
+            f'Lien WhatsApp généré pour {refs} '
+            f'par {getattr(request.user, "username", "?")}.')
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,

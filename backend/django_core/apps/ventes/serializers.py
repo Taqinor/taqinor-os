@@ -221,6 +221,10 @@ class FactureSerializer(serializers.ModelSerializer):
     avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     avoirs = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    # L853 — téléphone du client (lecture seule) : permet de valider/désactiver
+    # le bouton WhatsApp côté front sans aller-retour 400. Jamais en écriture.
+    client_telephone = serializers.CharField(
+        source='client.telephone', read_only=True, default=None)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
