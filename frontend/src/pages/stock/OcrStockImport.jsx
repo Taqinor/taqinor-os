@@ -230,7 +230,9 @@ const cp = produitsRef.current
         update_tva: false,
         nouveau_nom: item.nom || '', nouveau_sku: item.reference || '',
         nouveau_prix_achat: item.prix_unitaire_ht > 0 ? String(item.prix_unitaire_ht) : '',
-        nouveau_prix_vente: '',
+        // Suggestion de prix de vente = prix d'achat OCR (modifiable) — évite
+        // l'erreur « Prix de vente requis » pour les docs non-achat.
+        nouveau_prix_vente: item.prix_unitaire_ht > 0 ? String(item.prix_unitaire_ht) : '',
         // Catégorie
         categorie_suggeree: suggestion,
         categorie_source: catSource,
@@ -388,7 +390,10 @@ const cp = produitsRef.current
           }
         }
         try {
-          const res = await stockApi.createMouvement({ produit: produitId, type_mouvement: mouvementType, quantite: ligne.quantite, reference: refDocument.trim() || null, note: `Import OCR${ligne.ref_ocr ? ' — ' + ligne.ref_ocr : ''}` })
+          // Référence du mouvement : saisie utilisateur, sinon référence
+          // document détectée par l'OCR (752), sinon aucune.
+          const refMouvement = refDocument.trim() || (stockOcrResult?.reference_document || '').trim() || null
+          const res = await stockApi.createMouvement({ produit: produitId, type_mouvement: mouvementType, quantite: ligne.quantite, reference: refMouvement, note: `Import OCR${ligne.ref_ocr ? ' — ' + ligne.ref_ocr : ''}` })
           const mv = res.data
           const delta = mv.quantite_apres - mv.quantite_avant
           const typeLabel = mouvementType === 'entree' ? 'Entrée' : mouvementType === 'sortie' ? 'Sortie' : 'Ajust.'
@@ -599,11 +604,24 @@ function Step2Validate({
   // For purchase/delivery docs, prix_vente is not required (falls back to prix_achat)
   const requiresPrixVente = docType === 'bon_sortie' || docType === 'autre' || !docType
 
+  // 748 — collision d'unicité : plusieurs lignes « create » au même SKU.
+  const skuCollisions = (() => {
+    const counts = {}
+    for (const l of lignes) {
+      if (l.action !== 'create') continue
+      const sku = (l.nouveau_sku || '').trim().toLowerCase()
+      if (!sku) continue
+      counts[sku] = (counts[sku] || 0) + 1
+    }
+    return new Set(Object.keys(counts).filter(k => counts[k] > 1))
+  })()
+
   const hasErrors = lignes.filter(l => l.action !== 'skip').some(l => {
     if (l.action === 'match' && !l.produit_id) return true
     if (l.action === 'create') {
       if (!l.nouveau_nom.trim()) return true
       if (requiresPrixVente && !(parseFloat(l.nouveau_prix_vente) > 0)) return true
+      if ((l.nouveau_sku || '').trim() && skuCollisions.has((l.nouveau_sku || '').trim().toLowerCase())) return true
     }
     return false
   })
@@ -705,6 +723,17 @@ function Step2Validate({
           </div>
         )}
       </div>
+
+      {skuCollisions.size > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+          <AlertTriangle className="size-4 shrink-0" />
+          <span>
+            Plusieurs lignes « Créer » partagent le même SKU
+            ({[...skuCollisions].join(', ')}). Corrigez ou différenciez ces
+            références avant d&apos;appliquer (le SKU doit être unique).
+          </span>
+        </div>
+      )}
 
       {/* ── Actions ── */}
       <div className="flex items-center justify-between gap-2 border-t border-border pt-4">

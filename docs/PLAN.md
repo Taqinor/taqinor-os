@@ -745,11 +745,11 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Achats] [L11] [ROUTINE] Remplacer l'alert() de confirmation de retour par un retour intégré et afficher les erreurs FR (le catch fait JSON.stringify). Fait = valider un retour montre une confirmation/erreur FR sans popup ni JSON brut.
 
 #### OCR import
-[ ] [Stock/OCR] [L7] [ROUTINE] Bloquer/avertir avant d'appliquer un import OCR si plusieurs lignes "create" partagent le même SKU détecté (collision d'unicité). Fait = deux lignes au même SKU sont signalées avant application.
-[ ] [Stock/OCR] [L3] [ROUTINE] Pré-remplir le prix de vente suggéré d'un produit créé via OCR (aujourd'hui nouveau_prix_vente vide → erreur "Prix de vente requis"). Fait = une ligne "create" propose un prix de vente par défaut (ex. = prix achat OCR) modifiable.
+[x] [Stock/OCR] [L7] [ROUTINE] Bloquer/avertir avant d'appliquer un import OCR si plusieurs lignes "create" partagent le même SKU détecté (collision d'unicité). Fait = deux lignes au même SKU sont signalées avant application.
+[x] [Stock/OCR] [L3] [ROUTINE] Pré-remplir le prix de vente suggéré d'un produit créé via OCR (aujourd'hui nouveau_prix_vente vide → erreur "Prix de vente requis"). Fait = une ligne "create" propose un prix de vente par défaut (ex. = prix achat OCR) modifiable.
 [ ] [Stock/OCR] [L11] [ROUTINE] Améliorer le journal de résultats OCR (Step3) : grouper succès/échecs et permettre de relancer uniquement les lignes en échec. Fait = l'écran résultats sépare réussis/échoués et propose de réessayer les échecs.
 [ ] [Stock/OCR] [L1] [ROUTINE] Proposer de créer un BCF (entrée d'achat) à partir d'une facture/bon de livraison OCR plutôt que des mouvements isolés. Fait = pour un doc d'achat, une option crée un BCF reçu au lieu d'ENTRÉE directes.
-[ ] [Stock/OCR] [L16] [ROUTINE] Renseigner automatiquement la référence document OCR comme reference du mouvement quand l'utilisateur ne l'a pas saisie. Fait = un mouvement OCR sans référence saisie reprend reference_document détecté.
+[x] [Stock/OCR] [L16] [ROUTINE] Renseigner automatiquement la référence document OCR comme reference du mouvement quand l'utilisateur ne l'a pas saisie. Fait = un mouvement OCR sans référence saisie reprend reference_document détecté.
 
 #### Chatbot stock (agent IA / SQL)
 [ ] [Stock] [L9] [ROUTINE] Ajouter des suggestions orientées stock à AgentChat (SUGGESTIONS a "en rupture de stock" mais pas valorisation/réappro). Fait = au moins deux suggestions stock supplémentaires (ex. "Valeur totale du stock ?", "Quels produits sous le seuil d'alerte ?").
