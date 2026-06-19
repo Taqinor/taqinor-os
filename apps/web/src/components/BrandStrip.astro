@@ -4,14 +4,41 @@
  * officiel QUAND un fichier logo existe (`brand.logo`), sinon un word-mark
  * stylisé en `font-display`. INTÉGRITÉ : noms / logos de marque uniquement,
  * aucun numéro de modèle ni claim technique inventé.
+ *
+ * W67 — i18n : seuls le titre et le lien sont traduits (FR/EN/AR). Les NOMS de
+ * marque (Jinko, Huawei, Nexans…) restent identiques dans toutes les langues.
+ * Rendu FR inchangé : la branche `fr` reprend les libellés actuels mot pour mot
+ * et `localizeNavHref('/équipement','fr') === '/équipement'`.
  */
 import { BRANDS } from '../lib/brands';
+import { getLocaleFromPath } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+import type { Locale } from '../i18n/config';
 
 interface Props {
   heading?: string;
 }
 
-const { heading = 'Marques tier-1 · distributeurs officiels au Maroc' } = Astro.props;
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const STR: Record<Locale, { heading: string; cta: string }> = {
+  fr: {
+    heading: 'Marques tier-1 · distributeurs officiels au Maroc',
+    cta: 'Voir notre équipement →',
+  },
+  en: {
+    heading: 'Tier-1 brands · official distributors in Morocco',
+    cta: 'See our equipment →',
+  },
+  ar: {
+    heading: 'علامات الفئة الأولى · موزّعون رسميون في المغرب',
+    cta: 'اطّلع على معدّاتنا →',
+  },
+};
+const s = STR[locale] ?? STR.fr;
+
+const { heading = s.heading } = Astro.props;
 ---
 
 <section class="border-t border-white/10 px-4 py-20 sm:py-28">
@@ -38,10 +65,10 @@ const { heading = 'Marques tier-1 · distributeurs officiels au Maroc' } = Astro
       }
     </ul>
     <a
-      href="/équipement"
+      href={L('/équipement')}
       class="v2-rise mt-10 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300"
     >
-      Voir notre équipement →
+      {s.cta}
     </a>
   </div>
 </section>

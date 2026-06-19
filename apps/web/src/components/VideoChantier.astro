@@ -4,30 +4,68 @@
  * préchargée : seule l'affiche ~250 Ko est servie au chargement).
  * Montage narratif sur les installations réelles (coupe A « calme » par
  * défaut ; la coupe B et le choix final : /media-test, page privée).
+ *
+ * W67 — i18n : prose, aria-label et alt traduits (FR/EN/AR). Les NOMS DE LIEUX
+ * (El Jadida, Nouaceur) et tous les chemins /videos/... restent identiques dans
+ * toutes les langues. Rendu FR inchangé (branche `fr` = strings actuels mot
+ * pour mot).
  */
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+
+const STR: Record<
+  Locale,
+  { eyebrow: string; title: string; lead: string; imgAlt: string; playLabel: string }
+> = {
+  fr: {
+    eyebrow: '30 secondes de chantier — installations réelles',
+    title: "Regardez l'équipe au travail",
+    lead: "Portage, pose, mise en service, et le soleil sur les panneaux d'El Jadida. Images brutes de nos chantiers de Nouaceur et El Jadida — sans mise en scène.",
+    imgAlt: 'Deux installateurs Taqinor fixant un panneau solaire sur un toit-terrasse',
+    playLabel: 'Lire la vidéo de chantier',
+  },
+  en: {
+    eyebrow: '30 seconds on site — real installations',
+    title: 'Watch the team at work',
+    lead: 'Carrying, mounting, commissioning, and the sun on the panels of El Jadida. Raw footage from our sites in Nouaceur and El Jadida — nothing staged.',
+    imgAlt: 'Two Taqinor installers fixing a solar panel onto a rooftop terrace',
+    playLabel: 'Play the on-site video',
+  },
+  ar: {
+    eyebrow: '30 ثانية من ورشة العمل — تركيبات حقيقية',
+    title: 'شاهد الفريق أثناء العمل',
+    lead: 'حملٌ وتركيبٌ وتشغيل، والشمس على الألواح في الجديدة. لقطات خام من ورشاتنا في النواصر والجديدة — دون أي إخراج.',
+    imgAlt: 'مركِّبان من Taqinor يثبّتان لوحًا شمسيًا على سطح',
+    playLabel: 'تشغيل فيديو الورشة',
+  },
+};
+const s = STR[locale] ?? STR.fr;
 ---
 
 <section class="px-4 py-20 text-white sm:py-24">
   <div class="mx-auto max-w-6xl">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="tech-label rule-brass text-brass-300">30 secondes de chantier — installations réelles</p>
-        <h2 class="display mt-3 text-3xl text-white sm:text-4xl">Regardez l'équipe au travail</h2>
+        <p class="tech-label rule-brass text-brass-300">{s.eyebrow}</p>
+        {/* set:html : préserve l'apostrophe brute « l'équipe » exactement comme
+            le rendu FR d'origine (une expression Astro l'échapperait en &#39;). */}
+        <h2 class="display mt-3 text-3xl text-white sm:text-4xl" set:html={s.title}></h2>
       </div>
       <p class="max-w-sm text-sm leading-relaxed text-lune-soft">
-        Portage, pose, mise en service, et le soleil sur les panneaux d'El Jadida.
-        Images brutes de nos chantiers de Nouaceur et El Jadida — sans mise en scène.
+        <Fragment set:html={s.lead} />
       </p>
     </div>
 
     <div id="chantier-player" class="group relative mt-8 aspect-video w-full cursor-pointer overflow-hidden border border-white/15">
       <picture>
         <source type="image/avif" srcset="/videos/chantier-poster.avif" />
-        <img src="/videos/chantier-poster.webp" alt="Deux installateurs Taqinor fixant un panneau solaire sur un toit-terrasse"
+        <img src="/videos/chantier-poster.webp" alt={s.imgAlt}
           width="1600" height="900" loading="lazy" decoding="async"
           class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" />
       </picture>
-      <button id="chantier-play" type="button" aria-label="Lire la vidéo de chantier"
+      <button id="chantier-play" type="button" aria-label={s.playLabel}
         class="absolute inset-0 flex items-center justify-center bg-azur-950/30 transition-colors group-hover:bg-azur-950/15">
         <span class="flex h-20 w-20 items-center justify-center rounded-full bg-brass-400 text-azur-950 shadow-lg transition-transform group-hover:scale-110">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>

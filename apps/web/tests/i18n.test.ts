@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_LOCALE, LOCALES, LOCALE_DIR, isLocale } from '../src/i18n/config';
 import { getLocaleFromPath, localizePath, stripLocale, useTranslations } from '../src/i18n/utils';
 import { ui } from '../src/i18n/ui';
-import { hasLocale, localesForPath, localizeNavHref } from '../src/i18n/pages';
+import { hasLocale, localesForPath, localizeNavHref, TRANSLATED_PATHS } from '../src/i18n/pages';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -136,20 +136,42 @@ describe("registre de disponibilité & alternates (anti-lien-mort)", () => {
     if (hasLocale('/contact', 'en')) {
       expect(localizeNavHref('/contact', 'en')).toBe('/en/contact');
     }
-    // Page sans traduction EN → repli FR (cible qui existe toujours).
-    expect(localizeNavHref('/guides', 'en')).toBe('/guides');
-    expect(localizeNavHref('/installation-solaire-casablanca', 'ar')).toBe('/installation-solaire-casablanca');
+    // W67 lot 2 : /guides et les pages ville SONT désormais traduits → préfixés.
+    expect(localizeNavHref('/guides', 'en')).toBe('/en/guides');
+    expect(localizeNavHref('/installation-solaire-casablanca', 'ar')).toBe('/ar/installation-solaire-casablanca');
+    expect(localizeNavHref('/realisations/el-jadida-17-kwc', 'en')).toBe('/en/realisations/el-jadida-17-kwc');
+    // Un chemin SANS traduction retombe sur le FR (cible qui existe toujours).
+    expect(localizeNavHref('/page-inexistante', 'en')).toBe('/page-inexistante');
   });
 
   it('toute page listée traduite a réellement ses routes /en/ et /ar/ construites', () => {
-    // Garde anti-lien-mort au niveau source : chaque chemin déclaré en EN/AR
-    // doit avoir le fichier de page correspondant.
-    for (const root of ['/contact']) {
-      if (hasLocale(root, 'en')) {
-        const f = root === '/' ? 'index' : root.replace(/^\//, '');
-        expect(() => read(`../src/pages/en/${f}.astro`), `en/${f}`).not.toThrow();
-        expect(() => read(`../src/pages/ar/${f}.astro`), `ar/${f}`).not.toThrow();
+    // Garde anti-lien-mort au niveau source : chaque chemin RACINE déclaré
+    // traduit doit avoir son fichier de page EN et AR (les routes dynamiques
+    // sont couvertes par leur gabarit [city] / [slug]).
+    const srcExists = (root: string, locale: 'en' | 'ar'): boolean => {
+      const base = root === '/' ? 'index' : root.replace(/^\//, '');
+      const candidates = [
+        `../src/pages/${locale}/${base}.astro`,
+        `../src/pages/${locale}/${base}/index.astro`,
+      ];
+      if (/^installation-solaire-.+/.test(base)) {
+        candidates.push(`../src/pages/${locale}/installation-solaire-[city].astro`);
       }
+      if (/^realisations\/.+/.test(base)) {
+        candidates.push(`../src/pages/${locale}/realisations/[slug].astro`);
+      }
+      return candidates.some((f) => {
+        try {
+          read(f);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    };
+    for (const root of TRANSLATED_PATHS) {
+      expect(srcExists(root, 'en'), `source EN manquante pour ${root}`).toBe(true);
+      expect(srcExists(root, 'ar'), `source AR manquante pour ${root}`).toBe(true);
     }
   });
 });

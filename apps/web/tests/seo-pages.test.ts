@@ -246,7 +246,10 @@ describe('teaser garanties (W16)', () => {
     }
     expect(teaser).toContain('84,8');
     expect(body).toContain('Deye Cloud');
-    expect(body).toContain('href="/garanties"');
+    // W67 : le lien est désormais localisé via localizeNavHref('/garanties', locale)
+    // (FR inchangé : localizeNavHref('/garanties','fr') === '/garanties'). On vérifie
+    // donc la cible /garanties plutôt que le littéral href="/garanties".
+    expect(body).toContain('/garanties');
   });
 
   it('n’invente aucun SLA ni politique de sous-performance (corps rendu)', () => {

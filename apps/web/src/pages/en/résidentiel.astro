@@ -1,0 +1,205 @@
+---
+/**
+ * EN — Residential solar (W67). Faithful translation of /résidentiel ; EVERY
+ * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 ans,
+ * 25 ans, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
+ * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). The
+ * price-bracket data + solar math (BILL_RANGES / localEstimateBand / formatMAD)
+ * are reused UNCHANGED — only visible labels are translated. Internal links via
+ * localizeNavHref. Shared components (GarantiesTeaser, Testimonials,
+ * DiagnosticForm) auto-detect locale. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import Picture from '../../components/Picture.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
+import Testimonials from '../../components/Testimonials.astro';
+import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
+import { formatMAD } from '../../lib/format';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
+const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
+
+const EXEMPLES_REELS: Record<string, string> = {
+  '1000-1500': 'Real example: ref. NC-10/25 — 3,72 kWc, Nouaceur, October 2025',
+  '1500-3000': 'Real example: ref. 236 — 5,68 kWc, El Jadida, March 2026',
+  '3000-5000': 'Real example: ref. 400 — 11,36 kWc, Casablanca, April 2026',
+  '5000-10000': 'Real example: ref. 468 — 17,04 kWc, El Jadida, April 2026',
+};
+
+const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').map((r) => {
+  const band = localEstimateBand(r.id);
+  return {
+    bill: r.label,
+    kwc: band.kwcLabel,
+    payback: band.paybackLabel,
+    invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+    exemple: EXEMPLES_REELS[r.id] ?? null,
+  };
+});
+---
+
+<Layout
+  title="Solar for villas and apartments in Morocco — costed on your bill | Taqinor"
+  description="11,36 kWc in Casablanca, 14 271 kWh measured: our residential installations sized on your real bill, with honest orders of magnitude, a 3- to 7-year payback and the law 82-21 declaration."
+  ogSlug="residentiel"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Residential' }]} />
+
+    <!-- ACT I — the full-frame dusk: the photo is the light -->
+    <section class="relative isolate overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/45 to-transparent"></div>
+      </div>
+      <div class="mx-auto grid max-w-6xl gap-10 px-4 pb-20 pt-28 sm:pb-24 sm:pt-36 lg:grid-cols-[1.1fr_1fr] lg:items-end">
+        <div>
+          <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Villas · apartments</p>
+          <h1 class="display v2-page-title cine-in mt-5 max-w-[18ch] [animation-delay:120ms]">A villa, its bill, its roof: three data points, one sizing</h1>
+          <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+            Well sized, an installation covers 60 to 90 % of what a villa consumes.
+            These three figures — your ONEE meter reading, your peak hours, the roof's orientation —
+            set the power. We read them; we install nothing the calculation hasn't justified.
+          </p>
+        </div>
+        <aside class="cine-in border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)] [animation-delay:360ms]">
+          <p class="tech-label text-brass-600">Study excerpt — ref. 400 · Casablanca · April 2026</p>
+          <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6">
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Measured production</p></div>
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panels</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
+            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Dyness LFP storage</p></div>
+          </div>
+          <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked on Deye Cloud — client access included.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Price transparency — the ledger, figures that tally up -->
+    <section class="mx-auto max-w-4xl px-4 py-24 sm:py-32">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Price transparency</p>
+      <h2 class="display v2-section-title mt-5 text-white">Your bill already places you in a range</h2>
+      <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+        Here are the orders of magnitude recorded on our residential sites — <strong class="text-lune">never a
+        quote</strong>. The exact figure comes after the technical visit; and if your profile doesn't
+        make solar pay off, we'll tell you before you've signed anything at all.
+      </p>
+      <div class="mt-10 border-t-2 border-brass-400/60" data-stagger>
+        <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
+          <span>Monthly bill</span><span>Power</span><span>Investment (order of magnitude)</span><span>Payback</span>
+        </div>
+        {brackets.map((b, i) => (
+          <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
+            <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
+              <span class="font-display text-base font-bold text-white">{b.bill}</span>
+              <span class="fig lum text-xl sm:text-2xl" data-tally>{b.kwc}</span>
+              <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
+              <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
+            </div>
+            {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+          </div>
+        ))}
+      </div>
+      <p class="mt-5 max-w-2xl text-xs leading-relaxed text-lune-soft">
+        Under 1 000 MAD a month, the payback most often exceeds 7 years: we say so
+        rather than force the sale. Beyond 10 000 MAD, consumption leaves the residential
+        frame and calls for a dedicated study — see Business.
+      </p>
+    </section>
+
+    <ZelligeDivider tone="white" />
+
+    <!-- 25-year illustration -->
+    <section class="border-t border-white/10 px-4 py-24 sm:py-32">
+      <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">The investment horizon</p>
+          <h2 class="display v2-section-title mt-5 text-white">What the 25 years deliver, year by year</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            The manufacturer guarantees panel performance over 25 years. Take a villa with a
+            2 000 MAD monthly bill: 6 kWc come to around 60 000 to 75 000 MAD and
+            wipe out some 12 000 to 16 000 MAD of electricity every year (at the ONEE utility tariff).
+            Four to six years to pay it back; then, over the nineteen to twenty-one years that
+            remain, the kilowatt-hour costs almost nothing — there's just one inverter to
+            replace once over the lifetime.
+          </p>
+          <dl class="mt-10 grid grid-cols-3 gap-4 border-l-2 border-brass-400/60 pl-6" data-stagger>
+            <div class="v2-rise" style="--v2-i:0">
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 ans</dd>
+              <dt class="tech-label mt-1.5 text-lune-faint">Panel warranty</dt>
+            </div>
+            <div class="v2-rise" style="--v2-i:1">
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>3–7 ans</dd>
+              <dt class="tech-label mt-1.5 text-lune-faint">Typical payback</dt>
+            </div>
+            <div class="v2-rise" style="--v2-i:2">
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+              <dt class="tech-label mt-1.5 text-lune-faint">Simple declaration</dt>
+            </div>
+          </dl>
+        </div>
+        <div class="grid gap-4">
+          <figure class="v2-rise cine-card group relative overflow-hidden">
+            <Picture name="pose-134" alt="The Taqinor team tilts a panel during the install on a Casablanca villa"
+              widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
+              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc · 7 135 kWh/an</span>
+              <span class="mt-0.5 block text-xs text-lune">Install in progress · 8 × Canadian Solar 710 Wc · March 2026</span>
+            </figcaption>
+          </figure>
+          <figure class="v2-rise cine-card group relative overflow-hidden">
+            <Picture name="champ-villa" alt="Array of eight panels on a flat villa roof in El Jadida, blue sky"
+              widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
+              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc · 7 135 kWh/an</span>
+              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · measured production Deye Cloud</span>
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contextual links -->
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
+        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our residential projects →</a>
+        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment we install →</a>
+        <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties →</a>
+        <a href={L('/batteries-stockage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Batteries &amp; storage →</a>
+        <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financing &amp; returns →</a>
+        <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Why Taqinor →</a>
+      </div>
+    </section>
+
+    <!-- W62 — Client reviews (empty → renders nothing until a real review exists) -->
+    <Testimonials />
+
+    <!-- Reassurance: the written warranties, in brief (links to /garanties) -->
+    <GarantiesTeaser />
+
+    <!-- FINAL ACT — the clean room -->
+    <DiagnosticForm heading="Your assessment in 60 seconds" />
+
+    <CtaBand href="#simulateur" seam={false} />
+
+    <StickyCta />
+  </div>
+</Layout>

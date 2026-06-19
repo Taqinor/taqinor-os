@@ -1,0 +1,92 @@
+---
+/**
+ * EN — Guide (W67): Do you need batteries? Faithful translation of
+ * /guides/faut-il-des-batteries ; no figure, no price, no payback. Internal
+ * links use localizeNavHref (EN/AR if available, else the existing FR page —
+ * never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Do you need batteries for your solar installation?',
+  description: 'Daytime self-consumption or storage: when batteries are justified in a solar installation, explained simply.',
+  about: { '@type': 'Thing', name: 'Solar storage batteries' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Do you need batteries for your solar installation? | Taqinor"
+  description="Often no. If you consume mostly during the day, direct self-consumption pays more than any battery; storage is justified for the night or for service continuity. It all comes down to the hour at which your meter turns."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Do you need batteries?' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Equipment</p>
+      <h1 class="display v2-page-title mt-5 text-white">Do you need batteries?</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Short answer: often no. It's the question that comes up most, and many ask it back to
+        front — the battery is not the heart of an installation, it's an option. What justifies it
+        or not is <em>the hour</em> at which you consume your electricity.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">If you consume mostly during the day</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        When most of your consumption falls in broad daylight, the electricity from your panels
+        goes straight to your appliances, the second it is produced, with no detour through a
+        battery. No storage losses, no extra hardware to amortise: it's the most profitable
+        scenario. It fits households where life happens during the day and business sites whose
+        activity follows the sun.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">When storage becomes useful</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The calculation flips the moment your consumption peak arrives once the sun has set:
+        there, storing during the day to release in the evening makes economic sense. A second
+        case is service continuity — keeping certain equipment powered during an outage. In
+        these two situations, the battery stops being a gadget and becomes an item that
+        pays for itself.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">What your consumption curve says</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The answer is therefore not in a catalogue, it's in your meter reading. We look at the
+        hours when your meter turns the most, and it's that curve that points to — or away from —
+        a battery. Adding storage "just to be safe" costs a lot and returns nothing if your
+        consumption is daytime; the right reflex is to cover most of the bill for the least
+        money invested.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>
+        <a href={L('/guides/onduleur-hybride-ou-reseau')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Hybrid or grid-tied inverter? →</a>
+        <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">All the guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="To settle it for your exact case, launch the free study." href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

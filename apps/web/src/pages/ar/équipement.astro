@@ -1,0 +1,156 @@
+---
+/**
+ * AR — Equipment (W67, RTL). Faithful Arabic translation of /équipement ; no
+ * new figure or claim. Internal links use localizeNavHref (EN/AR if available,
+ * else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import Picture from '../../components/Picture.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const categories = [
+  { ref: 'PV-1', title: 'الألواح — Canadian Solar TOPBiHiKu', body: "اللوح ثنائي الوجه يلتقط أيضاً الضوء المنعكس عن السطح: على سطيحة فاتحة اللون، هذا مردود مكتسب دون مساحة إضافية. هذه الوحدات من 705 إلى 720 Wc تأتي من مُصنّع سلّم أكثر من 100 GW في العالم، ملتزمة بمعايير IEC 61215 و IEC 61730. وهي التي رُكّبت في الدار البيضاء والجديدة.", points: ['ثنائي الوجه 705 – 720 Wc', 'ضمان المنتج 12 سنة', 'ضمان الأداء 25 سنة (≥ 84.8 %)'] },
+  { ref: 'PV-2', title: 'الألواح — JA Solar DeepBlue', body: "خلية DeepBlue أحادية البلورة تبحث عن المردود بدل المساحة — مفيد حين يكون السطح محسوباً. نفس مرتبة المُصنّع، نفس متطلب الشهادة. رُكّبت في النواصر.", points: ['أحادي البلورة عالي المردود', 'ضمان المنتج 12 سنة', 'ضمان الأداء 25 سنة'] },
+  { ref: 'OND-1', title: 'العاكسات الهجينة — Deye', body: "العاكس الهجين هو قائد الأوركسترا: يحكّم في الزمن الحقيقي بين الألواح والبطارية والشبكة. سلاسل Deye SUN-SG04LP1 و SG04LP3 و SG01HP3 تغطي من 5 إلى 30 kW، أحادي الطور كما ثلاثي الطور، وتتحاور مباشرة مع BMS البطارية عبر CAN. مطابقة لـ IEC 61727 و VDE-AR-N-4105.", points: ['أحادي وثلاثي الطور، 5 – 30 kW', 'تدبير البطارية CAN BMS مدمج', 'ضمان 10 سنوات'] },
+  { ref: 'OND-2', title: 'عاكسات الشبكة — Huawei SUN2000', body: "حين لا تعتمد الدراسة بطارية، ننتقل إلى string صرف. عاكس Huawei SUN2000 يحسّن سلسلة سلسلة: لوح في الظل لم يعد يسحب الصف كله إلى الأسفل. من السكني إلى أسطح القطاع الثالث.", points: ['مردود أوروبي عالٍ', 'تحسين لكل سلسلة', 'ضمان 10 سنوات'] },
+  { ref: 'BAT', title: 'البطاريات — Dyness DL5.0C', body: "ليثيوم-حديد-فوسفات لا ينفلت حرارياً كما تفعل كيمياءات ليثيوم أخرى: إنه خيار السلامة للتخزين في البيت. وحدات DL5.0C / DL5.0C PRO تتراصّ بشرائح من 5 kWh وتتكلّم بطلاقة CAN BMS الخاص بـ Deye. معتمدة CE و IEC 62619 و UN38.3.", points: ['كيمياء LFP — أكثر من 6,000 دورة عند 90 % DoD', 'معياري: من 5 إلى 15 kWh وأكثر', 'ضمان 10 سنوات'] },
+  { ref: 'MON', title: 'المراقبة — Deye Cloud', body: "تركيبة لا تُقاس هي تركيبة تُصدَّق على الكلمة. كل سطح يحمل dongle WiFi/Ethernet موصولاً بـ Deye Cloud: إنتاج بالدقيقة، سجلات، تنبيهات. تحتفظ بولوجك الشخصي؛ ومن جهتنا، نرى الأسطول كله ونتدخّل قبل أن تلاحظ العطل.", points: ['إنتاج مقيس باستمرار', 'تنبيهات تلقائية — خدمة ما بعد البيع استباقية', 'ولوج الزبون عبر تطبيق الهاتف'] },
+];
+
+const warranties = [
+  { item: 'الألواح الكهروضوئية (المنتج)', years: '12 سنة' },
+  { item: 'الألواح الكهروضوئية (الأداء)', years: '25 سنة', note: '≥ 84.8 % من القدرة الأولية' },
+  { item: 'العاكسات (Deye، Huawei)', years: '10 سنوات' },
+  { item: 'بطاريات Dyness LFP', years: '10 سنوات' },
+  { item: 'الهيكل الفولاذي المُجلفن', years: '20 سنة' },
+  { item: 'التركيب واليد العاملة تاكينور', years: 'سنتان' },
+];
+---
+
+<Layout
+  title="العتاد المُركّب: Canadian Solar، Deye، Huawei، Dyness — ولماذا | Taqinor"
+  description="ألواح Canadian Solar ثنائية الوجه (أداء 25 سنة)، عاكسات Deye الهجينة، بطاريات Dyness LFP بـ 6,000 دورة، إشراف Deye Cloud: العتاد المُركّب فعلاً عندنا، والسبب التقني وراء كل اختيار."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'العتاد' }]} />
+
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">علامات tier-1 · موزّعون رسميون بالمغرب</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">علاماتنا tier-1، والسبب التقني لكل واحدة</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Canadian Solar و JA Solar و Jinko في الألواح؛ Deye و Huawei في العاكسات؛
+          Dyness للتخزين؛ Nexans للأسلاك: هذا ما يُثبَّت على أسطحنا لسنة 2026، لا غير. لا مراجع
+          دون اسم، ولا كاطالوݣ بلا نهاية.
+          كل شيء يمرّ عبر موزّعين رسميين مقيمين بالمغرب — القطعة متوفّرة في المخزون هنا، والضمان
+          يُفعَّل هنا، لا في الطرف الآخر من رسالة بريد.
+        </p>
+      </div>
+    </section>
+
+    <!-- Photos matériel — le geste autant que le matériel -->
+    <section class="mx-auto max-w-6xl px-4 pt-8">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]" data-stagger>
+        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:0">
+          <Picture name="mur-technique-dyness" alt="الجدار التقني لتركيبة تاكينور بالدار البيضاء: عاكس Deye هجين، بطاريتا Dyness ونقطة شحن"
+            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, (min-width: 640px) 50vw, 100vw" loading="eager"
+            class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+            <span class="tech-label block text-brass-300">الدار البيضاء · 11.36 kWc</span>
+            <span class="mt-0.5 block text-xs text-lune">عاكس Deye هجين 10 kW · 2 × Dyness DL5.0C · نقطة شحن</span>
+          </figcaption>
+        </figure>
+        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:1">
+          <Picture name="detail-cablage" alt="لقطة قريبة لأطراف بطاريات Dyness وصندوق الحماية، أسلاك متقنة، الجديدة"
+            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw" loading="eager"
+            class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+            <span class="tech-label block text-brass-300">الجديدة · 17.04 kWc</span>
+            <span class="mt-0.5 block text-xs text-lune">أطراف البطاريات + صندوق الحماية · عناية بالتفصيل</span>
+          </figcaption>
+        </figure>
+        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:2">
+          <Picture name="silhouette-acrotere" alt="لوح كهروضوئي وسخّان ماء شمسي على حاجز سطح أبيض أمام سماء زرقاء عميقة"
+            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw" loading="eager"
+            class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+            <span class="tech-label block text-brass-300">تفصيل سطح</span>
+            <span class="mt-0.5 block text-xs text-lune">وحدات PV + سخّان ماء شمسي</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Fiches matériel -->
+    <section class="mx-auto max-w-6xl px-4 py-16">
+      <div class="grid gap-6 md:grid-cols-2" data-stagger>
+        {categories.map((c, i) => (
+          <div class="v2-rise cine-card" style={`--v2-i:${i}`}>
+            <div class="flex items-center justify-between border-b-2 border-brass-400/70 px-6 py-3">
+              <span class="tech-label text-brass-300">المرجع {c.ref}</span>
+              <span class="h-1.5 w-1.5 rotate-45 border border-brass-400" aria-hidden="true"></span>
+            </div>
+            <div class="p-6">
+              <h2 class="display text-xl text-white">{c.title}</h2>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{c.body}</p>
+              <ul class="mt-4 space-y-2 text-sm text-lune">
+                {c.points.map((p) => (
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{p}</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- ACTE FINAL — les garanties, littéralement noir sur blanc -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-28">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">التزامات تعاقدية</p>
+        <h2 class="display v2-section-title mt-5">الضمانات، أبيض على أسود</h2>
+        <p class="v2-lead mt-4 text-encre-soft">
+          الضمان لا يساوي إلا بقدر الملف الذي يوثّقه. كل تركيبة تنطلق ومعها ملفها، كاملاً: مخططات
+          أحادية الخط، حساب مقطع الأسلاك، لائحة الحمايات، إجراء التشغيل وولوج Deye Cloud للتحقق من
+          الإنتاج بنفسك.
+        </p>
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {warranties.map((w, i) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
+              <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{w.years}</span>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          لا واحدة من هذه المراجع مختارة سلفاً. القدرة المعتمدة، وجود بطارية من عدمه، أحادي أو ثلاثي
+          الطور: كل ذلك يخرج من أرقام سطحك.
+          العتاد يتبع الحساب — لا يسبقه.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href={L('/garanties')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">ضماناتنا →</a>
+          <a href={L('/résidentiel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">الطاقة الشمسية السكنية →</a>
+          <a href={L('/professionnel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">الطاقة الشمسية المهنية →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="العتاد الصحيح هو الذي تبرّره الدراسة." seam={false} href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

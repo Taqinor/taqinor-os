@@ -1,0 +1,173 @@
+---
+/**
+ * AR — Article 33 regularization (W67, RTL). Faithful Arabic translation of
+ * /regularization-article-33 ; no new figure or claim (law number 82-21,
+ * Article 33, decree 2-25-100, date 9 June 2026 and all amounts kept exact, in
+ * Latin digits). Internal links use localizeNavHref (EN/AR if available, else
+ * the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+
+const steps = [
+  { title: 'الجرد التقني', body: 'معاينة التركيبة القائمة: القدرة المُركّبة، نمط الربط، مستوى الجهد، معدات الحماية والعدّ.' },
+  { title: 'تحديد النظام', body: 'حسب القدرة والربط، تندرج التركيبة ضمن التصريح أو اتفاق الربط أو الترخيص (مرسوم 2-25-100).' },
+  { title: 'تكوين الملف', body: 'بطاقات تقنية، مخطط أحادي الخط، شهادات المطابقة واستمارات النظام المطبَّق — مُعدّة من طرفنا.' },
+  { title: 'إيداع طلب التسوية', body: 'الإيداع لدى مدبّر الشبكة أو السلطة المختصة، في إطار النافذة التي تفتحها المادة 33.' },
+  { title: 'المتابعة حتى المطابقة', body: 'متابعة الدراسة، الردّ على المستندات التكميلية المطلوبة، وعند الاقتضاء تحيين تقني للتركيبة.' },
+];
+
+const sanctions = [
+  { title: 'وضعية غير قانونية', body: 'تركيبة قائمة غير مُسوّاة هي في وضعية غير قانونية إزاء القانون 82-21، الساري المفعول الآن.' },
+  { title: 'غرامات — المادة 28', body: 'من 2,000 إلى 5,000 MAD للاستغلال دون التصريح المطلوب.' },
+  { title: 'غرامات — المادة 29', body: 'من 100,000 إلى 1,000,000 MAD للاستغلال دون اتفاق ربط أو دون ترخيص.' },
+  { title: 'الإنذار والإيقاف — المادتان 25 و 27', body: 'خطر إنذار ثم أمر بإيقاف التركيبة.' },
+  { title: 'الفصل عن الشبكة — المادة 32', body: 'يمكن لمدبّر الشبكة فصل تركيبة غير مطابقة.' },
+];
+---
+
+<Layout
+  title="تسوية المادة 33 — التركيبات الشمسية القائمة | Taqinor"
+  description="القانون 82-21 ساري المفعول منذ 9 يونيو 2026. المادة 33 تفتح نافذة من 18 شهراً لتسوية التركيبات الشمسية القائمة: مسطرة من 5 مراحل، العقوبات المحتملة، وتكفّل كامل بالملف."
+  ogSlug="article-33"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'تسوية المادة 33' }]} />
+
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">القانون 82-21 — المادة 33</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">تركيبتك الشمسية قائمة بالفعل؟ سوّها الآن.</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          المرسوم 2-25-100 وقرار ANRE رقم 04/26 دخلا حيّز التنفيذ في 9 يونيو 2026.
+          منذ ذلك التاريخ، يُطبَّق نظام القانون 82-21 على جميع تركيبات الإنتاج الذاتي —
+          بما فيها تلك المُركّبة قبل القانون.
+        </p>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-3xl px-4 py-16">
+      <div class="v2-rise">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">النص</p>
+        <h2 class="display v2-section-title mt-4 text-white">ما تقوله المادة 33</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          المادة 33 من القانون 82-21 تمنح مستغلّي التركيبات القائمة
+          نافذة من <strong class="fig lum text-xl">18 شهراً</strong> لإيداع طلب تسوية.
+          هذه النافذة مفتوحة منذ 9 يونيو 2026: أودِع الآن. تركيبة مُسوّاة مؤمَّنة قانونياً؛
+          تركيبة غير مُسوّاة في وضعية غير قانونية.
+        </p>
+      </div>
+
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">من المعني؟</h2>
+      <ul class="v2-rise mt-5 space-y-2.5 text-sm leading-relaxed text-lune-soft">
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>كل تركيبة شمسية للإنتاج الذاتي شُغّلت قبل دخول النظام حيّز التنفيذ — فيلا، مستودع، فندق، ضيعة فلاحية.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>مربوطة بالشبكة أو في موقع معزول، أياً كانت القدرة.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>دون تصريح، دون اتفاق ربط أو دون ترخيص إزاء النظام المطبَّق.</span></li>
+      </ul>
+
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">التسوية في 5 مراحل</h2>
+      <ol class="mt-8 border-l-2 border-brass-400/60" data-stagger>
+        {steps.map((s, i) => (
+          <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
+            <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+            <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </li>
+        ))}
+      </ol>
+
+      <h2 class="display v2-section-title v2-rise mt-14 text-white">ما تخاطر به إن لم تفعل شيئاً</h2>
+      <p class="v2-rise mt-2 text-sm text-lune-soft">العقوبات المنصوص عليها في القانون 82-21:</p>
+      <div class="mt-5 grid gap-4 sm:grid-cols-2" data-stagger>
+        {sanctions.map((s, i) => (
+          <div class="v2-rise cine-card border-alert-300/30 p-5" style={`--v2-i:${i}`}>
+            <h3 class="font-display text-sm font-bold text-alert-300">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الأنظمة الثلاثة للقانون 82-21 →</a>
+        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تسوية موقع مهني →</a>
+      </div>
+    </section>
+
+    <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <ZelligeDivider />
+        <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
+          <p class="tech-label text-azur-600">تكفّل كامل</p>
+          <h2 class="display v2-section-title mt-2">اعهد إلينا بالملف</h2>
+          <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">
+            سؤالان، ورسالة واتساب تنطلق كاملة بالفعل — نحدّد النظام المطبَّق ونكوّن الملف.
+          </p>
+          <div class="mt-6 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">القدرة التقريبية (kWc)</label>
+              <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="مثلاً 5"
+                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+              <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
+                <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
+                لا أعرف القدرة
+              </label>
+            </div>
+            <div>
+              <label for="rg33-ville" class="mb-1 block text-sm font-semibold">مدينة التركيبة</label>
+              <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="مثلاً الدار البيضاء"
+                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
+            </div>
+          </div>
+          <a id="rg33-go" href={waFallback} rel="noopener"
+            class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >ابدأ على واتساب</a>
+        </div>
+      </div>
+    </section>
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<script>
+  import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
+  import { WHATSAPP_LEADS } from '../../lib/nap';
+
+  // Le lien se met à jour en direct : le client n'édite JAMAIS le message.
+  const kwcEl = document.getElementById('rg33-kwc') as HTMLInputElement;
+  const unknownEl = document.getElementById('rg33-unknown') as HTMLInputElement;
+  const villeEl = document.getElementById('rg33-ville') as HTMLInputElement;
+  const goEl = document.getElementById('rg33-go') as HTMLAnchorElement;
+
+  function refresh() {
+    kwcEl.disabled = unknownEl.checked;
+    if (unknownEl.checked) kwcEl.value = '';
+    goEl.href = whatsappLink(
+      WHATSAPP_LEADS,
+      regularizationWhatsappText({
+        kwc: unknownEl.checked ? '' : kwcEl.value,
+        ville: villeEl.value,
+      }),
+    );
+  }
+  for (const el of [kwcEl, unknownEl, villeEl]) el.addEventListener('input', refresh);
+  refresh();
+</script>

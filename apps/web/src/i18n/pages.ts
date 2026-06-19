@@ -15,27 +15,61 @@
  * registre (ou seulement avec ['fr']) → le sélecteur ne s'affiche pas et son
  * rendu FR reste strictement identique.
  */
-import { DEFAULT_LOCALE, isLocale, type Locale } from './config';
+import { DEFAULT_LOCALE, isLocale, LOCALES, type Locale } from './config';
+import { CITIES, REALISATIONS } from '../lib/realisations';
+
+const ALL_LOCALES: readonly Locale[] = LOCALES;
 
 /**
- * Chemins traduits en EN + AR. Tout chemin listé ici DOIT avoir
- * src/pages/en/<path>.astro ET src/pages/ar/<path>.astro construits.
- * Le FR (racine) existe pour tous.
+ * Chemins RACINE traduits en EN + AR. Tout chemin listé ici DOIT avoir
+ * src/pages/en/<path>.astro ET src/pages/ar/<path>.astro construits (pour les
+ * routes dynamiques, le gabarit [city]/[slug] couvre tous les slugs). Le FR
+ * (racine) existe pour tous.
+ *
+ * W67 lot 2 (2026-06-19) : tout le reste du site public passe en EN/AR —
+ * accueil, segments (résidentiel/professionnel/MRE), équipement,
+ * régularisation, loi 82-21, guides, réalisations (hub + études de cas) et
+ * pages ville. Les chemins dynamiques (villes, études de cas) sont dérivés des
+ * données réelles (CITIES / REALISATIONS) pour ne jamais diverger des routes
+ * réellement construites par getStaticPaths.
  */
-const TRANSLATED: Record<string, readonly Locale[]> = {
-  '/contact': ['fr', 'en', 'ar'],
-  '/nos-solutions': ['fr', 'en', 'ar'],
-  '/pompage-solaire': ['fr', 'en', 'ar'],
-  '/batteries-stockage': ['fr', 'en', 'ar'],
-  '/maintenance-monitoring': ['fr', 'en', 'ar'],
-  '/faq': ['fr', 'en', 'ar'],
-  '/garanties': ['fr', 'en', 'ar'],
-  '/financement': ['fr', 'en', 'ar'],
-  '/pourquoi-taqinor': ['fr', 'en', 'ar'],
-  '/à-propos': ['fr', 'en', 'ar'],
-  '/mentions-legales': ['fr', 'en', 'ar'],
-  '/politique-de-confidentialite': ['fr', 'en', 'ar'],
-};
+const STATIC_TRANSLATED: readonly string[] = [
+  // Lot 1 (foundation)
+  '/contact',
+  '/nos-solutions',
+  '/pompage-solaire',
+  '/batteries-stockage',
+  '/maintenance-monitoring',
+  '/faq',
+  '/garanties',
+  '/financement',
+  '/pourquoi-taqinor',
+  '/à-propos',
+  '/mentions-legales',
+  '/politique-de-confidentialite',
+  // Lot 2 (W67) — le reste du site public
+  '/',
+  '/résidentiel',
+  '/professionnel',
+  '/marocains-du-monde',
+  '/équipement',
+  '/regularization-article-33',
+  '/loi-82-21',
+  '/realisations',
+  '/guides',
+  '/guides/faut-il-des-batteries',
+  '/guides/loi-82-21-expliquee',
+  '/guides/onduleur-hybride-ou-reseau',
+];
+
+const TRANSLATED: Record<string, readonly Locale[]> = Object.fromEntries([
+  ...STATIC_TRANSLATED.map((p) => [p, ALL_LOCALES] as const),
+  ...CITIES.map((c) => [`/installation-solaire-${c.slug}`, ALL_LOCALES] as const),
+  ...REALISATIONS.map((r) => [`/realisations/${r.slug}`, ALL_LOCALES] as const),
+]);
+
+/** Tous les chemins racine déclarés traduits (pour les gardes de tests). */
+export const TRANSLATED_PATHS: readonly string[] = Object.keys(TRANSLATED);
 
 /** Normalise un chemin racine : retire le slash final (sauf la racine). */
 function normalizeRoot(rootPath: string): string {

@@ -1,0 +1,158 @@
+---
+/**
+ * EN — Equipment (W67). Faithful translation of /équipement ; no new figure or
+ * claim. Internal links use localizeNavHref so they point to the EN page when it
+ * exists, else fall back to the existing FR page (never a dead link). FR
+ * untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import Picture from '../../components/Picture.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const categories = [
+  { ref: 'PV-1', title: 'Panels — Canadian Solar TOPBiHiKu', body: "Bifacial modules also capture the light reflected by the roof: on a light-coloured terrace, that's yield gained without extra surface area. These 705 to 720 Wc modules come from a manufacturer that has shipped more than 100 GW worldwide, held to the IEC 61215 and IEC 61730 standards. These are the ones fitted in Casablanca and El Jadida.", points: ['Bifacial 705 – 720 Wc', '12-year product warranty', '25-year performance warranty (≥ 84.8 %)'] },
+  { ref: 'PV-2', title: 'Panels — JA Solar DeepBlue', body: "The monocrystalline DeepBlue cell goes after yield rather than surface area — useful when roof space is tight. Same tier of manufacturer, same certification requirement. Installed in Nouaceur.", points: ['High-efficiency monocrystalline', '12-year product warranty', '25-year performance warranty'] },
+  { ref: 'OND-1', title: 'Hybrid inverters — Deye', body: "The hybrid inverter is the conductor: it arbitrates in real time between panels, battery and grid. The Deye SUN-SG04LP1, SG04LP3 and SG01HP3 ranges cover 5 to 30 kW, single-phase as well as three-phase, and talk directly to the battery BMS over CAN. Compliant with IEC 61727 and VDE-AR-N-4105.", points: ['Single-phase and three-phase, 5 – 30 kW', 'Built-in CAN BMS battery management', '10-year warranty'] },
+  { ref: 'OND-2', title: 'Grid-tied inverters — Huawei SUN2000', body: "When the study calls for no battery, we go with pure string. The Huawei SUN2000 optimises string by string: a shaded panel no longer drags the whole row down. From residential to commercial rooftops.", points: ['High European efficiency', 'Per-string optimisation', '10-year warranty'] },
+  { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Lithium iron phosphate does not run away thermally the way some other lithium chemistries do: it's the safe choice for home storage. The DL5.0C / DL5.0C PRO modules stack in 5 kWh blocks and natively speak the CAN BMS of the Deye units. Certified CE, IEC 62619, UN38.3.", points: ['LFP chemistry — 6,000+ cycles at 90 % DoD', 'Modular: 5 to 15 kWh and beyond', '10-year warranty'] },
+  { ref: 'MON', title: 'Monitoring — Deye Cloud', body: "An installation you don't measure is an installation you take on faith. Every roof carries a WiFi/Ethernet dongle linked to Deye Cloud: minute-by-minute production, history, alerts. You keep your own personal access; on our side, we see the whole fleet and step in before you've even noticed the fault.", points: ['Production measured continuously', 'Automatic alerts — proactive after-sales', 'Client access via mobile app'] },
+];
+
+const warranties = [
+  { item: 'Photovoltaic panels (product)', years: '12 years' },
+  { item: 'Photovoltaic panels (performance)', years: '25 years', note: '≥ 84.8 % of initial output' },
+  { item: 'Inverters (Deye, Huawei)', years: '10 years' },
+  { item: 'Dyness LFP batteries', years: '10 years' },
+  { item: 'Galvanised steel structure', years: '20 years' },
+  { item: 'Taqinor installation and labour', years: '2 years' },
+];
+---
+
+<Layout
+  title="The hardware we fit: Canadian Solar, Deye, Huawei, Dyness — and why | Taqinor"
+  description="Canadian Solar bifacial panels (25-year performance), Deye hybrid inverters, Dyness LFP 6,000-cycle batteries, Deye Cloud supervision: the hardware we actually fit, and the technical reason behind every choice."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Equipment' }]} />
+
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Tier-1 brands · official distributors in Morocco</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Our tier-1 brands, and the technical reason for each one</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Canadian Solar, JA Solar and Jinko for the panels; Deye and Huawei for the inverters;
+          Dyness for storage; Nexans for the cabling: that's what is bolted onto our 2026
+          rooftops, nothing else. No unnamed references, no endless catalogue.
+          Everything goes through official distributors based in Morocco — the part is in stock
+          here, and the warranty is honoured here, not at the far end of an email.
+        </p>
+      </div>
+    </section>
+
+    <!-- Photos matériel — le geste autant que le matériel -->
+    <section class="mx-auto max-w-6xl px-4 pt-8">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr]" data-stagger>
+        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:0">
+          <Picture name="mur-technique-dyness" alt="Technical wall of a Taqinor installation in Casablanca: Deye hybrid inverter, two Dyness batteries and a charging point"
+            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, (min-width: 640px) 50vw, 100vw" loading="eager"
+            class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+            <span class="tech-label block text-brass-300">Casablanca · 11.36 kWc</span>
+            <span class="mt-0.5 block text-xs text-lune">Deye 10 kW hybrid inverter · 2 × Dyness DL5.0C · charging point</span>
+          </figcaption>
+        </figure>
+        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:1">
+          <Picture name="detail-cablage" alt="Close-up of the Dyness battery terminals and the protection cabinet, careful wiring, El Jadida"
+            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw" loading="eager"
+            class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+            <span class="tech-label block text-brass-300">El Jadida · 17.04 kWc</span>
+            <span class="mt-0.5 block text-xs text-lune">Battery terminals + protection cabinet · attention to detail</span>
+          </figcaption>
+        </figure>
+        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:2">
+          <Picture name="silhouette-acrotere" alt="Photovoltaic panel and solar water heater on a white parapet against a deep blue sky"
+            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw" loading="eager"
+            class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+            <span class="tech-label block text-brass-300">Roof detail</span>
+            <span class="mt-0.5 block text-xs text-lune">PV modules + solar water heater</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Fiches matériel -->
+    <section class="mx-auto max-w-6xl px-4 py-16">
+      <div class="grid gap-6 md:grid-cols-2" data-stagger>
+        {categories.map((c, i) => (
+          <div class="v2-rise cine-card" style={`--v2-i:${i}`}>
+            <div class="flex items-center justify-between border-b-2 border-brass-400/70 px-6 py-3">
+              <span class="tech-label text-brass-300">Ref. {c.ref}</span>
+              <span class="h-1.5 w-1.5 rotate-45 border border-brass-400" aria-hidden="true"></span>
+            </div>
+            <div class="p-6">
+              <h2 class="display text-xl text-white">{c.title}</h2>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{c.body}</p>
+              <ul class="mt-4 space-y-2 text-sm text-lune">
+                {c.points.map((p) => (
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{p}</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- ACTE FINAL — les garanties, littéralement noir sur blanc -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-28">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Contractual commitments</p>
+        <h2 class="display v2-section-title mt-5">The warranties, in black and white</h2>
+        <p class="v2-lead mt-4 text-encre-soft">
+          A warranty is only worth as much as the file that documents it. Every installation leaves
+          with its own, complete: single-line diagrams, cable cross-section calculations, the list
+          of protections, the commissioning procedure and Deye Cloud access so you can check the
+          production yourself.
+        </p>
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {warranties.map((w, i) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
+              <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{w.years}</span>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          None of these references is chosen in advance. The power retained, whether or not there's
+          a battery, single-phase or three-phase: it all comes out of your roof's figures.
+          The hardware follows the calculation — it does not precede it.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href={L('/garanties')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Our warranties →</a>
+          <a href={L('/résidentiel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Residential solar →</a>
+          <a href={L('/professionnel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Business solar →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="The right hardware is the hardware the study justifies." seam={false} href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

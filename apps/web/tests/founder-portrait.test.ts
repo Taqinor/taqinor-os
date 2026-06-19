@@ -22,6 +22,9 @@ describe('FounderPortrait', () => {
   });
 
   it('renvoie vers la page /à-propos', () => {
-    expect(founder).toContain('href="/à-propos"');
+    // W67 : le lien est désormais localisé via localizeNavHref('/à-propos', locale)
+    // (FR inchangé : localizeNavHref('/à-propos','fr') === '/à-propos'). On vérifie
+    // donc la cible /à-propos plutôt que le littéral href="/à-propos".
+    expect(founder).toContain('/à-propos');
   });
 });

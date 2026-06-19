@@ -1,0 +1,91 @@
+---
+/**
+ * EN — Projects hub (W67). Faithful English translation of the FR
+ * `realisations/index.astro`. Indexed gallery of the real installations, each
+ * card linked to its case study. Numeric data from `realisations.ts`
+ * (untouched); translated card summaries + alts come from `caseStudyBySlug`.
+ * Internal links via localizeNavHref. FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import Picture from '../../../components/Picture.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { REALISATIONS } from '../../../lib/realisations';
+import { caseStudyBySlug } from '../../../lib/caseStudies';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
+const totalLabel = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+
+// alt localisé (repli FR si absent dans la map de l'étude).
+const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
+---
+
+<Layout
+  title="Our solar projects in Morocco — measured installations | Taqinor"
+  description="The solar installations actually fitted and measured by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, production followed on Deye Cloud and the equipment on the roof. Detailed case studies."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Projects' }]} />
+
+    <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Recent projects</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Our latest projects</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Real projects, viewable on request — Casablanca, El Jadida, Nouaceur. Each case study
+          carries the installed power, the equipment and, when it is measured, the production
+          followed on Deye Cloud. Nothing added, nothing erased.
+        </p>
+        <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
+          <div>
+            <dt class="tech-label text-lune-faint">Installed power</dt>
+            <dd class="fig lum text-3xl">{totalLabel}</dd>
+          </div>
+          <div>
+            <dt class="tech-label text-lune-faint">Cities</dt>
+            <dd class="fig lum text-3xl">{villesCount}</dd>
+          </div>
+          <div>
+            <dt class="tech-label text-lune-faint">Projects</dt>
+            <dd class="font-display text-2xl font-bold text-white">viewable on request</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+        {REALISATIONS.map((r, i) => (
+          <a href={L(`/realisations/${r.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
+            <Picture name={r.photos[0].name} alt={altOf(r)} widths={r.photos[0].widths} ratio={r.photos[0].ratio}
+              sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+              class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
+              <span class="tech-label block text-brass-300">{r.ville} · {r.date}</span>
+              <span class="fig mt-1 block text-2xl text-white">{r.kwc}{r.production ? ` · ${r.production}` : ''}</span>
+              <span class="mt-1 block text-xs text-lune">{r.panneaux}</span>
+              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">See the case study →</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <CtaBand title="The next case study could be your roof." href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -1,0 +1,99 @@
+---
+/**
+ * EN — Law 82-21: the three autoproduction regimes (W67). Faithful translation
+ * of /loi-82-21 ; no new figure or claim. Every legal fact is kept EXACT: the
+ * law number 82-21, decree 2-25-100, in force since 9 June 2026, the thresholds
+ * (< 11 kW LV, up to 5 MW, ≥ 5 MW) and ANRE. Regime data comes from
+ * regimesFor('en'). Internal links use localizeNavHref (EN if it exists, else
+ * the FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import RegimeSelector from '../../components/RegimeSelector.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import { regimesFor } from '../../lib/regime';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const REGIMES = regimesFor(locale);
+---
+
+<Layout
+  title="Law 82-21: the 3 autoproduction regimes in Morocco | Taqinor"
+  description="Declaration, connection agreement or authorization? In 3 questions, identify the Law 82-21 regime (decree 2-25-100) that applies to your solar installation, in force since 9 June 2026."
+  ogSlug="loi-82-21"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <section class="px-4 py-20 text-white sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Law 82-21 · decree 2-25-100</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Three regimes, only one is yours</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Law 82-21 on the autoproduction of electrical energy and its implementing decree
+          2-25-100 have been in force since 9 June 2026. Every autoproduction installation —
+          new or existing — now falls under one of the three regimes below, depending on its
+          power and its connection.
+        </p>
+      </div>
+    </section>
+
+    <!-- The lit instrument: the selector, a white document on the night -->
+    <section class="mx-auto max-w-4xl px-4 py-14">
+      <div class="v2-rise [&>div]:shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)]">
+        <RegimeSelector />
+      </div>
+    </section>
+
+    <ZelligeDivider tone="white" />
+
+    <section class="mx-auto max-w-4xl px-4 py-16">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Reference</p>
+      <h2 class="display v2-section-title mt-4 text-white">The three regimes in detail</h2>
+      <div class="mt-10 grid gap-6" data-stagger>
+        {Object.values(REGIMES).map((r, i) => (
+          <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
+            <span class="fig lum text-4xl" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+            <div>
+              <h3 class="display text-xl text-white">{r.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.summary}</p>
+              <ul class="mt-4 space-y-2 text-sm text-lune">
+                {r.obligations.map((o) => (
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{o}</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- FINAL ACT — regularization is handled in full daylight -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-4 pt-2 text-encre">
+      <div class="mx-auto max-w-4xl border-2 border-azur-600 bg-blanc p-7">
+        <p class="tech-label text-azur-600">Existing installations</p>
+        <h2 class="display v2-section-title mt-2">Already have an undeclared installation?</h2>
+        <p class="mt-4 max-w-xl text-sm leading-relaxed text-encre-soft">
+          Article 33 of the law opens a regularization window for existing installations. The
+          window is open — the procedure and the penalties for inaction are detailed on the
+          dedicated page.
+        </p>
+        <a href={L('/regularization-article-33')} class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          Regularize my installation
+        </a>
+      </div>
+    </section>
+
+    <CtaBand title="Unsure about your regime? We check it for free." buttonLabel="Have my file checked" seam={false} />
+
+    <StickyCta />
+  </div>
+</Layout>

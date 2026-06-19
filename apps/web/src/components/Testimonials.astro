@@ -6,6 +6,11 @@
  * réelles issues de src/lib/testimonials.ts. Tant que `TESTIMONIALS` est vide et
  * `GOOGLE_RATING` est null, il ne produit AUCUN markup (ni section, ni JSON-LD).
  * Aucun témoignage, nom, ville, note ou avis n'est jamais inventé côté composant.
+ *
+ * W67 — i18n : seuls l'eyebrow, le titre par défaut et le libellé « avis
+ * Google » sont traduits (FR/EN/AR). La note (GOOGLE_RATING.value) et le nombre
+ * d'avis restent identiques dans toutes les langues. Rendu FR inchangé (branche
+ * `fr` = strings actuels mot pour mot).
  */
 import {
   TESTIMONIALS,
@@ -13,11 +18,35 @@ import {
   hasTestimonials,
   hasRating,
 } from '../lib/testimonials';
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
 
 interface Props {
   heading?: string;
 }
-const { heading = 'Ils nous ont fait confiance' } = Astro.props;
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+
+const STR: Record<Locale, { eyebrow: string; heading: string; reviewsSuffix: string }> = {
+  fr: {
+    eyebrow: 'Avis clients',
+    heading: 'Ils nous ont fait confiance',
+    reviewsSuffix: 'avis Google',
+  },
+  en: {
+    eyebrow: 'Client reviews',
+    heading: 'They trusted us',
+    reviewsSuffix: 'Google reviews',
+  },
+  ar: {
+    eyebrow: 'آراء العملاء',
+    heading: 'وثقوا بنا',
+    reviewsSuffix: 'مراجعة على Google',
+  },
+};
+const s = STR[locale] ?? STR.fr;
+
+const { heading = s.heading } = Astro.props;
 
 // Garde JSON-LD : on n'émet des Review / AggregateRating QUE sur de vraies données.
 const reviews = hasTestimonials()
@@ -54,7 +83,7 @@ const jsonLd =
 {(hasTestimonials() || hasRating()) && (
   <section class="border-t border-white/10 px-4 py-20 sm:py-28">
     <div class="mx-auto max-w-6xl">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">Avis clients</p>
+      <p class="tech-label v2-kicker rule-brass text-brass-300">{s.eyebrow}</p>
       <h2 class="display v2-section-title mt-5 max-w-xl text-white">{heading}</h2>
 
       {hasRating() && (
@@ -78,11 +107,11 @@ const jsonLd =
               rel="noopener noreferrer"
               class="text-sm font-semibold text-lune-soft transition-colors hover:text-brass-200"
             >
-              <span class="font-bold text-white">{GOOGLE_RATING!.value}</span>/5 · {GOOGLE_RATING!.count} avis Google
+              <span class="font-bold text-white">{GOOGLE_RATING!.value}</span>/5 · {GOOGLE_RATING!.count} {s.reviewsSuffix}
             </a>
           ) : (
             <p class="text-sm font-semibold text-lune-soft">
-              <span class="font-bold text-white">{GOOGLE_RATING!.value}</span>/5 · {GOOGLE_RATING!.count} avis Google
+              <span class="font-bold text-white">{GOOGLE_RATING!.value}</span>/5 · {GOOGLE_RATING!.count} {s.reviewsSuffix}
             </p>
           )}
         </div>
