@@ -78,33 +78,14 @@ def export_json(spec, company):
     return json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8')
 
 
-def _xlsx_cell(value):
-    """Valeur acceptable par openpyxl (pas de Decimal/objets exotiques)."""
-    if value is None:
-        return ''
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (datetime.datetime, datetime.date)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, (int, float, str)):
-        return value
-    return str(value)
-
-
 def export_xlsx(spec, company):
-    # Import local : openpyxl n'est requis que pour ce format.
-    from openpyxl import Workbook
+    """L879 — passe par le builder .xlsx PARTAGÉ (apps.records.xlsx) pour que
+    l'export configurable/ZIP ait exactement le même format (en-têtes en gras,
+    largeurs, coercition fr-MA) que les exports de listes."""
+    from apps.records.xlsx import workbook_bytes
 
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet(title=spec.key[:31] or 'export')
-    ws.append(spec.header())
-    for row in spec.rows(company):
-        ws.append([_xlsx_cell(v) for v in row])
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    return workbook_bytes(
+        spec.header(), spec.rows(company), sheet_title=spec.key)
 
 
 def export_bytes(spec, company, fmt):

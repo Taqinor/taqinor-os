@@ -212,6 +212,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const equipBlank = () => ({ produit: '', numero_serie: '', date_pose: F('date_pose_reelle') })
   const [equip, setEquip] = useState(equipBlank)
   const [equipBusy, setEquipBusy] = useState(false)
+  // L578 — slot d'équipement sélectionné (type de catégorie) qui filtre le
+  // picker par TYPE ; '' = tous les produits du BOM (comportement historique).
+  const [equipSlot, setEquipSlot] = useState('')
   const [tickets, setTickets] = useState([])
   const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
   const [ticketBusy, setTicketBusy] = useState(false)
@@ -524,9 +527,32 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // repli sur tout le catalogue si le chantier n'a pas de BOM.
   const bom = Array.isArray(current.bom) ? current.bom : []
   const bomProduitIds = new Set(bom.map((l) => String(l.produit_id)).filter(Boolean))
-  const equipProduits = bomProduitIds.size
+  const bomProduits = bomProduitIds.size
     ? produits.filter((p) => bomProduitIds.has(String(p.id)))
     : produits
+
+  // L578 — filtre de SLOT par TYPE d'équipement : chaque type est dérivé des
+  // catégories TYPÉES (Categorie.type_equipement) présentes dans le BOM. Quand
+  // la société n'a typé aucune de ses catégories, aucune option n'apparaît et
+  // le picker reste sur la liste BOM complète (comportement historique). Choisir
+  // « Onduleur » ne montre que les produits typés onduleur, « Panneau » que les
+  // panneaux, etc. « Tous » revient à la liste BOM complète.
+  // Type d'un produit : le champ plat `categorie_type` (L578) avec repli sur la
+  // catégorie imbriquée pour rester robuste si l'API n'a pas encore le champ.
+  const typeOf = (p) => p?.categorie_type ?? p?.categorie?.type_equipement ?? null
+  const equipTypes = (() => {
+    const seen = new Map()
+    for (const p of bomProduits) {
+      const t = typeOf(p)
+      if (t && !seen.has(t)) {
+        seen.set(t, p.categorie_type_display ?? t)
+      }
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }))
+  })()
+  const equipProduits = equipSlot
+    ? bomProduits.filter((p) => typeOf(p) === equipSlot)
+    : bomProduits
 
   // N8 — réconciliation : pour chaque ligne BOM, nb de séries capturées.
   const bomReconciliation = bom.map((l) => {
@@ -1067,6 +1093,30 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   )
                 })}
               </MiniTable>
+            )}
+            {/* L578 — filtre de slot par TYPE (n'apparaît que si des catégories
+                du BOM sont typées). Choisir un type restreint le picker. */}
+            {equipTypes.length > 0 && (
+              <FormField label="Type d'équipement" htmlFor="eq-slot">
+                <Select value={equipSlot || ALL_NONE}
+                        onValueChange={(v) => {
+                          const next = v === ALL_NONE ? '' : v
+                          setEquipSlot(next)
+                          // Vide le produit choisi s'il ne correspond plus au slot.
+                          if (next && equip.produit) {
+                            const sel = produits.find((p) => String(p.id) === String(equip.produit))
+                            if (typeOf(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
+                          }
+                        }}>
+                  <SelectTrigger id="eq-slot"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_NONE}>Tous</SelectItem>
+                    {equipTypes.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
             )}
             <div className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
               <FormField label="Produit" htmlFor="eq-prod">

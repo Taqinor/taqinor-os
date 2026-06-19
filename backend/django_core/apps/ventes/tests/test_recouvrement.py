@@ -173,3 +173,36 @@ class TestRecouvrement(TestCase):
         resp = self.api.get('/api/django/ventes/relances/')
         ids = [r['id'] for r in resp.data]
         self.assertNotIn(self.facture.id, ids)
+
+
+class TestSeedDefaultsNiveaux(TestCase):
+    """L768 — création des niveaux de relance par défaut (J+7 / J+15 / J+30)."""
+
+    def setUp(self):
+        self.company = make_company(slug='seed-co', nom='Seed Co')
+        self.admin = User.objects.create_user(
+            username='seed_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+
+    def test_seed_creates_three_default_levels(self):
+        self.assertEqual(
+            FollowupLevel.objects.filter(company=self.company).count(), 0)
+        resp = self.api.post(
+            '/api/django/ventes/niveaux-relance/seed-defaults/')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        delais = sorted(
+            FollowupLevel.objects.filter(company=self.company)
+            .values_list('delai_jours', flat=True))
+        self.assertEqual(delais, [7, 15, 30])
+
+    def test_seed_idempotent_when_levels_exist(self):
+        FollowupLevel.objects.create(
+            company=self.company, ordre=0, nom='Existant', delai_jours=10)
+        resp = self.api.post(
+            '/api/django/ventes/niveaux-relance/seed-defaults/')
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(
+            FollowupLevel.objects.filter(company=self.company).count(), 1)

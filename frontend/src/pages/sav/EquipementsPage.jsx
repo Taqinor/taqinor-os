@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Download, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save } from 'lucide-react'
+import {
+  Download, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
+  Wrench, Pencil,
+} from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
+import installationsApi from '../../api/installationsApi'
+import stockApi from '../../api/stockApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import {
   EMPTY_EQUIP_FILTERS,
@@ -50,7 +56,28 @@ function GarantiePill({ eq }) {
   return <StatusPill tone={GARANTIE_TONES[etat] ?? 'neutral'} label={garantieLabel(eq)} />
 }
 
+// L611/L11 — message d'erreur FR lisible mappé au champ (jamais de JSON brut).
+const FIELD_LABELS_EQ = {
+  numero_serie: 'Numéro de série', date_pose: 'Date de pose',
+  statut: 'Statut', produit: 'Produit', installation: 'Chantier',
+}
+function frError(data, fallback) {
+  if (!data) return fallback
+  if (typeof data === 'string') return data
+  if (data.detail) return data.detail
+  if (typeof data === 'object') {
+    const [field, val] = Object.entries(data)[0] ?? []
+    if (field) {
+      const msg = Array.isArray(val) ? val[0] : val
+      const label = FIELD_LABELS_EQ[field] ?? field
+      return `Échec : ${label} — ${msg}`
+    }
+  }
+  return fallback
+}
+
 function EquipementDetail({ equipement, onClose, onSaved }) {
+  const navigate = useNavigate()
   const initial = useMemo(() => ({
     numero_serie: equipement.numero_serie ?? '',
     date_pose: equipement.date_pose ?? '',
@@ -62,10 +89,43 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
   const set = (k, v) => setFields((f) => ({ ...f, [k]: v }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [creatingTicket, setCreatingTicket] = useState(false)
+  // L624 — compte des tickets SAV ouverts liés à cet équipement.
+  const [nbTickets, setNbTickets] = useState(equipement.nb_tickets_ouverts ?? null)
+  // L628 — correction gardée du produit / chantier (readOnly par défaut).
+  const [correcting, setCorrecting] = useState(false)
+  const [produit, setProduit] = useState(String(equipement.produit ?? ''))
+  const [installation, setInstallation] = useState(String(equipement.installation ?? ''))
+  const [produits, setProduits] = useState([])
+  const [installations, setInstallations] = useState([])
+
+  // L624 — recharge le compte de tickets ouverts à l'ouverture de la fiche
+  // (sauf si le serializer l'a déjà fourni via nb_tickets_ouverts).
+  useEffect(() => {
+    if (equipement.nb_tickets_ouverts != null) return
+    savApi.getTickets({ equipement: equipement.id, ouvert: 'tous' })
+      .then((r) => {
+        const rows = r.data.results ?? r.data ?? []
+        setNbTickets(rows.filter((t) => !t.annule
+          && ['nouveau', 'planifie', 'en_cours'].includes(t.statut)).length)
+      })
+      .catch(() => setNbTickets(null))
+  }, [equipement.id, equipement.nb_tickets_ouverts])
+
+  // L628 — charge les options produit/chantier seulement quand on corrige.
+  useEffect(() => {
+    if (!correcting || produits.length) return
+    stockApi.getProduits()
+      .then((r) => setProduits(r.data.results ?? r.data ?? [])).catch(() => {})
+    installationsApi.getInstallations()
+      .then((r) => setInstallations(r.data.results ?? r.data ?? [])).catch(() => {})
+  }, [correcting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(
-    () => Object.keys(initial).some((k) => (fields[k] ?? '') !== (initial[k] ?? '')),
-    [fields, initial],
+    () => Object.keys(initial).some((k) => (fields[k] ?? '') !== (initial[k] ?? ''))
+      || (correcting && (produit !== String(equipement.produit ?? '')
+        || installation !== String(equipement.installation ?? ''))),
+    [fields, initial, correcting, produit, installation, equipement],
   )
   useDirtyGuard(dirty)
 
@@ -74,19 +134,44 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
     setError(null)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
-      await savApi.updateEquipement(equipement.id, {
+      const payload = {
         numero_serie: nullable(fields.numero_serie),
         date_pose: nullable(fields.date_pose),
         statut: fields.statut,
         note: nullable(fields.note),
-      })
+      }
+      // L628 — produit/chantier ne sont envoyés que si la correction est ouverte.
+      if (correcting) {
+        if (produit) payload.produit = produit
+        if (installation) payload.installation = installation
+      }
+      await savApi.updateEquipement(equipement.id, payload)
       toast.success('Équipement mis à jour')
       onSaved?.()
       onClose()
     } catch (err) {
-      setError(JSON.stringify(err.response?.data ?? err.message))
+      setError(frError(err.response?.data, 'Enregistrement impossible.'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  // L626 — ouvre un ticket SAV pré-rempli (équipement → installation + client
+  // déduits côté serveur), puis bascule vers la liste des tickets.
+  const creerTicket = async () => {
+    setCreatingTicket(true)
+    setError(null)
+    try {
+      await savApi.createTicket({
+        equipement: equipement.id, type: 'correctif',
+        description: `Ticket ouvert depuis l'équipement ${equipement.numero_serie ?? equipement.produit_nom ?? ''}`.trim(),
+      })
+      toast.success('Ticket SAV créé')
+      navigate('/sav')
+    } catch (err) {
+      setError(frError(err.response?.data, 'Création du ticket impossible.'))
+    } finally {
+      setCreatingTicket(false)
     }
   }
 
@@ -103,18 +188,84 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
 
         <Form onSubmit={(e) => { e.preventDefault(); save() }} className="gap-5">
           <FormSection title="Identité">
-            <FormField label="Produit">
-              <Input value={equipement.produit_nom ?? '—'} readOnly />
+            {/* L628 — produit/chantier readOnly par défaut, corrigeables sur action. */}
+            {correcting ? (
+              <>
+                <FormField label="Produit" fullWidth>
+                  <Select value={produit || '__none'}
+                          onValueChange={(v) => setProduit(v === '__none' ? '' : v)}>
+                    <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Produit —</SelectItem>
+                      {produits.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Chantier" fullWidth>
+                  <Select value={installation || '__none'}
+                          onValueChange={(v) => setInstallation(v === '__none' ? '' : v)}>
+                    <SelectTrigger><SelectValue placeholder="— Chantier —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Chantier —</SelectItem>
+                      {installations.map((i) => (
+                        <SelectItem key={i.id} value={String(i.id)}>
+                          {i.reference ?? `Chantier ${i.id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </>
+            ) : (
+              <>
+                <FormField label="Produit">
+                  <Input value={equipement.produit_nom ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Marque">
+                  <Input value={equipement.produit_marque ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Chantier">
+                  <Input value={equipement.installation_reference ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Client">
+                  <Input value={equipement.client_nom ?? '—'} readOnly />
+                </FormField>
+              </>
+            )}
+            <FormField label="Correction" fullWidth
+                       hint="Corriger un produit ou un chantier saisi par erreur (recalcule la garantie).">
+              <Button type="button" size="sm" variant={correcting ? 'default' : 'outline'}
+                      onClick={() => setCorrecting((c) => !c)}>
+                <Pencil /> {correcting ? 'Annuler la correction' : 'Corriger'}
+              </Button>
             </FormField>
-            <FormField label="Marque">
-              <Input value={equipement.produit_marque ?? '—'} readOnly />
+          </FormSection>
+
+          {/* L624 — tickets SAV ouverts liés + L626 — créer un ticket pré-rempli. */}
+          <FormSection title="Service après-vente">
+            <FormField label="Tickets liés" fullWidth>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">
+                  {nbTickets == null ? '—'
+                    : `${nbTickets} ticket${nbTickets > 1 ? 's' : ''} SAV ouvert${nbTickets > 1 ? 's' : ''}`}
+                </span>
+                <Button type="button" size="sm" variant="outline"
+                        loading={creatingTicket} onClick={creerTicket}>
+                  <Wrench /> Créer un ticket SAV
+                </Button>
+              </div>
             </FormField>
-            <FormField label="Chantier">
-              <Input value={equipement.installation_reference ?? '—'} readOnly />
-            </FormField>
-            <FormField label="Client">
-              <Input value={equipement.client_nom ?? '—'} readOnly />
-            </FormField>
+            {/* L629 — équipement remplacé : lien vers le ticket de remplacement. */}
+            {equipement.statut === 'remplace' && equipement.remplace_par_ticket && (
+              <FormField label="Remplacement" fullWidth>
+                <Button type="button" variant="link" className="h-auto p-0"
+                        onClick={() => navigate('/sav')}>
+                  Remplacé via ticket {equipement.remplace_par_ticket_reference ?? `#${equipement.remplace_par_ticket}`}
+                </Button>
+              </FormField>
+            )}
           </FormSection>
 
           <FormSection title="Suivi">
@@ -144,10 +295,15 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
 
           <FormSection title="Garantie">
             <FormField label="État" fullWidth
-                       hint={equipement.date_fin_garantie_production
-                         ? `Garantie production jusqu'au ${formatDateFR(equipement.date_fin_garantie_production)}. La date de fin de garantie est recalculée automatiquement à partir de la durée du produit et de la date de pose.`
-                         : 'La date de fin de garantie est recalculée automatiquement à partir de la durée du produit et de la date de pose.'}>
-              <div><GarantiePill eq={equipement} /></div>
+                       hint="La date de fin de garantie est recalculée automatiquement à partir de la durée du produit et de la date de pose.">
+              <div className="flex flex-wrap items-center gap-2">
+                <GarantiePill eq={equipement} />
+                {/* L633 — fin de garantie production en badge distinct labellisé. */}
+                {equipement.date_fin_garantie_production && (
+                  <StatusPill tone="neutral"
+                              label={`Garantie production : ${formatDateFR(equipement.date_fin_garantie_production)}`} />
+                )}
+              </div>
             </FormField>
           </FormSection>
 
@@ -155,9 +311,16 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
             <div role="alert"
                  className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-              <span className="break-all">{error}</span>
+              <span className="break-words">{error}</span>
             </div>
           )}
+
+          {/* L632 — qui/quand : ajout & dernière modification. */}
+          <p className="text-xs text-muted-foreground">
+            Ajouté le {formatDateFR((equipement.date_creation ?? '').slice(0, 10))}
+            {equipement.created_by_nom ? ` par ${equipement.created_by_nom}` : ''}
+            {' · '}modifié le {formatDateFR((equipement.date_modification ?? '').slice(0, 10))}
+          </p>
 
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
@@ -194,8 +357,21 @@ export default function EquipementsPage() {
     () => sortEquipements(filterEquipements(items, filters), 'date_fin_garantie', 'asc'),
     [items, filters])
 
+  // L623/L631 — comptes par état de garantie sur tout le parc (KPI + synthèse).
+  const garantieCounts = useMemo(() => {
+    const c = { sous_garantie: 0, expire_bientot: 0, hors_garantie: 0, non_renseignee: 0 }
+    for (const it of items) {
+      const k = it.garantie_etat ?? 'non_renseignee'
+      if (k in c) c[k] += 1
+    }
+    return c
+  }, [items])
+
   const expirantBientot = filters.garantie === 'expire_bientot'
   const hasFilters = filters.q || filters.produit || filters.marque || filters.garantie || filters.statut
+
+  // L625 — clic sur un badge de ligne : pose le filtre garantie à cet état.
+  const filterByGarantie = (etat) => setF('garantie', filters.garantie === etat ? '' : etat)
 
   const columns = useMemo(() => [
     {
@@ -217,14 +393,31 @@ export default function EquipementsPage() {
       accessor: (r) => EQUIP_STATUT_LABELS[r.statut] ?? r.statut,
     },
     {
+      // L635 — colonne « Posé le » triable (ordering backend inclut date_pose).
+      id: 'date_pose',
+      header: 'Posé le',
+      width: 120,
+      searchable: false,
+      accessor: (r) => r.date_pose ?? '',
+      cell: (_v, row) => formatDateFR(row.date_pose),
+      exportValue: (row) => formatDateFR(row.date_pose),
+    },
+    {
       id: 'date_fin_garantie',
       header: 'Garantie',
-      width: 220,
+      width: 240,
       searchable: false,
-      cell: (_v, row) => <GarantiePill eq={row} />,
+      // L625 — le badge est cliquable et filtre la table à cet état de garantie.
+      cell: (_v, row) => (
+        <button type="button" title="Filtrer par cet état de garantie"
+                onClick={(e) => { e.stopPropagation(); filterByGarantie(row.garantie_etat ?? 'non_renseignee') }}
+                className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <GarantiePill eq={row} />
+        </button>
+      ),
       exportValue: (row) => garantieLabel(row),
     },
-  ], [])
+  ], [filters.garantie]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -232,8 +425,18 @@ export default function EquipementsPage() {
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Parc d'équipements</h1>
-            <p className="text-sm text-muted-foreground">
-              {rows.length} équipement{rows.length > 1 ? 's' : ''}
+            <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span>{rows.length} équipement{rows.length > 1 ? 's' : ''}</span>
+              {/* L623 — puce KPI « Expirant bientôt » : compte + filtre rapide. */}
+              {garantieCounts.expire_bientot > 0 && (
+                <button type="button"
+                        onClick={() => setF('garantie', expirantBientot ? '' : 'expire_bientot')}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+                          expirantBientot ? 'border-amber-500 bg-amber-500/10 text-amber-700' : 'border-border bg-card'}`}>
+                  <AlarmClock className="size-3.5" aria-hidden="true" />
+                  {garantieCounts.expire_bientot} expirant bientôt
+                </button>
+              )}
             </p>
           </div>
           <Button variant="outline" size="sm"
@@ -274,16 +477,41 @@ export default function EquipementsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" variant={expirantBientot ? 'default' : 'outline'}
-                  onClick={() => setF('garantie', expirantBientot ? '' : 'expire_bientot')}>
-            <AlarmClock /> Expirant bientôt
-          </Button>
+          {/* L627 — filtre statut (en_service / remplacé / hors_service). */}
+          <Select value={filters.statut || '__all'}
+                  onValueChange={(v) => setF('statut', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[150px]"><SelectValue placeholder="Tous statuts" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Tous statuts</SelectItem>
+              {EQUIP_STATUTS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {hasFilters && (
             <Button size="sm" variant="ghost" onClick={() => setFilters(EMPTY_EQUIP_FILTERS)}>
               <RotateCcw /> Réinitialiser
             </Button>
           )}
         </div>
+
+        {/* L631 — barre de synthèse d'état de garantie (compte par état, alignée
+            sur la légende GARANTIE_ETATS) ; chaque carte filtre la table. */}
+        {!loading && !error && items.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(GARANTIE_ETATS).map(([k, v]) => (
+              <button key={k} type="button"
+                      onClick={() => setF('garantie', filters.garantie === k ? '' : k)}
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        filters.garantie === k ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
+                <span aria-hidden="true" className="inline-block size-2.5 rounded-sm"
+                      style={{ background: v.color }} />
+                {v.label}
+                <span className="font-semibold">{garantieCounts[k] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <Card className="space-y-2 p-4">
@@ -319,17 +547,6 @@ export default function EquipementsPage() {
             emptyDescription="Aucun équipement ne correspond à votre recherche."
           />
         )}
-
-        {/* Légende garantie */}
-        <div className="flex flex-wrap items-center gap-3">
-          {Object.entries(GARANTIE_ETATS).map(([k, v]) => (
-            <span key={k} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span aria-hidden="true" className="inline-block size-2.5 rounded-sm"
-                    style={{ background: v.color }} />
-              {v.label}
-            </span>
-          ))}
-        </div>
 
         {selected && (
           <EquipementDetail equipement={selected} onClose={() => setSelected(null)}

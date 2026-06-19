@@ -327,20 +327,66 @@ def _inject_company_filter(sql: str, company_id: int) -> str:
     return sql + f" WHERE company_id = {company_id}"
 
 
+# ── Securite : colonnes confidentielles (prix d'achat / marge) ────────────────
+# CLAUDE.md : `Produit.prix_achat` est un indicateur GENERATEUR, jamais
+# client-facing. Le chatbot stock ne doit JAMAIS restituer le prix d'achat ni la
+# marge. Le prompt _MARGIN_RESTRICTION le DECONSEILLE au LLM, mais ce n'est pas
+# une garantie ; ce garde DUR bloque toute requete qui touche ces colonnes quand
+# l'appelant n'a pas la permission `prix_achat_voir`. La valeur n'atteint donc
+# jamais l'agent ni la reponse, quoi que fasse le LLM.
+_FORBIDDEN_COLUMNS = (
+    "prix_achat",
+    "prix_achat_unitaire",
+    "prix_achat_ht",
+    "prix_revendeur",
+    "marge",
+)
+
+# Mot-cle isole (frontiere de mot) pour eviter les faux positifs.
+_FORBIDDEN_RE = re.compile(
+    r"\b(" + "|".join(re.escape(c) for c in _FORBIDDEN_COLUMNS) + r")\b",
+    re.IGNORECASE,
+)
+
+# Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
+# le LLM la verbalise alors proprement, sans jamais voir la donnee.
+_FORBIDDEN_TOOL_REPLY = (
+    "Erreur : acces refuse. La consultation du prix d'achat ou de la marge "
+    "n'est pas autorisee. Reformule la question sans ces informations."
+)
+
+
+def _references_forbidden_column(sql: str) -> bool:
+    """True si la requete reference une colonne confidentielle (prix d'achat /
+    marge). Test purement lexical sur le SQL genere — defense en profondeur."""
+    return bool(_FORBIDDEN_RE.search(sql or ""))
+
+
 # ── Outil SQL securise ────────────────────────────────────────────────────────
 
 
-def _make_secure_query_tool(db, company_id: int):
+def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = False):
     """
-    Retourne un QuerySQLDataBaseTool qui injecte company_id avant execution.
+    Retourne un QuerySQLDataBaseTool qui :
+      1. BLOQUE toute requete touchant le prix d'achat / la marge quand
+         l'appelant n'a pas la permission `prix_achat_voir` (garde DUR, L17) ;
+      2. injecte company_id avant execution.
     Utilise une closure pour eviter les problemes Pydantic avec les attributs prives.
     """
     from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
 
     _cid = company_id  # capture par closure — immune aux reinitialisations Pydantic
+    _allow_price = allow_purchase_price
 
     class _SecureQueryTool(QuerySQLDataBaseTool):
         def _run(self, query: str, run_manager=None) -> str:
+            # Garde confidentialite : refus AVANT toute execution SQL.
+            if not _allow_price and _references_forbidden_column(query):
+                logger.warning(
+                    "SECURITE: requete bloquee (prix_achat/marge non autorise). "
+                    "SQL: %s", (query or "")[:200],
+                )
+                return _FORBIDDEN_TOOL_REPLY
             secured = _inject_company_filter(query, _cid)
             return super()._run(secured, run_manager=run_manager)
 
@@ -562,11 +608,22 @@ class SQLAgentService:
         # 3. LLM
         llm = self._build_llm()
 
+        # L17 — autorisation de voir le prix d'achat / la marge : UNIQUEMENT les
+        # appelants disposant de la permission `prix_achat_voir` (ou superuser).
+        # Sinon le garde DUR de l'outil SQL bloque toute requete confidentielle.
+        allow_price = bool(
+            action_ctx is not None
+            and (
+                action_ctx.is_superuser
+                or "prix_achat_voir" in action_ctx.permissions
+            )
+        )
+
         # 4. Toolkit → remplacement de l'outil sql_db_query par la version securisee
         # On compare par nom d'outil (fiable) et non par classe (nom instable selon version)
         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
         tools = [
-            _make_secure_query_tool(db, company_id)
+            _make_secure_query_tool(db, company_id, allow_price)
             if t.name == "sql_db_query"
             else t
             for t in toolkit.get_tools()
@@ -581,11 +638,11 @@ class SQLAgentService:
             tools.extend(action_tools)
             action_tool_names = {t.name for t in action_tools}
 
-        # 5. Prompt avec historique (+ restriction marge si non autorise)
+        # 5. Prompt avec historique (+ restriction marge si non autorise).
+        # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.
         system_prompt = _AGENT_PREFIX
-        if action_ctx is None or "prix_achat_voir" not in action_ctx.permissions:
-            if not (action_ctx is not None and action_ctx.is_superuser):
-                system_prompt = system_prompt + _MARGIN_RESTRICTION
+        if not allow_price:
+            system_prompt = system_prompt + _MARGIN_RESTRICTION
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history"),

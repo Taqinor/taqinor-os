@@ -17,6 +17,7 @@ import {
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import ProduitPicker from '../../components/ProduitPicker'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 
 let _keyCounter = 0
@@ -310,17 +311,14 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                     return (
                       <tr key={l._key} className="border-t border-border align-top">
                         <td className="px-2 py-1.5">
-                          <Select value={l.produit ? String(l.produit) : undefined}
-                                  onValueChange={v => onProduitChange(l._key, v)}>
-                            <SelectTrigger className="h-[var(--control-h-sm)] text-xs">
-                              <SelectValue placeholder="— Produit —" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {produits.map(p => (
-                                <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {/* Picker partagé (recherche + prix) — même composant
+                              que le générateur, fin de la divergence des deux
+                              éditeurs sur la sélection produit. */}
+                          <ProduitPicker
+                            produits={produits}
+                            value={l.produit ? String(l.produit) : ''}
+                            onChange={v => onProduitChange(l._key, v)}
+                          />
                         </td>
                         <td className="px-2 py-1.5">
                           <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}

@@ -157,6 +157,58 @@ class TestAttachments(TestCase):
             self.assertEqual(d2.status_code, 204)
         self.assertFalse(Attachment.objects.filter(id=att_id).exists())
 
+    def test_set_phase_retags_attachment(self):
+        """L5 — déplacer une pièce jointe entre phases (avant/pendant/après)
+        sans supprimer/ré-uploader : le re-tag persiste, scopé société."""
+        from apps.installations.models import Installation
+        from apps.crm.models import Client
+        from django.contrib.contenttypes.models import ContentType
+        client = Client.objects.create(company=self.company, nom='Cli Phase')
+        inst = Installation.objects.create(
+            company=self.company, reference='CHT-PHASE', client=client)
+        ct = ContentType.objects.get_for_model(Installation)
+        att = Attachment.objects.create(
+            company=self.company, content_type=ct, object_id=inst.id,
+            uploaded_by=self.user, phase='avant',
+            file_key='attachments/p.png', filename='p.png',
+            size=1, mime='image/png')
+        # Re-tag avant → apres.
+        r = self.api.patch(
+            f'/api/django/records/attachments/{att.id}/phase/',
+            {'phase': 'apres'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        att.refresh_from_db()
+        self.assertEqual(att.phase, 'apres')
+        self.assertEqual(r.data['phase'], 'apres')
+        # Phase invalide refusée.
+        r2 = self.api.patch(
+            f'/api/django/records/attachments/{att.id}/phase/',
+            {'phase': 'n_importe_quoi'}, format='json')
+        self.assertEqual(r2.status_code, 400, r2.data)
+
+    def test_set_phase_cross_company_404(self):
+        """Une autre société ne peut pas re-taguer une pièce jointe étrangère."""
+        from apps.installations.models import Installation
+        from apps.crm.models import Client
+        from django.contrib.contenttypes.models import ContentType
+        client = Client.objects.create(company=self.company, nom='Cli P2')
+        inst = Installation.objects.create(
+            company=self.company, reference='CHT-P2', client=client)
+        ct = ContentType.objects.get_for_model(Installation)
+        att = Attachment.objects.create(
+            company=self.company, content_type=ct, object_id=inst.id,
+            uploaded_by=self.user, phase='avant',
+            file_key='attachments/p2.png', filename='p2.png',
+            size=1, mime='image/png')
+        other = Company.objects.create(nom='Autre P', slug='autre-phase')
+        ouser = User.objects.create_user(
+            username='att_other', password='x', role_legacy='responsable',
+            company=other)
+        r = auth(ouser).patch(
+            f'/api/django/records/attachments/{att.id}/phase/',
+            {'phase': 'apres'}, format='json')
+        self.assertEqual(r.status_code, 404, getattr(r, 'data', r))
+
     def test_download_via_same_origin_endpoint(self):
         """B1 — l'URL servie est l'endpoint Django MÊME ORIGINE (pas une URL
         MinIO interne) et le téléchargement renvoie bien les octets + le type."""

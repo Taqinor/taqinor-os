@@ -12,15 +12,34 @@ import {
   SimpleTooltip,
 } from '../../ui'
 import { cn } from '../../lib/cn'
+import StateBlock from '../../components/StateBlock'
 import { queryAgent, loadChatHistory, clearChatHistory } from '../../features/ia/store/iaSlice'
 
 const SUGGESTIONS = [
   'Quels produits sont en rupture de stock ?',
+  // L9 — suggestions orientées stock (valorisation / réappro).
+  'Quelle est la valeur totale du stock ?',
+  'Quels produits sont sous le seuil d\'alerte ?',
   'Quel est le chiffre d\'affaires du mois ?',
   'Combien de clients actifs avons-nous ?',
   'Quels sont les 5 produits les plus vendus ?',
   'Affiche les factures impayées',
 ]
+
+// L11 — message FR clair quand la fonctionnalité est key-gated (GROQ_API_KEY
+// absente côté service IA). Le backend renvoie le texte d'erreur de
+// configuration comme réponse ; on le reconnaît pour afficher un message net.
+const CONFIG_MISSING_FR = 'Assistant indisponible (configuration manquante)'
+
+function isConfigMissing(text) {
+  if (!text || typeof text !== 'string') return false
+  const t = text.toLowerCase()
+  return (
+    (t.includes('groq_api_key') || t.includes('api_key') || t.includes('api key'))
+    && (t.includes('manquante') || t.includes('manquant') || t.includes('missing')
+        || t.includes('.env') || t.includes('absente'))
+  )
+}
 
 export default function AgentChat() {
   const dispatch = useDispatch()
@@ -134,7 +153,11 @@ export default function AgentChat() {
                       : 'bg-muted text-foreground',
                   )}
                 >
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  <p className="whitespace-pre-wrap break-words">
+                    {msg.role === 'agent' && isConfigMissing(msg.content)
+                      ? CONFIG_MISSING_FR
+                      : msg.content}
+                  </p>
                   {msg.action_performed && (
                     <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="size-3.5" aria-hidden="true" />
@@ -174,11 +197,20 @@ export default function AgentChat() {
             )}
 
             {agentError && (
-              <div
-                role="alert"
-                className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-              >
-                Erreur : {typeof agentError === 'string' ? agentError : JSON.stringify(agentError)}
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10">
+                {/* L11/L17 — patron d'état partagé. Si l'échec traduit une clé
+                    API manquante (feature key-gated), message FR dédié. */}
+                <StateBlock
+                  error={
+                    isConfigMissing(
+                      typeof agentError === 'string'
+                        ? agentError
+                        : agentError?.detail || JSON.stringify(agentError),
+                    )
+                      ? CONFIG_MISSING_FR
+                      : `Erreur : ${typeof agentError === 'string' ? agentError : JSON.stringify(agentError)}`
+                  }
+                />
               </div>
             )}
 

@@ -26,6 +26,8 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Segmented,
   Form, FormField,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter,
   DataTable,
   toast,
 } from '../../ui'
@@ -80,6 +82,8 @@ export function Component() {
   })
   const [formError, setFormError] = useState(null) // L326
   const [edit, setEdit] = useState(null) // L320 — { id, periodicite, prix, actif }
+  // L675 — choix de la date du rapport PDF : { row, date }.
+  const [pdfDialog, setPdfDialog] = useState(null)
 
   const dueOnly = vue === 'dus'
 
@@ -169,10 +173,18 @@ export function Component() {
     } catch { toast.error('Bascule impossible.') }
   }
 
-  const rapport = async (row) => {
+  // L675 — ouvre le choix de date avant téléchargement (défaut derniere_visite).
+  const openRapport = (row) => setPdfDialog({
+    row,
+    date: (row.derniere_visite || row.prochaine_visite || '').slice(0, 10),
+  })
+  const rapport = async () => {
+    if (!pdfDialog) return
+    const { row, date } = pdfDialog
     try {
-      const res = await savApi.maintenanceRapportPdf(row.id)
+      const res = await savApi.maintenanceRapportPdf(row.id, date || undefined)
       openPdfBlob(res.data, `maintenance-contrat-${row.id}.pdf`)
+      setPdfDialog(null)
     } catch { toast.error('Rapport indisponible.') }
   }
   const generer = async () => {
@@ -284,7 +296,7 @@ export function Component() {
         </span>
       ) : (
         <span className="flex items-center gap-1.5">
-          <Button variant="outline" size="sm" onClick={() => rapport(row)}>
+          <Button variant="outline" size="sm" onClick={() => openRapport(row)}>
             <Download /> Rapport PDF
           </Button>
           <Button variant="ghost" size="sm" onClick={() => startEdit(row)} title="Éditer">
@@ -427,6 +439,27 @@ export function Component() {
             emptyTitle="Aucun contrat"
           />
         )}
+
+        {/* L675 — choix de la date de visite avant téléchargement du rapport. */}
+        <Dialog open={!!pdfDialog} onOpenChange={(o) => { if (!o) setPdfDialog(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rapport de maintenance</DialogTitle>
+              <DialogDescription>
+                Choisissez la date de visite figurant sur le rapport
+                (par défaut, la dernière visite générée).
+              </DialogDescription>
+            </DialogHeader>
+            <FormField label="Date de visite">
+              <Input type="date" value={pdfDialog?.date ?? ''}
+                     onChange={(e) => setPdfDialog((d) => ({ ...d, date: e.target.value }))} />
+            </FormField>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setPdfDialog(null)}>Annuler</Button>
+              <Button onClick={rapport}><Download /> Télécharger</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   )

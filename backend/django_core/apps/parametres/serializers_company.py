@@ -37,6 +37,46 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Utilisateur inconnu.')
         return value
 
+    def _validate_tva(self, value, label):
+        # Garde-fou TVA (L769) : un taux ne peut pas être laissé VIDE et
+        # re-snappé silencieusement au défaut (20/10). Un 0 DÉLIBÉRÉ est
+        # parfaitement valide et préservé tel quel ; seul le vide est rejeté.
+        if value is None:
+            raise serializers.ValidationError(
+                f'Le taux de {label} est obligatoire (laissez 0 pour exonéré).')
+        if value < 0 or value > 100:
+            raise serializers.ValidationError(
+                f'Le taux de {label} doit être compris entre 0 et 100 %.')
+        return value
+
+    def validate_tva_standard(self, value):
+        return self._validate_tva(value, 'TVA standard')
+
+    def validate_tva_panneaux(self, value):
+        return self._validate_tva(value, 'TVA panneaux')
+
+    def validate(self, attrs):
+        # Commission (L788) : dès qu'un mode actif est choisi (pct_devis /
+        # par_kwc), la valeur de commission devient obligatoire — sinon on
+        # aurait un mode actif sans barème (commission silencieusement nulle).
+        # On résout le mode/valeur effectifs (entrants OU déjà enregistrés)
+        # pour rester correct en PATCH partiel.
+        inst = self.instance
+        mode = attrs.get('commission_mode',
+                         getattr(inst, 'commission_mode', 'off'))
+        if mode and mode != 'off':
+            if 'commission_valeur' in attrs:
+                valeur = attrs.get('commission_valeur')
+            else:
+                valeur = getattr(inst, 'commission_valeur', None)
+            if valeur is None:
+                raise serializers.ValidationError({
+                    'commission_valeur':
+                        'La valeur de commission est obligatoire quand un '
+                        'mode de commission est actif.',
+                })
+        return attrs
+
     def _presign(self, key):
         if not key:
             return None

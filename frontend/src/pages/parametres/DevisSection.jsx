@@ -111,7 +111,17 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
               <Input id="pe-commission-val" type="number" min="0" step="any"
                      name="commission_valeur" value={form.commission_valeur}
                      onChange={set}
+                     required={form.commission_mode !== 'off'}
+                     aria-invalid={form.commission_mode !== 'off'
+                       && (form.commission_valeur === '' || form.commission_valeur == null)}
                      disabled={form.commission_mode === 'off'} />
+              {/* L788 — la valeur est obligatoire dès qu'un mode actif est choisi. */}
+              {form.commission_mode !== 'off'
+                && (form.commission_valeur === '' || form.commission_valeur == null) && (
+                <p className="text-[11px] text-destructive">
+                  La valeur de commission est obligatoire quand un mode est actif.
+                </p>
+              )}
             </Field>
           </div>
         </CardContent>

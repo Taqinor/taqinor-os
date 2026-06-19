@@ -98,5 +98,74 @@ class TestNotifications(TestCase):
         resp = self.api.get('/api/django/reporting/notifications/')
         self.assertEqual(resp.status_code, 200)
         for key in ('total', 'activites_en_retard', 'garanties_expirantes',
-                    'factures_impayees'):
+                    'factures_impayees', 'contrats_a_renouveler',
+                    'visites_dues'):
             self.assertIn(key, resp.data)
+
+    def test_contract_renewal_and_due_visit_flagged(self):
+        # N83 — signaux maintenance dans la cloche : renouvellement ≤ 90 j et
+        # visite due (calculée à la lecture).
+        from apps.sav.models import ContratMaintenance
+        client = Client.objects.create(company=self.company, nom='MaintCli')
+        # Renouvellement dans 30 jours → doit apparaître.
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='annuel',
+            date_debut=date.today() - timedelta(days=400), actif=True,
+            date_renouvellement=date.today() + timedelta(days=30))
+        # Contrat dont la dernière visite est très ancienne → visite due.
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='mensuel',
+            date_debut=date.today() - timedelta(days=200),
+            derniere_visite=date.today() - timedelta(days=200), actif=True)
+        resp = self.api.get('/api/django/reporting/notifications/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertGreaterEqual(len(resp.data['contrats_a_renouveler']), 1)
+        self.assertGreaterEqual(len(resp.data['visites_dues']), 1)
+        # Le compteur total inclut bien ces nouveaux signaux.
+        self.assertGreaterEqual(resp.data['total'], 2)
+
+    def test_inactive_contract_not_signalled(self):
+        from apps.sav.models import ContratMaintenance
+        client = Client.objects.create(company=self.company, nom='Inactif')
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='mensuel',
+            date_debut=date.today() - timedelta(days=200),
+            derniere_visite=date.today() - timedelta(days=200), actif=False,
+            date_renouvellement=date.today() + timedelta(days=10))
+        resp = self.api.get('/api/django/reporting/notifications/')
+        self.assertEqual(len(resp.data['contrats_a_renouveler']), 0)
+        self.assertEqual(len(resp.data['visites_dues']), 0)
+
+
+class TestSearchMore(TestCase):
+    """N83 — lien « voir tout / +N autres » quand un groupe dépasse PER=6."""
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='more-co', defaults={'nom': 'More Co'})[0]
+        self.user = User.objects.create_user(
+            username='more_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_more_flag_when_over_per(self):
+        # 8 leads correspondant à la requête → groupe plein (6) + more_count 2.
+        for i in range(8):
+            Lead.objects.create(company=self.company, nom=f'Dupont{i}')
+        resp = self.api.get('/api/django/reporting/search/?q=Dupont')
+        self.assertEqual(resp.status_code, 200)
+        grp = next((g for g in resp.data['groups'] if g['type'] == 'lead'), None)
+        self.assertIsNotNone(grp)
+        self.assertEqual(len(grp['results']), 6)
+        self.assertTrue(grp.get('more'))
+        self.assertEqual(grp.get('more_count'), 2)
+
+    def test_no_more_flag_under_per(self):
+        for i in range(3):
+            Lead.objects.create(company=self.company, nom=f'Martin{i}')
+        resp = self.api.get('/api/django/reporting/search/?q=Martin')
+        grp = next((g for g in resp.data['groups'] if g['type'] == 'lead'), None)
+        self.assertIsNotNone(grp)
+        self.assertEqual(len(grp['results']), 3)
+        self.assertNotIn('more', grp)

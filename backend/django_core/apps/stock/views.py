@@ -439,6 +439,17 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAdminRole()]
         return [IsAdminRole()]
 
+    def get_queryset(self):
+        # L699 — annote les compteurs (produits liés + BCF associés) en lecture
+        # pour la fiche/liste fournisseur, sans N+1.
+        qs = super().get_queryset()
+        if self.action in READ_ACTIONS:
+            return qs.annotate(
+                nb_produits_annot=Count('produits', distinct=True),
+                nb_bons_commande_annot=Count('bons_commande', distinct=True),
+            )
+        return qs
+
 
 class MouvementStockViewSet(viewsets.ModelViewSet):
     queryset = MouvementStock.objects.select_related(

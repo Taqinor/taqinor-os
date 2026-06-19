@@ -194,6 +194,14 @@ class LigneFactureSerializer(serializers.ModelSerializer):
 
 class PaiementSerializer(serializers.ModelSerializer):
     mode_display = serializers.CharField(source='get_mode_display', read_only=True)
+    # Champs d'affichage (lecture seule) pour la page Encaissements : référence
+    # de la facture, nom du client et auteur de l'encaissement (« par qui »).
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True, default=None)
+    client_nom = serializers.CharField(
+        source='facture.client.nom', read_only=True, default=None)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
 
     class Meta:
         model = Paiement
@@ -213,6 +221,10 @@ class FactureSerializer(serializers.ModelSerializer):
     avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     avoirs = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    # L853 — téléphone du client (lecture seule) : permet de valider/désactiver
+    # le bouton WhatsApp côté front sans aller-retour 400. Jamais en écriture.
+    client_telephone = serializers.CharField(
+        source='client.telephone', read_only=True, default=None)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)

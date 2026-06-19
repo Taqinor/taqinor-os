@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Canal, Lead
+from apps.crm.models import Canal, Lead, LeadTag, MotifPerte
 from authentication.models import Company
 
 User = get_user_model()
@@ -88,6 +88,63 @@ class TestMarques(T6Base):
         # Marque utilisée → suppression bloquée.
         r2 = self.api.delete(f'/api/django/stock/marques/{m.id}/')
         self.assertEqual(r2.status_code, 409)
+
+
+class TestMotifPerteProtection(T6Base):
+    """L779 — un motif de perte utilisé par des leads ne se supprime pas."""
+
+    def test_block_delete_motif_in_use_and_suggest_archive(self):
+        motif = MotifPerte.objects.create(company=self.company, nom='Trop cher')
+        Lead.objects.create(company=self.company, nom='L', motif_perte='Trop cher')
+        resp = self.api.delete(f'/api/django/crm/motifs-perte/{motif.id}/')
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('archiv', resp.data['detail'].lower())
+        self.assertTrue(MotifPerte.objects.filter(id=motif.id).exists())
+
+    def test_unused_motif_deletable(self):
+        motif = MotifPerte.objects.create(company=self.company, nom='Inutilisé')
+        resp = self.api.delete(f'/api/django/crm/motifs-perte/{motif.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(MotifPerte.objects.filter(id=motif.id).exists())
+
+    def test_en_usage_reported_in_serializer(self):
+        MotifPerte.objects.create(company=self.company, nom='Délais')
+        Lead.objects.create(company=self.company, nom='A', motif_perte='Délais')
+        Lead.objects.create(company=self.company, nom='B', motif_perte='Délais')
+        resp = self.api.get('/api/django/crm/motifs-perte/')
+        rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+        row = next(r for r in rows if r['nom'] == 'Délais')
+        self.assertEqual(row['en_usage'], 2)
+
+
+class TestLeadTagProtection(T6Base):
+    """L780 — une étiquette référencée dans Lead.tags ne se supprime pas."""
+
+    def test_block_delete_tag_in_use_and_suggest_archive(self):
+        tag = LeadTag.objects.create(company=self.company, nom='VIP')
+        Lead.objects.create(company=self.company, nom='L', tags='VIP, Urgent')
+        resp = self.api.delete(f'/api/django/crm/tags/{tag.id}/')
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('archiv', resp.data['detail'].lower())
+        self.assertTrue(LeadTag.objects.filter(id=tag.id).exists())
+
+    def test_unused_tag_deletable(self):
+        tag = LeadTag.objects.create(company=self.company, nom='Froid')
+        # Un autre lead porte un libellé DIFFÉRENT — ne doit pas compter.
+        Lead.objects.create(company=self.company, nom='L', tags='Chaud')
+        resp = self.api.delete(f'/api/django/crm/tags/{tag.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(LeadTag.objects.filter(id=tag.id).exists())
+
+    def test_en_usage_counts_token_not_substring(self):
+        LeadTag.objects.create(company=self.company, nom='Pro')
+        # « Professionnel » contient « pro » mais n'est PAS le jeton « Pro ».
+        Lead.objects.create(company=self.company, nom='A', tags='Professionnel')
+        Lead.objects.create(company=self.company, nom='B', tags='pro, vip')
+        resp = self.api.get('/api/django/crm/tags/')
+        rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+        row = next(r for r in rows if r['nom'] == 'Pro')
+        self.assertEqual(row['en_usage'], 1)
 
 
 class TestRoiSettings(T6Base):

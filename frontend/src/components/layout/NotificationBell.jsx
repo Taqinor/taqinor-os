@@ -12,9 +12,22 @@
 // fait qu'enregistrer la PERMISSION ; l'abonnement réel sera ajouté ensuite.
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings } from 'lucide-react'
+import {
+  Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings,
+  CalendarClock, RefreshCw,
+} from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import notificationsApi from '../../api/notificationsApi'
+
+// L13 — tri par urgence : le plus en retard d'abord (date la plus ancienne).
+// Les éléments sans date passent en fin de liste.
+function byUrgency(items) {
+  return [...(items || [])].sort((a, b) => {
+    if (!a.date) return 1
+    if (!b.date) return -1
+    return a.date < b.date ? -1 : a.date > b.date ? 1 : 0
+  })
+}
 
 // Le push n'est tentable que si l'API navigateur ET une clé VAPID publique
 // (exposée au build) sont présentes. Sinon : no-op total.
@@ -42,6 +55,10 @@ function initialPerm() {
 
 export default function NotificationBell() {
   const [data, setData] = useState(null)
+  // L11 — distinguer un échec de fetch d'un vrai « rien à signaler ».
+  const [derivedError, setDerivedError] = useState(false)
+  // L11 — état de chargement (panneau vide → « Chargement… » au 1er fetch).
+  const [loaded, setLoaded] = useState(false)
   // N75 — notifications in-app PERSISTÉES (moteur unifié) : feed + compteur.
   const [feed, setFeed] = useState([])
   const [feedUnread, setFeedUnread] = useState(0)
@@ -55,8 +72,9 @@ export default function NotificationBell() {
 
   const load = () => {
     reportingApi.getNotifications()
-      .then((r) => setData(r.data))
-      .catch(() => setData(null))
+      .then((r) => { setData(r.data); setDerivedError(false) })
+      .catch(() => { setData(null); setDerivedError(true) })
+      .finally(() => setLoaded(true))
     // Feed in-app persisté (best-effort : ne casse jamais la cloche).
     notificationsApi.list({ unread: 0 })
       .then((r) => {
@@ -174,7 +192,13 @@ export default function NotificationBell() {
             </div>
           )}
 
-          {feed.length === 0 && (!data || derivedTotal === 0) ? (
+          {!loaded ? (
+            <div className="nb-empty">Chargement…</div>
+          ) : (derivedError && feed.length === 0) ? (
+            <div className="nb-empty nb-error" role="alert">
+              Notifications indisponibles
+            </div>
+          ) : feed.length === 0 && (!data || derivedTotal === 0) ? (
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
             <>
@@ -216,10 +240,10 @@ export default function NotificationBell() {
                   <div className="nb-group-title">
                     <Clock size={13} aria-hidden="true" /> Activités en retard
                   </div>
-                  {data.activites_en_retard.map((a) => (
+                  {byUrgency(data.activites_en_retard).map((a) => (
                     <button key={`act-${a.id}`} type="button" className="nb-item"
                             onClick={() => goto(a.lead_id ? `/crm/leads?lead=${a.lead_id}` : '/crm/leads')}>
-                      <span>{a.label}</span>
+                      <span className="nb-overdue">{a.label}</span>
                       {a.date && <span className="nb-item-date">{a.date}</span>}
                     </button>
                   ))}
@@ -230,7 +254,7 @@ export default function NotificationBell() {
                   <div className="nb-group-title">
                     <ShieldCheck size={13} aria-hidden="true" /> Garanties (≤ 90 j)
                   </div>
-                  {data.garanties_expirantes.map((e) => (
+                  {byUrgency(data.garanties_expirantes).map((e) => (
                     <button key={`gar-${e.id}`} type="button" className="nb-item"
                             onClick={() => goto('/equipements')}>
                       <span>{e.label}</span>
@@ -244,11 +268,39 @@ export default function NotificationBell() {
                   <div className="nb-group-title">
                     <Banknote size={13} aria-hidden="true" /> Factures impayées
                   </div>
-                  {data.factures_impayees.map((f) => (
+                  {byUrgency(data.factures_impayees).map((f) => (
                     <button key={`fac-${f.id}`} type="button" className="nb-item"
                             onClick={() => goto('/ventes/factures')}>
                       <span className={f.overdue ? 'nb-overdue' : undefined}>{f.label}</span>
                       <span className="nb-item-date">{f.sublabel}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
+                <div className="nb-group">
+                  <div className="nb-group-title">
+                    <RefreshCw size={13} aria-hidden="true" /> Contrats à renouveler (≤ 90 j)
+                  </div>
+                  {byUrgency(data.contrats_a_renouveler).map((c) => (
+                    <button key={`renew-${c.id}`} type="button" className="nb-item"
+                            onClick={() => goto('/sav/contrats')}>
+                      <span className={c.overdue ? 'nb-overdue' : undefined}>{c.label}</span>
+                      {c.date && <span className="nb-item-date">{c.date}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {data && (data.visites_dues?.length ?? 0) > 0 && (
+                <div className="nb-group">
+                  <div className="nb-group-title">
+                    <CalendarClock size={13} aria-hidden="true" /> Visites dues
+                  </div>
+                  {byUrgency(data.visites_dues).map((v) => (
+                    <button key={`visite-${v.id}`} type="button" className="nb-item"
+                            onClick={() => goto('/sav/contrats')}>
+                      <span className="nb-overdue">{v.label}</span>
+                      {v.date && <span className="nb-item-date">{v.date}</span>}
                     </button>
                   ))}
                 </div>

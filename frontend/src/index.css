@@ -1614,9 +1614,22 @@ textarea.form-control {
 
   /* ── Coquille : sidebar → tiroir ── */
   .header-menu-btn { display: flex; align-items: center; }
-  /* La barre de recherche pleine largeur est masquée sur mobile ; le
-     déclencheur ⌘K compact prend le relais. */
-  .header-right .gs-wrap { display: none; }
+  /* L12/L17 — sur mobile la recherche globale reste atteignable : repliée
+     derrière une icône loupe (gs-mobile-toggle) qui déplie l'input en overlay
+     pleine largeur. L'input n'apparaît que lorsque la boîte est dépliée. */
+  .header-right .gs-wrap { flex: 0 0 auto; max-width: none; }
+  .header-right .gs-input { display: none; }
+  .gs-mobile-toggle { display: flex; }
+  .gs-wrap-expanded {
+    position: absolute;
+    left: 8px; right: 8px; top: 50%;
+    transform: translateY(-50%);
+    z-index: 1400;
+    flex: 1 1 auto;
+    background: #fff;
+  }
+  .gs-wrap-expanded .gs-mobile-toggle { display: none; }
+  .gs-wrap-expanded .gs-input { display: block; }
   .header-cmdk-kbd { display: none; }
   .header-user-name { display: none; }
 
@@ -2541,9 +2554,29 @@ textarea.form-control {
   background: none; border: none; cursor: pointer;
   padding: 7px 10px; border-radius: 6px;
 }
-.gs-result:hover { background: #f1f5f9; }
+.gs-result:hover,
+.gs-result.gs-result-active { background: #f1f5f9; }
 .gs-result-label { font-size: 0.875rem; color: #0f172a; }
 .gs-result-sub { font-size: 0.75rem; color: #64748b; }
+/* L17 — état d'échec réseau distinct d'un « aucun résultat ». */
+.gs-empty.gs-error { color: #dc2626; }
+/* L9 — lien « voir tout / +N autres » par groupe. */
+.gs-more {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 0.78rem; font-weight: 600; color: #1d4ed8;
+}
+.gs-more:hover,
+.gs-more.gs-result-active { background: #eff6ff; }
+/* L12 — déclencheur mobile (icône loupe) ; masqué sur le bureau. */
+.gs-mobile-toggle {
+  display: none;
+  align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  padding: 7px; border-radius: 8px; color: #475569;
+}
+.gs-mobile-toggle:hover { background: #f1f5f9; color: #1e293b; }
 
 /* ===== migrated from src/components/layout/notificationbell.css (P67) ===== */
 /* Cloche de notifications in-app. */
@@ -2586,6 +2619,8 @@ textarea.form-control {
 }
 .nb-link-btn:hover { background: #eff6ff; }
 .nb-empty { padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem; }
+/* L11 — échec de chargement des notifications, distinct de « rien à signaler ». */
+.nb-empty.nb-error { color: #dc2626; }
 .nb-group { padding: 4px 0; }
 .nb-group-title {
   display: flex; align-items: center; gap: 6px;
@@ -4462,4 +4497,9 @@ textarea.form-control {
   .pe-grid-3,
   .pe-grid-4 { grid-template-columns: 1fr; }
   .pe-grid-relance { grid-template-columns: 1fr 1fr; }
+}
+/* L789 — sur petit téléphone (~380px), même pe-grid-relance passe en 1 colonne
+   (plus aucun débordement horizontal sur aucune carte Paramètres). */
+@media (max-width: 400px) {
+  .pe-grid-relance { grid-template-columns: 1fr; }
 }

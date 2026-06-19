@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration du routeur (lazy imports + loaders), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
-import { createBrowserRouter, Navigate, redirect } from 'react-router-dom'
+import { createBrowserRouter, Navigate, redirect, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
 import { fetchMe } from '../features/auth/store/authSlice'
@@ -12,6 +12,9 @@ import { CommandPalette } from '../providers/CommandPalette'
 import { ShortcutsProvider } from '../providers/ShortcutsProvider'
 // O65 — Repli « skeleton-first » pendant le chargement lazy d'un bundle de page.
 import RouteFallback from '../components/RouteFallback'
+// L880 — Error-boundary de route globale : écran FR de récupération au lieu
+// d'une application blanche sur une erreur de rendu non capturée.
+import RouteErrorBoundary from '../components/RouteErrorBoundary'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -23,6 +26,9 @@ const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance'
 const StockList = lazy(() => import('../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
 const BonsCommandeFournisseur = lazy(() => import('../pages/stock/BonsCommandeFournisseur'))
+const CategoriesStock = lazy(() => import('../pages/stock/CategoriesStock'))
+const FournisseursStock = lazy(() => import('../pages/stock/FournisseursStock'))
+const RetoursFournisseur = lazy(() => import('../pages/stock/RetoursFournisseur'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
@@ -52,6 +58,7 @@ const CartePage = lazy(() => import('../pages/CartePage'))
 const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
+const PaiementsPage = lazy(() => import('../pages/ventes/PaiementsPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
@@ -99,10 +106,18 @@ function WithLayout({ children }) {
   // routeur (navigation clavier / ouverture d'un enregistrement) et ne
   // concernent que les écrans authentifiés. La palette s'ouvre sur ⌘K et sur
   // l'événement window émis par le bouton ⌘K du Header (autre lane).
+  //
+  // L880 — La page est enveloppée d'une error-boundary keyée par chemin : une
+  // erreur de rendu non capturée affiche un écran FR de récupération (« Une
+  // erreur est survenue — recharger ») au lieu d'une app blanche, et naviguer
+  // ailleurs réinitialise la barrière (nouvelle key).
+  const { pathname } = useLocation()
   return (
     <ShortcutsProvider>
       <Layout>
-        <Suspense fallback={<Fallback />}>{children}</Suspense>
+        <RouteErrorBoundary key={pathname}>
+          <Suspense fallback={<Fallback />}>{children}</Suspense>
+        </RouteErrorBoundary>
       </Layout>
       <CommandPalette />
     </ShortcutsProvider>
@@ -123,7 +138,10 @@ const router = createBrowserRouter([
   // Stock
   { path: '/stock', loader: authLoader, element: <WithLayout><StockList /></WithLayout> },
   { path: '/stock/mouvements', loader: authLoader, element: <WithLayout><MouvementsPage /></WithLayout> },
+  { path: '/stock/categories', loader: authLoader, element: <WithLayout><CategoriesStock /></WithLayout> },
+  { path: '/stock/fournisseurs', loader: authLoader, element: <WithLayout><FournisseursStock /></WithLayout> },
   { path: '/stock/bons-commande-fournisseur', loader: authLoader, element: <WithLayout><BonsCommandeFournisseur /></WithLayout> },
+  { path: '/stock/retours-fournisseur', loader: authLoader, element: <WithLayout><RetoursFournisseur /></WithLayout> },
   { path: '/stock/ocr-import', loader: authLoader, element: <WithLayout><OcrStockImport /></WithLayout> },
 
   // CRM
@@ -141,6 +159,7 @@ const router = createBrowserRouter([
   { path: '/ventes/factures', loader: authLoader, element: <WithLayout><FactureList /></WithLayout> },
   { path: '/ventes/avoirs', loader: authLoader, element: <WithLayout><AvoirsPage /></WithLayout> },
   { path: '/ventes/relances', loader: authLoader, element: <WithLayout><RelancesPage /></WithLayout> },
+  { path: '/ventes/paiements', loader: authLoader, element: <WithLayout><PaiementsPage /></WithLayout> },
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },

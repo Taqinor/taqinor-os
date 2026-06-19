@@ -7,6 +7,11 @@ demande. Aucune écriture, aucun prix d'achat / marge n'est exposé.
 
 Tout est filtré par société (multi-tenant) : un id d'une autre société renvoie
 404.
+
+Filtres (L862) : ?type=<type> restreint à un type de document, ?sort=asc|desc
+trie par date (récent d'abord par défaut) — le compte reflète le filtre.
+Export (L864) : ?export=xlsx renvoie la liste filtrée (type/référence/date) en
+.xlsx, scopé société, sans aucun prix d'achat / marge.
 """
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -15,6 +20,19 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.crm.models import Client
 from apps.ventes.models import Devis, Facture, Avoir, BonCommande
 from apps.installations.models import Installation
+from apps.records.xlsx import build_xlsx_response
+
+# Libellés FR des types de document (miroir de archiveDocs.js côté front).
+TYPE_LABELS = {
+    'devis': 'Devis',
+    'facture': 'Facture',
+    'avoir': 'Avoir',
+    'bon_commande': 'Bon de commande',
+    'pv_reception': 'PV de réception',
+    'bon_livraison': 'Bon de livraison',
+    'dossier_remise': 'Dossier de remise',
+    'attestation': 'Attestation',
+}
 
 
 def _co(user):
@@ -27,14 +45,42 @@ def _co(user):
 
 
 def _doc(type_, label, reference, dt, url):
-    """Forme une entrée de document typée pour l'archive."""
+    """Forme une entrée de document typée pour l'archive.
+
+    ``has_pdf`` (L863) indique explicitement si un PDF téléchargeable existe —
+    le front affiche « Pas de PDF » plutôt qu'une affordance morte quand non.
+    """
     return {
         'type': type_,
         'label': label,
         'reference': reference or '',
         'date': dt.isoformat() if dt else None,
         'download_url': url,
+        'has_pdf': bool(url),
     }
+
+
+def _apply_filters(docs, request):
+    """Filtre par ?type= et trie par ?sort=asc|desc (récent d'abord défaut)."""
+    type_ = (request.query_params.get('type') or '').strip()
+    if type_:
+        docs = [d for d in docs if d['type'] == type_]
+    sort = (request.query_params.get('sort') or 'desc').strip().lower()
+    reverse = sort != 'asc'
+    docs.sort(key=lambda d: (d['date'] or ''), reverse=reverse)
+    return docs
+
+
+def _xlsx_export(docs, filename):
+    """Export .xlsx de la liste (type/référence/date) — sans prix d'achat."""
+    headers = ['Type', 'Référence', 'Date']
+    rows = [
+        [TYPE_LABELS.get(d['type'], d['label'] or d['type']),
+         d['reference'] or '', d['date'] or '']
+        for d in docs
+    ]
+    return build_xlsx_response(
+        filename, headers, rows, sheet_title='Documents')
 
 
 def _devis_docs(devis_qs):
@@ -66,7 +112,8 @@ def _avoir_docs(avoir_qs):
 
 def _bon_commande_docs(bc_qs):
     # Le bon de commande client n'a pas de PDF dédié ; on le liste tout de même
-    # (référence + date) avec download_url=None pour la complétude de l'archive.
+    # (référence + date) avec download_url=None → has_pdf=False, ce qui fait
+    # afficher « Pas de PDF » au lieu d'une affordance morte (L863).
     return [
         _doc('bon_commande', 'Bon de commande', bc.reference,
              getattr(bc, 'date_creation', None), None)
@@ -114,7 +161,9 @@ def archive_client(request, pk):
     for inst in Installation.objects.filter(**co, client_id=client.id):
         docs += _chantier_post_sale_docs(inst)
 
-    docs.sort(key=lambda d: (d['date'] or ''), reverse=True)
+    docs = _apply_filters(docs, request)
+    if (request.query_params.get('export') or '').lower() == 'xlsx':
+        return _xlsx_export(docs, f'archive-client-{client.id}.xlsx')
     return Response({
         'client': {'id': client.id, 'nom': str(client)},
         'count': len(docs),
@@ -152,7 +201,9 @@ def archive_chantier(request, pk):
                 Avoir.objects.filter(**co, facture_id__in=facture_ids))
     docs += _chantier_post_sale_docs(inst)
 
-    docs.sort(key=lambda d: (d['date'] or ''), reverse=True)
+    docs = _apply_filters(docs, request)
+    if (request.query_params.get('export') or '').lower() == 'xlsx':
+        return _xlsx_export(docs, f'archive-chantier-{inst.id}.xlsx')
     return Response({
         'chantier': {
             'id': inst.id, 'reference': inst.reference,

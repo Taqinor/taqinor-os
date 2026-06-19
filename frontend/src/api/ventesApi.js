@@ -68,6 +68,9 @@ const ventesApi = {
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
+  // Encaissements : liste lecture seule de TOUS les paiements de la société
+  // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
+  getPaiements: (params) => api.get('/ventes/paiements/', { params }),
 
   // Avoirs (notes de crédit)
   creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),
@@ -100,6 +103,10 @@ const ventesApi = {
     ? api.patch(`/ventes/niveaux-relance/${id}/`, data)
     : api.post('/ventes/niveaux-relance/', data),
   deleteNiveauRelance: (id) => api.delete(`/ventes/niveaux-relance/${id}/`),
+  // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) si aucun n'existe.
+  seedNiveauxRelance: () => api.post('/ventes/niveaux-relance/seed-defaults/'),
+  // L770/L786 — aperçu du prochain numéro RÉEL par type de pièce.
+  numerotationPreview: () => api.get('/ventes/numerotation-preview/'),
 
   // Lignes de facture
   getLignesFacture: (params) => api.get('/ventes/factures-lignes/', { params }),

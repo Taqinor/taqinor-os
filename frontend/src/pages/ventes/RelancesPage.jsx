@@ -8,7 +8,7 @@ import {
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
-import { formatMAD, toNumber } from '../../lib/format'
+import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -42,6 +42,10 @@ export default function RelancesPage() {
   const [histTarget, setHistTarget] = useState(null)  // facture dont on voit l'historique
   const [histRows, setHistRows] = useState([])
   const [histLoading, setHistLoading] = useState(false)
+  // ── Rappel WhatsApp : langue (L851), busy par facture (L857), aperçu (L852) ──
+  const [waLangue, setWaLangue] = useState('fr')
+  const [waBusy, setWaBusy] = useState({})
+  const [waPreview, setWaPreview] = useState(null) // { reference, message, url, wa_url }
 
   const load = () => {
     setLoading(true)
@@ -124,14 +128,32 @@ export default function RelancesPage() {
       openPdfBlob(res.data, `Relance_${r.reference}_N${niveau}.pdf`)
     } catch { alert('PDF indisponible.') }
   }
-  // Rappel de paiement par WhatsApp : message « relance » + lien public.
+  // Rappel de paiement par WhatsApp : construit le message « relance » côté
+  // serveur (FR/Darija) puis montre un aperçu (message + lien public) avant
+  // d'ouvrir wa.me ; le POST consigne aussi l'action au chatter (L856).
   const whatsapp = async (r) => {
+    setWaBusy(prev => ({ ...prev, [r.id]: true }))
     try {
-      const res = await ventesApi.whatsappFacture(r.id, { modele: 'relance' })
-      if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+      const res = await ventesApi.whatsappFacture(r.id, {
+        modele: 'relance', langue: waLangue,
+      })
+      setWaPreview({
+        reference: r.reference,
+        message: res.data?.message ?? '',
+        url: res.data?.url ?? '',
+        wa_url: res.data?.wa_url ?? '',
+      })
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    } finally {
+      setWaBusy(prev => ({ ...prev, [r.id]: false }))
     }
+  }
+
+  // Ouvre wa.me après confirmation de l'aperçu.
+  const ouvrirWhatsApp = () => {
+    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
+    setWaPreview(null)
   }
 
   // Niveaux distincts présents (pour le filtre).
@@ -209,6 +231,20 @@ export default function RelancesPage() {
               Consigner pour la sélection ({selCount})
             </Button>
           )}
+          {/* L851 — langue des rappels WhatsApp (FR par défaut). */}
+          <div role="group" aria-label="Langue des rappels WhatsApp"
+               className="ml-auto inline-flex items-center gap-1"
+               title="Langue du rappel « WhatsApp »">
+            <MessageCircle className="size-4 text-muted-foreground" />
+            {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
+              <Button key={val} size="sm"
+                      variant={waLangue === val ? 'default' : 'outline'}
+                      aria-pressed={waLangue === val}
+                      onClick={() => setWaLangue(val)}>
+                {label}
+              </Button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -276,8 +312,14 @@ export default function RelancesPage() {
                                 title="Historique des relances consignées">
                           <History /> Historique
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => whatsapp(r)} title="Rappel de paiement par WhatsApp">
-                          <MessageCircle /> WhatsApp
+                        <Button size="sm" variant="outline"
+                                loading={!!waBusy[r.id]}
+                                disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
+                                onClick={() => whatsapp(r)}
+                                title={!normalizeMaPhone(r.client_telephone)
+                                  ? 'Numéro invalide'
+                                  : 'Rappel de paiement par WhatsApp'}>
+                          <MessageCircle /> {waBusy[r.id] ? 'Préparation…' : 'WhatsApp'}
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => lettre(r)}>
                           <FileText /> Lettre
@@ -314,6 +356,35 @@ export default function RelancesPage() {
           </div>
         </Card>
       )}
+
+      {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ── */}
+      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aperçu du rappel WhatsApp — {waPreview?.reference}</DialogTitle>
+            <DialogDescription>
+              {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
+              {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
+               style={{ fontFamily: 'inherit' }}>
+            {waPreview?.message}
+          </pre>
+          {waPreview?.url && (
+            <p className="mt-2 break-words text-xs text-muted-foreground">
+              Lien public : {waPreview.url}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
+            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
+                    onClick={ouvrirWhatsApp}>
+              <MessageCircle /> Ouvrir WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!target} onOpenChange={(o) => { if (!o) setTarget(null) }}>
         <DialogContent>

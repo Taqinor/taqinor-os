@@ -9,6 +9,7 @@ from .insights import (
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
 from .geo import geo_points
+from .balance_export import balance_agee_export
 
 urlpatterns = [
     path('dashboard/', dashboard, name='reporting-dashboard'),
@@ -32,4 +33,8 @@ urlpatterns = [
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,
          name='reporting-archive-chantier'),
+    # Export .xlsx de la balance âgée (créances par client + tranches d'âge),
+    # borné à la société (miroir de l'export journal des ventes).
+    path('balance-agee/export/', balance_agee_export,
+         name='reporting-balance-agee-export'),
 ]

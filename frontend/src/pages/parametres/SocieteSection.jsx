@@ -3,6 +3,8 @@
 // identiques. Le champ Email reste <Input name="email" type="email"> (contrat
 // e2e : input[name="email"]). La couleur d'accent (donnée utilisateur) pilote
 // encore les aperçus de couleur via styles en ligne.
+import { useState } from 'react'
+import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   uploadLogo, deleteLogo,
   uploadSignature, deleteSignature,
@@ -11,7 +13,30 @@ import { Card, CardContent, Input, Textarea } from '../../ui'
 import { Ic, SectionTitle, Field, UploadZone } from './peComponents'
 import { mediaUrl } from './peConstants'
 
+// L773 — validation de format des identifiants marocains, NON bloquante : on
+// affiche un indice si la longueur en chiffres ne correspond pas, sans rejeter
+// la saisie. { len } = nombre de chiffres attendu.
+const ID_FORMATS = {
+  ice: { len: 15, nom: 'ICE' },
+  identifiant_fiscal: { len: 8, nom: 'IF' },
+  rc: { len: null, nom: 'RC' },
+  patente: { len: 8, nom: 'Patente' },
+  cnss: { len: 7, nom: 'CNSS' },
+}
+function idHint(field, value) {
+  const f = ID_FORMATS[field]
+  if (!f || !f.len) return null
+  const digits = String(value || '').replace(/\D/g, '')
+  if (!digits) return null
+  if (digits.length !== f.len) {
+    return `${f.nom} : ${f.len} chiffres attendus (${digits.length} saisi${digits.length > 1 ? 's' : ''}).`
+  }
+  return null
+}
+
 export default function SocieteSection({ accent, profile, form, set, uploading, dispatch }) {
+  // L772 — bloc « Champs hérités (France) » (SIRET / TVA intra) replié par défaut.
+  const [showLegacyFr, setShowLegacyFr] = useState(false)
   return (
     <>
       {/* ── Carte d'aperçu en direct ── */}
@@ -97,24 +122,37 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
             </CardContent>
           </Card>
 
-          {/* Légal */}
+          {/* Légal — coordonnées bancaires (Maroc) + champs hérités France repliés */}
           <Card>
             <CardContent className="pt-4 sm:pt-5">
               <SectionTitle label="Informations légales" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>}/>
               <div className="pe-grid-2">
-                <Field label="SIRET" htmlFor="pe-siret">
-                  <Input id="pe-siret" name="siret" value={form.siret} onChange={set} placeholder="14 chiffres"/>
-                </Field>
-                <Field label="N° TVA intracommunautaire" htmlFor="pe-tva-intra">
-                  <Input id="pe-tva-intra" name="tva_intra" value={form.tva_intra} onChange={set} placeholder="FR12345678901"/>
-                </Field>
                 <Field label="RIB / IBAN" htmlFor="pe-rib">
-                  <Input id="pe-rib" name="rib" value={form.rib} onChange={set} placeholder="FR76 3000…"/>
+                  <Input id="pe-rib" name="rib" value={form.rib} onChange={set} placeholder="RIB 24 chiffres / IBAN"/>
                 </Field>
                 <Field label="Banque" htmlFor="pe-banque">
                   <Input id="pe-banque" name="banque" value={form.banque} onChange={set} placeholder="CIH, Attijariwafa…"/>
                 </Field>
               </div>
+              {/* L772 — SIRET & TVA intra (inutiles au Maroc) repliés par défaut. */}
+              <button type="button"
+                      onClick={() => setShowLegacyFr(v => !v)}
+                      className="mt-3 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground">
+                {showLegacyFr
+                  ? <ChevronDown className="size-3.5" aria-hidden="true" />
+                  : <ChevronRight className="size-3.5" aria-hidden="true" />}
+                Champs hérités (France)
+              </button>
+              {showLegacyFr && (
+                <div className="pe-grid-2 mt-2.5">
+                  <Field label="SIRET" htmlFor="pe-siret">
+                    <Input id="pe-siret" name="siret" value={form.siret} onChange={set} placeholder="14 chiffres"/>
+                  </Field>
+                  <Field label="N° TVA intracommunautaire" htmlFor="pe-tva-intra">
+                    <Input id="pe-tva-intra" name="tva_intra" value={form.tva_intra} onChange={set} placeholder="FR12345678901"/>
+                  </Field>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -150,24 +188,47 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
           <Card>
             <CardContent className="pt-4 sm:pt-5">
               <SectionTitle label="Identifiants légaux (Maroc)" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>}/>
-              <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-                L'ICE, l'IF et le RC apparaissent en pied de page de vos factures (l'ICE est obligatoire au Maroc).
+              <p className="mb-2.5 text-[11.5px] text-muted-foreground">
+                L'ICE, l'IF et le RC apparaissent en pied de page de vos factures.
               </p>
+              {/* L771 — ICE obligatoire pour la facturation : bannière non bloquante. */}
+              {!String(form.ice || '').trim() && (
+                <div className="mb-3.5 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                  <p className="text-[11.5px] leading-relaxed text-warning">
+                    L'ICE est <strong>obligatoire au Maroc</strong> sur les
+                    factures. Renseignez-le pour des factures conformes (vous
+                    pouvez tout de même enregistrer sans).
+                  </p>
+                </div>
+              )}
               <div className="pe-grid-2">
-                <Field label="ICE" htmlFor="pe-ice">
+                <Field label="ICE" required htmlFor="pe-ice">
                   <Input id="pe-ice" name="ice" value={form.ice} onChange={set} placeholder="000000000000000"/>
+                  {idHint('ice', form.ice) && (
+                    <p className="text-[11px] text-muted-foreground">{idHint('ice', form.ice)}</p>
+                  )}
                 </Field>
                 <Field label="IF (Identifiant Fiscal)" htmlFor="pe-if">
                   <Input id="pe-if" name="identifiant_fiscal" value={form.identifiant_fiscal} onChange={set} placeholder="00000000"/>
+                  {idHint('identifiant_fiscal', form.identifiant_fiscal) && (
+                    <p className="text-[11px] text-muted-foreground">{idHint('identifiant_fiscal', form.identifiant_fiscal)}</p>
+                  )}
                 </Field>
                 <Field label="RC (Registre de Commerce)" htmlFor="pe-rc">
                   <Input id="pe-rc" name="rc" value={form.rc} onChange={set} placeholder="N° RC"/>
                 </Field>
                 <Field label="Patente / Taxe professionnelle" htmlFor="pe-patente">
-                  <Input id="pe-patente" name="patente" value={form.patente} onChange={set} placeholder="N° patente"/>
+                  <Input id="pe-patente" name="patente" value={form.patente} onChange={set} placeholder="00000000"/>
+                  {idHint('patente', form.patente) && (
+                    <p className="text-[11px] text-muted-foreground">{idHint('patente', form.patente)}</p>
+                  )}
                 </Field>
                 <Field label="CNSS" htmlFor="pe-cnss">
                   <Input id="pe-cnss" name="cnss" value={form.cnss} onChange={set} placeholder="N° affiliation CNSS"/>
+                  {idHint('cnss', form.cnss) && (
+                    <p className="text-[11px] text-muted-foreground">{idHint('cnss', form.cnss)}</p>
+                  )}
                 </Field>
               </div>
             </CardContent>

@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.http import HttpResponse
 from rest_framework import status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.crm.models import Client
@@ -75,6 +75,36 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
         company = self.request.user.company if self.request.user.company_id else None
         serializer.save(company=company)
 
+    @action(detail=False, methods=['post'], url_path='seed-defaults')
+    def seed_defaults(self, request):
+        """Crée les niveaux de relance par défaut (J+7 / J+15 / J+30) quand la
+        société n'en a aucun (L768). Idempotent : ne fait rien si des niveaux
+        existent déjà. Réservé à l'admin (mêmes permissions que l'écriture)."""
+        company = request.user.company if request.user.company_id else None
+        if FollowupLevel.objects.filter(company=company).exists():
+            return Response(
+                {'detail': 'Des niveaux de relance existent déjà.'},
+                status=status.HTTP_409_CONFLICT)
+        defaults = [
+            (0, 'Rappel', 7,
+             'Rappel amiable : la facture {reference} est échue. '
+             'Merci de procéder au règlement.'),
+            (1, 'Relance', 15,
+             'Relance : la facture {reference} reste impayée à ce jour.'),
+            (2, 'Mise en demeure', 30,
+             'Mise en demeure : la facture {reference} est en retard de '
+             'paiement. Un règlement immédiat est attendu.'),
+        ]
+        for ordre, nom, delai, message in defaults:
+            FollowupLevel.objects.create(
+                company=company, ordre=ordre, nom=nom,
+                delai_jours=delai, message=message)
+        levels = FollowupLevel.objects.filter(company=company).order_by(
+            'delai_jours')
+        return Response(
+            FollowupLevelSerializer(levels, many=True).data,
+            status=status.HTTP_201_CREATED)
+
 
 def _facture_due_rows(user):
     """Factures ouvertes (dues) de la société, non exclues."""
@@ -103,6 +133,9 @@ def relances_list(request):
             'id': f.id, 'reference': f.reference,
             'client_id': f.client_id,
             'client_nom': f"{f.client.nom} {f.client.prenom or ''}".strip(),
+            # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
+            # côté front (aucun envoi ici ; affichage/validation seulement).
+            'client_telephone': f.client.telephone if f.client_id else None,
             'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
             'montant_du': _s(f.montant_du),
             'jours_retard': jr,

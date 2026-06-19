@@ -144,6 +144,25 @@ _TYPE_LABELS = {
     'parametres': 'Paramètres',
 }
 
+# N83 — clé de route front par type, pour les liens profonds object_ref. Le
+# frontend mappe `object_type` + `object_id` vers la fiche concernée.
+_TYPE_ROUTE = {
+    'lead': 'lead',
+    'devis': 'devis',
+    'chantier': 'chantier',
+    'sav': 'ticket',
+}
+
+
+def _field_change(label, old_value, new_value):
+    """N83 — format UNIQUE « champ : ancien → nouveau », identique pour le
+    chatter (LeadActivity & co.) ET SettingsAuditLog. Source de vérité unique
+    du rendu d'un changement de champ dans le Journal."""
+    label = label or 'champ'
+    old = old_value if old_value not in (None, '') else '∅'
+    new = new_value if new_value not in (None, '') else '∅'
+    return f'{label} : {old} → {new}'
+
 
 def _activity_summary(act):
     """Résumé lisible d'une entrée de chatter (LeadActivity & co.)."""
@@ -152,10 +171,8 @@ def _activity_summary(act):
         return (act.body or 'Note').strip()
     if kind == 'creation':
         return 'Création'
-    label = act.field_label or act.field or 'champ'
-    old = act.old_value or '∅'
-    new = act.new_value or '∅'
-    return f'{label} : {old} → {new}'
+    return _field_change(
+        act.field_label or act.field, act.old_value, act.new_value)
 
 
 def _username(user):
@@ -212,8 +229,10 @@ def audit_log(request):
         # Le chatter porte created_at ; SettingsAuditLog porte timestamp.
         return getattr(act, 'created_at', None) or getattr(act, 'timestamp')
 
-    # Chacune des sources : (clé type, queryset, accès objet→ref).
-    def _collect(type_key, qs, ref_fn):
+    # Chacune des sources : (clé type, queryset, accès objet→ref, accès→id).
+    # N83 — `ref_fn` donne le libellé affiché, `id_fn` la PK de l'objet lié pour
+    # le lien profond du Journal (object_type + object_id côté front).
+    def _collect(type_key, qs, ref_fn, id_fn):
         if type_filter and type_filter != type_key:
             return
         for act in qs:
@@ -222,12 +241,16 @@ def audit_log(request):
             user_obj = getattr(act, 'user', None)
             if not _user_match(user_obj):
                 continue
+            obj_id = id_fn(act)
             items.append({
                 'date': act_date(act).isoformat(),
                 'user': _username(user_obj),
                 'type': type_key,
                 'type_label': _TYPE_LABELS[type_key],
                 'object_ref': ref_fn(act),
+                # Lien profond : type de route + id (None = pas de cible).
+                'object_type': _TYPE_ROUTE.get(type_key),
+                'object_id': obj_id,
                 'summary': _activity_summary(act),
             })
 
@@ -235,21 +258,26 @@ def audit_log(request):
     _collect('lead',
              LeadActivity.objects.filter(**co)
              .select_related('user', 'lead')[:limit],
-             lambda a: str(a.lead) if a.lead_id else '—')
+             lambda a: str(a.lead) if a.lead_id else '—',
+             lambda a: a.lead_id)
     _collect('devis',
              DevisActivity.objects.filter(**co)
              .select_related('user', 'devis')[:limit],
-             lambda a: a.devis.reference if a.devis_id else '—')
+             lambda a: a.devis.reference if a.devis_id else '—',
+             lambda a: a.devis_id)
     _collect('chantier',
              InstallationActivity.objects.filter(**co)
              .select_related('user', 'installation')[:limit],
-             lambda a: a.installation.reference if a.installation_id else '—')
+             lambda a: a.installation.reference if a.installation_id else '—',
+             lambda a: a.installation_id)
     _collect('sav',
              TicketActivity.objects.filter(**co)
              .select_related('user', 'ticket')[:limit],
-             lambda a: a.ticket.reference if a.ticket_id else '—')
+             lambda a: a.ticket.reference if a.ticket_id else '—',
+             lambda a: a.ticket_id)
 
-    # SettingsAuditLog : pas de kind/field_label identiques, on adapte le résumé.
+    # SettingsAuditLog : même format de changement que le chatter (L16) via le
+    # helper unique `_field_change`. Pas de cible profonde (réglage de société).
     if not type_filter or type_filter == 'parametres':
         for log in (SettingsAuditLog.objects.filter(**co)
                     .select_related('user')[:limit]):
@@ -257,15 +285,17 @@ def audit_log(request):
                 continue
             if not _user_match(log.user):
                 continue
-            label = log.field_label or log.field or log.section
-            summary = (f'{label} : {log.old_value or "∅"} → '
-                       f'{log.new_value or "∅"}')
+            summary = _field_change(
+                log.field_label or log.field or log.section,
+                log.old_value, log.new_value)
             items.append({
                 'date': log.timestamp.isoformat(),
                 'user': _username(log.user),
                 'type': 'parametres',
                 'type_label': _TYPE_LABELS['parametres'],
                 'object_ref': log.section,
+                'object_type': None,
+                'object_id': None,
                 'summary': summary,
             })
 

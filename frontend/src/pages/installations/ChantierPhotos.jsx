@@ -11,6 +11,7 @@ import recordsApi from '../../api/recordsApi'
 import {
   Button,
   IconButton,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -76,6 +77,19 @@ export default function ChantierPhotos({ installationId }) {
     setToDelete(null)
   }
 
+  // L5 — déplacer une pièce jointe entre phases (avant/pendant/après) sans
+  // supprimer + ré-uploader : re-tag via l'endpoint records.
+  const movePhase = async (att, phase) => {
+    if (!phase || phase === (att.phase || 'avant')) return
+    setUploadError(null)
+    try {
+      await recordsApi.setAttachmentPhase(att.id, phase)
+      load()
+    } catch {
+      setUploadError('Déplacement impossible. Réessayez.')
+    }
+  }
+
   // Les pièces sans phase (anciennes / génériques) tombent dans « avant » par défaut.
   const byPhase = (key) => items.filter((a) => (a.phase || 'avant') === key)
 
@@ -129,30 +143,45 @@ export default function ChantierPhotos({ installationId }) {
                   <span className="text-xs text-muted-foreground">Aucun fichier.</span>
                 )}
                 {atts.map((a) => (
-                  <div key={a.id} className="relative">
-                    {isImage(a) ? (
-                      <button type="button" title={a.filename}
-                              onClick={() => openViewer(p.key, a)}>
-                        <img src={a.url} alt={a.filename}
-                             className="size-16 rounded-md border border-border object-cover" />
-                      </button>
-                    ) : (
-                      <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.filename}>
-                        <span className="flex size-16 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
-                          <FileText className="size-6" aria-hidden="true" />
-                        </span>
-                      </a>
-                    )}
-                    {isAdmin && (
-                      <IconButton
-                        label="Supprimer"
-                        variant="destructive"
-                        onClick={() => setToDelete(a)}
-                        className="absolute -right-1.5 -top-1.5 size-5 rounded-full p-0 [&_svg]:size-3"
-                      >
-                        <X />
-                      </IconButton>
-                    )}
+                  <div key={a.id} className="flex flex-col items-center gap-1">
+                    <div className="relative">
+                      {isImage(a) ? (
+                        <button type="button" title={a.filename}
+                                onClick={() => openViewer(p.key, a)}>
+                          <img src={a.url} alt={a.filename}
+                               className="size-16 rounded-md border border-border object-cover" />
+                        </button>
+                      ) : (
+                        <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.filename}>
+                          <span className="flex size-16 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                            <FileText className="size-6" aria-hidden="true" />
+                          </span>
+                        </a>
+                      )}
+                      {isAdmin && (
+                        <IconButton
+                          label="Supprimer"
+                          variant="destructive"
+                          onClick={() => setToDelete(a)}
+                          className="absolute -right-1.5 -top-1.5 size-5 rounded-full p-0 [&_svg]:size-3"
+                        >
+                          <X />
+                        </IconButton>
+                      )}
+                    </div>
+                    {/* L5 — sélecteur de phase : re-tague la pièce sans ré-upload. */}
+                    <Select value={a.phase || 'avant'}
+                            onValueChange={(v) => movePhase(a, v)}>
+                      <SelectTrigger className="h-6 w-16 px-1.5 text-[11px]"
+                                     aria-label="Déplacer vers une autre phase">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PHASES.map((ph) => (
+                          <SelectItem key={ph.key} value={ph.key}>{ph.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 ))}
               </div>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, CheckCircle2 } from 'lucide-react'
+import { FileText, CheckCircle2, Download } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import reportingApi from '../../api/reportingApi'
+import { downloadXlsx } from '../../api/importApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { formatMAD } from '../../lib/format'
 import { Button, Card, CardContent, Segmented, Skeleton, EmptyState } from '../../ui'
@@ -20,6 +22,8 @@ export default function BalanceAgeePage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [segment, setSegment] = useState('all')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   useEffect(() => {
     ventesApi.getBalanceAgee()
@@ -31,6 +35,20 @@ export default function BalanceAgeePage() {
       const res = await ventesApi.getClientRelevePdf(r.client_id)
       openPdfBlob(res.data, `Releve_${r.client_nom}.pdf`)
     } catch { alert('Relevé indisponible.') }
+  }
+
+  // Export .xlsx (une ligne par client, buckets + total) — borné société.
+  const exporter = async () => {
+    setExportError('')
+    setExporting(true)
+    try {
+      const res = await reportingApi.balanceAgeeXlsx()
+      downloadXlsx(res.data, 'balance-agee.xlsx')
+    } catch {
+      setExportError('Export indisponible. Réessayez.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -45,10 +63,23 @@ export default function BalanceAgeePage() {
     <div className="ui-root page">
       <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <h2>Balance âgée</h2>
-        {!loading && rows.length > 0 && (
-          <Segmented size="sm" value={segment} onChange={setSegment} options={SEGMENTS} />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!loading && rows.length > 0 && (
+            <Segmented size="sm" value={segment} onChange={setSegment} options={SEGMENTS} />
+          )}
+          {!loading && rows.length > 0 && (
+            <Button variant="outline" size="sm" onClick={exporter} disabled={exporting}>
+              <Download /> {exporting ? 'Export…' : 'Exporter'}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {exportError && (
+        <div className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {exportError}
+        </div>
+      )}
 
       {loading ? (
         <Card>

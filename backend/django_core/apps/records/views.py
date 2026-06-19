@@ -10,7 +10,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes,
 )
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -229,6 +229,20 @@ class AttachmentViewSet(viewsets.ModelViewSet):
             uploaded_by=request.user, phase=phase, **meta)
         return Response(AttachmentSerializer(att).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'], url_path='phase',
+            parser_classes=[JSONParser, MultiPartParser])
+    def set_phase(self, request, pk=None):
+        """N5/L5 — re-tague la phase (avant/pendant/après) d'une pièce jointe
+        sans supprimer/ré-uploader le fichier. Scopé société par get_object."""
+        att = self.get_object()  # déjà borné à la société par get_queryset
+        phase = (request.data.get('phase') or '').strip().lower()
+        if phase not in ('', 'avant', 'pendant', 'apres'):
+            return Response({'phase': 'Phase invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        att.phase = phase
+        att.save(update_fields=['phase'])
+        return Response(AttachmentSerializer(att).data)
 
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):

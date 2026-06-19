@@ -25,7 +25,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
-import { formatMAD, toNumber } from '../../lib/format'
+import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -177,6 +177,10 @@ export default function FactureList() {
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
   const [auditBusy, setAuditBusy] = useState(false)
+  // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
+  const [waBusy, setWaBusy] = useState({})
+  const [waLangue, setWaLangue] = useState('fr')
+  const [waPreview, setWaPreview] = useState(null) // { reference, message, url, wa_url }
 
   // ── Enregistrement de paiement ──
   const [payTarget, setPayTarget] = useState(null) // facture ciblée
@@ -380,15 +384,31 @@ export default function FactureList() {
     }
   }
 
-  // Envoyer par WhatsApp : ouvre WhatsApp avec le message + lien public (PDF
-  // client) pré-rempli ; le commercial appuie lui-même sur Envoyer.
+  // Envoyer par WhatsApp : construit le message côté serveur (FR/Darija) puis
+  // montre un aperçu (message + lien public) avant d'ouvrir wa.me ; le
+  // commercial appuie lui-même sur Envoyer. Le POST consigne aussi l'action au
+  // chatter de la facture (côté serveur, L856).
   const handleWhatsApp = async (f, modele = 'facture') => {
+    setWaBusy(prev => ({ ...prev, [f.id]: true }))
     try {
-      const res = await ventesApi.whatsappFacture(f.id, { modele })
-      if (res.data?.wa_url) window.open(res.data.wa_url, '_blank', 'noopener')
+      const res = await ventesApi.whatsappFacture(f.id, { modele, langue: waLangue })
+      setWaPreview({
+        reference: f.reference,
+        message: res.data?.message ?? '',
+        url: res.data?.url ?? '',
+        wa_url: res.data?.wa_url ?? '',
+      })
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    } finally {
+      setWaBusy(prev => ({ ...prev, [f.id]: false }))
     }
+  }
+
+  // Ouvre wa.me après confirmation de l'aperçu.
+  const ouvrirWhatsApp = () => {
+    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
+    setWaPreview(null)
   }
 
   // N38 — télécharge l'aperçu BROUILLON UBL 2.1 (XML) de la facture.
@@ -513,6 +533,20 @@ export default function FactureList() {
               <ListChecks /> Audit numérotation
             </Button>
           )}
+          {/* L851 — langue des messages WhatsApp (FR par défaut). */}
+          <div role="group" aria-label="Langue des messages WhatsApp"
+               className="inline-flex items-center gap-1"
+               title="Langue du message « Envoyer par WhatsApp »">
+            <MessageCircle className="size-4 text-muted-foreground" />
+            {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
+              <Button key={val} size="sm"
+                      variant={waLangue === val ? 'default' : 'outline'}
+                      aria-pressed={waLangue === val}
+                      onClick={() => setWaLangue(val)}>
+                {label}
+              </Button>
+            ))}
+          </div>
           <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
         </div>
       </div>
@@ -661,6 +695,35 @@ export default function FactureList() {
         </DialogContent>
       </Dialog>
 
+      {/* ── L852 — Aperçu du message WhatsApp avant ouverture de wa.me ── */}
+      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aperçu du message WhatsApp — {waPreview?.reference}</DialogTitle>
+            <DialogDescription>
+              {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
+              {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
+               style={{ fontFamily: 'inherit' }}>
+            {waPreview?.message}
+          </pre>
+          {waPreview?.url && (
+            <p className="mt-2 break-words text-xs text-muted-foreground">
+              Lien public : {waPreview.url}
+            </p>
+          )}
+          <FormActions sticky={false}>
+            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
+            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
+                    onClick={ouvrirWhatsApp}>
+              <MessageCircle /> Ouvrir WhatsApp
+            </Button>
+          </FormActions>
+        </DialogContent>
+      </Dialog>
+
       {factures.length > 0 && (
         <Card className="mt-3 w-fit px-4 py-2 text-sm">
           <span className="text-muted-foreground">Encaissé ce mois : </span>
@@ -718,6 +781,9 @@ export default function FactureList() {
                   const busy = actionId === f.id
                   const isGenerating = pdfGenerating[f.id]
                   const isDownloading = pdfDownloading[f.id]
+                  const isWaBusy = waBusy[f.id]
+                  // L853 — téléphone client normalisable (miroir backend).
+                  const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
                   const nba = nextBestAction(f)
 
                   return (
@@ -857,8 +923,14 @@ export default function FactureList() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                                  <DropdownMenuItem onClick={() => handleWhatsApp(f, 'facture')}>
-                                    <MessageCircle /> WhatsApp
+                                  <DropdownMenuItem
+                                    disabled={isWaBusy || !waPhoneOk}
+                                    title={!waPhoneOk ? 'Numéro invalide' : undefined}
+                                    onSelect={(e) => { e.preventDefault(); handleWhatsApp(f, 'facture') }}>
+                                    <MessageCircle />
+                                    {isWaBusy ? 'Préparation…'
+                                      : !waPhoneOk ? 'WhatsApp (numéro invalide)'
+                                        : 'WhatsApp'}
                                   </DropdownMenuItem>
                                 )}
                                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (

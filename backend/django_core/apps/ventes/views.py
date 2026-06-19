@@ -931,6 +931,10 @@ class FactureViewSet(viewsets.ModelViewSet):
         modele = request.data.get('modele', 'facture')
         langue = request.data.get('langue', 'fr')
         message, link = build_facture_whatsapp(request, facture, modele, langue)
+        # L856 — trace l'action dans le chatter de la facture (Historique).
+        # Acteur et société posés côté serveur, jamais lus du corps de requête.
+        from .activity import log_facture_whatsapp
+        log_facture_whatsapp(facture, request.user, modele)
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'url': link['url'],
@@ -1189,7 +1193,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     Visible par tout rôle authentifié ; tenant-scopé par société.
     """
     queryset = Paiement.objects.select_related(
-        'facture', 'created_by'
+        'facture', 'facture__client', 'created_by'
     ).all()
     serializer_class = PaiementSerializer
     filter_backends = [filters.OrderingFilter]
