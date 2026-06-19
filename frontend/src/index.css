@@ -2573,9 +2573,18 @@ textarea.form-control {
   z-index: 200; padding: 6px;
 }
 .nb-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: 0.8rem; font-weight: 700; color: #0f172a;
   padding: 6px 10px 8px;
 }
+.nb-header-actions { display: flex; align-items: center; gap: 6px; }
+.nb-link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer;
+  font-size: 0.72rem; font-weight: 600; color: #1d4ed8;
+  padding: 2px 4px; border-radius: 6px;
+}
+.nb-link-btn:hover { background: #eff6ff; }
 .nb-empty { padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem; }
 .nb-group { padding: 4px 0; }
 .nb-group-title {
@@ -2620,6 +2629,27 @@ textarea.form-control {
 .nb-item:hover { background: #f1f5f9; }
 .nb-item-date { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
 .nb-overdue { color: #dc2626; font-weight: 600; }
+/* N75 — notifications in-app persistées : item non lu + marquage lu. */
+.nb-item-unread { font-weight: 600; }
+.nb-item-unread:hover { background: #eef2ff; }
+.nb-dot {
+  display: inline-block; width: 7px; height: 7px; margin-right: 6px;
+  border-radius: 50%; background: #1d4ed8; vertical-align: middle;
+}
+.nb-item-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  color: #94a3b8; cursor: pointer; flex-shrink: 0;
+}
+.nb-item-mark:hover { background: #e0e7ff; color: #1d4ed8; }
+
+/* N75 — page Préférences de notifications (événement × canaux). */
+.np-loading { display: flex; align-items: center; gap: 8px; padding: 16px; color: #64748b; }
+.np-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.np-table th, .np-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.np-channel-head { text-align: center; font-weight: 600; color: #475569; }
+.np-channel-cell { text-align: center; }
+.np-note { margin-top: 12px; font-size: 0.78rem; color: #64748b; line-height: 1.4; }
 
 /* ===== migrated from src/components/records-panels.css (P67) ===== */
 /* Panneaux Activités + Pièces jointes (style Odoo, sobres). */
