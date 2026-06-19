@@ -1,9 +1,12 @@
 // Onglet « Avancé » de la page Paramètres (hypothèses ROI, logique de devis,
 // types d'intervention, checklist d'exécution, champs personnalisés). Restylé
 // sur le système de design (@/ui) ; champs, libellés et comportement identiques.
-import { Plus, Trash2 } from 'lucide-react'
+import {
+  Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown,
+} from 'lucide-react'
 import {
   Card, CardContent, Input, Button, IconButton, Badge,
+  Checkbox, Switch, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
@@ -13,6 +16,8 @@ export default function AvanceSection({
   typesItv, newType, setNewType, addType, renameType, delType,
   checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
   cfModule, setCfModule, cfDefs, newCf, setNewCf, addCf, delCf, loadCfDefs,
+  cfEditId, cfEdit, setCfEdit, openCfEdit, cancelCfEdit, saveCfEdit,
+  toggleCfActif, moveCf,
 }) {
   return (
     <>
@@ -186,7 +191,7 @@ export default function AvanceSection({
             Ils apparaissent dans le formulaire ; rien n'est perdu si vous en
             retirez un.
           </p>
-          <div className="mb-2 flex gap-1.5">
+          <div className="mb-2 flex items-center gap-1.5">
             <div className="w-[140px]">
               <Select value={cfModule}
                       onValueChange={v => { setCfModule(v); loadCfDefs(v) }}>
@@ -198,19 +203,103 @@ export default function AvanceSection({
                 </SelectContent>
               </Select>
             </div>
+            {/* L817 — compte des champs définis pour le module courant. */}
+            <span className="text-[11px] text-muted-foreground">
+              {cfDefs.length} champ{cfDefs.length > 1 ? 's' : ''}
+            </span>
           </div>
-          {cfDefs.map(d => (
-            <div key={d.id} className="mb-1.5 flex items-center gap-1.5">
-              <span className="flex-1 text-sm text-foreground">{d.libelle}</span>
-              <span className="text-[11px] text-muted-foreground">{d.type}</span>
-              <IconButton size="md" variant="outline" label="Supprimer le champ"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => delCf(d)}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </IconButton>
+          {/* L817 — état vide explicite quand le module n'a aucun champ. */}
+          {cfDefs.length === 0 ? (
+            <div className="mb-2">
+              <EmptyState
+                title="Aucun champ pour ce module"
+                description="Ajoutez un champ ci-dessous pour l'afficher sur les fiches." />
             </div>
+          ) : cfDefs.map((d, idx) => (
+            cfEditId === d.id ? (
+              // L809 — éditeur inline (libellé/type/options/obligatoire/visible).
+              <div key={d.id} className="mb-2 rounded-md border border-border p-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Input className="min-w-[140px] flex-[1_1_140px]"
+                         placeholder="Libellé du champ" value={cfEdit?.libelle ?? ''}
+                         onChange={e => setCfEdit(c => ({ ...c, libelle: e.target.value }))} />
+                  <div className="w-[120px]">
+                    <Select value={cfEdit?.type}
+                            onValueChange={v => setCfEdit(c => ({ ...c, type: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="text">Texte</SelectItem>
+                        <SelectItem value="number">Nombre</SelectItem>
+                        <SelectItem value="date">Date</SelectItem>
+                        <SelectItem value="choice">Choix</SelectItem>
+                        <SelectItem value="boolean">Oui/Non</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {cfEdit?.type === 'choice' && (
+                    <Input className="min-w-[160px] flex-[1_1_160px]"
+                           placeholder="Options (a, b, c)" value={cfEdit?.options ?? ''}
+                           onChange={e => setCfEdit(c => ({ ...c, options: e.target.value }))} />
+                  )}
+                  <IconButton size="md" variant="outline" label="Enregistrer"
+                              onClick={() => saveCfEdit(d)}>
+                    <Check className="size-4" aria-hidden="true" />
+                  </IconButton>
+                  <IconButton size="md" variant="outline" label="Annuler"
+                              onClick={cancelCfEdit}>
+                    <X className="size-4" aria-hidden="true" />
+                  </IconButton>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px] text-muted-foreground">
+                  {/* Code non modifiable : protégé serveur dès qu'une donnée existe (L814). */}
+                  <span>Code : <code>{d.code}</code></span>
+                  <label className="flex items-center gap-1.5">
+                    <Checkbox checked={!!cfEdit?.obligatoire}
+                              onCheckedChange={v => setCfEdit(c => ({ ...c, obligatoire: !!v }))} />
+                    Obligatoire
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <Checkbox checked={!!cfEdit?.visible_liste}
+                              onCheckedChange={v => setCfEdit(c => ({ ...c, visible_liste: !!v }))} />
+                    Visible en liste
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div key={d.id}
+                   className={`mb-1.5 flex items-center gap-1.5 ${d.actif ? '' : 'opacity-50'}`}>
+                {/* L813 — réordonner (haut/bas). */}
+                <div className="flex flex-col">
+                  <IconButton size="sm" variant="ghost" label="Monter"
+                              disabled={idx === 0} onClick={() => moveCf(d, -1)}>
+                    <ChevronUp className="size-3.5" aria-hidden="true" />
+                  </IconButton>
+                  <IconButton size="sm" variant="ghost" label="Descendre"
+                              disabled={idx === cfDefs.length - 1} onClick={() => moveCf(d, 1)}>
+                    <ChevronDown className="size-3.5" aria-hidden="true" />
+                  </IconButton>
+                </div>
+                <span className="flex-1 text-sm text-foreground">
+                  {d.libelle}{d.obligatoire ? ' *' : ''}
+                </span>
+                {d.visible_liste && <Badge tone="outline">Liste</Badge>}
+                <span className="text-[11px] text-muted-foreground">{d.type}</span>
+                {/* L810 — toggle actif/inactif (soft-disable, custom_data conservé). */}
+                <Switch checked={!!d.actif} onCheckedChange={() => toggleCfActif(d)}
+                        aria-label={d.actif ? 'Désactiver le champ' : 'Réactiver le champ'} />
+                <IconButton size="md" variant="outline" label="Modifier le champ"
+                            onClick={() => openCfEdit(d)}>
+                  <Pencil className="size-4" aria-hidden="true" />
+                </IconButton>
+                <IconButton size="md" variant="outline" label="Supprimer le champ"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => delCf(d)}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
+              </div>
+            )
           ))}
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Input className="min-w-[140px] flex-[1_1_140px]" placeholder="Libellé du champ"
                    value={newCf.libelle} onChange={e => setNewCf(c => ({ ...c, libelle: e.target.value }))} />
             <div className="w-[120px]">
@@ -230,6 +319,17 @@ export default function AvanceSection({
               <Input className="min-w-[160px] flex-[1_1_160px]" placeholder="Options (a, b, c)"
                      value={newCf.options} onChange={e => setNewCf(c => ({ ...c, options: e.target.value }))} />
             )}
+            {/* L811 — obligatoire à la création ; L812 — visible en liste. */}
+            <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+              <Checkbox checked={!!newCf.obligatoire}
+                        onCheckedChange={v => setNewCf(c => ({ ...c, obligatoire: !!v }))} />
+              Obligatoire
+            </label>
+            <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+              <Checkbox checked={!!newCf.visible_liste}
+                        onCheckedChange={v => setNewCf(c => ({ ...c, visible_liste: !!v }))} />
+              Visible en liste
+            </label>
             <Button type="button" onClick={addCf}><Plus className="size-4" aria-hidden="true" /></Button>
           </div>
         </CardContent>

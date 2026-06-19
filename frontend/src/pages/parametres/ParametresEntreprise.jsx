@@ -114,24 +114,88 @@ export default function ParametresEntreprise() {
   // Champs personnalisés (T11) — module choisi (lead/client/produit).
   const [cfModule, setCfModule] = useState('lead')
   const [cfDefs, setCfDefs] = useState([])
-  const [newCf, setNewCf] = useState({ libelle: '', type: 'text', options: '' })
+  const [newCf, setNewCf] = useState({
+    libelle: '', type: 'text', options: '', obligatoire: false,
+    visible_liste: false,
+  })
+  // L809 — édition inline d'un champ existant : id en cours + brouillon.
+  const [cfEditId, setCfEditId] = useState(null)
+  const [cfEdit, setCfEdit] = useState(null)
   const loadCfDefs = (mod) => customFieldsApi.getDefs(mod)
     .then(r => setCfDefs(r.data.results ?? r.data)).catch(() => {})
   const slugifyCode = (s) => s.trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
+  // Message d'erreur serveur lisible (detail, ou première erreur de champ FR).
+  const cfErr = (e, fallback) => {
+    const d = e?.response?.data
+    if (!d) return fallback
+    if (typeof d === 'string') return d
+    if (d.detail) return d.detail
+    const first = Object.values(d)[0]
+    return Array.isArray(first) ? first[0] : (first || fallback)
+  }
   const addCf = async () => {
     const libelle = newCf.libelle.trim()
     if (!libelle) return
     try {
       await customFieldsApi.saveDef(null, {
         module: cfModule, code: slugifyCode(libelle), libelle, type: newCf.type,
+        obligatoire: newCf.obligatoire, visible_liste: newCf.visible_liste,
         options: newCf.type === 'choice'
           ? newCf.options.split(',').map(o => o.trim()).filter(Boolean) : null,
       })
-      setNewCf({ libelle: '', type: 'text', options: '' })
+      setNewCf({
+        libelle: '', type: 'text', options: '', obligatoire: false,
+        visible_liste: false,
+      })
       loadCfDefs(cfModule)
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { alert(cfErr(e, 'Ajout impossible.')) }
+  }
+  // L809/L811/L812 — ouvre/ferme l'éditeur inline d'un champ existant.
+  const openCfEdit = (d) => {
+    setCfEditId(d.id)
+    setCfEdit({
+      libelle: d.libelle, type: d.type, obligatoire: !!d.obligatoire,
+      visible_liste: !!d.visible_liste,
+      options: Array.isArray(d.options) ? d.options.join(', ') : '',
+    })
+  }
+  const cancelCfEdit = () => { setCfEditId(null); setCfEdit(null) }
+  const saveCfEdit = async (d) => {
+    const libelle = (cfEdit?.libelle || '').trim()
+    if (!libelle) return
+    try {
+      // Le code (clé JSON) n'est jamais renvoyé : protégé serveur (L814).
+      await customFieldsApi.saveDef(d.id, {
+        libelle, type: cfEdit.type, obligatoire: cfEdit.obligatoire,
+        visible_liste: cfEdit.visible_liste,
+        options: cfEdit.type === 'choice'
+          ? cfEdit.options.split(',').map(o => o.trim()).filter(Boolean) : null,
+      })
+      cancelCfEdit()
+      loadCfDefs(cfModule)
+    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+  }
+  // L810 — bascule actif/inactif sans perdre custom_data.
+  const toggleCfActif = async (d) => {
+    try {
+      await customFieldsApi.saveDef(d.id, { actif: !d.actif })
+      loadCfDefs(cfModule)
+    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+  }
+  // L813 — réordonne le champ d'un cran (haut/bas) et persiste l'ordre.
+  const moveCf = async (d, dir) => {
+    const ordered = [...cfDefs]
+    const i = ordered.findIndex(x => x.id === d.id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ordered.length) return
+    ;[ordered[i], ordered[j]] = [ordered[j], ordered[i]]
+    setCfDefs(ordered)
+    try {
+      await customFieldsApi.reorder(ordered.map(x => x.id))
+      loadCfDefs(cfModule)
+    } catch (e) { alert(cfErr(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
     if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
@@ -460,6 +524,8 @@ export default function ParametresEntreprise() {
     checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
     marques, newMarque, setNewMarque, addMarque, delMarque,
     cfModule, setCfModule, cfDefs, newCf, setNewCf, addCf, delCf, loadCfDefs,
+    cfEditId, cfEdit, setCfEdit, openCfEdit, cancelCfEdit, saveCfEdit,
+    toggleCfActif, moveCf,
     setPT, setPrefix, setNumbering, numberingPreview,
   }
 
