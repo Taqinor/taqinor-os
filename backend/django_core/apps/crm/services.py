@@ -261,6 +261,32 @@ def find_duplicate_clusters(company, include_archived=False):
     return clusters, by_id
 
 
+def cluster_match_keys(group):
+    """Clés de rapprochement PARTAGÉES par au moins deux membres d'un cluster
+    (pour expliquer dans l'UI POURQUOI ils sont regroupés) : 'telephone',
+    'email' et/ou 'nom'. Renvoie une liste ordonnée et stable."""
+    out = []
+    checks = (
+        ('telephone', lambda le: normalize_phone(le.telephone)),
+        ('email', lambda le: normalize_email(le.email)),
+        ('nom', lambda le: normalize_name(le.nom, le.prenom, le.societe)),
+    )
+    for label, keyer in checks:
+        seen = {}
+        shared = False
+        for le in group:
+            val = keyer(le)
+            if not val:
+                continue
+            if val in seen:
+                shared = True
+                break
+            seen[val] = True
+        if shared:
+            out.append(label)
+    return out
+
+
 def find_duplicate_leads(lead):
     """Leads probablement en double : même téléphone OU email normalisé, même
     société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
