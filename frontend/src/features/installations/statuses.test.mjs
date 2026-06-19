@@ -18,6 +18,12 @@ import {
   upcomingPoses,
   funnelSummary,
   installerLoad,
+  capacityBand,
+  installYear,
+  parcSummary,
+  CAPACITY_BANDS,
+  PARC_GARANTIE_LABELS,
+  DOSSIER_STATUT_LABELS,
 } from './statuses.js'
 
 test('les 7 statuts chantier canoniques, dans l\'ordre d\'entonnoir', () => {
@@ -176,4 +182,70 @@ test('funnelSummary : compte par statut + retard', () => {
   assert.equal(counts.find((r) => r.key === 'signe').count, 1)
   assert.equal(counts.find((r) => r.key === 'planifie').count, 2)
   assert.equal(retard, 1)
+})
+
+// ── Parc installé — helpers ──────────────────────────────────────────────────
+
+test('capacityBand : tranches de puissance', () => {
+  assert.equal(capacityBand(0), null)
+  assert.equal(capacityBand(-5), null)
+  assert.equal(capacityBand(2.9), '< 3 kWc')
+  assert.equal(capacityBand(3), '3–10 kWc')
+  assert.equal(capacityBand(9.99), '3–10 kWc')
+  assert.equal(capacityBand(10), '10–50 kWc')
+  assert.equal(capacityBand(49.9), '10–50 kWc')
+  assert.equal(capacityBand(50), '≥ 50 kWc')
+  // Toutes les tranches produites sont dans la liste publiée.
+  for (const v of [1, 5, 20, 100]) {
+    assert.ok(CAPACITY_BANDS.includes(capacityBand(v)))
+  }
+})
+
+test('installYear : réception en priorité, sinon mise en service', () => {
+  assert.equal(installYear({ date_reception: '2025-04-01' }), 2025)
+  // Système hérité : pas de réception → on utilise la mise en service.
+  assert.equal(installYear({ date_mise_en_service: '2022-09-12' }), 2022)
+  assert.equal(installYear({
+    date_reception: '2026-01-01', date_mise_en_service: '2020-01-01',
+  }), 2026)
+  assert.equal(installYear({}), null)
+  assert.equal(installYear({ date_reception: 'invalide' }), null)
+})
+
+test('parcSummary : total kWc + comptes par type et tranche', () => {
+  const rows = [
+    { puissance_installee_kwc: '5', type_installation: 'residentiel' },
+    { puissance_installee_kwc: '12', type_installation: 'industriel' },
+    { puissance_installee_kwc: '2', type_installation: 'residentiel' },
+    { puissance_installee_kwc: null, type_installation: 'agricole' },
+  ]
+  const s = parcSummary(rows)
+  assert.equal(s.total, 4)
+  assert.equal(s.totalKwc, 19)
+  assert.equal(s.parType.residentiel, 2)
+  assert.equal(s.parType.industriel, 1)
+  assert.equal(s.parType.agricole, 1)
+  assert.equal(s.parTranche['3–10 kWc'], 1)
+  assert.equal(s.parTranche['10–50 kWc'], 1)
+  assert.equal(s.parTranche['< 3 kWc'], 1)
+  // Une puissance nulle ne crée pas de tranche.
+  assert.equal(Object.values(s.parTranche).reduce((a, b) => a + b, 0), 3)
+})
+
+test('parcSummary : parc vide', () => {
+  const s = parcSummary([])
+  assert.equal(s.total, 0)
+  assert.equal(s.totalKwc, 0)
+  assert.deepEqual(s.parType, {})
+  assert.deepEqual(s.parTranche, {})
+})
+
+test('libellés de garantie/dossier du parc présents', () => {
+  for (const k of ['sous_garantie', 'expire_bientot', 'hors_garantie', 'non_renseignee']) {
+    assert.ok(PARC_GARANTIE_LABELS[k]?.label, `libellé garantie manquant : ${k}`)
+    assert.ok(PARC_GARANTIE_LABELS[k]?.tone, `ton garantie manquant : ${k}`)
+  }
+  for (const k of ['non_concerne', 'a_deposer', 'depose', 'approuve', 'compteur_pose']) {
+    assert.ok(DOSSIER_STATUT_LABELS[k], `libellé dossier manquant : ${k}`)
+  }
 })
