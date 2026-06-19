@@ -56,3 +56,40 @@ class TestJournalExport(TestCase):
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))
         self.assertGreater(len(body), 2000)
+
+    def _load_journal_rows(self):
+        from datetime import date as _date
+        from apps.ventes.exports import export_journal_ventes, period_bounds
+        from openpyxl import load_workbook
+        from io import BytesIO
+        debut, fin = period_bounds({'month': _date.today().strftime('%Y-%m')})
+        resp = export_journal_ventes(self.company, debut, fin)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        wb = load_workbook(BytesIO(body))
+        ws = wb['Journal des ventes']
+        return [list(r) for r in ws.iter_rows(values_only=True)]
+
+    def test_type_column_present(self):
+        rows = self._load_journal_rows()
+        self.assertEqual(rows[0][2], 'Type')
+        # Les factures classiques (chaîne BC) sont de type « Facture complète ».
+        self.assertEqual(rows[1][2], 'Facture complète')
+
+    def test_avoirs_appear_as_negative_lines(self):
+        from apps.ventes.models import Avoir, LigneAvoir
+        from apps.crm.models import Client
+        fac = Facture.objects.get(reference='FAC-JR-1')
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AVO-JR-1', facture=fac,
+            client=Client.objects.get(nom='C'), statut='emise',
+            taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Retour', quantite=Decimal('1'),
+            prix_unitaire=Decimal('2000'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        rows = self._load_journal_rows()
+        avoir_rows = [r for r in rows if r[2] == 'Avoir']
+        self.assertEqual(len(avoir_rows), 1)
+        # Total HT (col index 8) et Total TTC (col index 11) sont négatifs.
+        self.assertLess(avoir_rows[0][8], 0)
+        self.assertLess(avoir_rows[0][11], 0)

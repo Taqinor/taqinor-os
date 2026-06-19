@@ -47,7 +47,7 @@ def export_journal_ventes(company, debut, fin):
     """Construit le classeur .xlsx (journal + résumé TVA) pour [debut, fin[."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
-    from apps.ventes.models import Facture
+    from apps.ventes.models import Avoir, Facture
 
     factures = (Facture.objects
                 .filter(company=company, statut__in=ISSUED_STATUTS,
@@ -59,8 +59,9 @@ def export_journal_ventes(company, debut, fin):
     ws = wb.active
     ws.title = 'Journal des ventes'
     bold = Font(bold=True)
-    headers = ['Facture', 'Date', 'Client', 'ICE client', 'Désignation',
-               'Qté', 'P.U. HT', 'Total HT', 'TVA %', 'Montant TVA', 'Total TTC']
+    headers = ['Facture', 'Date', 'Type', 'Client', 'ICE client',
+               'Désignation', 'Qté', 'P.U. HT', 'Total HT', 'TVA %',
+               'Montant TVA', 'Total TTC']
     ws.append(headers)
     for c in ws[1]:
         c.font = bold
@@ -68,6 +69,7 @@ def export_journal_ventes(company, debut, fin):
     par_taux = {}
     tot_ht = tot_tva = tot_ttc = Decimal('0')
     for f in factures:
+        type_libelle = f.get_type_facture_display()
         for ligne in f.lignes.all():
             ht = _q2(ligne.total_ht)
             taux = Decimal(ligne.taux_tva_effectif or 0)
@@ -76,9 +78,40 @@ def export_journal_ventes(company, debut, fin):
             ws.append([
                 f.reference,
                 f.date_emission.isoformat() if f.date_emission else '',
+                type_libelle,
                 getattr(f.client, 'nom', '') or '',
                 getattr(f.client, 'ice', '') or '',
                 ligne.designation, str(ligne.quantite), str(ligne.prix_unitaire),
+                float(ht), float(taux), float(tva), float(ttc),
+            ])
+            bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+            bucket['ht'] += ht
+            bucket['tva'] += tva
+            tot_ht += ht
+            tot_tva += tva
+            tot_ttc += ttc
+
+    # Avoirs (notes de crédit) émis sur la période : lignes NÉGATIVES pour
+    # réconcilier le CA. Ventilés par taux (10/20) comme les factures, et
+    # déduits du résumé TVA. Les avoirs annulés sont exclus.
+    avoirs = (Avoir.objects
+              .filter(company=company, statut=Avoir.Statut.EMISE,
+                      date_emission__gte=debut, date_emission__lt=fin)
+              .select_related('client', 'facture').prefetch_related('lignes')
+              .order_by('date_emission', 'reference'))
+    for a in avoirs:
+        date_a = a.date_emission.isoformat() if a.date_emission else ''
+        nom = getattr(a.client, 'nom', '') or ''
+        ice = getattr(a.client, 'ice', '') or ''
+        desig = f'Avoir sur {a.facture.reference}' if a.facture_id else 'Avoir'
+        for b in a.tva_par_taux:
+            taux = Decimal(b['taux'] or 0)
+            ht = -_q2(b['base_ht'])
+            tva = -_q2(b['montant'])
+            ttc = _q2(ht + tva)
+            ws.append([
+                a.reference, date_a, 'Avoir', nom, ice,
+                desig, '', '',
                 float(ht), float(taux), float(tva), float(ttc),
             ])
             bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})

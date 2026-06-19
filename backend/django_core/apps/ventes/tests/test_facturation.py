@@ -255,3 +255,46 @@ class TestPermissions(TestCase):
         r = api.post(f'/api/django/ventes/factures/{fid}/annuler/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(Paiement.objects.count(), 0)
+
+
+class TestSurPaiementGuard(TestCase):
+    """Garde sur-paiement : un encaissement > reste à payer est refusé."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        self.resp = User.objects.create_user(
+            username='sp_resp', password='x', role_legacy='responsable',
+            company=self.company,
+        )
+        self.api = auth(self.resp)
+        self.devis = make_accepted_devis(self.company, self.client_obj)
+        # Acompte 30 % de 17 000 = 5 100 TTC.
+        self.acompte = Facture.objects.get(pk=self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/generer-facture/'
+        ).data['id'])
+
+    def _pay(self, montant):
+        return self.api.post(
+            f'/api/django/ventes/factures/{self.acompte.id}/enregistrer-paiement/',
+            {'montant': montant, 'date_paiement': '2026-06-13',
+             'mode': 'virement'},
+            format='json',
+        )
+
+    def test_overpayment_rejected(self):
+        r = self._pay('6000')  # > 5 100
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('dépasse', r.data['detail'])
+        self.assertEqual(Paiement.objects.count(), 0)
+
+    def test_exact_remaining_passes(self):
+        r = self._pay('5100')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['statut'], 'payee')
+
+    def test_partial_then_overpayment_rejected(self):
+        self.assertEqual(self._pay('3000').status_code, 201)
+        r = self._pay('3000')  # reste 2 100 → refusé
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(Paiement.objects.count(), 1)

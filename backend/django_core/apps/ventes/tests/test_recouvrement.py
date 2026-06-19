@@ -78,6 +78,29 @@ class TestRecouvrement(TestCase):
         self.assertEqual(resp.data['lignes'][0]['du'], '6000.00')
         self.assertEqual(resp.data['totaux']['du'], '6000.00')
 
+    def test_statement_details_payments_and_avoirs(self):
+        from apps.ventes.models import Avoir, LigneAvoir, Paiement
+        Paiement.objects.create(
+            company=self.company, facture=self.facture,
+            montant=Decimal('1000'), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AVO-REC-1', facture=self.facture,
+            client=self.client_obj, statut='emise', taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Geste', quantite=Decimal('1'),
+            prix_unitaire=Decimal('500'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        resp = self.api.get(
+            f'/api/django/ventes/clients/{self.client_obj.id}/releve/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data['paiements']), 1)
+        self.assertEqual(resp.data['paiements'][0]['montant'], '1000.00')
+        self.assertEqual(resp.data['paiements'][0]['mode'], 'Virement')
+        self.assertEqual(len(resp.data['avoirs']), 1)
+        self.assertEqual(resp.data['avoirs'][0]['reference'], 'AVO-REC-1')
+        self.assertEqual(resp.data['avoirs'][0]['total_ttc'], '600.00')
+
     def test_relancer_logs_and_sets_next(self):
         nxt = (date.today() + timedelta(days=7)).isoformat()
         resp = self.api.post(

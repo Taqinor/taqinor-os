@@ -142,6 +142,8 @@ def _releve_data(client):
         .prefetch_related('lignes', 'paiements', 'avoirs')
         .order_by('date_emission'))
     lignes = []
+    paiements = []
+    avoirs = []
     total_facture = total_paye = total_avoir = total_du = Decimal('0')
     for f in factures:
         paye = f.montant_paye
@@ -158,12 +160,37 @@ def _releve_data(client):
             'total_ttc': _s(f.total_ttc),
             'paye': _s(paye), 'avoirs': _s(avo), 'du': _s(du),
         })
+        # Détail des encaissements (date / mode / montant) par facture.
+        for p in f.paiements.all():
+            paiements.append({
+                'facture': f.reference,
+                'date': (p.date_paiement.isoformat()
+                         if p.date_paiement else None),
+                'mode': p.get_mode_display(),
+                'montant': _s(p.montant),
+            })
+        # Détail des avoirs actifs (date / référence / montant) par facture.
+        for a in f.avoirs.all():
+            if a.statut == 'annulee':
+                continue
+            avoirs.append({
+                'facture': f.reference,
+                'reference': a.reference,
+                'date': (a.date_emission.isoformat()
+                         if a.date_emission else None),
+                'motif': a.motif,
+                'total_ttc': _s(a.total_ttc),
+            })
+    paiements.sort(key=lambda r: r['date'] or '')
+    avoirs.sort(key=lambda r: r['date'] or '')
     return {
         'client': {'id': client.id,
                    'nom': f"{client.nom} {client.prenom or ''}".strip(),
                    'email': client.email, 'telephone': client.telephone,
                    'adresse': client.adresse},
         'lignes': lignes,
+        'paiements': paiements,
+        'avoirs': avoirs,
         'totaux': {
             'facture': _s(total_facture), 'paye': _s(total_paye),
             'avoirs': _s(total_avoir), 'du': _s(total_du),
