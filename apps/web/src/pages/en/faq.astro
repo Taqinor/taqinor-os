@@ -1,0 +1,110 @@
+---
+/**
+ * EN — FAQ (W67). Faithful translation of /faq ; EVERY figure (MAD, kWc, kW,
+ * MW, %, years, 18 months, 9 June 2026, fines, 84.8 %) is kept EXACT. The Faq
+ * component emits one FAQPage for this locale. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Faq from '../../components/Faq.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const faq = [
+  // — Price & orders of magnitude —
+  {
+    q: 'How much does a residential solar installation cost?',
+    a: "There's no price per square metre: it all starts from your bill and your roof. To set ideas, a villa paying around 1 500 MAD a month is most often equipped with 4 to 6 kWc. The online assessment returns a range in a few seconds; the real figure comes after the technical visit.",
+  },
+  {
+    q: "How is an installation's price calculated?",
+    a: 'The price follows the power, and the power follows your consumption. An order of magnitude, not a quote: a villa with about 2 000 MAD of monthly bill generally aims for 6 kWc, an investment of the order of 60 000 to 75 000 MAD. What that figure becomes for you depends on the roof and the equipment chosen — that is the purpose of the technical visit.',
+  },
+  {
+    q: 'From what bill is solar worthwhile?',
+    a: 'Below about 1 000 MAD a month, the return on investment generally goes past the 7-year mark, and we will tell you frankly rather than equipping you for nothing. Above 10 000 MAD a month, you are no longer in the residential bracket: your case deserves a dedicated study (see the Business page).',
+  },
+  // — Law 82-21 —
+  {
+    q: 'What does Law 82-21 say for individuals?',
+    a: 'For the vast majority of villas, it is good news: in low voltage and under 11 kW, you fall under the lightest regime, the declaration. A formality to file before commissioning, not an authorization to obtain. And we are the ones who prepare and file it for you.',
+  },
+  {
+    q: 'What are the three regimes of Law 82-21?',
+    a: 'It all hinges on your power. Declaration: under 11 kW in low voltage, or an isolated off-grid site. Connection agreement: from the declaration threshold up to 5 MW, in low or medium voltage. Authorization: from 5 MW, in medium, high or very high voltage. The implementing decree 2-25-100 applies since 9 June 2026.',
+  },
+  // — Article 33 —
+  {
+    q: 'My existing installation is not declared. What should I do?',
+    a: "Don't wait. Article 33 gives you an 18-month window, opened on 9 June 2026, to regularize an installation already in place — after that deadline it closes. The simplest is to start the process now; the Regularization page details the 5-step procedure.",
+  },
+  {
+    q: 'What does a non-regularized installation risk?',
+    a: 'As long as it is not regularized, an existing installation is, in the eyes of Law 82-21, in an irregular situation. Concretely, this ranges from a fine — 2 000 to 5 000 MAD for operating without the required declaration, and 100 000 to 1 000 000 MAD without a connection agreement or authorization — to formal notice, shutdown of the installation, or even its disconnection from the grid. So many reasons to take advantage of the Article 33 window.',
+  },
+  // — Batteries / self-consumption —
+  {
+    q: 'Do I need batteries?',
+    a: "Often no, and that is rarely the expected answer. If you consume mostly during the day, the energy goes straight to your appliances and direct self-consumption pays more than any storage. The battery is justified for night-time use or service continuity during an outage — your consumption curve says so, and we look at it in the study.",
+  },
+  // — Warranties —
+  {
+    q: 'What are the warranties?',
+    a: 'Component by component. Panels: 12 years on the product and 25 years on performance (at least 84.8 % of the initial power after 25 years). Deye and Huawei inverters and Dyness LFP batteries: 10 years. Galvanised steel structure: 20 years. Taqinor installation and workmanship: 2 years. The detail, with what each warranty covers, is on the Our Warranties page.',
+  },
+  {
+    q: 'How long do panels last?',
+    a: "A panel doesn't 'die' on a date: it slowly loses efficiency, and the warranty frames this decline. Ours are guaranteed to deliver at least 84.8 % of their initial power after 25 years. The inverter is an electronic part: generally plan for one replacement over the installation's lifetime.",
+  },
+  // — Timeline & process —
+  {
+    q: 'How does an installation work, step by step?',
+    a: 'Three stages, no detours. First a 60-second assessment that returns a first range. Then a direct WhatsApp exchange with a technician, with roof photos. Finally the technical visit, the complete free study, and the quote. You talk to the person who sizes, not a switchboard that will call back.',
+  },
+  // — Monitoring / after-sales —
+  {
+    q: 'How do you track production after installation?',
+    a: 'A small WiFi/Ethernet dongle links your installation to Deye Cloud: real-time production, automatic alerts, history. You receive your personal access on the mobile app, and on our side we monitor the whole fleet — the idea being to spot a deviation before you have to notice it at home.',
+  },
+];
+---
+
+<Layout
+  title="Frequently asked questions about solar in Morocco — prices, law, warranties | Taqinor"
+  description="The questions people ask us before signing, with figured, honest answers: how much it really costs, from what bill it pays off, which Law 82-21 regime concerns you, what a non-regularized installation risks, and how far the warranties go."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Frequently asked questions' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">FAQ</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Your questions, our answers</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Here, without spin, is what buyers ask us before signing: what it costs, from when it pays
+          off, what Law 82-21 says, what the warranties cover and how we track production. Is your
+          question missing?
+          <a href={L('/contact')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Write to us.</a>
+        </p>
+      </div>
+    </section>
+
+    <Faq items={faq} heading="Frequently asked questions" />
+
+    <CtaBand title="One last question? A free study answers it." href={contactSim} seam={false} />
+
+    <StickyCta />
+  </div>
+</Layout>
