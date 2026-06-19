@@ -97,6 +97,96 @@ const installationsApi = {
     ? api.patch(`/installations/types-intervention/${id}/`, data)
     : api.post('/installations/types-intervention/', data),
   deleteTypeIntervention: (id) => api.delete(`/installations/types-intervention/${id}/`),
+
+  // ── F9 — N° de série par composant (+ OCR swappable no-op) ──
+  getSerials: (id) => api.get(`/installations/interventions/${id}/serials/`),
+  ajouterSerial: (id, { produit, designation, slot, numero_serie, file }) => {
+    const fd = new FormData()
+    if (produit) fd.append('produit', produit)
+    if (designation) fd.append('designation', designation)
+    if (slot) fd.append('slot', slot)
+    if (numero_serie != null) fd.append('numero_serie', numero_serie)
+    if (file) fd.append('file', file)
+    return api.post(`/installations/interventions/${id}/ajouter-serial/`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  modifierSerial: (id, payload) =>
+    api.post(`/installations/interventions/${id}/modifier-serial/`, payload),
+  supprimerSerial: (id, serial) =>
+    api.post(`/installations/interventions/${id}/supprimer-serial/`, { serial }),
+
+  // ── F10 — Annotation d'une photo (dessin + légende) ──
+  annoterPhoto: (id, payload) =>
+    api.post(`/installations/interventions/${id}/annoter-photo/`, payload),
+
+  // ── F11/F12 — Réconciliation du matériel consommé ──
+  getConsommation: (id) =>
+    api.get(`/installations/interventions/${id}/consommation/`),
+  ajouterLigneConsommation: (id, payload) =>
+    api.post(`/installations/interventions/${id}/ajouter-ligne-consommation/`, payload),
+  modifierLigneConsommation: (id, payload) =>
+    api.post(`/installations/interventions/${id}/modifier-ligne-consommation/`, payload),
+  supprimerLigneConsommation: (id, ligne) =>
+    api.post(`/installations/interventions/${id}/supprimer-ligne-consommation/`, { ligne }),
+  validerConsommation: (id) =>
+    api.post(`/installations/interventions/${id}/valider-consommation/`, {}),
+  overageReview: () =>
+    api.get('/installations/interventions/overage-review/'),
+
+  // ── F13/F14 — Mémos vocaux (+ transcription swappable no-op) ──
+  getMemos: (id) => api.get(`/installations/interventions/${id}/memos/`),
+  ajouterMemo: (id, file, cible) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (cible) fd.append('cible', cible)
+    return api.post(`/installations/interventions/${id}/ajouter-memo/`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  modifierMemo: (id, memo, transcript) =>
+    api.post(`/installations/interventions/${id}/modifier-memo/`, { memo, transcript }),
+  supprimerMemo: (id, memo) =>
+    api.post(`/installations/interventions/${id}/supprimer-memo/`, { memo }),
+
+  // ── F15 — Temps d'équipe ──
+  getCrewTime: (id) => api.get(`/installations/interventions/${id}/crew-time/`),
+
+  // ── F16 — Réserves (punch-list) ──
+  getReserves: (id) => api.get(`/installations/interventions/${id}/reserves/`),
+  ajouterReserve: (id, payload) =>
+    api.post(`/installations/interventions/${id}/ajouter-reserve/`, payload),
+  modifierReserve: (id, payload) =>
+    api.post(`/installations/interventions/${id}/modifier-reserve/`, payload),
+  resoudreReserve: (id, payload) =>
+    api.post(`/installations/interventions/${id}/resoudre-reserve/`, payload),
+
+  // ── F17 — Retour d'outillage ──
+  getToolReturn: (id) => api.get(`/installations/interventions/${id}/tool-return/`),
+  cocherToolReturn: (id, payload) =>
+    api.post(`/installations/interventions/${id}/cocher-tool-return/`, payload),
+  confirmerToolReturn: (id) =>
+    api.post(`/installations/interventions/${id}/confirmer-tool-return/`, {}),
+
+  // ── F18 — Consignes de sécurité (sign-off) ──
+  getSafety: (id) => api.get(`/installations/interventions/${id}/safety/`),
+  cocherSafety: (id, cle, coche) =>
+    api.post(`/installations/interventions/${id}/cocher-safety/`, { cle, coche }),
+  signerSafety: (id) =>
+    api.post(`/installations/interventions/${id}/signer-safety/`, {}),
+  getConsignesSecurite: () => api.get('/installations/consignes-securite/'),
+  saveConsigneSecurite: (id, data) => id
+    ? api.patch(`/installations/consignes-securite/${id}/`, data)
+    : api.post('/installations/consignes-securite/', data),
+  deleteConsigneSecurite: (id) => api.delete(`/installations/consignes-securite/${id}/`),
+
+  // ── F19 — Compte-rendu PDF (client-facing) ──
+  compteRenduUrl: (id) =>
+    `/api/django/installations/interventions/${id}/compte-rendu/`,
+
+  // ── F20 — Contrôle qualité IA des photos (vision swappable, no-op) ──
+  getPhotoQa: (id) => api.get(`/installations/interventions/${id}/photo-qa/`),
+
+  // ── F23 — Code/QR de l'intervention ──
+  getCode: (id) => api.get(`/installations/interventions/${id}/code/`),
 }
 
 export default installationsApi

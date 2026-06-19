@@ -169,6 +169,31 @@ class CompanyProfile(models.Model):
     # ailleurs) : transmission Simpl-TVA, signature électronique certifiée.
     dgi_export_actif = models.BooleanField(default=False)
 
+    # ── Module d'exécution terrain (F9–F20) — interfaces SWAPPABLES ──
+    # Chaque champ NOMME le fournisseur d'une capacité optionnelle. VIDE par
+    # défaut = NO-OP total (aucun identifiant externe, aucun coût) : F9 retombe
+    # sur la saisie manuelle, F14 étiquette « Non transcrit — service non
+    # configuré », F20 ne signale rien. Aucun fournisseur n'est branché par ces
+    # tâches ; renseigner ces champs est une décision opérateur faite ici.
+    ocr_serie_provider = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text="Fournisseur OCR pour l'extraction des n° de série (F9). "
+                  "Vide = saisie manuelle uniquement.")
+    transcription_provider = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text='Fournisseur de transcription des mémos vocaux (F14). '
+                  'Vide = mémos non transcrits.')
+    photo_qa_provider = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text='Fournisseur de contrôle qualité IA des photos (F20). '
+                  'Vide = aucun contrôle.')
+    # F12 — seuil (%) de dépassement de consommation au-delà duquel une
+    # intervention est signalée à la revue. Défaut 10 % ; éditable en Paramètres.
+    overage_seuil_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10'),
+        help_text="Pourcentage de dépassement de consommation déclenchant la "
+                  "revue (F12).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

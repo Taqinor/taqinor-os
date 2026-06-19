@@ -5,6 +5,9 @@ from .models import (
     TypeIntervention, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, ShotListSlot, InterventionPreparation,
     PreparationMaterielLigne, PreparationOutilLigne,
+    ComponentSerial, PhotoAnnotation, MaterielConsommation, ConsommationLigne,
+    VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
+    SafetyCheckItem,
 )
 
 
@@ -124,6 +127,10 @@ class InterventionSerializer(serializers.ModelSerializer):
     preparation_confirmee = serializers.SerializerMethodField()
     # F8 — nombre de créneaux obligatoires sans photo (garde « Terminée »).
     photos_obligatoires_manquantes = serializers.SerializerMethodField()
+    # F15 — temps d'équipe (durée sur site + trajet, minutes).
+    crew_time = serializers.SerializerMethodField()
+    # F16 — nombre de réserves ouvertes.
+    reserves_ouvertes = serializers.SerializerMethodField()
 
     class Meta:
         model = Intervention
@@ -174,6 +181,13 @@ class InterventionSerializer(serializers.ModelSerializer):
     def get_photos_obligatoires_manquantes(self, obj):
         from .field_services import missing_required_shots
         return len(missing_required_shots(obj))
+
+    def get_crew_time(self, obj):
+        from .field_capture import crew_time
+        return crew_time(obj)
+
+    def get_reserves_ouvertes(self, obj):
+        return obj.reserves.filter(statut=Reserve.Statut.OUVERTE).count()
 
 
 class ShotListSlotSerializer(serializers.ModelSerializer):
@@ -338,3 +352,179 @@ class InstallationSerializer(serializers.ModelSerializer):
 
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
+
+
+# ── F9 — n° de série de composant ────────────────────────────────────────────
+class ComponentSerialSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    plaque_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ComponentSerial
+        fields = ['id', 'intervention', 'produit', 'produit_nom', 'designation',
+                  'slot_cle', 'numero_serie', 'plaque_attachment', 'plaque_url',
+                  'serie_ocr', 'pousse_parc', 'date_creation']
+        read_only_fields = ['intervention', 'serie_ocr', 'pousse_parc',
+                            'date_creation']
+
+    def get_plaque_url(self, obj):
+        if not obj.plaque_attachment_id:
+            return None
+        return (f'/api/django/records/attachments/'
+                f'{obj.plaque_attachment_id}/download/')
+
+
+# ── F10 — annotation de photo ────────────────────────────────────────────────
+class PhotoAnnotationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PhotoAnnotation
+        fields = ['id', 'attachment', 'drawing', 'caption', 'probleme',
+                  'date_modification']
+        read_only_fields = ['attachment', 'date_modification']
+
+
+# ── F11/F12 — réconciliation matériel consommé ───────────────────────────────
+class ConsommationLigneSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    variance = serializers.SerializerMethodField()
+    justification_requise = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConsommationLigne
+        fields = ['id', 'produit', 'produit_nom', 'designation',
+                  'quantite_prevue', 'quantite_utilisee', 'hors_nomenclature',
+                  'justification', 'justification_memo', 'stock_applique',
+                  'variance', 'justification_requise', 'ordre']
+        read_only_fields = ['stock_applique', 'ordre']
+
+    def get_variance(self, obj):
+        return obj.variance
+
+    def get_justification_requise(self, obj):
+        from .field_capture import ligne_needs_justification
+        return ligne_needs_justification(obj)
+
+
+class MaterielConsommationSerializer(serializers.ModelSerializer):
+    lignes = ConsommationLigneSerializer(many=True, read_only=True)
+    valide_par_nom = serializers.SerializerMethodField()
+    nb_variances = serializers.SerializerMethodField()
+    overage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MaterielConsommation
+        fields = ['id', 'intervention', 'valide', 'valide_par_nom', 'valide_le',
+                  'lignes', 'nb_variances', 'overage']
+        read_only_fields = ['intervention', 'valide', 'valide_le']
+
+    def get_valide_par_nom(self, obj):
+        return getattr(obj.valide_par, 'username', None)
+
+    def get_nb_variances(self, obj):
+        return sum(1 for li in obj.lignes.all() if li.variance != 0)
+
+    def get_overage(self, obj):
+        from .field_capture import consommation_overage
+        return consommation_overage(obj)
+
+
+# ── F13/F14 — mémo vocal ──────────────────────────────────────────────────────
+class VoiceMemoSerializer(serializers.ModelSerializer):
+    audio_url = serializers.SerializerMethodField()
+    created_by_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VoiceMemo
+        fields = ['id', 'intervention', 'cible', 'audio', 'audio_url',
+                  'transcript', 'transcrit', 'created_by_nom', 'date_creation']
+        read_only_fields = ['intervention', 'audio', 'transcrit',
+                            'date_creation']
+
+    def get_audio_url(self, obj):
+        if not obj.audio_id:
+            return None
+        return f'/api/django/records/attachments/{obj.audio_id}/download/'
+
+    def get_created_by_nom(self, obj):
+        return getattr(obj.created_by, 'username', None)
+
+
+# ── F16 — réserve (punch-list) ────────────────────────────────────────────────
+class ReserveSerializer(serializers.ModelSerializer):
+    assignee_nom = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Reserve
+        fields = ['id', 'intervention', 'description', 'photo', 'photo_url',
+                  'memo', 'assignee', 'assignee_nom', 'statut', 'statut_display',
+                  'resolution', 'resolue_le', 'suivi_intervention', 'ticket',
+                  'date_creation']
+        read_only_fields = ['intervention', 'suivi_intervention', 'ticket',
+                            'resolue_le', 'date_creation']
+
+    def get_assignee_nom(self, obj):
+        return getattr(obj.assignee, 'username', None)
+
+    def get_photo_url(self, obj):
+        if not obj.photo_id:
+            return None
+        return f'/api/django/records/attachments/{obj.photo_id}/download/'
+
+
+# ── F17 — retour d'outil ─────────────────────────────────────────────────────
+class ToolReturnSerializer(serializers.ModelSerializer):
+    outil_nom = serializers.CharField(
+        source='outil.nom', read_only=True, default=None)
+    emplacement_nom = serializers.CharField(
+        source='emplacement_retour.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ToolReturn
+        fields = ['id', 'intervention', 'outil', 'outil_nom', 'rendu',
+                  'emplacement_retour', 'emplacement_nom', 'note', 'confirme_le']
+        read_only_fields = ['intervention', 'outil', 'confirme_le']
+
+
+# ── F18 — consignes de sécurité ──────────────────────────────────────────────
+class SafetyChecklistSlotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SafetyChecklistSlot
+        fields = ['id', 'cle', 'libelle', 'ordre', 'actif', 'protege']
+        read_only_fields = ['protege']
+
+    def validate_cle(self, value):
+        if self.instance and self.instance.protege and value != self.instance.cle:
+            raise serializers.ValidationError(
+                "La clé d'une consigne protégée ne peut pas être modifiée.")
+        return value
+
+
+class SafetyCheckItemSerializer(serializers.ModelSerializer):
+    coche_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SafetyCheckItem
+        fields = ['id', 'cle', 'libelle', 'ordre', 'coche', 'coche_par_nom',
+                  'coche_le']
+
+    def get_coche_par_nom(self, obj):
+        return getattr(obj.coche_par, 'username', None)
+
+
+class SafetySignoffSerializer(serializers.ModelSerializer):
+    items = SafetyCheckItemSerializer(many=True, read_only=True)
+    signe_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SafetySignoff
+        fields = ['id', 'intervention', 'signe', 'signe_par_nom', 'signe_le',
+                  'items']
+        read_only_fields = ['intervention', 'signe', 'signe_le']
+
+    def get_signe_par_nom(self, obj):
+        return getattr(obj.signe_par, 'username', None)

@@ -455,6 +455,9 @@ def code128b_svg(text: str, bar: int = 2, height: int = 60) -> str:
 
 PRODUIT_PREFIX = 'PRODUIT'
 SYSTEME_PREFIX = 'SYSTEME'
+# F23 — jeton d'intervention : scanner une étiquette chantier/matériel résout
+# vers l'intervention concernée, réutilisant ce même encodeur + résolveur.
+INTERVENTION_PREFIX = 'INTERV'
 
 
 def produit_token(produit_id) -> str:
@@ -463,6 +466,10 @@ def produit_token(produit_id) -> str:
 
 def systeme_token(installation_id) -> str:
     return f'{SYSTEME_PREFIX}:{installation_id}'
+
+
+def intervention_token(intervention_id) -> str:
+    return f'{INTERVENTION_PREFIX}:{intervention_id}'
 
 
 def _esc(value) -> str:
