@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Bot, MessageSquare, Send, Code2, ChevronDown } from 'lucide-react'
+import { Bot, MessageSquare, Send, Code2, ChevronDown, CheckCircle2 } from 'lucide-react'
 import {
   Button,
   IconButton,
@@ -135,6 +135,12 @@ export default function AgentChat() {
                   )}
                 >
                   <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  {msg.action_performed && (
+                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                      Action effectuée
+                    </span>
+                  )}
                   {msg.sql_query && (
                     <details className="group mt-2 rounded-md border border-border bg-card text-foreground">
                       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
