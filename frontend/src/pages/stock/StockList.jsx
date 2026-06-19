@@ -37,6 +37,14 @@ import {
 
 const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Suggestion de quantité à commander pour un produit en stock bas :
+// vise un réassort à 2× le seuil d'alerte, jamais négative.
+const suggestionCommande = (p) => {
+  const seuil = Number(p.seuil_alerte) || 0
+  const stock = Number(p.quantite_stock) || 0
+  return Math.max(seuil * 2 - stock, 0)
+}
+
 // Petit tableau interne stylé (lecture seule) — utilisé dans les modals.
 function MiniTable({ head, children, className = '' }) {
   return (
@@ -68,9 +76,8 @@ function InventaireModal({ produits, onClose, onDone }) {
     setSaving(true); setError(null)
     try {
       const r = await stockApi.inventaire({ motif, lignes })
-      onDone?.()
+      onDone?.(r.data)
       onClose()
-      alert(`Inventaire enregistré : ${r.data.ajustes} ajustement(s), ${r.data.inchanges} inchangé(s).`)
     } catch (err) {
       setError(err.response?.data?.detail ?? "Échec de l'inventaire.")
     } finally { setSaving(false) }
@@ -404,7 +411,9 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium text-foreground">{p.nom}</div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          {p.sku && <span className="font-mono">{p.sku}</span>}
+          {p.sku
+            ? <span className="font-mono">{p.sku}</span>
+            : <Badge tone="warning">SKU manquant</Badge>}
           {parseFloat(p.prix_achat) > 0 && (
             <span>· achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
           )}
@@ -464,8 +473,32 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
           </div>
         )}
         {p.is_low_stock && (
-          <div className="mt-0.5">
-            <Badge tone="danger"><AlertTriangle className="size-3" /> seuil {p.seuil_alerte}</Badge>
+          <div className="mt-0.5 flex flex-col items-end gap-0.5">
+            <Badge tone="danger">
+              <AlertTriangle className="size-3" />{' seuil '}
+              {onInlineSave ? (
+                <InlineEdit
+                  value={p.seuil_alerte}
+                  type="number"
+                  display={String(p.seuil_alerte)}
+                  onSave={(v) => onInlineSave(p, 'seuil_alerte', v)}
+                />
+              ) : p.seuil_alerte}
+            </Badge>
+            {suggestionCommande(p) > 0 && (
+              <span className="text-xs text-muted-foreground">commander ~{suggestionCommande(p)}</span>
+            )}
+          </div>
+        )}
+        {!p.is_low_stock && onInlineSave && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            seuil{' '}
+            <InlineEdit
+              value={p.seuil_alerte}
+              type="number"
+              display={String(p.seuil_alerte)}
+              onSave={(v) => onInlineSave(p, 'seuil_alerte', v)}
+            />
           </div>
         )}
       </div>
@@ -562,6 +595,9 @@ export default function StockList() {
   const [showForm, setShowForm]       = useState(false)
   const [editProduit, setEditProduit] = useState(null)
   const [filterLow, setFilterLow]     = useState(false)
+  const [filterNoPrice, setFilterNoPrice] = useState(false)  // produits sans prix de vente
+  const [filterNoSku, setFilterNoSku]     = useState(false)  // produits sans SKU
+  const [filterMarque, setFilterMarque]   = useState('')     // '' = toutes les marques
   const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
   const [showArchived, setShowArchived]   = useState(false)
   const [archiveNotif, setArchiveNotif]   = useState(null)
@@ -574,6 +610,7 @@ export default function StockList() {
   const [bulkMsg, setBulkMsg]     = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [showInventaire, setShowInventaire] = useState(false)
+  const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
@@ -682,9 +719,26 @@ export default function StockList() {
   const searching = search.trim().length > 0
   const filtered = useMemo(() => {
     let list = filterLow ? actifs.filter(p => p.is_low_stock) : actifs
+    if (filterNoPrice) list = list.filter(p => sansPrix(p))
+    if (filterNoSku) list = list.filter(p => !(p.sku ?? '').trim())
+    if (filterMarque) list = list.filter(p => ((p.marque || '').trim() || 'Génériques') === filterMarque)
     list = searchCatalogue(list, search)
     return list
-  }, [actifs, search, filterLow])
+  }, [actifs, search, filterLow, filterNoPrice, filterNoSku, filterMarque])
+
+  // Compteurs des filtres rail (sur le catalogue actif complet).
+  const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
+  const noSkuCount = useMemo(() => actifs.filter(p => !(p.sku ?? '').trim()).length, [actifs])
+  // Liste des marques présentes (pour le filtre par marque).
+  const marquesPresentes = useMemo(() => {
+    const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [actifs])
+  // Valeur de vente HT du catalogue affiché (somme prix_vente × quantité).
+  const valeurVenteFiltree = useMemo(
+    () => filtered.reduce((sum, p) => sum + (parseFloat(p.prix_vente) || 0) * (Number(p.quantite_stock) || 0), 0),
+    [filtered],
+  )
   // Export Excel de la liste filtrée courante (T9) — défini après `filtered`.
   const exportFiltered = async () => {
     const ids = filtered.map(p => p.id)
@@ -903,7 +957,19 @@ export default function StockList() {
 
       {showInventaire && (
         <InventaireModal produits={filtered} onClose={() => setShowInventaire(false)}
-                         onDone={() => dispatch(fetchProduits())} />
+                         onDone={(res) => {
+                           dispatch(fetchProduits())
+                           if (res) {
+                             setInvMsg(`Inventaire enregistré : ${res.ajustes} ajustement(s), ${res.inchanges} inchangé(s).`)
+                             setTimeout(() => setInvMsg(null), 8000)
+                           }
+                         }} />
+      )}
+
+      {invMsg && (
+        <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+          {invMsg}
+        </div>
       )}
 
       {showTransfert && (
@@ -972,6 +1038,39 @@ export default function StockList() {
               <Badge>{c.count}</Badge>
             </button>
           ))}
+
+          {/* Filtres transverses : qualité de catalogue (prix/SKU manquants) + marque. */}
+          <div className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
+            <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filtres</span>
+            {noPriceCount > 0 && (
+              <button type="button"
+                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${filterNoPrice ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                      onClick={() => setFilterNoPrice(v => !v)}>
+                <span>Sans prix (à renseigner)</span>
+                <Badge tone="warning">{noPriceCount}</Badge>
+              </button>
+            )}
+            {noSkuCount > 0 && (
+              <button type="button"
+                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${filterNoSku ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                      onClick={() => setFilterNoSku(v => !v)}>
+                <span>Sans SKU</span>
+                <Badge tone="warning">{noSkuCount}</Badge>
+              </button>
+            )}
+            {marquesPresentes.length > 1 && (
+              <div className="px-1 pt-1">
+                <Select value={filterMarque || '__all'}
+                        onValueChange={v => setFilterMarque(v === '__all' ? '' : v)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Toutes les marques" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">Toutes les marques</SelectItem>
+                    {marquesPresentes.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         </aside>
 
         <main className="min-w-0 flex-1">
@@ -1007,21 +1106,42 @@ export default function StockList() {
               </section>
             ))}
           </div>
+          {/* Valeur de vente HT du catalogue affiché (recalculée au filtre/recherche). */}
+          {filtered.length > 0 && (
+            <div className="mt-4 flex justify-end border-t border-border pt-3 text-sm text-muted-foreground">
+              Valeur vente du catalogue affiché :{' '}
+              <strong className="ml-1 text-foreground tabular-nums">{fmtNum2(valeurVenteFiltree)} DH HT</strong>
+            </div>
+          )}
           {filtered.length === 0 && !loading && (
-            <EmptyState
-              icon={PackageOpen}
-              title={filterLow
-                ? 'Aucun produit en stock bas'
-                : search ? 'Aucun résultat' : 'Aucun produit'}
-              description={filterLow
-                ? 'Tous les produits sont au-dessus de leur seuil d’alerte.'
-                : search
-                  ? `Aucun résultat pour « ${search} »`
-                  : 'Créez votre premier produit pour démarrer le catalogue.'}
-              action={canWrite && !search && !filterLow
-                ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
-                : undefined}
-            />
+            actifs.length === 0 ? (
+              // Catalogue réellement vide : encart d'amorçage.
+              <EmptyState
+                icon={PackageOpen}
+                title="Aucun produit"
+                description="Créez votre premier produit pour démarrer le catalogue."
+                action={canWrite
+                  ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
+                  : undefined}
+              />
+            ) : (
+              // Vide après filtre/recherche : on propose d'effacer les filtres.
+              <EmptyState
+                icon={PackageOpen}
+                title={filterLow ? 'Aucun produit en stock bas' : 'Aucun résultat'}
+                description={filterLow
+                  ? 'Tous les produits sont au-dessus de leur seuil d’alerte.'
+                  : search
+                    ? `Aucun résultat pour « ${search} » avec ces filtres`
+                    : 'Aucun produit ne correspond aux filtres actifs.'}
+                action={(
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setSearch(''); setFilterLow(false); setFilterNoPrice(false)
+                    setFilterNoSku(false); setFilterMarque(''); setActiveCat('')
+                  }}>Effacer les filtres</Button>
+                )}
+              />
+            )
           )}
         </main>
       </div>
