@@ -20,6 +20,7 @@ import {
   canMoveStatus,
   nextBestAction,
 } from '../../features/installations/statuses'
+import ProduitPicker from '../../components/ProduitPicker'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierPhotos from './ChantierPhotos'
@@ -420,6 +421,26 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   const interventions = current.interventions ?? []
 
+  // N1/N2 — produits du picker scopés à la nomenclature gelée du devis (BOM) ;
+  // repli sur tout le catalogue si le chantier n'a pas de BOM.
+  const bom = Array.isArray(current.bom) ? current.bom : []
+  const bomProduitIds = new Set(bom.map((l) => String(l.produit_id)).filter(Boolean))
+  const equipProduits = bomProduitIds.size
+    ? produits.filter((p) => bomProduitIds.has(String(p.id)))
+    : produits
+
+  // N8 — réconciliation : pour chaque ligne BOM, nb de séries capturées.
+  const bomReconciliation = bom.map((l) => {
+    const captured = equipements.filter(
+      (eq) => String(eq.produit) === String(l.produit_id)).length
+    return {
+      produit_id: l.produit_id,
+      designation: l.designation,
+      attendu: l.quantite ?? null,
+      captured,
+    }
+  })
+
   // N7 — équipement : produit choisi, garantie manquante, n° série en doublon.
   const equipProduit = produits.find((p) => String(p.id) === String(equip.produit))
   const garantieManquante = equipProduit
@@ -808,6 +829,31 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Équipements (parc) ── */}
           <Section icon={Package} title="Équipements">
+            {/* N8 — réconciliation nomenclature gelée vs séries capturées. */}
+            {bomReconciliation.length > 0 && (
+              <div className="rounded-lg border border-border p-2">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Nomenclature vs séries capturées
+                </p>
+                <MiniTable head={['Composant', 'Attendu', 'Capturés']}>
+                  {bomReconciliation.map((b) => {
+                    const manque = b.captured === 0
+                    return (
+                      <tr key={b.produit_id ?? b.designation}
+                          className={`border-t border-border ${manque ? 'bg-warning/10' : ''}`}>
+                        <td className="px-3 py-2">{b.designation}</td>
+                        <td className="px-3 py-2">{b.attendu ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          {manque
+                            ? <strong className="text-warning-foreground">0</strong>
+                            : b.captured}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </MiniTable>
+              </div>
+            )}
             {equipements.length === 0 ? (
               <Hint>Aucun équipement enregistré sur ce chantier.</Hint>
             ) : (
@@ -828,18 +874,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             )}
             <div className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
               <FormField label="Produit" htmlFor="eq-prod">
-                <Select value={equip.produit || ALL_NONE}
-                        onValueChange={(v) => setEquip(s => ({ ...s, produit: v === ALL_NONE ? '' : v }))}>
-                  <SelectTrigger id="eq-prod"><SelectValue placeholder="Choisir un produit" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_NONE}>— Choisir un produit —</SelectItem>
-                    {produits.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.nom}{p.marque ? ` (${p.marque})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ProduitPicker produits={equipProduits}
+                               value={equip.produit ?? ''}
+                               onChange={(v) => setEquip(s => ({ ...s, produit: v ?? '' }))} />
               </FormField>
               <FormField label="N° de série" htmlFor="eq-ns">
                 <Input id="eq-ns" value={equip.numero_serie}
