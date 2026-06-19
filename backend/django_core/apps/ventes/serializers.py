@@ -334,6 +334,19 @@ class DevisActivitySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class FactureActivitySerializer(serializers.ModelSerializer):
+    """Chatter d'une facture — lecture seule côté API."""
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import FactureActivity
+        model = FactureActivity
+        fields = ['id', 'facture', 'kind', 'field', 'field_label',
+                  'old_value', 'new_value', 'body', 'user_nom', 'created_at']
+        read_only_fields = fields
+
+
 class EmailLogSerializer(serializers.ModelSerializer):
     """Fil des emails (N87/N88) — lecture seule côté API."""
     created_by_nom = serializers.CharField(

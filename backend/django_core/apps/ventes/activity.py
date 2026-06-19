@@ -31,3 +31,37 @@ def log_devis_acceptance(devis, user, nom, date_acceptation, option=''):
         new_value=f"Accepté le {date_acceptation} par {qui}{suffixe}",
         body=f"Devis accepté le {date_acceptation} par {qui}{suffixe}.",
     )
+
+
+def log_facture_avoir(facture, user, avoir):
+    """Consigne la création d'un avoir dans le chatter de la facture.
+
+    Acteur et société toujours posés côté serveur (jamais du corps de requête).
+    """
+    from .models import FactureActivity
+    montant = getattr(avoir, 'total_ttc', None)
+    detail = f"Avoir {avoir.reference} créé"
+    if montant is not None:
+        detail += f" ({montant} MAD TTC)"
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='avoir', field_label='Avoir',
+        new_value=avoir.reference, body=detail + '.',
+    )
+
+
+def log_facture_paiement(facture, user, paiement):
+    """Consigne l'encaissement d'un paiement dans le chatter de la facture."""
+    from .models import FactureActivity
+    mode = paiement.get_mode_display() if hasattr(paiement, 'get_mode_display') \
+        else (getattr(paiement, 'mode', '') or '')
+    detail = f"Paiement encaissé : {paiement.montant} MAD"
+    if mode:
+        detail += f" ({mode})"
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='paiement', field_label='Paiement',
+        new_value=str(paiement.montant), body=detail + '.',
+    )

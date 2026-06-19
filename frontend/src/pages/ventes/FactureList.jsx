@@ -186,12 +186,25 @@ export default function FactureList() {
   const [payMode, setPayMode] = useState('virement')
   const [payReference, setPayReference] = useState('')
 
+  // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
+  const [factureActivites, setFactureActivites] = useState([])
+  const loadActivites = async (id) => {
+    try {
+      const res = await api.get(`/ventes/factures/${id}/historique/`)
+      setFactureActivites(res.data)
+    } catch {
+      setFactureActivites([])
+    }
+  }
+
   const openPayModal = (f) => {
     setPayTarget(f)
     setPayMontant(f.montant_du ?? '')
     setPayDate(today)
     setPayMode('virement')
     setPayReference('')
+    setFactureActivites([])
+    loadActivites(f.id)
   }
 
   const handleEnregistrerPaiement = async (e) => {
@@ -560,6 +573,25 @@ export default function FactureList() {
                       {p.reference ? ` · ${p.reference}` : ''}
                     </span>
                     <strong>{formatMAD(p.montant)}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {/* Chatter facture : avoirs créés + paiements encaissés (qui/quand). */}
+          <div className="mt-1 border-t pt-3">
+            <p className="mb-2 text-sm font-medium">Historique (avoirs &amp; paiements)</p>
+            {factureActivites.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune activité consignée.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {factureActivites.map(a => (
+                  <li key={a.id} className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">
+                      {a.created_at ? new Date(a.created_at).toLocaleString('fr-FR') : '—'}
+                      {a.user_nom ? ` · ${a.user_nom}` : ''}
+                    </span>
+                    <span className="text-right">{a.body || a.field_label}</span>
                   </li>
                 ))}
               </ul>

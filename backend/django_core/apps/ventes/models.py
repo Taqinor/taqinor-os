@@ -213,6 +213,44 @@ class DevisActivity(models.Model):
         return f"{self.devis_id} {self.kind} {self.field or ''}".strip()
 
 
+class FactureActivity(models.Model):
+    """Chatter d'une facture — même patron que DevisActivity.
+
+    Trace les événements comptables (avoir créé, paiement encaissé) + notes
+    éventuelles. Utilisateur et société posés côté serveur, jamais lus du
+    corps de la requête."""
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='facture_activities')
+    facture = models.ForeignKey(
+        'Facture', on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='facture_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité facture'
+        verbose_name_plural = 'Activités facture'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['facture', '-created_at'],
+                                name='ventes_factact_idx')]
+
+    def __str__(self):
+        return f"{self.facture_id} {self.kind} {self.field or ''}".strip()
+
+
 class BonCommande(models.Model):
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
