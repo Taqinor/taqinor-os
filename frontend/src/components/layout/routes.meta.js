@@ -10,6 +10,9 @@ export const PAGE_TITLES = [
 
   // Stock
   ['/stock/bons-commande-fournisseur', 'Bons de commande fournisseur'],
+  ['/stock/retours-fournisseur', 'Retours fournisseur'],
+  ['/stock/fournisseurs', 'Fournisseurs'],
+  ['/stock/categories', 'Catégories & marques'],
   ['/stock/ocr-import', 'Import OCR'],
   ['/stock/mouvements', 'Mouvements de stock'],
   ['/stock', 'Stock'],

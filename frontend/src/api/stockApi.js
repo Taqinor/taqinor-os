@@ -16,6 +16,7 @@ const stockApi = {
   getCategories: (params) => api.get('/stock/categories/', { params }),
   createCategorie: (data) => api.post('/stock/categories/', data),
   updateCategorie: (id, data) => api.put(`/stock/categories/${id}/`, data),
+  patchCategorie: (id, data) => api.patch(`/stock/categories/${id}/`, data),
   deleteCategorie: (id) => api.delete(`/stock/categories/${id}/`),
 
   // Fournisseurs
