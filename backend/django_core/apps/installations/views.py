@@ -61,6 +61,32 @@ def _stamp_statut_dates(inst, old_statut):
         inst.save(update_fields=[field])
 
 
+def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
+    """N14 — effets STOCK d'un changement de statut canonique du chantier.
+
+    À l'arrivée à « Installé », consomme les réservations (une SORTIE par SKU,
+    idempotente côté service). À l'arrivée à « Clôturé », libère les
+    réservations restantes non consommées. Le service est idempotent : il ne
+    rejoue jamais une réservation déjà consommée."""
+    from .services import consume_reservations, release_reservations
+    if canon_new == canon_old:
+        return
+    if canon_new == Installation.Statut.INSTALLE:
+        nb = consume_reservations(inst, user)
+        if nb:
+            activity.log_note(
+                inst, user,
+                f"Stock consommé — {nb} référence(s) sortie(s) du stock "
+                f"(chantier « Installé »).")
+    elif canon_new == Installation.Statut.CLOTURE:
+        nb = release_reservations(inst)
+        if nb:
+            activity.log_note(
+                inst, user,
+                f"Réservation de stock libérée — {nb} référence(s) "
+                f"(chantier clôturé).")
+
+
 def seed_types_intervention(company):
     if company is None or TypeIntervention.objects.filter(company=company).exists():
         return
@@ -211,6 +237,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(
                 inst, self.request.user,
                 "Chantier réceptionné — système ajouté au parc installé.")
+        # N14 — applique les effets stock du changement de statut (consomme à
+        # « Installé », libère à la clôture). Idempotent côté service.
+        _apply_stock_statut_effects(
+            inst, canon_old, canon_new, self.request.user)
 
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
@@ -319,6 +349,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(
                 inst, request.user,
                 f"Chantier annulé{(' : ' + motif) if motif else ''}")
+            # N14 — libère la réservation de stock restante (non consommée).
+            from .services import release_reservations
+            nb = release_reservations(inst)
+            if nb:
+                activity.log_note(
+                    inst, request.user,
+                    f"Réservation de stock libérée — {nb} référence(s) "
+                    f"(chantier annulé).")
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -424,6 +462,9 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                 'designation': b['designation'],
                 'requis': b['requis'],
                 'disponible': b['disponible'],
+                # N14 — quantité engagée-mais-non-consommée (toutes réservations
+                # actives de la société, ce chantier inclus).
+                'reserve': b.get('reserve', 0),
                 'manque': b['manque'],
                 'fournisseur_id': b['fournisseur_id'],
                 'fournisseur_nom': b['fournisseur_nom'],

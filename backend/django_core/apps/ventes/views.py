@@ -668,6 +668,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
+            'dgi_export', 'dgi_conformite',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -852,6 +853,46 @@ class FactureViewSet(viewsets.ModelViewSet):
             f'attachment; filename="{facture.reference}-ubl.xml"'
         )
         return response
+
+    @action(detail=True, methods=['get'], url_path='dgi-export',
+            permission_classes=[IsResponsableOrAdmin])
+    def dgi_export(self, request, pk=None):
+        """N105 — Export DGI local (UBL 2.1) de la facture, à la demande.
+
+        GARDÉ par l'interrupteur maître ``dgi_export_actif`` (défaut OFF) : tant
+        qu'il est OFF pour la société, cet endpoint se comporte comme
+        introuvable (404) → la capacité reste invisible. Aucun statut n'est
+        modifié, rien n'est transmis."""
+        facture = self.get_object()
+        from apps.ventes.dgi import build_ubl_xml, is_dgi_enabled
+        if not is_dgi_enabled(facture.company):
+            return Response(
+                {'detail': 'Introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        xml_str = build_ubl_xml(facture)
+        response = HttpResponse(xml_str, content_type='application/xml')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{facture.reference}-dgi.xml"'
+        )
+        return response
+
+    @action(detail=True, methods=['get'], url_path='dgi-conformite',
+            permission_classes=[IsResponsableOrAdmin])
+    def dgi_conformite(self, request, pk=None):
+        """N105 — Contrôle de conformité DGI de la facture, à la demande.
+
+        Même garde que ``dgi_export`` : 404 tant que l'interrupteur maître est
+        OFF. Renvoie la liste des problèmes (vide = conforme) ; ne modifie
+        aucun statut."""
+        facture = self.get_object()
+        from apps.ventes.dgi import validate_dgi_conformity, is_dgi_enabled
+        if not is_dgi_enabled(facture.company):
+            return Response(
+                {'detail': 'Introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        problemes = validate_dgi_conformity(facture)
+        return Response(
+            {'conforme': not problemes, 'problemes': problemes})
 
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])

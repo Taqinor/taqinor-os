@@ -455,6 +455,11 @@ function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, categories, on
           ) : <strong>{p.quantite_stock}</strong>}
           {' '}en stock
         </span>
+        {p.quantite_reservee > 0 && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {p.quantite_reservee} réservé · {p.quantite_disponible} dispo
+          </div>
+        )}
         {p.is_low_stock && (
           <div className="mt-0.5">
             <Badge tone="danger"><AlertTriangle className="size-3" /> seuil {p.seuil_alerte}</Badge>

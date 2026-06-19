@@ -9,7 +9,7 @@ Référence sans collision via l'utilitaire commun (jamais count()+1).
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
-    ChantierChecklistItem,
+    ChantierChecklistItem, StockReservation,
 )
 
 
@@ -241,4 +241,129 @@ def create_installation_from_devis(devis, user, company):
         )
 
     inst = create_with_reference(Installation, 'CHT', company, _create)
+    # N14 — réserve le stock des SKU de la nomenclature gelée (robuste si le
+    # BOM est vide : aucune réservation, aucun plantage).
+    seed_reservations(inst)
     return inst, True
+
+
+# ── N14 — Réservation de stock sur chantier → consommation à « Installé » ─────
+# La réservation ENGAGE le stock (le « disponible » d'un produit en tient
+# compte) sans le décrémenter. Au passage à « Installé » la réservation est
+# CONSOMMÉE (un seul MouvementStock SORTIE par SKU, idempotent). À
+# l'annulation/clôture, la réservation NON consommée est LIBÉRÉE. On RÉUTILISE
+# le mécanisme de mouvement de stock existant (MouvementStock SORTIE).
+
+def _bom_quantities(installation):
+    """Quantités requises par produit (entier ≥ 1) depuis la nomenclature gelée
+    du chantier (`Installation.bom`). Ignore les lignes sans produit catalogue
+    et les quantités nulles/illisibles. Renvoie {produit_id: quantite}."""
+    besoins = {}
+    for ligne in (installation.bom or []):
+        if not isinstance(ligne, dict):
+            continue
+        produit_id = ligne.get('produit_id')
+        if not produit_id:
+            continue
+        try:
+            qte = int(round(float(ligne.get('quantite') or 0)))
+        except (TypeError, ValueError):
+            continue
+        if qte <= 0:
+            continue
+        besoins[produit_id] = besoins.get(produit_id, 0) + qte
+    return besoins
+
+
+def seed_reservations(installation):
+    """N14 — réserve le stock des SKU de la nomenclature gelée du chantier.
+
+    Idempotent et additif : une réservation par (chantier, produit), créée ou
+    mise à jour à la quantité du BOM. Ne touche JAMAIS une réservation déjà
+    CONSOMMÉE (le stock a déjà été décrémenté). Robuste au BOM vide (ne crée
+    rien). Renvoie la liste des réservations actives du chantier."""
+    from apps.stock.models import Produit
+    company = installation.company
+    besoins = _bom_quantities(installation)
+    valid_ids = set(
+        Produit.objects.filter(
+            id__in=list(besoins), company=company
+        ).values_list('id', flat=True)
+    ) if besoins else set()
+    for produit_id, qte in besoins.items():
+        if produit_id not in valid_ids:
+            continue
+        resa, created = StockReservation.objects.get_or_create(
+            installation=installation, produit_id=produit_id,
+            defaults={'company': company, 'quantite': qte})
+        if not created and not resa.consomme:
+            # Réaligne la quantité réservée sur le BOM (réservation non encore
+            # consommée). Une réservation consommée reste figée.
+            changed = []
+            if resa.quantite != qte:
+                resa.quantite = qte
+                changed.append('quantite')
+            if not resa.active:
+                resa.active = True
+                changed.append('active')
+            if resa.company_id is None:
+                resa.company = company
+                changed.append('company')
+            if changed:
+                resa.save(update_fields=changed)
+    return list(installation.reservations.filter(active=True))
+
+
+def consume_reservations(installation, user):
+    """N14 — consomme les réservations du chantier au passage à « Installé ».
+
+    Pour chaque réservation ACTIVE non encore consommée, crée UN MouvementStock
+    SORTIE (mécanisme de stock existant) et décrémente `Produit.quantite_stock`.
+    IDEMPOTENT : le drapeau `consomme` verrouille — repasser par « Installé » ne
+    crée aucun mouvement supplémentaire. Renvoie le nombre de SKU consommés."""
+    from django.db import transaction
+    from django.utils import timezone
+    from apps.stock.models import Produit, MouvementStock
+
+    consumed = 0
+    with transaction.atomic():
+        reservations = (
+            StockReservation.objects
+            .select_for_update()
+            .filter(installation=installation, active=True, consomme=False)
+            .select_related('produit')
+        )
+        for resa in reservations:
+            if resa.quantite <= 0:
+                # Rien à sortir : on marque consommée pour ne pas la rejouer.
+                resa.consomme = True
+                resa.date_consommation = timezone.now()
+                resa.save(update_fields=['consomme', 'date_consommation'])
+                continue
+            produit = Produit.objects.select_for_update().get(pk=resa.produit_id)
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant - resa.quantite
+            MouvementStock.objects.create(
+                company=installation.company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                quantite=resa.quantite,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=installation.reference,
+                note=f'Consommation chantier {installation.reference}',
+                created_by=user)
+            produit.quantite_stock = qte_apres
+            produit.save(update_fields=['quantite_stock'])
+            resa.consomme = True
+            resa.date_consommation = timezone.now()
+            resa.save(update_fields=['consomme', 'date_consommation'])
+            consumed += 1
+    return consumed
+
+
+def release_reservations(installation):
+    """N14 — libère les réservations NON consommées du chantier (annulation /
+    clôture). Une réservation consommée n'est jamais touchée (le stock a déjà
+    été sorti). Renvoie le nombre de réservations libérées."""
+    return (StockReservation.objects
+            .filter(installation=installation, active=True, consomme=False)
+            .update(active=False))
