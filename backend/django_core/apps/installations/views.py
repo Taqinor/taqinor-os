@@ -1283,11 +1283,25 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         if cons.valide:
             return Response({'detail': 'Réconciliation déjà validée.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Pré-contrôle des justifications manquantes : on construit le message
+        # utilisateur (libellés des lignes en écart) à partir des DONNÉES, sans
+        # le faire transiter par un objet exception (évite toute fuite
+        # d'information via une exception).
+        missing = field_capture.consommation_missing_justifications(cons)
+        if missing:
+            return Response(
+                {'detail': 'Justification requise sur les lignes en écart : '
+                 + ', '.join(li.designation for li in missing) + '.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             nb = field_capture.validate_consommation(cons, request.user)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            # Garde défensive : message générique contrôlé, jamais le texte brut
+            # de l'exception.
+            return Response(
+                {'detail': 'Validation impossible : vérifiez les lignes de '
+                 'consommation.'},
+                status=status.HTTP_400_BAD_REQUEST)
         intervention_activity.log_note(
             interv, request.user,
             f"Matériel consommé validé — {nb} référence(s) sortie(s) du stock.")

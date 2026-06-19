@@ -10,6 +10,7 @@ Additif uniquement : nouveaux modèles, FK company obligatoire, aucune
 migration destructive.
 """
 import hashlib
+import hmac
 import secrets
 
 from django.conf import settings
@@ -26,8 +27,20 @@ VISIBLE_PREFIX_LEN = 12
 
 
 def hash_key(raw_key):
-    """Hash SHA-256 d'une clé en clair — c'est ce qui est stocké/comparé."""
-    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+    """Empreinte déterministe d'une clé d'API — c'est ce qui est stocké/comparé.
+
+    Une clé d'API est un secret À HAUTE ENTROPIE (`secrets.token_urlsafe(32)`,
+    256 bits), pas un mot de passe humain : un hash lent (bcrypt/argon2) est
+    inutile et casserait la résolution O(1) par empreinte. On utilise donc un
+    HMAC-SHA256 « poivré » par la SECRET_KEY du serveur : déterministe (donc
+    indexable/recherche directe) tout en rendant une fuite de la table
+    d'empreintes inexploitable hors-ligne sans le secret serveur.
+    """
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw_key.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def generate_raw_key():
