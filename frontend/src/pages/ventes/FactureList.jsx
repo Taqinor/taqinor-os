@@ -308,9 +308,9 @@ export default function FactureList() {
     const end = window.prompt('Date de fin (exclue, AAAA-MM-JJ) :',
       new Date().toISOString().slice(0, 10))
     if (!end) return
-    const dl = async (format, ext) => {
+    const dl = async (fmt, ext) => {
       const res = await api.get('/ventes/export-comptable/', {
-        params: { start, end, format }, responseType: 'blob',
+        params: { start, end, fmt }, responseType: 'blob',
       })
       openPdfBlob(res.data, `export-comptable-${start}_${end}.${ext}`)
     }

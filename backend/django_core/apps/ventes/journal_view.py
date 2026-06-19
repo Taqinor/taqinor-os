@@ -27,10 +27,11 @@ def journal_ventes(request):
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_comptable(request):
-    """GET ?start=&end= (ou ?month=/?quarter=) &format=xlsx|csv → export
+    """GET ?start=&end= (ou ?month=/?quarter=) &fmt=xlsx|csv → export
     comptable des factures VALIDÉES de la plage (ventilation TVA par ligne,
     ICE client, totaux). Groundwork DGI — lecture seule, borné société,
-    aucune transmission. `format` par défaut = xlsx."""
+    aucune transmission. `fmt` par défaut = xlsx. (NB : on n'utilise pas
+    ``format``, réservé par DRF pour la négociation de contenu.)"""
     user = request.user
     if not user.company_id and not user.is_superuser:
         return Response({'detail': 'Accès refusé.'}, status=403)
@@ -38,7 +39,7 @@ def export_comptable(request):
         debut, fin = period_bounds(request.query_params)
     except (ValueError, TypeError):
         return Response({'detail': 'Période invalide.'}, status=400)
-    fmt = (request.query_params.get('format') or 'xlsx').lower()
+    fmt = (request.query_params.get('fmt') or 'xlsx').lower()
     if fmt == 'csv':
         return export_comptable_csv(user.company, debut, fin)
     return export_comptable_xlsx(user.company, debut, fin)

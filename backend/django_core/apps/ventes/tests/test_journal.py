@@ -101,7 +101,7 @@ class TestJournalExport(TestCase):
         end = (d + timedelta(days=1)).strftime('%Y-%m-%d')
         resp = self.api.get(
             f'/api/django/ventes/export-comptable/?start={start}&end={end}'
-            f'&format=xlsx')
+            f'&fmt=xlsx')
         self.assertEqual(resp.status_code, 200)
         body = (b''.join(resp.streaming_content)
                 if resp.streaming else resp.content)
@@ -122,7 +122,7 @@ class TestJournalExport(TestCase):
         end = (d + timedelta(days=1)).strftime('%Y-%m-%d')
         resp = self.api.get(
             f'/api/django/ventes/export-comptable/?start={start}&end={end}'
-            f'&format=csv')
+            f'&fmt=csv')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('text/csv', resp['Content-Type'])
         text = resp.content.decode('utf-8')
@@ -143,5 +143,5 @@ class TestJournalExport(TestCase):
         end = (d + timedelta(days=1)).strftime('%Y-%m-%d')
         resp = self.api.get(
             f'/api/django/ventes/export-comptable/?start={start}&end={end}'
-            f'&format=csv')
+            f'&fmt=csv')
         self.assertNotIn('FAC-JR-DRAFT', resp.content.decode('utf-8'))
