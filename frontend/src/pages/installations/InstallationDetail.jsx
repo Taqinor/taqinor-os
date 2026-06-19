@@ -16,6 +16,9 @@ import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
   INTERVENTION_TYPES,
+  adjacentStatuses,
+  canMoveStatus,
+  nextBestAction,
 } from '../../features/installations/statuses'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
@@ -118,6 +121,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // Retour FR explicite pour les actions secondaires (équipement / intervention
+  // / ticket / besoin) dont les échecs étaient avalés (catch vides).
+  const [actionError, setActionError] = useState(null)
+  const actionMsg = (err, fallback) =>
+    err?.response?.data?.detail || (typeof fallback === 'string' ? fallback : 'Action impossible.')
 
   // Historique (chatter)
   const [historique, setHistorique] = useState([])
@@ -189,8 +197,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         date_pose: nullable(equip.date_pose),
       })
       setEquip({ produit: '', numero_serie: '', date_pose: '' })
+      setActionError(null)
       loadEquipements()
-    } catch { /* erreur silencieuse */ } finally { setEquipBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, "Ajout de l'équipement impossible."))
+    } finally { setEquipBusy(false) }
   }
 
   const openTicket = async () => {
@@ -205,8 +216,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         equipement: newTicket.equipement === '' ? null : newTicket.equipement,
       })
       setNewTicket({ type: 'correctif', description: '', equipement: '' })
+      setActionError(null)
       loadTickets()
-    } catch { /* erreur silencieuse */ } finally { setTicketBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, "Ouverture du ticket impossible."))
+    } finally { setTicketBusy(false) }
   }
 
   const refreshInstallation = async () => {
@@ -255,9 +269,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         compte_rendu: nullable(interv.compte_rendu),
       })
       setInterv({ type_intervention: '', date_prevue: '', compte_rendu: '' })
+      setActionError(null)
       await refreshInstallation()
       loadHistorique()
-    } catch { /* erreur silencieuse */ } finally { setIntervBusy(false) }
+    } catch (err) {
+      setActionError(actionMsg(err, "Ajout de l'intervention impossible."))
+    } finally { setIntervBusy(false) }
   }
 
   const saveMes = async () => {
@@ -347,6 +364,24 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               {current.motif_annulation ? <span>Motif : {current.motif_annulation}</span> : null}
               <Button size="sm" variant="outline" className="ml-auto" onClick={reactiver}>
                 Réactiver
+              </Button>
+            </div>
+          )}
+
+          {/* ── Prochaine action recommandée (N1) — bannière sous l'en-tête ── */}
+          {!current.annule && nextBestAction(current) && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info/10 p-3 text-sm" role="status">
+              <strong className="text-info">Prochaine action&nbsp;:</strong>
+              <span>{nextBestAction(current)}</span>
+            </div>
+          )}
+
+          {/* Retour FR des actions secondaires (échecs auparavant silencieux). */}
+          {actionError && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+              <span>{actionError}</span>
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setActionError(null)}>
+                Fermer
               </Button>
             </div>
           )}
@@ -467,7 +502,19 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Input id="ch-tec" value={current.technicien_nom ?? '—'} readOnly />
               </FormField>
               <FormField label="Statut" htmlFor="ch-statut">
-                <Select value={fields.statut ?? ''} onValueChange={(v) => set('statut', v)}>
+                <Select
+                  value={fields.statut ?? ''}
+                  onValueChange={(v) => {
+                    // Garde de transition côté client : on n'accepte qu'un pas
+                    // (avant/arrière) depuis le statut STOCKÉ du chantier, ou la
+                    // valeur déjà sélectionnée. Un saut non-adjacent est empêché.
+                    if (v === fields.statut
+                        || canMoveStatus(current.statut, v)
+                        || v === current.statut) {
+                      set('statut', v)
+                    }
+                  }}
+                >
                   <SelectTrigger id="ch-statut"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
@@ -476,11 +523,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
                       </SelectItem>
                     )}
-                    {INSTALLATION_STATUSES.map((k) => (
+                    {/* Seuls le statut courant et ses voisins (±1) sont offerts. */}
+                    {adjacentStatuses(current.statut).map((k) => (
                       <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Le statut n&apos;avance ou ne recule que d&apos;une étape à la fois.
+                </p>
               </FormField>
               <FormField label="Adresse du site" htmlFor="ch-adr" className="sm:col-span-2">
                 <Input id="ch-adr" value={fields.site_adresse ?? ''}

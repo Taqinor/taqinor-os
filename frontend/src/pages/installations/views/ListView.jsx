@@ -6,6 +6,7 @@ import { Eye } from 'lucide-react'
 import {
   statusLabel,
   statusOrder,
+  isPoseEnRetard,
 } from '../../../features/installations/statuses'
 import { DataTable, StatusPill } from '../../../ui'
 import { formatDate } from '../../../lib/format'
@@ -34,6 +35,7 @@ export default function ListView({ items, onOpen }) {
           <span className="flex flex-wrap items-center gap-1.5">
             <StatusPill status={row.statut} label={statusLabel(row.statut)} />
             {row.annule && <StatusPill tone="danger" label="Annulé" />}
+            {isPoseEnRetard(row) && <StatusPill tone="danger" label="Pose en retard" />}
           </span>
         ),
         exportValue: (row) => statusLabel(row.statut) + (row.annule ? ' (annulé)' : ''),
