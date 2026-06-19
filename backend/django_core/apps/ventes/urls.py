@@ -19,7 +19,7 @@ from .recouvrement import (
     lettre_relance_pdf,
 )
 from .journal_view import journal_ventes, export_comptable
-from .numbering_view import numerotation_audit
+from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 
 router = DefaultRouter()
@@ -41,6 +41,9 @@ urlpatterns = [
     path('export-comptable/', export_comptable, name='export-comptable'),
     # Audit de la numérotation séquentielle (trous/doublons) — admin.
     path('numerotation-audit/', numerotation_audit, name='numerotation-audit'),
+    # Aperçu du prochain numéro RÉEL par type de pièce (L770/L786).
+    path('numerotation-preview/', numerotation_preview,
+         name='numerotation-preview'),
     # Recouvrement (vue/consigne/impression — jamais d'envoi).
     path('relances/', relances_list, name='relances-list'),
     path('balance-agee/', balance_agee, name='balance-agee'),

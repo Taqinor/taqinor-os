@@ -103,6 +103,10 @@ const ventesApi = {
     ? api.patch(`/ventes/niveaux-relance/${id}/`, data)
     : api.post('/ventes/niveaux-relance/', data),
   deleteNiveauRelance: (id) => api.delete(`/ventes/niveaux-relance/${id}/`),
+  // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) si aucun n'existe.
+  seedNiveauxRelance: () => api.post('/ventes/niveaux-relance/seed-defaults/'),
+  // L770/L786 — aperçu du prochain numéro RÉEL par type de pièce.
+  numerotationPreview: () => api.get('/ventes/numerotation-preview/'),
 
   // Lignes de facture
   getLignesFacture: (params) => api.get('/ventes/factures-lignes/', { params }),

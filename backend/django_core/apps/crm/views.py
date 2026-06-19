@@ -7,7 +7,7 @@ from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
-    ParrainageSerializer,
+    ParrainageSerializer, _tag_en_usage, _motif_en_usage,
 )
 from . import activity
 from .services import default_responsable_for
@@ -563,7 +563,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
 class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
-    écriture admin."""
+    écriture admin. Garde-fou (L780) : une étiquette référencée par des leads
+    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé)."""
     queryset = LeadTag.objects.all()
     serializer_class = LeadTagSerializer
 
@@ -572,10 +573,20 @@ class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    def destroy(self, request, *args, **kwargs):
+        tag = self.get_object()
+        if _tag_en_usage(tag.company, tag.nom) > 0:
+            return Response(
+                {'detail': "Cette étiquette est utilisée par des leads — "
+                           "archivez-la plutôt que de la supprimer."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
 
 class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
-    écriture admin."""
+    écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
+    supprime pas — l'admin l'archive plutôt (comme pour les canaux)."""
     queryset = MotifPerte.objects.all()
     serializer_class = MotifPerteSerializer
 
@@ -583,6 +594,15 @@ class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+    def destroy(self, request, *args, **kwargs):
+        motif = self.get_object()
+        if _motif_en_usage(motif.company, motif.nom) > 0:
+            return Response(
+                {'detail': "Ce motif est utilisé par des leads — archivez-le "
+                           "plutôt que de le supprimer."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 # Canaux par défaut (clés = Lead.Canal) — 'site_web' est PROTÉGÉ (webhook site).
