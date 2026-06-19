@@ -42,7 +42,20 @@ def _current_level(jours_retard, levels):
     if current is None:
         return None
     return {'ordre': current.ordre, 'nom': current.nom,
-            'delai_jours': current.delai_jours}
+            'delai_jours': current.delai_jours,
+            'message': current.message or ''}
+
+
+def _next_level(jours_retard, levels):
+    """Prochain niveau non encore atteint (seuil strictement supérieur), ou None.
+
+    Sert à proposer une date de prochaine relance (aujourd'hui + son délai).
+    """
+    for lvl in levels:
+        if lvl.delai_jours > jours_retard:
+            return {'ordre': lvl.ordre, 'nom': lvl.nom,
+                    'delai_jours': lvl.delai_jours}
+    return None
 
 
 class FollowupLevelViewSet(viewsets.ModelViewSet):
@@ -94,6 +107,7 @@ def relances_list(request):
             'montant_du': _s(f.montant_du),
             'jours_retard': jr,
             'niveau': _current_level(jr, levels),
+            'niveau_suivant': _next_level(jr, levels),
             'prochaine_relance': (f.prochaine_relance.isoformat()
                                   if f.prochaine_relance else None),
             'nb_relances': f.relances.count(),
