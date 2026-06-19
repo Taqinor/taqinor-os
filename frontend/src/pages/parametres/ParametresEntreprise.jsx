@@ -29,6 +29,7 @@ import DocumentsSection from './DocumentsSection'
 import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
+import MonitoringSection from './MonitoringSection'
 import ChecklistSection from './ChecklistSection'
 import KitsSection from './KitsSection'
 import ShotListSection from './ShotListSection'
@@ -513,6 +514,8 @@ export default function ParametresEntreprise() {
           {tab === 'stock'    && <StockSection {...ctx} />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
           {tab === 'statuts'    && <StatutsSection />}
+          {/* N52 — section autonome (seuil de sous-performance + auto-ticket SAV). */}
+          {tab === 'monitoring' && <MonitoringSection />}
           {/* N74 — éditeur de modèles de checklist par type d'installation. */}
           {tab === 'checklists' && <ChecklistSection />}
           {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}

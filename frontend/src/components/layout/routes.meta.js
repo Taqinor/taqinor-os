@@ -33,6 +33,7 @@ export const PAGE_TITLES = [
   ['/chantiers', 'Chantiers'],
   ['/interventions', 'Interventions'],
   ['/parc', 'Parc installé'],
+  ['/production', 'Production'],
 
   // Après-vente
   ['/sav/contrats', 'Contrats de maintenance'],
@@ -63,6 +64,7 @@ export const SECTION_LABELS = {
   ventes: 'Ventes',
   chantiers: 'Chantiers',
   parc: 'Chantiers',
+  production: 'Chantiers',
   equipements: 'Après-vente',
   sav: 'Après-vente',
   ia: 'Intelligence',
