@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Plus, X, Star, Trash2 } from 'lucide-react'
+import { Plus, X, Star, Trash2, Pencil } from 'lucide-react'
 import {
   createProduit,
   updateProduit,
@@ -46,26 +46,53 @@ function PrixFournisseursSection({ produitId, fournisseurs }) {
   const [fId, setFId] = useState('')
   const [prix, setPrix] = useState('')
   const [error, setError] = useState(null)
+  const [editId, setEditId] = useState(null)   // ligne en édition
+  const [editPrix, setEditPrix] = useState('')
 
   const load = () => stockApi.getProduitPrixFournisseurs(produitId)
     .then((r) => setRows(r.data ?? [])).catch(() => {})
   useEffect(() => { load() }, [produitId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sorted = [...rows].sort((a, b) => Number(a.prix_achat) - Number(b.prix_achat))
+  const used = new Set(rows.map((r) => String(r.fournisseur)))
+  const dispo = (fournisseurs ?? []).filter((f) => !used.has(String(f.id)))
+  const moinsCher = sorted.length ? Number(sorted[0].prix_achat) : 0
 
   const add = () => {
     setError(null)
     const p = parseFloat(prix)
     if (!fId) { setError('Choisissez un fournisseur.'); return }
     if (!Number.isFinite(p) || p <= 0) { setError('Prix d\'achat invalide.'); return }
+    // Doublon de fournisseur : interdit (unicité ('produit','fournisseur')).
+    if (used.has(String(fId))) {
+      setError('Ce fournisseur a déjà un prix pour ce produit — modifiez-le.'); return
+    }
     stockApi.createPrixFournisseur({ produit: produitId, fournisseur: fId, prix_achat: p })
       .then(() => { setFId(''); setPrix(''); return load() })
       .catch((e) => setError(e.response?.data?.detail
-        ?? e.response?.data?.fournisseur?.[0] ?? 'Échec de l\'ajout.'))
+        ?? (e.response?.data?.fournisseur?.[0] && 'Ce fournisseur a déjà un prix pour ce produit.')
+        ?? 'Échec de l\'ajout.'))
   }
   const remove = (id) => stockApi.deletePrixFournisseur(id).then(load).catch(() => {})
 
-  const sorted = [...rows].sort((a, b) => Number(a.prix_achat) - Number(b.prix_achat))
-  const used = new Set(rows.map((r) => String(r.fournisseur)))
-  const dispo = (fournisseurs ?? []).filter((f) => !used.has(String(f.id)))
+  const startEdit = (r) => { setEditId(r.id); setEditPrix(String(r.prix_achat)); setError(null) }
+  const cancelEdit = () => { setEditId(null); setEditPrix('') }
+  const saveEdit = (id) => {
+    const p = parseFloat(editPrix)
+    if (!Number.isFinite(p) || p <= 0) { setError('Prix d\'achat invalide.'); return }
+    stockApi.updatePrixFournisseur(id, { prix_achat: p })
+      .then(() => { cancelEdit(); return load() })
+      .catch((e) => setError(e.response?.data?.detail ?? 'Échec de la modification.'))
+  }
+
+  // Date du dernier achat au format JJ/MM/AAAA (sinon « — »).
+  const fmtAchatDate = (iso) => {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime())
+      ? '—'
+      : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
 
   return (
     <section className="sm:col-span-2 flex flex-col gap-2 border-t border-border pt-4">
@@ -88,24 +115,54 @@ function PrixFournisseursSection({ produitId, fournisseurs }) {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r, i) => (
-                <tr key={r.id} className="border-t border-border">
-                  <td className="px-3 py-2">
-                    <span className="inline-flex items-center gap-1">
-                      {r.fournisseur_nom}
-                      {i === 0 && <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" />}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 tabular-nums">{Number(r.prix_achat).toFixed(2)} DH</td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.date_dernier_achat || '—'}</td>
-                  <td className="px-3 py-2">
-                    <Button type="button" variant="ghost" size="icon" className="size-7"
-                            aria-label="Supprimer" onClick={() => remove(r.id)}>
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {sorted.map((r, i) => {
+                const ecart = (i > 0 && moinsCher > 0)
+                  ? ((Number(r.prix_achat) - moinsCher) / moinsCher) * 100
+                  : null
+                return (
+                  <tr key={r.id} className="border-t border-border">
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1">
+                        {r.fournisseur_nom}
+                        {i === 0 && <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" />}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {editId === r.id ? (
+                        <Input type="number" min="0" step="any" inputMode="decimal" className="h-8 w-28"
+                               value={editPrix} onChange={(e) => setEditPrix(e.target.value)} />
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          {Number(r.prix_achat).toFixed(2)} DH
+                          {ecart != null && ecart > 0 && (
+                            <span className="text-xs text-warning">+{ecart.toFixed(0)} % vs le moins cher</span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{fmtAchatDate(r.date_dernier_achat)}</td>
+                    <td className="px-3 py-2">
+                      {editId === r.id ? (
+                        <span className="flex gap-1">
+                          <Button type="button" variant="outline" size="sm" onClick={() => saveEdit(r.id)}>OK</Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>×</Button>
+                        </span>
+                      ) : (
+                        <span className="flex gap-0.5">
+                          <Button type="button" variant="ghost" size="icon" className="size-7"
+                                  aria-label="Modifier le prix" onClick={() => startEdit(r)}>
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="size-7"
+                                  aria-label="Supprimer" onClick={() => remove(r.id)}>
+                            <Trash2 className="text-destructive" />
+                          </Button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

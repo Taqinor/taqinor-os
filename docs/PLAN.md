@@ -729,10 +729,10 @@ client-facing PDFs are GALLERY-gated).
 [x] [Stock/Achats] [L7] [ROUTINE] Confirmer avant d'envoyer un BCF dont une ligne a un prix d'achat à 0 (cas pompes/placeholder). Fait = envoyer un BCF avec ligne(s) à prix 0 demande une confirmation FR.
 
 #### Listes de prix fournisseur (multi-fournisseur)
-[ ] [Stock/Achats] [L6] [ROUTINE] Afficher l'écart de prix entre fournisseurs dans PrixFournisseursSection (% vs le moins cher ⭐). Fait = chaque ligne hors moins-cher montre "+X % vs le moins cher".
-[ ] [Stock/Achats] [L7] [ROUTINE] Empêcher dans PrixFournisseursSection d'ajouter un prix pour un fournisseur déjà listé (unicité ('produit','fournisseur')). Fait = tenter un doublon affiche un message FR, jamais une erreur brute.
-[ ] [Stock/Achats] [L5] [ROUTINE] Rendre le prix d'achat d'un PrixFournisseur éditable en place (aujourd'hui supprimer + recréer seulement). Fait = un prix fournisseur existant peut être modifié sans le supprimer.
-[ ] [Stock/Achats] [L16] [ROUTINE] Afficher la date du dernier achat formatée FR dans PrixFournisseursSection (aujourd'hui ISO brut ou "—"). Fait = la date du dernier achat s'affiche au format JJ/MM/AAAA.
+[x] [Stock/Achats] [L6] [ROUTINE] Afficher l'écart de prix entre fournisseurs dans PrixFournisseursSection (% vs le moins cher ⭐). Fait = chaque ligne hors moins-cher montre "+X % vs le moins cher".
+[x] [Stock/Achats] [L7] [ROUTINE] Empêcher dans PrixFournisseursSection d'ajouter un prix pour un fournisseur déjà listé (unicité ('produit','fournisseur')). Fait = tenter un doublon affiche un message FR, jamais une erreur brute.
+[x] [Stock/Achats] [L5] [ROUTINE] Rendre le prix d'achat d'un PrixFournisseur éditable en place (aujourd'hui supprimer + recréer seulement). Fait = un prix fournisseur existant peut être modifié sans le supprimer.
+[x] [Stock/Achats] [L16] [ROUTINE] Afficher la date du dernier achat formatée FR dans PrixFournisseursSection (aujourd'hui ISO brut ou "—"). Fait = la date du dernier achat s'affiche au format JJ/MM/AAAA.
 
 #### Valorisation
 [ ] [Stock/Achats] [L11] [ROUTINE] Gérer l'état vide de ValorisationModal (stock à zéro → tables vides sans message). Fait = sans stock valorisable, le modal affiche "Aucun stock à valoriser".
