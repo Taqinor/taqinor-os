@@ -80,6 +80,9 @@ const ventesApi = {
   relancerFacture: (id, data) => api.post(`/ventes/factures/${id}/relancer/`, data),
   exclureRelance: (id, exclu) => api.post(`/ventes/factures/${id}/exclure-relance/`, { exclu }),
   getRelancesFacture: (id) => api.get(`/ventes/factures/${id}/relances/`),
+  // N87 — fil des emails (envoyés/reçus) d'une facture + état du compte d'envoi.
+  getEmailsFacture: (id) => api.get(`/ventes/factures/${id}/emails/`),
+  getEmailConfig: () => api.get('/ventes/email-config/'),
   getBalanceAgee: () => api.get('/ventes/balance-agee/'),
   getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),

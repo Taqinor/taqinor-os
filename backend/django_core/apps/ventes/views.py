@@ -2,12 +2,12 @@ from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from apps.stock.models import MouvementStock
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog,
+    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
 )
 from .serializers import (
     DevisSerializer,
@@ -662,7 +662,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['paiements', 'relances']:
+        if self.action in READ_ACTIONS + ['paiements', 'relances', 'emails']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
@@ -923,8 +923,30 @@ class FactureViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_email(self, request, pk=None):
+        """N87 — Envoie la facture au client par email (PDF en pièce jointe).
+
+        Route par l'intégration email configurable : NO-OP réseau sans clé
+        (backend console), envoi réel via Brevo/SMTP quand configuré. L'envoi
+        est consigné sur le fil (EmailLog). Le corps/sujet/destinataire peuvent
+        être surchargés dans le body de la requête."""
+        from .email_service import send_document_email
+        facture = self.get_object()
+        log = send_document_email(
+            facture,
+            to_email=(request.data.get('to_email') or '').strip() or None,
+            sujet=(request.data.get('sujet') or '').strip() or None,
+            corps=(request.data.get('corps') or '').strip() or None,
+            user=request.user,
+            attach_pdf=request.data.get('attach_pdf', True),
+        )
+        if log.statut == EmailLog.Statut.ECHEC:
+            return Response(
+                {'detail': log.erreur or 'Envoi impossible.',
+                 'email_log_id': log.id},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(
-            {'detail': 'Envoi email (TODO Sem. 4)'},
+            {'detail': 'Email envoyé.', 'email_log_id': log.id,
+             'to_email': log.to_email},
             status=status.HTTP_202_ACCEPTED,
         )
 
@@ -999,12 +1021,18 @@ class FactureViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='relancer',
             permission_classes=[IsResponsableOrAdmin])
     def relancer(self, request, pk=None):
-        """Consigne une relance (jamais d'envoi) : journalise + fixe la
-        prochaine date de relance. Ouvert à la Commerciale."""
+        """Consigne une relance et, par défaut, l'envoie par email (N87).
+
+        Journalise une RelanceLog + fixe la prochaine date de relance. L'email
+        de relance part via l'intégration configurable : NO-OP réseau sans clé
+        (backend console), envoi réel via Brevo/SMTP quand configuré. Passer
+        ``envoyer_email=false`` pour seulement consigner sans envoyer (ancien
+        comportement). Ouvert à la Commerciale."""
         facture = self.get_object()
         niveau = request.data.get('niveau')
         note = (request.data.get('note') or '').strip()
         niveau_nom = ''
+        lvl = None
         if niveau:
             lvl = FollowupLevel.objects.filter(
                 company=facture.company, ordre=niveau).first()
@@ -1013,12 +1041,22 @@ class FactureViewSet(viewsets.ModelViewSet):
             company=facture.company, facture=facture,
             niveau=niveau or None, niveau_nom=niveau_nom, note=note,
             created_by=request.user)
+        # Envoi email de relance (par défaut) — NO-OP sans clé configurée.
+        email_log_id = None
+        if request.data.get('envoyer_email', True):
+            from .email_service import send_relance_email
+            email_log = send_relance_email(
+                facture, niveau_nom=niveau_nom,
+                message=(lvl.message if lvl else ''), user=request.user)
+            email_log_id = email_log.id
         # Prochaine relance proposée si fournie, sinon laissée telle quelle.
         prochaine = request.data.get('prochaine_relance')
         if prochaine:
             facture.prochaine_relance = prochaine
             facture.save(update_fields=['prochaine_relance'])
-        return Response(FactureSerializer(facture).data)
+        data = FactureSerializer(facture).data
+        data['email_log_id'] = email_log_id
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='exclure-relance',
             permission_classes=[IsResponsableOrAdmin])
@@ -1036,6 +1074,15 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture = self.get_object()
         return Response(
             RelanceLogSerializer(facture.relances.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='emails',
+            permission_classes=[IsAnyRole])
+    def emails(self, request, pk=None):
+        """Fil des emails (envoyés/reçus) consignés sur cette facture (N87/N88)."""
+        from .serializers import EmailLogSerializer
+        facture = self.get_object()
+        return Response(
+            EmailLogSerializer(facture.email_logs.all(), many=True).data)
 
 
 class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
@@ -1134,3 +1181,30 @@ class LigneFactureViewSet(viewsets.ModelViewSet):
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def email_config(request):
+    """N87 — État du compte d'envoi email (lecture seule, informatif).
+
+    Renvoie si un compte d'envoi (Brevo/SMTP) est réellement configuré et
+    l'adresse expéditrice. Quand `configured` est False, l'envoi reste un NO-OP
+    (backend console) — le comportement actuel est préservé. La configuration
+    réelle (clé Brevo, expéditeur) se fait par variables d'environnement, pas
+    via cet endpoint."""
+    from django.conf import settings as dj_settings
+    from .email_service import is_email_configured
+    return Response({
+        'configured': is_email_configured(),
+        'from_email': getattr(dj_settings, 'DEFAULT_FROM_EMAIL', ''),
+        'inbound_configured': _inbound_configured(),
+    })
+
+
+def _inbound_configured():
+    try:
+        from .inbound_email import is_inbound_configured
+        return is_inbound_configured()
+    except Exception:
+        return False

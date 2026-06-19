@@ -217,10 +217,22 @@ CORS_ALLOW_CREDENTIALS = True
 # Celery Configuration
 CELERY_BROKER_URL = f"redis://{os.environ.get('REDIS_HOST', 'redis')}:{os.environ.get('REDIS_PORT', '6379')}/0"
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+# G9 — Celery Beat raisonne en Africa/Casablanca (cf. erp_agentique/celery.py).
+# Le planning (beat_schedule) est défini dans celery.py ; on fige ici le fuseau
+# côté CELERY pour cohérence si Beat est lancé via les settings.
+CELERY_TIMEZONE = 'Africa/Casablanca'
+CELERY_ENABLE_UTC = False
 
-# Email — django-anymail avec SendGrid (Phase 2 Sem. 4)
+# Email — django-anymail (N87). Compte d'envoi configurable : Brevo (ex-
+# Sendinblue) via BREVO_API_KEY, ou SendGrid (héritage), ou SMTP. SANS clé,
+# EMAIL_BACKEND reste le backend console → l'envoi est un NO-OP qui préserve le
+# comportement actuel (aucun appel réseau, aucune exception). Pour activer
+# Brevo en prod : EMAIL_BACKEND=anymail.backends.sendinblue.EmailBackend +
+# BREVO_API_KEY=<clé> + DEFAULT_FROM_EMAIL=<expéditeur vérifié Brevo>.
 ANYMAIL = {
     'SENDGRID_API_KEY': os.environ.get('SENDGRID_API_KEY', ''),
+    # Clé API Brevo (anymail nomme ce backend « sendinblue »). Vide = NO-OP.
+    'SENDINBLUE_API_KEY': os.environ.get('BREVO_API_KEY', ''),
 }
 EMAIL_BACKEND = os.environ.get(
     'EMAIL_BACKEND',
@@ -228,6 +240,12 @@ EMAIL_BACKEND = os.environ.get(
 )
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@erp.local')
 CONTACT_EMAIL = os.environ.get('CONTACT_EMAIL', 'reda.kasri@taqinor.ma')
+
+# N88 — Capture des emails entrants. Sans secret/host configuré, la capture est
+# un NO-OP réseau (aucune connexion ouverte). BREVO_INBOUND_SECRET sécurise un
+# futur webhook inbound Brevo ; INBOUND_EMAIL_HOST un futur relevé IMAP.
+BREVO_INBOUND_SECRET = os.environ.get('BREVO_INBOUND_SECRET', '')
+INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).

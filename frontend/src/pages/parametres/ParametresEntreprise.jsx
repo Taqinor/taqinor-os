@@ -34,6 +34,7 @@ import KitsSection from './KitsSection'
 import ShotListSection from './ShotListSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
+import EmailSection from './EmailSection'
 import AvanceSection from './AvanceSection'
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
@@ -520,6 +521,8 @@ export default function ParametresEntreprise() {
           {tab === 'shotlist'   && <ShotListSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
+          {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}
+          {tab === 'email'    && <EmailSection />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}

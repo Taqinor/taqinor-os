@@ -8,6 +8,7 @@ from .views import (
     LigneFactureViewSet,
     PaiementViewSet,
     AvoirViewSet,
+    email_config,
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -51,5 +52,7 @@ urlpatterns = [
          lettre_relance_premium, name='lettre-relance-premium'),
     path('chantiers/<int:chantier_id>/fiche-remise-premium/',
          fiche_remise_premium, name='fiche-remise-premium'),
+    # N87 — état du compte d'envoi email (informatif, lecture seule).
+    path('email-config/', email_config, name='email-config'),
     path('', include(router.urls)),
 ]

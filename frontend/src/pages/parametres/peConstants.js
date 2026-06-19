@@ -38,6 +38,7 @@ export const TABS = [
   { key: 'shotlist',   label: 'Documentation terrain' },
   { key: 'equipe',     label: 'Équipe & rôles' },
   { key: 'messages',   label: 'Messages & relances' },
+  { key: 'email',      label: 'Email' },
   { key: 'avance',     label: 'Avancé' },
 ]
 
