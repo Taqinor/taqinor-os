@@ -36,16 +36,19 @@ class TestProduitClientWiring(CFWiringBase):
         CustomFieldDef.objects.create(
             company=self.company, module='produit', code='puissance',
             libelle='Puissance', type='number', obligatoire=True)
-        # Manquant → 400
-        r1 = self.api.post('/api/django/stock/produits/',
-                           {'nom': 'Panneau', 'prix_vente': '100'},
-                           format='json')
-        self.assertEqual(r1.status_code, 400)
+        # Manquant → 400 (sku + company fournis pour satisfaire l'unicité
+        # (company, sku) ; seul le champ perso obligatoire manque).
+        r1 = self.api.post(
+            '/api/django/stock/produits/',
+            {'nom': 'Panneau', 'prix_vente': '100', 'sku': 'CF-PAN-1',
+             'company': self.company.id},
+            format='json')
+        self.assertEqual(r1.status_code, 400, r1.data)
         # Fourni → créé et stocké
         r2 = self.api.post(
             '/api/django/stock/produits/',
-            {'nom': 'Panneau', 'prix_vente': '100',
-             'custom_data': {'puissance': 550}},
+            {'nom': 'Panneau', 'prix_vente': '100', 'sku': 'CF-PAN-2',
+             'company': self.company.id, 'custom_data': {'puissance': 550}},
             format='json')
         self.assertEqual(r2.status_code, 201, r2.data)
         prod = Produit.objects.get(id=r2.data['id'])
@@ -55,12 +58,17 @@ class TestProduitClientWiring(CFWiringBase):
         CustomFieldDef.objects.create(
             company=self.company, module='client', code='secteur',
             libelle='Secteur', type='text', obligatoire=True)
-        r1 = self.api.post('/api/django/crm/clients/',
-                           {'nom': 'Sans secteur'}, format='json')
-        self.assertEqual(r1.status_code, 400)
+        # email fourni (l'unicité (company, email) le rend obligatoire) ; seul
+        # le champ perso obligatoire « secteur » manque → 400.
+        r1 = self.api.post(
+            '/api/django/crm/clients/',
+            {'nom': 'Sans secteur', 'email': 'cf-secteur-1@example.invalid'},
+            format='json')
+        self.assertEqual(r1.status_code, 400, r1.data)
         r2 = self.api.post(
             '/api/django/crm/clients/',
-            {'nom': 'Avec secteur', 'custom_data': {'secteur': 'Agricole'}},
+            {'nom': 'Avec secteur', 'email': 'cf-secteur-2@example.invalid',
+             'custom_data': {'secteur': 'Agricole'}},
             format='json')
         self.assertEqual(r2.status_code, 201, r2.data)
         client = Client.objects.get(id=r2.data['id'])

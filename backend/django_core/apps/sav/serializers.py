@@ -37,6 +37,11 @@ class EquipementSerializer(serializers.ModelSerializer):
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
         ]
+        # L636 — l'unicité (company, numero_serie) est CONDITIONNELLE (séries
+        # vides exclues). On désactive le UniqueTogetherValidator auto de DRF
+        # (qui rendrait numero_serie obligatoire et casserait une série omise)
+        # et on s'appuie sur validate_numero_serie + la contrainte DB.
+        validators = []
 
     def validate_numero_serie(self, value):
         """L636 — unicité du n° de série par société (les vides sont permis).

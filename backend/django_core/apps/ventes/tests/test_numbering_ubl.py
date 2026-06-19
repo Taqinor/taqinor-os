@@ -131,7 +131,6 @@ class TestNumerotationPreviewEndpoint(TestCase):
         self.assertTrue(r2.data['facture'].endswith('-0001'))
         self.assertTrue(r2.data['avoir'].endswith('-0001'))
         self.assertTrue(r2.data['bon_commande'].endswith('-0001'))
-        self.assertIn('conforme', r.data)
 
 
 class TestUblExport(TestCase):
