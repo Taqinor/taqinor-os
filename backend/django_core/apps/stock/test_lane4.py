@@ -103,6 +103,48 @@ class TestCategorieTypeEquipement(Lane4Base):
         self.assertEqual(cat.type_equipement, 'pompe')
 
 
+# ── L578 — ProduitSerializer expose le type de catégorie (slot d'équipement) ──
+class TestProduitCategorieType(Lane4Base):
+    def test_produit_exposes_categorie_type_when_typed(self):
+        """Le produit d'une catégorie typée remonte categorie_type +
+        categorie_type_display à plat (pour le filtre de slot du chantier)."""
+        cat = Categorie.objects.create(
+            company=self.company, nom='Mes convertisseurs maison',
+            type_equipement=Categorie.TypeEquipement.ONDULEUR)
+        prod = Produit.objects.create(
+            company=self.company, nom='Onduleur X', sku='OND-X',
+            prix_vente=Decimal('100'), categorie=cat)
+        api = auth(self.admin)
+        r = api.get(f'/api/django/stock/produits/{prod.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['categorie_type'], 'onduleur')
+        self.assertEqual(r.data['categorie_type_display'], 'Onduleur')
+
+    def test_produit_categorie_type_none_when_untyped(self):
+        """Catégorie non typée → categorie_type None (comportement historique :
+        le picker reste sur la liste BOM complète côté frontend)."""
+        cat = Categorie.objects.create(company=self.company, nom='Divers')
+        prod = Produit.objects.create(
+            company=self.company, nom='Vis inox', sku='VIS-1',
+            prix_vente=Decimal('5'), categorie=cat)
+        api = auth(self.admin)
+        r = api.get(f'/api/django/stock/produits/{prod.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['categorie_type'])
+        self.assertIsNone(r.data['categorie_type_display'])
+
+    def test_produit_categorie_type_none_when_no_categorie(self):
+        """Produit sans catégorie → pas d'erreur, type None."""
+        prod = Produit.objects.create(
+            company=self.company, nom='Sans cat', sku='SC-1',
+            prix_vente=Decimal('5'))
+        api = auth(self.admin)
+        r = api.get(f'/api/django/stock/produits/{prod.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['categorie_type'])
+        self.assertIsNone(r.data['categorie_type_display'])
+
+
 # ── L699 — compteurs lecture seule sur la fiche fournisseur ──────────────────
 class TestFournisseurCounts(Lane4Base):
     def test_counts_products_and_bcf(self):

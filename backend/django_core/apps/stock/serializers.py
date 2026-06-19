@@ -105,6 +105,14 @@ class ProduitSerializer(serializers.ModelSerializer):
             fields.pop('prix_achat', None)
         return fields
     is_low_stock = serializers.SerializerMethodField()
+    # L578 — type d'équipement de la catégorie (additif, lecture seule) exposé à
+    # plat pour permettre au picker d'équipement de chantier de filtrer un slot
+    # (panneaux/onduleur…) par TYPE quel que soit le libellé free-text de la
+    # catégorie. Vide (None) quand la catégorie n'est pas typée → comportement
+    # historique préservé côté frontend (repli sur la liste BOM complète).
+    categorie_type = serializers.CharField(
+        source='categorie.type_equipement', read_only=True, allow_null=True)
+    categorie_type_display = serializers.SerializerMethodField()
     # N14 — quantité ENGAGÉE par des réservations de chantier (non consommée) et
     # DISPONIBLE = stock total − réservé. Les vues stock + alertes de stock bas
     # tiennent compte de l'engagé-mais-non-consommé.
@@ -156,6 +164,13 @@ class ProduitSerializer(serializers.ModelSerializer):
 
     def get_quantite_disponible(self, obj):
         return obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+
+    def get_categorie_type_display(self, obj):
+        # Libellé FR du type d'équipement (None si catégorie non typée).
+        cat = obj.categorie
+        if cat is None or not cat.type_equipement:
+            return None
+        return cat.get_type_equipement_display()
 
     def get_is_low_stock(self, obj):
         # Comportement historique conservé (stock brut vs seuil).
