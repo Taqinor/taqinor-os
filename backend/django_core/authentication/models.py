@@ -88,13 +88,17 @@ class CustomUser(AbstractUser):
     def tier_for_role(role):
         """Palier de menu hérité correspondant à un Role (ou None sans rôle).
 
-        Délègue à la source unique de vérité ``role_tiers`` : Administrateur →
-        'admin', Responsable → 'responsable', Utilisateur / rôle personnalisé →
-        'normal'."""
+        Délègue à la source unique de vérité ``role_tiers`` : le palier dérive
+        d'abord du signal de permission faisant autorité du rôle (``roles_gerer``
+        → 'admin', ``users_voir`` → 'responsable') — robuste à toute dérive de
+        nom/``est_systeme`` laissée par le mapping rétroactif des rôles — puis,
+        à défaut, du nom système (Administrateur/Directeur → 'admin', Responsable
+        → 'responsable', Utilisateur / rôle personnalisé → 'normal')."""
         if role is None:
             return None
         from authentication.role_tiers import tier_for_role_fields
-        return tier_for_role_fields(role.nom, role.est_systeme)
+        return tier_for_role_fields(
+            role.nom, role.est_systeme, role.permissions or [])
 
     @property
     def menu_tier(self):
