@@ -768,7 +768,13 @@ export default function DevisList() {
                           <div className="mt-1">
                             <button
                               type="button"
-                              title="Ouvrir le lead lié"
+                              title={[
+                                'Ouvrir le lead lié',
+                                d.lead_type_installation
+                                  ? `Type : ${d.lead_type_installation}` : null,
+                                d.lead_facture_hiver != null
+                                  ? `Facture hiver : ${formatMAD(d.lead_facture_hiver)}` : null,
+                              ].filter(Boolean).join('\n')}
                               onClick={() => navigate(`/crm/leads?lead=${d.lead}`)}
                               className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning hover:bg-warning/20"
                             >

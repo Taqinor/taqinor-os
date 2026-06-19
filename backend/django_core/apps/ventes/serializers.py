@@ -41,6 +41,20 @@ class DevisSerializer(serializers.ModelSerializer):
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+    # Contexte « quote-aware » du lead lié (profil énergétique) — lecture seule,
+    # pour un aperçu au survol dans la liste des devis. None si pas de lead.
+    lead_facture_hiver = serializers.SerializerMethodField()
+    lead_type_installation = serializers.SerializerMethodField()
+
+    def get_lead_facture_hiver(self, obj):
+        return str(obj.lead.facture_hiver) if obj.lead_id and \
+            obj.lead.facture_hiver is not None else None
+
+    def get_lead_type_installation(self, obj):
+        if not obj.lead_id:
+            return None
+        return obj.lead.get_type_installation_display() \
+            if obj.lead.type_installation else None
 
     def _display(self, obj):
         if not hasattr(obj, '_display_totals_cache'):
