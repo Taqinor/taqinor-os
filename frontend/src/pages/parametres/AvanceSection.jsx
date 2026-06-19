@@ -1,12 +1,14 @@
 // Onglet « Avancé » de la page Paramètres (hypothèses ROI, logique de devis,
 // types d'intervention, checklist d'exécution, champs personnalisés). Restylé
 // sur le système de design (@/ui) ; champs, libellés et comportement identiques.
+import { useEffect, useState } from 'react'
 import {
   Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown,
 } from 'lucide-react'
+import parametresApi from '../../api/parametresApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge,
-  Checkbox, Switch, EmptyState,
+  Checkbox, Switch, EmptyState, Spinner,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
@@ -15,10 +17,40 @@ export default function AvanceSection({
   form, set,
   typesItv, newType, setNewType, addType, renameType, delType,
   checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
+  toggleEtapeCapture, moveEtape,
   cfModule, setCfModule, cfDefs, newCf, setNewCf, addCf, delCf, loadCfDefs,
   cfEditId, cfEdit, setCfEdit, openCfEdit, cancelCfEdit, saveCfEdit,
   toggleCfActif, moveCf,
 }) {
+  // L787 — impact inline de l'économie : production annuelle d'1 kWc valorisée
+  // au tarif ONEE × rendement, recalculée en direct à l'édition (repère
+  // pédagogique ; autoconsommation/payback restent sur l'écran devis).
+  const ecoParKwc = Math.round(
+    (Number(form.productible_kwh_kwc) || 0)
+    * (Number(form.rendement_global) || 0)
+    * (Number(form.onee_tarif_kwh) || 0))
+  const fmtMad = (n) => n.toLocaleString('fr-FR')
+
+  // L765 — journal d'audit des changements de paramètres (lecture seule).
+  const [audit, setAudit] = useState(null) // null = pas encore chargé
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditSection, setAuditSection] = useState('__all__')
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAuditLoading(true)
+    const params = { limit: 50 }
+    if (auditSection !== '__all__') params.section = auditSection
+    parametresApi.getAudit(params)
+      .then(r => setAudit(r.data.results ?? r.data))
+      .catch(() => setAudit([]))
+      .finally(() => setAuditLoading(false))
+  }, [auditSection])
+  const fmtVal = (v) => (v === null || v === undefined || v === '' ? '—'
+    : (typeof v === 'object' ? JSON.stringify(v) : String(v)))
+  const fmtDate = (s) => {
+    try { return new Date(s).toLocaleString('fr-FR') } catch { return s }
+  }
+
   return (
     <>
       {/* ROI — hypothèses (tarif ONEE, productible) */}
@@ -39,6 +71,13 @@ export default function AvanceSection({
               <Input id="pe-productible" type="number" min="0" step="1"
                      name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
             </Field>
+            {/* L787 — impact recalculé en direct sous tarif ONEE / productible. */}
+            <div className="sm:col-span-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-[12px] text-primary">
+              ≈ <strong>{fmtMad(ecoParKwc)} MAD/an</strong> économisés pour
+              {' '}<strong>1 kWc</strong> installé (production
+              {' '}{fmtMad(Math.round((Number(form.productible_kwh_kwc) || 0) * (Number(form.rendement_global) || 0)))} kWh ×
+              {' '}{Number(form.onee_tarif_kwh) || 0} MAD/kWh).
+            </div>
             <Field label="Seuil d'approbation de remise (%)" htmlFor="pe-discount-thr">
               <Input id="pe-discount-thr" type="number" min="0" max="100" step="0.01"
                      name="discount_approval_threshold" placeholder="vide = désactivé"
@@ -151,11 +190,29 @@ export default function AvanceSection({
             étape pour la retirer des nouveaux chantiers sans toucher aux
             chantiers existants ; les étapes système sont protégées.
           </p>
-          {checklistEtapes.map(et => (
-            <div key={et.id} className="mb-1.5 flex items-center gap-1.5">
-              <Input className={['flex-1', et.actif ? '' : 'opacity-50'].join(' ')} defaultValue={et.libelle}
+          {checklistEtapes.map((et, idx) => (
+            <div key={et.id} className="mb-1.5 flex flex-wrap items-center gap-1.5">
+              {/* L784 — réordonner l'étape (haut/bas). */}
+              <div className="flex flex-col">
+                <IconButton size="sm" variant="ghost" label="Monter l'étape"
+                            disabled={idx === 0} onClick={() => moveEtape(et, -1)}>
+                  <ChevronUp className="size-3.5" aria-hidden="true" />
+                </IconButton>
+                <IconButton size="sm" variant="ghost" label="Descendre l'étape"
+                            disabled={idx === checklistEtapes.length - 1}
+                            onClick={() => moveEtape(et, 1)}>
+                  <ChevronDown className="size-3.5" aria-hidden="true" />
+                </IconButton>
+              </div>
+              <Input className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')} defaultValue={et.libelle}
                      onBlur={e => renameEtape(et, e.target.value)} />
-              {et.capture_serie && <Badge tone="info" title="Saisie de n° de série">série</Badge>}
+              {/* L785 — capture_serie en toggle éditable (au lieu d'un simple badge). */}
+              <Button type="button" size="sm"
+                      variant={et.capture_serie ? 'default' : 'outline'}
+                      title="Saisie de n° de série sur cette étape"
+                      onClick={() => toggleEtapeCapture(et)}>
+                Série
+              </Button>
               <Button type="button" size="sm"
                       variant={et.actif ? 'success' : 'secondary'}
                       title={et.actif ? 'Désactiver' : 'Activer'}
@@ -179,6 +236,56 @@ export default function AvanceSection({
                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtape() } }} />
             <Button type="button" onClick={addEtape}><Plus className="size-4" aria-hidden="true" /></Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* L765 — Journal des modifications (audit N55, lecture seule) */}
+      <Card>
+        <CardContent className="pt-4 sm:pt-5">
+          <SectionTitle label="Journal des modifications" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
+          <p className="mb-3 text-[11.5px] text-muted-foreground">
+            Derniers changements de paramètres : qui a modifié quoi et quand.
+            Lecture seule.
+          </p>
+          <div className="mb-3 w-[200px]">
+            <Select value={auditSection} onValueChange={setAuditSection}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Toutes les sections</SelectItem>
+                <SelectItem value="profil">Profil entreprise</SelectItem>
+                <SelectItem value="messages">Messages</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {auditLoading ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+              <Spinner className="size-4 text-primary" /> Chargement…
+            </div>
+          ) : (audit && audit.length === 0) ? (
+            <EmptyState title="Aucune modification"
+              description="Les changements de paramètres apparaîtront ici." className="py-6" />
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {(audit ?? []).map(row => (
+                <div key={row.id} className="rounded-md border border-border px-3 py-2 text-[12px]">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-medium text-foreground">
+                      {row.field_label || row.field}
+                    </span>
+                    <Badge tone="neutral">{row.section}</Badge>
+                    <span className="ml-auto text-[11px] text-muted-foreground">
+                      {row.user_nom || '—'} · {fmtDate(row.timestamp)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                    <span className="line-through">{fmtVal(row.old_value)}</span>
+                    {' → '}
+                    <span className="text-foreground">{fmtVal(row.new_value)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -1,9 +1,9 @@
 // Onglet « Leads » de la page Paramètres (responsable/installateur par défaut,
 // parrainage, étiquettes & motifs CRM, canaux/sources). Restylé sur le système
 // de design (@/ui) ; champs, libellés et comportement identiques.
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Archive, ArchiveRestore, Lock } from 'lucide-react'
 import {
-  Card, CardContent, Input, Switch, Label, Badge, IconButton, Button,
+  Card, CardContent, Input, Switch, Label, Badge, IconButton, Button, Spinner,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
@@ -11,11 +11,25 @@ import { SectionTitle, Field } from './peComponents'
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
 
+// L777 — petit indicateur de chargement / liste vide réutilisable.
+function ListState({ loading, empty, children }) {
+  if (loading) return (
+    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+      <Spinner className="size-3.5 text-primary" /> Chargement…
+    </div>
+  )
+  if (empty) return (
+    <p className="py-2 text-xs text-muted-foreground">Aucun élément.</p>
+  )
+  return children
+}
+
 export default function LeadsSection({
   form, set, setForm, assignables,
-  tags, newTag, setNewTag, addTag, renameTag, delTag,
-  motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif,
-  canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal,
+  tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
+  motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
+  canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal, archiveCanal,
+  refLoading = {},
 }) {
   // Met à jour un champ FK du formulaire ('' = aucun) depuis le Select.
   const setFk = (name) => (val) =>
@@ -91,36 +105,77 @@ export default function LeadsSection({
             libre reste possible ; les leads existants ne changent pas.
           </p>
           <Label className="mb-1 block">Étiquettes</Label>
-          {tags.map(t => (
-            <div key={t.id} className="mb-1.5 flex items-center gap-1.5">
-              <Input className="flex-1" defaultValue={t.nom}
-                     onBlur={e => renameTag(t, e.target.value)} />
-              <IconButton size="md" variant="outline" label="Supprimer l'étiquette"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => delTag(t)}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </IconButton>
-            </div>
-          ))}
-          <div className="mb-3.5 flex gap-1.5">
+          <ListState loading={refLoading.tags} empty={tags.length === 0}>
+            {tags.map(t => (
+              <div key={t.id}
+                   className={['mb-1.5 flex items-center gap-1.5',
+                     t.archived ? 'opacity-50' : ''].join(' ')}>
+                {/* L781 — couleur de l'étiquette (color-picker persistant). */}
+                <input type="color" aria-label={`Couleur de l'étiquette ${t.nom}`}
+                       value={t.couleur || '#6b7280'}
+                       onChange={e => setTagColor(t, e.target.value)}
+                       className="size-8 shrink-0 cursor-pointer rounded-md border border-input bg-card p-[3px]" />
+                <Input className="flex-1" defaultValue={t.nom}
+                       onBlur={e => renameTag(t, e.target.value)} />
+                {/* L780 — compteur d'usage (suppression bloquée si > 0). */}
+                {t.en_usage > 0 && <Badge tone="neutral">{t.en_usage} lead(s)</Badge>}
+                {/* L778 — archiver/réactiver. */}
+                <IconButton size="md" variant="outline"
+                            label={t.archived ? "Réactiver l'étiquette" : "Archiver l'étiquette"}
+                            onClick={() => archiveTag(t)}>
+                  {t.archived
+                    ? <ArchiveRestore className="size-4" aria-hidden="true" />
+                    : <Archive className="size-4" aria-hidden="true" />}
+                </IconButton>
+                <IconButton size="md" variant="outline" label="Supprimer l'étiquette"
+                            className="text-destructive hover:text-destructive disabled:text-muted-foreground"
+                            disabled={t.en_usage > 0}
+                            title={t.en_usage > 0
+                              ? `${t.en_usage} lead(s) utilisent cette étiquette — archivez-la`
+                              : 'Supprimer'}
+                            onClick={() => delTag(t)}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
+              </div>
+            ))}
+          </ListState>
+          <div className="mb-3.5 mt-1.5 flex gap-1.5">
             <Input className="flex-1" placeholder="Nouvelle étiquette" value={newTag}
                    onChange={e => setNewTag(e.target.value)}
                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} />
             <Button type="button" onClick={addTag}><Plus className="size-4" aria-hidden="true" /></Button>
           </div>
           <Label className="mb-1 block">Motifs de perte</Label>
-          {motifs.map(m => (
-            <div key={m.id} className="mb-1.5 flex items-center gap-1.5">
-              <Input className="flex-1" defaultValue={m.nom}
-                     onBlur={e => renameMotif(m, e.target.value)} />
-              <IconButton size="md" variant="outline" label="Supprimer le motif"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => delMotif(m)}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </IconButton>
-            </div>
-          ))}
-          <div className="flex gap-1.5">
+          <ListState loading={refLoading.motifs} empty={motifs.length === 0}>
+            {motifs.map(m => (
+              <div key={m.id}
+                   className={['mb-1.5 flex items-center gap-1.5',
+                     m.archived ? 'opacity-50' : ''].join(' ')}>
+                <Input className="flex-1" defaultValue={m.nom}
+                       onBlur={e => renameMotif(m, e.target.value)} />
+                {/* L779 — compteur d'usage (suppression bloquée si > 0). */}
+                {m.en_usage > 0 && <Badge tone="neutral">{m.en_usage} lead(s)</Badge>}
+                {/* L778 — archiver/réactiver. */}
+                <IconButton size="md" variant="outline"
+                            label={m.archived ? 'Réactiver le motif' : 'Archiver le motif'}
+                            onClick={() => archiveMotif(m)}>
+                  {m.archived
+                    ? <ArchiveRestore className="size-4" aria-hidden="true" />
+                    : <Archive className="size-4" aria-hidden="true" />}
+                </IconButton>
+                <IconButton size="md" variant="outline" label="Supprimer le motif"
+                            className="text-destructive hover:text-destructive disabled:text-muted-foreground"
+                            disabled={m.en_usage > 0}
+                            title={m.en_usage > 0
+                              ? `${m.en_usage} lead(s) utilisent ce motif — archivez-le`
+                              : 'Supprimer'}
+                            onClick={() => delMotif(m)}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
+              </div>
+            ))}
+          </ListState>
+          <div className="mt-1.5 flex gap-1.5">
             <Input className="flex-1" placeholder="Nouveau motif" value={newMotif}
                    onChange={e => setNewMotif(e.target.value)}
                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMotif() } }} />
@@ -138,24 +193,49 @@ export default function LeadsSection({
             par le formulaire du site) et ne peut être ni renommé ni supprimé.
             Un canal déjà utilisé par des leads ne peut pas être supprimé.
           </p>
-          {canaux.map(c => (
-            <div key={c.id} className="mb-1.5 flex items-center gap-1.5">
-              <Input className="flex-1" defaultValue={c.libelle}
-                     onBlur={e => renameCanal(c, e.target.value)} />
-              {c.protege
-                ? <Badge tone="info">protégé</Badge>
-                : (
-                  <IconButton size="md" variant="outline" label="Supprimer le canal"
-                              className="text-destructive hover:text-destructive disabled:text-muted-foreground"
-                              disabled={c.en_usage > 0}
-                              title={c.en_usage > 0 ? `${c.en_usage} lead(s) utilisent ce canal` : 'Supprimer'}
-                              onClick={() => delCanal(c)}>
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </IconButton>
-                )}
-            </div>
-          ))}
-          <div className="flex gap-1.5">
+          <ListState loading={refLoading.canaux} empty={canaux.length === 0}>
+            {canaux.map(c => (
+              <div key={c.id}
+                   className={['mb-1.5 flex items-center gap-1.5',
+                     c.archived ? 'opacity-50' : ''].join(' ')}>
+                {/* L783 — un canal protégé est en lecture seule avec indice. */}
+                <div className="relative flex-1">
+                  <Input className="w-full" defaultValue={c.libelle}
+                         readOnly={c.protege}
+                         title={c.protege ? 'protégé (webhook site)' : undefined}
+                         onBlur={c.protege ? undefined : e => renameCanal(c, e.target.value)} />
+                </div>
+                {/* L782 — compte de leads en_usage en badge. */}
+                <Badge tone="neutral">{c.en_usage ?? 0} lead(s)</Badge>
+                {c.protege
+                  ? (
+                    <Badge tone="info" title="protégé (webhook site)">
+                      <Lock className="mr-0.5 size-3" aria-hidden="true" /> protégé
+                    </Badge>
+                  )
+                  : (
+                    <>
+                      {/* L778 — archiver/réactiver. */}
+                      <IconButton size="md" variant="outline"
+                                  label={c.archived ? 'Réactiver le canal' : 'Archiver le canal'}
+                                  onClick={() => archiveCanal(c)}>
+                        {c.archived
+                          ? <ArchiveRestore className="size-4" aria-hidden="true" />
+                          : <Archive className="size-4" aria-hidden="true" />}
+                      </IconButton>
+                      <IconButton size="md" variant="outline" label="Supprimer le canal"
+                                  className="text-destructive hover:text-destructive disabled:text-muted-foreground"
+                                  disabled={c.en_usage > 0}
+                                  title={c.en_usage > 0 ? `${c.en_usage} lead(s) utilisent ce canal — archivez-le` : 'Supprimer'}
+                                  onClick={() => delCanal(c)}>
+                        <Trash2 className="size-4" aria-hidden="true" />
+                      </IconButton>
+                    </>
+                  )}
+              </div>
+            ))}
+          </ListState>
+          <div className="mt-1.5 flex gap-1.5">
             <Input className="flex-1" placeholder="Nouveau canal" value={newCanal}
                    onChange={e => setNewCanal(e.target.value)}
                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCanal() } }} />

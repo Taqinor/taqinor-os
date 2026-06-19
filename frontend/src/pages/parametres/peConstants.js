@@ -46,6 +46,43 @@ export const TABS = [
   { key: 'avance',     label: 'Avancé' },
 ]
 
+// L790 — index de recherche : { tab, libellés/mots-clés }. Une saisie qui
+// correspond à un mot-clé propose de sauter à l'onglet concerné. Liste
+// volontairement large mais simple à maintenir (un onglet par entrée).
+export const SETTINGS_SEARCH_INDEX = [
+  { tab: 'societe', terms: ['nom', 'entreprise', 'adresse', 'email', 'téléphone', 'logo', 'signature', 'couleur', 'ice', 'if', 'identifiant fiscal', 'rc', 'registre de commerce', 'patente', 'cnss', 'rib', 'iban', 'banque', 'siret', 'tva intracommunautaire', 'instructions de paiement', 'conditions générales'] },
+  { tab: 'leads', terms: ['responsable par défaut', 'installateur par défaut', 'parrainage', 'récompense', 'étiquettes', 'tags', 'motifs de perte', 'canaux', 'sources', 'couleur étiquette'] },
+  { tab: 'clients', terms: ['clients', 'champs personnalisés client'] },
+  { tab: 'devis', terms: ['échéancier', 'acompte', 'matériel', 'solde', 'validité du devis', 'pompage', 'numérotation', 'préfixe', 'prochain numéro', 'commission', 'tva', 'taux standard', 'taux panneaux', 'taxes'] },
+  { tab: 'documents', terms: ['modèles de documents', 'textes du devis'] },
+  { tab: 'tarification', terms: ['barème onee', 'paliers', 'force motrice', 'agricole', 'surplus injecté', 'autoconsommation', 'pertes système', 'productible', 'pvgis', 'irradiation', 'roi', 'rentabilité'] },
+  { tab: 'stock', terms: ['stock', 'catégories', 'fournisseurs', 'marques', 'seuil'] },
+  { tab: 'statuts', terms: ['statuts', 'libellé', 'ordre'] },
+  { tab: 'monitoring', terms: ['supervision', 'sous-performance', 'auto-ticket', 'sav'] },
+  { tab: 'checklists', terms: ['checklist', 'modèles de checklist', 'étapes', 'capture série'] },
+  { tab: 'kits', terms: ["kits d'outillage", 'outils'] },
+  { tab: 'shotlist', terms: ['documentation terrain', 'shot list', 'photos', 'créneaux'] },
+  { tab: 'automatisations', terms: ['automatisations', 'approbations'] },
+  { tab: 'securite', terms: ['sécurité', 'consignes', 'dépassement', 'services swappables', 'ocr', 'transcription'] },
+  { tab: 'equipe', terms: ['équipe', 'rôles', 'utilisateurs'] },
+  { tab: 'messages', terms: ['niveaux de relance', 'relance', 'message', 'whatsapp', 'darija', 'rappel'] },
+  { tab: 'email', terms: ['email', "compte d'envoi", 'capture entrante'] },
+  { tab: 'api', terms: ['api', 'webhooks', "clés d'api"] },
+  { tab: 'avance', terms: ['avancé', 'hypothèses roi', 'tarif onee', 'rendement', 'logique de devis', 'prix cible', 'remise', "types d'intervention", "checklist d'exécution", 'champs personnalisés', "journal des modifications", "journal d'audit", 'seuil régime', '82-21'] },
+]
+
+// Cherche les onglets dont au moins un mot-clé contient la requête (≥ 2 car).
+export function searchSettings(query) {
+  const q = (query || '').trim().toLowerCase()
+  if (q.length < 2) return []
+  return SETTINGS_SEARCH_INDEX
+    .map(({ tab, terms }) => {
+      const hits = terms.filter(t => t.toLowerCase().includes(q))
+      return hits.length ? { tab, hits } : null
+    })
+    .filter(Boolean)
+}
+
 export const ACCEPTED   = ['image/png', 'image/jpeg', 'image/webp']
 export const MAX_MB     = 2
 // Var d'env VIDE = même origine (prod derrière nginx) — surtout ne jamais

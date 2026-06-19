@@ -10,6 +10,9 @@ const parametresApi = {
   // Modèles de message WhatsApp (FR + Darija) éditables.
   getMessages: () => api.get('/parametres/messages/'),
   saveMessage: (data) => api.put('/parametres/messages/', data),
+  // N55 / L765 — journal d'audit des changements de paramètres (lecture seule).
+  // Filtres possibles : { section: 'profil'|'messages', user, limit }.
+  getAudit: (params) => api.get('/parametres/audit/', { params }),
   // N58 — statuts métier configurables (libellé/ordre/visibilité) par domaine.
   // Couche d'AFFICHAGE : les clés canoniques et les transitions restent figées.
   getStatutsEffective: (domaine) =>

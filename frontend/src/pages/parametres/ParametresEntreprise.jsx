@@ -14,12 +14,13 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
-import { CheckCircle2, AlertCircle, Save } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Save, Search, X } from 'lucide-react'
 import {
-  Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider,
+  Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider, Input,
 } from '../../ui'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
+  searchSettings,
 } from './peConstants'
 import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
@@ -54,6 +55,11 @@ export default function ParametresEntreprise() {
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')
+  // L790 — recherche de réglage : saute à l'onglet contenant un libellé.
+  const [search, setSearch] = useState('')
+  const searchResults = searchSettings(search)
+  const tabLabel = (key) => (TABS.find(t => t.key === key)?.label ?? key)
+  const jumpToTab = (key) => { setTab(key); setSearch('') }
 
   const [form, setForm] = useState({
     nom: '', adresse: '', email: '', telephone: '',
@@ -103,10 +109,22 @@ export default function ParametresEntreprise() {
   const [newType, setNewType] = useState('')
   const [newEtape, setNewEtape] = useState('')
   const [newMarque, setNewMarque] = useState('')
+  // L777 — états de chargement par liste de référentiel (spinner pendant fetch).
+  const [refLoading, setRefLoading] = useState({
+    tags: true, motifs: true, canaux: true, typesItv: true,
+  })
+  const setRefDone = (key) =>
+    setRefLoading(p => (p[key] ? { ...p, [key]: false } : p))
+  // L770/L786 — aperçu du prochain numéro RÉEL par type de pièce (serveur).
+  const [numberingNext, setNumberingNext] = useState(null)
+  const loadNumberingPreview = () => ventesApi.numerotationPreview()
+    .then(r => setNumberingNext(r.data)).catch(() => setNumberingNext(null))
   const loadCanaux = () => crmApi.getCanaux()
     .then(r => setCanaux(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('canaux'))
   const loadTypesItv = () => installationsApi.getTypesIntervention()
     .then(r => setTypesItv(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('typesItv'))
   const loadChecklistEtapes = () => installationsApi.getChecklistEtapes()
     .then(r => setChecklistEtapes(r.data.results ?? r.data)).catch(() => {})
   const loadMarques = () => stockApi.getMarques()
@@ -210,8 +228,10 @@ export default function ParametresEntreprise() {
   }
   const loadTags = () => crmApi.getTags()
     .then(r => setTags(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('tags'))
   const loadMotifs = () => crmApi.getMotifsPerte()
     .then(r => setMotifs(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('motifs'))
   const loadMessages = () => parametresApi.getMessages()
     .then(r => setMessages(r.data)).catch(() => {})
 
@@ -230,6 +250,7 @@ export default function ParametresEntreprise() {
     loadChecklistEtapes()
     loadMarques()
     loadCfDefs('lead')
+    loadNumberingPreview()
   }, [dispatch])
 
   const addEtape = async () => {
@@ -247,6 +268,27 @@ export default function ParametresEntreprise() {
   const toggleEtapeActif = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); loadChecklistEtapes() }
     catch { /* */ }
+  }
+  // L785 — bascule capture_serie (saisie de n° de série) sur une étape.
+  const toggleEtapeCapture = async (et) => {
+    try {
+      await installationsApi.saveChecklistEtape(et.id, { capture_serie: !et.capture_serie })
+      loadChecklistEtapes()
+    } catch { /* */ }
+  }
+  // L784 — réordonne une étape d'un cran (haut/bas) en échangeant les ordres.
+  const moveEtape = async (et, dir) => {
+    const i = checklistEtapes.findIndex(x => x.id === et.id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= checklistEtapes.length) return
+    const a = checklistEtapes[i]; const b = checklistEtapes[j]
+    try {
+      await Promise.all([
+        installationsApi.saveChecklistEtape(a.id, { ordre: b.ordre }),
+        installationsApi.saveChecklistEtape(b.id, { ordre: a.ordre }),
+      ])
+      loadChecklistEtapes()
+    } catch { /* */ }
   }
   const delEtape = async (et) => {
     if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
@@ -269,6 +311,11 @@ export default function ParametresEntreprise() {
     if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
     catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L778 — archiver/réactiver un canal (préserve l'historique des leads).
+  const archiveCanal = async (c) => {
+    try { await crmApi.saveCanal(c.id, { archived: !c.archived }); loadCanaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addType = async () => {
     const libelle = newType.trim()
@@ -320,9 +367,22 @@ export default function ParametresEntreprise() {
   const renameTag = async (t, nom) => {
     try { await crmApi.saveTag(t.id, { nom }) } catch { /* */ }
   }
+  // L781 — couleur d'une étiquette (color-picker), persistée immédiatement.
+  const setTagColor = async (t, couleur) => {
+    setTags(ts => ts.map(x => (x.id === t.id ? { ...x, couleur } : x)))
+    try { await crmApi.saveTag(t.id, { couleur }) } catch { /* */ }
+  }
   const delTag = async (t) => {
     if (!window.confirm(`Supprimer l'étiquette « ${t.nom} » ?`)) return
-    try { await crmApi.deleteTag(t.id); loadTags() } catch { /* */ }
+    // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
+    // on remonte le message serveur (qui propose l'archivage).
+    try { await crmApi.deleteTag(t.id); loadTags() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L778 — archiver/réactiver une étiquette.
+  const archiveTag = async (t) => {
+    try { await crmApi.saveTag(t.id, { archived: !t.archived }); loadTags() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addMotif = async () => {
     const nom = newMotif.trim()
@@ -334,7 +394,16 @@ export default function ParametresEntreprise() {
   }
   const delMotif = async (m) => {
     if (!window.confirm(`Supprimer le motif « ${m.nom} » ?`)) return
-    try { await crmApi.deleteMotifPerte(m.id); loadMotifs() } catch { /* */ }
+    // L779 — bloqué (409) si le motif est utilisé : on remonte le message
+    // serveur (qui propose l'archivage).
+    try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L778 — archiver/réactiver un motif de perte.
+  const archiveMotif = async (m) => {
+    try {
+      await crmApi.saveMotifPerte(m.id, { archived: !m.archived }); loadMotifs()
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
   }
 
   const setNiveau = (id, key, val) =>
@@ -350,6 +419,26 @@ export default function ParametresEntreprise() {
       setTimeout(() => setNiveauxSaved(false), 3000)
       loadNiveaux()
     } catch { /* silencieux */ }
+  }
+  // L767 — ajout/suppression d'un niveau de relance depuis la carte.
+  const addNiveau = async () => {
+    const ordre = niveaux.length
+    try {
+      await ventesApi.saveNiveauRelance(null, {
+        nom: `Niveau ${ordre + 1}`, delai_jours: 7, ordre, message: '',
+      })
+      loadNiveaux()
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const delNiveau = async (n) => {
+    if (!window.confirm(`Supprimer le niveau « ${n.nom} » ?`)) return
+    try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) quand il n'y en a pas.
+  const seedNiveaux = async () => {
+    try { await ventesApi.seedNiveauxRelance(); loadNiveaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
   }
 
   useEffect(() => {
@@ -419,8 +508,23 @@ export default function ParametresEntreprise() {
       ...p.doc_numbering,
       [key]: { ...(p.doc_numbering?.[key] || DEFAULT_NUMBERING[key]), [field]: val },
     } }))
-  // Aperçu du prochain numéro (côté écran) selon le préfixe/largeur/période.
+  // Aperçu du prochain numéro (L770/L786). Quand le serveur a renvoyé le vrai
+  // prochain numéro (séquence réelle la plus haute + 1) ET que les réglages de
+  // numérotation N'ONT PAS été modifiés localement (mêmes préfixe/largeur/
+  // période que le profil enregistré), on l'affiche tel quel. Dès que l'utilisateur
+  // édite un de ces réglages, on retombe sur l'aperçu calculé (au n°1) car le
+  // « seau » de numérotation change avec le préfixe/période.
+  const numberingUnchanged = (key) => {
+    const sp = profile?.doc_prefixes?.[key] ?? DEFAULT_PREFIXES[key]
+    const sn = { ...DEFAULT_NUMBERING[key], ...((profile?.doc_numbering || {})[key] || {}) }
+    const fp = form.doc_prefixes?.[key] ?? DEFAULT_PREFIXES[key]
+    const fn = form.doc_numbering?.[key] || DEFAULT_NUMBERING[key]
+    return String(sp) === String(fp)
+      && Number(sn.padding) === Number(fn.padding)
+      && (sn.reset || 'monthly') === (fn.reset || 'monthly')
+  }
   const numberingPreview = (key) => {
+    if (numberingNext?.[key] && numberingUnchanged(key)) return numberingNext[key]
     const px = String(form.doc_prefixes?.[key] || DEFAULT_PREFIXES[key] || key)
     const pad = Math.max(1, Number(form.doc_numbering?.[key]?.padding) || 4)
     const reset = form.doc_numbering?.[key]?.reset || 'monthly'
@@ -434,6 +538,10 @@ export default function ParametresEntreprise() {
 
   const handleSave = (e) => {
     e.preventDefault()
+    // L769 — taux de TVA : on PRÉSERVE la valeur tapée (y compris un 0
+    // délibéré) et on transmet le vide tel quel (le serveur le rejette avec
+    // une erreur claire au lieu d'un re-snap silencieux à 20/10).
+    const keepNum = (v) => (v === '' || v == null ? v : Number(v))
     // Coercition douce : pourcentages en nombres ; FK '' → null.
     const pt = {}
     for (const mode of Object.keys(form.payment_terms || {})) {
@@ -463,8 +571,8 @@ export default function ParametresEntreprise() {
       doc_numbering: dn,
       quote_validity_days: Number(form.quote_validity_days) || 30,
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
-      tva_standard: Number(form.tva_standard) || 20,
-      tva_panneaux: Number(form.tva_panneaux) || 10,
+      tva_standard: keepNum(form.tva_standard),
+      tva_panneaux: keepNum(form.tva_panneaux),
       onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
       productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
       discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
@@ -515,13 +623,15 @@ export default function ParametresEntreprise() {
     profile, form, set, setForm, accent, uploading, dispatch,
     categories, fournisseurs,
     assignables,
-    niveaux, setNiveau, saveNiveaux, niveauxSaved,
-    tags, newTag, setNewTag, addTag, renameTag, delTag,
-    motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif,
+    niveaux, setNiveau, saveNiveaux, niveauxSaved, addNiveau, delNiveau, seedNiveaux,
+    tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
+    motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
     messages, setMsgField, saveMessage, msgSavedCle,
-    canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal,
+    canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal, archiveCanal,
+    refLoading,
     typesItv, newType, setNewType, addType, renameType, delType,
     checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
+    toggleEtapeCapture, moveEtape,
     marques, newMarque, setNewMarque, addMarque, delMarque,
     cfModule, setCfModule, cfDefs, newCf, setNewCf, addCf, delCf, loadCfDefs,
     cfEditId, cfEdit, setCfEdit, openCfEdit, cancelCfEdit, saveCfEdit,
@@ -541,6 +651,39 @@ export default function ParametresEntreprise() {
           <p className="mt-1 text-sm text-muted-foreground">
             Ces informations apparaissent dans l'en-tête de vos devis et factures PDF.
           </p>
+        </div>
+
+        {/* ── L790 — recherche de réglage (saute à l'onglet correspondant) ── */}
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher un réglage (ex. « TVA », « ICE », « relance »)…"
+            aria-label="Rechercher un réglage"
+            className="pl-9 pr-9"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')}
+                    aria-label="Effacer la recherche"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          )}
+          {search.trim().length >= 2 && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-ui-md">
+              {searchResults.length === 0 ? (
+                <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun réglage correspondant.</p>
+              ) : (
+                searchResults.slice(0, 8).map(({ tab: rt, hits }) => (
+                  <button key={rt} type="button" onClick={() => jumpToTab(rt)}
+                          className="flex w-full flex-col items-start gap-0.5 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent">
+                    <span className="text-sm font-medium text-foreground">{tabLabel(rt)}</span>
+                    <span className="text-[11px] text-muted-foreground">{hits.slice(0, 4).join(' · ')}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Onglets (primitif Tabs, défilable sur mobile) ── */}
