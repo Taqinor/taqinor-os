@@ -289,6 +289,31 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 'route': '/chantiers',
             })
 
+        if prefix == labels.INTERVENTION_PREFIX:
+            # F23 — résolution LECTURE SEULE vers une intervention (sortie
+            # chantier), scopée société. Import paresseux, aucune écriture.
+            from apps.installations.models import Intervention
+            itv = (Intervention.objects
+                   .filter(company=request.user.company, id=obj_id)
+                   .select_related('installation', 'installation__client')
+                   .first())
+            if itv is None:
+                return Response(
+                    {'detail': 'Intervention introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            inst = itv.installation
+            client_nom = (getattr(inst.client, 'nom', '')
+                          if inst and inst.client_id else '')
+            return Response({
+                'type': 'intervention',
+                'id': itv.id,
+                'label': itv.get_type_intervention_display(),
+                'chantier': inst.reference if inst else '',
+                'client': client_nom,
+                'statut': itv.statut,
+                'route': '/interventions',
+            })
+
         return Response(
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)

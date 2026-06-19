@@ -90,9 +90,11 @@ const NAV_SECTIONS = [
   {
     label: 'CHANTIERS',
     items: [
+      { to: '/ma-journee',           label: 'Ma journée',       icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/chantiers',            label: 'Chantiers',        icon: I.chantiers,    roles: ['normal','responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    icon: I.outillage,    roles: ['normal','responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    icon: I.equipements,  roles: ['normal','responsable','admin'] },
+      { to: '/production',           label: 'Production',       icon: I.reporting,    roles: ['normal','responsable','admin'] },
       { to: '/outillage',            label: 'Outillage',        icon: I.outillage,    roles: ['normal','responsable','admin'] },
     ],
   },

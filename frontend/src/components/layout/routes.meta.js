@@ -31,8 +31,10 @@ export const PAGE_TITLES = [
 
   // Chantiers
   ['/chantiers', 'Chantiers'],
+  ['/ma-journee', 'Ma journée'],
   ['/interventions', 'Interventions'],
   ['/parc', 'Parc installé'],
+  ['/production', 'Production'],
 
   // Après-vente
   ['/sav/contrats', 'Contrats de maintenance'],
@@ -53,6 +55,7 @@ export const PAGE_TITLES = [
   // Administration
   ['/admin/users', 'Utilisateurs'],
   ['/admin/roles', 'Rôles'],
+  ['/parametres/notifications', 'Préférences de notifications'],
   ['/parametres', 'Paramètres'],
 ]
 
@@ -63,6 +66,7 @@ export const SECTION_LABELS = {
   ventes: 'Ventes',
   chantiers: 'Chantiers',
   parc: 'Chantiers',
+  production: 'Chantiers',
   equipements: 'Après-vente',
   sav: 'Après-vente',
   ia: 'Intelligence',

@@ -31,8 +31,10 @@ const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
+const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
 const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
+const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -42,6 +44,7 @@ const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
 const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
+const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
 const Journal = lazy(() => import('../pages/Journal'))
 const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
 const CalendarPage = lazy(() => import('../pages/CalendarPage'))
@@ -142,7 +145,9 @@ const router = createBrowserRouter([
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
   { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
+  { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
+  { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
   { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
 
   // Après-vente : parc d'équipements & tickets SAV
@@ -166,6 +171,7 @@ const router = createBrowserRouter([
   { path: '/admin/roles', loader: authLoader, element: <WithLayout><RolesManagement /></WithLayout> },
   { path: '/parametres', loader: authLoader, element: <WithLayout><ParametresEntreprise /></WithLayout> },
   { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
+  { path: '/parametres/notifications', loader: authLoader, element: <WithLayout><NotificationsPreferences /></WithLayout> },
   { path: '/journal', loader: authLoader, element: <WithLayout><Journal /></WithLayout> },
 
   // Catch-all

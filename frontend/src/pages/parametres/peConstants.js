@@ -33,12 +33,16 @@ export const TABS = [
   { key: 'tarification', label: 'Tarification & ROI' },
   { key: 'stock',      label: 'Stock' },
   { key: 'statuts',    label: 'Statuts' },
+  { key: 'monitoring', label: 'Supervision' },
   { key: 'checklists', label: 'Checklists' },
   { key: 'kits',       label: "Kits d'outillage" },
   { key: 'shotlist',   label: 'Documentation terrain' },
+  { key: 'automatisations', label: 'Automatisations' },
+  { key: 'securite',   label: 'Sécurité & terrain' },
   { key: 'equipe',     label: 'Équipe & rôles' },
   { key: 'messages',   label: 'Messages & relances' },
   { key: 'email',      label: 'Email' },
+  { key: 'api',        label: 'API & Webhooks' },
   { key: 'avance',     label: 'Avancé' },
 ]
 

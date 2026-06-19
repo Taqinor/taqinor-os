@@ -51,6 +51,10 @@ import {
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
+import {
+  SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
+  ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
+} from '../../features/installations/InterventionCapturePanels'
 import { formatDate, formatDateTime } from '../../lib/format'
 
 const TYPE_LABELS = Object.fromEntries(
@@ -318,12 +322,18 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
               )}
             </TabsTrigger>
             <TabsTrigger value="trajet" className="shrink-0">Trajet</TabsTrigger>
+            <TabsTrigger value="securite" className="shrink-0">Sécurité</TabsTrigger>
             <TabsTrigger value="photos" className="shrink-0">
               Photos
               {photosManquantes > 0 && (
                 <Badge tone="danger" className="ml-1.5">{photosManquantes}</Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="serie" className="shrink-0">N° série</TabsTrigger>
+            <TabsTrigger value="conso" className="shrink-0">Consommé</TabsTrigger>
+            <TabsTrigger value="memos" className="shrink-0">Mémos</TabsTrigger>
+            <TabsTrigger value="reserves" className="shrink-0">Réserves</TabsTrigger>
+            <TabsTrigger value="outils" className="shrink-0">Outils</TabsTrigger>
           </TabsList>
 
           <TabsContent value="preparation">
@@ -332,8 +342,30 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           <TabsContent value="trajet">
             <TrajetPanel intervention={intervention} onChanged={onChanged} />
           </TabsContent>
+          <TabsContent value="securite">
+            <SafetyPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
           <TabsContent value="photos">
             <PhotosPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="serie">
+            <SerialsPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="conso">
+            <ConsommationPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="memos">
+            <MemosPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="reserves">
+            <ReservesPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="outils">
+            <div className="flex flex-col gap-3 py-2">
+              <CompteRenduButton intervention={intervention} />
+              <ToolReturnPanel intervention={intervention} onChanged={onChanged} />
+              <CodePanel intervention={intervention} />
+            </div>
           </TabsContent>
 
           <TabsContent value="detail">

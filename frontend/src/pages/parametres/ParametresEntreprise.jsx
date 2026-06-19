@@ -29,12 +29,16 @@ import DocumentsSection from './DocumentsSection'
 import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
+import MonitoringSection from './MonitoringSection'
 import ChecklistSection from './ChecklistSection'
 import KitsSection from './KitsSection'
 import ShotListSection from './ShotListSection'
+import AutomatisationsSection from './AutomatisationsSection'
+import SecuriteTerrainSection from './SecuriteTerrainSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import EmailSection from './EmailSection'
+import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection from './AvanceSection'
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
@@ -513,16 +517,24 @@ export default function ParametresEntreprise() {
           {tab === 'stock'    && <StockSection {...ctx} />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
           {tab === 'statuts'    && <StatutsSection />}
+          {/* N52 — section autonome (seuil de sous-performance + auto-ticket SAV). */}
+          {tab === 'monitoring' && <MonitoringSection />}
           {/* N74 — éditeur de modèles de checklist par type d'installation. */}
           {tab === 'checklists' && <ChecklistSection />}
           {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}
           {tab === 'kits'       && <KitsSection />}
           {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
           {tab === 'shotlist'   && <ShotListSection />}
+          {/* N72 / N73 — moteur d'automatisations + approbations. */}
+          {tab === 'automatisations' && <AutomatisationsSection />}
+          {/* F18/F12/F14/F20 — consignes de sécurité + seuil dépassement + services swappables. */}
+          {tab === 'securite'   && <SecuriteTerrainSection />}
           {tab === 'equipe'   && <EquipeSection {...ctx} />}
           {tab === 'messages' && <MessagesSection {...ctx} />}
           {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}
           {tab === 'email'    && <EmailSection />}
+          {/* N89 — clés d'API publiques & webhooks signés (section autonome). */}
+          {tab === 'api'      && <ApiWebhooksSection />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}

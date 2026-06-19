@@ -12,8 +12,9 @@
 // fait qu'enregistrer la PERMISSION ; l'abonnement réel sera ajouté ensuite.
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Clock, ShieldCheck, Banknote, X } from 'lucide-react'
+import { Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
+import notificationsApi from '../../api/notificationsApi'
 
 // Le push n'est tentable que si l'API navigateur ET une clé VAPID publique
 // (exposée au build) sont présentes. Sinon : no-op total.
@@ -41,6 +42,9 @@ function initialPerm() {
 
 export default function NotificationBell() {
   const [data, setData] = useState(null)
+  // N75 — notifications in-app PERSISTÉES (moteur unifié) : feed + compteur.
+  const [feed, setFeed] = useState([])
+  const [feedUnread, setFeedUnread] = useState(0)
   const [open, setOpen] = useState(false)
   // État de l'autorisation push — lu une fois au montage, jamais demandé ici.
   const [perm, setPerm] = useState(initialPerm)
@@ -53,6 +57,16 @@ export default function NotificationBell() {
     reportingApi.getNotifications()
       .then((r) => setData(r.data))
       .catch(() => setData(null))
+    // Feed in-app persisté (best-effort : ne casse jamais la cloche).
+    notificationsApi.list({ unread: 0 })
+      .then((r) => {
+        const items = r.data?.results ?? r.data ?? []
+        setFeed(Array.isArray(items) ? items.slice(0, 20) : [])
+      })
+      .catch(() => setFeed([]))
+    notificationsApi.unreadCount()
+      .then((r) => setFeedUnread(r.data?.unread ?? 0))
+      .catch(() => setFeedUnread(0))
   }
 
   useEffect(() => {
@@ -62,6 +76,21 @@ export default function NotificationBell() {
     return () => clearInterval(iv)
   }, [])
 
+  // Marque une notification persistée comme lue, puis recharge le compteur.
+  const markOne = (id) => {
+    notificationsApi.markRead(id).catch(() => {}).finally(() => {
+      setFeed((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+      setFeedUnread((c) => Math.max(0, c - 1))
+    })
+  }
+
+  const markAll = () => {
+    notificationsApi.markAllRead().catch(() => {}).finally(() => {
+      setFeed((prev) => prev.map((n) => ({ ...n, read: true })))
+      setFeedUnread(0)
+    })
+  }
+
   useEffect(() => {
     const onDoc = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
@@ -70,7 +99,10 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  const total = data?.total ?? 0
+  const derivedTotal = data?.total ?? 0
+  // Le compteur de la cloche cumule les alertes dérivées et les notifications
+  // in-app persistées non lues.
+  const total = derivedTotal + feedUnread
   const goto = (path) => { navigate(path); setOpen(false) }
 
   // Demande l'autorisation à la DEMANDE de l'utilisateur (clic), jamais avant.
@@ -108,7 +140,21 @@ export default function NotificationBell() {
       </button>
       {open && (
         <div className="nb-panel" role="menu">
-          <div className="nb-header">Notifications</div>
+          <div className="nb-header">
+            Notifications
+            <span className="nb-header-actions">
+              {feedUnread > 0 && (
+                <button type="button" className="nb-link-btn" onClick={markAll}>
+                  <Check size={13} aria-hidden="true" /> Tout marquer lu
+                </button>
+              )}
+              <button type="button" className="nb-link-btn"
+                      onClick={() => goto('/parametres/notifications')}
+                      aria-label="Préférences de notifications">
+                <Settings size={13} aria-hidden="true" />
+              </button>
+            </span>
+          </div>
 
           {showPrompt && (
             <div className="nb-push-prompt">
@@ -128,11 +174,44 @@ export default function NotificationBell() {
             </div>
           )}
 
-          {!data || total === 0 ? (
+          {feed.length === 0 && (!data || derivedTotal === 0) ? (
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
             <>
-              {(data.activites_en_retard?.length ?? 0) > 0 && (
+              {feed.length > 0 && (
+                <div className="nb-group">
+                  <div className="nb-group-title">
+                    <BellRing size={13} aria-hidden="true" /> Activité récente
+                  </div>
+                  {feed.map((n) => (
+                    <button key={`notif-${n.id}`} type="button"
+                            className={`nb-item${n.read ? '' : ' nb-item-unread'}`}
+                            onClick={() => {
+                              if (!n.read) markOne(n.id)
+                              if (n.link) goto(n.link)
+                            }}>
+                      <span>
+                        {!n.read && <span className="nb-dot" aria-hidden="true" />}
+                        {n.title}
+                      </span>
+                      {!n.read && (
+                        <span className="nb-item-mark"
+                              role="button" tabIndex={0}
+                              aria-label="Marquer comme lu"
+                              onClick={(e) => { e.stopPropagation(); markOne(n.id) }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.stopPropagation(); markOne(n.id)
+                                }
+                              }}>
+                          <Check size={13} aria-hidden="true" />
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Clock size={13} aria-hidden="true" /> Activités en retard
@@ -146,7 +225,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {(data.garanties_expirantes?.length ?? 0) > 0 && (
+              {data && (data.garanties_expirantes?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <ShieldCheck size={13} aria-hidden="true" /> Garanties (≤ 90 j)
@@ -160,7 +239,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {(data.factures_impayees?.length ?? 0) > 0 && (
+              {data && (data.factures_impayees?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Banknote size={13} aria-hidden="true" /> Factures impayées
