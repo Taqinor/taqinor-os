@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flake8 *)",
+      "Bash(npm run lint)",
+      "Bash(npm run check)",
+      "Bash(npm test)",
+      "Bash(node --test *)",
+      "Bash(python manage.py test *)",
+      "Bash(python scripts/check_stages.py)",
+      "Bash(python scripts/codemap_fingerprint.py --check)",
+      "Bash(git fetch *)"
+    ]
+  }
+}

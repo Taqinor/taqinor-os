@@ -49,4 +49,8 @@ Thumbs.db
 logs/
 
 # ── Claude Code local state (transient agent worktrees) ──────
-.claude/
+# Ignore everything under .claude/ (transient worktrees, local state)…
+.claude/*
+# …but keep the shared permission allowlist tracked (personal
+# overrides live in the still-ignored settings.local.json).
+!.claude/settings.json
