@@ -111,6 +111,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     dossier_statut: F('dossier_statut', 'non_concerne'),
     dossier_reference: F('dossier_reference'),
     dossier_operateur: F('dossier_operateur'),
+    dossier_date_depot: F('dossier_date_depot'),
+    dossier_date_approbation: F('dossier_date_approbation'),
     art33_regularisation: current?.art33_regularisation ?? false,
     notes: F('notes'),
   }
@@ -175,6 +177,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // Confirmations
   const [annulerOpen, setAnnulerOpen] = useState(false)
   const [annulerMotif, setAnnulerMotif] = useState('')
+  // N7 — confirmation supplémentaire si le système est actif au parc.
+  const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
 
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
@@ -461,6 +465,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </div>
           )}
 
+          {/* N15 — chantier sans nomenclature gelée (créé sans devis). */}
+          {!current.annule && Array.isArray(current.bom) && current.bom.length === 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
+              <strong className="text-warning-foreground">Nomenclature absente&nbsp;:</strong>
+              <span>ce chantier n&apos;a pas de nomenclature gelée (créé sans devis).</span>
+            </div>
+          )}
+
           {/* Retour FR des actions secondaires (échecs auparavant silencieux). */}
           {actionError && (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -714,6 +726,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Input id="ch-dop" value={fields.dossier_operateur ?? ''}
                        onChange={(e) => set('dossier_operateur', e.target.value)} />
               </FormField>
+              <FormField label="Date de dépôt" htmlFor="ch-ddep">
+                <Input id="ch-ddep" type="date" value={fields.dossier_date_depot ?? ''}
+                       onChange={(e) => set('dossier_date_depot', e.target.value)} />
+              </FormField>
+              <FormField label="Date d'approbation" htmlFor="ch-dapp">
+                <Input id="ch-dapp" type="date" value={fields.dossier_date_approbation ?? ''}
+                       onChange={(e) => set('dossier_date_approbation', e.target.value)} />
+              </FormField>
             </div>
             <Hint>Joignez les pièces du dossier dans « Photos &amp; fichiers » ci-dessous.</Hint>
           </Section>
@@ -963,7 +983,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
         <FormActions>
           {!current.annule && (
-            <Button variant="destructive" className="sm:mr-auto" onClick={() => { setAnnulerMotif(''); setAnnulerOpen(true) }}>
+            <Button variant="destructive" className="sm:mr-auto"
+                    onClick={() => { setAnnulerMotif(''); setAnnulerParcConfirm(false); setAnnulerOpen(true) }}>
               Annuler le chantier
             </Button>
           )}
@@ -994,9 +1015,28 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                    onChange={(e) => setAnnulerMotif(e.target.value)}
                    placeholder="Ex. report client" />
           </div>
+          {current.est_parc && (
+            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
+              <p className="font-semibold text-warning-foreground">
+                Ce système est installé et actif au parc.
+              </p>
+              <p className="text-muted-foreground">
+                L&apos;annuler le masquera du parc installé.
+              </p>
+              <label className="mt-2 flex items-center gap-2">
+                <Checkbox checked={annulerParcConfirm}
+                          onCheckedChange={(c) => setAnnulerParcConfirm(c === true)} />
+                Je confirme retirer ce système du parc.
+              </label>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Retour</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmAnnuler}>Annuler le chantier</AlertDialogAction>
+            <AlertDialogAction
+              disabled={current.est_parc && !annulerParcConfirm}
+              onClick={confirmAnnuler}>
+              Annuler le chantier
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -13,8 +13,11 @@ import InstallationDetail from './InstallationDetail'
 import {
   Button, Badge, Segmented, Spinner, EmptyState, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  DataTable,
+  DataTable, StatusPill,
 } from '../../ui'
+
+// N15 — système sans nomenclature gelée (chantier créé sans devis).
+const bomVide = (it) => Array.isArray(it.bom) && it.bom.length === 0
 
 const ALL = '__all__'
 const toSel = (v) => (v ? v : ALL)
@@ -88,7 +91,16 @@ export default function ParcInstallePage() {
 
   const columns = useMemo(
     () => [
-      { id: 'reference', header: 'Référence', width: 150, cell: (v) => <span className="font-semibold">{v}</span> },
+      {
+        id: 'reference', header: 'Référence', width: 180,
+        cell: (v, r) => (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="font-semibold">{v}</span>
+            {bomVide(r) && <StatusPill tone="warning" label="Nomenclature absente" />}
+          </span>
+        ),
+        exportValue: (r) => r.reference ?? '',
+      },
       { id: 'client_nom', header: 'Client', width: 170, accessor: (r) => r.client_nom ?? '' },
       { id: 'site_ville', header: 'Ville', width: 130, accessor: (r) => r.site_ville ?? '' },
       {

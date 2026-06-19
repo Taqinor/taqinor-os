@@ -13,27 +13,47 @@ const MILESTONES = [
   { key: 'date_cloture', label: 'Clôture', tone: '#15803d' },
 ]
 
+// N6 — jalons du dossier réglementaire (loi 82-21) : affichés à côté des jalons
+// de pose UNIQUEMENT quand la date correspondante est renseignée.
+const DOSSIER_MILESTONES = [
+  { key: 'dossier_date_depot', label: 'Dossier déposé', tone: '#0891b2' },
+  { key: 'dossier_date_approbation', label: 'Dossier approuvé', tone: '#15803d' },
+]
+
+function Milestone({ label, tone, date, done }) {
+  return (
+    <div
+      className="flex min-w-24 flex-col items-center text-center"
+      style={{ opacity: done ? 1 : 0.4 }}
+    >
+      <span
+        className="mb-1 size-3.5 rounded-full"
+        style={{ background: done ? tone : 'var(--border)' }}
+      />
+      <span className="text-xs font-semibold text-foreground">{label}</span>
+      <span className="text-[11px] text-muted-foreground">{date}</span>
+    </div>
+  )
+}
+
 export default function ChantierTimeline({ installation }) {
+  // On insère les jalons dossier renseignés à la suite, sans casser l'ordre des
+  // jalons de pose existants.
+  const dossier = DOSSIER_MILESTONES.filter(
+    (m) => formatDate(installation?.[m.key]) !== '—')
   return (
     <div className="flex flex-wrap gap-4">
       {MILESTONES.map((m) => {
         const date = formatDate(installation?.[m.key])
-        const done = date !== '—'
         return (
-          <div
-            key={m.key}
-            className="flex min-w-24 flex-col items-center text-center"
-            style={{ opacity: done ? 1 : 0.4 }}
-          >
-            <span
-              className="mb-1 size-3.5 rounded-full"
-              style={{ background: done ? m.tone : 'var(--border)' }}
-            />
-            <span className="text-xs font-semibold text-foreground">{m.label}</span>
-            <span className="text-[11px] text-muted-foreground">{date}</span>
-          </div>
+          <Milestone key={m.key} label={m.label} tone={m.tone}
+                     date={date} done={date !== '—'} />
         )
       })}
+      {dossier.map((m) => (
+        <Milestone key={m.key} label={m.label} tone={m.tone}
+                   date={formatDate(installation?.[m.key])} done />
+      ))}
     </div>
   )
 }
