@@ -104,8 +104,8 @@ function PrixFournisseursSection({ produitId, fournisseurs }) {
         </p>
       </div>
       {sorted.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[30rem] text-sm">
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>

@@ -35,7 +35,9 @@ import {
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   EmptyState, DataTable,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
+import { MoreHorizontal } from 'lucide-react'
 
 const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -48,10 +50,11 @@ const suggestionCommande = (p) => {
 }
 
 // Petit tableau interne stylé (lecture seule) — utilisé dans les modals.
+// overflow-x-auto : défile horizontalement sur mobile sans casser la mise en page.
 function MiniTable({ head, children, className = '' }) {
   return (
-    <div className={`overflow-hidden rounded-lg border border-border ${className}`}>
-      <table className="w-full text-sm">
+    <div className={`overflow-x-auto rounded-lg border border-border ${className}`}>
+      <table className="w-full min-w-[28rem] text-sm">
         <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>{head.map((h, i) => <th key={i} className="px-3 py-2 text-left font-semibold">{h}</th>)}</tr>
         </thead>
@@ -957,42 +960,90 @@ export default function StockList() {
               <AlertTriangle /> Stock bas ({lowCount})
             </Button>
           )}
-          {role === 'admin' && (
-            <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
-                    onClick={() => setShowArchived(v => !v)}>
-              <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
+          {/* Actions secondaires : inline sur écran large, repliées en menu « … » sur mobile. */}
+          <div className="hidden flex-wrap items-center gap-2 sm:flex">
+            {role === 'admin' && (
+              <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
+                      onClick={() => setShowArchived(v => !v)}>
+                <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
+              </Button>
+            )}
+            {role === 'admin' && (
+              <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
+                      title="Inventaire physique : saisir un comptage et ajuster le stock">
+                <Calculator /> Inventaire
+              </Button>
+            )}
+            {role === 'admin' && (
+              <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
+                      title="Valorisation du stock par emplacement (coût moyen, interne)">
+                <Wallet /> Valorisation
+              </Button>
+            )}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowTransfert(true)}
+                      title="Transférer du stock entre emplacements (dépôt / camionnette)">
+                <Truck /> Transférer
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
+                    title="Scanner un code QR / code-barres et ouvrir la fiche">
+              <ScanLine /> Scanner
             </Button>
-          )}
-          {role === 'admin' && (
-            <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
-                    title="Inventaire physique : saisir un comptage et ajuster le stock">
-              <Calculator /> Inventaire
+            <Button variant="outline" size="sm" onClick={exportFiltered}>
+              <Download /> Exporter Excel
             </Button>
-          )}
-          {role === 'admin' && (
-            <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
-                    title="Valorisation du stock par emplacement (coût moyen, interne)">
-              <Wallet /> Valorisation
-            </Button>
-          )}
-          {canWrite && (
-            <Button variant="outline" size="sm" onClick={() => setShowTransfert(true)}
-                    title="Transférer du stock entre emplacements (dépôt / camionnette)">
-              <Truck /> Transférer
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
-                  title="Scanner un code QR / code-barres et ouvrir la fiche">
-            <ScanLine /> Scanner
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportFiltered}>
-            <Download /> Exporter Excel
-          </Button>
-          {canWrite && (
-            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
-              <Upload /> Importer
-            </Button>
-          )}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+                <Upload /> Importer
+              </Button>
+            )}
+          </div>
+
+          {/* Menu compact « … » — uniquement sur mobile. */}
+          <div className="sm:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="Plus d'actions">
+                  <MoreHorizontal /> Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {role === 'admin' && (
+                  <DropdownMenuItem onSelect={() => setShowArchived(v => !v)}>
+                    <Archive /> {showArchived ? 'Masquer archivés' : 'Archivés'}
+                  </DropdownMenuItem>
+                )}
+                {role === 'admin' && (
+                  <DropdownMenuItem onSelect={() => setShowInventaire(true)}>
+                    <Calculator /> Inventaire
+                  </DropdownMenuItem>
+                )}
+                {role === 'admin' && (
+                  <DropdownMenuItem onSelect={() => setShowValorisation(true)}>
+                    <Wallet /> Valorisation
+                  </DropdownMenuItem>
+                )}
+                {canWrite && (
+                  <DropdownMenuItem onSelect={() => setShowTransfert(true)}>
+                    <Truck /> Transférer
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={() => setScanOpen(v => !v)}>
+                  <ScanLine /> Scanner
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={exportFiltered}>
+                  <Download /> Exporter Excel
+                </DropdownMenuItem>
+                {canWrite && (
+                  <DropdownMenuItem onSelect={() => setShowImport(true)}>
+                    <Upload /> Importer
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           {canWrite && (
             <Button onClick={openNew}>
               <Plus /> Nouveau produit

@@ -757,8 +757,8 @@ client-facing PDFs are GALLERY-gated).
 [ ] [Stock] [L17] [ROUTINE] Garantir que les réponses du chatbot stock n'exposent jamais le prix d'achat/marge (le SQL agent peut interroger Produit.prix_achat). Fait = un test/garde confirme que prix_achat n'est pas restitué dans les réponses client-facing de l'agent.
 
 #### Mobile & cohérence
-[ ] [Stock] [L12] [ROUTINE] Rendre les tableaux larges (BCF lines-table, valorisation, inventaire) défilables/empilables sur mobile (~380px). Fait = sur viewport étroit, les tables stock défilent horizontalement ou s'empilent sans casser la mise en page.
-[ ] [Stock] [L12] [ROUTINE] Adapter la barre d'actions de StockList (header-actions : 7+ boutons) en menu compact sur mobile. Fait = sur écran étroit, les actions stock se regroupent (menu "…").
+[x] [Stock] [L12] [ROUTINE] Rendre les tableaux larges (BCF lines-table, valorisation, inventaire) défilables/empilables sur mobile (~380px). Fait = sur viewport étroit, les tables stock défilent horizontalement ou s'empilent sans casser la mise en page.
+[x] [Stock] [L12] [ROUTINE] Adapter la barre d'actions de StockList (header-actions : 7+ boutons) en menu compact sur mobile. Fait = sur écran étroit, les actions stock se regroupent (menu "…").
 [ ] [Stock] [L8] [ROUTINE] Aligner les mots-clés de classification de catalogue.js (Panneaux/Onduleurs/Variateurs/Batteries/Pompes/Câbles) avec quote_engine/builder.py et solar.js. Fait = un test vérifie la cohérence des familles entre l'affichage catalogue et la classification PDF/auto-fill.
 
 ### Paramètres & Référentiels
