@@ -13,6 +13,10 @@ from .views_uploads import (
 )
 from .views_messages import messages_endpoint
 from .views_audit import settings_audit_log
+from .views_documents import (
+    get_document_templates,
+    update_document_templates,
+)
 
 __all__ = [
     'get_profile',
@@ -23,4 +27,6 @@ __all__ = [
     'delete_signature',
     'messages_endpoint',
     'settings_audit_log',
+    'get_document_templates',
+    'update_document_templates',
 ]

@@ -21,6 +21,9 @@ urlpatterns = [
     path('messages/', views.messages_endpoint),
     # Journal d'audit des changements de paramètres (admin, lecture seule).
     path('audit/', views.settings_audit_log),
+    # D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis).
+    path('document-templates/', views.get_document_templates),
+    path('document-templates/update/', views.update_document_templates),
     # N58 — statuts configurables (libellé/ordre/visibilité), couche affichage.
     path('', include(statuts_router.urls)),
 ]

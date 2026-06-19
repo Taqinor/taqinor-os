@@ -16,6 +16,11 @@ const parametresApi = {
     api.get('/parametres/statuts/effective/', { params: { domaine } }),
   saveStatuts: (domaine, statuts) =>
     api.put('/parametres/statuts/bulk/', { domaine, statuts }),
+  // D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis).
+  // Tout champ vide = repli moteur sur le littéral historique (PDF identique).
+  getDocumentTemplates: () => api.get('/parametres/document-templates/'),
+  updateDocumentTemplates: (data) =>
+    api.patch('/parametres/document-templates/update/', data),
 }
 
 export default parametresApi

@@ -29,6 +29,7 @@ export const TABS = [
   { key: 'leads',      label: 'Leads' },
   { key: 'clients',    label: 'Clients' },
   { key: 'devis',      label: 'Devis & Factures' },
+  { key: 'documents',  label: 'Modèles de documents' },
   { key: 'stock',      label: 'Stock' },
   { key: 'statuts',    label: 'Statuts' },
   { key: 'checklists', label: 'Checklists' },

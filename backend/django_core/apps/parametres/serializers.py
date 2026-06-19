@@ -6,8 +6,10 @@ parallèles. Ré-exportés ici pour que
 l'identique. Aucun changement de champ ni de comportement."""
 from .serializers_company import CompanyProfileSerializer
 from .serializers_audit import SettingsAuditLogSerializer
+from .serializers_documents import DocumentTemplatesSerializer
 
 __all__ = [
     'CompanyProfileSerializer',
     'SettingsAuditLogSerializer',
+    'DocumentTemplatesSerializer',
 ]
