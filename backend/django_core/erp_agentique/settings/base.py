@@ -76,6 +76,8 @@ INSTALLED_APPS = [
     # installés. Interface fournisseur swappable (no-op par défaut, squelette
     # FusionSolar) ; tout no-ope tant que rien n'est configuré.
     'apps.monitoring',
+    # N75 — moteur de notifications unifié (in-app + canaux existants).
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [

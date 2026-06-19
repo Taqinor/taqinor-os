@@ -43,6 +43,7 @@ const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
 const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
+const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
 const Journal = lazy(() => import('../pages/Journal'))
 const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
 const CalendarPage = lazy(() => import('../pages/CalendarPage'))
@@ -168,6 +169,7 @@ const router = createBrowserRouter([
   { path: '/admin/roles', loader: authLoader, element: <WithLayout><RolesManagement /></WithLayout> },
   { path: '/parametres', loader: authLoader, element: <WithLayout><ParametresEntreprise /></WithLayout> },
   { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
+  { path: '/parametres/notifications', loader: authLoader, element: <WithLayout><NotificationsPreferences /></WithLayout> },
   { path: '/journal', loader: authLoader, element: <WithLayout><Journal /></WithLayout> },
 
   // Catch-all

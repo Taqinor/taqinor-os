@@ -54,6 +54,7 @@ export const PAGE_TITLES = [
   // Administration
   ['/admin/users', 'Utilisateurs'],
   ['/admin/roles', 'Rôles'],
+  ['/parametres/notifications', 'Préférences de notifications'],
   ['/parametres', 'Paramètres'],
 ]
 
