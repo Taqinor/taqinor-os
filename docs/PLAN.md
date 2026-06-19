@@ -708,8 +708,8 @@ client-facing PDFs are GALLERY-gated).
 
 #### Multi-emplacements & transferts
 [ ] [Stock/Emplacements] [L4] [ROUTINE] Afficher la ventilation par emplacement sur CatalogueRow (ou au survol) sans ouvrir le modal Transfert — l'endpoint produit/<id>/emplacements existe. Fait = un produit montre sa répartition dépôt/camionnette en lecture dans la liste.
-[ ] [Stock/Emplacements] [L7] [ROUTINE] Pré-remplir et plafonner la quantité du transfert à la quantité disponible à la source dans TransfertModal (validateTransfert vérifie mais l'input n'a pas de max). Fait = le champ quantité du transfert porte max = stock source et affiche la dispo.
-[ ] [Stock/Emplacements] [L11] [ROUTINE] Afficher un message FR explicite quand la suppression d'un emplacement est refusée (409 "détient du stock — transférez-le"). Fait = l'erreur de suppression s'affiche en clair dans le modal.
+[x] [Stock/Emplacements] [L7] [ROUTINE] Pré-remplir et plafonner la quantité du transfert à la quantité disponible à la source dans TransfertModal (validateTransfert vérifie mais l'input n'a pas de max). Fait = le champ quantité du transfert porte max = stock source et affiche la dispo.
+[x] [Stock/Emplacements] [L11] [ROUTINE] Afficher un message FR explicite quand la suppression d'un emplacement est refusée (409 "détient du stock — transférez-le"). Fait = l'erreur de suppression s'affiche en clair dans le modal.
 [ ] [Stock/Emplacements] [L9] [ROUTINE] Ajouter un filtre/colonne par emplacement à la valorisation et au catalogue pour voir le stock d'un emplacement précis. Fait = on peut afficher uniquement le stock d'un emplacement choisi (ex. Camionnette).
 
 #### Inventaire

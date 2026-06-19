@@ -25,7 +25,7 @@ import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
-import { validateTransfert, totalVentile } from '../../features/stock/emplacements'
+import { validateTransfert, totalVentile, quantiteEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import { toastError, toastSuccess } from '../../lib/toast'
 import {
@@ -314,10 +314,21 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   }
   const removeEmplacement = async (id) => {
     try { await stockApi.deleteEmplacement(id); await loadEmplacements() }
-    catch (err) { setError(err.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (err) { setError(messageSuppressionEmplacement(err)) }
   }
 
   const empOptions = emplacements.filter((e) => !e.archived)
+  // Quantité disponible à la source (plafonne et guide la saisie — N15).
+  const dispoSource = quantiteEmplacement(breakdown, source)
+
+  // Améliore le message FR si une suppression d'emplacement échoue (409).
+  const messageSuppressionEmplacement = (err) => {
+    const detail = err.response?.data?.detail
+    if (err.response?.status === 409 || /stock|transf/i.test(detail || '')) {
+      return detail || 'Cet emplacement détient du stock — transférez-le d\'abord.'
+    }
+    return detail || 'Suppression impossible.'
+  }
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -384,8 +395,11 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
           </div>
           <div className="w-28 flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="tr-qte">Quantité</label>
-            <Input id="tr-qte" type="number" min="1" inputMode="numeric" value={quantite}
-                   onChange={(e) => setQuantite(e.target.value)} />
+            <Input id="tr-qte" type="number" min="1" max={dispoSource || undefined} inputMode="numeric"
+                   value={quantite} onChange={(e) => setQuantite(e.target.value)} />
+            {source && (
+              <span className="text-xs text-muted-foreground">dispo : {dispoSource}</span>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
