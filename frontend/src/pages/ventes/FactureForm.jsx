@@ -31,7 +31,10 @@ const emptyLine = () => ({
   quantite: '1',
   prix_unitaire: '0',
   remise: '0',
+  taux_tva: '',  // vide = taux global de la facture (N37)
 })
+
+const today = new Date().toISOString().slice(0, 10)
 
 export default function FactureForm({ facture = null, onClose, onSaved }) {
   const dispatch = useDispatch()
@@ -50,6 +53,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     bon_commande:    facture?.bon_commande     ?? '',
     statut:          facture?.statut           ?? 'brouillon',
     date_echeance:   facture?.date_echeance    ?? '',
+    date_livraison:  facture?.date_livraison    ?? '',
+    conditions_paiement: facture?.conditions_paiement ?? '',
     taux_tva:        String(facture?.taux_tva        ?? '20.00'),
     remise_globale:  String(facture?.remise_globale  ?? '0'),
     statut_teledeclaration: facture?.statut_teledeclaration ?? 'non_soumise',
@@ -66,6 +71,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           quantite: String(l.quantite),
           prix_unitaire: String(l.prix_unitaire),
           remise: String(l.remise),
+          taux_tva: l.taux_tva != null ? String(l.taux_tva) : '',
         }))
       : [emptyLine()]
   )
@@ -90,16 +96,53 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   }, 0)
 
   const totalHT  = subtotalHT * (1 - remGlobal / 100)
-  const totalTVA = totalHT * (tva / 100)
+  // Ventilation TVA par taux : chaque ligne utilise son taux propre (N37),
+  // sinon le taux global de la facture. La remise globale s'applique au prorata.
+  const remFactor = subtotalHT > 0 ? totalHT / subtotalHT : (1 - remGlobal / 100)
+  const tvaParTaux = lines.reduce((acc, l) => {
+    const qte = parseFloat(l.quantite)      || 0
+    const pu  = parseFloat(l.prix_unitaire) || 0
+    const rem = parseFloat(l.remise)        || 0
+    const ligneHT = qte * pu * (1 - rem / 100) * remFactor
+    const taux = l.taux_tva !== '' && l.taux_tva != null
+      ? (parseFloat(l.taux_tva) || 0)
+      : tva
+    acc[taux] = (acc[taux] || 0) + ligneHT
+    return acc
+  }, {})
+  const totalTVA = Object.entries(tvaParTaux)
+    .reduce((sum, [taux, ht]) => sum + ht * (parseFloat(taux) / 100), 0)
   const totalTTC = totalHT + totalTVA
+  const tauxDistincts = Object.keys(tvaParTaux).filter(t => Number(t) > 0)
 
   const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
 
-  const onBcChange = (bcId) => {
+  const onBcChange = async (bcId) => {
     setField('bon_commande', bcId)
-    if (bcId) {
-      const bc = bonsCommande.find(b => String(b.id) === String(bcId))
-      if (bc) setField('client', String(bc.client))
+    if (!bcId) return
+    const bc = bonsCommande.find(b => String(b.id) === String(bcId))
+    if (bc) setField('client', String(bc.client))
+    // Source unique devis → BC → facture : recopie les lignes du devis lié
+    // (produit/désignation/qté/PU/remise/taux_tva) à la création seulement,
+    // pour ne pas écraser des lignes déjà saisies en édition.
+    if (!isEdit && bc?.devis) {
+      try {
+        const res = await ventesApi.getDevisById(bc.devis)
+        const devisLignes = res.data?.lignes ?? []
+        if (devisLignes.length) {
+          setDirty(true)
+          setLines(devisLignes.map(l => ({
+            _key: newKey(),
+            id: null,
+            produit: String(l.produit),
+            designation: l.designation,
+            quantite: String(l.quantite),
+            prix_unitaire: String(l.prix_unitaire),
+            remise: String(l.remise),
+            taux_tva: l.taux_tva != null ? String(l.taux_tva) : '',
+          })))
+        }
+      } catch { /* prefill best-effort */ }
     }
   }
 
@@ -113,7 +156,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
-        ? { ...l, produit: produitId, designation: p?.nom ?? '', prix_unitaire: p ? String(p.prix_vente) : '0' }
+        ? {
+            ...l, produit: produitId, designation: p?.nom ?? '',
+            prix_unitaire: p ? String(p.prix_vente) : '0',
+            // Pré-remplit le taux TVA depuis le produit (10 % panneaux PV,
+            // 20 % le reste). Vide si le produit n'a pas de taux → taux global.
+            taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
+          }
         : l
     ))
   }
@@ -146,6 +195,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         bon_commande:   fields.bon_commande ? parseInt(fields.bon_commande) : null,
         statut:         fields.statut,
         date_echeance:  fields.date_echeance  || null,
+        date_livraison: fields.date_livraison || null,
+        conditions_paiement: fields.conditions_paiement || '',
         taux_tva:       fields.taux_tva,
         remise_globale: fields.remise_globale,
         statut_teledeclaration: fields.statut_teledeclaration,
@@ -177,6 +228,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               quantite:      l.quantite,
               prix_unitaire: l.prix_unitaire,
               remise:        l.remise,
+              taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
             },
           })).unwrap()
         )
@@ -191,6 +243,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             quantite:      l.quantite,
             prix_unitaire: l.prix_unitaire,
             remise:        l.remise,
+            taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
           })).unwrap()
         )
       )
@@ -272,6 +325,17 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             <FormField label="Date d'échéance" htmlFor="fc-echeance">
               <Input id="fc-echeance" type="date" value={fields.date_echeance}
                      onChange={e => setField('date_echeance', e.target.value)} />
+              {fields.date_echeance && fields.date_echeance < today && (
+                <p className="mt-1 text-xs text-warning">
+                  Échéance déjà dépassée.
+                </p>
+              )}
+            </FormField>
+
+            <FormField label="Date de livraison/prestation" htmlFor="fc-livraison"
+                       hint="Mention Art. 145 — date de la livraison ou prestation">
+              <Input id="fc-livraison" type="date" value={fields.date_livraison}
+                     onChange={e => setField('date_livraison', e.target.value)} />
             </FormField>
 
             {isEdit && (
@@ -304,9 +368,19 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               </FormField>
             )}
 
-            <FormField label="TVA (%)" htmlFor="fc-tva">
+            <FormField label="TVA (%)" htmlFor="fc-tva"
+                       hint="Taux global (par défaut 20 %). Le taux par ligne prime quand renseigné.">
               <Input id="fc-tva" type="number" min="0" max="100" step="0.01"
                      value={fields.taux_tva} onChange={e => setField('taux_tva', e.target.value)} />
+              <div className="mt-1 flex gap-1">
+                {['20', '10'].map(t => (
+                  <Button key={t} type="button" size="sm"
+                          variant={fields.taux_tva === `${t}.00` || fields.taux_tva === t ? 'default' : 'outline'}
+                          onClick={() => setField('taux_tva', t)}>
+                    {t} %
+                  </Button>
+                ))}
+              </div>
             </FormField>
 
             <FormField label="Remise globale (%)" htmlFor="fc-remise">
@@ -337,6 +411,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                     <th className="px-2 py-2 text-right">Qté</th>
                     <th className="px-2 py-2 text-right">Prix HT (DH)</th>
                     <th className="px-2 py-2 text-right">Rem. %</th>
+                    <th className="px-2 py-2 text-right">TVA %</th>
                     <th className="px-2 py-2 text-right">Total HT</th>
                     <th className="w-10 px-2 py-2" />
                   </tr>
@@ -385,6 +460,14 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                  value={l.remise}
                                  onChange={e => setLine(l._key, 'remise', e.target.value)} />
                         </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min="0" max="100" step="0.01"
+                                 className="h-[var(--control-h-sm)] text-right text-xs"
+                                 value={l.taux_tva}
+                                 placeholder={String(tva)}
+                                 title="Vide = taux global de la facture"
+                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
+                        </td>
                         <td className="px-2 py-1.5 text-right font-medium tabular-nums">{lineTotal.toFixed(2)} DH</td>
                         <td className="px-2 py-1.5 text-center">
                           {lines.length > 1 && (
@@ -419,14 +502,43 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <span className="text-muted-foreground">Total HT</span>
               <strong className="tabular-nums">{totalHT.toFixed(2)} DH</strong>
             </div>
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">TVA ({tva}%)</span>
-              <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
-            </div>
+            {tauxDistincts.length > 1 ? (
+              <>
+                {tauxDistincts
+                  .sort((a, b) => Number(a) - Number(b))
+                  .map(taux => (
+                    <div key={taux} className="flex justify-between py-0.5">
+                      <span className="text-muted-foreground">
+                        TVA {Number(taux)} %
+                      </span>
+                      <span className="tabular-nums">
+                        {(tvaParTaux[taux] * Number(taux) / 100).toFixed(2)} DH
+                      </span>
+                    </div>
+                  ))}
+                <div className="flex justify-between py-0.5">
+                  <span className="text-muted-foreground">TVA totale</span>
+                  <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between py-0.5">
+                <span className="text-muted-foreground">TVA ({tva}%)</span>
+                <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+              </div>
+            )}
             <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
               <span className="font-semibold">Total TTC</span>
               <strong className="tabular-nums text-primary">{totalTTC.toFixed(2)} DH</strong>
             </div>
+          </div>
+
+          {/* ── Conditions et mode de paiement (mention Art. 145) ── */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="fc-conditions">Conditions et mode de paiement</Label>
+            <Textarea id="fc-conditions" rows={2} value={fields.conditions_paiement}
+                      onChange={e => setField('conditions_paiement', e.target.value)}
+                      placeholder="Ex. Virement à 30 jours, RIB…" />
           </div>
 
           {/* ── Note ── */}
