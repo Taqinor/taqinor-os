@@ -84,11 +84,16 @@ jobs:
             changed="$(git diff --name-only "$base" "$head")"
             echo "Changed files between ${base} and ${head}:"
             echo "$changed"
-            # Touching CI/infra re-runs the whole suite (it can change how any
-            # job builds or tests). The `|| true` keeps a no-match (grep exit 1)
-            # from tripping `set -e`.
-            echo "$changed" | grep -qE '^\.github/'                   && { backend=true; frontend=true; web=true; } || true
-            echo "$changed" | grep -qE '^docker-compose[^/]*\.ya?ml$' && { backend=true; frontend=true; web=true; } || true
+            # CI / infra / docs / config changes (.github/**, docker-compose*,
+            # docs, *.md, .gitignore, .claude/**, top-level state) do NOT run
+            # the heavy jobs: they cannot change application behaviour, so the
+            # only signal that matters is the always-on `stage-names` drift
+            # guard (check_stages + CODEMAP fingerprint), which is ungated
+            # below. A ci.yml edit that changes a test command is therefore not
+            # re-validated on its own PR — by design (minimal CI); the fail-open
+            # above still runs the FULL suite when the diff range itself is
+            # unresolvable (new branch / force-push / shallow clone). The
+            # `|| true` keeps a no-match (grep exit 1) from tripping `set -e`.
             # Shared backend<->frontend contract: exercise both sides + e2e.
             echo "$changed" | grep -qE '^STAGES\.py$'                 && { backend=true; frontend=true; } || true
             echo "$changed" | grep -qE '^backend/'                    && backend=true  || true
