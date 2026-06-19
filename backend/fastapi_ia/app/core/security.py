@@ -56,3 +56,20 @@ def verify_token(
         )
 
     return payload
+
+
+def get_raw_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+) -> str:
+    """Retourne le JETON brut (cookie httpOnly en priorite, puis Bearer).
+
+    Utilise par l'agent (N86) pour relayer le JWT de l'appelant vers l'API
+    Django interne lors d'une action d'ecriture, afin que Django applique
+    lui-meme le scope societe et les permissions de role. Ne valide pas le
+    jeton : c'est `verify_token` (deja en dependance) qui le fait.
+    """
+    token = request.cookies.get("access_token")
+    if not token and credentials:
+        token = credentials.credentials
+    return token or ""

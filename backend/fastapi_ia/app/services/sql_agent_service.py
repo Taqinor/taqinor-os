@@ -22,9 +22,12 @@ import asyncio
 import logging
 import re
 import threading
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from langchain.callbacks.base import BaseCallbackHandler
+
+if TYPE_CHECKING:  # eviter un import circulaire au runtime
+    from app.services.action_tools import ActionContext
 
 from app.core.config import (
     CHAT_HISTORY_MAX,
@@ -58,6 +61,12 @@ _ALLOWED_TABLES = [
     "parametres_companyprofile",
     "roles_role",
     "ia_ocr_document",
+    # ── N86 — objets apres-vente / chantiers / parc / maintenance (LECTURE) ──
+    "installations_installation",
+    "installations_intervention",
+    "sav_equipement",
+    "sav_ticket",
+    "sav_contratmaintenance",
 ]
 
 # Tables qui possedent une colonne company_id → filtrage obligatoire
@@ -75,6 +84,12 @@ _TABLES_WITH_COMPANY_ID = frozenset([
     "authentication_customuser",
     "parametres_companyprofile",
     "ia_ocr_document",
+    # ── N86 — toutes ces tables portent une colonne company_id ──
+    "installations_installation",
+    "installations_intervention",
+    "sav_equipement",
+    "sav_ticket",
+    "sav_contratmaintenance",
 ])
 
 # Descriptions en francais pour pgvector
@@ -112,6 +127,39 @@ _TABLE_DESCRIPTIONS: dict[str, str] = {
     "parametres_companyprofile": "Parametres de l'entreprise : logo, couleur, informations legales",
     "roles_role": "Roles et permissions des utilisateurs",
     "ia_ocr_document": "Documents OCR analyses : factures et bons de livraison scannes",
+    # ── N86 — apres-vente / chantiers / parc / maintenance (LECTURE seule) ──
+    "installations_installation": (
+        "Chantiers (installations solaires) : reference, client, devis, statut "
+        "(signe, materiel_commande, planifie, en_cours, installe, receptionne, "
+        "cloture, et statuts herites a_planifier/pose/mise_en_service), "
+        "puissance_installee_kwc, type_installation, dates cles "
+        "(date_pose_prevue, date_reception, date_cloture), parc_actif. "
+        "Utiliser statut='a_planifier' ou 'planifie' pour les chantiers a "
+        "planifier."
+    ),
+    "installations_intervention": (
+        "Interventions terrain rattachees a un chantier (installation_id) : "
+        "type_intervention (pose, raccordement, mise_en_service, controle, "
+        "depannage), statut, date_prevue, date_realisee, technicien. "
+        "Les visites de maintenance sont des interventions de type 'controle'."
+    ),
+    "sav_equipement": (
+        "Parc d'equipements installes : un appareil physique pose chez un "
+        "client (produit_id, numero_serie, installation_id, date_pose). "
+        "date_fin_garantie et date_fin_garantie_production donnent l'expiration "
+        "des garanties — utiliser date_fin_garantie pour savoir quels "
+        "equipements/garanties expirent sur une periode."
+    ),
+    "sav_ticket": (
+        "Tickets SAV (service apres-vente) : reference, client, installation, "
+        "equipement, type (correctif/preventif), statut (nouveau, planifie, "
+        "en_cours, resolu, cloture), priorite, date_ouverture, date_resolution."
+    ),
+    "sav_contratmaintenance": (
+        "Contrats de maintenance preventive : client, installation, "
+        "periodicite (mensuel/trimestriel/semestriel/annuel), date_debut, "
+        "derniere_visite, actif, date_renouvellement."
+    ),
 }
 
 # ── Prompt systeme ────────────────────────────────────────────────────────────
@@ -163,10 +211,53 @@ Factures → ventes_facture + ventes_lignefacture
   - statut_paiement : 'non_paye', 'partiel', 'paye'
   - montant_ttc = montant total TTC
 
+Chantiers (installations) → installations_installation
+  - statut : 'signe', 'materiel_commande', 'planifie', 'en_cours',
+    'installe', 'receptionne', 'cloture' (+ herites : 'a_planifier', 'pose',
+    'mise_en_service'). Chantiers a planifier = statut 'a_planifier' OU 'planifie'.
+  - client_id, devis_id, puissance_installee_kwc, type_installation
+  - dates : date_pose_prevue, date_reception, date_cloture
+
+Interventions terrain → installations_intervention
+  - installation_id = FK vers le chantier
+  - type_intervention : 'pose','raccordement','mise_en_service','controle','depannage'
+  - statut, date_prevue, date_realisee
+
+Parc d'equipements / garanties → sav_equipement
+  - produit_id, numero_serie, installation_id, date_pose
+  - date_fin_garantie / date_fin_garantie_production = expiration des garanties
+    (garanties qui expirent ce trimestre = date_fin_garantie dans la periode)
+
+Tickets SAV → sav_ticket
+  - statut : 'nouveau','planifie','en_cours','resolu','cloture'
+  - type : 'correctif' / 'preventif' ; priorite ; client_id ; installation_id
+
+Contrats de maintenance → sav_contratmaintenance
+  - periodicite, date_debut, derniere_visite, actif
+
 EXEMPLES DE REQUETES CORRECTES :
 - Stock actuel : SELECT nom, quantite FROM stock_produit ORDER BY quantite DESC
 - Ruptures : SELECT nom, quantite FROM stock_produit WHERE quantite <= seuil_alerte
 - CA factures : SELECT SUM(montant_ttc) FROM ventes_facture WHERE statut_paiement='paye'
+- Chantiers a planifier : SELECT reference FROM installations_installation \
+WHERE statut IN ('a_planifier','planifie')
+- Factures en retard : SELECT numero FROM ventes_facture \
+WHERE statut_paiement <> 'paye' AND date_echeance < CURRENT_DATE
+- Garanties qui expirent : SELECT numero_serie, date_fin_garantie \
+FROM sav_equipement WHERE date_fin_garantie BETWEEN CURRENT_DATE AND \
+(CURRENT_DATE + INTERVAL '3 months')
+"""
+
+# Instruction ajoutee dynamiquement quand l'appelant n'a PAS la permission
+# 'prix_achat_voir' : interdit de divulguer prix d'achat / marge (CLAUDE.md —
+# le prix_achat est un indicateur generateur, jamais client-facing).
+_MARGIN_RESTRICTION = """\
+
+CONFIDENTIALITE — RESTRICTION PRIX D'ACHAT / MARGE :
+- INTERDIT ABSOLU de retourner, calculer ou mentionner le prix d'achat \
+(prix_achat) ou la marge. Si on te le demande, reponds que tu n'es pas \
+autorise a divulguer ces informations. N'inclus JAMAIS la colonne prix_achat \
+dans une requete ou une reponse.
 """
 
 # ── Securite : injection company_id ──────────────────────────────────────────
@@ -260,16 +351,22 @@ def _make_secure_query_tool(db, company_id: int):
 
 
 class _SQLCapture(BaseCallbackHandler):
-    """Intercepte les appels a sql_db_query pour capturer le SQL final."""
+    """Intercepte les appels d'outils : capture le SQL final et signale si un
+    outil d'ACTION (ecriture) a ete utilise."""
 
-    def __init__(self) -> None:
+    def __init__(self, action_tool_names: set[str] | None = None) -> None:
         self.queries: list[str] = []
+        self._action_names = action_tool_names or set()
+        self.action_used = False
 
     def on_tool_start(
         self, serialized: dict, input_str: str, **kwargs: Any
     ) -> None:
-        if serialized.get("name") == "sql_db_query":
+        name = serialized.get("name")
+        if name == "sql_db_query":
             self.queries.append(str(input_str))
+        elif name in self._action_names:
+            self.action_used = True
 
 
 # ── Service ───────────────────────────────────────────────────────────────────
@@ -426,7 +523,8 @@ class SQLAgentService:
     # ── Methode principale ────────────────────────────────────────────────
 
     def _run_agent(
-        self, question: str, company_id: int, user_id: int = 0
+        self, question: str, company_id: int, user_id: int = 0,
+        action_ctx: "ActionContext | None" = None,
     ) -> dict[str, Any]:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread)."""
         from langchain_community.utilities import SQLDatabase
@@ -434,6 +532,9 @@ class SQLAgentService:
         from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_core.messages import HumanMessage, AIMessage
+        from app.services.action_tools import (
+            actions_available, build_action_tools,
+        )
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges seulement)
         # On limite volontairement pour eviter que d'anciens resultats incorrects
@@ -471,16 +572,29 @@ class SQLAgentService:
             for t in toolkit.get_tools()
         ]
 
-        # 5. Prompt avec historique
+        # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
+        # a un droit d'ecriture et qu'une URL Django interne est configuree. Un
+        # role lecture seule n'en recoit aucun. Django reste l'autorite finale.
+        action_tool_names: set[str] = set()
+        if actions_available(action_ctx):
+            action_tools = build_action_tools(action_ctx)
+            tools.extend(action_tools)
+            action_tool_names = {t.name for t in action_tools}
+
+        # 5. Prompt avec historique (+ restriction marge si non autorise)
+        system_prompt = _AGENT_PREFIX
+        if action_ctx is None or "prix_achat_voir" not in action_ctx.permissions:
+            if not (action_ctx is not None and action_ctx.is_superuser):
+                system_prompt = system_prompt + _MARGIN_RESTRICTION
         prompt = ChatPromptTemplate.from_messages([
-            ("system", _AGENT_PREFIX),
+            ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
 
-        # 6. Agent + capture SQL
-        capture = _SQLCapture()
+        # 6. Agent + capture SQL/actions
+        capture = _SQLCapture(action_tool_names)
         agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
         executor = AgentExecutor(
             agent=agent,
@@ -504,6 +618,9 @@ class SQLAgentService:
             "answer": answer,
             "sql_query": capture.queries[-1] if capture.queries else "",
             "data": None,
+            # N86 — True si l'agent a effectue une action d'ecriture (le
+            # frontend affiche alors un badge « Action »).
+            "action_performed": capture.action_used,
         }
 
     async def query(
@@ -511,10 +628,12 @@ class SQLAgentService:
         question: str,
         user_id: int | None = None,
         company_id: int | None = None,
+        action_ctx: "ActionContext | None" = None,
     ) -> dict[str, Any]:
         try:
             return await asyncio.to_thread(
-                self._run_agent, question, company_id or 0, user_id or 0
+                self._run_agent, question, company_id or 0, user_id or 0,
+                action_ctx,
             )
         except RuntimeError as exc:
             return {"answer": str(exc), "sql_query": "", "data": None}

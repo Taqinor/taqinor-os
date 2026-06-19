@@ -19,6 +19,14 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SQL_AGENT_PROVIDER = os.environ.get("SQL_AGENT_PROVIDER", "groq")
 SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "llama-3.3-70b-versatile")
 
+# Agent — outils d'ACTION (N86). URL interne du backend Django pour relayer les
+# ecritures (ouverture de ticket SAV, brouillon de bon de commande, planif. de
+# visite) via l'API REST/ORM — JAMAIS de SQL d'ecriture (CLAUDE.md regle #1).
+# Vide => outils d'action non exposes (degradation gracieuse). Defaut docker :
+# le service Django interne ecoute sur http://django_core:8000.
+DJANGO_INTERNAL_URL = os.environ.get(
+    "DJANGO_INTERNAL_URL", "http://django_core:8000")
+
 # Historique chat — Redis db 2 (db0=Celery, db1=Django cache)
 _REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 _REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
