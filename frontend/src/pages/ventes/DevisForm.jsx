@@ -30,6 +30,8 @@ const emptyLine = () => ({
   quantite: '1',
   prix_unitaire: '0',
   remise: '0',
+  // TVA par ligne (parité avec le générateur) ; vide = taux par défaut du devis.
+  taux_tva: '',
 })
 
 export default function DevisForm({ devis = null, onClose, onSaved }) {
@@ -62,6 +64,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           quantite: String(l.quantite),
           prix_unitaire: String(l.prix_unitaire),
           remise: String(l.remise),
+          taux_tva: l.taux_tva != null ? String(l.taux_tva) : '',
         }))
       : [emptyLine()]
   )
@@ -77,15 +80,26 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const remGlobal = parseFloat(fields.remise_globale) || 0
   const tva = parseFloat(fields.taux_tva) || 0
 
-  const subtotalHT = lines.reduce((sum, l) => {
+  // HT net par ligne (après remise de ligne).
+  const lineNetHT = (l) => {
     const qte = parseFloat(l.quantite) || 0
     const pu = parseFloat(l.prix_unitaire) || 0
     const rem = parseFloat(l.remise) || 0
-    return sum + qte * pu * (1 - rem / 100)
-  }, 0)
+    return qte * pu * (1 - rem / 100)
+  }
+
+  const subtotalHT = lines.reduce((sum, l) => sum + lineNetHT(l), 0)
 
   const totalHT = subtotalHT * (1 - remGlobal / 100)
-  const totalTVA = totalHT * (tva / 100)
+  // TVA calculée par ligne : taux de la ligne s'il est renseigné, sinon le taux
+  // par défaut du devis (parité avec le générateur multi-taux). La remise
+  // globale est appliquée proportionnellement à chaque ligne.
+  const totalTVA = lines.reduce((sum, l) => {
+    const rate = l.taux_tva !== '' && l.taux_tva != null
+      ? (parseFloat(l.taux_tva) || 0)
+      : tva
+    return sum + lineNetHT(l) * (1 - remGlobal / 100) * (rate / 100)
+  }, 0)
   const totalTTC = totalHT + totalTVA
 
   const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
@@ -100,7 +114,12 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
-        ? { ...l, produit: produitId, designation: p?.nom ?? '', prix_unitaire: p ? String(p.prix_vente) : '0' }
+        ? {
+            ...l, produit: produitId, designation: p?.nom ?? '',
+            prix_unitaire: p ? String(p.prix_vente) : '0',
+            // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
+            taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
+          }
         : l
     ))
   }
@@ -168,6 +187,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             quantite: l.quantite,
             prix_unitaire: l.prix_unitaire,
             remise: l.remise,
+            taux_tva: l.taux_tva !== '' ? l.taux_tva : null,
           },
         })).unwrap()
       ))
@@ -182,6 +202,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           quantite: l.quantite,
           prix_unitaire: l.prix_unitaire,
           remise: l.remise,
+          taux_tva: l.taux_tva !== '' ? l.taux_tva : null,
         })).unwrap()
       ))
 
@@ -275,6 +296,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                     <th className="px-2 py-2 text-right">Qté</th>
                     <th className="px-2 py-2 text-right">Prix HT (DH)</th>
                     <th className="px-2 py-2 text-right">Rem. %</th>
+                    <th className="px-2 py-2 text-right" title="Taux TVA de la ligne (vide = taux du devis)">TVA %</th>
                     <th className="px-2 py-2 text-right">Total HT</th>
                     <th className="w-10 px-2 py-2" />
                   </tr>
@@ -322,6 +344,13 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.remise}
                                  onChange={e => setLine(l._key, 'remise', e.target.value)} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min="0" max="100" step="0.01"
+                                 className="h-[var(--control-h-sm)] text-right text-xs"
+                                 placeholder={String(tva)}
+                                 value={l.taux_tva}
+                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
                         <td className="px-2 py-1.5 text-right font-medium tabular-nums">{lineTotal.toFixed(2)} DH</td>
                         <td className="px-2 py-1.5 text-center">

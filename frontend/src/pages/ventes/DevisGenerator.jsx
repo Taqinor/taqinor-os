@@ -1324,14 +1324,29 @@ export default function DevisGenerator({
                   {lines.map(l => {
                     const lineTtc =
                       (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+                    // Indice non bloquant : la désignation a été éditée et ne
+                    // correspond plus au nom du produit choisi — la classification
+                    // (réseau/hybride/batterie/panneau) pourrait changer la
+                    // répartition d'options du PDF. On n'altère jamais la saisie.
+                    const prodLie = l.produit
+                      ? produits.find(p => String(p.id) === String(l.produit))
+                      : null
+                    const designationDivergente = !!prodLie
+                      && (l.designation || '').trim() !== (prodLie.nom || '').trim()
                     return (
                       <tr key={l._key}>
-                        <td>
+                        <td data-label="Désignation">
                           <input className="form-control form-control-sm" value={l.designation}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
                                  placeholder="Désignation" />
+                          {designationDivergente && (
+                            <div className="mt-0.5 text-xs text-warning"
+                                 title="La désignation diffère du nom du produit — vérifiez la classification PDF">
+                              Désignation modifiée (produit : {prodLie.nom})
+                            </div>
+                          )}
                         </td>
-                        <td>
+                        <td data-label="Produit (stock)">
                           <ProduitPicker
                             produits={produits}
                             value={l.produit}
@@ -1432,12 +1447,29 @@ export default function DevisGenerator({
 
             {/* ── Prix par kWc, prix cible et marge (écran uniquement) ── */}
             <div className="gen-totals-row gen-discount-row">
-              {pkwc != null && (
-                <div className="gen-total-item">
-                  <span className="gen-total-label">Prix / kWc</span>
-                  <span className="gen-total-value">{formatMoney(pkwc)}/kWc</span>
-                </div>
-              )}
+              {pkwc != null && (() => {
+                // Repère vs cible société : vert si ≤ cible (bon), rouge si au-dessus.
+                const cibleNum = parseFloat(prixCible)
+                const hasCible = Number.isFinite(cibleNum) && cibleNum > 0
+                const sousCible = hasCible ? pkwc <= cibleNum : null
+                const couleur = sousCible == null ? undefined
+                  : (sousCible ? '#16a34a' : '#b91c1c')
+                return (
+                  <div className="gen-total-item">
+                    <span className="gen-total-label">Prix / kWc</span>
+                    <span className="gen-total-value" style={{ color: couleur }}>
+                      {formatMoney(pkwc)}/kWc
+                    </span>
+                    {hasCible && (
+                      <span className="gen-total-hint" style={{ color: couleur, fontSize: 12 }}>
+                        {sousCible
+                          ? `≤ cible (${formatMoney(cibleNum)}/kWc)`
+                          : `au-dessus de la cible (${formatMoney(cibleNum)}/kWc)`}
+                      </span>
+                    )}
+                  </div>
+                )
+              })()}
               <div className="gen-total-item gen-total-inline">
                 <span className="gen-total-label">Prix cible / kWc</span>
                 <input type="number" min="0" step="any" className="gen-discount-input"

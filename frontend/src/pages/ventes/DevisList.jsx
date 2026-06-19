@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -98,6 +98,8 @@ export default function DevisList() {
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
+  // Panneau « historique des versions » : id du devis dont la chaîne est ouverte.
+  const [versionsOpenId, setVersionsOpenId] = useState(null)
 
   // ── Filtre statut + recherche (référence / client) ──
   const [statutFilter, setStatutFilter] = useState('tous')
@@ -403,6 +405,33 @@ export default function DevisList() {
       return ref.includes(q) || client.includes(q)
     })
   }, [devis, statutFilter, query])
+
+  // Chaîne de révisions d'un devis : remonte version_parent_ref jusqu'au plus
+  // ancien, puis ajoute la version courante et descend via superseded_by_ref.
+  // Triée par numéro de version croissant pour un affichage lisible.
+  const versionChain = useMemo(() => {
+    if (versionsOpenId == null) return []
+    const byRef = new Map(devis.map(d => [d.reference, d]))
+    const cur = devis.find(d => d.id === versionsOpenId)
+    if (!cur) return []
+    const seen = new Set()
+    const chain = []
+    // Remonter vers les versions plus anciennes.
+    let node = cur
+    while (node && !seen.has(node.id)) {
+      seen.add(node.id)
+      chain.push(node)
+      node = node.version_parent_ref ? byRef.get(node.version_parent_ref) : null
+    }
+    // Descendre vers les versions plus récentes (remplaçantes).
+    node = cur.superseded_by_ref ? byRef.get(cur.superseded_by_ref) : null
+    while (node && !seen.has(node.id)) {
+      seen.add(node.id)
+      chain.push(node)
+      node = node.superseded_by_ref ? byRef.get(node.superseded_by_ref) : null
+    }
+    return chain.sort((a, b) => (a.version || 1) - (b.version || 1))
+  }, [versionsOpenId, devis])
 
   // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
   const summary = useMemo(() => {
@@ -743,7 +772,8 @@ export default function DevisList() {
                   const isGenerating = pdfGenerating[d.id]
                   const isDownloading = pdfDownloading[d.id]
                   return (
-                    <tr key={d.id}>
+                    <Fragment key={d.id}>
+                    <tr>
                       <td>
                         <Checkbox
                           checked={selectedIds.includes(d.id)}
@@ -759,6 +789,18 @@ export default function DevisList() {
                         {d.superseded_by_ref && (
                           <div className="mt-0.5 text-xs text-warning">
                             remplacé par {d.superseded_by_ref}
+                          </div>
+                        )}
+                        {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
+                          <div className="mt-0.5">
+                            <button
+                              type="button"
+                              className="text-xs text-primary hover:underline"
+                              onClick={() => setVersionsOpenId(
+                                versionsOpenId === d.id ? null : d.id)}
+                            >
+                              {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
+                            </button>
                           </div>
                         )}
                       </td>
@@ -1002,6 +1044,43 @@ export default function DevisList() {
                         </div>
                       </td>
                     </tr>
+                    {versionsOpenId === d.id && (
+                      <tr>
+                        <td colSpan={8} className="bg-muted/30">
+                          <div className="px-3 py-2">
+                            <p className="mb-1 text-xs font-medium text-muted-foreground">
+                              Historique des versions
+                            </p>
+                            {versionChain.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">
+                                Aucune autre version trouvée parmi les devis chargés.
+                              </p>
+                            ) : (
+                              <ul className="space-y-1 text-sm">
+                                {versionChain.map(v => (
+                                  <li key={v.id}
+                                      className="flex flex-wrap items-center gap-2">
+                                    <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
+                                      v{v.version || 1}
+                                    </Badge>
+                                    <strong>{v.reference}</strong>
+                                    <span className="text-xs text-muted-foreground">
+                                      {STATUT_DISPLAY[effStatutOf(v)] ?? v.statut}
+                                      {v.date_creation
+                                        ? ` · ${new Date(v.date_creation).toLocaleDateString('fr-FR')}` : ''}
+                                    </span>
+                                    {v.id === d.id && (
+                                      <span className="text-xs text-primary">(version affichée)</span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>

@@ -402,8 +402,10 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <p role="alert" className="text-xs text-destructive">{errors.lines}</p>
             )}
 
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full border-collapse text-sm">
+            {/* Sur écran étroit le tableau garde une largeur minimale et défile
+                horizontalement (les colonnes ne s'écrasent pas). */}
+            <div className="-mx-1 overflow-x-auto rounded-lg border border-border px-1">
+              <table className="w-full min-w-[640px] border-collapse text-sm">
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-2 py-2 text-left" style={{ minWidth: 160 }}>Produit</th>

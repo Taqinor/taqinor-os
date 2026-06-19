@@ -787,11 +787,15 @@ class FactureViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         with transaction.atomic():
-            serializer.save(
+            paiement = serializer.save(
                 facture=facture,
                 company=facture.company,
                 created_by=request.user,
             )
+            # Chatter facture : trace l'encaissement (acteur côté serveur,
+            # jamais lu du corps de la requête).
+            from . import activity
+            activity.log_facture_paiement(facture, request.user, paiement)
             # Statut auto : intégralement réglée → « Payée ».
             facture.refresh_from_db()
             if facture.montant_du <= Decimal('0') and \
@@ -1035,6 +1039,10 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': "L'avoir dépasse le montant restant de la facture "
                            f"({reste_creditable:.2f} MAD)."},
                 status=status.HTTP_400_BAD_REQUEST)
+        # Chatter facture : trace la création de l'avoir (acteur côté serveur,
+        # jamais lu du corps de la requête).
+        from . import activity
+        activity.log_facture_avoir(facture, request.user, avoir)
         try:
             from .utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
@@ -1109,6 +1117,17 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture = self.get_object()
         return Response(
             EmailLogSerializer(facture.email_logs.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
+    def historique(self, request, pk=None):
+        """Chatter de la facture : avoirs créés + paiements encaissés (qui,
+        quand, montant). Lecture seule ; acteur et société posés côté serveur."""
+        from .serializers import FactureActivitySerializer
+        facture = self.get_object()
+        return Response(
+            FactureActivitySerializer(
+                facture.activites.all(), many=True).data)
 
 
 class AvoirViewSet(viewsets.ReadOnlyModelViewSet):

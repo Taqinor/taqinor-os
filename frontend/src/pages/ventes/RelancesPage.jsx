@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PartyPopper, FileText, MessageCircle, Mail } from 'lucide-react'
+import { PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
-  Button, Badge, Card, EmptyState, Spinner,
+  Button, Badge, Card, EmptyState, Spinner, Checkbox, Input,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { formatMAD, toNumber } from '../../lib/format'
+
+// Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
+function todayPlus(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + (Number(days) || 0))
+  return d.toISOString().slice(0, 10)
+}
 
 // Balance âgée : libellé du bucket d'ancienneté dérivé des jours de retard,
 // cohérent avec /reporting/balance-agee (0–30 / 31–60 / 61–90 / 90+).
@@ -26,9 +33,15 @@ export default function RelancesPage() {
   const [loading, setLoading] = useState(true)
   const [target, setTarget] = useState(null)  // facture being relancée
   const [note, setNote] = useState('')
+  const [prochaine, setProchaine] = useState('')  // date de prochaine relance
   const [busy, setBusy] = useState(false)
   const [niveauFilter, setNiveauFilter] = useState('')  // '' = tous
   const [sortByDu, setSortByDu] = useState(false)  // tri par montant dû décroissant
+  const [selected, setSelected] = useState({})  // {id: true} pour la relance en lot
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [histTarget, setHistTarget] = useState(null)  // facture dont on voit l'historique
+  const [histRows, setHistRows] = useState([])
+  const [histLoading, setHistLoading] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -38,15 +51,62 @@ export default function RelancesPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [])
 
+  // Ouvre la modale de relance en pré-remplissant le niveau courant, la note
+  // depuis le message configuré du niveau et la date de prochaine relance
+  // (aujourd'hui + délai du niveau suivant, sinon +7 j par défaut).
+  const openRelancer = (r) => {
+    setTarget(r)
+    setNote(r.niveau?.message || '')
+    const delaiSuivant = r.niveau_suivant?.delai_jours
+    setProchaine(delaiSuivant != null ? todayPlus(delaiSuivant) : todayPlus(7))
+  }
+
   const relancer = async () => {
     setBusy(true)
     try {
       await ventesApi.relancerFacture(target.id, {
         niveau: target.niveau?.ordre, note,
+        prochaine_relance: prochaine || undefined,
       })
-      setTarget(null); setNote(''); load()
+      setTarget(null); setNote(''); setProchaine(''); load()
     } catch { /* */ } finally { setBusy(false) }
   }
+
+  // Relance en lot : consigne une relance pour chaque facture cochée, au niveau
+  // courant de chacune (sans note ni envoi forcé — comportement par défaut).
+  const relancerSelection = async () => {
+    const ids = Object.keys(selected).filter(id => selected[id])
+    if (ids.length === 0) return
+    if (!window.confirm(`Consigner une relance pour ${ids.length} facture(s) ?`)) return
+    setBulkBusy(true)
+    try {
+      for (const id of ids) {
+        const r = rows.find(x => String(x.id) === String(id))
+        await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
+      }
+      setSelected({}); load()
+    } catch { /* */ } finally { setBulkBusy(false) }
+  }
+
+  // Historique des relances déjà consignées pour une facture.
+  const openHistorique = async (r) => {
+    setHistTarget(r); setHistRows([]); setHistLoading(true)
+    try {
+      const res = await ventesApi.getRelancesFacture(r.id)
+      setHistRows(res.data)
+    } catch { /* */ } finally { setHistLoading(false) }
+  }
+
+  // Relevé de compte client (PDF) — en plus de la balance âgée.
+  const releve = async (r) => {
+    if (!r.client_id) { alert('Client introuvable pour cette facture.'); return }
+    try {
+      const res = await ventesApi.getClientRelevePdf(r.client_id)
+      openPdfBlob(res.data, `Releve_${r.client_nom || r.client_id}.pdf`)
+    } catch { alert('Relevé indisponible.') }
+  }
+
+  const toggleSel = (id) => setSelected(s => ({ ...s, [id]: !s[id] }))
   const exclure = async (r) => {
     if (!window.confirm('Exclure cette facture des relances ?')) return
     try { await ventesApi.exclureRelance(r.id, true); load() } catch { /* */ }
@@ -100,6 +160,16 @@ export default function RelancesPage() {
     () => displayed.reduce((s, r) => s + (toNumber(r.montant_du) || 0), 0),
     [displayed])
 
+  const selCount = useMemo(
+    () => Object.values(selected).filter(Boolean).length, [selected])
+  const allSelected = displayed.length > 0 && displayed.every(r => selected[r.id])
+  const toggleAll = () => {
+    if (allSelected) { setSelected({}); return }
+    const next = {}
+    displayed.forEach(r => { next[r.id] = true })
+    setSelected(next)
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -134,6 +204,11 @@ export default function RelancesPage() {
               ))}
             </select>
           </label>
+          {selCount > 0 && (
+            <Button size="sm" loading={bulkBusy} onClick={relancerSelection}>
+              Consigner pour la sélection ({selCount})
+            </Button>
+          )}
         </div>
       )}
 
@@ -154,6 +229,10 @@ export default function RelancesPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th className="w-8">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleAll}
+                              aria-label="Tout sélectionner" />
+                  </th>
                   <th>Facture</th><th>Client</th><th>Échéance</th>
                   <th
                     className="ta-right cursor-pointer select-none"
@@ -169,6 +248,11 @@ export default function RelancesPage() {
               <tbody>
                 {displayed.map(r => (
                   <tr key={r.id}>
+                    <td>
+                      <Checkbox checked={!!selected[r.id]}
+                                onCheckedChange={() => toggleSel(r.id)}
+                                aria-label={`Sélectionner ${r.reference}`} />
+                    </td>
                     <td><strong>{r.reference}</strong></td>
                     <td>{r.client_nom}</td>
                     <td className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
@@ -187,12 +271,20 @@ export default function RelancesPage() {
                     <td>{r.nb_relances}</td>
                     <td className="ta-right">
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Button size="sm" onClick={() => { setTarget(r); setNote('') }}>Relancer</Button>
+                        <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
+                        <Button size="sm" variant="outline" onClick={() => openHistorique(r)}
+                                title="Historique des relances consignées">
+                          <History /> Historique
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => whatsapp(r)} title="Rappel de paiement par WhatsApp">
                           <MessageCircle /> WhatsApp
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => lettre(r)}>
                           <FileText /> Lettre
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => releve(r)}
+                                title="Relevé de compte client (PDF)">
+                          <ReceiptText /> Relevé
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -232,13 +324,62 @@ export default function RelancesPage() {
               Cette action journalise la relance (aucun envoi).
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="relance-note">Note (appel, courrier remis…)</Label>
-            <Textarea id="relance-note" rows={3} value={note} onChange={e => setNote(e.target.value)} />
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="relance-note">Note (appel, courrier remis…)</Label>
+              <Textarea id="relance-note" rows={3} value={note}
+                        onChange={e => setNote(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="relance-prochaine">Prochaine relance</Label>
+              <Input id="relance-prochaine" type="date" value={prochaine}
+                     onChange={e => setProchaine(e.target.value)} />
+              {target?.niveau_suivant && (
+                <p className="text-xs text-muted-foreground">
+                  Proposée d'après le niveau suivant
+                  ({target.niveau_suivant.nom}, J+{target.niveau_suivant.delai_jours}).
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setTarget(null)}>Annuler</Button>
             <Button loading={busy} onClick={relancer}>Consigner</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modale historique des relances consignées ── */}
+      <Dialog open={!!histTarget} onOpenChange={(o) => { if (!o) setHistTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Historique des relances — {histTarget?.reference}</DialogTitle>
+            <DialogDescription>Relances déjà consignées (aucun envoi).</DialogDescription>
+          </DialogHeader>
+          {histLoading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Spinner /> Chargement…
+            </div>
+          ) : histRows.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">Aucune relance consignée.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {histRows.map(h => (
+                <li key={h.id} className="border-b pb-2 last:border-b-0">
+                  <div className="flex justify-between gap-3">
+                    <span className="font-medium">
+                      {h.date ? new Date(h.date).toLocaleString('fr-FR') : '—'}
+                      {h.niveau_nom ? ` · ${h.niveau_nom}` : ''}
+                    </span>
+                    <span className="text-muted-foreground">{h.created_by_nom || '—'}</span>
+                  </div>
+                  {h.note && <p className="mt-0.5 text-muted-foreground">{h.note}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setHistTarget(null)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

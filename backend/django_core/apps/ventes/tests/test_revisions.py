@@ -57,3 +57,9 @@ class TestDevisRevision(TestCase):
         resp = self.api.get(f'/api/django/ventes/devis/{self.devis.id}/')
         self.assertEqual(resp.data['superseded_by_ref'], new['reference'])
         self.assertFalse(resp.data['is_active'])
+
+    def test_v2_serializer_exposes_version_parent_ref(self):
+        # La v2 expose la référence de la v1 (chaîne de versions dans l'UI).
+        new = self.api.post(f'/api/django/ventes/devis/{self.devis.id}/reviser/').data
+        resp = self.api.get(f"/api/django/ventes/devis/{new['id']}/")
+        self.assertEqual(resp.data['version_parent_ref'], self.devis.reference)

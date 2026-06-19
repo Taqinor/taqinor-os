@@ -281,6 +281,16 @@ export default function BonCommandeList() {
 
 // ── Formulaire BC (création / édition) ─────────────────────────────────────────
 
+// Délai de livraison par défaut (jours) appliqué aux nouveaux bons de commande.
+const BC_DELAI_LIVRAISON_DEFAUT = 14
+
+// Date par défaut : aujourd'hui + délai (AAAA-MM-JJ).
+function defaultLivraison(days = BC_DELAI_LIVRAISON_DEFAUT) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 function BCForm({ bc = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!bc
@@ -291,7 +301,8 @@ function BCForm({ bc = null, onClose, onSaved }) {
 
   const [fields, setFields] = useState({
     client:               bc ? String(bc.client) : '',
-    date_livraison_prevue: bc?.date_livraison_prevue ?? '',
+    // Nouveau BC : pré-remplir la livraison prévue (émission + délai), éditable.
+    date_livraison_prevue: bc?.date_livraison_prevue ?? (bc ? '' : defaultLivraison()),
     note:                 bc?.note ?? '',
   })
 

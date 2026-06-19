@@ -18,7 +18,7 @@ from .recouvrement import (
     client_releve_pdf,
     lettre_relance_pdf,
 )
-from .journal_view import journal_ventes
+from .journal_view import journal_ventes, export_comptable
 from .numbering_view import numerotation_audit
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 
@@ -36,6 +36,9 @@ router.register(r'niveaux-relance', FollowupLevelViewSet,
 urlpatterns = [
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
+    # Export comptable DGI (groundwork) : factures validées d'une plage,
+    # ventilation TVA par ligne + ICE + totaux, en .xlsx OU .csv.
+    path('export-comptable/', export_comptable, name='export-comptable'),
     # Audit de la numérotation séquentielle (trous/doublons) — admin.
     path('numerotation-audit/', numerotation_audit, name='numerotation-audit'),
     # Recouvrement (vue/consigne/impression — jamais d'envoi).

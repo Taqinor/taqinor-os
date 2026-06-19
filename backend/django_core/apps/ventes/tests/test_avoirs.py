@@ -111,6 +111,29 @@ class TestAvoirs(TestCase):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.montant_du, Decimal('0.00'))
 
+    def test_avoir_and_payment_are_logged_in_facture_chatter(self):
+        api = self._api(self.admin)
+        # Encaisser un paiement → consigne une activité « Paiement ».
+        api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/enregistrer-paiement/',
+            {'montant': '100', 'date_paiement': '2026-06-19', 'mode': 'virement'},
+            format='json')
+        # Créer un avoir → consigne une activité « Avoir » (acteur côté serveur).
+        api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Test chatter',
+             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20.00'}]},
+            format='json')
+        resp = api.get(
+            f'/api/django/ventes/factures/{self.facture.id}/historique/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        fields = {a['field'] for a in resp.data}
+        self.assertIn('avoir', fields)
+        self.assertIn('paiement', fields)
+        # L'acteur est posé côté serveur (jamais lu du corps).
+        self.assertTrue(all(a['user_nom'] == 'avo_admin' for a in resp.data))
+
     def test_commerciale_cannot_create_avoir(self):
         api = self._api(self.resp)
         resp = api.post(

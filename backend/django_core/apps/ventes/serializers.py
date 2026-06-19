@@ -89,9 +89,15 @@ class DevisSerializer(serializers.ModelSerializer):
     # Référence de la version qui remplace ce devis (T10) — pour le lien
     # « remplacé par » dans l'UI.
     superseded_by_ref = serializers.SerializerMethodField()
+    # Référence du devis parent (version précédente) — pour reconstituer la
+    # chaîne de révisions dans l'UI (panneau historique des versions).
+    version_parent_ref = serializers.SerializerMethodField()
 
     def get_superseded_by_ref(self, obj):
         return obj.superseded_by.reference if obj.superseded_by_id else None
+
+    def get_version_parent_ref(self, obj):
+        return obj.version_parent.reference if obj.version_parent_id else None
 
     def get_is_expired(self, obj):
         from .utils.expiry import is_expired
@@ -324,6 +330,19 @@ class DevisActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = DevisActivity
         fields = ['id', 'devis', 'kind', 'field', 'field_label',
+                  'old_value', 'new_value', 'body', 'user_nom', 'created_at']
+        read_only_fields = fields
+
+
+class FactureActivitySerializer(serializers.ModelSerializer):
+    """Chatter d'une facture — lecture seule côté API."""
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import FactureActivity
+        model = FactureActivity
+        fields = ['id', 'facture', 'kind', 'field', 'field_label',
                   'old_value', 'new_value', 'body', 'user_nom', 'created_at']
         read_only_fields = fields
 
