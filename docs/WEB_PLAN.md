@@ -193,7 +193,7 @@ layout shift.**
 > **W62–W66 archived to `docs/DONE.md` (shipped 2026-06-18).** See the DONE LOG below for the one-line
 > outcomes; full task text lives under "## Archived from WEB_PLAN.md" in `docs/DONE.md`.
 
-### W67 — English + Arabic versions of the public site (i18n, FR default) — [ ]
+### W67 — English + Arabic versions of the public site (i18n, FR default) — [ ] (partial 2026-06-19: i18n foundation + EN/AR for 12 pages shipped; resume the ~13 remaining below)
 **Do:** Add Astro's built-in i18n (FR default + EN + AR) — FAITHFUL translations of the EXISTING true
 copy (translate, never re-invent a claim; keep loi-82-21 wording and every figure exact), a language
 switcher in header + footer, correct `hreflang` + per-locale canonicals + sitemap entries, and **full
@@ -211,7 +211,7 @@ verified non-breaking increments (FR stays byte-identical, suite stays green): f
 
 ---
 
-### W68 — Task 4 : mode VARIABILITÉ de consommation (« Affiner ma consommation ») — [ ]
+### W68 — Task 4 : mode VARIABILITÉ de consommation (« Affiner ma consommation ») — [x]
 **Do:** On the SAME current latest private preview route, **in place** (this builds on the
 consumption/savings engine and the Année/Mois/Jour graph from the earlier tasks — **read that
 engine first and reuse it; do NOT duplicate it**): add a consumption **VARIABILITY** mode the
@@ -264,7 +264,7 @@ compris" holds it fixed (reshape only); "Recaler sur ma facture" rescales the ha
 the bill total; self-consumption and savings recompute from the modified curve and never exceed the
 cap; the curve still sums to the intended daily total. **One self-merged PR.**
 
-### W69 — Task 5 : mode VARIABILITÉ de disposition (« Personnaliser la disposition ») — [ ]
+### W69 — Task 5 : mode VARIABILITÉ de disposition (« Personnaliser la disposition ») — [x]
 **Do:** On the SAME route **in place**: add a layout **VARIABILITY** mode so that **AFTER the
 auto-layout finishes**, the client can enter a **"Personnaliser la disposition"** mode and move
 panels on the roof realistically, on the existing 3D (flat tilted racks or pitched flush) —
@@ -546,3 +546,29 @@ report only** (no diffs or hashes): for each task, **what a visitor now sees dif
 - 2026-06-18 — W66 shipped: « réponse sous 48 h ouvrées » on /contact (corrected from 24 h); SEO/a11y/
   hygiene guards (seo-pages, hygiene-w61, picture, photos-assets) green + clean production build.
 - 2026-06-18 — Verified: full Vitest suite 1364/1364 green, `astro build` clean, `tsc` check clean.
+- 2026-06-19 — W68 shipped: « Affiner ma consommation » on `/preview/toiture-3d-pro-11` — hand-edit the
+  24 hourly bars (drag + required numeric grid + « Recaler sur ma facture ») AND a curated, fully-editable
+  appliance calculator (climatisation BTU÷EER with CV labels, EV by kW×h or km/jour, cumulus, piscine, four,
+  plaque, lave-linge/-vaisselle, sèche-linge, frigo, chauffage, pompe, fer, micro-ondes, PAC, TV, LED, +
+  « Autre appareil ») with « Sur ma facture actuelle » (adds on top → raises size + battery) vs « Déjà compris »
+  (reshape only). Feeds the existing self-consumption/savings (`billMAD`, surplus=0) + size-to-need +
+  6 kWh/day-per-battery engine. Defaults + sources in `apps/web/APPLIANCES_NOTES.md`. New lib
+  `applianceConsumption.ts` + 25 unit tests.
+- 2026-06-19 — W69 shipped: « Personnaliser la disposition » on `/preview/toiture-3d-pro-11` — after the
+  auto-layout, move/add/remove panels on the optimizer's valid placement lattice (snap to nearest valid empty
+  cell; off-roof/setback/obstacle/occupied targets refused; green/red hover; drag + tap-to-select + +/− touch
+  fallback; « Réinitialiser la disposition optimale »). Count changes recompute kWc/kWh-an/économies via the
+  existing PVGIS-by-count path (per-panel yield unchanged when only position moves); footprint bound +
+  needed-panel cap always hold. New lib `layoutVariability.ts` + 19 unit tests. Route stays private; pro-10
+  byte-identical; live site + lead form untouched.
+- 2026-06-19 — W67 PARTIAL: i18n foundation finished (registry `src/i18n/pages.ts`, LanguageSwitcher wired
+  into Header+Footer, Layout-driven hreflang/canonical/sitemap, locale-aware shared chrome) + EN (`/en/`) and
+  AR (`/ar/`, full RTL) for 12 pages: contact, nos-solutions, faq, garanties, financement, pourquoi-taqinor,
+  à-propos, pompage-solaire, batteries-stockage, maintenance-monitoring, mentions-legales,
+  politique-de-confidentialite. FR copy + every figure byte-identical; lead-form payload/endpoint/threshold/
+  deeplink invariant across locales (asserted by a test). Remaining ~13 pages (home, résidentiel, professionnel,
+  marocains-du-monde, équipement, regularization-article-33, loi-82-21, the 5 city pages, realisations/*,
+  guides/*) need their shared figure-bearing components made locale-aware first — left FR-only and unswitched
+  (FR unchanged), a clean next increment. W67 stays unticked.
+- 2026-06-19 — Verified over the folded batch: full Vitest suite 1657/1657 green, `astro build` clean,
+  `tsc` check clean, sitemap has the EN/AR pages with 0 `/preview/` leaks.
