@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
   RefreshCw, Wallet, Clock, Users, Package, BarChart3, AlertTriangle, Download,
 } from 'lucide-react'
@@ -179,8 +180,29 @@ function LoadingState() {
   )
 }
 
+// KPI cliquable : ouvre la liste des enregistrements correspondants au lieu de
+// rester un compteur sans issue.
+function ClickableStat({ to, navigate, ...props }) {
+  return (
+    <Stat
+      {...props}
+      role="button"
+      tabIndex={0}
+      className="cursor-pointer transition-colors hover:border-primary/40"
+      onClick={() => navigate(to)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          navigate(to)
+        }
+      }}
+    />
+  )
+}
+
 export function Component() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { data, loading, error } = useSelector((s) => s.reporting)
 
   // Fenêtre d'affichage du CA mensuel (filtrage CLIENT sur les données déjà
@@ -253,10 +275,10 @@ export function Component() {
 
       {/* ── KPIs ── */}
       <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="CA encaissé" value={dh(kpis.ca_paye)} hint="Factures payées" icon={Wallet} />
-        <Stat label="En attente de paiement" value={dh(kpis.ca_attente)} hint="Émises + en retard" icon={Clock} />
-        <Stat label="Clients actifs" value={formatNumber(kpis.nb_clients)} hint="Total base clients" icon={Users} />
-        <Stat label="Valeur du stock" value={dh(kpis.valeur_stock)} hint="Prix vente × quantité" icon={Package} />
+        <ClickableStat navigate={navigate} to="/ventes/factures?statut=payee" label="CA encaissé" value={dh(kpis.ca_paye)} hint="Factures payées" icon={Wallet} />
+        <ClickableStat navigate={navigate} to="/ventes/factures?statut=en_retard" label="En attente de paiement" value={dh(kpis.ca_attente)} hint="Émises + en retard" icon={Clock} />
+        <ClickableStat navigate={navigate} to="/crm" label="Clients actifs" value={formatNumber(kpis.nb_clients)} hint="Total base clients" icon={Users} />
+        <ClickableStat navigate={navigate} to="/stock" label="Valeur du stock" value={dh(kpis.valeur_stock)} hint="Prix vente × quantité" icon={Package} />
       </div>
 
       {/* ── Graphiques ligne 1 ── */}

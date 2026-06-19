@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
   TrendingUp, Activity, ReceiptText, Clock,
@@ -101,6 +102,7 @@ function ChartCard({ title, description, children, isEmpty, emptyLabel }) {
 
 export function Component() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
   const { clients, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
@@ -241,16 +243,20 @@ export function Component() {
     return items.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8)
   }, [devis, factures])
 
+  // Chaque KPI pointe vers la liste correspondante : un compteur n'est plus
+  // un cul-de-sac, il ouvre les enregistrements (la facture en retard ouvre la
+  // liste factures, sur l'onglet « En retard » côté liste).
   const kpis = [
-    { label: 'Produits en stock', value: formatNumber(produits.length), icon: Package, hint: 'références actives' },
-    { label: 'Clients', value: formatNumber(clients.length), icon: Users, hint: 'enregistrés' },
-    { label: 'Devis acceptés', value: formatNumber(devisAcceptes.length), icon: FileCheck, hint: `sur ${formatNumber(devis.length)} devis` },
-    { label: 'Factures émises', value: formatNumber(facturesEmises.length), icon: FileText, hint: 'en attente de règlement' },
+    { label: 'Produits en stock', value: formatNumber(produits.length), icon: Package, hint: 'références actives', to: '/stock' },
+    { label: 'Clients', value: formatNumber(clients.length), icon: Users, hint: 'enregistrés', to: '/crm' },
+    { label: 'Devis acceptés', value: formatNumber(devisAcceptes.length), icon: FileCheck, hint: `sur ${formatNumber(devis.length)} devis`, to: '/ventes/devis?statut=accepte' },
+    { label: 'Factures émises', value: formatNumber(facturesEmises.length), icon: FileText, hint: 'en attente de règlement', to: '/ventes/factures?statut=emise' },
     {
       label: 'Factures en retard',
       value: formatNumber(facturesEnRetard.length),
       icon: AlertTriangle,
       hint: facturesEnRetard.length > 0 ? 'à relancer' : 'aucune',
+      to: '/ventes/factures?statut=en_retard',
       delta: facturesEnRetard.length > 0
         ? { value: `${facturesEnRetard.length}`, direction: 'down' }
         : undefined,
@@ -338,6 +344,16 @@ export function Component() {
                 hint={kpi.hint}
                 delta={kpi.delta}
                 icon={kpi.icon}
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer transition-colors hover:border-primary/40"
+                onClick={() => navigate(kpi.to)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    navigate(kpi.to)
+                  }
+                }}
               />
             ))}
           </div>
