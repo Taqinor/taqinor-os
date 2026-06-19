@@ -12,7 +12,8 @@ from . import activity
 from . import intervention_activity
 from .models import (
     Installation, Intervention, TypeIntervention, ChecklistTemplate,
-    ChecklistEtapeModele, ShotListSlot,
+    ChecklistEtapeModele, ShotListSlot, ComponentSerial,
+    ConsommationLigne, VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot,
 )
 from .serializers import (
     InstallationSerializer, InterventionSerializer,
@@ -20,12 +21,16 @@ from .serializers import (
     TypeInterventionSerializer, ChecklistTemplateSerializer,
     ChecklistEtapeModeleSerializer, ChantierChecklistItemSerializer,
     ShotListSlotSerializer, InterventionPreparationSerializer,
+    ComponentSerialSerializer, MaterielConsommationSerializer,
+    ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
+    ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
 )
 from .services import (
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
 )
 from . import field_services
+from . import field_capture
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -630,12 +635,26 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'preparation', 'photos']:
+        if self.action in READ_ACTIONS + [
+            'historique', 'preparation', 'photos',
+            # Lectures du module de capture F9–F19 + F23.
+            'serials', 'consommation', 'memos', 'reserves', 'tool_return',
+            'safety', 'crew_time', 'compte_rendu', 'overage_review', 'code',
+        ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'cocher_materiel', 'cocher_outil', 'choisir_kit',
             'confirmer_charge', 'commander_manques', 'depart_depot', 'checkin',
             'retour', 'ajouter_photo', 'supprimer_photo',
+            # Écritures du module de capture F9–F19.
+            'ajouter_serial', 'modifier_serial', 'supprimer_serial',
+            'annoter_photo', 'valider_consommation',
+            'ajouter_ligne_consommation', 'modifier_ligne_consommation',
+            'supprimer_ligne_consommation',
+            'ajouter_memo', 'modifier_memo', 'supprimer_memo',
+            'ajouter_reserve', 'modifier_reserve', 'resoudre_reserve',
+            'cocher_tool_return', 'confirmer_tool_return',
+            'cocher_safety', 'signer_safety',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1014,6 +1033,650 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         att.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    # ── F9 — n° de série par composant (+ OCR swappable no-op) ───────────────
+    def _serials_response(self, interv):
+        return Response(ComponentSerialSerializer(
+            interv.serials.all(), many=True,
+            context={'request': self.request}).data)
+
+    @action(detail=True, methods=['get'], url_path='serials',
+            permission_classes=[IsAnyRole])
+    def serials(self, request, pk=None):
+        """F9 — liste des n° de série relevés sur l'intervention."""
+        return self._serials_response(self.get_object())
+
+    @action(detail=True, methods=['post'], url_path='ajouter-serial',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_serial(self, request, pk=None):
+        """F9 — relève un n° de série de composant. Optionnellement une photo de
+        plaque (multipart `file`) sur laquelle on TENTE une extraction OCR via
+        l'interface SWAPPABLE (no-op par défaut → on garde la saisie manuelle).
+        Le n° de série PEUT être vide : la saisie ne bloque jamais. Corps :
+        produit, designation, slot, numero_serie, [file]."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import store_attachment
+        from apps.stock.models import Produit
+        from . import swappable
+        interv = self.get_object()
+        company = interv.company
+        produit = None
+        produit_id = request.data.get('produit')
+        if produit_id:
+            produit = Produit.objects.filter(
+                id=produit_id, company=company).first()
+            if produit is None:
+                return Response({'produit': 'Produit inconnu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        numero = (request.data.get('numero_serie') or '').strip()
+        serie_ocr = False
+        plaque = None
+        file = request.FILES.get('file')
+        if file is not None:
+            meta, err = store_attachment(file)
+            if err:
+                return Response({'detail': err},
+                                status=status.HTTP_400_BAD_REQUEST)
+            ct = ContentType.objects.get_for_model(Intervention)
+            plaque = Attachment.objects.create(
+                company=company, content_type=ct, object_id=interv.id,
+                uploaded_by=request.user, phase='', **meta)
+            # OCR SWAPPABLE : no-op par défaut (renvoie None) → on ne touche pas
+            # au champ saisi à la main. Ne bloque jamais.
+            if not numero:
+                from apps.records.storage import fetch_attachment
+                data, _ = fetch_attachment(plaque.file_key)
+                extracted = swappable.extract_serial(company, data)
+                if extracted:
+                    numero = extracted.strip()
+                    serie_ocr = True
+        serial = ComponentSerial.objects.create(
+            company=company, intervention=interv, produit=produit,
+            designation=(request.data.get('designation') or '').strip(),
+            slot_cle=(request.data.get('slot') or '').strip(),
+            numero_serie=numero, plaque_attachment=plaque,
+            serie_ocr=serie_ocr, created_by=request.user)
+        return Response(ComponentSerialSerializer(
+            serial, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='modifier-serial',
+            permission_classes=[IsResponsableOrAdmin])
+    def modifier_serial(self, request, pk=None):
+        """F9 — édite un n° de série relevé. Corps : serial, numero_serie,
+        [designation]."""
+        interv = self.get_object()
+        serial = interv.serials.filter(id=request.data.get('serial')).first()
+        if serial is None:
+            return Response({'detail': 'Relevé inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        fields = []
+        if 'numero_serie' in request.data:
+            serial.numero_serie = (request.data.get('numero_serie') or '').strip()
+            serial.serie_ocr = False
+            fields += ['numero_serie', 'serie_ocr']
+        if 'designation' in request.data:
+            serial.designation = (request.data.get('designation') or '').strip()
+            fields.append('designation')
+        if fields:
+            serial.save(update_fields=fields)
+        return Response(ComponentSerialSerializer(
+            serial, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='supprimer-serial',
+            permission_classes=[IsResponsableOrAdmin])
+    def supprimer_serial(self, request, pk=None):
+        """F9 — supprime un relevé de n° de série. Corps : {"serial": <id>}."""
+        interv = self.get_object()
+        serial = interv.serials.filter(id=request.data.get('serial')).first()
+        if serial is None:
+            return Response({'detail': 'Relevé inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serial.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── F10 — annotation d'une photo (dessin + légende) ─────────────────────
+    @action(detail=True, methods=['post'], url_path='annoter-photo',
+            permission_classes=[IsResponsableOrAdmin])
+    def annoter_photo(self, request, pk=None):
+        """F10 — marque une photo de l'intervention d'un calque de dessin
+        (JSON) + légende, pour signaler un problème. Fait partie de la photo.
+        Corps : {"photo": <attachment_id>, "drawing": [...], "caption": str,
+        "probleme": bool}."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from .models import PhotoAnnotation
+        from .serializers import PhotoAnnotationSerializer
+        interv = self.get_object()
+        ct = ContentType.objects.get_for_model(Intervention)
+        att = Attachment.objects.filter(
+            id=request.data.get('photo'), content_type=ct,
+            object_id=interv.id, company=interv.company).first()
+        if att is None:
+            return Response({'detail': 'Photo inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        drawing = request.data.get('drawing')
+        ann, _ = PhotoAnnotation.objects.get_or_create(
+            attachment=att, defaults={'company': interv.company,
+                                      'created_by': request.user})
+        if ann.company_id is None:
+            ann.company = interv.company
+        if isinstance(drawing, list):
+            ann.drawing = drawing
+        ann.caption = request.data.get('caption', ann.caption) or ''
+        ann.probleme = bool(request.data.get('probleme', ann.probleme))
+        ann.save()
+        return Response(PhotoAnnotationSerializer(ann).data,
+                        status=status.HTTP_200_OK)
+
+    # ── F11/F12 — réconciliation du matériel consommé ───────────────────────
+    def _consommation_response(self, interv):
+        cons = field_capture.ensure_consommation(interv)
+        return Response(MaterielConsommationSerializer(
+            cons, context={'request': self.request}).data)
+
+    @action(detail=True, methods=['get'], url_path='consommation',
+            permission_classes=[IsAnyRole])
+    def consommation(self, request, pk=None):
+        """F11 — réconciliation matériel : prévu (nomenclature) vs réellement
+        utilisé, lignes hors-nomenclature, variances + dépassements (F12)."""
+        return self._consommation_response(self.get_object())
+
+    @action(detail=True, methods=['post'], url_path='ajouter-ligne-consommation',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_ligne_consommation(self, request, pk=None):
+        """F11 — ajoute une ligne hors-nomenclature (câble, vis, MC4…). Corps :
+        designation, quantite_utilisee, [produit], [justification]."""
+        from apps.stock.models import Produit
+        interv = self.get_object()
+        if getattr(interv, 'consommation', None) and interv.consommation.valide:
+            return Response({'detail': 'Réconciliation déjà validée.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cons = field_capture.ensure_consommation(interv)
+        designation = (request.data.get('designation') or '').strip()
+        if not designation:
+            return Response({'designation': 'Désignation requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        produit = None
+        if request.data.get('produit'):
+            produit = Produit.objects.filter(
+                id=request.data.get('produit'), company=interv.company).first()
+        from decimal import Decimal, InvalidOperation
+        try:
+            qte = Decimal(str(request.data.get('quantite_utilisee') or 0))
+        except (InvalidOperation, TypeError, ValueError):
+            qte = Decimal('0')
+        ligne = ConsommationLigne.objects.create(
+            company=interv.company, consommation=cons, produit=produit,
+            designation=designation, quantite_prevue=Decimal('0'),
+            quantite_utilisee=qte, hors_nomenclature=True,
+            justification=(request.data.get('justification') or '').strip(),
+            ordre=cons.lignes.count())
+        return Response(ConsommationLigneSerializer(ligne).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path='modifier-ligne-consommation',
+            permission_classes=[IsResponsableOrAdmin])
+    def modifier_ligne_consommation(self, request, pk=None):
+        """F11 — édite une ligne : quantite_utilisee, justification,
+        justification_memo. Corps : {"ligne": <id>, ...}."""
+        from decimal import Decimal, InvalidOperation
+        interv = self.get_object()
+        cons = field_capture.ensure_consommation(interv)
+        if cons.valide:
+            return Response({'detail': 'Réconciliation déjà validée.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
+        if ligne is None:
+            return Response({'detail': 'Ligne inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        fields = []
+        if 'quantite_utilisee' in request.data:
+            try:
+                ligne.quantite_utilisee = Decimal(
+                    str(request.data.get('quantite_utilisee') or 0))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({'quantite_utilisee': 'Quantité invalide.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            fields.append('quantite_utilisee')
+        if 'justification' in request.data:
+            ligne.justification = (request.data.get('justification') or '').strip()
+            fields.append('justification')
+        if 'justification_memo' in request.data:
+            memo = interv.voice_memos.filter(
+                id=request.data.get('justification_memo')).first()
+            ligne.justification_memo = memo
+            fields.append('justification_memo')
+        if fields:
+            ligne.save(update_fields=fields)
+        return Response(ConsommationLigneSerializer(ligne).data)
+
+    @action(detail=True, methods=['post'],
+            url_path='supprimer-ligne-consommation',
+            permission_classes=[IsResponsableOrAdmin])
+    def supprimer_ligne_consommation(self, request, pk=None):
+        """F11 — supprime une ligne HORS-nomenclature. Corps : {"ligne": <id>}."""
+        interv = self.get_object()
+        cons = field_capture.ensure_consommation(interv)
+        if cons.valide:
+            return Response({'detail': 'Réconciliation déjà validée.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ligne = cons.lignes.filter(
+            id=request.data.get('ligne'), hors_nomenclature=True).first()
+        if ligne is None:
+            return Response(
+                {'detail': 'Seules les lignes hors-nomenclature sont supprimables.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ligne.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='valider-consommation',
+            permission_classes=[IsResponsableOrAdmin])
+    def valider_consommation(self, request, pk=None):
+        """F11 — valide la réconciliation : la consommation RÉELLE pilote les
+        mouvements de stock (et la marge job-costing). Refuse si une variance
+        n'est pas justifiée (texte ou mémo vocal)."""
+        interv = self.get_object()
+        cons = field_capture.ensure_consommation(interv)
+        if cons.valide:
+            return Response({'detail': 'Réconciliation déjà validée.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            nb = field_capture.validate_consommation(cons, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        intervention_activity.log_note(
+            interv, request.user,
+            f"Matériel consommé validé — {nb} référence(s) sortie(s) du stock.")
+        return self._consommation_response(interv)
+
+    @action(detail=False, methods=['get'], url_path='overage-review',
+            permission_classes=[IsAnyRole])
+    def overage_review(self, request):
+        """F12 — interventions dont la consommation dépasse le devis au-delà du
+        seuil % (éditable en Paramètres), avec justifications attachées. Aucun
+        prix d'achat ni marge."""
+        company = request.user.company
+        rows = field_capture.interventions_en_revue(company)
+        out = []
+        for interv, overages in rows:
+            inst = interv.installation
+            out.append({
+                'intervention': interv.id,
+                'chantier': inst.reference if inst else '',
+                'type': interv.get_type_intervention_display(),
+                'overage': overages,
+            })
+        return Response({
+            'seuil_pct': field_capture.overage_threshold_pct(company),
+            'interventions': out,
+        })
+
+    # ── F13/F14 — mémos vocaux (+ transcription swappable no-op) ─────────────
+    @action(detail=True, methods=['get'], url_path='memos',
+            permission_classes=[IsAnyRole])
+    def memos(self, request, pk=None):
+        """F13 — mémos vocaux de l'intervention (audio + transcription F14)."""
+        interv = self.get_object()
+        return Response(VoiceMemoSerializer(
+            interv.voice_memos.all(), many=True,
+            context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='ajouter-memo',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_memo(self, request, pk=None):
+        """F13 — enregistre un mémo vocal (multipart `file`, audio) stocké via le
+        stockage objet GÉNÉRIQUE existant. F14 — tente une transcription via
+        l'interface SWAPPABLE (no-op par défaut → « Non transcrit — service non
+        configuré »). Corps multipart : file, [cible]."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import store_attachment
+        interv = self.get_object()
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'Aucun fichier audio fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        meta, err = store_attachment(file, audio=True)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ct = ContentType.objects.get_for_model(Intervention)
+        att = Attachment.objects.create(
+            company=interv.company, content_type=ct, object_id=interv.id,
+            uploaded_by=request.user, phase='', **meta)
+        cible = (request.data.get('cible') or VoiceMemo.Cible.GENERAL)
+        if cible not in dict(VoiceMemo.Cible.choices):
+            cible = VoiceMemo.Cible.GENERAL
+        memo = VoiceMemo.objects.create(
+            company=interv.company, intervention=interv, cible=cible,
+            audio=att, created_by=request.user)
+        # F14 — transcription via interface swappable (no-op pose le libellé).
+        field_capture.transcribe_memo(memo)
+        return Response(VoiceMemoSerializer(
+            memo, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='modifier-memo',
+            permission_classes=[IsResponsableOrAdmin])
+    def modifier_memo(self, request, pk=None):
+        """F14 — édite la transcription d'un mémo (l'audio reste source de
+        vérité). Corps : {"memo": <id>, "transcript": str}."""
+        interv = self.get_object()
+        memo = interv.voice_memos.filter(id=request.data.get('memo')).first()
+        if memo is None:
+            return Response({'detail': 'Mémo inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if 'transcript' in request.data:
+            memo.transcript = request.data.get('transcript') or ''
+            memo.transcrit = True
+            memo.save(update_fields=['transcript', 'transcrit'])
+        return Response(VoiceMemoSerializer(
+            memo, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='supprimer-memo',
+            permission_classes=[IsResponsableOrAdmin])
+    def supprimer_memo(self, request, pk=None):
+        """F13 — supprime un mémo vocal (objet audio + enregistrement). Corps :
+        {"memo": <id>}."""
+        from apps.records.storage import delete_attachment
+        interv = self.get_object()
+        memo = interv.voice_memos.filter(id=request.data.get('memo')).first()
+        if memo is None:
+            return Response({'detail': 'Mémo inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if memo.audio_id:
+            delete_attachment(memo.audio.file_key)
+            memo.audio.delete()
+        memo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── F15 — temps d'équipe ─────────────────────────────────────────────────
+    @action(detail=True, methods=['get'], url_path='crew-time',
+            permission_classes=[IsAnyRole])
+    def crew_time(self, request, pk=None):
+        """F15 — durée sur site + temps de trajet, et jours-homme dérivés."""
+        interv = self.get_object()
+        data = field_capture.crew_time(interv)
+        data['labour_jours'] = field_capture.labour_days_for_intervention(interv)
+        return Response(data)
+
+    # ── F16 — réserves (punch-list) ──────────────────────────────────────────
+    @action(detail=True, methods=['get'], url_path='reserves',
+            permission_classes=[IsAnyRole])
+    def reserves(self, request, pk=None):
+        """F16 — réserves (punch-list) de l'intervention."""
+        interv = self.get_object()
+        return Response(ReserveSerializer(
+            interv.reserves.all(), many=True,
+            context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='ajouter-reserve',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_reserve(self, request, pk=None):
+        """F16 — crée une réserve (description, photo, mémo, assigné). Peut
+        engendrer une intervention de suivi OU un ticket SAV. Corps :
+        description, [assignee], [photo], [memo], [creer_suivi], [creer_ticket]."""
+        interv = self.get_object()
+        company = interv.company
+        assignee = None
+        if request.data.get('assignee'):
+            from authentication.models import CustomUser
+            assignee = CustomUser.objects.filter(
+                id=request.data.get('assignee'), company=company).first()
+        photo = None
+        if request.data.get('photo'):
+            from apps.records.models import Attachment
+            photo = Attachment.objects.filter(
+                id=request.data.get('photo'), company=company).first()
+        memo = None
+        if request.data.get('memo'):
+            memo = interv.voice_memos.filter(
+                id=request.data.get('memo')).first()
+        reserve = Reserve.objects.create(
+            company=company, intervention=interv,
+            description=(request.data.get('description') or '').strip(),
+            assignee=assignee, photo=photo, memo=memo,
+            created_by=request.user)
+        # Suivi optionnel : intervention de suivi (même chantier) et/ou ticket.
+        if request.data.get('creer_suivi'):
+            suivi = Intervention.objects.create(
+                company=company, installation=interv.installation,
+                type_intervention=Intervention.Type.CONTROLE,
+                created_by=request.user)
+            intervention_activity.log_creation(suivi, request.user)
+            reserve.suivi_intervention = suivi
+            reserve.save(update_fields=['suivi_intervention'])
+        if request.data.get('creer_ticket'):
+            ticket = self._spawn_ticket_for_reserve(reserve, request.user)
+            if ticket is not None:
+                reserve.ticket = ticket
+                reserve.save(update_fields=['ticket'])
+        return Response(ReserveSerializer(
+            reserve, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    def _spawn_ticket_for_reserve(self, reserve, user):
+        """F16 — crée un ticket SAV correctif pour une réserve, selon le design
+        SAV existant (référence sans collision)."""
+        from apps.sav.models import Ticket
+        from apps.ventes.utils.references import create_with_reference
+        interv = reserve.intervention
+        inst = interv.installation
+        if inst is None or inst.client_id is None:
+            return None
+        company = reserve.company
+
+        def _create(ref):
+            return Ticket.objects.create(
+                company=company, reference=ref, client=inst.client,
+                installation=inst, type=Ticket.Type.CORRECTIF,
+                description=reserve.description or 'Réserve d\'intervention',
+                created_by=user)
+        return create_with_reference(Ticket, 'SAV', company, _create)
+
+    @action(detail=True, methods=['post'], url_path='modifier-reserve',
+            permission_classes=[IsResponsableOrAdmin])
+    def modifier_reserve(self, request, pk=None):
+        """F16 — édite une réserve (description, assignee). Corps : reserve, ..."""
+        interv = self.get_object()
+        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        if reserve is None:
+            return Response({'detail': 'Réserve inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        fields = []
+        if 'description' in request.data:
+            reserve.description = (request.data.get('description') or '').strip()
+            fields.append('description')
+        if 'assignee' in request.data:
+            from authentication.models import CustomUser
+            reserve.assignee = CustomUser.objects.filter(
+                id=request.data.get('assignee'), company=interv.company).first()
+            fields.append('assignee')
+        if fields:
+            reserve.save(update_fields=fields)
+        return Response(ReserveSerializer(
+            reserve, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='resoudre-reserve',
+            permission_classes=[IsResponsableOrAdmin])
+    def resoudre_reserve(self, request, pk=None):
+        """F16 — résout (ou ré-ouvre) une réserve. Corps : reserve, resolution,
+        [statut]."""
+        interv = self.get_object()
+        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        if reserve is None:
+            return Response({'detail': 'Réserve inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        statut = request.data.get('statut', Reserve.Statut.RESOLUE)
+        reserve.statut = statut
+        reserve.resolution = (request.data.get('resolution') or '').strip()
+        reserve.resolue_le = (timezone.now()
+                              if statut == Reserve.Statut.RESOLUE else None)
+        reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
+        return Response(ReserveSerializer(
+            reserve, context={'request': request}).data)
+
+    # ── F17 — réconciliation du retour d'outillage ──────────────────────────
+    @action(detail=True, methods=['get'], url_path='tool-return',
+            permission_classes=[IsAnyRole])
+    def tool_return(self, request, pk=None):
+        """F17 — état du retour d'outillage : les outils du kit de préparation,
+        rendu/non rendu. Matérialisé depuis le kit à la première consultation."""
+        return self._tool_return_response(self.get_object())
+
+    def _tool_return_response(self, interv):
+        # Amorce les lignes de retour depuis les outils de la préparation.
+        prep = getattr(interv, 'preparation', None)
+        existing = {tr.outil_id for tr in interv.tool_returns.all()}
+        if prep is not None:
+            for ol in prep.outils.all():
+                if ol.outil_id and ol.outil_id not in existing:
+                    ToolReturn.objects.create(
+                        company=interv.company, intervention=interv,
+                        outil=ol.outil)
+                    existing.add(ol.outil_id)
+        return Response(ToolReturnSerializer(
+            interv.tool_returns.select_related(
+                'outil', 'emplacement_retour').all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='cocher-tool-return',
+            permission_classes=[IsResponsableOrAdmin])
+    def cocher_tool_return(self, request, pk=None):
+        """F17 — marque un outil rendu/non rendu + emplacement de retour. Corps :
+        {"ligne": <id>, "rendu": bool, "emplacement": <id|null>}."""
+        interv = self.get_object()
+        self._tool_return_response(interv)
+        tr = interv.tool_returns.filter(id=request.data.get('ligne')).first()
+        if tr is None:
+            return Response({'detail': 'Ligne inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        tr.rendu = bool(request.data.get('rendu', True))
+        fields = ['rendu']
+        if 'emplacement' in request.data:
+            from apps.stock.models import EmplacementStock
+            emp_id = request.data.get('emplacement')
+            tr.emplacement_retour = (
+                EmplacementStock.objects.filter(
+                    id=emp_id, company=interv.company).first()
+                if emp_id else None)
+            fields.append('emplacement_retour')
+        tr.save(update_fields=fields)
+        return Response(ToolReturnSerializer(tr).data)
+
+    @action(detail=True, methods=['post'], url_path='confirmer-tool-return',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer_tool_return(self, request, pk=None):
+        """F17 — confirme le retour d'outillage à la clôture : met à jour le
+        statut + l'emplacement de chaque outil rendu (Disponible) et signale les
+        non rendus (statut maintenu « En intervention »)."""
+        from apps.outillage.models import Outillage
+        interv = self.get_object()
+        self._tool_return_response(interv)
+        non_rendus = []
+        for tr in interv.tool_returns.select_related('outil').all():
+            outil = tr.outil
+            if outil is None:
+                continue
+            if tr.rendu:
+                outil.statut = Outillage.Statut.DISPONIBLE
+                if tr.emplacement_retour_id:
+                    outil.emplacement = tr.emplacement_retour
+                outil.save(update_fields=['statut', 'emplacement'])
+            else:
+                outil.statut = Outillage.Statut.EN_INTERVENTION
+                outil.save(update_fields=['statut'])
+                non_rendus.append(outil.nom)
+            tr.confirme_par = request.user
+            tr.confirme_le = timezone.now()
+            tr.save(update_fields=['confirme_par', 'confirme_le'])
+        msg = "Retour d'outillage confirmé."
+        if non_rendus:
+            msg += f" Non rendus : {', '.join(non_rendus)}."
+        intervention_activity.log_note(interv, request.user, msg)
+        return Response({
+            'non_rendus': non_rendus,
+            'tool_returns': ToolReturnSerializer(
+                interv.tool_returns.all(), many=True).data,
+        })
+
+    # ── F18 — consignes de sécurité (sign-off) ──────────────────────────────
+    @action(detail=True, methods=['get'], url_path='safety',
+            permission_classes=[IsAnyRole])
+    def safety(self, request, pk=None):
+        """F18 — sign-off des consignes de sécurité (checklist configurable)."""
+        interv = self.get_object()
+        signoff = field_capture.ensure_safety_signoff(interv)
+        return Response(SafetySignoffSerializer(signoff).data)
+
+    @action(detail=True, methods=['post'], url_path='cocher-safety',
+            permission_classes=[IsResponsableOrAdmin])
+    def cocher_safety(self, request, pk=None):
+        """F18 — coche/décoche un point de consigne, avec qui + quand. Corps :
+        {"cle": <str>, "coche": bool}."""
+        interv = self.get_object()
+        signoff = field_capture.ensure_safety_signoff(interv)
+        item = signoff.items.filter(cle=request.data.get('cle')).first()
+        if item is None:
+            return Response({'detail': 'Consigne inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        coche = bool(request.data.get('coche', True))
+        item.coche = coche
+        item.coche_par = request.user if coche else None
+        item.coche_le = timezone.now() if coche else None
+        item.save(update_fields=['coche', 'coche_par', 'coche_le'])
+        return Response(SafetySignoffSerializer(signoff).data)
+
+    @action(detail=True, methods=['post'], url_path='signer-safety',
+            permission_classes=[IsResponsableOrAdmin])
+    def signer_safety(self, request, pk=None):
+        """F18 — signe les consignes de sécurité (qui + quand)."""
+        interv = self.get_object()
+        signoff = field_capture.ensure_safety_signoff(interv)
+        signoff.signe = True
+        signoff.signe_par = request.user
+        signoff.signe_le = timezone.now()
+        signoff.save(update_fields=['signe', 'signe_par', 'signe_le'])
+        intervention_activity.log_note(
+            interv, request.user, "Consignes de sécurité signées.")
+        return Response(SafetySignoffSerializer(signoff).data)
+
+    # ── F19 — compte-rendu d'intervention PDF (client-facing) ───────────────
+    @action(detail=True, methods=['get'], url_path='compte-rendu',
+            permission_classes=[IsAnyRole])
+    def compte_rendu(self, request, pk=None):
+        """F19 — compte-rendu d'intervention en PDF. F9 serials, F11 consommation
+        avec justifications, F16 réserves, photos avant/pendant/après, bloc
+        signature « Bon pour accord ». Client-facing : aucun prix d'achat."""
+        from django.http import HttpResponse
+        from . import intervention_pdf
+        interv = self.get_object()
+        # Pousse les n° de série relevés vers le parc installé (F9) avant le PDF.
+        field_capture.push_serials_to_parc(interv, request.user)
+        pdf_bytes = intervention_pdf.compte_rendu_pdf(interv)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="compte-rendu-intervention-{interv.id}.pdf"')
+        return resp
+
+    # ── F23 — code court / QR de l'intervention ──────────────────────────────
+    @action(detail=True, methods=['get'], url_path='code',
+            permission_classes=[IsAnyRole])
+    def code(self, request, pk=None):
+        """F23 — jeton scannable de l'intervention (réutilise l'encodeur N20).
+        Renvoie le jeton + un QR SVG inline ; scanner une étiquette chantier/
+        matériel résout vers cette intervention via /stock/.../resolve."""
+        from apps.stock import labels
+        interv = self.get_object()
+        token = labels.intervention_token(interv.id)
+        return Response({
+            'intervention': interv.id,
+            'token': token,
+            'qr_svg': labels.qr_svg(token),
+        })
+
 
 class ShotListSlotViewSet(TenantMixin, viewsets.ModelViewSet):
     """F7/F8 — créneaux de la shot list (Paramètres → Documentation terrain).
@@ -1046,5 +1709,32 @@ class ShotListSlotViewSet(TenantMixin, viewsets.ModelViewSet):
         if slot.protege:
             return Response(
                 {'detail': "Ce créneau est protégé — désactivez-le plutôt."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
+
+class SafetyChecklistSlotViewSet(TenantMixin, viewsets.ModelViewSet):
+    """F18 — consignes de sécurité configurables (Paramètres → Sécurité).
+    Lecture tout rôle, écriture admin. Les défauts (EPI portés, consignation
+    électrique) sont semés à la première liste ; une consigne protégée garde sa
+    clé. Tout est scopé à la société ; la société est posée côté serveur."""
+    queryset = SafetyChecklistSlot.objects.all()
+    serializer_class = SafetyChecklistSlotSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        if request.user.company_id:
+            field_capture.seed_safety_slots(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        slot = self.get_object()
+        if slot.protege:
+            return Response(
+                {'detail': "Cette consigne est protégée — désactivez-la plutôt."},
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
