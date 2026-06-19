@@ -60,6 +60,15 @@ export default defineConfig({
   site: 'https://taqinor.ma',
   adapter: cloudflare(),
 
+  // i18n — FR par défaut servi à la racine (sans préfixe), EN sous /en/, AR
+  // sous /ar/ (rtl). Additif : les routes FR existantes restent inchangées ;
+  // les pages EN/AR s'ajoutent au fil des incréments.
+  i18n: {
+    defaultLocale: 'fr',
+    locales: ['fr', 'en', 'ar'],
+    routing: { prefixDefaultLocale: false },
+  },
+
   vite: {
     plugins: [tailwindcss()]
   },
