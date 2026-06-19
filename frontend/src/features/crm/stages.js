@@ -53,6 +53,14 @@ export const PRIORITE_LABELS = {
   haute: 'Haute',
 }
 
+// Libellés du marché / type d'installation (miroir Lead.TypeInstallation).
+export const TYPE_INSTALLATION_LABELS = {
+  residentiel: 'Résidentiel',
+  commercial: 'Commercial',
+  industriel: 'Industriel',
+  agricole: 'Agricole',
+}
+
 // Nombre d'étoiles pleines affichées sur la carte (sur 2).
 export const PRIORITE_STARS = { basse: 0, normale: 1, haute: 2 }
 
@@ -135,8 +143,29 @@ export const EMPTY_FILTERS = {
   owner: '',
   priorite: '',
   tag: '',
+  stage: '', // étape du funnel ('' = toutes)
+  type_installation: '', // résidentiel/commercial/industriel/agricole ('' = tous)
+  relance: '', // '' | 'retard' (en retard) | 'semaine' (cette semaine)
   perdus: 'avec', // 'avec' | 'sans' | 'seuls'
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
+}
+
+// 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
+function todayLocalISO() {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const j = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${j}`
+}
+
+// Fin de la semaine courante (dimanche) en 'YYYY-MM-DD', heure locale.
+function endOfWeekLocalISO() {
+  const d = new Date()
+  const dow = (d.getDay() + 6) % 7 // lundi = 0
+  d.setDate(d.getDate() + (6 - dow))
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const j = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${j}`
 }
 
 // Paramètre serveur ?archived=… déduit du filtre (vide = actifs uniquement).
@@ -149,11 +178,25 @@ export const archivedParam = (value) =>
 export function filterLeads(leads, filters) {
   const f = { ...EMPTY_FILTERS, ...(filters ?? {}) }
   const q = f.q.trim().toLowerCase()
+  const today = todayLocalISO()
+  const weekEnd = endOfWeekLocalISO()
   return (leads ?? []).filter((l) => {
     if (f.canal && l.canal !== f.canal) return false
     if (f.owner && (l.owner_nom ?? '') !== f.owner) return false
     if (f.priorite && (l.priorite ?? 'normale') !== f.priorite) return false
     if (f.tag && !tagList(l).includes(f.tag)) return false
+    if (f.stage && l.stage !== f.stage) return false
+    if (f.type_installation && (l.type_installation ?? '') !== f.type_installation) {
+      return false
+    }
+    if (f.relance === 'retard') {
+      if (!l.relance_date || l.relance_date >= today) return false
+    }
+    if (f.relance === 'semaine') {
+      if (!l.relance_date || l.relance_date < today || l.relance_date > weekEnd) {
+        return false
+      }
+    }
     if (f.perdus === 'sans' && isPerdu(l)) return false
     if (f.perdus === 'seuls' && !isPerdu(l)) return false
     if (!q) return true
@@ -163,6 +206,7 @@ export function filterLeads(leads, filters) {
       (l.societe ?? '').toLowerCase().includes(q) ||
       (l.email ?? '').toLowerCase().includes(q) ||
       (l.telephone ?? '').includes(f.q.trim()) ||
+      (l.whatsapp ?? '').includes(f.q.trim()) ||
       (l.ville ?? '').toLowerCase().includes(q)
     )
   })

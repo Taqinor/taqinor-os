@@ -135,6 +135,13 @@ def website_lead_webhook(request):
                 setattr(existing, key, value)
             existing.save()
             lead, created = existing, False
+            # Trace la mise à jour idempotente dans le chatter (les champs ont
+            # pu être écrasés par le re-POST du site dans la fenêtre < 1 min).
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body='Mis à jour via le site web (doublon < 1 min)',
+            )
         else:
             # Responsable par défaut de la société (Paramètres) si configuré.
             from .services import default_responsable_for

@@ -56,7 +56,10 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nom', 'prenom', 'email', 'telephone']
+    search_fields = [
+        'nom', 'prenom', 'email', 'telephone',
+        'ice', 'if_fiscal', 'rc', 'cin',
+    ]
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
 
@@ -332,16 +335,42 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         """Atelier doublons : scanne TOUS les leads de la société et renvoie les
         clusters de doublons probables (téléphone / email / nom normalisé), avec
         pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
-        from .services import find_duplicate_clusters, _completeness
+        from .services import (
+            find_duplicate_clusters, _completeness, cluster_match_keys,
+            _MERGE_FILL_FIELDS,
+        )
+        from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
         clusters, _ = find_duplicate_clusters(
             request.user.company, include_archived=include_archived)
+        # Libellés FR des champs comblés à la fusion (aperçu avant confirmation).
+        field_labels = activity.TRACKED_FIELDS
         out = []
         for group in clusters:
             suggested = max(
                 group, key=lambda le: (_completeness(le), le.date_creation))
+            others = [d for d in group if d.id != suggested.id]
+            # Aperçu de fusion : devis + activités migrés, et champs vides du
+            # survivant que les absorbés viendraient combler.
+            devis_migres = sum(d.devis.count() for d in others)
+            activites_migrees = sum(
+                LeadActivity.objects.filter(lead=d).count() for d in others)
+            champs_combles = []
+            for field in _MERGE_FILL_FIELDS:
+                cur = getattr(suggested, field, None)
+                if cur in (None, '', False):
+                    if any(getattr(d, field, None) not in (None, '', False)
+                           for d in others):
+                        champs_combles.append(field_labels.get(field, field))
             out.append({
                 'suggested_survivor_id': suggested.id,
+                'match_keys': cluster_match_keys(group),
+                'merge_preview': {
+                    'devis': devis_migres,
+                    'activites': activites_migrees,
+                    'fiches_archivees': len(others),
+                    'champs_combles': champs_combles,
+                },
                 'members': [
                     {
                         'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
@@ -349,6 +378,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                         'email': d.email, 'ville': d.ville, 'stage': d.stage,
                         'is_archived': d.is_archived,
                         'nb_devis': d.devis.count(),
+                        'nb_activites': LeadActivity.objects.filter(lead=d).count(),
                         'completeness': _completeness(d),
                         'date_creation': d.date_creation.isoformat(),
                     }

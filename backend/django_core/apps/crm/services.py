@@ -18,7 +18,7 @@ import re as _re
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Client, Lead, LeadActivity
+from .models import Canal, Client, Lead, LeadActivity
 
 # Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
 # (couche séparée et permanente — CLAUDE.md règles #2/#4) :
@@ -261,6 +261,32 @@ def find_duplicate_clusters(company, include_archived=False):
     return clusters, by_id
 
 
+def cluster_match_keys(group):
+    """Clés de rapprochement PARTAGÉES par au moins deux membres d'un cluster
+    (pour expliquer dans l'UI POURQUOI ils sont regroupés) : 'telephone',
+    'email' et/ou 'nom'. Renvoie une liste ordonnée et stable."""
+    out = []
+    checks = (
+        ('telephone', lambda le: normalize_phone(le.telephone)),
+        ('email', lambda le: normalize_email(le.email)),
+        ('nom', lambda le: normalize_name(le.nom, le.prenom, le.societe)),
+    )
+    for label, keyer in checks:
+        seen = {}
+        shared = False
+        for le in group:
+            val = keyer(le)
+            if not val:
+                continue
+            if val in seen:
+                shared = True
+                break
+            seen[val] = True
+        if shared:
+            out.append(label)
+    return out
+
+
 def find_duplicate_leads(lead):
     """Leads probablement en double : même téléphone OU email normalisé, même
     société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
@@ -393,6 +419,14 @@ def resolve_client_for_lead(lead: Lead) -> Client:
 
     lead.client = client
     lead.save(update_fields=['client'])
+    # Trace la résolution/création du client dans le chatter du lead (geste
+    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
+    # (résolution déclenchée par le générateur de devis) → entrée système.
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Client lié : {nom_client}")
     return client
 
 
@@ -408,10 +442,13 @@ def resolve_client_for_lead(lead: Lead) -> Client:
 COLD = 'COLD'  # état de PARKING (pas une régression) — cf. _rang_funnel.
 
 BULK_ACTIONS = {
-    'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_relance',
-    'clear_relance', 'set_perdu', 'unset_perdu', 'archive', 'unarchive',
-    'delete',
+    'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_canal',
+    'set_priorite', 'set_relance', 'clear_relance', 'set_perdu',
+    'unset_perdu', 'archive', 'unarchive', 'delete',
 }
+
+# Priorités valides (clés du modèle Lead.Priorite).
+_PRIORITES = {'basse', 'normale', 'haute'}
 # Actions réservées à l'admin (la suppression définitive l'est déjà partout).
 BULK_ADMIN_ONLY = {'delete'}
 
@@ -473,10 +510,25 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
     owner_obj = None
     tag = (params.get('tag') or '').strip() if op in ('add_tag', 'remove_tag') else None
     relance = None
+    target_canal = None
+    target_priorite = None
     if op == 'set_stage':
         target_stage = params.get('stage')
         if target_stage not in stages.STAGES:
             raise ValueError("Étape cible invalide.")
+    elif op == 'set_canal':
+        target_canal = (params.get('canal') or '').strip()
+        if not target_canal:
+            raise ValueError("Canal cible vide.")
+        # Le canal doit appartenir au référentiel géré (s'il existe).
+        if (Canal.objects.filter(company=company).exists()
+                and not Canal.objects.filter(
+                    company=company, cle=target_canal, archived=False).exists()):
+            raise ValueError("Canal inconnu.")
+    elif op == 'set_priorite':
+        target_priorite = params.get('priorite')
+        if target_priorite not in _PRIORITES:
+            raise ValueError("Priorité invalide.")
     elif op == 'reassign':
         owner_obj = _resolve_owner(company, params.get('owner'))
         if params.get('owner') not in (None, '', 'null') and owner_obj is None:
@@ -532,6 +584,26 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 lead.save(update_fields=['stage'])
                 activity.log_bulk_change(lead, user, 'stage', old, target_stage)
                 # SIGNED_QUOTE_CAPI_HOOK: entrée manuelle en masse dans SIGNED.
+                updated += 1
+
+            elif op == 'set_canal':
+                if lead.canal == target_canal:
+                    unchanged += 1
+                    continue
+                old = lead.canal
+                lead.canal = target_canal
+                lead.save(update_fields=['canal'])
+                activity.log_bulk_change(lead, user, 'canal', old, target_canal)
+                updated += 1
+
+            elif op == 'set_priorite':
+                if (lead.priorite or 'normale') == target_priorite:
+                    unchanged += 1
+                    continue
+                old = lead.priorite
+                lead.priorite = target_priorite
+                lead.save(update_fields=['priorite'])
+                activity.log_bulk_change(lead, user, 'priorite', old, target_priorite)
                 updated += 1
 
             elif op == 'set_relance':

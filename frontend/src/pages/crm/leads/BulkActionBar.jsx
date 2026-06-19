@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { Download, X } from 'lucide-react'
 import {
-  PIPELINE_STAGES, STAGE_LABELS,
+  PIPELINE_STAGES, STAGE_LABELS, CANAL_LABELS, PRIORITE_LABELS,
 } from '../../../features/crm/stages'
 import {
   Button, Input,
@@ -18,12 +18,15 @@ import {
 const NO_OWNER = '__none'
 
 export default function BulkActionBar({
-  count, users = [], canDelete, busy, onAction, onExport, onClear,
+  count, users = [], canDelete, hasArchivedSelected = false,
+  busy, onAction, onExport, onClear,
 }) {
   // panneau ouvert ('reassign' | 'stage' | 'tag' | 'relance' | 'perdu' | null)
   const [panel, setPanel] = useState(null)
   const [owner, setOwner] = useState('')
   const [stage, setStage] = useState(PIPELINE_STAGES[0])
+  const [canal, setCanal] = useState(Object.keys(CANAL_LABELS)[0])
+  const [priorite, setPriorite] = useState('normale')
   const [tag, setTag] = useState('')
   const [relance, setRelance] = useState('')
   const [motif, setMotif] = useState('')
@@ -47,6 +50,14 @@ export default function BulkActionBar({
           Étape
         </Button>
         <Button type="button" size="sm" variant="outline"
+                onClick={() => toggle('canal')} disabled={busy}>
+          Canal
+        </Button>
+        <Button type="button" size="sm" variant="outline"
+                onClick={() => toggle('priorite')} disabled={busy}>
+          Priorité
+        </Button>
+        <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('tag')} disabled={busy}>
           Tag
         </Button>
@@ -63,7 +74,10 @@ export default function BulkActionBar({
           Archiver
         </Button>
         <Button type="button" size="sm" variant="outline"
-                onClick={() => run('unarchive')} disabled={busy}>
+                onClick={() => run('unarchive')}
+                disabled={busy || !hasArchivedSelected}
+                title={hasArchivedSelected
+                  ? undefined : 'Aucun lead archivé sélectionné'}>
           Restaurer
         </Button>
         <Button type="button" size="sm" variant="outline"
@@ -126,6 +140,40 @@ export default function BulkActionBar({
           <span className="bulk-hint">
             Ne recule jamais une étape ; ignore les leads Perdu.
           </span>
+        </div>
+      )}
+
+      {panel === 'canal' && (
+        <div className="bulk-panel">
+          <Select value={canal} onValueChange={setCanal}>
+            <SelectTrigger className="bulk-field"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(CANAL_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm"
+                  onClick={() => run('set_canal', { canal })}>
+            Appliquer
+          </Button>
+        </div>
+      )}
+
+      {panel === 'priorite' && (
+        <div className="bulk-panel">
+          <Select value={priorite} onValueChange={setPriorite}>
+            <SelectTrigger className="bulk-field"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(PRIORITE_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm"
+                  onClick={() => run('set_priorite', { priorite })}>
+            Appliquer
+          </Button>
         </div>
       )}
 

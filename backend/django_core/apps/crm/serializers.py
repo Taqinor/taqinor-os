@@ -29,6 +29,8 @@ class _CurrentCompanyDefault:
 
 class ClientSerializer(serializers.ModelSerializer):
     devis_count = serializers.SerializerMethodField()
+    total_facture_ttc = serializers.SerializerMethodField()
+    total_paye = serializers.SerializerMethodField()
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
 
     class Meta:
@@ -37,6 +39,26 @@ class ClientSerializer(serializers.ModelSerializer):
 
     def get_devis_count(self, obj):
         return obj.devis.count()
+
+    def get_total_facture_ttc(self, obj):
+        """Valeur cumulée FACTURÉE (TTC) du client : somme des factures non
+        annulées. total_ttc est une propriété calculée → agrégation en Python.
+        Aucun prix d'achat ni marge n'intervient (totaux client-facing)."""
+        from decimal import Decimal
+        total = Decimal('0')
+        for f in obj.factures.all():
+            if f.statut != 'annulee':
+                total += f.total_ttc
+        return str(total)
+
+    def get_total_paye(self, obj):
+        """Total ENCAISSÉ du client (somme des montant_paye des factures)."""
+        from decimal import Decimal
+        total = Decimal('0')
+        for f in obj.factures.all():
+            if f.statut != 'annulee':
+                total += f.montant_paye
+        return str(total)
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -120,7 +142,40 @@ class LeadSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Utilisateur inconnu.')
         return value
 
+    def validate_canal(self, value):
+        """Le canal doit appartenir aux canaux GÉRÉS de la société (Paramètres →
+        CRM) en plus des choices figés du modèle. Vide accepté. Source unique :
+        le référentiel Canal — un PATCH avec une clé inconnue est rejeté 400."""
+        if value in (None, ''):
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return value
+        from .models import Canal as CanalModel
+        existe = CanalModel.objects.filter(
+            company=company, cle=value, archived=False).exists()
+        # Le référentiel peut ne pas être amorcé (lazy seed) : on tolère alors
+        # les clés du modèle pour ne pas casser un import/création légitime.
+        if not existe and CanalModel.objects.filter(company=company).exists():
+            raise serializers.ValidationError('Canal inconnu.')
+        return value
+
     def validate(self, attrs):
+        # Garde funnel côté serveur (aligné sur la règle bulk _bulk_stage_allowed):
+        # en MISE À JOUR, un lead perdu ne change pas d'étape, et on ne recule
+        # jamais dans l'entonnoir (Froid = parking, jamais une régression).
+        if self.instance is not None and 'stage' in attrs:
+            from .services import _bulk_stage_allowed
+            current = self.instance.stage
+            target = attrs['stage']
+            if target != current:
+                if self.instance.perdu:
+                    raise serializers.ValidationError(
+                        {'stage': 'Lead perdu — étape non modifiable.'})
+                if not _bulk_stage_allowed(current, target):
+                    raise serializers.ValidationError(
+                        {'stage': "On ne recule pas une étape."})
         # Champs personnalisés (T11) : valider/nettoyer contre les définitions
         # du module « lead ». À la création on valide toujours (champs
         # obligatoires) ; en mise à jour, uniquement si custom_data est fourni
