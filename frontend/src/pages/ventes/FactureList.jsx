@@ -839,6 +839,12 @@ export default function FactureList() {
                               <FileText /> PDF
                             </Button>
                           )}
+                          {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                            <Button size="sm" variant="outline" onClick={() => openAvoirModal(f)}
+                                    title="Créer un avoir (note de crédit)">
+                              Avoir
+                            </Button>
+                          )}
                           {/* Actions secondaires regroupées : tiennent sans déborder
                               sur écran étroit (menu compact « Actions »). */}
                           {(['emise', 'payee', 'en_retard'].includes(f.statut)
@@ -850,11 +856,6 @@ export default function FactureList() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                                  <DropdownMenuItem onClick={() => openAvoirModal(f)}>
-                                    Avoir (note de crédit)
-                                  </DropdownMenuItem>
-                                )}
                                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (
                                   <DropdownMenuItem onClick={() => handleWhatsApp(f, 'facture')}>
                                     <MessageCircle /> WhatsApp
