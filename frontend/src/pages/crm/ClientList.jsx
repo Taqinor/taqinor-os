@@ -71,6 +71,28 @@ export default function ClientList() {
     }
   }
 
+  // Suppression EN MASSE (admin) : ne supprime QUE les clients sans devis lié
+  // (devis_count===0). Les clients protégés par un devis sont ignorés avec un
+  // message FR clair — jamais d'orphelinage de pièces financières.
+  const bulkDelete = async (rows, _keys, clear) => {
+    const supprimables = rows.filter((c) => (c.devis_count ?? 0) === 0)
+    const proteges = rows.length - supprimables.length
+    if (!supprimables.length) {
+      alert('Aucun client supprimable : tous les clients sélectionnés ont des '
+        + 'devis liés (protégés).')
+      return
+    }
+    const msg = proteges > 0
+      ? `Supprimer ${supprimables.length} client(s) sans devis ? `
+        + `${proteges} client(s) avec devis seront ignorés (protégés).`
+      : `Supprimer ${supprimables.length} client(s) sélectionné(s) ?`
+    if (!window.confirm(msg)) return
+    for (const c of supprimables) {
+      try { await dispatch(deleteClient(c.id)).unwrap() } catch { /* ignoré */ }
+    }
+    clear?.()
+  }
+
   // Export Excel : DataTable nous passe le jeu courant (filtré par sa recherche).
   const exportRows = async (rows) => {
     const ids = rows.map(c => c.id)
@@ -111,9 +133,13 @@ export default function ClientList() {
       id: 'ice',
       header: 'ICE',
       width: 160,
-      accessor: (c) => c.ice || '',
-      cell: (value) => (value
-        ? <span className="font-mono text-xs">{value}</span>
+      // Affiche l'ICE mais rend recherchables tous les identifiants légaux
+      // (ICE/IF/RC/CIN) : l'accesseur les concatène pour la recherche globale,
+      // la cellule n'affiche que l'ICE depuis la ligne.
+      accessor: (c) => [c.ice, c.if_fiscal, c.rc, c.cin].filter(Boolean).join(' '),
+      exportValue: (c) => c.ice || '',
+      cell: (_value, c) => (c.ice
+        ? <span className="font-mono text-xs">{c.ice}</span>
         : <span className="text-muted-foreground">—</span>),
     },
     {
@@ -141,6 +167,31 @@ export default function ClientList() {
       ),
     },
     {
+      id: 'valeur',
+      header: 'Valeur client',
+      align: 'right',
+      numeric: true,
+      width: 150,
+      searchable: false,
+      // Total facturé (TTC) cumulé, avec l'encaissé en sous-ligne. Montants
+      // client-facing uniquement (aucun prix d'achat ni marge).
+      accessor: (c) => Number(c.total_facture_ttc ?? 0),
+      cell: (_value, c) => {
+        const facture = Number(c.total_facture_ttc ?? 0)
+        const paye = Number(c.total_paye ?? 0)
+        if (!facture && !paye) return <span className="text-muted-foreground">—</span>
+        return (
+          <span className="flex flex-col items-end leading-tight">
+            <span className="font-medium">{facture.toLocaleString('fr-MA')} MAD</span>
+            <span className="text-xs text-muted-foreground">
+              Payé : {paye.toLocaleString('fr-MA')} MAD
+            </span>
+          </span>
+        )
+      },
+      exportValue: (c) => Number(c.total_facture_ttc ?? 0),
+    },
+    {
       id: 'devis_count',
       header: 'Devis',
       align: 'right',
@@ -148,7 +199,21 @@ export default function ClientList() {
       width: 90,
       searchable: false,
       accessor: (c) => c.devis_count ?? 0,
-      cell: (value) => <Badge tone={value ? 'info' : 'neutral'}>{value}</Badge>,
+      // La pastille devient un lien vers la liste des devis pré-filtrée sur ce
+      // client (uniquement si le client a au moins un devis).
+      cell: (value, c) => (value ? (
+        <button
+          type="button"
+          className="appearance-none border-0 bg-transparent p-0"
+          title="Voir les devis de ce client"
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate(`/ventes/devis?client=${c.id}`)
+          }}
+        >
+          <Badge tone="info">{value}</Badge>
+        </button>
+      ) : <Badge tone="neutral">{value}</Badge>),
     },
     {
       id: 'date_creation',
@@ -227,28 +292,50 @@ export default function ClientList() {
                      onDone={() => dispatch(fetchClients())} />
       )}
 
-      <div className="mb-3">
-        <Segmented
-          options={TYPE_FILTERS}
-          value={typeFilter}
-          onChange={setTypeFilter}
-          aria-label="Filtrer par type de client"
-        />
-      </div>
+      {clients.length === 0 ? (
+        // État vide actionnable : un bouton principal câblé à la création.
+        <div className="empty-state-block" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+          <p style={{ marginBottom: '1rem' }}>
+            Aucun client pour le moment. Créez votre premier client pour démarrer.
+          </p>
+          <Button onClick={openNew}>
+            <Plus /> Nouveau client
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="mb-3">
+            <Segmented
+              options={TYPE_FILTERS}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              aria-label="Filtrer par type de client"
+            />
+          </div>
 
-      <DataTable
-        data={visibleClients}
-        columns={columns}
-        getRowId={(c) => c.id}
-        searchable
-        searchPlaceholder="Rechercher nom, email, tél, ICE…"
-        rowActions={rowActions}
-        onExport={exportRows}
-        exportName="clients"
-        emptyTitle="Aucun client"
-        emptyDescription="Créez votre premier client pour démarrer."
-        aria-label="Liste des clients"
-      />
+          <DataTable
+            data={visibleClients}
+            columns={columns}
+            getRowId={(c) => c.id}
+            searchable
+            searchPlaceholder="Rechercher nom, email, tél, ICE, IF, RC, CIN…"
+            rowActions={rowActions}
+            selectable={role === 'admin'}
+            bulkActions={role === 'admin' ? (rows, _keys, clear) => [{
+              id: 'bulk-delete',
+              label: 'Supprimer (sans devis)',
+              icon: Trash2,
+              destructive: true,
+              onClick: () => bulkDelete(rows, _keys, clear),
+            }] : undefined}
+            onExport={exportRows}
+            exportName="clients"
+            emptyTitle="Aucun résultat"
+            emptyDescription="Aucun client ne correspond à ces filtres."
+            aria-label="Liste des clients"
+          />
+        </>
+      )}
     </div>
   )
 }
