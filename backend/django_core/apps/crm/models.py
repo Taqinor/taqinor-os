@@ -38,6 +38,18 @@ class Client(models.Model):
     if_fiscal = models.CharField(max_length=30, blank=True, null=True)
     rc = models.CharField(max_length=30, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
+    # Traçabilité (additif) : qui a créé le client (forcé côté serveur) et
+    # date de dernière modification. created_by est nullable (clients importés /
+    # créés depuis un lead sans utilisateur courant) et SET_NULL pour ne jamais
+    # perdre un client si l'utilisateur est supprimé.
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clients_crees',
+    )
+    date_modification = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
     custom_data = models.JSONField(null=True, blank=True)
 

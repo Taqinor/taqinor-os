@@ -343,3 +343,89 @@ class TestClientExportColumns(TestCase):
         resp = export_clients_xlsx([c])
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(CLIENT_EXPORT_HEADERS), 12)
+
+
+class TestClientTracabilite(TestCase):
+    """L16 — Client.created_by est forcé côté serveur (jamais lu du corps) et
+    date_modification est exposée + se met à jour à la modification."""
+
+    def setUp(self):
+        self.company = make_company('refine-cli-trace', 'Refine Cli Trace')
+        self.admin = User.objects.create_user(
+            username='trace-admin', password='x', company=self.company,
+            role_legacy='admin')
+        self.autre = User.objects.create_user(
+            username='trace-autre', password='x', company=self.company,
+            role_legacy='admin')
+        self.api = make_api(self.admin)
+
+    def test_created_by_forced_to_request_user(self):
+        # Le corps tente d'usurper created_by → ignoré, c'est l'utilisateur
+        # courant qui est enregistré.
+        resp = self.api.post('/api/django/crm/clients/', {
+            'nom': 'Traçable', 'email': 'trace@ex.ma',
+            'created_by': self.autre.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        from apps.crm.models import Client
+        c = Client.objects.get(email='trace@ex.ma')
+        self.assertEqual(c.created_by_id, self.admin.id)
+
+    def test_serializer_exposes_created_by_and_date_modification(self):
+        resp = self.api.post('/api/django/crm/clients/', {
+            'nom': 'Lecture', 'email': 'lecture@ex.ma',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        data = resp.json()
+        self.assertEqual(data['created_by'], self.admin.id)
+        self.assertEqual(data['created_by_nom'], 'trace-admin')
+        self.assertIn('date_modification', data)
+        self.assertTrue(data['date_modification'])
+
+
+class TestClientDocumentsPanel(TestCase):
+    """L4 — GET /crm/clients/<id>/documents/ liste devis/factures/chantiers du
+    client, borné à la société (lecture seule)."""
+
+    def setUp(self):
+        self.company = make_company('refine-cli-docs', 'Refine Cli Docs')
+        self.admin = User.objects.create_user(
+            username='docs-admin', password='x', company=self.company,
+            role_legacy='admin')
+        self.api = make_api(self.admin)
+        from apps.crm.models import Client
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Docs Client', email='docs@ex.ma')
+
+    def test_empty_client_returns_three_empty_lists(self):
+        url = f'/api/django/crm/clients/{self.client_obj.id}/documents/'
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertEqual(data['devis'], [])
+        self.assertEqual(data['factures'], [])
+        self.assertEqual(data['chantiers'], [])
+
+    def test_lists_client_devis(self):
+        from apps.ventes.models import Devis
+        Devis.objects.create(
+            company=self.company, client=self.client_obj, reference='DV-001')
+        url = f'/api/django/crm/clients/{self.client_obj.id}/documents/'
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertEqual(len(data['devis']), 1)
+        row = data['devis'][0]
+        self.assertEqual(row['reference'], 'DV-001')
+        self.assertIn('statut', row)
+        self.assertIn('total_ttc', row)
+
+    def test_other_company_client_not_visible(self):
+        # Un client d'une autre société renvoie 404 (portée TenantMixin).
+        from apps.crm.models import Client
+        autre = make_company('refine-cli-docs-2', 'Autre Docs')
+        autre_client = Client.objects.create(
+            company=autre, nom='Autre', email='autre@ex.ma')
+        url = f'/api/django/crm/clients/{autre_client.id}/documents/'
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 404)

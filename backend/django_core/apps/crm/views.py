@@ -68,8 +68,16 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         # clients rattachés à ses documents/leads visibles. 'all' → inchangé.
         return scope_client_queryset(super().get_queryset(), self.request.user)
 
+    def perform_create(self, serializer):
+        # Traçabilité (L16) : société ET créateur forcés côté serveur — jamais
+        # acceptés du corps de la requête.
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + ['export_xlsx', 'documents']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
@@ -90,6 +98,62 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
         return export_clients_xlsx(qs.order_by('nom'))
+
+    @action(detail=True, methods=['get'], url_path='documents',
+            permission_classes=[IsAnyRole])
+    def documents(self, request, pk=None):
+        """Panneau détail (L4) : devis, factures et chantiers liés à un client.
+
+        Lecture seule, bornée à la société courante (get_object passe par la
+        portée TenantMixin + visibilité). Référence / statut / total uniquement
+        — aucun prix d'achat ni marge n'apparaît (sortie client-facing)."""
+        client = self.get_object()
+
+        def _statut(obj):
+            try:
+                return obj.get_statut_display()
+            except Exception:
+                return getattr(obj, 'statut', None)
+
+        def _date(obj):
+            # Devis → date_creation ; Facture → date_emission.
+            d = getattr(obj, 'date_creation', None) \
+                or getattr(obj, 'date_emission', None)
+            return d.isoformat() if d else None
+
+        devis = [
+            {
+                'id': d.id,
+                'reference': d.reference,
+                'statut': _statut(d),
+                'total_ttc': str(d.total_ttc),
+                'date': _date(d),
+            }
+            for d in client.devis.all().order_by('-date_creation')
+        ]
+        factures = [
+            {
+                'id': f.id,
+                'reference': f.reference,
+                'statut': _statut(f),
+                'total_ttc': str(f.total_ttc),
+                'date': _date(f),
+            }
+            for f in client.factures.all().order_by('-date_emission')
+        ]
+        chantiers = [
+            {
+                'id': i.id,
+                'reference': i.reference,
+                'statut': _statut(i),
+            }
+            for i in client.installations.all().order_by('-id')
+        ]
+        return Response({
+            'devis': devis,
+            'factures': factures,
+            'chantiers': chantiers,
+        })
 
     def destroy(self, request, *args, **kwargs):
         # Un client avec des devis est PROTÉGÉ (pas de cascade) : message

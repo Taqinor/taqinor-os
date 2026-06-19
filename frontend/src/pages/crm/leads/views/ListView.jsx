@@ -1,7 +1,8 @@
 // Vue LISTE des leads CRM — table dense et triable, façon Odoo.
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
-import { useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { MoreHorizontal } from 'lucide-react'
 import { useDispatch, useSelector } from 'react-redux'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import {
@@ -18,7 +19,27 @@ import {
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
-import { Button, Checkbox } from '../../../../ui'
+import {
+  Button, Checkbox, IconButton,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from '../../../../ui'
+
+const MOBILE_QUERY = '(max-width: 768px)'
+
+// Vrai sous 768px — les actions de ligne se replient alors dans un menu « ⋯ ».
+function useIsMobile() {
+  const [mobile, setMobile] = useState(
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY)
+    const onChange = (e) => setMobile(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return mobile
+}
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 const STAGE_OPTIONS = PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s }))
@@ -94,6 +115,7 @@ export default function ListView({
   const dispatch = useDispatch()
   const role = useSelector((s) => s.auth.role)
   const canDelete = role === 'admin' // règle existante : destroy = admin
+  const isMobile = useIsMobile()
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [busyId, setBusyId] = useState(null)
@@ -337,76 +359,95 @@ export default function ListView({
                     onSave={(v) => onInlineSave(lead, 'tags', v)}
                   />
                 </td>
-                <td data-label="Actions">
-                  <div className="actions-cell">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onOpenLead(lead)
-                      }}
-                    >
-                      Éditer
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="gen-btn-orange"
-                      disabled={!lead.devis_auto?.pret}
-                      title={lead.devis_auto?.pret
-                        ? 'Devis auto'
-                        : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onAutoQuote(lead)
-                      }}
-                    >
-                      ⚡ Devis auto
-                    </Button>
-                    {lead.is_archived ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={busyId === lead.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onRestore(lead)
-                        }}
-                      >
-                        Restaurer
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={busyId === lead.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onArchive(lead)
-                        }}
-                      >
-                        Archiver
-                      </Button>
-                    )}
-                    {canDelete && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        disabled={busyId === lead.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onDelete(lead)
-                        }}
-                      >
-                        Supprimer
-                      </Button>
-                    )}
-                  </div>
+                <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
+                  {(() => {
+                    // Actions de ligne dans l'ordre — partagées entre l'affichage
+                    // boutons (desktop) et le menu « ⋯ » (mobile).
+                    const actions = [
+                      {
+                        id: 'edit', label: 'Éditer',
+                        onClick: () => onOpenLead(lead),
+                      },
+                      {
+                        id: 'devis', label: '⚡ Devis auto',
+                        disabled: !lead.devis_auto?.pret,
+                        title: lead.devis_auto?.pret
+                          ? 'Devis auto'
+                          : (lead.devis_auto?.message ?? 'Devis auto indisponible'),
+                        onClick: () => onAutoQuote(lead),
+                      },
+                      lead.is_archived
+                        ? {
+                          id: 'restore', label: 'Restaurer',
+                          disabled: busyId === lead.id,
+                          onClick: () => onRestore(lead),
+                        }
+                        : {
+                          id: 'archive', label: 'Archiver',
+                          disabled: busyId === lead.id,
+                          onClick: () => onArchive(lead),
+                        },
+                    ]
+                    if (canDelete) {
+                      actions.push({
+                        id: 'delete', label: 'Supprimer', destructive: true,
+                        disabled: busyId === lead.id,
+                        onClick: () => onDelete(lead),
+                      })
+                    }
+                    if (isMobile) {
+                      // Mobile : un seul bouton « ⋯ » ouvre le menu d'actions.
+                      return (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton
+                              label="Actions du lead"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                            >
+                              <MoreHorizontal />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            {actions.map((a) => (
+                              <Fragment key={a.id}>
+                                {a.destructive && <DropdownMenuSeparator />}
+                                <DropdownMenuItem
+                                  destructive={a.destructive}
+                                  disabled={a.disabled}
+                                  onSelect={() => a.onClick()}
+                                >
+                                  {a.label}
+                                </DropdownMenuItem>
+                              </Fragment>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )
+                    }
+                    return (
+                      <div className="actions-cell">
+                        {actions.map((a) => (
+                          <Button
+                            key={a.id}
+                            type="button"
+                            size="sm"
+                            variant={a.destructive
+                              ? 'destructive'
+                              : (a.id === 'devis' ? undefined : 'outline')}
+                            className={a.id === 'devis' ? 'gen-btn-orange' : undefined}
+                            disabled={a.disabled}
+                            title={a.title}
+                            onClick={() => a.onClick()}
+                          >
+                            {a.label}
+                          </Button>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </td>
               </tr>
             )

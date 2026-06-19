@@ -32,10 +32,18 @@ class ClientSerializer(serializers.ModelSerializer):
     total_facture_ttc = serializers.SerializerMethodField()
     total_paye = serializers.SerializerMethodField()
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    # Traçabilité (L16) : qui a créé le client + dernière modification.
+    # created_by est forcé côté serveur (perform_create) — jamais lu du corps.
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    created_by_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
         fields = '__all__'
+        read_only_fields = ['date_modification']
+
+    def get_created_by_nom(self, obj):
+        return getattr(obj.created_by, 'username', None)
 
     def get_devis_count(self, obj):
         return obj.devis.count()
