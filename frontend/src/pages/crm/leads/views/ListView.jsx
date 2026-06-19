@@ -56,6 +56,9 @@ const SORTERS = {
     (PRIO_RANK[a.priorite] ?? 1) - (PRIO_RANK[b.priorite] ?? 1),
   relance: (a, b) =>
     String(a.relance_date).localeCompare(String(b.relance_date)),
+  ville: (a, b) => (a.ville ?? '').localeCompare(b.ville ?? '', 'fr'),
+  telephone: (a, b) =>
+    (a.telephone ?? '').localeCompare(b.telephone ?? '', 'fr'),
 }
 
 const todayISO = () => {
@@ -168,10 +171,14 @@ export default function ListView({
             )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
+            <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
+            <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
+            <th className="m-hide">Facture</th>
             <SortableTh col="canal" label="Canal" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="owner" label="Responsable" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="priorite" label="Priorité" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="relance" label="Relance" sort={sort} onSort={onSort} />
+            <th className="m-hide">Prochaine activité</th>
             <th className="m-hide">Tags</th>
             <th>Actions</th>
           </tr>
@@ -230,6 +237,28 @@ export default function ListView({
                     onSave={(v) => onInlineSave(lead, 'stage', v)}
                   />
                 </td>
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  {lead.telephone ? (
+                    <a className="link-blue" href={`tel:${lead.telephone}`}>
+                      {lead.telephone}
+                    </a>
+                  ) : '—'}
+                </td>
+                <td className="m-hide">{lead.ville || '—'}</td>
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  <InlineEdit
+                    value={lead.facture_hiver ?? ''}
+                    type="number"
+                    disabled={!onInlineSave}
+                    placeholder="+ facture"
+                    display={lead.facture_hiver != null && lead.facture_hiver !== '' ? (
+                      <span>
+                        {Math.round(parseFloat(lead.facture_hiver)).toLocaleString('fr-MA')} MAD
+                      </span>
+                    ) : null}
+                    onSave={(v) => onInlineSave(lead, 'facture_hiver', v === '' ? null : v)}
+                  />
+                </td>
                 <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
                   <AssigneePicker
@@ -269,6 +298,19 @@ export default function ListView({
                     ) : null}
                     onSave={(v) => onInlineSave(lead, 'relance_date', v)}
                   />
+                </td>
+                <td className="m-hide">
+                  {lead.next_activity ? (
+                    <span
+                      className={lead.next_activity.state === 'overdue'
+                        ? 'lv-relance-late' : undefined}
+                      title={lead.next_activity.summary || undefined}
+                    >
+                      {formatDateFR(lead.next_activity.due_date)}
+                      {lead.next_activity.summary
+                        ? ` · ${lead.next_activity.summary}` : ''}
+                    </span>
+                  ) : <span className="lv-muted">—</span>}
                 </td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
                   <InlineEdit
@@ -371,7 +413,7 @@ export default function ListView({
           })}
           {!sorted.length && (
             <tr>
-              <td colSpan={onToggleSelect ? 9 : 8} className="lv-empty">
+              <td colSpan={onToggleSelect ? 13 : 12} className="lv-empty">
                 Aucun lead à afficher avec ces filtres.
               </td>
             </tr>
