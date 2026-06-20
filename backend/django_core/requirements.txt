@@ -40,3 +40,6 @@ httpx==0.28.1
 
 # Server
 gunicorn==22.0.0
+
+# TOTP two-factor auth (2FA opt-in, N96)
+pyotp==2.10.0

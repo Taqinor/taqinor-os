@@ -61,7 +61,26 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
+        from rest_framework.exceptions import ValidationError
+        # Double authentification (2FA, N96) : si le mot de passe est bon mais
+        # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
+        # contour stable (`otp_required: true`) que le frontend sait gérer —
+        # sans divulguer l'état 2FA d'un compte avant que le mot de passe soit
+        # validé.
+        try:
+            response = super().post(request, *args, **kwargs)
+        except ValidationError as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if detail.get('otp_required'):
+                msg = detail.get('detail')
+                if isinstance(msg, (list, tuple)):
+                    msg = msg[0] if msg else None
+                msg = str(msg) if msg else 'Double authentification requise.'
+                return Response(
+                    {'otp_required': True, 'detail': msg},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            raise
         if response.status_code == 200:
             access = response.data.pop('access', None)
             refresh = response.data.pop('refresh', None)
@@ -417,3 +436,140 @@ class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+# ── Double authentification (2FA TOTP) — opt-in par utilisateur (N96) ──────
+_TOTP_ISSUER = 'TAQINOR OS'
+
+
+def _generate_recovery_codes(n=8):
+    """Génère ``n`` codes de secours en clair (8 caractères base32 lisibles).
+
+    Retourne (codes_en_clair, codes_hachés). On ne montre les codes en clair
+    qu'UNE seule fois, à l'activation ; en base on ne garde que les hachages."""
+    import secrets
+    from django.contrib.auth.hashers import make_password
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    plain = [
+        ''.join(secrets.choice(alphabet) for _ in range(8))
+        for _ in range(n)
+    ]
+    hashed = [make_password(c) for c in plain]
+    return plain, hashed
+
+
+class TwoFactorSetupView(APIView):
+    """POST — démarre la configuration 2FA pour l'utilisateur connecté.
+
+    Génère un nouveau secret TOTP et l'URI otpauth (pour le QR code), persiste
+    le secret SANS activer le 2FA (``totp_enabled`` reste False). Tant que le
+    secret n'est pas vérifié, la connexion n'est jamais bloquée."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        import pyotp
+        user = request.user
+        if user.totp_enabled:
+            return Response(
+                {'detail': 'La double authentification est déjà activée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        secret = pyotp.random_base32()
+        user.totp_secret = secret
+        user.totp_enabled = False
+        user.save(update_fields=['totp_secret', 'totp_enabled'])
+        label = user.email or user.username
+        uri = pyotp.TOTP(secret).provisioning_uri(
+            name=label, issuer_name=_TOTP_ISSUER,
+        )
+        return Response({
+            'secret': secret,
+            'otpauth_uri': uri,
+            'issuer': _TOTP_ISSUER,
+            'label': label,
+        })
+
+
+class TwoFactorEnableView(APIView):
+    """POST — vérifie un premier code et active le 2FA.
+
+    Corps : ``{"code": "123456"}``. Sur succès : ``totp_enabled=True`` et
+    renvoie une liste de codes de secours à usage unique (montrés une seule
+    fois)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        import pyotp
+        user = request.user
+        if user.totp_enabled:
+            return Response(
+                {'detail': 'La double authentification est déjà activée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.totp_secret:
+            return Response(
+                {'detail': "Aucune configuration en cours. Démarrez d'abord "
+                           "la configuration de la double authentification."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        code = str(request.data.get('code', '')).strip().replace(' ', '')
+        if not pyotp.TOTP(user.totp_secret).verify(code, valid_window=1):
+            return Response(
+                {'detail': 'Code invalide. Vérifiez le code à 6 chiffres de '
+                           'votre application d\'authentification.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        plain, hashed = _generate_recovery_codes()
+        user.totp_enabled = True
+        user.totp_recovery_codes = hashed
+        user.save(update_fields=['totp_enabled', 'totp_recovery_codes'])
+        return Response({
+            'detail': 'Double authentification activée.',
+            'recovery_codes': plain,
+        })
+
+
+class TwoFactorDisableView(APIView):
+    """POST — désactive le 2FA. Exige un code TOTP/secours valide OU le mot de
+    passe du compte. Efface le secret et les codes de secours."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not user.totp_enabled:
+            return Response(
+                {'detail': 'La double authentification n\'est pas activée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        code = request.data.get('code', '')
+        password = request.data.get('password', '')
+        ok = False
+        if code and user.verify_totp(code):
+            ok = True
+        elif password and user.check_password(password):
+            ok = True
+        if not ok:
+            return Response(
+                {'detail': 'Vérification requise : fournissez un code valide '
+                           'ou votre mot de passe pour désactiver la double '
+                           'authentification.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.totp_enabled = False
+        user.totp_secret = None
+        user.totp_recovery_codes = []
+        user.save(update_fields=[
+            'totp_enabled', 'totp_secret', 'totp_recovery_codes'])
+        return Response({'detail': 'Double authentification désactivée.'})
+
+
+class TwoFactorStatusView(APIView):
+    """GET — état du 2FA pour l'utilisateur connecté (affichage Paramètres)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'enabled': bool(user.totp_enabled),
+            'recovery_codes_remaining': len(user.totp_recovery_codes or []),
+        })

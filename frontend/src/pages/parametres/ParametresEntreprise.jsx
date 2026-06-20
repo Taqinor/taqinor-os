@@ -41,6 +41,12 @@ import MessagesSection from './MessagesSection'
 import EmailSection from './EmailSection'
 import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection from './AvanceSection'
+import SecuriteCompteSection from './SecuriteCompteSection'
+
+// N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
+// Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
+// rester dans le périmètre de ce fichier.
+const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -58,7 +64,9 @@ export default function ParametresEntreprise() {
   // L790 — recherche de réglage : saute à l'onglet contenant un libellé.
   const [search, setSearch] = useState('')
   const searchResults = searchSettings(search)
-  const tabLabel = (key) => (TABS.find(t => t.key === key)?.label ?? key)
+  // Liste d'onglets affichée = onglets partagés + l'onglet N96 (sécurité 2FA).
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB]
+  const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
   const jumpToTab = (key) => { setTab(key); setSearch('') }
 
   const [form, setForm] = useState({
@@ -702,7 +710,7 @@ export default function ParametresEntreprise() {
         {/* ── Onglets (primitif Tabs, défilable sur mobile) ── */}
         <Tabs value={tab} onValueChange={setTab} className="mb-5">
           <TabsList className="pe-tabs-scroll flex w-full justify-start overflow-x-auto">
-            {TABS.map(t => (
+            {allTabs.map(t => (
               <TabsTrigger key={t.key} value={t.key} className="shrink-0">
                 {t.label}
               </TabsTrigger>
@@ -758,6 +766,8 @@ export default function ParametresEntreprise() {
           {/* N89 — clés d'API publiques & webhooks signés (section autonome). */}
           {tab === 'api'      && <ApiWebhooksSection />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
+          {/* N96 — double authentification (2FA, opt-in). Section autonome. */}
+          {tab === 'securite_compte' && <SecuriteCompteSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
