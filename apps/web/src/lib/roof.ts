@@ -62,6 +62,60 @@ export function roofAreaLabel(ring: LngLat[]): string | null {
   return `~${new Intl.NumberFormat('fr-FR').format(Math.round(area))} m²`;
 }
 
+/**
+ * Vrai si deux segments [p1,p2] et [p3,p4] (coordonnées planes) se croisent
+ * franchement (intersection PROPRE : on ignore le simple contact par une
+ * extrémité partagée, ce qui rend les arêtes adjacentes d'un anneau non
+ * croisantes). Test d'orientation standard par produits vectoriels.
+ */
+function segmentsProperlyIntersect(
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number],
+  p4: [number, number],
+): boolean {
+  const cross = (a: [number, number], b: [number, number], c: [number, number]): number =>
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = cross(p3, p4, p1);
+  const d2 = cross(p3, p4, p2);
+  const d3 = cross(p1, p2, p3);
+  const d4 = cross(p1, p2, p4);
+  // Croisement PROPRE : les deux extrémités de chaque segment tombent de part et
+  // d'autre de l'autre droite (signes strictement opposés). Les cas colinéaires /
+  // contacts par extrémité (un d == 0) sont volontairement traités comme « non
+  // croisants » : une arête qui ne fait que toucher un sommet voisin reste simple.
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+/**
+ * Vrai si l'anneau (sommets lng/lat, traité comme FERMÉ : la dernière arête relie
+ * le dernier sommet au premier) est un polygone SIMPLE — aucune paire d'arêtes
+ * NON adjacentes ne se croise (pas de « nœud papillon »). < 3 sommets ⇒ true
+ * (rien à croiser). Pur, sans DOM ni carte → testé (tests/roof.test.ts).
+ *
+ * Indispensable car geodesicAreaM2 sur un anneau croisé renvoie une aire FAUSSE
+ * (la shoelace sphérique s'annule sur les lobes opposés) et le pavage remplirait
+ * une forme aberrante.
+ */
+export function isSimplePolygon(ring: LngLat[]): boolean {
+  if (!Array.isArray(ring) || ring.length < 4) return true;
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const a1 = ring[i];
+    const a2 = ring[(i + 1) % n];
+    // On compare l'arête i aux arêtes j > i+1 qui ne partagent pas de sommet avec
+    // elle. Le `!(i === 0 && j === n - 1)` exclut la paire première/dernière arête,
+    // adjacentes une fois l'anneau fermé.
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      const b1 = ring[j];
+      const b2 = ring[(j + 1) % n];
+      if (segmentsProperlyIntersect(a1, a2, b1, b2)) return false;
+    }
+  }
+  return true;
+}
+
 /** Boîte englobante (lng/lat) d'un anneau : [minLng, minLat, maxLng, maxLat]. */
 export function ringBBox(ring: LngLat[]): [number, number, number, number] {
   let minLng = Infinity;

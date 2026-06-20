@@ -99,7 +99,7 @@ import {
   type PitchedLiveResult,
   type PitchedMarginAxis,
 } from '../lib/estimatorBrainV8';
-import { roofAreaLabel, ringBBox, type LngLat } from '../lib/roof';
+import { isSimplePolygon, roofAreaLabel, ringBBox, type LngLat } from '../lib/roof';
 import {
   obstacleRing,
   obstacleFromDrag,
@@ -1310,6 +1310,14 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   function addVertex(v: LngLat) {
     if (closed) return;
+    // W76 — refuse un point qui ferait CROISER le contour (nœud papillon). isSimplePolygon
+    // traite l'anneau comme FERMÉ (dernier→premier), donc tester [...vertices, v] vérifie à
+    // la fois la nouvelle arête et l'arête de fermeture implicite v→1ᵉʳ sommet. Un anneau
+    // croisé fausse l'aire géodésique (la shoelace s'annule) et le pavage.
+    if (vertices.length >= 3 && !isSimplePolygon([...vertices, v])) {
+      setStatus('Ce point croiserait votre tracé — placez-le ailleurs pour garder un contour simple.');
+      return;
+    }
     vertices.push(v);
     redrawTrace();
     if (vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
@@ -3074,6 +3082,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // — Fermeture du tracé —
   function close() {
     if (closed || vertices.length < 3) return;
+    // W76 — refuse de fermer un contour qui se croise (nœud papillon) : l'aire géodésique
+    // serait fausse et le calepinage remplirait une forme aberrante. On reste à tracer.
+    if (!isSimplePolygon(vertices)) {
+      setStatus('Votre tracé se croise — corrigez le contour (« Effacer » puis re-tracez) avant de fermer.');
+      return;
+    }
     closed = true;
     if (finishBtn) finishBtn.disabled = true;
     let lng = 0;

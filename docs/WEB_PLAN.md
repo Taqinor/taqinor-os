@@ -256,7 +256,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `initialQuery`) race and the slower wins, flying to the wrong address. Add a `geoToken` guard +
   `AbortController` + ~300 ms debounce (mirror the existing `billTimer`). Accept: rapid searches always
   resolve to the last query. File: `roof-tool-pro11.ts`.
-- [ ] **W76 — map: self-intersection guard on the trace.** A bow-tie polygon yields a wrong area
+- [x] **W76 — map: self-intersection guard on the trace.** A bow-tie polygon yields a wrong area
   (spherical shoelace cancels) and a garbage layout; `close()` only checks `< 3` vertices. Add a pure
   `isSimplePolygon(ring)` to `roof.ts` (unit-tested) and call it from `addVertex`/`close` to reject a
   crossing edge with a clear French status. Accept: a self-crossing trace is refused with a message,
@@ -421,3 +421,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state of the site +
   preview lab)*
+- 2026-06-20 — W76: added pure `isSimplePolygon(ring)` to `roof.ts` (proper segment-intersection
+  test, ring treated closed) + unit tests (convex/concave-simple true, bow-tie false); wired into
+  pro-11 `addVertex` (rejects a crossing point) and `close()` (refuses a self-intersecting ring)
+  with clear French status — a bow-tie trace is now refused, never computed.
