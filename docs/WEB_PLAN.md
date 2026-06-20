@@ -313,7 +313,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   entered hours, and size the battery from the annual evening deficit (12-month), not one month. Accept:
   the AC/EV load lands in the right hours; battery count is stable across the month toggle. Files:
   `roof-tool-pro11.ts`, `applianceConsumption.ts` + tests.
-- [ ] **W85 — prefill: correct orientation handoff to the diagnostic.** `prefillLead` writes
+- [x] **W85 — prefill: correct orientation handoff to the diagnostic.** `prefillLead` writes
   `lf-orient = 'sud'` unconditionally, dropping Est-Ouest (flat) and every pitched face
   (Sud-Est/Sud-Ouest/Est/Ouest). Derive the `enrichment.ORIENTATIONS` id from the winning family/azimuth
   (flat) or `facingAzimuthDeg` (pitched: 180→sud, 135→sud-est, 225→sud-ouest, 90→est, 270→ouest).

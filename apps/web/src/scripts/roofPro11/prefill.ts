@@ -33,6 +33,38 @@ export function createPrefill(ctx: Ctx): Prefill {
     return Math.abs((total * WGS84_RADIUS * WGS84_RADIUS) / 2);
   }
 
+  /** W85 — Orientation `enrichment.ORIENTATIONS` déduite de la config GAGNANTE,
+   *  pour que le diagnostic reçoive la VRAIE face (et non « sud » en dur). Toit
+   *  plat : la famille sud ET la famille est-ouest se rapportent au sud (la liste
+   *  d'orientations n'a pas d'« est-ouest »). Toit en pente : on mappe l'azimut de
+   *  face réel (180→sud, 135→sud-est, 225→sud-ouest, 90→est, 270→ouest), au plus
+   *  proche, avec repli « sud ». Lecture PURE de l'état `ctx` — n'écrit rien dans
+   *  le formulaire, ne poste rien. */
+  function leadOrientationId(): string {
+    if (ctx.roofType === 'pitched') {
+      const az = ((ctx.facingAzimuthDeg % 360) + 360) % 360;
+      const targets: { az: number; id: string }[] = [
+        { az: 180, id: 'sud' },
+        { az: 135, id: 'sud-est' },
+        { az: 225, id: 'sud-ouest' },
+        { az: 90, id: 'est' },
+        { az: 270, id: 'ouest' },
+      ];
+      let best = 'sud';
+      let bestDiff = Infinity;
+      for (const t of targets) {
+        const diff = Math.abs(((az - t.az + 540) % 360) - 180);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = t.id;
+        }
+      }
+      return best;
+    }
+    // Toit plat : la famille sud ET la famille est-ouest se rapportent au sud.
+    return 'sud';
+  }
+
   function prefillLead(d: CardData) {
     // Pré-remplit le diagnostic enrichi — RÉUTILISE le même formulaire et toute sa
     // plomberie (seuil 1 000 MAD, consentement, webhook, CAPI) : on n'écrit que
@@ -41,7 +73,7 @@ export function createPrefill(ctx: Ctx): Prefill {
     const orient = $<HTMLSelectElement>('lf-orient');
     const kwc = $<HTMLInputElement>('lf-kwc-est');
     if (area) area.value = String(Math.round(geodesicArea()));
-    if (orient) orient.value = 'sud'; // Sud et Est-Ouest se rapportent tous deux au sud
+    if (orient) orient.value = leadOrientationId(); // W85 : face réelle de la config gagnante
     if (kwc) kwc.value = String(Math.round(d.kwc * 100) / 100);
     const details = (area?.closest('details') as HTMLDetailsElement | null) ?? null;
     if (details) details.open = true;
