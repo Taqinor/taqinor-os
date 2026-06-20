@@ -267,7 +267,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `touchend` double-tap-to-finish (~300 ms) and stop dropping the queued vertex when a second tap is
   not a real dblclick. Accept: phone users can finish by double-tap and no corner is lost when tracing
   quickly. File: `roof-tool-pro11.ts`.
-- [ ] **W78 — map: multi-zone view/total consistency.** A finished zone with `placedCount===0` is summed
+- [x] **W78 — map: multi-zone view/total consistency.** A finished zone with `placedCount===0` is summed
   in the totals but skipped by `appendOtherZones` (`!a.renderPlan`), so it vanishes from the 3D
   multi-zone view — totals and 3D disagree. Capture a `renderPlan` snapshot even at 0 panels, or have
   `appendOtherZones` fall back to drawing the bare ring from `a.vertices`. Accept: every counted zone is

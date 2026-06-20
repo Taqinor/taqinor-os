@@ -703,24 +703,65 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return { deck, deckMat, ring };
   }
 
+  /** W78 — bâtiment SUBDUÉ « nu » (sans panneaux) d'une zone qui n'a pas encore de
+   *  `renderPlan` : une zone finie posée à 0 panneau (placedCount===0) est comptée dans
+   *  les totaux mais n'aurait, sans cela, AUCUN mesh → elle disparaîtrait de la vue
+   *  multi-zones (totaux et 3D en désaccord). On bâtit alors au moins son VOLUME depuis
+   *  `vertices` (lng/lat → ENU relatif à l'origine active), même teinte subduée que les
+   *  autres zones. Renvoie l'anneau ENU translaté (pour l'enveloppe d'ombre), ou null si
+   *  le tracé n'a pas au moins 3 sommets. */
+  function buildBareZoneRing(vertices: LngLat[], activeOrigin: LngLat): [number, number][] | null {
+    if (vertices.length < 3) return null;
+    const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
+    const ring: [number, number][] = vertices.map(([lng, lat]) => [
+      (lng - activeOrigin[0]) * DEG2M * cosLat,
+      (lat - activeOrigin[1]) * DEG2M,
+    ]);
+    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    const shape = new THREE.Shape();
+    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+    shape.closePath();
+    // Zone NON active sans panneaux : bâtiment subdué (même teinte que les autres zones).
+    const buildingMat = new THREE.MeshStandardMaterial({ color: 0x9aa3b4, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55 });
+    const building = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }), buildingMat);
+    building.castShadow = true;
+    building.receiveShadow = true;
+    sceneRoot!.add(building);
+    // Dalle nue subduée posée sur le toit (lecture « toit plat sans panneaux »).
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8b9099, roughness: 0.95, metalness: 0, transparent: true, opacity: 0.7 });
+    const deck = new THREE.Mesh(new THREE.ShapeGeometry(shape), deckMat);
+    deck.position.z = wallH + 0.02;
+    deck.receiveShadow = true;
+    sceneRoot!.add(deck);
+    return ring;
+  }
+
   /** Re-dessine TOUTES les zones SAUF l'active, à leur vraie position relative (« toutes
    *  les zones empilées »). Pour chaque zone disposant d'un `renderPlan`, on calcule
    *  l'offset ENU entre son origine GPS et celle de la zone active, puis on construit ses
-   *  meshes (subdués) via le MÊME chemin que la zone active. N'appelle JAMAIS
-   *  disposeScene/setOrigin (propriété de renderScene). Renvoie les anneaux TRANSLATÉS
-   *  des autres zones, pour étendre l'enveloppe d'ombre. No-op (→ []) tant qu'il n'y a
-   *  qu'une zone ou qu'aucune autre n'a de plan. */
+   *  meshes (subdués) via le MÊME chemin que la zone active. W78 — pour une zone SANS
+   *  `renderPlan` mais finie (≥ 3 sommets), on bâtit au moins son volume nu depuis ses
+   *  `vertices`, pour qu'une zone comptée à 0 panneau reste VISIBLE en 3D (parité totaux ↔
+   *  vue). N'appelle JAMAIS disposeScene/setOrigin (propriété de renderScene). Renvoie les
+   *  anneaux TRANSLATÉS des autres zones, pour étendre l'enveloppe d'ombre. No-op (→ [])
+   *  tant qu'il n'y a qu'une zone ou qu'aucune autre n'est dessinable. */
   function appendOtherZones(activeOrigin: LngLat): [number, number][][] {
     if (!sceneRoot) return [];
     const rings: [number, number][][] = [];
     const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
     for (const a of ctx.areas) {
-      if (a.id === ctx.activeAreaId || !a.renderPlan) continue;
-      const plan = a.renderPlan;
-      const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
-      const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
-      const built = buildZoneMeshes(plan, offX, offY, true);
-      rings.push(built.ring);
+      if (a.id === ctx.activeAreaId) continue;
+      if (a.renderPlan) {
+        const plan = a.renderPlan;
+        const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
+        const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
+        const built = buildZoneMeshes(plan, offX, offY, true);
+        rings.push(built.ring);
+      } else {
+        // W78 — pas de plan de rendu (zone finie à 0 panneau) : on dessine son volume nu.
+        const bare = buildBareZoneRing(a.vertices, activeOrigin);
+        if (bare) rings.push(bare);
+      }
     }
     return rings;
   }

@@ -592,3 +592,30 @@ describe('pro-11 — W69 : mode VARIABILITÉ de disposition (« Personnaliser la
     expect(page).toContain('rgb(248 113 113'); // rouge (invalide/occupée)
   });
 });
+
+describe('pro-11 — W78 : cohérence vue/totaux multi-zones (zone comptée toujours visible en 3D)', () => {
+  const scene = read('../src/scripts/roofPro11/scene3d.ts');
+
+  it('appendOtherZones ne saute PLUS une zone sans renderPlan : repli sur le volume nu', () => {
+    const fn = scene.slice(scene.indexOf('function appendOtherZones'));
+    // l'ancien garde « !a.renderPlan → continue » qui faisait disparaître la zone a disparu.
+    expect(fn).not.toContain('|| !a.renderPlan) continue');
+    // on saute UNIQUEMENT la zone active, puis on branche sur le repli quand pas de plan.
+    expect(fn).toContain('if (a.id === ctx.activeAreaId) continue');
+    expect(fn).toContain('buildBareZoneRing(a.vertices, activeOrigin)');
+  });
+
+  it('buildBareZoneRing bâtit le bâtiment + la dalle nus depuis vertices (lng/lat → ENU)', () => {
+    expect(scene).toContain('function buildBareZoneRing(');
+    const fn = scene.slice(scene.indexOf('function buildBareZoneRing'));
+    // tracé incomplet (< 3 sommets) → rien.
+    expect(fn).toMatch(/if \(vertices\.length < 3\) return null/);
+    // conversion lng/lat → ENU relatif à l'origine active (même repère que les autres zones).
+    expect(fn).toContain('DEG2M * cosLat');
+    // un volume (bâtiment extrudé) + une dalle subdués sont ajoutés à la scène.
+    expect(fn).toContain('ExtrudeGeometry');
+    expect(fn).toContain('ShapeGeometry');
+    expect(fn).toContain('sceneRoot!.add(building)');
+    expect(fn).toContain('sceneRoot!.add(deck)');
+  });
+});
