@@ -142,6 +142,14 @@ class Lead(models.Model):
         AVEC = 'avec', 'Avec batterie'
         LES_DEUX = 'les_deux', 'Les deux options'
 
+    # Langue préférée du contact pour les messages (ex. WhatsApp). Nullable :
+    # tant qu'elle n'est pas renseignée, le message retombe sur le FR. Les clés
+    # sont identiques à celles attendues par le constructeur WhatsApp
+    # (apps.ventes.utils.whatsapp : langue ∈ {'fr','darija'}).
+    class LanguePreferee(models.TextChoices):
+        FR = 'fr', 'Français'
+        DARIJA = 'darija', 'Darija'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -178,6 +186,10 @@ class Lead(models.Model):
 
     # ── Contact & localisation (extension CRM solaire 2026-06) ──
     whatsapp = models.CharField(max_length=50, blank=True, null=True)
+    # Langue préférée du contact (FR/Darija) — pré-sélectionne la langue du
+    # message WhatsApp. Nullable : non renseignée → retombe sur le FR.
+    langue_preferee = models.CharField(
+        max_length=10, choices=LanguePreferee.choices, blank=True, null=True)
     gps_lat = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True)
     gps_lng = models.DecimalField(

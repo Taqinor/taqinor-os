@@ -317,7 +317,11 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'Aucun numéro de téléphone.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        langue = request.data.get('langue', 'fr')
+        # Langue du message : la valeur explicite de la requête l'emporte ;
+        # sinon on retombe sur la langue préférée du lead, puis sur le FR.
+        langue = request.data.get('langue')
+        if langue is None:
+            langue = lead.langue_preferee or 'fr'
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
