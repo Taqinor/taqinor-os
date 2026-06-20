@@ -210,6 +210,12 @@ const chipClass =
                 class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
                 Effacer
               </button>
+              <!-- Plusieurs zones — fige la zone tracée et démarre un nouveau tracé.
+                   Activé seulement quand la zone active est fermée (cf. script, null-gardé). -->
+              <button type="button" id="rp9-add-area" disabled
+                class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:border-white/25 disabled:bg-transparent disabled:text-lune-faint disabled:opacity-50">
+                + Ajouter une zone
+              </button>
               <!-- Surface tracée — emplacement réservé (hauteur constante, zéro CLS) -->
               <p id="rp9-area" class="ml-auto min-w-0 text-sm text-lune-faint" aria-live="polite">
                 <span>Surface du toit&nbsp;: </span><span id="rp9-area-value" class="fig text-white">—</span>
@@ -453,6 +459,44 @@ const chipClass =
               Recevoir mon étude sur WhatsApp
             </button>
           </div>
+        </div>
+
+        <!-- ZONES — « Plusieurs zones de panneaux ». Chaque zone est dimensionnée par
+             l'optimiseur existant (best-fit) puis ajustable au panneau près ; le total
+             SOMME panneaux / kWc / production / économies sur TOUTES les zones. La 3D et
+             les sous-panneaux (production, conso, disposition) restent liés à la zone
+             ACTIVE. Affichée dès qu'une zone est calculée (script bascule .hidden). -->
+        <div id="rp9-areas-window" hidden class="cine-card mt-6 p-5 sm:p-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="tech-label rule-brass text-brass-300">Total — toutes les zones</p>
+            <p class="text-xs text-lune-faint">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+            <div>
+              <dd id="rp9-areas-total-panels" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Panneaux</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-kwc" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-prod" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Production estimée</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-savings" class="fig text-lg text-brass-300 sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Économies estimées</dt>
+            </div>
+          </dl>
+          <!-- Liste des zones (script-rendu) : libellé, panneaux, kWc, « Voir » + suppr.
+               La zone active est mise en évidence. -->
+          <ul id="rp9-areas-list" class="mt-5 space-y-2"></ul>
+          <p class="mt-3 text-xs leading-relaxed text-lune-faint">
+            « + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même
+            facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ;
+            les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
+          </p>
         </div>
 
         <!-- V4 — OPTIMUM CALCULÉ : le vrai gagnant de la grille fine (production
