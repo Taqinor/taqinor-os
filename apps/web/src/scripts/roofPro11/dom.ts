@@ -12,3 +12,7 @@ export const fmt = (n: number): string => new Intl.NumberFormat('fr-FR').format(
 
 /** Montant arrondi en MAD. */
 export const fmtMad = (n: number): string => `${fmt(Math.round(n))} MAD`;
+
+/** Échappe le texte pour l'insérer en toute sécurité dans un attribut/texte SVG. */
+export const esc = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
