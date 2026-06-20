@@ -1,8 +1,11 @@
 """Durcissement auth (ERR45, ERR87, ERR88, ERR92).
 
 Couvre :
-- ERR45 : les cookies d'authentification restent SameSite=Strict (verrou anti
-  relâchement silencieux) et httpOnly.
+- ERR45 : les cookies d'authentification restent SameSite=Lax (verrou anti
+  relâchement silencieux) et httpOnly. Lax (et non Strict) corrige le bug iOS où
+  WebKit n'envoie pas les cookies Strict au cold-launch d'une PWA depuis l'écran
+  d'accueil ; Lax bloque toujours les écritures CSRF cross-site (API sans
+  mutation en GET).
 - ERR87 : le jeton d'accès est court ; le flux de refresh par cookie marche.
 - ERR88 : ``seed_demo`` refuse de tourner hors DEBUG sans --force.
 - ERR92 : sur un login réussi, l'audit normalise actor_username depuis le
@@ -23,8 +26,10 @@ User = get_user_model()
 
 
 class TestAuthCookieCsrfStrategy(TestCase):
-    """ERR45 — les cookies JWT sont posés httpOnly + SameSite=Strict. C'est la
-    barrière CSRF : ce test échoue si quelqu'un relâche SameSite en silence."""
+    """ERR45 — les cookies JWT sont posés httpOnly + SameSite=Lax. C'est la
+    barrière CSRF (Lax ne part pas sur les écritures cross-site) ET le correctif
+    du bug iOS de cold-launch PWA : ce test échoue si quelqu'un relâche SameSite
+    en silence (retour à Strict cassant iOS, ou passage dangereux à None)."""
 
     def setUp(self):
         self.company = Company.objects.create(nom='Cookie Co', slug='cookie-co')
@@ -32,7 +37,7 @@ class TestAuthCookieCsrfStrategy(TestCase):
             username='cookie_user', password='secretpass1',
             role_legacy='admin', company=self.company)
 
-    def test_auth_cookies_are_samesite_strict_and_httponly(self):
+    def test_auth_cookies_are_samesite_lax_and_httponly(self):
         api = APIClient()
         resp = api.post('/api/django/token/', {
             'username': 'cookie_user', 'password': 'secretpass1'},
@@ -41,7 +46,9 @@ class TestAuthCookieCsrfStrategy(TestCase):
         for name in ('access_token', 'refresh_token'):
             self.assertIn(name, resp.cookies)
             cookie = resp.cookies[name]
-            self.assertEqual(cookie['samesite'], 'Strict')
+            # Lax (jamais Strict : casse le cold-launch PWA iOS ; jamais None
+            # sans jeton CSRF explicite).
+            self.assertEqual(cookie['samesite'], 'Lax')
             self.assertTrue(cookie['httponly'])
 
     def test_refresh_flow_still_works(self):

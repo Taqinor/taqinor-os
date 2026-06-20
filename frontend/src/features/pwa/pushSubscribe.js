@@ -17,6 +17,29 @@ export function pushSupported() {
   )
 }
 
+// Attend que le service worker CONTRÔLE réellement la page courante (pas
+// seulement qu'il soit « ready »/actif). Indispensable sur iOS : un abonnement
+// push créé alors que la page n'est pas contrôlée est accepté dans l'UI mais
+// jamais livré (bug WebKit). Le SW prend le contrôle via clients.claim() à son
+// activation ; on attend ici l'évènement `controllerchange` correspondant, avec
+// un délai de garde pour ne jamais bloquer indéfiniment.
+function waitForController(timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    if (navigator.serviceWorker.controller) { resolve(true); return }
+    let done = false
+    const finish = (ok) => {
+      if (done) return
+      done = true
+      navigator.serviceWorker.removeEventListener('controllerchange', onChange)
+      resolve(ok)
+    }
+    const onChange = () => finish(Boolean(navigator.serviceWorker.controller))
+    navigator.serviceWorker.addEventListener('controllerchange', onChange)
+    // Garde-fou : on tente l'abonnement même si le contrôle n'arrive pas.
+    setTimeout(() => finish(Boolean(navigator.serviceWorker.controller)), timeoutMs)
+  })
+}
+
 // Convertit une clé VAPID base64url (chaîne) en Uint8Array attendu par
 // l'option applicationServerKey de PushManager.subscribe().
 function urlBase64ToUint8Array(base64String) {
@@ -57,6 +80,9 @@ export async function subscribeToPush() {
   // 3) Abonnement PushManager via le service worker déjà enregistré.
   try {
     const reg = await navigator.serviceWorker.ready
+    // iOS : s'assurer que le SW CONTRÔLE la page avant de s'abonner, sinon le
+    // push n'est jamais livré (bug WebKit). Best-effort, borné dans le temps.
+    await waitForController()
     let subscription = await reg.pushManager.getSubscription()
     if (!subscription) {
       subscription = await reg.pushManager.subscribe({
