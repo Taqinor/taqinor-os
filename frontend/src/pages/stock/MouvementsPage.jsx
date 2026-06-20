@@ -104,6 +104,7 @@ export default function MouvementsPage() {
     entree:     mouvements.filter(m => m.type_mouvement === 'entree').length,
     sortie:     mouvements.filter(m => m.type_mouvement === 'sortie').length,
     ajustement: mouvements.filter(m => m.type_mouvement === 'ajustement').length,
+    transfert:  mouvements.filter(m => m.type_mouvement === 'transfert').length,
   }), [mouvements])
 
   const tabOptions = TABS.map(t => ({
@@ -320,7 +321,14 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
   const validate = () => {
     const e = {}
     if (!fields.produit)                          e.produit  = 'Produit requis'
-    if (!(parseInt(fields.quantite) > 0))         e.quantite = 'Quantité invalide (> 0)'
+    // Pour un ajustement, la quantité saisie EST le nouveau stock : 0 doit être
+    // accepté (remettre un produit à zéro). Entrée/Sortie restent strictement > 0.
+    const qte = parseInt(fields.quantite)
+    if (fields.type_mouvement === 'ajustement') {
+      if (!(Number.isInteger(qte) && qte >= 0))   e.quantite = 'Quantité invalide (≥ 0)'
+    } else if (!(qte > 0)) {
+      e.quantite = 'Quantité invalide (> 0)'
+    }
     if (fields.type_mouvement === 'sortie' && selectedProduit) {
       if (parseInt(fields.quantite) > selectedProduit.quantite_stock)
         e.quantite = `Stock insuffisant (disponible : ${selectedProduit.quantite_stock})`
