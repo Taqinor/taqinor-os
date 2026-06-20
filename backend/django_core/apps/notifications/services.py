@@ -31,6 +31,12 @@ DEFAULT_PREFS = {
     'email': False,
 }
 
+# ERR91 — Bornes cohérentes pour la ligne in-app. `title` (255) et `link` (512)
+# sont déjà tronqués sur leur taille de colonne ; le corps (TextField, sans
+# limite de colonne) l'était pas — un appelant pouvait écrire une notification
+# arbitrairement grosse. On borne le corps de façon cohérente.
+MAX_BODY_LEN = 2000
+
 
 def default_prefs_for(event_type):
     """Retourne les toggles par défaut pour un événement (copie mutable)."""
@@ -208,7 +214,7 @@ def notify(user, event_type, title, body='', link=None, company=None):
         try:
             created = Notification.objects.create(
                 company=company, recipient=user, event_type=event_type,
-                title=str(title)[:255], body=str(body or ''),
+                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
                 link=str(link or '')[:512])
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)

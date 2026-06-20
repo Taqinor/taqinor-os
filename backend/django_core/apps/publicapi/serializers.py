@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from .constants import ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES
 from .models import ApiKey, Webhook, WebhookDelivery
+from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
 
 class ApiKeySerializer(serializers.ModelSerializer):
@@ -60,6 +61,13 @@ class WebhookSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f'Évènements inconnus : {", ".join(unknown)}.')
         return value
+
+    def validate_target_url(self, value):
+        # ERR46 — refuse https + bloque les hôtes internes (anti-SSRF).
+        try:
+            return validate_webhook_target_url(value)
+        except UnsafeWebhookURL as exc:
+            raise serializers.ValidationError(str(exc))
 
 
 def scope_catalogue():
