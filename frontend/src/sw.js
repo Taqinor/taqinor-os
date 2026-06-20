@@ -66,8 +66,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Taqinor OS'
   const options = {
     body: data.body || '',
-    icon: '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
+    icon: '/pwa-192.png',
+    badge: '/pwa-192.png',
     // Conserve le lien interne pour la navigation au clic.
     data: { link: data.link || '/' },
   }
