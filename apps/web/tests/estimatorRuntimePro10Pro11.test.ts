@@ -17,6 +17,9 @@ import { createRoofTypeSelect } from '../src/lib/roofTypeSelect';
 const fakeMaps: FakeMap[] = [];
 class FakeMap {
   handlers: Record<string, ((e: unknown) => void)[]> = {};
+  controls: unknown[] = [];
+  flyToCalls: unknown[] = [];
+  jumpToCalls: unknown[] = [];
   doubleClickZoom = { disable() {}, enable() {} };
   dragPan = { disable() {}, enable() {} };
   constructor() {
@@ -29,15 +32,15 @@ class FakeMap {
   fire(ev: string, e: unknown) {
     (this.handlers[ev] || []).forEach((h) => h(e));
   }
-  addControl() { return this; }
+  addControl(ctrl: unknown) { this.controls.push(ctrl); return this; }
   addLayer() { return this; }
   addSource() { return this; }
   getSource() { return { setData() {} }; }
   getLayer() { return null; }
   removeLayer() {}
   easeTo() { return this; }
-  flyTo() { return this; }
-  jumpTo() { return this; }
+  flyTo(opts: unknown) { this.flyToCalls.push(opts); return this; }
+  jumpTo(opts: unknown) { this.jumpToCalls.push(opts); return this; }
   getBearing() { return 0; }
   getCanvas() { return { style: {} as Record<string, string>, width: 800, height: 600 }; }
   getContainer() { return document.getElementById('rp9-map'); }
@@ -51,6 +54,13 @@ class FakeMap {
 
 vi.mock('maplibre-gl', () => {
   class NavigationControl {}
+  // W91 — GeolocateControl natif mocké : un émetteur d'événements minimal (on/fire) pour
+  // que l'entrée puisse s'abonner à `geolocate` et qu'un test déclenche une position.
+  class GeolocateControl {
+    geoHandlers: Record<string, ((e: unknown) => void)[]> = {};
+    on(ev: string, h: (e: unknown) => void) { (this.geoHandlers[ev] ||= []).push(h); return this; }
+    fire(ev: string, e: unknown) { (this.geoHandlers[ev] || []).forEach((h) => h(e)); }
+  }
   class Point {
     x: number; y: number;
     constructor(x: number, y: number) { this.x = x; this.y = y; }
@@ -58,7 +68,7 @@ vi.mock('maplibre-gl', () => {
   const MercatorCoordinate = {
     fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }),
   };
-  const api = { Map: FakeMap, NavigationControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
+  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
   return { default: api, ...api };
 });
 
@@ -759,4 +769,55 @@ describe('W50 — fenêtre de production : scope, cyclage, jour type/date, resca
     expect((document.getElementById('rp9-prod-window') as HTMLElement).hidden).toBe(false);
     expect(txt('rp9-prod-headline')).toMatch(/kWh\/an/);
   }, 60000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W91 — bouton « ma position » (GeolocateControl natif MapLibre, aucune dépendance ajoutée).
+// On vérifie que le contrôle est bien AJOUTÉ à la carte, et qu'une position géolocalisée
+// recentre en zoom 19 (flyTo en mouvement normal, jumpTo en reduced-motion).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W91 (map) — bouton ma position (GeolocateControl)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function geolocateControl(map: FakeMap) {
+    return map.controls.find(
+      (c) => typeof (c as { fire?: unknown }).fire === 'function' && 'geoHandlers' in (c as object),
+    ) as { fire: (ev: string, e: unknown) => void } | undefined;
+  }
+
+  it('un GeolocateControl est ajouté à la carte', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    expect(geolocateControl(fakeMaps[0])).toBeDefined();
+  });
+
+  it('géolocaliser recentre en zoom 19 (flyTo en mouvement normal)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    const ctrl = geolocateControl(fakeMaps[0])!;
+    ctrl.fire('geolocate', { coords: { longitude: -7.62, latitude: 33.59 } });
+    const calls = fakeMaps[0].flyToCalls as Array<{ center: [number, number]; zoom: number }>;
+    expect(calls.length).toBeGreaterThan(0);
+    const last = calls[calls.length - 1];
+    expect(last.zoom).toBe(19);
+    expect(last.center).toEqual([-7.62, 33.59]);
+  });
+
+  it('en reduced-motion, géolocaliser saute (jumpTo) en zoom 19', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const ctrl = geolocateControl(fakeMaps[0])!;
+    ctrl.fire('geolocate', { coords: { longitude: -7.62, latitude: 33.59 } });
+    const calls = fakeMaps[0].jumpToCalls as Array<{ center: [number, number]; zoom: number }>;
+    expect(calls.some((c) => c.zoom === 19)).toBe(true);
+  });
 });

@@ -941,6 +941,22 @@ export function initRoofToolPro8(opts: InitOptions): void {
     console.warn('[roof-tool-pro6] erreur carte (non bloquante) :', msg);
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+  // W91 — bouton « ma position » : GeolocateControl natif de MapLibre (aucune dépendance
+  // ajoutée). Sur `geolocate`, on recentre nous-mêmes en zoom 19 (le contrôle natif ne
+  // garantit pas le zoom toit) en respectant reduced-motion (jumpTo sinon flyTo).
+  const geolocate = new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: false,
+    showUserLocation: true,
+  });
+  map.addControl(geolocate, 'top-right');
+  geolocate.on('geolocate', (e: { coords?: { longitude: number; latitude: number } }) => {
+    const c = e?.coords;
+    if (!c) return;
+    const target = { center: [c.longitude, c.latitude] as LngLat, zoom: 19, pitch: 0 } as const;
+    if (opts.reducedMotion) map.jumpTo(target);
+    else map.flyTo({ ...target, essential: true });
+  });
   map.doubleClickZoom.disable();
 
   // W69 — « Personnaliser la disposition ». `renderScene`/`renderActive`/`obstacleMode`

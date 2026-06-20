@@ -350,7 +350,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   gable/hip walls, reading as a tilted lid floating over a building. Build simple gable end-walls so a
   pitched roof reads as a roof. Accept: pitched mode shows a closed roof volume, not a floating plane.
   File: `roof-tool-pro11.ts`.
-- [ ] **W91 — map: current-location button.** No way for an on-site Moroccan user to centre on their
+- [x] **W91 — map: current-location button.** No way for an on-site Moroccan user to centre on their
   roof. Add MapLibre's built-in `GeolocateControl` (no new dependency) → `flyTo` zoom 19 on geolocate.
   Accept: the control appears and centres on the device location. File: `roof-tool-pro11.ts`.
 - [ ] **W92 — map: editable trace vertices + undo-last-point.** Roof corners are immutable once placed
