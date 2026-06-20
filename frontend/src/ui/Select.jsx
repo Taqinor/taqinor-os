@@ -47,7 +47,12 @@ export const SelectContent = forwardRef(function SelectContent(
         ref={ref}
         position={position}
         className={cn(
-          'relative z-[var(--z-dropdown)] max-h-72 min-w-[8rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-ui-lg',
+          // z-popover (au-dessus de --z-modal) et NON z-dropdown : sinon, ouvert
+          // DANS une Dialog/Sheet/AlertDialog (toutes à --z-modal), le menu se
+          // rend DERRIÈRE le modal — invisible et non cliquable (ex. changer le
+          // rôle dans « Utilisateurs → éditer »). Les autres popovers (Assignee/
+          // Produit/HoverCard) sont déjà à --z-popover pour la même raison.
+          'relative z-[var(--z-popover)] max-h-72 min-w-[8rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-ui-lg',
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
           className,
