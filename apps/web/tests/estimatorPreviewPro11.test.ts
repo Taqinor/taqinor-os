@@ -303,7 +303,6 @@ describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma cons
 
 describe('pro-11 — W69 : mode VARIABILITÉ de disposition (« Personnaliser la disposition »)', () => {
   const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
-  const script = read('../src/scripts/roof-tool-pro11.ts');
 
   it('la page expose un contrôle « Personnaliser la disposition » + le panneau', () => {
     expect(page).toContain('Personnaliser la disposition');
@@ -328,25 +327,29 @@ describe('pro-11 — W69 : mode VARIABILITÉ de disposition (« Personnaliser la
   });
 
   it('le script branche la logique PURE layoutVariability (jamais dupliquée)', () => {
-    expect(script).toContain("from '../lib/layoutVariability'");
-    expect(script).toContain('createLayoutState(');
-    expect(script).toContain('movePanelToPoint('); // glissé-snap
-    expect(script).toContain('movePanelToCell('); // tap-cible
-    expect(script).toContain('resetToOptimal('); // réinitialiser
+    // Split modulaire : W69 vit dans roofPro11/layoutEditor.ts — on scanne tout le builder.
+    const builder = pro11Sources();
+    expect(builder).toContain("from '../../lib/layoutVariability'");
+    expect(builder).toContain('createLayoutState(');
+    expect(builder).toContain('movePanelToPoint('); // glissé-snap
+    expect(builder).toContain('movePanelToCell('); // tap-cible
+    expect(builder).toContain('resetToOptimal('); // réinitialiser
   });
 
   it('recompute par COMPTAGE via le chemin de production existant (rendement/panneau inchangé)', () => {
     // déplacer dans le même plan → même rendement ; seul le nombre change la production.
-    expect(script).toContain('renderCustomLayout');
-    expect(script).toContain('updateProductionWindow('); // chemin PVGIS-par-comptage existant
+    const builder = pro11Sources();
+    expect(builder).toContain('renderCustomLayout');
+    expect(builder).toContain('updateProductionWindow('); // chemin PVGIS-par-comptage existant
     // renderScene rend l'occupation personnalisée (cellules potentiellement non contiguës)
-    expect(script).toContain('occupiedSet');
+    expect(builder).toContain('occupiedSet');
   });
 
   it('glissé sur la 3D : déprojection → snap (raycast sur le plan du toit)', () => {
-    expect(script).toContain('screenToENU(');
-    expect(script).toContain('map.unproject('); // raycast → plan du toit
-    expect(script).toContain('nearestEmptyCell(');
+    const builder = pro11Sources();
+    expect(builder).toContain('screenToENU(');
+    expect(builder).toContain('map.unproject('); // raycast → plan du toit
+    expect(builder).toContain('nearestEmptyCell(');
   });
 
   it('le plan des emplacements signale valide (vert) / invalide (rouge) par CSS', () => {

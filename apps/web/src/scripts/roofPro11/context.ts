@@ -19,7 +19,7 @@ import { type Recommendation } from '../../lib/estimatorBrainV2';
 import { type MatrixSortKey, type MatrixV6Result } from '../../lib/estimatorBrainV6';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
 import { type LayoutState } from '../../lib/layoutVariability';
-import { type InitOptions, type RoofType, type AreaRecord } from './types';
+import { type InitOptions, type RoofType, type AreaRecord, type LayoutPlan } from './types';
 
 /** Références DOM partagées avec les modules extraits (sous-ensemble du DOM du
  * builder ; chaque champ peut être null — le harness jsdom ne fournit pas tout). */
@@ -115,6 +115,12 @@ export interface Ctx {
   layoutMode: boolean;
   /** Lattice de disposition (occupation éditée) ou null. */
   layoutState: LayoutState | null;
+  /** Pavage gagnant courant (re-rendu de la 3D avec occupation personnalisée). */
+  layoutPlan: LayoutPlan | null;
+  /** Comptage de l'optimiseur (sert à la réinitialisation de la disposition). */
+  layoutOptimalCount: number;
+  /** Index du panneau sélectionné (repli tactile) ou null. */
+  layoutSel: number | null;
 
   // — W68 « Affiner ma consommation » (mutable) —
   /** Le panneau « Affiner » est-il ouvert ? */

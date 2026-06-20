@@ -57,6 +57,16 @@ export interface ZoneRenderPlan {
   obstacles: Obstacle[];
 }
 
+/** W69 — pavage gagnant courant (pack + grid + tilt + family + flush) pour
+ * re-rendre la 3D avec l'occupation personnalisée (« Personnaliser la disposition »). */
+export interface LayoutPlan {
+  pack: PackResult;
+  grid: PanelGrid;
+  tiltDeg: number;
+  family: ConfigFamily;
+  flush: boolean;
+}
+
 export interface AreaRecord {
   id: string;
   label: string;
