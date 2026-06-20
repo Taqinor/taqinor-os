@@ -266,6 +266,43 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
   });
 });
 
+describe('pro-11 — W86 : libellé CTA honnête + aria-live sur les résultats', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+
+  it('le CTA #rp9-cta porte un libellé HONNÊTE (continuer vers le diagnostic), sans framing WhatsApp', () => {
+    // bloc du bouton de prévisualisation (≠ le bouton de soumission du diagnostic).
+    const cta = page.slice(page.indexOf('id="rp9-cta"'), page.indexOf('id="rp9-cta"') + 400);
+    expect(cta).toContain('Continuer vers le diagnostic');
+    // ce bouton-ci ne prétend plus « Recevoir … WhatsApp » et ne porte plus l'icône WhatsApp.
+    expect(cta).not.toContain('Recevoir mon étude sur WhatsApp');
+    expect(cta).not.toContain('viewBox="0 0 24 24"');
+  });
+
+  it('les résultats de recommandation s\'annoncent (aria-live sur le <dl> reco)', () => {
+    // le <dl> qui contient rp9-reco-kwc/-panels/-prod/-cover porte aria-live="polite".
+    const dlStart = page.lastIndexOf('<dl', page.indexOf('id="rp9-reco-kwc"'));
+    const dlTag = page.slice(dlStart, page.indexOf('>', dlStart) + 1);
+    expect(dlTag).toContain('aria-live="polite"');
+  });
+
+  it('le chiffre de tête de production + son sous-titre s\'annoncent', () => {
+    expect(page).toMatch(/id="rp9-prod-headline"[^>]*aria-live="polite"/);
+    expect(page).toMatch(/id="rp9-prod-sub"[^>]*aria-live="polite"/);
+  });
+
+  it('les totaux multi-zones s\'annoncent (aria-live sur le <dl> des totaux)', () => {
+    const dlStart = page.lastIndexOf('<dl', page.indexOf('id="rp9-areas-total-panels"'));
+    const dlTag = page.slice(dlStart, page.indexOf('>', dlStart) + 1);
+    expect(dlTag).toContain('aria-live="polite"');
+  });
+
+  it('le formulaire de diagnostic garde SON propre bouton WhatsApp (intact)', () => {
+    // l\'étape WhatsApp réelle vit dans le composant de diagnostic — non touché par W86.
+    const form = read('../src/components/DiagnosticFormEnriched.astro');
+    expect(form).toContain('Recevoir mon étude sur WhatsApp');
+  });
+});
+
 describe('pro-11 — l\'existant est strictement préservé', () => {
   it('les baselines pro-3..pro-10 gardent leur page et leur script dédiés', () => {
     for (const n of [3, 4, 5, 6, 7, 8, 9, 10]) {

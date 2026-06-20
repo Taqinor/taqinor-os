@@ -319,7 +319,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   (flat) or `facingAzimuthDeg` (pitched: 180→sud, 135→sud-est, 225→sud-ouest, 90→est, 270→ouest).
   Accept: the prefilled orientation matches the chosen config; still no lead POST from the preview.
   Files: `roof-tool-pro11.ts` + a runtime test.
-- [ ] **W86 — honesty + a11y: CTA label + aria-live on results.** `#rp9-cta` is labelled "Recevoir mon
+- [x] **W86 — honesty + a11y: CTA label + aria-live on results.** `#rp9-cta` is labelled "Recevoir mon
   étude sur WhatsApp" with a WhatsApp icon but performs NO WhatsApp action (it only prefills and scrolls
   to the diagnostic, which is where the real WhatsApp step lives). Rename it to an honest "Continuer vers
   le diagnostic →" (drop/soften the WhatsApp framing on the preview button). Add `aria-live="polite"` to
