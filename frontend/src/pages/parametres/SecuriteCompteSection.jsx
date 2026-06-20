@@ -7,10 +7,193 @@
 // dans une application d'authentification, puis confirmer un code à 6 chiffres.
 // Des codes de secours à usage unique sont alors affichés UNE seule fois.
 import { useEffect, useState } from 'react'
-import { ShieldCheck, ShieldAlert, KeyRound, Copy, CheckCircle2 } from 'lucide-react'
+import { ShieldCheck, ShieldAlert, KeyRound, Copy, CheckCircle2, Monitor, LogOut, Lock } from 'lucide-react'
 import api from '../../api/axios'
 import { Card, CardContent, Button, Input, Spinner } from '../../ui'
 import { SectionTitle } from './peComponents'
+
+// ── Sessions actives (N96) — liste des appareils connectés + révocation ──────
+function SessionsActives() {
+  const [loading, setLoading] = useState(true)
+  const [sessions, setSessions] = useState([])
+  const [error, setError] = useState(null)
+  const [revoking, setRevoking] = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    api.get('/auth/sessions/')
+      .then(r => { setSessions(Array.isArray(r.data) ? r.data : []); setError(null) })
+      .catch(() => setError('Impossible de charger les sessions.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [])
+
+  const revoke = async (s) => {
+    setError(null); setRevoking(s.id)
+    try {
+      await api.post(`/auth/sessions/${s.id}/revoke/`)
+      // Révoquer l'appareil courant nous déconnecte : on recharge la page.
+      if (s.is_current) { window.location.reload(); return }
+      load()
+    } catch {
+      setError('Impossible de révoquer cette session.')
+    } finally { setRevoking(null) }
+  }
+
+  const fmt = (iso) => {
+    if (!iso) return '—'
+    try { return new Date(iso).toLocaleString('fr-FR') } catch { return iso }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <SectionTitle
+          label="Sessions actives"
+          icon={<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>}
+        />
+        <p className="mb-4 text-[11.5px] text-muted-foreground">
+          Les appareils actuellement connectés à votre compte. Révoquez une
+          session si vous ne la reconnaissez pas : l'appareil concerné sera
+          déconnecté.
+        </p>
+
+        {error && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <ShieldAlert className="size-4 shrink-0" /> <span>{error}</span>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center gap-2">
+            <Spinner /> <span className="text-xs text-muted-foreground">Chargement…</span>
+          </div>
+        ) : sessions.length === 0 ? (
+          <p className="text-[12px] text-muted-foreground">Aucune session active.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {sessions.map(s => (
+              <li key={s.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                <div className="flex min-w-0 items-start gap-2">
+                  <Monitor className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-[12.5px] font-medium">
+                        {s.user_agent || 'Appareil inconnu'}
+                      </span>
+                      {s.is_current && (
+                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          cet appareil
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {s.ip_address || 'IP inconnue'} · vu le {fmt(s.last_seen_at)}
+                    </div>
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm"
+                        onClick={() => revoke(s)}
+                        loading={revoking === s.id}
+                        disabled={revoking === s.id}>
+                  <LogOut className="size-4" /> Révoquer
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Changement de mot de passe (N96) — sert aussi à la rotation forcée ───────
+function MotDePasse() {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [done, setDone] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setError(null); setDone(false)
+    if (next !== confirm) {
+      setError('Les deux nouveaux mots de passe ne correspondent pas.')
+      return
+    }
+    setBusy(true)
+    try {
+      await api.post('/auth/change-password/', {
+        current_password: current,
+        new_password: next,
+      })
+      setCurrent(''); setNext(''); setConfirm(''); setDone(true)
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Impossible de changer le mot de passe.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <SectionTitle
+          label="Mot de passe"
+          icon={<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>}
+        />
+        <p className="mb-4 text-[11.5px] text-muted-foreground">
+          Choisissez un mot de passe fort et unique. Si un administrateur vous a
+          demandé de le changer, faites-le ici.
+        </p>
+
+        {error && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <ShieldAlert className="size-4 shrink-0" /> <span>{error}</span>
+          </div>
+        )}
+        {done && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            <CheckCircle2 className="size-4 shrink-0" /> <span>Mot de passe mis à jour.</span>
+          </div>
+        )}
+
+        <form onSubmit={submit} className="flex max-w-sm flex-col gap-3">
+          <div>
+            <div className="mb-1 text-[11px] text-muted-foreground">Mot de passe actuel</div>
+            <Input type="password" value={current}
+                   onChange={e => setCurrent(e.target.value)}
+                   autoComplete="current-password" placeholder="••••••••"
+                   aria-label="Mot de passe actuel" />
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] text-muted-foreground">Nouveau mot de passe</div>
+            <Input type="password" value={next}
+                   onChange={e => setNext(e.target.value)}
+                   autoComplete="new-password" placeholder="••••••••"
+                   aria-label="Nouveau mot de passe" />
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] text-muted-foreground">Confirmer le nouveau mot de passe</div>
+            <Input type="password" value={confirm}
+                   onChange={e => setConfirm(e.target.value)}
+                   autoComplete="new-password" placeholder="••••••••"
+                   aria-label="Confirmer le nouveau mot de passe" />
+          </div>
+          <div>
+            <Button type="submit" loading={busy}
+                    disabled={busy || !current || !next || !confirm}>
+              <Lock className="size-4" /> Mettre à jour le mot de passe
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function SecuriteCompteSection() {
   const [loading, setLoading] = useState(true)
@@ -102,6 +285,7 @@ export default function SecuriteCompteSection() {
   }
 
   return (
+    <div className="flex flex-col gap-4">
     <Card>
       <CardContent className="pt-4 sm:pt-5">
         <SectionTitle
@@ -254,5 +438,12 @@ export default function SecuriteCompteSection() {
         )}
       </CardContent>
     </Card>
+
+    {/* Sessions actives & révocation (N96) */}
+    <SessionsActives />
+
+    {/* Changement / rotation du mot de passe (N96) */}
+    <MotDePasse />
+    </div>
   )
 }
