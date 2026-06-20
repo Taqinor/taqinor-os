@@ -40,6 +40,12 @@ améliorations, toutes ajustables dans `src/lib/roofPro2.ts` et `src/scripts/roo
   lest) sur le toit et entre rangées (PCFSoftShadowMap).
 
 ## 4. Fidélité visuelle
+- **Massing toit en pente (W90, builder pro-11)** : en pose affleurante, la dalle est un
+  PLAN INCLINÉ posé au-dessus du toit plat du bâtiment. Une **jupe de pignon** périmétrique
+  (un quadrilatère vertical par arête de l'anneau, du toit plat `wallH` jusqu'au dessous de
+  la dalle inclinée) ferme le volume → le toit en pente se lit comme un **volume fermé**
+  (pignon/croupe) plutôt qu'un couvercle flottant, pour toute empreinte tracée. Même teinte
+  que le bâtiment, double-face. Toit PLAT inchangé (jupe strictement conditionnée à `flush`).
 - Châssis triangulaires (montant arrière haut / avant bas), rails, **lest béton** aux coins.
 - Soleil directionnel + ambiance ciel + ombres douces ; matériaux PBR ; massing bâtiment
   propre ; satellite en sol. **InstancedMesh** pour tous les éléments répétés.

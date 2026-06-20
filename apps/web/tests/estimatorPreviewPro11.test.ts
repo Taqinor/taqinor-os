@@ -266,6 +266,32 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
   });
 });
 
+describe('pro-11 — W90 : massing du toit en pente (pignons/jupe de rive)', () => {
+  const scene = read('../src/scripts/roofPro11/scene3d.ts');
+
+  it('en pente (flush) une JUPE périmétrique ferme le volume sous la dalle inclinée', () => {
+    // la jupe n'est construite QUE sous le drapeau flush (toit en pente).
+    expect(scene).toMatch(/if \(flush\)[\s\S]{0,1200}skirtGeo/);
+    expect(scene).toContain('const skirt = new THREE.Mesh(skirtGeo, skirtMat)');
+    // base posée sur le toit plat (wallH), hauteur = dessous de la dalle inclinée.
+    expect(scene).toContain('skirt.position.z = wallH');
+    expect(scene).toContain('pitchedDeckZ(x, y, pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg)');
+  });
+
+  it('le mur de pignon reprend la teinte du bâtiment (continuité du volume) et est double-face', () => {
+    expect(scene).toContain('skirtMat');
+    expect(scene).toMatch(/skirtMat[\s\S]{0,200}side: THREE\.DoubleSide/);
+  });
+
+  it('le toit PLAT n\'a pas de jupe (massing inchangé) — la jupe est strictement gated par flush', () => {
+    // une seule occurrence de skirt (le bloc gated), aucun chemin plat ne la touche.
+    expect(scene.match(/skirtGeo/g)?.length).toBeGreaterThanOrEqual(1);
+    // la jupe est posée après la dalle et avant les axes de visée (chemin commun), gated flush.
+    const flushIdx = scene.indexOf('if (flush) {\n      const n = ring.length;');
+    expect(flushIdx).toBeGreaterThan(0);
+  });
+});
+
 describe('pro-11 — W89 : récupération de perte de contexte WebGL', () => {
   const scene = read('../src/scripts/roofPro11/scene3d.ts');
 

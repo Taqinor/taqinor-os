@@ -346,7 +346,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   a GPU context loss (mobile background/foreground) blanks the 3D permanently. Add handlers that
   `preventDefault` the loss and rebuild the scene on restore. Accept: backgrounding/restoring the tab
   recovers the 3D. File: `roof-tool-pro11.ts`.
-- [ ] **W90 — 3D: pitched-roof gable massing.** The pitched deck is raised over a flat-top box with no
+- [x] **W90 — 3D: pitched-roof gable massing.** The pitched deck is raised over a flat-top box with no
   gable/hip walls, reading as a tilted lid floating over a building. Build simple gable end-walls so a
   pitched roof reads as a roof. Accept: pitched mode shows a closed roof volume, not a floating plane.
   File: `roof-tool-pro11.ts`.

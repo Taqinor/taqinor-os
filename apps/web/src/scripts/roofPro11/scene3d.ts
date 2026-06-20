@@ -535,6 +535,50 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     deck.receiveShadow = true;
     sceneRoot!.add(deck);
 
+    // W90 — MASSING DU TOIT EN PENTE (pignons/jupe de rive). En pente (flush) la dalle
+    // est un PLAN INCLINÉ posé au-dessus du toit plat du bâtiment (z = wallH) : sans rien
+    // d'autre, le coin amont « flotte » au-dessus d'une boîte à toit plat. On ferme le
+    // volume en bâtissant une JUPE périmétrique : pour chaque arête (a→b) de l'anneau, un
+    // quadrilatère vertical du toit plat (wallH) jusqu'au dessous de la dalle inclinée
+    // (wallH + pitchedDeckZ au sommet). Le pan aval (où la dalle touche presque wallH) n'a
+    // qu'un mince mur ; le pan amont monte en triangle → lecture « pignon/croupe » fermée
+    // pour toute empreinte tracée. Toit PLAT : non exécuté → INCHANGÉ.
+    if (flush) {
+      const n = ring.length;
+      const positions: number[] = [];
+      // z du dessous de la dalle inclinée à un sommet (repère local du mur, base z=0).
+      const deckRiseAt = (x: number, y: number) =>
+        0.02 + pitchedDeckZ(x, y, pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg);
+      for (let i = 0; i < n; i++) {
+        const [ax, ay] = ring[i];
+        const [bx, by] = ring[(i + 1) % n];
+        const za = deckRiseAt(ax, ay);
+        const zb = deckRiseAt(bx, by);
+        // Deux triangles (a-bas, b-bas, b-haut) + (a-bas, b-haut, a-haut). Les normales
+        // sont recalculées (computeVertexNormals) ; double face pour rester visible quel
+        // que soit le sens de parcours de l'anneau.
+        positions.push(ax, ay, 0, bx, by, 0, bx, by, zb);
+        positions.push(ax, ay, 0, bx, by, zb, ax, ay, za);
+      }
+      const skirtGeo = new THREE.BufferGeometry();
+      skirtGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+      skirtGeo.computeVertexNormals();
+      // Murs de pignon = même teinte que le bâtiment (continuité du volume), double face.
+      const skirtMat = new THREE.MeshStandardMaterial({
+        color: dim ? 0x9aa3b4 : 0xe2e7f2,
+        roughness: 0.85,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        transparent: dim,
+        opacity: dim ? 0.55 : 1,
+      });
+      const skirt = new THREE.Mesh(skirtGeo, skirtMat);
+      skirt.position.z = wallH; // base posée sur le toit plat du bâtiment
+      skirt.castShadow = true;
+      skirt.receiveShadow = true;
+      sceneRoot!.add(skirt);
+    }
+
     // Axes de visée à partir de l'azimut de la famille.
     const azRad = pack.azimuthDeg * DEG2RAD;
     const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
