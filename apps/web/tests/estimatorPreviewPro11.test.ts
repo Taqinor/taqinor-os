@@ -657,3 +657,53 @@ describe('pro-11 — W79 : la disposition personnalisée survit à une édition 
     expect(fn).toContain('cx: c.cx, cy: c.cy');
   });
 });
+
+describe('pro-11 — W80 : glissé-déplacer un panneau au DOIGT (touch) en 3D', () => {
+  const editor = read('../src/scripts/roofPro11/layoutEditor.ts');
+  const constants = read('../src/scripts/roofPro11/constants.ts');
+
+  it('un seuil de glissé DÉDIÉ LAYOUT_GRAB_PX existe (n\'emprunte pas OBSTACLE_TAP_PX)', () => {
+    expect(constants).toMatch(/export const LAYOUT_GRAB_PX = \d+/);
+    // le chemin de glissé panneau utilise SON propre seuil, plus l'OBSTACLE_TAP_PX.
+    expect(editor).toContain('LAYOUT_GRAB_PX');
+    expect(editor).not.toContain('OBSTACLE_TAP_PX');
+  });
+
+  it('le glissé panneau partage une logique commune souris/doigt (begin/move/end)', () => {
+    expect(editor).toContain('function beginLayoutDrag(');
+    expect(editor).toContain('function moveLayoutDrag(');
+    expect(editor).toContain('function endLayoutDrag(');
+    // begin gardé par layoutMode + hors mode obstacle (mêmes garde-fous que la souris).
+    const begin = editor.slice(editor.indexOf('function beginLayoutDrag'));
+    expect(begin).toMatch(/if \(!ctx\.layoutMode \|\| isObstacleMode\(\) \|\| !ctx\.layoutState\) return false/);
+  });
+
+  it('des handlers touchstart/touchmove/touchend MIROIR du chemin souris sont câblés', () => {
+    expect(editor).toContain("map.on('touchstart'");
+    expect(editor).toContain("map.on('touchmove'");
+    expect(editor).toContain("map.on('touchend'");
+    // touchstart → beginLayoutDrag ; touchmove → moveLayoutDrag ; touchend → endLayoutDrag.
+    const ts = editor.slice(editor.indexOf("map.on('touchstart'"));
+    expect(ts).toContain('beginLayoutDrag(e.point)');
+    const tm = editor.slice(editor.indexOf("map.on('touchmove'"));
+    expect(tm).toContain('moveLayoutDrag(e.point)');
+    const te = editor.slice(editor.indexOf("map.on('touchend'"));
+    expect(te).toContain('endLayoutDrag(e.point)');
+  });
+
+  it('le touch ne saisit qu\'à UN doigt (pinch ignoré) et neutralise le pan (preventDefault)', () => {
+    const ts = editor.slice(editor.indexOf("map.on('touchstart'"), editor.indexOf("map.on('touchmove'"));
+    // pinch/zoom à deux doigts ne déplace pas un panneau.
+    expect(ts).toContain('e.points && e.points.length > 1');
+    // touchmove preventDefault pendant le glissé (parité dragPan.disable du chemin souris).
+    const tm = editor.slice(editor.indexOf("map.on('touchmove'"), editor.indexOf("map.on('touchend'"));
+    expect(tm).toContain('e.preventDefault()');
+  });
+
+  it('le commit du déplacement (souris ET doigt) atterrit sur une cellule VIDE valide', () => {
+    // endLayoutDrag passe par movePanelToPoint → snap sur la cellule vide valide la + proche.
+    const end = editor.slice(editor.indexOf('function endLayoutDrag'));
+    expect(end).toContain('movePanelToPoint(ctx.layoutState, layoutDrag.from, enu.x, enu.y)');
+    expect(end).toContain('renderCustomLayout()'); // readouts recompute après le déplacement
+  });
+});

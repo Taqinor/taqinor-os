@@ -280,7 +280,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   valid cells of the new lattice via `nearestEmptyCell`) and re-render panel/grid/note. Accept: a custom
   layout survives an obstacle edit (re-snapped, not wiped) and all readouts stay live. File:
   `roof-tool-pro11.ts`.
-- [ ] **W80 — layout: touch drag-to-move panels in 3D.** `layoutDrag` is bound only to `mousedown/move/
+- [x] **W80 — layout: touch drag-to-move panels in 3D.** `layoutDrag` is bound only to `mousedown/move/
   up`; on a phone the only move path is the tactile grid. Add `touchstart/touchmove/touchend` handlers
   mirroring the mouse path, gated by `layoutMode`, with a dedicated `LAYOUT_GRAB_PX` (don't overload the
   obstacle `OBSTACLE_TAP_PX`). Accept: a panel can be dragged to a valid cell on touch. File:

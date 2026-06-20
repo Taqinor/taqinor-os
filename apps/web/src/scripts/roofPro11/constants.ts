@@ -11,6 +11,7 @@ export const FLOORS = 2;
 export const OBSTACLE_BOX_H_M = 0.8; // hauteur du volume d'obstacle rendu en 3D
 export const OBSTACLE_TAP_PX = 8; // en deçà : un clic/tap, au-delà : un glissé
 export const VERTEX_GRAB_PX = 14; // rayon de saisie d'un sommet du tracé (W92, doigt ⊃ pastille)
+export const LAYOUT_GRAB_PX = 12; // W80 — seuil pixel du glissé-déplacer d'un panneau (touch + souris), doigt ⊃ pastille
 export const DEG2RAD = Math.PI / 180;
 export const WGS84_RADIUS = 6378137;
 export const DEG2M = DEG2RAD * WGS84_RADIUS;

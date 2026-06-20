@@ -25,7 +25,7 @@ import { PANEL_KWC } from '../../lib/productionEngine';
 import { type PackResult, type PanelGrid, type ConfigFamily } from '../../lib/estimatorBrainV2';
 import {
   PITCH_VIEW,
-  OBSTACLE_TAP_PX,
+  LAYOUT_GRAB_PX,
   DEG2RAD,
   DEG2M,
 } from './constants';
@@ -352,37 +352,39 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const grabR2 = (PANEL2_LONG_M * 0.7) ** 2;
     return best >= 0 && bestD <= grabR2 ? best : null;
   }
-  map.on('mousedown', (e) => {
-    if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return;
-    const from = layoutPanelAt(e.point);
-    if (from == null) return;
-    layoutDrag = { from, startPoint: e.point, moved: false };
+  /** Début d'un glissé-déplacer (souris OU doigt) : saisit le panneau sous le point, fige le
+   *  pan de la carte. Renvoie true si un panneau a été saisi (le geste devient un glissé). */
+  function beginLayoutDrag(point: maplibregl.Point): boolean {
+    if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return false;
+    const from = layoutPanelAt(point);
+    if (from == null) return false;
+    layoutDrag = { from, startPoint: point, moved: false };
     ctx.layoutSel = from;
     map.dragPan.disable();
     map.getCanvas().style.cursor = 'grabbing';
     renderLayoutPanel();
-    e.preventDefault();
-  });
-  map.on('mousemove', (e) => {
+    return true;
+  }
+  /** Glissé en cours (souris OU doigt) : au-delà du seuil LAYOUT_GRAB_PX, retour visuel
+   *  « relâchez sur un emplacement valide / aucun libre ». Le seuil évite qu'un simple
+   *  tap/clic ne fasse sauter le panneau vers la cellule vide la plus proche. */
+  function moveLayoutDrag(point: maplibregl.Point) {
     if (!layoutDrag || !ctx.layoutState) return;
-    // Un déplacement réel ne commence qu'au-delà d'un seuil pixel : sinon un simple
-    // clic sur un panneau le ferait sauter vers la cellule vide la plus proche.
-    if (!layoutDrag.moved && (Math.abs(e.point.x - layoutDrag.startPoint.x) >= OBSTACLE_TAP_PX || Math.abs(e.point.y - layoutDrag.startPoint.y) >= OBSTACLE_TAP_PX)) {
+    if (!layoutDrag.moved && (Math.abs(point.x - layoutDrag.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - layoutDrag.startPoint.y) >= LAYOUT_GRAB_PX)) {
       layoutDrag.moved = true;
     }
     if (!layoutDrag.moved) return;
-    const enu = screenToENU(e.point);
+    const enu = screenToENU(point);
     if (!enu) return;
     const target = nearestEmptyCell(ctx.layoutState, enu.x, enu.y);
     if (layoutNoteEl) layoutNoteEl.textContent = target >= 0 ? 'Relâchez sur un emplacement valide (vert).' : 'Aucun emplacement libre — il reviendra à sa place.';
-  });
-  map.on('mouseup', (e) => {
-    if (!layoutDrag || !ctx.layoutState) {
-      return;
-    }
-    // Clic sans glissé (pas de mouvement au-delà du seuil) → on NE déplace pas le
-    // panneau : on l'a seulement sélectionné. Seul un vrai glissé le repositionne.
-    const enu = layoutDrag.moved ? screenToENU(e.point) : null;
+  }
+  /** Fin d'un glissé-déplacer (souris OU doigt) : commit du déplacement sur la cellule vide
+   *  valide la plus proche (movePanelToPoint), sinon snap-back ; ré-active le pan. Un simple
+   *  tap/clic (pas de mouvement au-delà du seuil) ne déplace pas — il a seulement sélectionné. */
+  function endLayoutDrag(point: maplibregl.Point) {
+    if (!layoutDrag || !ctx.layoutState) return;
+    const enu = layoutDrag.moved ? screenToENU(point) : null;
     if (enu) {
       const res = movePanelToPoint(ctx.layoutState, layoutDrag.from, enu.x, enu.y);
       if (res.ok && res.toIndex !== layoutDrag.from) {
@@ -397,6 +399,31 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     map.dragPan.enable();
     map.getCanvas().style.cursor = '';
     renderLayoutPanel();
+  }
+
+  // — Souris —
+  map.on('mousedown', (e) => {
+    if (beginLayoutDrag(e.point)) e.preventDefault();
+  });
+  map.on('mousemove', (e) => moveLayoutDrag(e.point));
+  map.on('mouseup', (e) => endLayoutDrag(e.point));
+
+  // W80 — TOUCH : glissé-déplacer au DOIGT, miroir du chemin souris, gardé par layoutMode
+  // (via beginLayoutDrag). On ne saisit qu'à UN seul doigt (un pinch/zoom à deux doigts ne
+  // doit pas déplacer un panneau). preventDefault en touchmove neutralise le pan de la carte
+  // pendant qu'on glisse le panneau (parité avec dragPan.disable du chemin souris).
+  map.on('touchstart', (e) => {
+    if (e.points && e.points.length > 1) return; // multi-touch (pinch) → pas un glissé panneau
+    if (beginLayoutDrag(e.point)) e.preventDefault();
+  });
+  map.on('touchmove', (e) => {
+    if (!layoutDrag) return;
+    e.preventDefault();
+    moveLayoutDrag(e.point);
+  });
+  map.on('touchend', (e) => {
+    if (!layoutDrag) return;
+    endLayoutDrag(e.point);
   });
 
   return { layoutCap, ensureLayoutState, renderCustomLayout, screenToENU, renderLayoutPanel, setLayoutMode, occupiedCenters, reenterCustomLayout };
