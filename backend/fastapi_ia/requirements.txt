@@ -10,6 +10,10 @@ PyJWT==2.10.1
 sqlalchemy==2.0.36
 psycopg2-binary==2.9.10
 pgvector==0.3.6
+# Parser SQL — validation single-SELECT + isolation tenant de l'agent NL->SQL
+# (ERR1/ERR2). Deja tire transitivement par langchain ; epingle ici car
+# importe directement par app/services/sql_agent_service.py.
+sqlparse>=0.5,<0.6
 
 # Cache
 redis==5.2.1

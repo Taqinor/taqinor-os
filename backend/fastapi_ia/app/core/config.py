@@ -42,6 +42,29 @@ DB_HOST = os.environ.get("DB_HOST", "db")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 
 _pw = quote_plus(DB_PASSWORD)
+# Connexion owner — utilisee pour les operations administrees du service OCR
+# (create/upgrade de ia_ocr_document, voir core/database.py). NE doit PAS servir
+# a l'agent NL->SQL : il a sa propre connexion lecture seule ci-dessous.
 DATABASE_URL = (
     f"postgresql://{DB_USER}:{_pw}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
+
+# ERR3 — Connexion DEDIEE LECTURE SEULE pour l'agent NL->SQL.
+# L'agent ne doit jamais se connecter avec le role owner (qui a INSERT/UPDATE/
+# DELETE/DDL). Si SQL_AGENT_DB_USER est defini en .env (un role Postgres ne
+# disposant QUE de SELECT sur les tables de l'allowlist, cf. docker-compose.yml),
+# l'agent l'utilise ; sinon il retombe SANS RIEN CASSER sur DATABASE_URL.
+# Defense en profondeur : ce role read-only complete le garde single-SELECT et
+# l'injection company_id du service — meme une requete d'ecriture qui passerait
+# entre les mailles est refusee par Postgres faute de privileges.
+SQL_AGENT_DB_USER = os.environ.get("SQL_AGENT_DB_USER", "")
+SQL_AGENT_DB_PASSWORD = os.environ.get("SQL_AGENT_DB_PASSWORD", "")
+
+if SQL_AGENT_DB_USER:
+    _agent_pw = quote_plus(SQL_AGENT_DB_PASSWORD)
+    SQL_AGENT_DATABASE_URL = (
+        f"postgresql://{SQL_AGENT_DB_USER}:{_agent_pw}"
+        f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    )
+else:
+    SQL_AGENT_DATABASE_URL = DATABASE_URL
