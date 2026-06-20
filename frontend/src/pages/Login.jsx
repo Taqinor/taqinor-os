@@ -84,8 +84,21 @@ function BouncingBackground() {
     }
     animRef.current = requestAnimationFrame(tick)
 
+    // Re-clamp les blobs dans le viewport courant au redimensionnement/rotation —
+    // sinon ils dérivent hors écran jusqu'au rechargement.
+    const onResize = () => {
+      const W2 = window.innerWidth
+      const H2 = window.innerHeight
+      stateRef.current.forEach((b) => {
+        b.x = Math.min(Math.max(0, b.x), Math.max(0, W2 - b.w))
+        b.y = Math.min(Math.max(0, b.y), Math.max(0, H2 - b.h))
+      })
+    }
+    window.addEventListener('resize', onResize)
+
     return () => {
       cancelAnimationFrame(animRef.current)
+      window.removeEventListener('resize', onResize)
       stateRef.current.forEach((b) => b.el.remove())
     }
   }, [])

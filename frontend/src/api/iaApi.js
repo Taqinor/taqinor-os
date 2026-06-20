@@ -3,6 +3,10 @@ import axios from 'axios'
 // Même origine que la page par défaut (chemins relatifs via nginx) —
 // fonctionne depuis localhost ET depuis l'adresse privée Tailscale.
 import { originFrom } from './origin'
+// Ré-authentification gracieuse partagée avec le client principal (axios.js) :
+// on émet l'événement « session expirée » plutôt que de recharger durement la
+// page, ce qui préserve l'état des formulaires OCR/agent en cours.
+import { emitSessionExpired } from '../providers/session-bridge'
 
 const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
@@ -24,7 +28,9 @@ iaApi_instance.interceptors.request.use((config) => {
 iaApi_instance.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config
+    // `error.config` est absent sur les erreurs de configuration/setup : on le
+    // garde optionnel pour ne jamais lever depuis l'intercepteur lui-même.
+    const originalRequest = error.config || {}
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
       try {
@@ -35,11 +41,12 @@ iaApi_instance.interceptors.response.use(
         )
         return iaApi_instance(originalRequest)
       } catch {
-        // Refresh echoue
+        // Refresh echoue : la session est reellement expiree.
       }
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
-      }
+      // Ré-authentification gracieuse EN PLACE (pas de rechargement dur) —
+      // identique au client principal : le SessionProvider affiche un modal de
+      // reconnexion et les formulaires OCR/agent ouverts sont préservés.
+      emitSessionExpired()
     }
     return Promise.reject(error)
   }

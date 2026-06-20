@@ -95,18 +95,20 @@ export default function NotificationBell() {
   }, [])
 
   // Marque une notification persistée comme lue, puis recharge le compteur.
+  // On ne met à jour l'UI QUE si le serveur a confirmé (succès) : un échec ne
+  // doit pas faire chuter le compteur faussement — le prochain poll fait foi.
   const markOne = (id) => {
-    notificationsApi.markRead(id).catch(() => {}).finally(() => {
+    notificationsApi.markRead(id).then(() => {
       setFeed((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
       setFeedUnread((c) => Math.max(0, c - 1))
-    })
+    }).catch(() => {})
   }
 
   const markAll = () => {
-    notificationsApi.markAllRead().catch(() => {}).finally(() => {
+    notificationsApi.markAllRead().then(() => {
       setFeed((prev) => prev.map((n) => ({ ...n, read: true })))
       setFeedUnread(0)
-    })
+    }).catch(() => {})
   }
 
   useEffect(() => {

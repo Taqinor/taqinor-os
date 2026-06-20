@@ -62,7 +62,10 @@ const authSlice = createSlice({
         state.loading = true
       })
       .addCase(fetchMe.fulfilled, (state, action) => {
-        state.user = { username: action.payload.username }
+        // On conserve l'objet utilisateur COMPLET (email + autres champs), comme
+        // le fait le chemin de login — sinon la ligne email de l'en-tête et les
+        // autres consommateurs reçoivent `undefined` après un rechargement.
+        state.user = action.payload
         // menu_tier (dérivé du nouveau rôle) fait autorité ; repli sur le legacy
         // uniquement pour les comptes sans rôle.
         state.role = action.payload.menu_tier || action.payload.role_legacy || action.payload.role || 'normal'
