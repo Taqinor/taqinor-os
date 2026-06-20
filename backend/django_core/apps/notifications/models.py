@@ -14,8 +14,12 @@ Les types d'événement sont une énumération fermée (clés stables en anglais
 libellés FR pour l'UI). On n'invente jamais d'événement à la volée : ajouter un
 événement = ajouter une valeur ici.
 """
+import logging
+
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+
+logger = logging.getLogger(__name__)
 
 
 class EventType(models.TextChoices):
@@ -149,3 +153,80 @@ class PushSubscription(models.Model):
             'endpoint': self.endpoint,
             'keys': {'p256dh': self.p256dh, 'auth': self.auth},
         }
+
+
+class VapidKeyPair(models.Model):
+    """N109 — Paire de clés VAPID auto-générée, persistée en singleton global.
+
+    INFRA APPLICATIVE, PAS une donnée métier : c'est une exception EXPLICITEMENT
+    autorisée à la règle multi-tenant — aucune `company` FK. Une seule ligne
+    existe pour toute l'instance ; toutes les sociétés partagent la même paire
+    VAPID (la clé identifie le SERVEUR auprès des services push, pas un tenant).
+
+    Renseignée à la volée par `ensure()` quand aucune clé n'est fournie par
+    l'environnement, pour que le web push fonctionne sans configuration manuelle.
+    `public_key` est au format base64url (point EC brut non compressé, la forme
+    attendue par `applicationServerKey` du navigateur) ; `private_key` est un PEM
+    accepté tel quel par `pywebpush.webpush(vapid_private_key=...)`."""
+
+    public_key = models.TextField(default='')
+    private_key = models.TextField(default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Paire de clés VAPID'
+        verbose_name_plural = 'Paires de clés VAPID'
+
+    def __str__(self):
+        return f'VapidKeyPair #{self.pk}'
+
+    @classmethod
+    def _generate(cls):
+        """Génère (public_b64, private_pem) ou (None, None) en cas d'échec.
+
+        Best-effort : toute erreur (lib absente, etc.) renvoie (None, None) ;
+        jamais d'exception remontée."""
+        try:
+            import base64
+
+            from cryptography.hazmat.primitives import serialization
+            from py_vapid import Vapid01
+
+            v = Vapid01()
+            v.generate_keys()
+            raw_pub = v.public_key.public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.UncompressedPoint)
+            public_b64 = base64.urlsafe_b64encode(raw_pub).rstrip(b'=').decode()
+            priv_pem = v.private_pem().decode()
+            if not public_b64 or not priv_pem:
+                return (None, None)
+            return (public_b64, priv_pem)
+        except Exception as exc:  # pragma: no cover - lib absente / défensif
+            logger.warning('Génération de la paire VAPID échouée : %s', exc)
+            return (None, None)
+
+    @classmethod
+    def ensure(cls):
+        """Renvoie le singleton existant, sinon le génère et le persiste.
+
+        Sémantique singleton : une seule ligne pour toute l'instance. Génération
+        gardée par une transaction + `select_for_update` pour éviter qu'une course
+        crée deux lignes. Renvoie l'instance, ou None si la génération échoue
+        (lib absente, etc.) — jamais d'exception remontée."""
+        try:
+            existing = cls.objects.first()
+            if existing is not None:
+                return existing
+            with transaction.atomic():
+                existing = cls.objects.select_for_update().first()
+                if existing is not None:
+                    return existing
+                public_b64, priv_pem = cls._generate()
+                if not public_b64 or not priv_pem:
+                    return None
+                return cls.objects.create(
+                    public_key=public_b64, private_key=priv_pem)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Initialisation de la paire VAPID échouée : %s', exc)
+            return None

@@ -4,7 +4,6 @@ TenantMixin scope déjà par société ; on RESTREINT en plus au destinataire
 courant pour que personne ne voie les notifications d'autrui. La société ET le
 destinataire/utilisateur sont posés côté serveur, jamais lus du corps.
 """
-from django.conf import settings
 from django.utils import timezone
 
 from rest_framework import status, viewsets
@@ -23,7 +22,7 @@ from .models import (
 from .serializers import (
     NotificationPreferenceSerializer, NotificationSerializer,
 )
-from .services import merged_preferences
+from .services import merged_preferences, resolve_vapid_keys
 
 
 class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -125,8 +124,9 @@ def vapid_public_key(request):
     """Clé publique VAPID pour l'abonnement côté navigateur.
 
     Publique par nature. Chaîne vide tant que rien n'est configuré → le front
-    sait alors que le push n'est pas disponible (NO-OP)."""
-    return Response({'public_key': getattr(settings, 'VAPID_PUBLIC_KEY', '') or ''})
+    sait alors que le push n'est pas disponible (NO-OP). Avec l'auto-génération
+    (N109), renvoie la clé publique du singleton VAPID si aucune clé d'env."""
+    return Response({'public_key': resolve_vapid_keys()[0]})
 
 
 @api_view(['POST'])
