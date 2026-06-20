@@ -251,7 +251,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `northFacing` and render an honest French "configuration non viable / pan orienté nord" instead of a
   fabricated winner. Accept: tiny-roof and north-pan cases show the honest message, not a 0-panel
   "winner". Files: `estimatorBrainV7.ts`, `estimatorBrainV8.ts`, `roof-tool-pro11.ts` + unit tests.
-- [ ] **W75 — map: geocoder race + debounce + abort.** The address search fires `fetch` with no
+- [x] **W75 — map: geocoder race + debounce + abort.** The address search fires `fetch` with no
   `AbortController`, no request token, and no debounce; two quick searches (or the autorun
   `initialQuery`) race and the slower wins, flying to the wrong address. Add a `geoToken` guard +
   `AbortController` + ~300 ms debounce (mirror the existing `billTimer`). Accept: rapid searches always
@@ -421,6 +421,10 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state of the site +
   preview lab)*
+- 2026-06-20 — W75: pro-11 address `geocode` now takes a module-scoped `geoToken` (ignores stale
+  responses) + an `AbortController` (aborts the previous request) and the search-form submit is
+  debounced ~300 ms (mirroring the bill debounce) — rapid Enter presses resolve only to the last
+  query, no stray flyTo.
 - 2026-06-20 — W70: pro-11 now disposes the orphaned `roofTex` before reassigning it on re-trace
   (guarded so it never frees the texture still on `deckMaterial.map`), and a new `customLayer.onRemove`
   frees the `WebGLRenderer`, `panelTex`, `roofTex`, and the scene (`disposeScene`) on teardown —

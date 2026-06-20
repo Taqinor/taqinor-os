@@ -155,6 +155,27 @@ describe('pro-11 — le toit PLAT garde l\'optimiseur vivant W34 (V7) intact', (
   });
 });
 
+describe('pro-11 — W75 : recherche d\'adresse anti-course (jeton + abort + débounce)', () => {
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('geocode capture un jeton de requête et ignore les réponses périmées', () => {
+    expect(script).toContain('let geoToken = 0');
+    expect(script).toContain('const myToken = ++geoToken');
+    expect(script).toContain('if (myToken !== geoToken) return');
+  });
+
+  it('le fetch porte un AbortController (la requête précédente est annulée)', () => {
+    expect(script).toContain('new AbortController()');
+    expect(script).toContain('geoAbort?.abort()');
+    expect(script).toContain('fetch(url, { signal: ctrl.signal })');
+  });
+
+  it('la soumission de recherche est débouncée (~300 ms)', () => {
+    expect(script).toContain('geoSubmitTimer');
+    expect(script).toMatch(/geoSubmitTimer = setTimeout\([\s\S]{0,120}300\)/);
+  });
+});
+
 describe('pro-11 — W70 : libération des ressources GPU (re-tracé + démontage)', () => {
   const script = read('../src/scripts/roof-tool-pro11.ts');
 

@@ -4286,19 +4286,39 @@ export function initRoofToolPro8(opts: InitOptions): void {
   obsMinusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, 1 / OBSTACLE_STEP_FACTOR)));
   obsDeleteBtn?.addEventListener('click', deleteSelected);
 
+  // W75 — débounce la soumission de recherche (~300 ms, comme le débounce billTimer de la
+  // facture) : des « Entrée » rapprochés ne lancent qu'UNE requête, celle de la dernière saisie.
+  let geoSubmitTimer: ReturnType<typeof setTimeout> | null = null;
   searchForm?.addEventListener('submit', (e) => {
     e.preventDefault();
     const q = addressEl?.value.trim();
-    if (q) void geocode(q);
+    if (!q) return;
+    if (geoSubmitTimer != null) clearTimeout(geoSubmitTimer);
+    setStatus('Recherche de l’adresse…');
+    geoSubmitTimer = setTimeout(() => {
+      geoSubmitTimer = null;
+      void geocode(q);
+    }, 300);
   });
 
+  // W75 — jeton + AbortController anti-course : deux recherches concurrentes ne peuvent
+  // plus « gagner » dans le désordre (le flyTo lent ne supplante plus le rapide). Chaque
+  // appel incrémente geoToken, annule la requête précédente, et ignore sa réponse si un
+  // appel plus récent est parti entre-temps.
+  let geoToken = 0;
+  let geoAbort: AbortController | null = null;
   async function geocode(query: string) {
+    const myToken = ++geoToken;
+    geoAbort?.abort();
+    const ctrl = new AbortController();
+    geoAbort = ctrl;
     setStatus('Recherche de l’adresse…');
     try {
       const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${encodeURIComponent(opts.maptilerKey)}&country=ma&limit=1&language=fr`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error('geocode');
       const data = (await res.json()) as { features?: Array<{ center?: [number, number] }> };
+      if (myToken !== geoToken) return; // une recherche plus récente l'a emporté
       const center = data.features?.[0]?.center;
       if (!center) {
         setStatus('Adresse introuvable. Précisez la ville ou déplacez la carte à la main.');
@@ -4308,7 +4328,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
       if (opts.reducedMotion) map.jumpTo(target);
       else map.flyTo({ ...target, essential: true });
       setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer et lancer le calcul.');
-    } catch {
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError' || myToken !== geoToken) return; // annulée / périmée
       setStatus('Recherche indisponible. Déplacez la carte à la main pour trouver votre toit.');
     }
   }
