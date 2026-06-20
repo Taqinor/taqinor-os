@@ -253,6 +253,30 @@ STANDING RULE plus the **module-specific constraints** below.
 
 ---
 
+## BUILD QUEUE — M1–M7 (modularity / decoupling — added 2026-06-20)
+
+Architecture hardening for the modular monolith. The backend is already split into clean
+per-domain Django apps, but the five business-core apps (`crm`, `ventes`, `stock`,
+`installations`, `sav`) are woven together by **circular, load-time model imports**
+(confirmed cycles: crm⇄ventes, stock⇄ventes, installations⇄ventes, installations⇄stock),
+so none can be tested or extracted on its own. These tasks decouple that core **without
+changing behaviour or schema** (additive / refactor only; every STANDING RULE applies).
+Build order top-down — M1 and M2 unlock the rest. Gate notes are inline; an unattended run
+must skip-and-flag the tasks marked `[GATE: …]` per the stop-and-ask STANDING RULE.
+
+- [ ] M1 — Replace every load-time cross-app model import in the core apps with Django string FK references so no `models.py` imports a sibling app at import time. Fait = no top-level `from apps.<other>.models import …` remains in crm/ventes/stock/installations/sav `models.py`; every cross-app FK/M2M uses the `"app.Model"` string form; `python manage.py makemigrations --check` reports no new migration and the suite passes. (Safe refactor — no schema change.)
+- [ ] M2 — Make `services.py` / `selectors.py` the only cross-app entry point: route cross-app reads/writes through an app's service/selector functions instead of importing its `models`/`views` directly, and write the rule into CLAUDE.md repo-facts. Fait = remaining cross-app call sites import another app's `services`/`selectors` (or use string FKs), never its `models`/`views`; behaviour unchanged; tests pass. (Generalises the existing `ventes → crm.services` lazy-import pattern.)
+- [ ] M3 — [GATE: new dev dependency] Add an `import-linter` contract run in CI that forbids import cycles among the core apps and pins the layer order (foundation → domain core → satellites). Fait = a `lint-imports` step runs in CI and fails on a new cycle or an upward import; the contract is committed. (Needs the `import-linter` dev dependency — STOP-AND-ASK before building.)
+- [ ] M4 — Formalise the three layers (foundation: authentication/roles/records/customfields/core · domain core: crm/stock/ventes/installations/sav · satellites: reporting/automation/monitoring/notifications/publicapi/audit/documents/dataimport/contact) and remove the one back-edge `ventes → audit` by moving that audit capture onto signals. Fait = `ventes` no longer imports `apps.audit`; the layer map is written down; behaviour unchanged; tests pass. (The signal move builds independently; enforcement rides on M3's contract.)
+- [ ] M5 — Use the empty `core/` app for shared primitives: move the tenant base mixin and the `authentication/scoping.py` company-scoping helpers into `core` so apps depend down on `core` instead of sideways. Fait = the shared helpers live under `core/`, re-exported for back-compat, callers updated; no schema change; tests pass. (Touches authentication/scoping — additive, build carefully.)
+- [ ] M6 — [GATE: new architectural component] Replace the hottest direct cross-app calls with a small domain-event layer (e.g. emit `DevisAccepted` that `installations` subscribes to) instead of `installations` importing `ventes`. Fait = at least the accept→chantier and accept→stage seams run through events/signals, no direct call removed without an equivalent subscriber, tests pass. (New event-bus component — STOP-AND-ASK before building.)
+- [ ] M7 — Split the god-files (no behaviour change): turn the large `views.py` into a `views/` package (one module per resource) and split the big `models.py` into `models_*.py` mirroring `parametres`, for `installations` (views 1879 / models 1056 LOC), `ventes` (views 1259) and `stock` (views 1063). Fait = each split app keeps identical importable symbols (re-exported from its package `__init__`), endpoints and migrations unchanged, suite passes. (Pure reorg — cuts merge conflicts across parallel lanes.)
+
+The two heavy options I recommended **deferring** (microservice extraction; per-app pip
+packaging) are recorded under GATED below — not for an unattended run.
+
+---
+
 ## REFINEMENT QUEUE — existing-feature polish (audit 2026-06-18)
 
 Atomic refinements of **already-shipped** features, found by reading the real frontend + backend
@@ -413,6 +437,14 @@ need Reda's taste. Reda decides; then I write a focused task and move it into th
   2026-06-20 → BUILD QUEUE (N93/N94)** — i18n framework approved. SEQUENCING: run as the FINAL step of
   the UI/UX overhaul (after the component restyle); not prioritized — pull forward only on Reda's
   explicit instruction.
+- **G16 — Heavy modularity options (deferred, NOT recommended now).** The two heaviest
+  decoupling moves from the 2026-06-20 modularity review, recorded for completeness and held
+  here so no unattended run starts them: (a) extracting a bounded context into its own
+  deployable service (like `fastapi_ia`), and (b) turning each Django app into a versioned,
+  pip-installable package. Both are large, risky migrations against a shared Postgres and the
+  single `company` tenant threaded through every model, with low payoff for a single-installer
+  ERP. Defer until a module genuinely needs independent scaling/deploy; the M1–M7 in-monolith
+  decoupling delivers the modularity benefit first.
 
 ### From the 2026-06-18 refinement audit — gated copies (do NOT auto-build)
 
