@@ -581,6 +581,19 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // `roofType`/`pitchDeg`/`facingAzimuthDeg`/`neededPanels`/`neededAuto`. `activeAreaId`
   // désigne la zone en cours. On initialise avec UNE zone active (comportement mono-zone
   // strictement inchangé tant qu'il n'y a qu'une zone).
+  // Plan de RE-RENDU d'une zone : tout ce qu'il faut pour redessiner son bâtiment +
+  // ses panneaux SANS ré-optimiser. Stocké sur la zone ACTIVE à chaque renderScene ;
+  // les AUTRES zones sont re-dessinées (subduées) à partir de leur plan, à leur vraie
+  // position relative (offset GPS → ENU). `count` = nombre de panneaux RÉELLEMENT posés.
+  interface ZoneRenderPlan {
+    pack: PackResult;
+    grid: PanelGrid;
+    tiltDeg: number;
+    family: ConfigFamily;
+    flush: boolean;
+    count: number;
+    obstacles: Obstacle[];
+  }
   interface AreaRecord {
     id: string;
     label: string;
@@ -592,6 +605,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     neededPanels: number;
     neededAuto: boolean;
     result: AreaResult | null;
+    renderPlan: ZoneRenderPlan | null;
   }
   let areaCounter = 0;
   const newAreaRecord = (): AreaRecord => {
@@ -607,6 +621,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
       neededPanels: 0,
       neededAuto: true,
       result: null,
+      renderPlan: null,
     };
   };
   const areas: AreaRecord[] = [newAreaRecord()];
@@ -871,6 +886,227 @@ export function initRoofToolPro8(opts: InitOptions): void {
     return sprite;
   }
 
+  /** CHEMIN DE CONSTRUCTION UNIQUE d'une zone : bâtiment + dalle (deck) + panneaux
+   *  (+ châssis/lest en toit plat). Utilisé par renderScene pour la zone ACTIVE
+   *  (offX=offY=0, dim=false → octet pour octet identique à avant) ET par
+   *  appendOtherZones pour les AUTRES zones (offset GPS→ENU + dim=true subdué). Tout
+   *  est ajouté à `sceneRoot`. NE touche PAS `setOrigin`/`disposeScene` (renderScene
+   *  en reste propriétaire) ni la photo satellite (zone active uniquement). En dim, les
+   *  obstacles de la zone (depuis `plan.obstacles`) sont rendus en boîtes subduées sans
+   *  étiquette ni enregistrement (non manipulables). Renvoie la dalle (+ son matériau,
+   *  pour la photo) et l'anneau TRANSLATÉ (pour l'enveloppe d'ombre). */
+  function buildZoneMeshes(
+    plan: ZoneRenderPlan,
+    offX: number,
+    offY: number,
+    dim: boolean,
+    occupiedSet?: Set<number>,
+  ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][] } {
+    const { pack, grid, tiltDeg, family, flush } = plan;
+    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
+
+    // Bâtiment
+    const shape = new THREE.Shape();
+    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+    shape.closePath();
+    const buildingMat = new THREE.MeshStandardMaterial({ color: 0xe2e7f2, roughness: 0.85, metalness: 0 });
+    if (dim) {
+      // Zone NON active : bâtiment subdué (plus sombre + légèrement transparent) pour
+      // que la zone ACTIVE (en cours d'édition) ressorte clairement.
+      buildingMat.color.set(0x9aa3b4);
+      buildingMat.transparent = true;
+      buildingMat.opacity = 0.55;
+    }
+    const building = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }),
+      buildingMat,
+    );
+    building.castShadow = true;
+    building.receiveShadow = true;
+    sceneRoot!.add(building);
+
+    const baseZ = wallH + DECK_THK;
+    // FIX 1 (V6) — en pente (flush), réf. d'égout (le point le plus AVAL du tracé) :
+    // la pente monte à partir de l'égout, rien ne passe sous le toit.
+    const pitchEaveCoord = flush ? eaveUpSlopeCoord(ring, pack.azimuthDeg) : 0;
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0xb9bfca, roughness: 0.95, metalness: 0 });
+    if (dim) {
+      deckMat.color.set(0x8b9099);
+      deckMat.transparent = true;
+      deckMat.opacity = 0.7;
+    }
+    const deckGeo = new THREE.ShapeGeometry(shape);
+    if (flush) {
+      // FIX 1 (V6) — la SURFACE DE TOIT elle-même devient un plan INCLINÉ : chaque
+      // sommet de la dalle est relevé à la hauteur du plan (pente × distance à
+      // l'égout). La photo détourée, mappée par position HORIZONTALE (applyRoofPhoto),
+      // reste géo-alignée. Plat : dalle horizontale (inchangé).
+      const dpos = deckGeo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < dpos.count; i++) {
+        dpos.setZ(i, pitchedDeckZ(dpos.getX(i), dpos.getY(i), pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg));
+      }
+      dpos.needsUpdate = true;
+      deckGeo.computeVertexNormals();
+    }
+    const deck = new THREE.Mesh(deckGeo, deckMat);
+    deck.position.z = wallH + 0.02;
+    deck.receiveShadow = true;
+    sceneRoot!.add(deck);
+
+    // Axes de visée à partir de l'azimut de la famille.
+    const azRad = pack.azimuthDeg * DEG2RAD;
+    const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
+    const u: [number, number] = [-f[1], f[0]];
+    const rowAngleRad = Math.atan2(u[1], u[0]);
+    const ca = Math.cos(rowAngleRad);
+    const sa = Math.sin(rowAngleRad);
+    const rx = (lx: number, ly: number): [number, number] => [lx * ca - ly * sa, lx * sa + ly * ca];
+
+    const alongRow = grid.rowWidthM;
+    const slope = grid.slopeLenM;
+    const tilt = tiltDeg * DEG2RAD;
+    const rise = slope * Math.sin(tilt);
+    const depthFootprint = slope * Math.cos(tilt);
+    const frontStrut = 0.1;
+    const halfAlong = alongRow / 2;
+    const halfDepth = depthFootprint / 2;
+
+    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
+    const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
+    if (dim) {
+      // Panneaux légèrement désaturés/assombris pour les zones non actives.
+      glassMat.color.set(0xb8bcc6);
+      frameMat.color.set(0x70757e);
+      backMat.color.set(0xb0b3ba);
+    }
+    const panelMats = [frameMat, frameMat, frameMat, frameMat, glassMat, backMat];
+    const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
+    const jboxGeo = new THREE.BoxGeometry(0.4, 0.12, 0.035);
+    jboxGeo.translate(0, 0, -(PANEL2_THICK_M / 2 + 0.02));
+    const jboxMat = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: 0.3, roughness: 0.6 });
+    const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
+    const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
+
+    // Cellules POSÉES : disposition personnalisée explicite (zone active en mode
+    // calepinage → ces cellules exactes, possiblement non contiguës) sinon les
+    // `plan.count` premières cellules du pavage (comportement historique).
+    const panels = occupiedSet
+      ? grid.panels.filter((_, i) => occupiedSet.has(i))
+      : grid.panels.slice(0, Math.max(0, plan.count));
+    const panelMatsArr: THREE.Matrix4[] = [];
+    const frontMats: THREE.Matrix4[] = [];
+    const backMats: THREE.Matrix4[] = [];
+    const railMats: THREE.Matrix4[] = [];
+    const ballastMats: THREE.Matrix4[] = [];
+    const railGeo = new THREE.BoxGeometry(0.05, slope, 0.05);
+    const frontGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut);
+    const backGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut + rise);
+    const ballastGeo = new THREE.BoxGeometry(0.34, 0.18, 0.12);
+    const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
+
+    for (const p of panels) {
+      const cx = p.cx + offX;
+      const cy = p.cy + offY;
+      // Pour l'Est-Ouest : le sens d'inclinaison vient de la FACE du panneau
+      // (chevrons dos à dos faces E/O), fournie par le cerveau. Sud : tilt simple.
+      const signedTilt = family === 'eastwest' ? (p.face === 'E' ? -tilt : tilt) : tilt;
+      // Toit plat : panneau surélevé sur châssis (frontStrut + montée d'ombre).
+      // Toit en pente (flush) : FIX 1 (V6) — panneau COPLANAIRE, AFFLEURANT sur le
+      // plan incliné. compose(yaw, tilt) donne déjà au panneau la normale du toit
+      // (donc tous les panneaux sont coplanaires) ; flushPanelCenterAt pose le CENTRE
+      // sur le plan + un décalage CONSTANT le long de la normale → le centre monte
+      // avec la pente (vrai plan incliné, pas un calepinage plat de panneaux inclinés).
+      if (flush) {
+        const c = flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ, tiltDeg, pack.azimuthDeg, PITCHED_FLUSH_STANDOFF_M);
+        panelMatsArr.push(compose(c.x + offX, c.y + offY, c.z, rowAngleRad, signedTilt));
+      } else {
+        const pZ = baseZ + frontStrut + rise / 2 + 0.07;
+        panelMatsArr.push(compose(cx, cy, pZ, rowAngleRad, signedTilt));
+      }
+      if (!flush) for (const xe of ends) {
+        const lowDepth = signedTilt >= 0 ? -halfDepth : halfDepth;
+        const highDepth = -lowDepth;
+        const fpt = rx(xe, lowDepth);
+        frontMats.push(compose(cx + fpt[0], cy + fpt[1], baseZ + frontStrut / 2, rowAngleRad, 0));
+        const bpt = rx(xe, highDepth);
+        backMats.push(compose(cx + bpt[0], cy + bpt[1], baseZ + (frontStrut + rise) / 2, rowAngleRad, 0));
+        const cpt = rx(xe, 0);
+        railMats.push(compose(cx + cpt[0], cy + cpt[1], baseZ + frontStrut + rise / 2, rowAngleRad, signedTilt));
+      }
+      if (!flush) for (const xe of [-halfAlong + 0.08, halfAlong - 0.08]) {
+        const bf = rx(xe, -halfDepth - 0.02);
+        ballastMats.push(compose(cx + bf[0], cy + bf[1], baseZ + 0.06, rowAngleRad, 0));
+        const bb = rx(xe, halfDepth + 0.02);
+        ballastMats.push(compose(cx + bb[0], cy + bb[1], baseZ + 0.06, rowAngleRad, 0));
+      }
+    }
+
+    const meshes = [
+      makeIM(panelGeo, panelMats, panelMatsArr, true, false),
+      makeIM(jboxGeo, jboxMat, panelMatsArr, true, false),
+      makeIM(frontGeo, rackMat, frontMats, true, false),
+      makeIM(backGeo, rackMat, backMats, true, false),
+      makeIM(railGeo, rackMat, railMats, true, false),
+      makeIM(ballastGeo, ballastMat, ballastMats, true, true),
+    ];
+    for (const me of meshes) if (me) sceneRoot!.add(me);
+
+    // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
+    // à leur vraie position relative. La zone active gère ses obstacles vivants ailleurs.
+    if (dim && plan.obstacles.length) {
+      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
+      for (const o of plan.obstacles) {
+        const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat + offX;
+        const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
+        const tint = 0xc06464;
+        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
+        const mat = new THREE.MeshStandardMaterial({
+          color: tint,
+          metalness: 0.1,
+          roughness: 0.7,
+          transparent: true,
+          opacity: 0.3,
+          depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
+        mesh.renderOrder = 3;
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.6 }),
+        );
+        mesh.add(edges);
+        sceneRoot!.add(mesh);
+      }
+    }
+
+    return { deck, deckMat, ring };
+  }
+
+  /** Re-dessine TOUTES les zones SAUF l'active, à leur vraie position relative (« toutes
+   *  les zones empilées »). Pour chaque zone disposant d'un `renderPlan`, on calcule
+   *  l'offset ENU entre son origine GPS et celle de la zone active, puis on construit ses
+   *  meshes (subdués) via le MÊME chemin que la zone active. N'appelle JAMAIS
+   *  disposeScene/setOrigin (propriété de renderScene). Renvoie les anneaux TRANSLATÉS
+   *  des autres zones, pour étendre l'enveloppe d'ombre. No-op (→ []) tant qu'il n'y a
+   *  qu'une zone ou qu'aucune autre n'a de plan. */
+  function appendOtherZones(activeOrigin: LngLat): [number, number][][] {
+    if (!sceneRoot) return [];
+    const rings: [number, number][][] = [];
+    const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
+    for (const a of areas) {
+      if (a.id === activeAreaId || !a.renderPlan) continue;
+      const plan = a.renderPlan;
+      const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
+      const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
+      const built = buildZoneMeshes(plan, offX, offY, true);
+      rings.push(built.ring);
+    }
+    return rings;
+  }
+
   // — Rendu d'une config (Sud sur châssis OU Est-Ouest en chevrons). `flush` (V3,
   //   toit en pente) pose les panneaux AFFLEURANTS sur la pente : pas de châssis ni
   //   de lest, panneau couché à l'inclinaison du toit. flush=false ⇒ rendu toit plat
@@ -894,141 +1130,29 @@ export function initRoofToolPro8(opts: InitOptions): void {
     disposeScene();
 
     const wallH = FLOORS * FLOOR_HEIGHT_M;
-    const ring = pack.ringENU;
-
-    // Bâtiment
-    const shape = new THREE.Shape();
-    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-    shape.closePath();
-    const building = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }),
-      new THREE.MeshStandardMaterial({ color: 0xe2e7f2, roughness: 0.85, metalness: 0 }),
-    );
-    building.castShadow = true;
-    building.receiveShadow = true;
-    sceneRoot.add(building);
-
-    const baseZ = wallH + DECK_THK;
-    // FIX 1 (V6) — en pente (flush), réf. d'égout (le point le plus AVAL du tracé) :
-    // la pente monte à partir de l'égout, rien ne passe sous le toit.
-    const pitchEaveCoord = flush ? eaveUpSlopeCoord(ring, pack.azimuthDeg) : 0;
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0xb9bfca, roughness: 0.95, metalness: 0 });
-    const deckGeo = new THREE.ShapeGeometry(shape);
-    if (flush) {
-      // FIX 1 (V6) — la SURFACE DE TOIT elle-même devient un plan INCLINÉ : chaque
-      // sommet de la dalle est relevé à la hauteur du plan (pente × distance à
-      // l'égout). La photo détourée, mappée par position HORIZONTALE (applyRoofPhoto),
-      // reste géo-alignée. Plat : dalle horizontale (inchangé).
-      const dpos = deckGeo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < dpos.count; i++) {
-        dpos.setZ(i, pitchedDeckZ(dpos.getX(i), dpos.getY(i), pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg));
-      }
-      dpos.needsUpdate = true;
-      deckGeo.computeVertexNormals();
-    }
-    const deck = new THREE.Mesh(deckGeo, deckMat);
-    deck.position.z = wallH + 0.02;
-    deck.receiveShadow = true;
-    sceneRoot.add(deck);
-    // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
-    // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
-    applyRoofPhoto(deck, deckMat, pack.origin);
-
-    // Axes de visée à partir de l'azimut de la famille.
-    const azRad = pack.azimuthDeg * DEG2RAD;
-    const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
-    const u: [number, number] = [-f[1], f[0]];
-    const rowAngleRad = Math.atan2(u[1], u[0]);
-    const ca = Math.cos(rowAngleRad);
-    const sa = Math.sin(rowAngleRad);
-    const rx = (lx: number, ly: number): [number, number] => [lx * ca - ly * sa, lx * sa + ly * ca];
-
-    const alongRow = grid.rowWidthM;
-    const slope = grid.slopeLenM;
-    const tilt = tiltDeg * DEG2RAD;
-    const rise = slope * Math.sin(tilt);
-    const depthFootprint = slope * Math.cos(tilt);
-    const frontStrut = 0.1;
-    const halfAlong = alongRow / 2;
-    const halfDepth = depthFootprint / 2;
-
-    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
-    const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
-    const panelMats = [frameMat, frameMat, frameMat, frameMat, glassMat, backMat];
-    const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
-    const jboxGeo = new THREE.BoxGeometry(0.4, 0.12, 0.035);
-    jboxGeo.translate(0, 0, -(PANEL2_THICK_M / 2 + 0.02));
-    const jboxMat = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: 0.3, roughness: 0.6 });
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
-    const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
 
     // W69 — disposition personnalisée : si un ensemble d'index occupés est fourni, on
     // rend EXACTEMENT ces cellules (potentiellement non contiguës) ; sinon on garde le
     // comportement historique (les `maxCount` premières cellules du pavage).
-    const panels = occupiedSet
+    const drawnPanels = occupiedSet
       ? grid.panels.filter((_, i) => occupiedSet.has(i))
       : grid.panels.slice(0, Math.max(0, maxCount));
-    const panelMatsArr: THREE.Matrix4[] = [];
-    const frontMats: THREE.Matrix4[] = [];
-    const backMats: THREE.Matrix4[] = [];
-    const railMats: THREE.Matrix4[] = [];
-    const ballastMats: THREE.Matrix4[] = [];
-    const railGeo = new THREE.BoxGeometry(0.05, slope, 0.05);
-    const frontGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut);
-    const backGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut + rise);
-    const ballastGeo = new THREE.BoxGeometry(0.34, 0.18, 0.12);
-    const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
 
-    for (const p of panels) {
-      // Pour l'Est-Ouest : le sens d'inclinaison vient de la FACE du panneau
-      // (chevrons dos à dos faces E/O), fournie par le cerveau. Sud : tilt simple.
-      const signedTilt = family === 'eastwest' ? (p.face === 'E' ? -tilt : tilt) : tilt;
-      // Toit plat : panneau surélevé sur châssis (frontStrut + montée d'ombre).
-      // Toit en pente (flush) : FIX 1 (V6) — panneau COPLANAIRE, AFFLEURANT sur le
-      // plan incliné. compose(yaw, tilt) donne déjà au panneau la normale du toit
-      // (donc tous les panneaux sont coplanaires) ; flushPanelCenterAt pose le CENTRE
-      // sur le plan + un décalage CONSTANT le long de la normale → le centre monte
-      // avec la pente (vrai plan incliné, pas un calepinage plat de panneaux inclinés).
-      if (flush) {
-        const c = flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ, tiltDeg, pack.azimuthDeg, PITCHED_FLUSH_STANDOFF_M);
-        panelMatsArr.push(compose(c.x, c.y, c.z, rowAngleRad, signedTilt));
-      } else {
-        const pZ = baseZ + frontStrut + rise / 2 + 0.07;
-        panelMatsArr.push(compose(p.cx, p.cy, pZ, rowAngleRad, signedTilt));
-      }
-      if (!flush) for (const xe of ends) {
-        const lowDepth = signedTilt >= 0 ? -halfDepth : halfDepth;
-        const highDepth = -lowDepth;
-        const fpt = rx(xe, lowDepth);
-        frontMats.push(compose(p.cx + fpt[0], p.cy + fpt[1], baseZ + frontStrut / 2, rowAngleRad, 0));
-        const bpt = rx(xe, highDepth);
-        backMats.push(compose(p.cx + bpt[0], p.cy + bpt[1], baseZ + (frontStrut + rise) / 2, rowAngleRad, 0));
-        const cpt = rx(xe, 0);
-        railMats.push(compose(p.cx + cpt[0], p.cy + cpt[1], baseZ + frontStrut + rise / 2, rowAngleRad, signedTilt));
-      }
-      if (!flush) for (const xe of [-halfAlong + 0.08, halfAlong - 0.08]) {
-        const bf = rx(xe, -halfDepth - 0.02);
-        ballastMats.push(compose(p.cx + bf[0], p.cy + bf[1], baseZ + 0.06, rowAngleRad, 0));
-        const bb = rx(xe, halfDepth + 0.02);
-        ballastMats.push(compose(p.cx + bb[0], p.cy + bb[1], baseZ + 0.06, rowAngleRad, 0));
-      }
-    }
-
-    const meshes = [
-      makeIM(panelGeo, panelMats, panelMatsArr, true, false),
-      makeIM(jboxGeo, jboxMat, panelMatsArr, true, false),
-      makeIM(frontGeo, rackMat, frontMats, true, false),
-      makeIM(backGeo, rackMat, backMats, true, false),
-      makeIM(railGeo, rackMat, railMats, true, false),
-      makeIM(ballastGeo, ballastMat, ballastMats, true, true),
-    ];
-    for (const me of meshes) if (me) sceneRoot.add(me);
+    // Bâtiment + dalle + panneaux de la zone ACTIVE : MÊME chemin de construction que les
+    // autres zones (buildZoneMeshes), à offset NUL et sans atténuation → octet pour octet
+    // identique à avant. Les obstacles VIVANTS (tinte sélection + étiquette + drag) et la
+    // photo satellite restent gérés ici car ils dépendent de l'état d'édition courant.
+    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles };
+    const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
+    // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
+    // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
+    applyRoofPhoto(built.deck, built.deckMat, pack.origin);
 
     // Obstacles marqués (Change C) : volume SEMI-TRANSPARENT à la VRAIE taille
     // (largeur E-O × longueur N-S), posé sur le toit, avec une arête visible — la
     // photo satellite dessous (le vrai climatiseur/cheminée) transparaît, ce qui
-    // confirme que la boîte est bien posée dessus. Sélectionné → teinte or.
+    // confirme que la boîte est bien posée dessus. Sélectionné → teinte or. Zone active
+    // uniquement : étiquette de taille + enregistrement pour le glissé en direct.
     if (obstacles.length) {
       const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
       for (const o of obstacles) {
@@ -1063,9 +1187,20 @@ export function initRoofToolPro8(opts: InitOptions): void {
       }
     }
 
+    // W-MULTI : mémorise le plan de re-rendu de la zone ACTIVE pour que les AUTRES
+    // zones puissent être re-dessinées (subduées) à leur vraie position relative.
+    const aRec = activeArea();
+    if (aRec) aRec.renderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: obstacles.map((o) => ({ ...o })) };
+
     // — Soleil d'affichage (matin clair, élévation liée à la latitude) —
+    // Bornes d'ombre = enveloppe de TOUTES les zones rendues (active + autres), pour que
+    // l'ombre ne soit pas tronquée quand plusieurs zones coexistent. `appendOtherZones`
+    // (appelée plus bas) ajoute les anneaux translatés des autres zones à cette liste.
+    const shadowRings: [number, number][][] = [built.ring];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of ring) {
+    const otherRings = appendOtherZones(pack.origin);
+    for (const r of otherRings) shadowRings.push(r);
+    for (const r of shadowRings) for (const [x, y] of r) {
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x);
@@ -1883,20 +2018,30 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   /** Met à jour le besoin « panneaux nécessaires » quand des appareils « en plus »
    *  augmentent la conso (taille-au-besoin via le chemin existant). N'agit qu'en mode
-   *  auto (l'utilisateur n'a pas figé le besoin). */
+   *  auto (l'utilisateur n'a pas figé le besoin).
+   *
+   *  GARDE DE RÉ-ENTRANCE (correctif du FIGEAGE) : ce chemin boucle —
+   *  applyConsumptionToSizing → renderActive → liveResolveFlat (qui réécrit `neededPanels`
+   *  depuis la FACTURE, ≠ besoin issu de la conso) → syncProductionWindow → renderProdWindow
+   *  → renderConsumption → applyConsumptionToSizing → … Comme les deux besoins divergent, la
+   *  page bouclait à l'infini dès qu'on ouvrait « Affiner ma consommation ». On garde donc la
+   *  ré-entrance ET on FIGE le besoin issu de la conso (`neededAuto = false`) pour que
+   *  liveResolveFlat ne le rebascule pas — la boucle se termine en un seul cycle. */
+  let inConsSizing = false;
   function applyConsumptionToSizing() {
-    if (!neededAuto) return;
+    if (!neededAuto || inConsSizing) return;
     const dailyTotal = curveTotal(consCurve);
     const annualCons = annualConsumptionFromDaily(dailyTotal);
     if (annualCons <= 0) return;
     const n = neededPanelsForTarget(annualCons, centroidLat);
-    if (n > 0) {
-      const clamped = clampNeeded(n);
-      if (clamped !== neededPanels) {
-        neededPanels = clamped;
-        renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
-      }
-    }
+    if (n <= 0) return;
+    const clamped = clampNeeded(n);
+    if (clamped === neededPanels) return;
+    inConsSizing = true;
+    neededPanels = clamped;
+    neededAuto = false; // besoin issu de la conso → figé (liveResolveFlat ne le réécrit plus)
+    renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
+    inConsSizing = false;
   }
 
   /** Rendu du graphe de conso (barres glissables) + superposition production (or pâle). */
@@ -2092,6 +2237,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     layoutMode = on;
     if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', String(on));
     if (layoutPanelEl) layoutPanelEl.hidden = !on;
+    // Vue de DESSUS pendant le déplacement : à plat (pitch 0), la déprojection écran→toit est
+    // exacte (aucune parallaxe de hauteur), donc glisser un panneau sur la 3D « accroche »
+    // vraiment au bon panneau. On restaure la vue inclinée en sortant.
+    const view = on ? { pitch: 0 } : { pitch: PITCH_VIEW };
+    if (opts.reducedMotion) map.jumpTo(view);
+    else map.easeTo({ ...view, duration: 500, essential: true });
     if (on) {
       layoutState = null; // repart de l'optimum courant
       ensureLayoutState();

@@ -24,7 +24,7 @@ const ordered = locales;
 ---
 
 {ordered.length > 1 && (
-  <nav class="flex items-center gap-1" aria-label={t('lang.label')}>
+  <nav class="flex items-center gap-0.5" aria-label={t('lang.label')}>
     {ordered.map((loc) => (
       <a
         href={localizePath(path, loc)}
@@ -33,7 +33,7 @@ const ordered = locales;
         aria-current={loc === current ? 'true' : undefined}
         title={LOCALE_LABEL[loc]}
         class:list={[
-          'px-2 py-1 text-xs font-bold uppercase tracking-wide transition-colors',
+          'px-1 py-1 text-xs font-bold uppercase leading-none transition-colors',
           loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
         ]}
       >{LOCALE_SHORT[loc]}</a>
