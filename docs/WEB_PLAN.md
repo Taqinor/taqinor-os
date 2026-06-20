@@ -374,7 +374,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   (`ete_differente`-style toggle) and a per-month autoconsommation mini-chart driven by
   `typicalDayByMonth`. Accept: a seasonal consumption split feeds the 12-month integral and a monthly
   self-consumption chart renders. Files: `applianceConsumption.ts`, `roof-tool-pro11.ts`.
-- [ ] **W96 — consumption: battery payback / ROI.** `batterySizing` returns only a count — no cost, no
+- [x] **W96 — consumption: battery payback / ROI.** `batterySizing` returns only a count — no cost, no
   payback. Add `BATTERY_KWH_USABLE` + a flagged indicative cost param and surface an indicative payback
   next to the recommended battery count (clearly "estimation, pas un devis"). Accept: a payback range
   shows, capped to honest avoided-cost. Files: `applianceConsumption.ts`, `roof-tool-pro11.ts`,
