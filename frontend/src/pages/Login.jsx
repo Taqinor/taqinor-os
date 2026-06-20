@@ -4,28 +4,15 @@ import { useNavigate, Link } from 'react-router-dom'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
 
-// ── Logo ──────────────────────────────────────────────────────────────────────
-function TaqinorLogo({ size = 34 }) {
-  const sun = Math.round(size * 0.92)
-  const txt = {
-    fontFamily: "'Arial Black', 'Arial Bold', Impact, sans-serif",
-    fontWeight: 900, fontSize: size, color: '#0d1b3e',
-    lineHeight: 1, letterSpacing: '0.03em',
-  }
+// ── Logo officiel Taqinor (mot-symbole des devis, source de vérité de la marque).
+//    Asset généré par scripts/gen_brand_assets.py depuis quote_engine/logo.png.
+function TaqinorLogo({ height = 52 }) {
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-      <span style={txt}>TAQIN</span>
-      <div style={{
-        width: sun, height: sun, borderRadius: '50%', backgroundColor: '#F5C100',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        margin: '0 1px', flexShrink: 0,
-      }}>
-        <svg viewBox="0 0 24 24" width={sun * 0.54} height={sun * 0.54} fill="#0d1b3e">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-        </svg>
-      </div>
-      <span style={txt}>R</span>
-    </div>
+    <img
+      src="/taqinor-logo.png"
+      alt="Taqinor"
+      style={{ height, width: 'auto', maxWidth: '100%', display: 'block' }}
+    />
   )
 }
 
@@ -212,7 +199,7 @@ export default function Login() {
 
         {/* Logo centré */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-          <TaqinorLogo size={36} />
+          <TaqinorLogo height={52} />
         </div>
 
         {/* Ligne décorative */}
