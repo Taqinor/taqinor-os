@@ -102,6 +102,14 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
     const matrix = read('../src/scripts/roofPro11/matrix.ts');
     expect(matrix).toContain("if (ctx.roofType !== 'flat' || !ctx.rec || !ctx.matrixResult) return;");
   });
+
+  it('W73 — recomputeMatrix note la matrice sur le MÊME cache PVGIS que la carte reco', () => {
+    const matrix = read('../src/scripts/roofPro11/matrix.ts');
+    // recomputeMatrix passe un yieldFn adossé à ctx.v4YieldCache (cache PVGIS partagé) —
+    // plus de balayage table « nu » qui désaccorderait la ligne badgée de la carte reco.
+    expect(matrix).toContain('ctx.v4YieldCache.get(v4Key(');
+    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), { yieldFn: matrixYieldFn })');
+  });
 });
 
 describe('pro-11 — la pose AFFLEURANTE et la 3D pente restent INCHANGÉES (modèle V6)', () => {

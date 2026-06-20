@@ -238,7 +238,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   shown for the auto-optimum is ~110% of the bill at the PVGIS yield actually displayed. Files:
   `estimatorBrainV2.ts`, `estimatorBrainV7.ts`, `estimatorBrainV8.ts`, `roof-tool-pro11.ts` wiring +
   brain unit tests.
-- [ ] **W73 — brain: matrix winner must match the live-card winner.** `recomputeMatrix()` calls
+- [x] **W73 — brain: matrix winner must match the live-card winner.** `recomputeMatrix()` calls
   `fineGridMatrixV6(...)` with NO `yieldFn`, scoring the whole matrix on the TABLE while the reco card
   is PVGIS-scored — a transient where the badged matrix optimum and the recommendation name different
   configs. Feed `recomputeMatrix` the same PVGIS-backed `yieldFn` used by `buildMatrix`, or route only

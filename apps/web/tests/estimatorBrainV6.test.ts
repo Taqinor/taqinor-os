@@ -403,3 +403,44 @@ describe('V6 FIX 2 — tri & regroupement du tableau (lisible sur téléphone)',
     expect([...groups].some((g) => g.includes('paysage'))).toBe(true);
   });
 });
+
+// ——————————————————————————————————————————————————————————————————————
+// W73 — le gagnant de la MATRICE doit coïncider avec le gagnant de la CARTE « reco »
+// (solveLive, cerveau V7) dès lors que LES DEUX notent sur la MÊME source PVGIS.
+// Avant : recomputeMatrix() appelait fineGridMatrixV6 SANS yieldFn (table) pendant
+// que la carte était notée PVGIS → désaccord transitoire sur la ligne badgée.
+// Maintenant le yieldFn (cache PVGIS partagé) est passé aux deux → même config gagnante.
+// ——————————————————————————————————————————————————————————————————————
+import { solveLive } from '../src/lib/estimatorBrainV7';
+
+describe('W73 — matrice et carte « reco » s\'accordent sous le MÊME rendement PVGIS', () => {
+  const ring = squareRing(40); // grand toit : le cap besoin domine, config stable
+  const bill = 1500;
+  // Identité de config (ce que matrixRowKey / la carte reco comparent) — JAMAIS placedCount,
+  // qui peut différer d'une unité (le cap besoin de la matrice n'est pas recalé W72).
+  const configKey = (family: string, tilt: number, aspect: number, layout: string, margin: string) =>
+    `${family}|${tilt}|${Math.round(aspect)}|${layout}|${margin}`;
+
+  it('un rendement PVGIS constant fait converger la config gagnante des deux moteurs', () => {
+    const yieldFn: YieldFn = () => 1500;
+    const m = fineGridMatrixV6(ring, LAT, bill, [], { yieldFn });
+    const l = solveLive(ring, LAT, bill, [], {}, { yieldFn });
+    expect(m.yieldSource).toBe('pvgis');
+    expect(l.winner.yieldSource).toBe('pvgis');
+    expect(configKey(m.winner.family, m.winner.tiltDeg, m.winner.aspect, m.winner.orientation, m.winner.margin)).toBe(
+      configKey(l.winner.family, l.winner.tiltDeg, l.winner.aspect, l.winner.layout, l.winner.margin),
+    );
+  });
+
+  it('repli table cohérent des DEUX côtés : yieldFn=null → source « estimate » partout', () => {
+    const nullFn: YieldFn = () => null;
+    const m = fineGridMatrixV6(ring, LAT, bill, [], { yieldFn: nullFn });
+    const l = solveLive(ring, LAT, bill, [], {}, { yieldFn: nullFn });
+    expect(m.yieldSource).toBe('estimate');
+    expect(l.winner.yieldSource).toBe('estimate');
+    // sans PVGIS, la matrice (notée table) et la carte (notée table) gagnent la même config.
+    expect(configKey(m.winner.family, m.winner.tiltDeg, m.winner.aspect, m.winner.orientation, m.winner.margin)).toBe(
+      configKey(l.winner.family, l.winner.tiltDeg, l.winner.aspect, l.winner.layout, l.winner.margin),
+    );
+  });
+});

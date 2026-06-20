@@ -42,6 +42,17 @@ export interface Matrix {
 export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
   const { renderConfig, monthlyBill, obstructionRings } = deps;
 
+  // W73 — MÊME clé de cache PVGIS que l'optimiseur (`v4Key`) : le tableau matrice et la
+  // carte « reco » lisent le rendement spécifique au GPS exact dans le SEUL cache partagé
+  // `ctx.v4YieldCache`, donc ils notent les configs sur la MÊME source. Tant que PVGIS
+  // n'a rien renvoyé (cache vide) le yieldFn rend null → repli table « estimé » cohérent
+  // des deux côtés.
+  const v4Key = (tiltDeg: number, aspect: number): string => `${Math.round(tiltDeg)}|${Math.round(aspect * 10) / 10}`;
+  const matrixYieldFn = (tiltDeg: number, aspect: number): number | null => {
+    const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
+    return v == null ? null : v;
+  };
+
   /** Clé stable d'une ligne (famille|inclinaison|azimut|pose|marge) — sert d'id de
    *  ligne (réutilise le highlight existant) et de comparaison au gagnant. */
   function matrixRowKey(r: MatrixEvalV6): string {
@@ -175,7 +186,11 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
   function recomputeMatrix() {
     if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
     const ring: LngLat[] = [...ctx.vertices];
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings());
+    // W73 — note la matrice sur la MÊME source PVGIS que la carte « reco » : on passe le
+    // yieldFn adossé à `ctx.v4YieldCache` (identique à `buildMatrix`/le solveur vivant).
+    // Cache vide (PVGIS pas encore résolu) → repli table des DEUX côtés ; une fois PVGIS
+    // en cache, la ligne badgée == la config recommandée (plus de désaccord transitoire).
+    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), { yieldFn: matrixYieldFn });
     paintComparison();
   }
 
