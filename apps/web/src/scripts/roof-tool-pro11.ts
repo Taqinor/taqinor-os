@@ -46,47 +46,28 @@ import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import * as THREE from 'three';
 import {
   recommend,
-  packConfig,
-  productionKwh,
   billToAnnualKwh,
-  annualSavingsMad,
   neededPanelsForTarget,
-  roofDominantAzimuthDeg,
-  tariffForCity,
   TILT_SWEEP_MIN,
   type Recommendation,
   type PackResult,
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrainV2';
-import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M } from '../lib/roofPro2';
+import { PERIMETER_SETBACK_M } from '../lib/roofPro2';
 import {
   reoptimize,
-  recommendPitched,
   type FlatPins,
-  type FlushPack,
-  type FlushGrid,
   type PitchedRecommendation,
-  type RoofPlane,
 } from '../lib/estimatorBrainV3';
-import { pitchedPlaneLeg } from '../lib/estimatorBrainV5';
 import {
-  fineGridMatrixV6,
-  pvgisCoarsePairs,
-  pvgisMatrixCandidatePairs,
-  pvgisRefinePairs,
   type MatrixSortKey,
   type MatrixV6Result,
 } from '../lib/estimatorBrainV6';
 import {
-  solveLive,
-  type AxisLocks,
-  type LayoutAxis,
-  type LiveConfigEval,
   type LiveSolveResult,
 } from '../lib/estimatorBrainV7';
 import {
-  solveLivePitched,
   type PitchedLayoutAxis,
   type PitchedLiveResult,
   type PitchedMarginAxis,
@@ -141,6 +122,7 @@ import { createLayoutEditor } from './roofPro11/layoutEditor';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
+import { createOptimizer } from './roofPro11/optimizer';
 
 let booted = false;
 
@@ -332,51 +314,28 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const azimuthDegOf = (): number =>
     sel.azimuth === 'aligned' && rec ? rec.roofAlignedAzimuthDeg : 180;
 
-  // W1 — Aspect PVGIS (écart au sud) d'une famille selon son azimut de face réel :
-  // Sud → azimut−180 ; E-O → azimut−90.
-  const aspectForLeg = (family: ConfigFamily, azimuthDeg: number): number =>
-    family === 'eastwest' ? azimuthDeg - 90 : azimuthDeg - 180;
-
-  // W1 — Cache PVGIS partagé entre TOUS les réglages — clé lat,lon|famille|tilt|azimut.
-  // Une même config n'est jamais re-demandée ; un échec/null bascule en repli table
-  // (mémorisé pour ne pas re-tenter). Réutilisé entre les bascules d'options.
+  // W1 — Cache PVGIS partagé entre TOUS les réglages (production, par config plate).
+  // Vidé par l'entrée à chaque nouvelle localisation (close/clearEditorState/loadArea) ;
+  // lu/écrit par l'optimiseur (roofPro11/optimizer.ts) via ctx.pvgisCache.
   const pvgisCache = new Map<string, number | null>();
-  const pvgisKey = (family: ConfigFamily, tiltDeg: number, azimuthDeg: number): string =>
-    `${centroid[1].toFixed(5)},${centroid[0].toFixed(5)}|${family}|${tiltDeg}|${Math.round(azimuthDeg)}`;
-
-  // V4 — rendement spécifique PVGIS (kWh/kWc/an) par (tilt|aspect) au GPS exact,
-  // pose 'free' (toit plat racké). Cache partagé/réutilisé ; null = repli table
-  // mémorisé. Jeton anti-course : seul le dernier tracé/réglage applique son résultat.
+  // V4 — rendement spécifique PVGIS (kWh/kWc/an) par (tilt|aspect), pose 'free'.
   const v4YieldCache = new Map<string, number | null>();
-  const v4Key = (tiltDeg: number, aspect: number): string => `${Math.round(tiltDeg)}|${Math.round(aspect * 10) / 10}`;
-  // V6 — MATRICE complète (toit plat) : le balayage dense RENVOYÉ pour affichage
-  // (toutes les lignes), avec l'état de tri/filtre du tableau. Le rendement spécifique
-  // PVGIS partage le cache V4 (mêmes (tilt|aspect)). Jeton anti-course propre.
+  // V6 — MATRICE complète (toit plat) : balayage dense RENVOYÉ pour affichage, avec
+  // l'état de tri/filtre du tableau (le balayage/affinage PVGIS vit dans l'optimiseur).
   let matrixResult: MatrixV6Result | null = null;
   let matrixSort: { key: MatrixSortKey; dir: 'asc' | 'desc' } = { key: 'annualKwh', dir: 'desc' };
   let matrixFilter = 'all';
-  let matrixToken = 0;
 
-  // W34 — OPTIMISEUR CONTRAINT VIVANT (toit plat, cerveau V7). Dernier résultat du
-  // solveur (gagnant contraint + valeurs « Recommandé » par axe). `liveToken` +
-  // `liveTiltTimer` débattent l'affinage PVGIS d'une inclinaison verrouillée hors grille.
+  // W34/W35 — derniers résultats des optimiseurs vivants (plat = V7, pente = V8).
   let liveResult: LiveSolveResult | null = null;
-  let liveToken = 0;
-  let liveTiltTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // W35 — OPTIMISEUR CONTRAINT VIVANT (toit en pente, cerveau V8). Mêmes règles que le
-  // plat, mais seuls axes libres = pose + marge (inclinaison = pente, azimut = face,
-  // imposés). `pitchedLocks` = axes verrouillés ; le besoin partage `neededAuto`.
+  // W35 — verrous pose/marge du toit en pente (axes libres) ; le besoin partage
+  // `neededAuto`. Réf STABLE muté en place, partagé avec l'optimiseur via ctx.pitchedLocks.
   const pitchedLocks: { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis } = {};
   let pitchedLiveResult: PitchedLiveResult | null = null;
 
-  // V5 — toit en pente : rendement spécifique PVGIS (kWh/kWc/an) du SEUL plan
-  // (pente, face), pose 'building' (affleurant, moins ventilé). Indépendant de la
-  // taille → interrogé à kWc=1 et mis à l'échelle. Cache par (pente|face), repli
-  // table. Jeton anti-course propre au mode pente.
+  // V5 — toit en pente : cache rendement spécifique PVGIS (kWh/kWc/an) par (pente|face),
+  // pose 'building'. Vidé par l'entrée ; lu/écrit par l'optimiseur via ctx.pitchedYieldCache.
   const pitchedYieldCache = new Map<string, number | null>();
-  const pitchedKey = (pitch: number, facing: number): string => `${Math.round(pitch)}|${Math.round(facing)}`;
-  let pitchedToken = 0;
   let pitchedPvgisPerKwc: number | null = null;
 
   // ═══════════ W50 — FENÊTRE « PRODUCTION ESTIMÉE » (Année / Mois / Jour) ═══════════
@@ -598,6 +557,35 @@ export function initRoofToolPro8(opts: InitOptions): void {
     set useRecommended(v) {
       useRecommended = v;
     },
+    get pitchedRec() {
+      return pitchedRec;
+    },
+    set pitchedRec(v) {
+      pitchedRec = v;
+    },
+    get sel() {
+      return sel;
+    },
+    set sel(v) {
+      sel = v;
+    },
+    pinned,
+    pitchedLocks,
+    get pvgisPerKwc() {
+      return pvgisPerKwc;
+    },
+    set pvgisPerKwc(v) {
+      pvgisPerKwc = v;
+    },
+    get pitchedPvgisPerKwc() {
+      return pitchedPvgisPerKwc;
+    },
+    set pitchedPvgisPerKwc(v) {
+      pitchedPvgisPerKwc = v;
+    },
+    pvgisCache,
+    v4YieldCache,
+    pitchedYieldCache,
     get liveResult() {
       return liveResult;
     },
@@ -859,7 +847,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // V6 — MATRICE (toit plat). `renderConfig`/`monthlyBill` injectés en wrappers
   // paresseux (déclarés plus bas, référencés à l'exécution).
   const matrix = createMatrix(ctx, {
-    renderConfig: (o) => renderConfig(o),
+    renderConfig: (o) => optimizer.renderConfig(o),
     monthlyBill: () => monthlyBill(),
     obstructionRings,
   });
@@ -973,6 +961,32 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const disposeScene = scene3d.disposeScene;
   const renderScene = scene3d.renderScene;
 
+  // — Moteur d'optimisation vivante (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) :
+  // voir roofPro11/optimizer.ts. `syncChips`/`renderMatrixOptimumCard` sont déclarés plus
+  // bas → injectés en wrappers paresseux (référencés à l'exécution, pas au boot). L'entrée
+  // garde l'orchestration recompute()/recalc()/close() + le câblage DOM, qui appellent
+  // ces fonctions via l'objet renvoyé.
+  const optimizer = createOptimizer(ctx, {
+    renderScene,
+    paintComparison,
+    highlightRow,
+    syncProductionWindow,
+    prefillLead,
+    syncChips: () => syncChips(),
+    renderMatrixOptimumCard: () => renderMatrixOptimumCard(),
+    monthlyBill: () => monthlyBill(),
+    obstructionRings,
+    setStatus,
+  });
+  const liveResolveFlat = optimizer.liveResolveFlat;
+  const liveResolvePitched = optimizer.liveResolvePitched;
+  const renderSelection = optimizer.renderSelection;
+  const renderConfig = optimizer.renderConfig;
+  const pitchedRecompute = optimizer.pitchedRecompute;
+  const resetFlatLocks = optimizer.resetFlatLocks;
+  const resetPitchedLocks = optimizer.resetPitchedLocks;
+  const computeMatrixPvgis = optimizer.computeMatrixPvgis;
+
   // — Carte / tracé —
   map.on('load', () => {
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
@@ -1027,593 +1041,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // deleteSelected/addObstacle/obstacleAtPoint + le glissé-dessin/déplacement + l'édition
   // numérique vivent dans le module ; créés plus bas via createObstaclesUi(ctx, …).
 
-  // — Sélection de config → grille —
-  function tiltOf(family: ConfigFamily): number {
-    if (sel.tilt === 'reco') {
-      if (useRecommended && rec) return rec.recommended.tiltDeg;
-      return family === 'eastwest' ? 10 : (rec?.maxPerPanelTiltDeg ?? 29);
-    }
-    return sel.tilt;
-  }
-
-  function gridFor(pack: PackResult): PanelGrid {
-    if (sel.orient === 'portrait') return pack.portrait;
-    if (sel.orient === 'landscape') return pack.landscape;
-    return pack.best;
-  }
-
   // — Plafond « panneaux nécessaires » (Change A) —
   const clampNeeded = (n: number): number => Math.max(1, Math.min(400, Math.round(n)));
-  /** Posés = min(plafond besoin, ce qui tient). Sans facture (besoin 0) il n'y a
-   *  pas de besoin à plafonner → on montre ce qui tient (comportement historique). */
-  const placedFor = (grid: PanelGrid): number =>
-    neededPanels > 0 ? Math.max(0, Math.min(neededPanels, grid.count)) : grid.count;
 
-  /** Synchronise le contrôle éditable + sa note honnête (besoin vs ce qui tient). */
-  function syncNeedControl(fitCount: number, familyLabel: string) {
-    const active = neededPanels > 0;
-    if (needInputEl) {
-      needInputEl.disabled = !active;
-      if (document.activeElement !== needInputEl) needInputEl.value = active ? fmt(neededPanels) : '—';
-    }
-    if (needMinusEl) needMinusEl.disabled = !active || neededPanels <= 1;
-    if (needPlusEl) needPlusEl.disabled = !active || neededPanels >= 400;
-    if (!needNoteEl) return;
-    if (!active) {
-      needNoteEl.textContent = 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
-      return;
-    }
-    const placed = Math.min(neededPanels, fitCount);
-    if (placed < neededPanels) {
-      needNoteEl.textContent = `${fmt(neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles). On pose ${fmt(placed)}.`;
-    } else if (fitCount > neededPanels) {
-      needNoteEl.textContent = `${fmt(neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
-    } else {
-      needNoteEl.textContent = `On pose ${fmt(placed)} panneaux.`;
-    }
-  }
-
-  /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
-   *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
-  function renderConfig(o: RenderConfigOpts) {
-    const placed = placedFor(o.grid);
-    const kwc = o.grid.count > 0 ? (o.grid.kwc * placed) / o.grid.count : 0;
-    // W1 : production à l'aspect réel (le rendement/panneau baisse honnêtement
-    // quand l'array suit un toit tourné).
-    const aspect = aspectForLeg(o.family, o.azimuthDeg);
-    const tableAnnual = productionKwh(centroidLat, o.family, o.tiltDeg, kwc, aspect);
-    // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
-    const annualKwh = o.isReco && pvgisPerKwc != null ? pvgisPerKwc * kwc : tableAnnual;
-    const target = rec ? rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
-    const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
-    renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);
-    paintCard(
-      {
-        title: o.title,
-        isReco: o.isReco,
-        count: placed,
-        kwc,
-        annualKwh,
-        pct: target > 0 ? (annualKwh / target) * 100 : 0,
-        savingsLow: savings.low,
-        savingsHigh: savings.high,
-        why: o.why,
-      },
-      o.sourceLabel,
-    );
-    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud');
-    syncTiltControl(o.tiltDeg, o.isReco);
-    if (o.isReco) paintMaxLine();
-    highlightRow(o.rowId);
-  }
-
-  /** Reflète l'inclinaison RÉELLEMENT dessinée dans le curseur + son libellé.
-   *  Ne touche pas le curseur pendant que l'utilisateur le manipule. */
-  function syncTiltControl(tiltDeg: number, isReco: boolean) {
-    const t = Math.round(tiltDeg);
-    if (tiltRangeEl && document.activeElement !== tiltRangeEl) tiltRangeEl.value = String(t);
-    if (tiltValueEl) tiltValueEl.textContent = `${t}°${isReco ? ' · reco' : ''}`;
-    if (tiltRecoBtn) tiltRecoBtn.setAttribute('aria-pressed', String(isReco && useRecommended));
-  }
-
-  // ═════════════ W34 — OPTIMISEUR CONTRAINT VIVANT (toit plat, cerveau V7) ═════════════
-  // renderSelection() est désormais un ALIAS de liveResolveFlat() : recompute,
-  // renderActive et tous les handlers d'options passent par le solveur vivant. Chaque
-  // option est un AXE ; un clic VERROUILLE cet axe (épingle dans `pinned`) et RE-RÉSOUT
-  // en direct tous les axes encore AUTO (les verrous s'accumulent), via solveLive (V7,
-  // PVGIS au GPS exact, repli table « estimé »). Chaque groupe affiche la valeur
-  // « Recommandé » = la valeur que cet axe prendrait s'il était libéré, les autres
-  // verrous tenus — donc l'utilisateur voit qu'il a choisi X mais que Y est recommandé.
-
-  /** Verrous courants dérivés des axes épinglés (pinned) + de la cible « besoin ».
-   *  L'orientation (un seul axe V7) est reconstruite depuis les groupes Orientation
-   *  (famille) et Azimut de la page. */
-  function buildFlatLocks(): AxisLocks {
-    const locks: AxisLocks = {};
-    if (pinned.has('family') && sel.family === 'eastwest') locks.orientation = 'eastwest';
-    else if (pinned.has('azimuth') && sel.azimuth === 'aligned') locks.orientation = 'aligned';
-    else if ((pinned.has('family') && sel.family === 'south') || (pinned.has('azimuth') && sel.azimuth === 'south'))
-      locks.orientation = 'south';
-    if (pinned.has('tilt') && sel.tilt !== 'reco') locks.tiltDeg = sel.tilt;
-    if (pinned.has('orient') && sel.orient !== 'auto') locks.layout = sel.orient as LayoutAxis;
-    if (pinned.has('margin')) locks.margin = sel.margin;
-    if (!neededAuto && neededPanels > 0) locks.need = neededPanels;
-    return locks;
-  }
-
-  /** Reflète le gagnant courant dans `sel` (miroir d'affichage des puces). */
-  function mapWinnerToSel(w: LiveConfigEval) {
-    sel = {
-      family: w.family,
-      tilt: w.tiltDeg,
-      orient: w.layout,
-      azimuth: w.orientation === 'aligned' ? 'aligned' : 'south',
-      margin: w.margin,
-    };
-  }
-
-  function liveOrientationLabel(w: LiveConfigEval): string {
-    if (w.family === 'eastwest') return 'Est-Ouest';
-    return w.orientation === 'aligned' ? 'Sud (aligné toit)' : 'Plein sud';
-  }
-
-  /** Pose le badge « Recommandé » sur la valeur recommandée de CHAQUE groupe (axe
-   *  libéré, autres verrous tenus) — reste correct même si l'utilisateur a verrouillé
-   *  une autre valeur. */
-  function updateLiveBadges(res: LiveSolveResult) {
-    const rcm = res.recommended;
-    const show = (b: Element | null, on: boolean) => {
-      const badge = b?.querySelector<HTMLElement>('.rp9-reco-badge');
-      if (badge) badge.hidden = !on;
-    };
-    const recFamily = rcm.orientation === 'eastwest' ? 'eastwest' : 'south';
-    document.querySelectorAll<HTMLButtonElement>('[data-family]').forEach((b) => show(b, b.dataset.family === recFamily));
-    const tiltRounded = Math.round(rcm.tiltDeg);
-    const tiltChips = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-tilt]'));
-    const numericMatch = tiltChips.find((b) => b.dataset.tilt !== 'reco' && Number(b.dataset.tilt) === tiltRounded);
-    tiltChips.forEach((b) => {
-      if (numericMatch) show(b, b === numericMatch);
-      else show(b, b.dataset.tilt === 'reco');
-    });
-    document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) =>
-      show(b, b.dataset.orient !== 'auto' && b.dataset.orient === rcm.layout),
-    );
-    const azReco = rcm.orientation === 'aligned' ? 'aligned' : 'south';
-    document.querySelectorAll<HTMLButtonElement>('[data-azimuth]').forEach((b) => show(b, b.dataset.azimuth === azReco));
-    document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) => show(b, b.dataset.margin === rcm.margin));
-  }
-
-  /** Rend le gagnant vivant (3D + carte + contrôles) avec SES chiffres (PVGIS/estimé). */
-  function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
-    const w = res.winner;
-    const ring: LngLat[] = [...vertices];
-    const setbackM = w.margin === 'keep' ? PERIMETER_SETBACK_M : 0;
-    const pack = packConfig(ring, centroidLat, {
-      family: w.family,
-      tiltDeg: w.tiltDeg,
-      azimuthDeg: w.azimuthDeg,
-      obstructions: obstructionRings(),
-      setbackM,
-    });
-    const grid = w.layout === 'portrait' ? pack.portrait : pack.landscape;
-    renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
-    const cov = Math.round(w.pctOfTarget);
-    const why = isReco
-      ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${w.placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
-      : `Vos choix sont tenus, le reste a été re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
-    paintCard(
-      {
-        title: `${liveOrientationLabel(w)} ${w.tiltDeg}° · ${w.layoutLabel}`,
-        isReco,
-        count: w.placedCount,
-        kwc: w.kwc,
-        annualKwh: w.annualKwh,
-        pct: w.pctOfTarget,
-        savingsLow: w.savingsLow,
-        savingsHigh: w.savingsHigh,
-        why,
-      },
-      w.yieldSource === 'pvgis' ? '(production PVGIS au GPS exact)' : '(production estimée — table par latitude)',
-    );
-    syncNeedControl(grid.count, liveOrientationLabel(w));
-    syncTiltControl(w.tiltDeg, isReco);
-    paintMaxLine();
-    highlightRow(null);
-    if (optimumNoteEl) {
-      optimumNoteEl.textContent = isReco
-        ? 'Optimum vivant : tout est calé sur la meilleure combinaison (chaque groupe badgé « Recommandé »). Verrouillez une option et le reste se re-résout en direct.'
-        : 'Optimum vivant : votre choix est tenu, le reste se re-résout pour maximiser la génération. « Réinitialiser » relâche tous les verrous.';
-    }
-  }
-
-  // ═══════════ W50 — fenêtre « Production estimée » : voir roofPro11/prodWindow.ts ═══════════
-
-  // ═══════════ « PLUSIEURS ZONES » — instantané + panneau de total : voir roofPro11/zones.ts ═══════════
-
-  // ═══════════ W68 — « Affiner ma consommation » : voir roofPro11/consumption.ts ═══════════
-
-  // ═══════════ W69 — « Personnaliser la disposition » : voir roofPro11/layoutEditor.ts ═══════════
-  // `layoutCap`/`ensureLayoutState`/`renderCustomLayout`/`screenToENU`/`renderLayoutPanel`/
-  // `setLayoutMode` + le câblage (+/−/reset/grille tactile/glissé 3D) vivent dans le module ;
-  // ils sont créés plus bas via createLayoutEditor(ctx, …) une fois `map`/`renderScene`/etc.
-  // disponibles. L'entrée n'en garde que les bindings d'état (layoutPlan/…, sur ctx).
-
-  /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
-  function liveResolveFlat() {
-    if (!closed || vertices.length < 3 || roofType !== 'flat') return;
-    const ring: LngLat[] = [...vertices];
-    const bill = monthlyBill();
-    const locks = buildFlatLocks();
-    const yieldFn = (tiltDeg: number, aspect: number): number | null => {
-      const v = v4YieldCache.get(v4Key(tiltDeg, aspect));
-      return v == null ? null : v;
-    };
-    const res = solveLive(ring, centroidLat, bill, obstructionRings(), locks, { yieldFn });
-    liveResult = res;
-    if (neededAuto) neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
-    const hasLocks = !!(locks.orientation || locks.tiltDeg != null || locks.layout || locks.margin || locks.need != null);
-    useRecommended = !hasLocks;
-    mapWinnerToSel(res.winner);
-    if (azimuthGroup) azimuthGroup.hidden = !res.hasAlignedChoice;
-    renderLiveWinner(res, !hasLocks);
-    updateLiveBadges(res);
-    syncChips();
-    ensurePvgisForLockedTilt(locks);
-    syncProductionWindow(); // W50 — reflète le plan gagnant dans la fenêtre de production
-  }
-
-  /** Affine PVGIS pour une inclinaison VERROUILLÉE hors grille (curseur fin), en
-   *  arrière-plan (débattu) puis re-résout. La grille standard est déjà couverte par
-   *  computeMatrixPvgis ; ici on n'interroge QUE l'inclinaison choisie. */
-  function ensurePvgisForLockedTilt(locks: AxisLocks) {
-    if (roofType !== 'flat' || locks.tiltDeg == null || !closed) return;
-    const t = Math.round(locks.tiltDeg);
-    const roofAz = roofDominantAzimuthDeg([...vertices]);
-    const aspects = [...new Set(pvgisMatrixCandidatePairs(centroidLat, roofAz).map((p) => p.aspect))];
-    const missing = aspects.filter((a) => !v4YieldCache.has(v4Key(t, a)));
-    if (!missing.length) return;
-    if (liveTiltTimer != null) clearTimeout(liveTiltTimer);
-    const token = ++liveToken;
-    liveTiltTimer = setTimeout(() => {
-      void Promise.all(missing.map((a) => v4SpecificYield(t, a))).then(() => {
-        if (token !== liveToken || roofType !== 'flat') return;
-        liveResolveFlat();
-      });
-    }, 280);
-  }
-
-  /** « Réinitialiser » (toit plat) : relâche TOUS les verrous → optimum global. */
-  function resetFlatLocks() {
-    pinned.clear();
-    neededAuto = true;
-    useRecommended = true;
-    liveResolveFlat();
-  }
-
-  /** renderSelection : alias historique → solveur vivant (toit plat). */
-  function renderSelection() {
-    liveResolveFlat();
-  }
-
-  function paintCard(d: CardData, sourceLabel?: string) {
-    const set = (id: string, v: string) => {
-      const el = $(id);
-      if (el) el.textContent = v;
-    };
-    set('rp9-reco-title', d.isReco ? `${d.title}  ·  ✓ recommandé` : d.title);
-    set('rp9-reco-kwc', `${d.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`);
-    set('rp9-reco-panels', `${fmt(d.count)} × 720 W`);
-    set('rp9-reco-prod', d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
-    set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
-    set('rp9-reco-savings', `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`);
-    const why = $('rp9-reco-why');
-    if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '');
-    const bif = $('rp9-reco-bifacial');
-    if (bif) {
-      const gain = d.annualKwh * 0.05;
-      bif.textContent = d.annualKwh > 0 ? `+ gain bifacial (estimation prudente, ~+5 %) : ~${fmt(Math.round(gain))} kWh/an — non compté dans le chiffre ci-dessus.` : '';
-    }
-    $('rp9-results')?.classList.add('rp9-results--ready');
-    const cta = $<HTMLButtonElement>('rp9-cta');
-    if (cta && d.count > 0) {
-      cta.hidden = false;
-      cta.onclick = () => prefillLead(d);
-    }
-  }
-
-  function paintMaxLine() {
-    if (!rec) return;
-    const maxline = $('rp9-maxline');
-    if (maxline) {
-      maxline.textContent = `Rendement max par panneau : ~${rec.maxPerPanelTiltDeg}° plein sud. Énergie totale max sur CE toit : ~${rec.maxRoofEnergyTiltDeg}° (un toit limité gagne à être plus plat pour loger plus de panneaux).`;
-    }
-  }
-
-  // — Comparatif —
-  // ── V6 — MATRICE complète : balayage dense AFFICHÉ (triable, filtrable) ──────────
-  // FIX 2 : on ne montre plus ~6 configs nommées, mais TOUTES les lignes évaluées par
-  // fineGridMatrixV6, avec l'optimum réel épinglé en tête et badgé « Recommandé ».
-
-  // ═══════════ V6 — MATRICE de comparaison (toit plat) : voir roofPro11/matrix.ts ═══════════
-
-  // ═══════════ V3 — Optimum (recherche pleine) + toit en pente (pose affleurante) ═══════════
-
-  const facingLabel = (az: number): string => {
-    const m: Record<number, string> = { 180: 'sud', 135: 'sud-est', 225: 'sud-ouest', 90: 'est', 270: 'ouest', 0: 'nord' };
-    return m[Math.round(az)] ?? `${Math.round(az)}°`;
-  };
-
-  // Adaptateurs FlushPack/FlushGrid (V3) → PackResult/PanelGrid pour réutiliser le
-  // rendu 3D existant en mode affleurant (flush=true). family='south' (mono-MPPT,
-  // jamais de chevron), azimut = face du pan, inclinaison = pente.
-  function flushGridToPanelGrid(fg: FlushGrid): PanelGrid {
-    const slopeLenM = fg.orientation === 'portrait' ? PANEL2_LONG_M : PANEL2_SHORT_M;
-    const rowWidthM = fg.orientation === 'portrait' ? PANEL2_SHORT_M : PANEL2_LONG_M;
-    return {
-      panelOrientation: fg.orientation,
-      count: fg.count,
-      kwc: fg.kwc,
-      rowPitchM: fg.rowPitchM,
-      panels: fg.panels,
-      slopeLenM,
-      rowWidthM,
-      footprintPerPanelM2: fg.footprintPerPanelM2,
-    };
-  }
-  function flushToPack(fp: FlushPack): PackResult {
-    return {
-      origin: fp.origin,
-      ringENU: fp.ringENU,
-      azimuthDeg: fp.facingAzimuthDeg,
-      tiltDeg: fp.pitchDeg,
-      family: 'south',
-      areaM2: fp.areaM2,
-      usableAreaM2: fp.usableAreaM2,
-      portrait: flushGridToPanelGrid(fp.portrait),
-      landscape: flushGridToPanelGrid(fp.landscape),
-      best: flushGridToPanelGrid(fp.best),
-    };
-  }
-
-  function pitchedWhy(): string {
-    if (!pitchedRec) return '';
-    const p = pitchedRec.planes[0];
-    if (p.northFacing) {
-      return `Ce pan est orienté ${facingLabel(facingAzimuthDeg)} (trop au nord) : aucune pose recommandée. Choisissez un pan orienté sud, est ou ouest.`;
-    }
-    const cover = Math.round(pitchedRec.pctOfTarget);
-    const head = `Pose affleurante sur la pente (~${Math.round(p.pitchDeg)}°, face ${facingLabel(facingAzimuthDeg)})`;
-    if (pitchedRec.roofLimited) {
-      return `${head} : ${pitchedRec.totalPlacedCount} panneaux, ~${cover} % de votre consommation. Ce pan ne couvre pas tout le besoin.`;
-    }
-    return `${head} : dimensionné à votre besoin — ${pitchedRec.totalPlacedCount} panneaux, ~${cover} %. Inclinaison et azimut imposés par le toit.`;
-  }
-  function pitchedNote(): string {
-    if (!pitchedRec) return '';
-    const p = pitchedRec.planes[0];
-    const yld = pitchedPvgisPerKwc != null ? Math.round(pitchedPvgisPerKwc) : Math.round(p.perPanelYield);
-    const src = pitchedPvgisPerKwc != null ? 'PVGIS, pose « building »' : 'table committée (PVGIS indisponible)';
-    return `Inclinaison ${Math.round(p.pitchDeg)}° = pente · azimut ${Math.round(p.facingAzimuthDeg)}° = face (imposés, non balayés). Rendement ${src} : ~${yld} kWh/kWc/an. Panneaux qui tiennent sur ce pan : ${p.fitCount}.`;
-  }
-
-  function renderPitched() {
-    if (!pitchedRec) return;
-    const plane = pitchedRec.planes[0];
-    const fp = plane.pack;
-    const fg = plane.orientation === 'portrait' ? fp.portrait : fp.landscape;
-    renderScene(flushToPack(fp), flushGridToPanelGrid(fg), fp.pitchDeg, 'south', plane.placedCount, true);
-    // V5 : production de vérité = PVGIS au (pente, face) réels, pose 'building'.
-    // Disponible → on remplace la valeur table par le chiffre PVGIS et on recalcule
-    // couverture + économies de façon cohérente ; sinon repli table (« estimé »).
-    const target = pitchedRec.targetAnnualKwh;
-    const usePvgis = pitchedPvgisPerKwc != null && pitchedRec.totalKwc > 0 && !plane.northFacing;
-    const annualKwh = usePvgis ? pitchedRec.totalKwc * (pitchedPvgisPerKwc as number) : pitchedRec.totalAnnualKwh;
-    const pct = target > 0 ? (annualKwh / target) * 100 : 0;
-    const savings = usePvgis ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: pitchedRec.savingsLow, high: pitchedRec.savingsHigh };
-    paintCard(
-      {
-        title: `Toit en pente ~${Math.round(fp.pitchDeg)}° · face ${facingLabel(facingAzimuthDeg)}`,
-        isReco: true,
-        count: pitchedRec.totalPlacedCount,
-        kwc: pitchedRec.totalKwc,
-        annualKwh,
-        pct,
-        savingsLow: savings.low,
-        savingsHigh: savings.high,
-        why: pitchedWhy(),
-      },
-      usePvgis ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
-    );
-    syncNeedControl(plane.fitCount, 'pente');
-    if (pitchedNoteEl) pitchedNoteEl.textContent = pitchedNote();
-    if (pitchValueEl) pitchValueEl.textContent = `${Math.round(fp.pitchDeg)}°`;
-    highlightRow(null);
-  }
-
-  // ═══════════ W35 — OPTIMISEUR CONTRAINT VIVANT (toit en pente, cerveau V8) ═══════════
-  // Jumeau de l'optimiseur plat (W34) : axes libres = pose + marge (+ cible besoin),
-  // inclinaison = pente et azimut = face IMPOSÉS (jamais optimisés). Verrouiller un axe
-  // le tient et re-résout l'autre ; production PVGIS au (pente, face), pose 'building'.
-
-  /** Verrous pente courants (pose + marge) + cible besoin (partagée via neededAuto). */
-  function buildPitchedLocks(): { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number } {
-    const locks: { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number } = {};
-    if (pitchedLocks.layout) locks.layout = pitchedLocks.layout;
-    if (pitchedLocks.margin) locks.margin = pitchedLocks.margin;
-    if (!neededAuto && neededPanels > 0) locks.need = neededPanels;
-    return locks;
-  }
-
-  function liveResolvePitched() {
-    if (!closed || vertices.length < 3 || roofType !== 'pitched') return;
-    const ring: LngLat[] = [...vertices];
-    const bill = monthlyBill();
-    const locks = buildPitchedLocks();
-    const yieldFn = (pitch: number, facing: number): number | null => {
-      const v = pitchedYieldCache.get(pitchedKey(pitch, facing));
-      return v == null ? null : v;
-    };
-    const res = solveLivePitched(ring, centroidLat, bill, pitchDeg, facingAzimuthDeg, obstructionRings(), locks, { yieldFn });
-    pitchedLiveResult = res;
-    if (neededAuto) neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
-    const hasLocks = !!(locks.layout || locks.margin || locks.need != null);
-    renderPitchedWinner(res, !hasLocks);
-    updatePitchedBadges(res);
-    paintPitchedComparison(res);
-    syncPitchedChips(res);
-    syncProductionWindow(); // W50 — reflète le plan gagnant (pente) dans la fenêtre de production
-  }
-
-  function renderPitchedWinner(res: PitchedLiveResult, isReco: boolean) {
-    const w = res.winner;
-    renderScene(flushToPack(w.pack), flushGridToPanelGrid(w.grid), w.pack.pitchDeg, 'south', w.placedCount, true);
-    const cov = Math.round(w.pctOfTarget);
-    const tiltTxt = `${Math.round(pitchDeg)}°`;
-    const why = res.northFacing
-      ? `Ce pan est orienté nord (face ${facingLabel(facingAzimuthDeg)}) : aucune pose rentable proposée. Indiquez la vraie face descendante du pan.`
-      : isReco
-        ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
-        : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent la pose/marge optimale.`;
-    paintCard(
-      {
-        title: `Toit en pente ~${tiltTxt} · face ${facingLabel(facingAzimuthDeg)} · ${w.layoutLabel}`,
-        isReco,
-        count: w.placedCount,
-        kwc: w.kwc,
-        annualKwh: w.annualKwh,
-        pct: w.pctOfTarget,
-        savingsLow: w.savingsLow,
-        savingsHigh: w.savingsHigh,
-        why,
-      },
-      w.yieldSource === 'pvgis' ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
-    );
-    syncNeedControl(w.grid.count, 'pente');
-    if (pitchValueEl) pitchValueEl.textContent = tiltTxt;
-    if (pitchedNoteEl) {
-      pitchedNoteEl.textContent = `Inclinaison ${tiltTxt} = pente · azimut ${Math.round(facingAzimuthDeg)}° = face (imposés, non balayés). Pose affleurante, sans rangées espacées. Panneaux qui tiennent : ${w.fitCount}.`;
-    }
-    highlightRow(null);
-    if (optimumNoteEl) {
-      optimumNoteEl.textContent = isReco
-        ? 'Optimum vivant (pente) : pose et marge calées au mieux ; inclinaison et azimut imposés par le toit.'
-        : 'Optimum vivant (pente) : votre choix est tenu, pose/marge re-résolues autour. « Réinitialiser » relâche tout.';
-    }
-  }
-
-  /** Badge « Recommandé » sur la pose (data-orient) et la marge (data-margin) en pente. */
-  function updatePitchedBadges(res: PitchedLiveResult) {
-    const show = (b: Element | null, on: boolean) => {
-      const badge = b?.querySelector<HTMLElement>('.rp9-reco-badge');
-      if (badge) badge.hidden = !on;
-    };
-    document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) =>
-      show(b, b.dataset.orient !== 'auto' && b.dataset.orient === res.recommended.layout),
-    );
-    document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) => show(b, b.dataset.margin === res.recommended.margin));
-  }
-
-  /** Puces pose/marge : la valeur du gagnant affichée pressée (verrou ou auto). */
-  function syncPitchedChips(res: PitchedLiveResult) {
-    const w = res.winner;
-    document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) =>
-      b.setAttribute('aria-pressed', String(b.dataset.orient === w.layout)),
-    );
-    document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) =>
-      b.setAttribute('aria-pressed', String(b.dataset.margin === w.margin)),
-    );
-  }
-
-  /** Tableau comparatif de l'espace LIBRE en pente (≤ 4 lignes : pose × marge),
-   *  l'optimum badgé « Recommandé ». Réutilise le tableau de la matrice plate. */
-  function paintPitchedComparison(res: PitchedLiveResult) {
-    const tbody = $('rp9-compare');
-    const wrap = $('rp9-compare-wrap');
-    if (!tbody) return;
-    const rowKey = (r: PitchedLiveResult['winner']) => `${r.layout}|${r.margin}`;
-    const wk = rowKey(res.winner);
-    const rows = [...res.rows].sort((a, b) => b.annualKwh - a.annualKwh);
-    tbody.innerHTML = '';
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      const key = rowKey(r);
-      tr.dataset.id = key;
-      const badge = key === wk ? ' <span style="color:var(--color-brass-300)">✓ Recommandé</span>' : '';
-      tr.innerHTML =
-        `<td>${r.label}${badge}</td>` +
-        `<td class="num">${fmt(r.placedCount)}</td>` +
-        `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
-        `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
-        `<td class="num">${Math.round(r.pctOfTarget)} %</td>` +
-        `<td class="num">${fmtMad(r.savingsLow)} – ${fmtMad(r.savingsHigh)}</td>`;
-      tr.addEventListener('click', () => {
-        pitchedLocks.layout = r.layout;
-        pitchedLocks.margin = r.margin;
-        liveResolvePitched();
-      });
-      tbody.appendChild(tr);
-    }
-    if (wrap) wrap.hidden = false;
-    highlightRow(wk);
-  }
-
-  /** « Réinitialiser » (toit en pente) : relâche les verrous pose/marge → optimum global. */
-  function resetPitchedLocks() {
-    delete pitchedLocks.layout;
-    delete pitchedLocks.margin;
-    neededAuto = true;
-    liveResolvePitched();
-  }
-
-  // V5 — rendement spécifique PVGIS (kWh/kWc/an) du plan en pente, pose 'building',
-  // à kWc=1 (mis à l'échelle ensuite). Cache par (pente|face), repli table (null).
-  async function pitchedSpecificYield(pitch: number, facing: number): Promise<number | null> {
-    const key = pitchedKey(pitch, facing);
-    if (pitchedYieldCache.has(key)) return pitchedYieldCache.get(key) ?? null;
-    try {
-      const res = await fetch('/api/roof-yield', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat: centroid[1], lon: centroid[0], mountingplace: 'building', legs: [pitchedPlaneLeg(pitch, facing, 1)] }),
-      });
-      const data = await res.json();
-      const v = res.ok && data.ok && typeof data.annualKwh === 'number' ? data.annualKwh : null;
-      pitchedYieldCache.set(key, v);
-      return v;
-    } catch {
-      pitchedYieldCache.set(key, null);
-      return null;
-    }
-  }
-
-  // Affine la production du toit en pente avec PVGIS (une seule requête, cachée).
-  async function refinePitchedPvgis() {
-    if (!pitchedRec) return;
-    const p = pitchedRec.planes[0];
-    if (!p || p.northFacing) return;
-    const token = ++pitchedToken;
-    const perKwc = await pitchedSpecificYield(p.pitchDeg, p.facingAzimuthDeg);
-    if (token !== pitchedToken || perKwc == null) return;
-    pitchedPvgisPerKwc = perKwc;
-    // W35 — le cache PVGIS (pente, face) est rempli : re-résout l'optimiseur vivant.
-    if (roofType === 'pitched') liveResolvePitched();
-  }
-
-  function pitchedRecompute() {
-    if (!closed || vertices.length < 3) return;
-    const ring: LngLat[] = [...vertices];
-    const plane: RoofPlane = { ring, pitchDeg, facingAzimuthDeg, obstructions: obstructionRings() };
-    pitchedRec = recommendPitched([plane], centroidLat, monthlyBill());
-    pitchedPvgisPerKwc = null; // nouvelle config → chiffre PVGIS obsolète (repli table)
-    if (neededAuto) {
-      const n = neededPanelsForTarget(pitchedRec.targetAnnualKwh, centroidLat);
-      neededPanels = n > 0 ? clampNeeded(n) : 0;
-    }
-    // W35 — l'optimiseur vivant en pente rend le gagnant + son comparatif (pose × marge).
-    liveResolvePitched();
-    setStatus('Mode pente : pose affleurante, inclinaison et azimut imposés par le toit.');
-    void refinePitchedPvgis(); // production de vérité PVGIS (building) au (pente, face)
-  }
+  // ═══════════ OPTIMISEUR VIVANT (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) ═══════════
+  // tiltOf/gridFor/placedFor/syncNeedControl/renderConfig/syncTiltControl + tout le solveur
+  // vivant (buildFlatLocks/liveResolveFlat/renderLiveWinner/…), le toit en pente
+  // (flushToPack/liveResolvePitched/renderPitchedWinner/paintPitchedComparison/…), les cartes
+  // (paintCard/paintMaxLine) et l'affinage PVGIS (fetchPvgis/v4SpecificYield/buildMatrix/
+  // computeMatrixPvgis + caches) vivent dans roofPro11/optimizer.ts ; créés plus haut via
+  // createOptimizer(ctx, …). L'entrée garde l'orchestration recompute()/recalc()/close() +
+  // le câblage DOM, qui appellent ces fonctions via l'objet `optimizer`.
+  // ── V6 — MATRICE de comparaison (toit plat) : voir aussi roofPro11/matrix.ts ──
 
   /** Recalcul/rendu selon le type de toit actif (plat = pipeline pro-5 inchangé). */
   function recalc() {
@@ -1721,124 +1160,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
     // V6 — la matrice complète + l'optimum « calculé » notés sur le rendement PVGIS
     // au GPS exact (sa propre ligne, badge « Recommandé »).
     if (rec.recommended.count > 0) void computeMatrixPvgis();
-  }
-
-  // W1 — Jambes PVGIS pour une famille/azimut donné. Sud = une jambe (aspect =
-  // azimut−180). Est-Ouest = deux jambes, base = azimut−90, ∓90.
-  function legsFor(family: ConfigFamily, tiltDeg: number, azimuthDeg: number, kwc: number) {
-    if (family === 'eastwest') {
-      const base = azimuthDeg - 90;
-      return [
-        { kwc: kwc / 2, tiltDeg, aspect: base - 90 },
-        { kwc: kwc / 2, tiltDeg, aspect: base + 90 },
-      ];
-    }
-    return [{ kwc, tiltDeg, aspect: azimuthDeg - 180 }];
-  }
-
-  /**
-   * W1 — Production PVGIS live (kWh) pour une config, avec CACHE partagé entre TOUS
-   * les réglages : une même config (lat,lon|famille|tilt|azimut) n'est jamais
-   * re-demandée. PVGIS injoignable/null → on mémorise null (repli table côté
-   * appelant) sans erreur visible. On ne requête QUE les configs réellement
-   * affichées (recommandée + sélection visible), jamais tout l'espace théorique.
-   */
-  async function fetchPvgis(family: ConfigFamily, tiltDeg: number, azimuthDeg: number, kwc: number): Promise<number | null> {
-    if (kwc <= 0) return null;
-    const key = pvgisKey(family, tiltDeg, azimuthDeg);
-    if (pvgisCache.has(key)) return pvgisCache.get(key) ?? null;
-    try {
-      const res = await fetch('/api/roof-yield', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat: centroid[1], lon: centroid[0], legs: legsFor(family, tiltDeg, azimuthDeg, kwc) }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok && typeof data.annualKwh === 'number') {
-        pvgisCache.set(key, data.annualKwh);
-        return data.annualKwh;
-      }
-      pvgisCache.set(key, null); // PVGIS a répondu « estimate » → repli table mémorisé
-      return null;
-    } catch {
-      // Pas d'erreur visible : la table committée a déjà fourni un chiffre.
-      pvgisCache.set(key, null);
-      return null;
-    }
-  }
-
-  async function refinePvgis() {
-    if (!rec) return;
-    const r = rec.recommended;
-    const kwh = await fetchPvgis(r.family, r.tiltDeg, r.azimuthDeg, r.kwc);
-    if (kwh != null && r.kwc > 0) {
-      // Stocke le rendement (kWh/kWc) — réappliqué au nombre POSÉ, qui peut être
-      // sous le besoin si le toit/les obstacles contraignent.
-      pvgisPerKwc = kwh / r.kwc;
-      if (useRecommended) renderSelection();
-    }
-  }
-
-  // ── V4 — PVGIS SOURCE DE VÉRITÉ : optimum de grille fine au GPS exact ────────
-  // Rendement spécifique (kWh/kWc/an) pour un (tilt, aspect) — kWc=1, pose 'free'
-  // (toit plat racké). Mémorisé/réutilisé ; PVGIS null → repli table (null en cache).
-  async function v4SpecificYield(tiltDeg: number, aspect: number): Promise<number | null> {
-    const key = v4Key(tiltDeg, aspect);
-    if (v4YieldCache.has(key)) return v4YieldCache.get(key) ?? null;
-    try {
-      const res = await fetch('/api/roof-yield', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat: centroid[1], lon: centroid[0], mountingplace: 'free', legs: [{ kwc: 1, tiltDeg, aspect }] }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok && typeof data.annualKwh === 'number') {
-        v4YieldCache.set(key, data.annualKwh);
-        return data.annualKwh;
-      }
-      v4YieldCache.set(key, null);
-      return null;
-    } catch {
-      v4YieldCache.set(key, null);
-      return null;
-    }
-  }
-
-  // V6 — la MATRICE complète notée sur le rendement PVGIS du GPS EXACT, en
-  // COARSE-THEN-FINE pour rester rapide et dans les limites de débit PVGIS : le
-  // rendement spécifique est interrogé UNE fois par (tilt, aspect), mis en cache et
-  // réutilisé (cache partagé v4YieldCache). Phase 1 = grille grossière (tous aspects)
-  // → trouve la base ; phase 2 = grille fine autour de l'aspect gagnant. Les cellules
-  // non interrogées retombent gracieusement sur l'estimation maison (« estimé »).
-  const buildMatrix = (ring: LngLat[], bill: number) => {
-    const yieldFn = (tiltDeg: number, aspect: number): number | null => {
-      const v = v4YieldCache.get(v4Key(tiltDeg, aspect));
-      return v == null ? null : v;
-    };
-    matrixResult = fineGridMatrixV6(ring, centroidLat, bill, obstructionRings(), { yieldFn });
-    paintComparison();
-    renderMatrixOptimumCard();
-    // W34 — le cache PVGIS vient d'être enrichi : re-résout le solveur vivant pour que
-    // le gagnant affiché + les badges « Recommandé » suivent la production PVGIS exacte.
-    if (roofType === 'flat') liveResolveFlat();
-  };
-
-  async function computeMatrixPvgis() {
-    if (!closed || vertices.length < 3 || roofType !== 'flat') return;
-    const token = ++matrixToken;
-    const ring: LngLat[] = [...vertices];
-    const bill = monthlyBill();
-    const roofAz = roofDominantAzimuthDeg(ring);
-    // Phase 1 — GROSSIÈRE : tous les aspects, inclinaisons grossières → la base.
-    await Promise.all(pvgisCoarsePairs(centroidLat, roofAz).map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));
-    if (token !== matrixToken) return; // un tracé/réglage plus récent a pris la main
-    buildMatrix(ring, bill);
-    // Phase 2 — FINE : on raffine la grille fine complète autour de l'aspect gagnant.
-    const refine = pvgisRefinePairs(centroidLat, roofAz, matrixResult ? matrixResult.winner.aspect : 0);
-    if (!refine.length) return;
-    await Promise.all(refine.map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));
-    if (token !== matrixToken) return;
-    buildMatrix(ring, bill);
   }
 
   /** Carte « Optimum calculé » alimentée par le VRAI maximum de la matrice. */

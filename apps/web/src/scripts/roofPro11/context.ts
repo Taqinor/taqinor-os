@@ -16,12 +16,38 @@ import { type SpecificDateProfile, type ScaledProduction, type PerKwcProduction 
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { type LiveSolveResult } from '../../lib/estimatorBrainV7';
-import { type PitchedLiveResult } from '../../lib/estimatorBrainV8';
-import { type Recommendation } from '../../lib/estimatorBrainV2';
+import { type PitchedLiveResult, type PitchedLayoutAxis, type PitchedMarginAxis } from '../../lib/estimatorBrainV8';
+import { type Recommendation, type ConfigFamily } from '../../lib/estimatorBrainV2';
+import { type PitchedRecommendation } from '../../lib/estimatorBrainV3';
 import { type MatrixSortKey, type MatrixV6Result } from '../../lib/estimatorBrainV6';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
 import { type LayoutState } from '../../lib/layoutVariability';
-import { type InitOptions, type RoofType, type AreaRecord, type LayoutPlan } from './types';
+import {
+  type InitOptions,
+  type RoofType,
+  type AreaRecord,
+  type LayoutPlan,
+  type TiltMode,
+  type OrientMode,
+  type AzimuthMode,
+  type MarginMode,
+} from './types';
+
+/** Axes que l'utilisateur a explicitement épinglés (toit plat) — ref STABLE. */
+export type PinnedAxis = 'family' | 'tilt' | 'orient' | 'azimuth' | 'margin';
+/** Sélection d'affichage des puces (miroir du gagnant courant / des verrous). */
+export interface SelState {
+  family: ConfigFamily;
+  tilt: TiltMode;
+  orient: OrientMode;
+  azimuth: AzimuthMode;
+  margin: MarginMode;
+}
+/** Verrous pose/marge du toit en pente (W35) — ref STABLE (objet muté en place). */
+export interface PitchedLocks {
+  layout?: PitchedLayoutAxis;
+  margin?: PitchedMarginAxis;
+}
 
 /** Références DOM partagées avec les modules extraits (sous-ensemble du DOM du
  * builder ; chaque champ peut être null — le harness jsdom ne fournit pas tout). */
@@ -94,6 +120,30 @@ export interface Ctx {
   // — Recommandation/optimum courant + flag « caler sur la reco » (mutable) —
   rec: Recommendation | null;
   useRecommended: boolean;
+  /** Recommandation pente courante (V3) — partagée avec l'optimiseur pente. */
+  pitchedRec: PitchedRecommendation | null;
+
+  // — Sélection/verrous de l'optimiseur (partagés avec les handlers DOM de l'entrée) —
+  /** Miroir d'affichage des puces (gagnant courant / valeurs verrouillées). */
+  sel: SelState;
+  /** Axes épinglés (toit plat) — Set à ref STABLE, muté en place. */
+  readonly pinned: Set<PinnedAxis>;
+  /** Verrous pose/marge (toit en pente) — objet à ref STABLE, muté en place. */
+  readonly pitchedLocks: PitchedLocks;
+
+  // — Affinages PVGIS (rendement par kWc), partagés entrée ↔ optimiseur (mutable) —
+  /** Rendement PVGIS (kWh/kWc/an) du plan plat recommandé, ou null = repli table. */
+  pvgisPerKwc: number | null;
+  /** Rendement PVGIS (kWh/kWc/an) du plan en pente (pose « building »), ou null. */
+  pitchedPvgisPerKwc: number | null;
+
+  // — Caches PVGIS (refs STABLES, vidés par l'entrée, lus/écrits par l'optimiseur) —
+  /** Cache production (kWh) par config plate — clé lat,lon|famille|tilt|azimut. */
+  readonly pvgisCache: Map<string, number | null>;
+  /** Cache rendement spécifique (kWh/kWc/an) par (tilt|aspect), pose 'free'. */
+  readonly v4YieldCache: Map<string, number | null>;
+  /** Cache rendement spécifique (kWh/kWc/an) par (pente|face), pose 'building'. */
+  readonly pitchedYieldCache: Map<string, number | null>;
 
   // — Résultats vivants des optimiseurs (mutable) —
   liveResult: LiveSolveResult | null;

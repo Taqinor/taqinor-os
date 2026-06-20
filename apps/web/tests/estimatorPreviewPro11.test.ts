@@ -65,35 +65,38 @@ describe('pro-11 — 3D + cerveau chargés paresseusement, hors page publique', 
 
 describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', () => {
   const script = read('../src/scripts/roof-tool-pro11.ts');
+  // Split modulaire : le moteur d'optimisation vit dans roofPro11/optimizer.ts.
+  const optimizer = read('../src/scripts/roofPro11/optimizer.ts');
 
   it('le script branche le cerveau V8 (solveLivePitched) et re-résout en direct', () => {
-    expect(script).toContain("from '../lib/estimatorBrainV8'");
-    expect(script).toContain('solveLivePitched(');
-    expect(script).toContain('function liveResolvePitched(');
+    expect(optimizer).toContain("from '../../lib/estimatorBrainV8'");
+    expect(optimizer).toContain('solveLivePitched(');
+    expect(optimizer).toContain('function liveResolvePitched(');
   });
 
   it('production pente = PVGIS au (pente, face), pose « building » (cache partagé)', () => {
-    expect(script).toContain('pitchedYieldCache.get(pitchedKey(');
-    expect(script).toContain("mountingplace: 'building'");
-    expect(script).toContain('pitchedPlaneLeg(');
+    expect(optimizer).toContain('ctx.pitchedYieldCache.get(pitchedKey(');
+    expect(optimizer).toContain("mountingplace: 'building'");
+    expect(optimizer).toContain('pitchedPlaneLeg(');
     // après l'arrivée PVGIS, l'optimiseur pente se re-résout
-    expect(script).toMatch(/refinePitchedPvgis[\s\S]{0,600}liveResolvePitched\(\)/);
+    expect(optimizer).toMatch(/refinePitchedPvgis[\s\S]{0,600}liveResolvePitched\(\)/);
   });
 
   it('axes LIBRES en pente = pose + marge (+ besoin) ; verrous cumulatifs + Réinitialiser', () => {
-    expect(script).toContain('pitchedLocks');
-    expect(script).toContain('function resetPitchedLocks(');
-    expect(script).toContain("if (roofType === 'pitched') resetPitchedLocks();"); // le bouton Réinitialiser route en pente
+    expect(optimizer).toContain('pitchedLocks');
+    expect(optimizer).toContain('function resetPitchedLocks(');
+    // le bouton Réinitialiser route en pente — câblage DOM resté dans l'entrée
+    expect(script).toContain("if (roofType === 'pitched') resetPitchedLocks();");
   });
 
   it('chaque groupe pente montre sa valeur « Recommandé » (pose/marge)', () => {
-    expect(script).toContain('function updatePitchedBadges(');
-    expect(script).toContain('res.recommended');
+    expect(optimizer).toContain('function updatePitchedBadges(');
+    expect(optimizer).toContain('res.recommended');
   });
 
   it('un comparatif pente (pose × marge) est rendu, l\'optimum badgé', () => {
-    expect(script).toContain('function paintPitchedComparison(');
-    expect(script).toContain('✓ Recommandé');
+    expect(optimizer).toContain('function paintPitchedComparison(');
+    expect(optimizer).toContain('✓ Recommandé');
     // la matrice PLATE ne repeint jamais le tableau en mode pente — la garde vit
     // désormais dans roofPro11/matrix.ts (split modulaire), sous forme ctx.*.
     const matrix = read('../src/scripts/roofPro11/matrix.ts');
@@ -105,13 +108,15 @@ describe('pro-11 — la pose AFFLEURANTE et la 3D pente restent INCHANGÉES (mod
   const script = read('../src/scripts/roof-tool-pro11.ts');
   it('rendu pente : plan incliné + pose coplanaire (géométrie V6), flush=true', () => {
     // Split modulaire : la géométrie V6 (plan incliné + pose coplanaire affleurante) vit
-    // dans roofPro11/scene3d.ts ; l'appel renderScene(…, true) en pente reste dans l'entrée.
+    // dans roofPro11/scene3d.ts ; l'appel renderScene(…, true) en pente (renderPitchedWinner)
+    // vit dans roofPro11/optimizer.ts.
     const scene = read('../src/scripts/roofPro11/scene3d.ts');
     expect(scene).toContain('pitchedDeckZ(');
     expect(scene).toContain('flushPanelCenterAt(');
     expect(scene).toContain('PITCHED_FLUSH_STANDOFF_M');
     // renderScene rendu avec flush=true en pente (dernier argument)
-    expect(script).toContain("'south', w.placedCount, true)");
+    const optimizer = read('../src/scripts/roofPro11/optimizer.ts');
+    expect(optimizer).toContain("'south', w.placedCount, true)");
   });
   it('le type de toit est toujours choisi AVANT le tracé (preset 45° conservé)', () => {
     const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
@@ -165,12 +170,13 @@ describe('pro-11 — W47 : « Alignée toit » présente/forcée en pente, orien
 });
 
 describe('pro-11 — le toit PLAT garde l\'optimiseur vivant W34 (V7) intact', () => {
-  const script = read('../src/scripts/roof-tool-pro11.ts');
+  // Split modulaire : le moteur d'optimisation vivante vit dans roofPro11/optimizer.ts.
+  const optimizer = read('../src/scripts/roofPro11/optimizer.ts');
   it('V7 solveLive + liveResolveFlat toujours présents (toit plat inchangé)', () => {
-    expect(script).toContain("from '../lib/estimatorBrainV7'");
-    expect(script).toContain('solveLive(');
-    expect(script).toContain('function liveResolveFlat(');
-    expect(script).toContain('function resetFlatLocks(');
+    expect(optimizer).toContain("from '../../lib/estimatorBrainV7'");
+    expect(optimizer).toContain('solveLive(');
+    expect(optimizer).toContain('function liveResolveFlat(');
+    expect(optimizer).toContain('function resetFlatLocks(');
   });
 });
 
