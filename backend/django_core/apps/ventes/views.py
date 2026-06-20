@@ -179,6 +179,21 @@ class DevisViewSet(viewsets.ModelViewSet):
         from . import activity
         from apps.crm.services import avancer_stage_pour_devis
         devis = self.get_object()
+        # ERR33 — garde de statut : seul un devis « en cours » (brouillon /
+        # envoyé) peut être accepté. Un devis refusé, expiré ou déjà accepté
+        # ne se ré-accepte pas (sinon on ressusciterait un devis mort et on
+        # ferait avancer le funnel / déclencherait l'échéancier à tort).
+        if devis.statut not in (
+            Devis.Statut.BROUILLON, Devis.Statut.ENVOYE,
+        ):
+            return Response(
+                {'detail': (
+                    'Seul un devis en cours (brouillon ou envoyé) peut être '
+                    f'accepté ; statut actuel : '
+                    f'« {devis.get_statut_display()} ».'
+                )},
+                status=status.HTTP_409_CONFLICT,
+            )
         nom = (request.data.get('nom') or '').strip()
         date_str = (request.data.get('date') or '').strip()
         try:
@@ -283,6 +298,18 @@ class DevisViewSet(viewsets.ModelViewSet):
             "l'approbation d'un administrateur est requise avant l'envoi.")})
 
     def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        # ERR8 — un PATCH/PUT ne doit pas re-pointer le devis vers le client/lead
+        # d'une autre société (mass-assignment). perform_create valide déjà ces
+        # FK ; on applique la même garde à la mise à jour.
+        company = self.request.user.company
+        if company is not None:
+            lead = serializer.validated_data.get('lead')
+            client = serializer.validated_data.get('client')
+            if lead is not None and lead.company_id != company.id:
+                raise ValidationError({'lead': 'Lead inconnu.'})
+            if client is not None and client.company_id != company.id:
+                raise ValidationError({'client': 'Client inconnu.'})
         # Snapshot du statut AVANT écriture, puis mouvement automatique du
         # funnel CRM (envoye → QUOTE_SENT, accepte → SIGNED). Import local
         # pour éviter les cycles, comme dans perform_create.
@@ -350,7 +377,11 @@ class DevisViewSet(viewsets.ModelViewSet):
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
-            key = generate_premium_devis_pdf(devis.id, clean_pdf_options(raw))
+            # ERR74 — /proposal is a safe GET: render + stream, but do NOT
+            # persist fichier_pdf on every call (persist=False). The async
+            # generate-pdf task remains the path that records the key.
+            key = generate_premium_devis_pdf(
+                devis.id, clean_pdf_options(raw), persist=False)
             pdf_bytes = download_pdf(key)
         except Exception as exc:
             return Response(
@@ -482,6 +513,25 @@ class LigneDevisViewSet(viewsets.ModelViewSet):
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
+    def _check_tenant(self, serializer):
+        """ERR7 — le devis ciblé par la ligne doit appartenir à la société de
+        l'utilisateur (refuse l'injection IDOR d'une ligne sur le document d'un
+        autre tenant). Superuser sans société : non borné."""
+        from rest_framework.exceptions import ValidationError
+        user = self.request.user
+        devis = serializer.validated_data.get('devis')
+        if devis is not None and user.company_id \
+                and devis.company_id != user.company_id:
+            raise ValidationError({'devis': 'Devis inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save()
+
 
 class BonCommandeViewSet(viewsets.ModelViewSet):
     queryset = BonCommande.objects.select_related('client', 'devis').all()
@@ -508,7 +558,17 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
         company = self.request.user.company
+        # ERR13 — client/devis du corps doivent appartenir à la société (refuse
+        # de lier un BC au client/devis d'un autre tenant).
+        if company is not None:
+            client = serializer.validated_data.get('client')
+            devis = serializer.validated_data.get('devis')
+            if client is not None and client.company_id != company.id:
+                raise ValidationError({'client': 'Client inconnu.'})
+            if devis is not None and devis.company_id != company.id:
+                raise ValidationError({'devis': 'Devis inconnu.'})
         create_numbered(
             BonCommande, company, 'bon_commande',
             lambda ref: serializer.save(reference=ref, company=company),
@@ -538,12 +598,19 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        from decimal import Decimal, ROUND_HALF_UP
         with transaction.atomic():
             if bc.devis:
                 for ligne in bc.devis.lignes.select_related('produit'):
                     produit = ligne.produit
                     produit.refresh_from_db()
-                    qte = int(ligne.quantite)
+                    # ERR15 — ne PAS tronquer la quantité décimale (int() perdait
+                    # la partie fractionnaire : 3,5 → 3, dérive silencieuse du
+                    # stock sur les lignes au mètre/câble). Le ledger de stock
+                    # est en entiers (IntegerField) : on arrondit au plus proche
+                    # (HALF_UP) au lieu de tronquer, donc 3,5 → 4.
+                    qte = int(Decimal(ligne.quantite).quantize(
+                        Decimal('1'), rounding=ROUND_HALF_UP))
                     qte_avant = produit.quantite_stock
                     qte_apres = qte_avant - qte
                     if qte_apres < 0:
@@ -614,7 +681,13 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                 company=company,
             )
             if bc.devis:
-                for ligne in bc.devis.lignes.all():
+                # ERR16 — n'inclure QUE les lignes de l'option retenue à
+                # l'acceptation (« Sans batterie » / « Avec batterie »), comme
+                # l'échéancier. Sans vraie deuxième option (option unique,
+                # pompage, liste libre), option_lines renvoie TOUTES les lignes
+                # → comportement historique strictement inchangé.
+                from .utils.options import option_lines
+                for ligne in option_lines(bc.devis):
                     LigneFacture.objects.create(
                         facture=facture,
                         produit=ligne.produit,
@@ -678,7 +751,23 @@ class FactureViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
         company = self.request.user.company
+        # ERR14 — client/bon_commande/devis du corps doivent appartenir à la
+        # société (refuse de lier une facture aux enregistrements d'un autre
+        # tenant).
+        if company is not None:
+            client = serializer.validated_data.get('client')
+            bon_commande = serializer.validated_data.get('bon_commande')
+            devis = serializer.validated_data.get('devis')
+            if client is not None and client.company_id != company.id:
+                raise ValidationError({'client': 'Client inconnu.'})
+            if bon_commande is not None and \
+                    bon_commande.company_id != company.id:
+                raise ValidationError(
+                    {'bon_commande': 'Bon de commande inconnu.'})
+            if devis is not None and devis.company_id != company.id:
+                raise ValidationError({'devis': 'Devis inconnu.'})
         create_numbered(
             Facture, company, 'facture',
             lambda ref: serializer.save(
@@ -774,34 +863,47 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': 'Le montant du paiement doit être positif.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Garde sur-paiement : refuser un encaissement qui dépasse le reste à
-        # payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour les
-        # arrondis ; un montant égal au reste passe (solde la facture).
-        reste = facture.montant_du
-        if montant - reste > Decimal('0.01'):
-            return Response(
-                {'detail': (
-                    f'Le paiement dépasse le reste à payer '
-                    f'({reste:.2f} MAD).'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # ERR72 — la garde sur-paiement et l'écriture du paiement doivent être
+        # sérialisées : on verrouille la ligne facture (select_for_update) puis
+        # on lit le reste à payer, on contrôle, et on enregistre — le tout dans
+        # une seule transaction. Sans le verrou, deux paiements concurrents
+        # lisaient chacun l'ancien reste et passaient tous deux la garde.
         with transaction.atomic():
+            locked = Facture.objects.select_for_update().get(pk=facture.pk)
+            if locked.statut == Facture.Statut.ANNULEE:
+                return Response(
+                    {'detail':
+                     'Impossible d\'encaisser sur une facture annulée.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Garde sur-paiement : refuser un encaissement qui dépasse le reste
+            # à payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour
+            # les arrondis ; un montant égal au reste passe (solde la facture).
+            reste = locked.montant_du
+            if montant - reste > Decimal('0.01'):
+                return Response(
+                    {'detail': (
+                        f'Le paiement dépasse le reste à payer '
+                        f'({reste:.2f} MAD).'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             paiement = serializer.save(
-                facture=facture,
-                company=facture.company,
+                facture=locked,
+                company=locked.company,
                 created_by=request.user,
             )
             # Chatter facture : trace l'encaissement (acteur côté serveur,
             # jamais lu du corps de la requête).
             from . import activity
-            activity.log_facture_paiement(facture, request.user, paiement)
+            activity.log_facture_paiement(locked, request.user, paiement)
             # Statut auto : intégralement réglée → « Payée ».
-            facture.refresh_from_db()
-            if facture.montant_du <= Decimal('0') and \
-                    facture.statut != Facture.Statut.ANNULEE:
-                facture.statut = Facture.Statut.PAYEE
-                facture.save(update_fields=['statut'])
+            locked.refresh_from_db()
+            if locked.montant_du <= Decimal('0') and \
+                    locked.statut != Facture.Statut.ANNULEE:
+                locked.statut = Facture.Statut.PAYEE
+                locked.save(update_fields=['statut'])
+            facture = locked
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
@@ -987,8 +1089,63 @@ class FactureViewSet(viewsets.ModelViewSet):
         lignes = request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
         # facture (TTC − avoirs actifs déjà émis). Mesuré AVANT création.
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
         reste_creditable = facture.total_ttc - facture.avoirs_total
+
+        # ERR34 — valider les lignes fournies AVANT toute création, et échouer
+        # bruyamment (400) au lieu de les avaler en silence (l'ancien
+        # `except Exception: continue` créait un avoir amputé de son montant,
+        # sans erreur). On vérifie désignation / quantité / prix_unitaire de
+        # chaque ligne et on renvoie une erreur 400 claire si l'une est
+        # invalide.
+        clean_lignes = None
+        if isinstance(lignes, list) and lignes:
+            clean_lignes = []
+            for i, ligne in enumerate(lignes, start=1):
+                if not isinstance(ligne, dict):
+                    return Response(
+                        {'detail': f'Ligne {i} invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                designation = (ligne.get('designation') or '').strip()
+                if not designation:
+                    return Response(
+                        {'detail': f'Ligne {i} : désignation requise.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    qte = Decimal(str(ligne.get('quantite')))
+                    pu = Decimal(str(ligne.get('prix_unitaire')))
+                except (InvalidOperation, TypeError, ValueError):
+                    return Response(
+                        {'detail': (f'Ligne {i} : quantité et prix unitaire '
+                                    'numériques requis.')},
+                        status=status.HTTP_400_BAD_REQUEST)
+                if qte <= 0 or pu < 0:
+                    return Response(
+                        {'detail': (f'Ligne {i} : quantité > 0 et prix '
+                                    'unitaire ≥ 0 requis.')},
+                        status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    remise = Decimal(str(ligne.get('remise') or 0))
+                except (InvalidOperation, TypeError, ValueError):
+                    return Response(
+                        {'detail': f'Ligne {i} : remise invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                taux_tva = ligne.get('taux_tva')
+                if taux_tva not in (None, ''):
+                    try:
+                        taux_tva = Decimal(str(taux_tva))
+                    except (InvalidOperation, TypeError, ValueError):
+                        return Response(
+                            {'detail': f'Ligne {i} : taux TVA invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    taux_tva = None
+                clean_lignes.append({
+                    'produit_id': ligne.get('produit') or None,
+                    'designation': designation[:255],
+                    'quantite': qte, 'prix_unitaire': pu,
+                    'remise': remise, 'taux_tva': taux_tva,
+                })
 
         def _create(ref):
             avoir = Avoir.objects.create(
@@ -996,22 +1153,9 @@ class FactureViewSet(viewsets.ModelViewSet):
                 client=facture.client, statut=Avoir.Statut.EMISE,
                 motif=motif, taux_tva=facture.taux_tva,
                 created_by=request.user)
-            if isinstance(lignes, list) and lignes:
-                for ligne in lignes:
-                    try:
-                        qte = ligne.get('quantite')
-                        pu = ligne.get('prix_unitaire')
-                        if qte in (None, '') or pu in (None, ''):
-                            continue
-                        LigneAvoir.objects.create(
-                            avoir=avoir,
-                            produit_id=ligne.get('produit') or None,
-                            designation=ligne.get('designation', '')[:255],
-                            quantite=qte, prix_unitaire=pu,
-                            remise=ligne.get('remise') or 0,
-                            taux_tva=ligne.get('taux_tva'))
-                    except Exception:
-                        continue
+            if clean_lignes:
+                for ligne in clean_lignes:
+                    LigneAvoir.objects.create(avoir=avoir, **ligne)
             else:
                 f_lignes = list(facture.lignes.all())
                 if f_lignes:
@@ -1230,6 +1374,25 @@ class LigneFactureViewSet(viewsets.ModelViewSet):
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    def _check_tenant(self, serializer):
+        """ERR7 — la facture ciblée par la ligne doit appartenir à la société de
+        l'utilisateur (refuse l'injection IDOR d'une ligne sur le document d'un
+        autre tenant). Superuser sans société : non borné."""
+        from rest_framework.exceptions import ValidationError
+        user = self.request.user
+        facture = serializer.validated_data.get('facture')
+        if facture is not None and user.company_id \
+                and facture.company_id != user.company_id:
+            raise ValidationError({'facture': 'Facture inconnue.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save()
 
 
 @api_view(['GET'])

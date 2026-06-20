@@ -81,11 +81,17 @@ def check_overdue_factures():
 def relance_reminders():
     """Envoie les relances programmées arrivées à échéance (date Casablanca).
 
-    Pour chaque facture impayée non exclue dont ``prochaine_relance`` est
-    atteinte, envoie l'email de relance (N87, NO-OP sans clé), consigne une
-    RelanceLog, et efface ``prochaine_relance`` pour ne pas re-déclencher
-    (idempotence). Renvoie le nombre de relances déclenchées."""
+    ERR36 — séquence de relance multi-niveaux NON destructive. Pour chaque
+    facture impayée non exclue dont ``prochaine_relance`` est atteinte, on
+    envoie le PROCHAIN niveau non encore relancé (et non le plus dur d'emblée),
+    on consigne une RelanceLog, puis on AVANCE ``prochaine_relance`` à la date
+    d'échéance du niveau suivant (au lieu de la nullifier) — la séquence
+    progresse donc niveau par niveau au lieu de ne tirer qu'une fois. Quand le
+    dernier niveau a été envoyé (ou s'il n'existe aucun niveau), on efface la
+    date pour stopper proprement. Renvoie le nombre de relances déclenchées."""
+    from datetime import timedelta
     from .models import Facture, FollowupLevel, RelanceLog
+    from .email_service import send_relance_email
 
     today = casablanca_today()
     sent = 0
@@ -101,27 +107,44 @@ def relance_reminders():
             facture.prochaine_relance = None
             facture.save(update_fields=['prochaine_relance'])
             continue
-        # Niveau courant : le plus haut seuil de retard atteint.
         levels = list(FollowupLevel.objects.filter(
-            company=facture.company).order_by('delai_jours'))
-        jr = facture.jours_retard
-        niveau = None
-        for lvl in levels:
-            if jr >= lvl.delai_jours:
-                niveau = lvl
-        niveau_nom = niveau.nom if niveau else ''
-        message = niveau.message if niveau else ''
+            company=facture.company).order_by('delai_jours', 'ordre'))
+        if not levels:
+            # Aucun niveau configuré : envoi générique unique, puis stop.
+            send_relance_email(facture, niveau_nom='', message='', user=None)
+            RelanceLog.objects.create(
+                company=facture.company, facture=facture, niveau=None,
+                niveau_nom='', note='Relance automatique programmée (email).')
+            facture.prochaine_relance = None
+            facture.save(update_fields=['prochaine_relance'])
+            sent += 1
+            continue
 
-        from .email_service import send_relance_email
+        # Niveau courant = PROCHAIN non encore envoyé (séquence niveau par
+        # niveau). On compte les relances automatiques déjà consignées pour
+        # cette facture afin de reprendre où la séquence s'est arrêtée — pas de
+        # saut direct au niveau le plus dur.
+        deja = facture.relances.filter(
+            note='Relance automatique programmée (email).').count()
+        idx = min(deja, len(levels) - 1)
+        niveau = levels[idx]
+
         send_relance_email(
-            facture, niveau_nom=niveau_nom, message=message, user=None)
+            facture, niveau_nom=niveau.nom, message=niveau.message, user=None)
         RelanceLog.objects.create(
-            company=facture.company, facture=facture,
-            niveau=(niveau.ordre if niveau else None),
-            niveau_nom=niveau_nom,
+            company=facture.company, facture=facture, niveau=niveau.ordre,
+            niveau_nom=niveau.nom,
             note='Relance automatique programmée (email).')
-        # On consomme la date pour éviter un re-déclenchement quotidien.
-        facture.prochaine_relance = None
+
+        # Avance vers le niveau suivant : prochaine_relance = aujourd'hui +
+        # (délai du niveau suivant − délai du niveau courant). Dernier niveau
+        # atteint → on efface la date (séquence terminée).
+        next_idx = idx + 1
+        if next_idx < len(levels):
+            gap = max(levels[next_idx].delai_jours - niveau.delai_jours, 1)
+            facture.prochaine_relance = today + timedelta(days=gap)
+        else:
+            facture.prochaine_relance = None
         facture.save(update_fields=['prochaine_relance'])
         sent += 1
 
