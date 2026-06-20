@@ -59,7 +59,7 @@ const itemClass =
 ---
 
 <header class="sticky top-0 z-50 border-b border-white/10 bg-nuit/90 backdrop-blur">
-  <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+  <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4">
     <a href={L('/')} aria-label="TAQINOR — accueil">
       <Logo size={24} theme="dark" />
     </a>
@@ -112,7 +112,7 @@ const itemClass =
 
       <a href={L('/à-propos')} class={linkBase}>{t('nav.about')}<span class={underline}></span></a>
     </nav>
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5 sm:gap-3">
       <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
       <a
         href={`tel:${NAP.phone}`}
@@ -123,7 +123,7 @@ const itemClass =
       </a>
       <a
         href={L('/contact')}
-        class="bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        class="whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4"
       >{t('nav.diagnosticCta')}</a>
       <button
         id="menu-toggle"
