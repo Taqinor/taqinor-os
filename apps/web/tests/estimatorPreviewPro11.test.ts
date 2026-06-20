@@ -783,3 +783,48 @@ describe('pro-11 — W88 : pick + highlight + suppression d\'un panneau ciblé e
     expect(script).toContain('setPanelHighlight: (cellIndex) => setPanelHighlight(cellIndex)');
   });
 });
+
+describe('pro-11 — W97 §3 : dégradation gracieuse (no-WebGL, clé absente, <noscript>)', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('la page expose un bloc de repli #rp9-fallback (masqué par défaut) avec une issue 2D + diagnostic', () => {
+    expect(page).toContain('id="rp9-fallback"');
+    // masqué tant que tout va bien (hidden) ; révélé par showFallback().
+    expect(page).toMatch(/id="rp9-fallback"[^>]*hidden/);
+    const fb = page.slice(page.indexOf('id="rp9-fallback"'), page.indexOf('id="rp9-fallback"') + 600);
+    expect(fb).toContain('/preview/toiture'); // repli 2D
+    expect(fb).toContain('#simulateur'); // ou le diagnostic classique
+  });
+
+  it('showFallback() révèle #rp9-fallback et masque la scène #rp9-stage', () => {
+    const fn = page.slice(page.indexOf('function showFallback'), page.indexOf('function showFallback') + 160);
+    expect(fn).toContain('fallback.hidden = false');
+    expect(fn).toContain('stage.hidden = true');
+  });
+
+  it('le chemin /api/roof-config available:false / clé absente appelle showFallback()', () => {
+    // la garde lit cfg.available ET cfg.maptilerKey ; l'un manquant → repli.
+    expect(page).toContain("await fetch('/api/roof-config')");
+    expect(page).toMatch(/if \(!cfg\.available \|\| !cfg\.maptilerKey\)[\s\S]{0,80}showFallback\(\)/);
+    // une exception réseau sur la config retombe aussi sur le repli.
+    expect(page).toMatch(/catch \{[\s\S]{0,40}showFallback\(\)/);
+  });
+
+  it('le chemin SANS WebGL (init throw « WebGL indisponible ») retombe sur showFallback()', () => {
+    // l'outil sonde WebGL au montage et LÈVE si indisponible.
+    expect(script).toContain("getContext('webgl2') || probe.getContext('webgl')");
+    expect(script).toContain("throw new Error('WebGL indisponible')");
+    // boot() attrape l'échec d'import/init et — si la carte n'a pas démarré — montre le repli.
+    expect(page).toMatch(/catch \{[\s\S]{0,120}showFallback\(\)/);
+    expect(page).toContain('if (!mapCreated)');
+  });
+
+  it('un <noscript> propose une issue sans JavaScript (2D + diagnostic)', () => {
+    expect(page).toContain('<noscript>');
+    const ns = page.slice(page.indexOf('<noscript>'), page.indexOf('</noscript>') + 11);
+    expect(ns).toMatch(/JavaScript/i);
+    expect(ns).toContain('/preview/toiture'); // version 2D
+    expect(ns).toContain('#simulateur'); // diagnostic classique
+  });
+});

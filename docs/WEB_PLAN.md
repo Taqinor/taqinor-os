@@ -382,7 +382,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 **TIER 3 — TEST COVERAGE (lock the fixes in):**
 
-- [ ] **W97 — runtime/integration tests for pro-11.** Add jsdom/vitest coverage the audit found missing:
+- [x] **W97 — runtime/integration tests for pro-11.** Add jsdom/vitest coverage the audit found missing:
   `prefillLead` writes `lf-area`/`lf-kwc-est`/`lf-orient` correctly (incl. Est-Ouest/pitched mapping from
   W85) and the preview NEVER calls `fetch`/POSTs a lead; multi-zone totals via `+ Ajouter une zone`
   (wire the `rp9-add-area`/`rp9-areas-*` ids into the test DOM); graceful degradation (no-WebGL →

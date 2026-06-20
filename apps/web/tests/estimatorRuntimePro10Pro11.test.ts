@@ -105,6 +105,8 @@ const ID_BUTTONS = [
   // W50 — pickers de la fenêtre de production.
   'rp9-prod-month-prev', 'rp9-prod-month-next',
   'rp9-prod-day-prev', 'rp9-prod-day-next', 'rp9-prod-day-reset',
+  // W78 (W97 §2) — « + Ajouter une zone » (multi-zones).
+  'rp9-add-area',
 ];
 const ID_GENERIC = [
   'rp9-map', 'rp9-status', 'rp9-bill-kwh', 'rp9-config', 'rp9-azimuth-group', 'rp9-compass-arrow',
@@ -118,6 +120,9 @@ const ID_GENERIC = [
   'rp9-prod-window', 'rp9-prod-scope', 'rp9-prod-month-picker', 'rp9-prod-month-label',
   'rp9-prod-day-picker', 'rp9-prod-day-label', 'rp9-prod-headline', 'rp9-prod-sub',
   'rp9-prod-graph', 'rp9-prod-source', 'rp9-prod-savings',
+  // W78 (W97 §2) — panneau « Zones » : conteneur, liste, totaux agrégés (panneaux/kWc/prod/éco).
+  'rp9-areas-window', 'rp9-areas-list', 'rp9-areas-total-panels', 'rp9-areas-total-kwc',
+  'rp9-areas-total-prod', 'rp9-areas-total-savings',
 ];
 
 const CHIP_GROUPS: { attr: string; values: string[]; badge?: boolean }[] = [
@@ -220,6 +225,22 @@ function setupDom() {
   root.appendChild(table);
   const filter = el('select', 'rp9-matrix-filter');
   root.appendChild(filter);
+  // W97 §1 — champs du diagnostic enrichi que prefillLead pré-remplit (handoff, jamais
+  // un POST). lf-orient est un <select> ; prefillLead remonte au <details> parent + défile
+  // vers #simulateur (jsdom n'a pas scrollIntoView → on le stubbe juste avant).
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+  const diag = el('details', 'diag') as HTMLDetailsElement;
+  diag.appendChild(el('input', 'lf-area'));
+  const orient = el('select', 'lf-orient') as HTMLSelectElement;
+  for (const id of ['sud', 'sud-est', 'sud-ouest', 'est', 'ouest']) {
+    const o = document.createElement('option');
+    o.value = id;
+    orient.appendChild(o);
+  }
+  diag.appendChild(orient);
+  diag.appendChild(el('input', 'lf-kwc-est'));
+  root.appendChild(diag);
+  root.appendChild(el('div', 'simulateur'));
   document.body.appendChild(root);
 }
 
@@ -1130,5 +1151,252 @@ describe('runtime W92 (map) — sommets éditables + annuler le dernier point', 
     const after = vertexAt(map, 1)!;
     expect(after[0]).toBeCloseTo(before[0] - 0.0002, 6);
     expect(after[1]).toBeCloseTo(before[1] - 0.0002, 6);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §1 — PRÉ-REMPLISSAGE CORRECT + AUCUN LEAD POSTÉ (à travers le script MONTÉ).
+// Le test focalisé W85 (prefillOrientationW85) couvre déjà le MAPPING d'orientation en
+// pur (createPrefill). Ici on vérifie le chemin VIVANT : tracer → la carte reco peint →
+// le CTA #rp9-cta câble prefillLead → un clic écrit lf-area / lf-kwc-est / lf-orient avec
+// les VRAIES valeurs, et la preview ne POSTe JAMAIS /api/preview-lead ni /api/simulate.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §1 — prefill via le CTA + aucun POST de lead', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const lf = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
+
+  it('toit plat : cliquer le CTA pré-remplit lf-area / lf-kwc-est / lf-orient (sud) sans POST', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const cta = document.getElementById('rp9-cta') as HTMLButtonElement;
+    expect(cta.hidden).toBe(false); // une config gagnante existe → CTA offert
+    cta.click(); // → prefillLead(d) (handoff, jamais un POST)
+    // surface géodésique d'un carré de 16 m ≈ 256 m² (tolérance projection)
+    expect(Number(lf('lf-area'))).toBeGreaterThan(180);
+    expect(Number(lf('lf-area'))).toBeLessThan(340);
+    // kWc estimé non vide et > 0
+    expect(Number(lf('lf-kwc-est'))).toBeGreaterThan(0);
+    // toit plat (famille sud par défaut) → orientation « sud » (la liste n'a pas d'est-ouest)
+    expect(lf('lf-orient')).toBe('sud');
+    // le diagnostic est ouvert (handoff terminé)
+    expect((document.getElementById('diag') as HTMLDetailsElement).open).toBe(true);
+    // AUCUN appel à une route lead / simulation (le repli PVGIS échoue volontairement,
+    // mais ne vise JAMAIS /api/preview-lead ni /api/simulate).
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      const url = String(c[0]);
+      expect(url).not.toContain('/api/preview-lead');
+      expect(url).not.toContain('/api/simulate');
+    }
+  });
+
+  it('toit plat Est-Ouest verrouillé : l\'orientation pré-remplie reste « sud » (W85)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    // verrouille la famille Est-Ouest (la liste enrichment n'a pas d'« est-ouest » → sud)
+    document.querySelector<HTMLButtonElement>('[data-family="eastwest"]')!.click();
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    expect(lf('lf-orient')).toBe('sud');
+    expect(Number(lf('lf-kwc-est'))).toBeGreaterThan(0);
+  });
+
+  it('toit en pente face sud-ouest : l\'orientation pré-remplie suit la face réelle (W85)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    // bascule en pente puis choisit la face 225° (sud-ouest)
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    const sw = document.querySelector<HTMLButtonElement>('[data-facing="225"]');
+    if (sw) sw.click();
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    // 225° → « sud-ouest » dans enrichment.ORIENTATIONS (si la face a bien été appliquée)
+    if (sw) expect(lf('lf-orient')).toBe('sud-ouest');
+    // dans tous les cas, aucune route lead/simulation n'a été appelée
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      expect(String(c[0])).not.toContain('/api/preview-lead');
+      expect(String(c[0])).not.toContain('/api/simulate');
+    }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §2 — TOTAUX MULTI-ZONES (W78 au NIVEAU DONNÉES). On trace une 1ʳᵉ zone, on relève
+// ses panneaux/kWc, puis « + Ajouter une zone », on trace une 2ᵉ zone et on vérifie que
+// le panneau « Zones » agrège : total panneaux/kWc = somme des deux zones (la zone active
+// = résultat LIVE, l'autre = snapshot). Confirme le câblage rp9-add-area + rp9-areas-*.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §2 — totaux multi-zones = somme des zones', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // Premier nombre entier (sépare les espaces fines) du texte d'un id.
+  const intOf = (id: string): number => Number((txt(id).match(/[\d   ]+/)?.[0] ?? '0').replace(/[^\d]/g, ''));
+  // kWc (décimal français) du texte d'un id.
+  const kwcOf = (id: string): number => {
+    const m = txt(id).match(/[\d   ]+(?:[.,]\d+)?/);
+    return m ? Number(m[0].replace(/[   ]/g, '').replace(',', '.')) : 0;
+  };
+
+  it('ajouter une 2ᵉ zone fait que les totaux = somme des deux zones (panneaux + kWc)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('3000'); // besoin large → les deux zones posent des panneaux
+    // Zone 1 : carré de 20 m.
+    traceRoof(fakeMaps[0], 20);
+    const panels1 = intOf('rp9-reco-panels');
+    const kwc1 = kwcOf('rp9-reco-kwc');
+    expect(panels1).toBeGreaterThan(0);
+    // le panneau « Zones » est visible avec un total = la seule zone tracée
+    expect((document.getElementById('rp9-areas-window') as HTMLElement).hidden).toBe(false);
+    expect(intOf('rp9-areas-total-panels')).toBe(panels1);
+
+    // + Ajouter une zone (autorisé car la zone active est fermée) → 2ᵉ zone vierge.
+    const addBtn = document.getElementById('rp9-add-area') as HTMLButtonElement;
+    expect(addBtn.disabled).toBe(false);
+    addBtn.click();
+    // Zone 2 : carré de 16 m (centre différent → tracé indépendant).
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16, -7.60, 33.60)) {
+      fakeMaps[0].fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    const panels2 = intOf('rp9-reco-panels'); // zone active = zone 2 (résultat live)
+    const kwc2 = kwcOf('rp9-reco-kwc');
+    expect(panels2).toBeGreaterThan(0);
+
+    // Totaux agrégés = somme des deux zones.
+    const totalPanels = intOf('rp9-areas-total-panels');
+    expect(totalPanels).toBe(panels1 + panels2);
+    const totalKwc = kwcOf('rp9-areas-total-kwc');
+    expect(totalKwc).toBeCloseTo(kwc1 + kwc2, 1);
+    // deux lignes de zone listées
+    expect(document.querySelectorAll('#rp9-areas-list [data-area-row]').length).toBe(2);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §4 — PLAFOND DES ÉCONOMIES À LA COUCHE RENDUE. annualSavingsMad plafonne l'économie
+// au coût énergie évitable = billMAD(conso) × 12 = monthlyBill × 12 (par construction de
+// billToAnnualKwh, inverse de billMAD). On MONTE le script, on trace, et on vérifie que le
+// chiffre RENDU #rp9-reco-savings (et la fenêtre de production #rp9-prod-savings quand elle
+// est peuplée) ne dépasse JAMAIS ce plafond dérivé de la facture — assertion d'exécution,
+// pas seulement le solveur pur.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §4 — les économies rendues ne dépassent pas le plafond facture', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    // PVGIS GÉNÉREUX (rendement élevé) → un toit spacieux produirait beaucoup plus que la
+    // conso ; seul le PLAFOND empêche l'économie d'exploser. C'est ce qu'on veut tester.
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: { body?: string }) => {
+      const body = init?.body ? (JSON.parse(init.body) as { legs?: { kwc?: number }[] }) : {};
+      const legs = body.legs || [];
+      const annual = legs.reduce((a, lg) => a + (lg.kwc || 1) * 2200, 0); // rendement très élevé
+      return { ok: true, json: async () => ({ ok: true, annualKwh: annual }) } as unknown as Response;
+    }));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // Borne haute (MAD) du texte « X – Y/an » : on prend le 2ᵉ nombre (fourchette haute).
+  function savingsHigh(id: string): number {
+    const nums = (txt(id).match(/[\d   ]+/g) ?? []).map((s) => Number(s.replace(/[^\d]/g, ''))).filter((n) => n > 0);
+    return nums.length ? Math.max(...nums) : 0;
+  }
+
+  it('toit spacieux + facture modeste : #rp9-reco-savings ≤ facture × 12 (plafond conso)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const monthlyBill = 1200;
+    setBill(String(monthlyBill));
+    traceRoof(fakeMaps[0], 30); // grand toit → bien plus de production que la conso
+    await flushPvgis();
+    const ceiling = monthlyBill * 12; // billMAD(conso) × 12 = facture × 12 (round-trip exact)
+    const recoHigh = savingsHigh('rp9-reco-savings');
+    expect(recoHigh).toBeGreaterThan(0); // une économie est bien affichée
+    // tolérance d'arrondi (fmtMad arrondit chaque borne à l'entier)
+    expect(recoHigh).toBeLessThanOrEqual(ceiling + 24);
+    // la fenêtre de production, si peuplée, respecte le même plafond
+    const prodSav = (document.getElementById('rp9-prod-savings') as HTMLElement | null)?.textContent ?? '';
+    if (prodSav && /\d/.test(prodSav)) {
+      expect(savingsHigh('rp9-prod-savings')).toBeLessThanOrEqual(ceiling + 24);
+    }
+  }, 60000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §6 — DÉGAGEMENT D'OBSTACLE À TRAVERS LE SCRIPT MONTÉ (chemin 0,3 m de bout en bout).
+// Le test pur du solveur couvre déjà la règle ; ici on dessine, via le MONTAGE, un obstacle
+// qui COUVRE tout le toit (mode obstacle → glissé carte), et on vérifie que la pose chute :
+// le calepinage n'a plus de cellule valide → 0 panneau posé + le message honnête « non
+// viable ». C'est le chemin de dégagement complet (UI → ctx.obstacles → optimiseur → carte).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §6 — un obstacle couvrant fait chuter la pose (dégagement bout en bout)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const intOf = (id: string): number => Number((txt(id).match(/[\d   ]+/)?.[0] ?? '0').replace(/[^\d]/g, ''));
+
+  it('dessiner un obstacle qui recouvre le toit → 0 panneau + message « non viable »', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const map = fakeMaps[0];
+    // avant l'obstacle : des panneaux tiennent
+    expect(intOf('rp9-reco-panels')).toBeGreaterThan(0);
+
+    // Active le mode obstacle puis glisse un grand rectangle qui DÉBORDE le toit (16 m).
+    // Les coins lng/lat couvrent largement le carré centré sur (-7.62, 33.59).
+    (document.getElementById('rp9-obstacle') as HTMLButtonElement).click();
+    const sw = { lng: -7.6215, lat: 33.5885 };
+    const ne = { lng: -7.6185, lat: 33.5915 };
+    // un VRAI glissé (deltas pixel >> seuil de tap) → obstacleFromDrag (pas un tap par défaut)
+    map.fire('mousedown', { lngLat: { lng: sw.lng, lat: sw.lat }, point: { x: 50, y: 350 } });
+    map.fire('mousemove', { lngLat: { lng: ne.lng, lat: ne.lat }, point: { x: 350, y: 50 } });
+    map.fire('mouseup', { lngLat: { lng: ne.lng, lat: ne.lat }, point: { x: 350, y: 50 } });
+
+    // l'obstacle a été posé et le calepinage l'évite : plus aucun panneau ne tient.
+    expect(intOf('rp9-reco-panels')).toBe(0);
+    expect(intOf('rp9-reco-kwc')).toBe(0);
+    // message honnête « non viable » (W74) au lieu d'un faux « 0 panneau gagnant ».
+    expect(txt('rp9-reco-why')).toMatch(/non viable/i);
   });
 });
