@@ -35,7 +35,7 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ### TOP PRIORITY — build first (queued 2026-06-20)
 
-- [ ] G10 — Lead-source capture (G10 first half): (1) add nullable fields to the lead model — `fbclid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` (additive / nullable migration, company FK forced server-side); (2) on the marketing-site contact form (`apps/web/`), capture `fbclid` + the UTM params from the landing URL, persist them across the session, submit them with the lead, and store them on the created lead. The Meta Conversions API SEND (G10 second half) STAYS GATED — pending Reda's Meta pixel access token; only the CAPI send remains after this ships. (Note: the apps/web portion crosses into web-plan territory but is intentionally bundled here per Reda's instruction.)
+- [x] G10 — Lead-source capture (G10 first half): (1) add nullable fields to the lead model — `fbclid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` (additive / nullable migration, company FK forced server-side); (2) on the marketing-site contact form (`apps/web/`), capture `fbclid` + the UTM params from the landing URL, persist them across the session, submit them with the lead, and store them on the created lead. The Meta Conversions API SEND (G10 second half) STAYS GATED — pending Reda's Meta pixel access token; only the CAPI send remains after this ships. (Note: the apps/web portion crosses into web-plan territory but is intentionally bundled here per Reda's instruction.) [VERIFIED 2026-06-20: already fully built — Lead has fbclid/utm_* (crm migration 0006), the website webhook maps+stores them (`crm/webhooks.py:_map_payload_to_fields`), `apps/web` captures first-touch fbclid+UTM (`Layout.astro`, `lib/lead.ts`), covered by `crm/tests_webhook.py`.]
 
 # Taqinor OS — UI/UX overhaul ("prettier than Odoo")
 
@@ -86,4 +86,6 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-06-20 — G10 (first half) verified already-present: the lead model already carries `fbclid` + `utm_source/medium/campaign/content/term` (crm migration 0006), the website lead webhook maps and stores them (`apps/crm/webhooks.py`), and `apps/web` captures first-touch fbclid+UTM from the landing URL and submits them (`Layout.astro`, `lib/lead.ts`), covered by `apps/crm/tests_webhook.py`. Ticked `[x] (already present)`. The CAPI SEND (second half) stays gated on Reda's Meta pixel token.
 

@@ -105,6 +105,36 @@ const stockApi = {
     api.post(`/stock/retours-fournisseur/${id}/valider/`),
   annulerRetourFournisseur: (id) =>
     api.post(`/stock/retours-fournisseur/${id}/annuler/`),
+
+  // G5 — Réceptions fournisseur (goods-in). La confirmation incrémente le
+  // stock (ENTREE) + avance le statut du BCF. Usage INTERNE.
+  getReceptionsFournisseur: (params) =>
+    api.get('/stock/receptions-fournisseur/', { params }),
+  getReceptionFournisseur: (id) =>
+    api.get(`/stock/receptions-fournisseur/${id}/`),
+  createReceptionFournisseur: (data) =>
+    api.post('/stock/receptions-fournisseur/', data),
+  confirmerReceptionFournisseur: (id) =>
+    api.post(`/stock/receptions-fournisseur/${id}/confirmer/`),
+  annulerReceptionFournisseur: (id) =>
+    api.post(`/stock/receptions-fournisseur/${id}/annuler/`),
+
+  // G5 — Factures fournisseur / comptes à payer (AP). Solde dû = TTC − Σ
+  // paiements ; statut recalculé à chaque paiement. Usage INTERNE.
+  getFacturesFournisseur: (params) =>
+    api.get('/stock/factures-fournisseur/', { params }),
+  getFactureFournisseur: (id) =>
+    api.get(`/stock/factures-fournisseur/${id}/`),
+  createFactureFournisseur: (data) =>
+    api.post('/stock/factures-fournisseur/', data),
+  updateFactureFournisseur: (id, data) =>
+    api.patch(`/stock/factures-fournisseur/${id}/`, data),
+  deleteFactureFournisseur: (id) =>
+    api.delete(`/stock/factures-fournisseur/${id}/`),
+  getComptesAPayer: (params) =>
+    api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
+  ajouterPaiementFournisseur: (factureId, data) =>
+    api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
 }
 
 export default stockApi

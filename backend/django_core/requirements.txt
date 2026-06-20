@@ -40,3 +40,13 @@ httpx==0.28.1
 
 # Server
 gunicorn==22.0.0
+
+# Web push (PWA) — N92. Dépendance OPTIONNELLE : la diffusion web-push est
+# importée paresseusement (try/except) et reste un NO-OP tant que les clés VAPID
+# ne sont pas configurées, donc l'absence du paquet ne casse rien. Pour ACTIVER
+# le web-push en prod, installer la lib (son sdist http-ece ne se build pas avec
+# les setuptools récents, d'où l'install séparée) :
+#   pip install pywebpush==2.0.0
+# (laissée hors de l'install de base pour ne jamais bloquer la CI sur http-ece).
+# TOTP two-factor auth (2FA opt-in, N96)
+pyotp==2.10.0

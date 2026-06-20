@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import PageHeader from '../../components/layout/PageHeader'
 import { Card, CardContent, Switch, Spinner, toast } from '../../ui'
 import notificationsApi from '../../api/notificationsApi'
+import {
+  pushSupported, subscribeToPush, unsubscribeFromPush,
+} from '../../features/pwa/pushSubscribe'
 
 // N75 — Préférences de notifications par événement et par canal.
 // Chaque ligne = un événement métier ; chaque colonne = un canal (in-app,
@@ -13,6 +16,76 @@ const CHANNELS = [
   { key: 'whatsapp', label: 'WhatsApp' },
   { key: 'email', label: 'Email' },
 ]
+
+// N92 — Opt-in Web Push par appareil. Additif : si le navigateur ne supporte
+// pas le push, ou si le serveur n'a pas de clés VAPID configurées, le toggle
+// reste un NO-OP (un message explique pourquoi). N'altère aucune préférence
+// d'événement existante.
+function PushToggle() {
+  const [enabled, setEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const supported = pushSupported()
+
+  // Reflète l'état réel de l'abonnement de cet appareil au montage.
+  useEffect(() => {
+    let active = true
+    if (!supported) return undefined
+    navigator.serviceWorker?.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => { if (active) setEnabled(Boolean(sub)) })
+      .catch(() => { /* best-effort : reste désactivé */ })
+    return () => { active = false }
+  }, [supported])
+
+  const onToggle = async (value) => {
+    setBusy(true)
+    try {
+      if (value) {
+        const res = await subscribeToPush()
+        if (res.ok) {
+          setEnabled(true)
+          toast.success('Notifications push activées sur cet appareil.')
+        } else if (res.reason === 'unconfigured') {
+          toast.error('Le push n’est pas encore configuré côté serveur.')
+        } else if (res.reason === 'denied') {
+          toast.error('Permission de notifications refusée.')
+        } else if (res.reason === 'unsupported') {
+          toast.error('Cet appareil ne prend pas en charge le push.')
+        } else {
+          toast.error('Activation du push impossible.')
+        }
+      } else {
+        await unsubscribeFromPush()
+        setEnabled(false)
+        toast.success('Notifications push désactivées sur cet appareil.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent>
+        <div className="np-push-row">
+          <div>
+            <strong>Activer les notifications push sur cet appareil</strong>
+            <p className="np-note">
+              {supported
+                ? 'Recevez les alertes même quand l’app est fermée. Réglage propre à cet appareil.'
+                : 'Cet appareil ou ce navigateur ne prend pas en charge les notifications push.'}
+            </p>
+          </div>
+          <Switch
+            checked={enabled}
+            disabled={!supported || busy}
+            onCheckedChange={onToggle}
+            aria-label="Activer les notifications push sur cet appareil" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function NotificationsPreferences() {
   const [rows, setRows] = useState([])
@@ -86,6 +159,7 @@ export default function NotificationsPreferences() {
           </p>
         </CardContent>
       </Card>
+      <PushToggle />
     </div>
   )
 }

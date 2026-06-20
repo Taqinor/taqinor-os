@@ -16,6 +16,15 @@ const notificationsApi = {
   // `eventType` = clé d'événement (ex. 'lead_assigned').
   savePreference: (eventType, data) =>
     api.patch(`/notifications/preferences/${eventType}/`, data),
+
+  // ── N92 — Web push (PWA), opt-in par appareil ──
+  // Clé publique VAPID (chaîne vide tant que le push n'est pas configuré).
+  getVapidPublicKey: () => api.get('/notifications/push/vapid-public-key/'),
+  // `subscription` = objet PushSubscription.toJSON() ({ endpoint, keys }).
+  pushSubscribe: (subscription) =>
+    api.post('/notifications/push/subscribe/', subscription),
+  pushUnsubscribe: (endpoint) =>
+    api.post('/notifications/push/unsubscribe/', { endpoint }),
 }
 
 export default notificationsApi

@@ -41,6 +41,8 @@ const STATUT_DEVIS = {
 }
 
 const PRIORITES = { basse: 'Basse', normale: 'Normale', haute: 'Haute' }
+// Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
+const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 const TYPES_INSTALLATION = {
   residentiel: 'Résidentiel', commercial: 'Commercial',
   industriel: 'Industriel', agricole: 'Agricole',
@@ -150,7 +152,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const [waSelected, setWaSelected] = useState(() => new Set())
   const [waBusy, setWaBusy] = useState(false)
   // L851 — langue du message ('fr' par défaut, 'darija' au choix).
-  const [waLangue, setWaLangue] = useState('fr')
+  // L17 — pré-sélectionne la langue préférée du lead quand elle est renseignée.
+  const [waLangue, setWaLangue] = useState(() => lead?.langue_preferee || 'fr')
   // L852 — aperçu du message avant ouverture de wa.me.
   const [waPreview, setWaPreview] = useState(null) // { message, links, wa_url }
 
@@ -224,6 +227,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     // valeur du lead (y compris vide pour un ancien lead).
     canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
     priorite: F('priorite', 'normale'),
+    langue_preferee: F('langue_preferee', '') ?? '',
     tags: F('tags'), motif_perte: F('motif_perte'),
     perdu: lead?.perdu ?? false,
     relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
@@ -757,6 +761,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               <div className="form-row">
                 <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
                 <Sel fields={fields} set={set} k="canal" label="Canal" labels={canalLabels} />
+                <Sel fields={fields} set={set} k="langue_preferee" label="Langue préférée" labels={LANGUES_PREFEREES} />
                 <div className="form-group fg-grow">
                   <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
                        placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />

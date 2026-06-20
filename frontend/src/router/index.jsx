@@ -29,6 +29,8 @@ const BonsCommandeFournisseur = lazy(() => import('../pages/stock/BonsCommandeFo
 const CategoriesStock = lazy(() => import('../pages/stock/CategoriesStock'))
 const FournisseursStock = lazy(() => import('../pages/stock/FournisseursStock'))
 const RetoursFournisseur = lazy(() => import('../pages/stock/RetoursFournisseur'))
+const ReceptionsFournisseur = lazy(() => import('../pages/stock/ReceptionsFournisseur'))
+const FacturesFournisseur = lazy(() => import('../pages/stock/FacturesFournisseur'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
@@ -141,6 +143,8 @@ const router = createBrowserRouter([
   { path: '/stock/categories', loader: authLoader, element: <WithLayout><CategoriesStock /></WithLayout> },
   { path: '/stock/fournisseurs', loader: authLoader, element: <WithLayout><FournisseursStock /></WithLayout> },
   { path: '/stock/bons-commande-fournisseur', loader: authLoader, element: <WithLayout><BonsCommandeFournisseur /></WithLayout> },
+  { path: '/stock/receptions-fournisseur', loader: authLoader, element: <WithLayout><ReceptionsFournisseur /></WithLayout> },
+  { path: '/stock/factures-fournisseur', loader: authLoader, element: <WithLayout><FacturesFournisseur /></WithLayout> },
   { path: '/stock/retours-fournisseur', loader: authLoader, element: <WithLayout><RetoursFournisseur /></WithLayout> },
   { path: '/stock/ocr-import', loader: authLoader, element: <WithLayout><OcrStockImport /></WithLayout> },
 

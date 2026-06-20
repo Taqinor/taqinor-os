@@ -4,16 +4,22 @@ TenantMixin scope déjà par société ; on RESTREINT en plus au destinataire
 courant pour que personne ne voie les notifications d'autrui. La société ET le
 destinataire/utilisateur sont posés côté serveur, jamais lus du corps.
 """
+from django.conf import settings
 from django.utils import timezone
 
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes,
+)
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole
 
-from .models import EventType, Notification, NotificationPreference
+from .models import (
+    EventType, Notification, NotificationPreference, PushSubscription,
+)
 from .serializers import (
     NotificationPreferenceSerializer, NotificationSerializer,
 )
@@ -105,3 +111,63 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
                 pref.__dict__[field] = bool(data[field])
         pref.save()
         return Response(NotificationPreferenceSerializer(pref).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# N92 — Web push (PWA). Endpoints d'opt-in par appareil. company + user sont
+# TOUJOURS posés côté serveur (jamais lus du corps). La clé publique VAPID est
+# publique par nature (exposée au navigateur) ; les autres routes exigent un
+# utilisateur authentifié.
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def vapid_public_key(request):
+    """Clé publique VAPID pour l'abonnement côté navigateur.
+
+    Publique par nature. Chaîne vide tant que rien n'est configuré → le front
+    sait alors que le push n'est pas disponible (NO-OP)."""
+    return Response({'public_key': getattr(settings, 'VAPID_PUBLIC_KEY', '') or ''})
+
+
+@api_view(['POST'])
+@permission_classes([IsAnyRole])
+def push_subscribe(request):
+    """Enregistre (upsert) l'abonnement push de l'appareil courant.
+
+    Corps attendu : { endpoint, keys: { p256dh, auth } } (format PushManager).
+    company + user sont FORCÉS sur l'utilisateur courant. Idempotent par
+    endpoint : un ré-abonnement met simplement à jour les clés."""
+    data = request.data or {}
+    endpoint = (data.get('endpoint') or '').strip()
+    keys = data.get('keys') or {}
+    p256dh = (keys.get('p256dh') or data.get('p256dh') or '').strip()
+    auth = (keys.get('auth') or data.get('auth') or '').strip()
+    if not endpoint or not p256dh or not auth:
+        return Response(
+            {'detail': 'Abonnement push incomplet.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    sub, _created = PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            'company': request.user.company,
+            'user': request.user,
+            'p256dh': p256dh,
+            'auth': auth,
+        })
+    return Response({'id': sub.id}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAnyRole])
+def push_unsubscribe(request):
+    """Supprime l'abonnement push de l'appareil courant (par endpoint).
+
+    Borné à l'utilisateur courant : on ne supprime jamais l'abonnement d'autrui."""
+    endpoint = (request.data or {}).get('endpoint', '').strip()
+    if not endpoint:
+        return Response(
+            {'detail': 'Endpoint manquant.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    deleted, _ = PushSubscription.objects.filter(
+        user=request.user, endpoint=endpoint).delete()
+    return Response({'deleted': deleted})

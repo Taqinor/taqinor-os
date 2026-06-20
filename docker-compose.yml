@@ -65,6 +65,22 @@ services:
       - django_core
     restart: always
 
+  celery_beat:
+    # Planificateur Celery Beat : déclenche les tâches périodiques définies dans
+    # erp_agentique/celery.py (factures en retard, relances, récapitulatifs N76,
+    # rapports planifiés N79). Même image/env que le worker ; un SEUL beat suffit.
+    build: ./backend/django_core
+    command: celery -A erp_agentique beat -l info
+    volumes:
+      - ./backend/django_core:/app
+      - ./STAGES.py:/opt/STAGES.py:ro
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - django_core
+    restart: always
+
   frontend:
     build:
       context: ./frontend

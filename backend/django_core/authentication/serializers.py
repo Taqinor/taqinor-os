@@ -11,6 +11,38 @@ class CompanySerializer(serializers.ModelSerializer):
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    # Double authentification (2FA TOTP) — opt-in (N96). Champ optionnel : il
+    # n'est EXIGÉ que si l'utilisateur a activé le 2FA. Un compte sans 2FA se
+    # connecte exactement comme avant (le champ est ignoré).
+    otp = serializers.CharField(
+        required=False, allow_blank=True, write_only=True,
+    )
+
+    def validate(self, attrs):
+        # On laisse d'abord la validation standard authentifier (username +
+        # mot de passe). Si elle échoue, l'erreur d'identifiants est levée ici
+        # avant qu'on parle de 2FA — on ne révèle jamais l'état 2FA d'un compte
+        # avant d'avoir prouvé le mot de passe.
+        otp = (self.initial_data.get('otp') or '').strip()
+        data = super().validate(attrs)
+        user = self.user
+        if user is not None and getattr(user, 'totp_enabled', False):
+            if not otp:
+                # Signal clair que le 2FA est requis : le frontend déclenche la
+                # saisie du code à 6 chiffres et resoumet.
+                raise serializers.ValidationError(
+                    {'otp_required': True,
+                     'detail': 'Double authentification requise.'},
+                    code='otp_required',
+                )
+            if not user.verify_totp(otp):
+                raise serializers.ValidationError(
+                    {'otp_required': True,
+                     'detail': 'Code de double authentification invalide.'},
+                    code='otp_invalid',
+                )
+        return data
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)

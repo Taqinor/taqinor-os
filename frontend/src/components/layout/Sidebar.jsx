@@ -66,6 +66,8 @@ const NAV_SECTIONS = [
       { to: '/stock/fournisseurs',   label: 'Fournisseurs',     icon: I.clients,      roles: ['responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       icon: I.mouvements,   roles: ['normal','responsable','admin'] },
       { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', icon: I.bons_cmd, roles: ['responsable','admin'] },
+      { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', icon: I.produits, roles: ['responsable','admin'] },
+      { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', icon: I.factures, roles: ['responsable','admin'] },
       { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', icon: I.mouvements, roles: ['responsable','admin'] },
       { to: '/stock/ocr-import',     label: 'Import OCR',       icon: I.ocr_import,   roles: ['responsable','admin'] },
     ],

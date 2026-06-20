@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
-  History, Send, ScrollText,
+  History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
+  RotateCw,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -13,6 +14,9 @@ import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
+import {
+  pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
+} from '../../features/ventes/previewPdf'
 import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
@@ -40,7 +44,15 @@ import {
   FormField, FormActions, useDirtyGuard,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Spinner, EmptyState,
 } from '../../ui'
+
+// L4 — l'aperçu PDF (canvas PDF.js) est chargé à la demande (gros module) : il
+// ne pèse sur le bundle que quand on ouvre réellement un aperçu après-vente.
+// On RÉUTILISE le composant exact de l'aperçu devis (fiche lead) — aucun rendu
+// PDF dupliqué, et le PDF affiché provient des MÊMES octets que le
+// téléchargement (donc aperçu et fichier téléchargé concordent à l'octet près).
+const PdfCanvas = lazy(() => import('../../features/ventes/PdfCanvas'))
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -480,24 +492,126 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     } finally { setReceptBusy(false) }
   }
 
-  const openDocument = async (kind, filename) => {
+  // ── Aperçu in-app des documents après-vente (L4) ───────────────────────────
+  // Chaque bouton « Documents après-vente » ouvre d'abord un APERÇU inline (le
+  // PDF dessiné par PDF.js sur canvas, comme l'aperçu devis) AVANT de proposer
+  // le téléchargement. Le contenu/endpoint du PDF généré est INCHANGÉ : on ne
+  // fait qu'ajouter une étape d'aperçu devant le téléchargement existant.
+  // `fetcher` renvoie la réponse axios (responseType:'blob') du MÊME appel API
+  // qu'avant, donc l'octet affiché et l'octet téléchargé sont identiques.
+  const [previewDoc, setPreviewDoc] = useState(null) // { title, filename, fetcher }
+  const [previewBlob, setPreviewBlob] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewServerError, setPreviewServerError] = useState(false)
+  const [previewNetworkFailed, setPreviewNetworkFailed] = useState(false)
+  const [previewRenderFailed, setPreviewRenderFailed] = useState(false)
+  const [previewReloadKey, setPreviewReloadKey] = useState(0)
+  const [previewDownloading, setPreviewDownloading] = useState(false)
+
+  // Ouvre le panneau d'aperçu pour un document donné (sans télécharger).
+  const openPreview = (title, filename, fetcher) => {
+    setPreviewDoc({ title, filename, fetcher })
+    setPreviewBlob(null)
+    setPreviewServerError(false)
+    setPreviewNetworkFailed(false)
+    setPreviewRenderFailed(false)
+    setPreviewReloadKey((k) => k + 1)
+  }
+  const closePreview = () => {
+    setPreviewDoc(null)
+    setPreviewBlob(null)
+    setPreviewServerError(false)
+    setPreviewNetworkFailed(false)
+    setPreviewRenderFailed(false)
+  }
+  const reloadPreview = () => {
+    setPreviewBlob(null)
+    setPreviewServerError(false)
+    setPreviewNetworkFailed(false)
+    setPreviewRenderFailed(false)
+    setPreviewReloadKey((k) => k + 1)
+  }
+
+  // Récupère les octets du document à apercevoir. Distingue un VRAI échec
+  // serveur (4xx/5xx, message clair) d'un échec réseau (repli téléchargeable).
+  useEffect(() => {
+    if (!previewDoc) return undefined
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreviewLoading(true)
+    setPreviewServerError(false)
+    setPreviewNetworkFailed(false)
+    setPreviewRenderFailed(false)
+    setPreviewBlob(null)
+    previewDoc.fetcher()
+      .then((res) => {
+        if (cancelled) return
+        setPreviewBlob(pdfBlob(res.data))
+      })
+      .catch((err) => {
+        if (cancelled) return
+        if (classifyFetchError(err) === 'server') setPreviewServerError(true)
+        else setPreviewNetworkFailed(true)
+      })
+      .finally(() => { if (!cancelled) setPreviewLoading(false) })
+    return () => { cancelled = true }
+  }, [previewDoc, previewReloadKey])
+
+  // Téléchargement depuis l'aperçu : MÊME chemin/octets qu'avant. On réutilise
+  // le blob déjà récupéré ; sinon on relance l'appel d'origine.
+  const downloadPreview = async () => {
+    if (!previewDoc) return
+    setPreviewDownloading(true)
     try {
-      const r = await documentsApi[kind](current.id)
-      downloadBlob(r.data, filename)
+      if (previewBlob) {
+        downloadBlob(previewBlob, previewDoc.filename)
+      } else {
+        const res = await previewDoc.fetcher()
+        downloadBlob(res.data, previewDoc.filename)
+      }
     } catch {
-      alert('Document indisponible.')
+      alert('Téléchargement indisponible. Réessayez.')
+    } finally {
+      setPreviewDownloading(false)
     }
   }
 
-  // Fiche de remise / garantie après-vente PREMIUM (langage visuel du devis).
-  const openFicheRemise = async () => {
+  // « Ouvrir dans un nouvel onglet » : MÊME PDF authentifié via une URL blob,
+  // révoquée ensuite (aucune fuite).
+  const openPreviewNewTab = async () => {
+    if (!previewDoc) return
     try {
-      const r = await ventesApi.getFicheRemisePremiumPdf(current.id)
-      downloadBlob(r.data, `Fiche_remise_${current.reference}.pdf`)
+      let blob = previewBlob
+      if (!blob) {
+        const res = await previewDoc.fetcher()
+        blob = pdfBlob(res.data)
+      }
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Document indisponible.')
+      alert('Ouverture impossible. Réessayez ou téléchargez le document.')
     }
   }
+
+  const previewState = previewView({
+    loading: previewLoading,
+    serverError: previewServerError,
+    blocked: previewNetworkFailed || previewRenderFailed,
+    hasUrl: !!previewBlob,
+  })
+
+  // Ouvre l'aperçu d'un document après-vente standard (PV, bon de livraison…).
+  const openDocument = (kind, filename, title) =>
+    openPreview(title, filename, () => documentsApi[kind](current.id))
+
+  // Fiche de remise / garantie après-vente PREMIUM (langage visuel du devis).
+  const openFicheRemise = () =>
+    openPreview(
+      'Fiche de remise / garantie',
+      `Fiche_remise_${current.reference}.pdf`,
+      () => ventesApi.getFicheRemisePremiumPdf(current.id),
+    )
 
   const [besoin, setBesoin] = useState(null)
   const [besoinLoading, setBesoinLoading] = useState(false)
@@ -681,15 +795,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           <Section icon={FileText} title="Documents après-vente">
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`)}>
+                      onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`, 'PV de réception')}>
                 PV de réception
               </Button>
               <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`)}>
+                      onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`, 'Bon de livraison')}>
                 Bon de livraison
               </Button>
               <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`)}>
+                      onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`, 'Dossier de remise')}>
                 Dossier de remise
               </Button>
               <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
@@ -700,7 +814,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
               )}
               <Button size="sm" variant="outline"
-                      onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`)}>
+                      onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`, 'Attestation')}>
                 Attestation
               </Button>
               <Button size="sm" variant="outline"
@@ -1347,6 +1461,101 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Aperçu in-app d'un document après-vente AVANT téléchargement (L4) ──
+          Panneau plein écran réutilisant l'aperçu PDF.js (canvas) du devis :
+          même rendu inblocable, même source d'octets que le téléchargement. */}
+      {previewDoc && (
+        <div className="ldp-overlay" onClick={closePreview}>
+          <div className="ldp-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="ldp-header">
+              <h3 className="ldp-title">
+                {previewDoc.title}
+                {current.reference && <span className="ldp-ref">{current.reference}</span>}
+              </h3>
+              <button type="button" className="modal-close" onClick={closePreview} aria-label="Fermer">✕</button>
+            </div>
+            <div className="ldp-body">
+              <div className="ldp-preview">
+                <div className="ldp-toolbar">
+                  <div className="ldp-format" />
+                  <div className="ldp-toolbar-actions">
+                    <Button type="button" variant="outline" size="sm" onClick={openPreviewNewTab}>
+                      <ExternalLink /> Nouvel onglet
+                    </Button>
+                    <Button type="button" size="sm"
+                            onClick={downloadPreview} loading={previewDownloading} disabled={previewDownloading}>
+                      {!previewDownloading && <Download />}
+                      {previewDownloading ? '…' : 'Télécharger'}
+                    </Button>
+                  </div>
+                </div>
+                <div className="ldp-pdf-area">
+                  {previewState === PREVIEW_VIEW.LOADING && (
+                    <p className="ldp-pdf-loading">
+                      <Spinner /> Chargement de l'aperçu…
+                    </p>
+                  )}
+
+                  {/* Vrai échec serveur (4xx/5xx) : le PDF n'a pas pu être généré. */}
+                  {previewState === PREVIEW_VIEW.ERROR && (
+                    <EmptyState
+                      role="alert"
+                      className="ldp-fallback"
+                      icon={TriangleAlert}
+                      title="Aperçu indisponible"
+                      description="Le serveur n'a pas pu générer ce document. Réessayez."
+                      action={(
+                        <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
+                          <RotateCw /> Réessayer
+                        </Button>
+                      )}
+                    />
+                  )}
+
+                  {/* Repli réseau/timeout : le document reste téléchargeable. */}
+                  {previewState === PREVIEW_VIEW.FALLBACK && (
+                    <EmptyState
+                      className="ldp-fallback"
+                      icon={WifiOff}
+                      title="Aperçu indisponible"
+                      description="Vérifiez votre connexion. Vous pouvez réessayer ou télécharger le document directement."
+                      action={(
+                        <div className="ldp-fallback-actions">
+                          <Button type="button" size="sm"
+                                  onClick={downloadPreview} loading={previewDownloading} disabled={previewDownloading}>
+                            {!previewDownloading && <Download />}
+                            {previewDownloading ? '…' : 'Télécharger'}
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
+                            <RotateCw /> Réessayer
+                          </Button>
+                        </div>
+                      )}
+                    />
+                  )}
+
+                  {previewState === PREVIEW_VIEW.PDF && (
+                    <Suspense
+                      fallback={(
+                        <p className="ldp-pdf-loading">
+                          <Spinner /> Chargement de l'aperçu…
+                        </p>
+                      )}
+                    >
+                      <PdfCanvas
+                        key={previewReloadKey}
+                        blob={previewBlob}
+                        onError={() => setPreviewRenderFailed(true)}
+                      />
+                    </Suspense>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Sheet>
   )
 }
