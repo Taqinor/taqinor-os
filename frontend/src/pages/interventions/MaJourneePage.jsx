@@ -107,7 +107,12 @@ export default function MaJourneePage() {
         </ol>
       )}
 
-      <InterventionFlowSheet interv={active} onClose={() => setActive(null)}
+      {/* ERR103 — dériver la fiche de l'état VIVANT (rows), pas du snapshot
+          capturé au tap : les changements de statut/photos faits dans la fiche
+          se reflètent sans avoir à la rouvrir. */}
+      <InterventionFlowSheet
+        interv={active ? (rows.find((r) => r.id === active.id) ?? active) : null}
+        onClose={() => setActive(null)}
         onChanged={load} />
     </div>
   )

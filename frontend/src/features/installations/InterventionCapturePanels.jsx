@@ -207,6 +207,17 @@ export function MemosPanel({ intervention, onChanged }) {
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
+  // F13 — libère le micro si le volet est fermé en cours d'enregistrement :
+  // `onstop` ne se déclenche pas au démontage, donc on coupe ici toutes les
+  // pistes du flux pour ne pas laisser le micro actif.
+  useEffect(() => () => {
+    const rec = recorder.current
+    if (rec) {
+      try { if (rec.state !== 'inactive') rec.stop() } catch { /* déjà arrêté */ }
+      rec.stream?.getTracks().forEach((t) => t.stop())
+    }
+  }, [])
+
   const start = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
