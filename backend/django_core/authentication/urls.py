@@ -12,6 +12,9 @@ from .views import (
     TwoFactorEnableView,
     TwoFactorDisableView,
     TwoFactorStatusView,
+    SessionListView,
+    SessionRevokeView,
+    ChangePasswordView,
 )
 
 router = DefaultRouter()
@@ -33,5 +36,11 @@ urlpatterns = [
     path('auth/2fa/setup/', TwoFactorSetupView.as_view(), name='auth_2fa_setup'),
     path('auth/2fa/enable/', TwoFactorEnableView.as_view(), name='auth_2fa_enable'),
     path('auth/2fa/disable/', TwoFactorDisableView.as_view(), name='auth_2fa_disable'),
+    # Sessions actives & révocation + rotation du mot de passe (N96).
+    path('auth/sessions/', SessionListView.as_view(), name='auth_sessions'),
+    path('auth/sessions/<int:pk>/revoke/', SessionRevokeView.as_view(),
+         name='auth_session_revoke'),
+    path('auth/change-password/', ChangePasswordView.as_view(),
+         name='auth_change_password'),
     path('', include(router.urls)),
 ]
