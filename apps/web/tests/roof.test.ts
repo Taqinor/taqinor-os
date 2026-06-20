@@ -9,6 +9,7 @@ import {
   PANEL_WATT,
   SETBACK_M,
   geodesicAreaM2,
+  isSimplePolygon,
   roofAreaLabel,
   ringBBox,
   lngLatToUV,
@@ -62,6 +63,44 @@ describe('geodesicAreaM2 — aire d’un polygone WGS84 (m²)', () => {
     expect(geodesicAreaM2([])).toBe(0);
     expect(geodesicAreaM2([[-7.6, 33.57]])).toBe(0);
     expect(geodesicAreaM2([[-7.6, 33.57], [-7.5, 33.57]])).toBe(0);
+  });
+});
+
+describe('isSimplePolygon — refuse les tracés croisés (« nœud papillon »)', () => {
+  it('un quadrilatère convexe est simple (true)', () => {
+    const ring = rectMeters(-7.6, 33.57, 12, 8);
+    expect(isSimplePolygon(ring)).toBe(true);
+  });
+
+  it('un polygone concave mais SIMPLE (en L) reste simple (true)', () => {
+    // Forme en L : concave mais sans aucune arête qui en croise une autre.
+    const lShape: LngLat[] = [
+      [-7.6, 33.57],
+      [-7.5988, 33.57],
+      [-7.5988, 33.5706],
+      [-7.5994, 33.5706],
+      [-7.5994, 33.5712],
+      [-7.6, 33.5712],
+    ];
+    expect(isSimplePolygon(lShape)).toBe(true);
+  });
+
+  it('un quadrilatère croisé (bow-tie) n’est PAS simple (false)', () => {
+    // Sommets ordonnés en sablier : les arêtes 0→1 et 2→3 se croisent.
+    const dLat = 8 / DEG2M;
+    const dLng = 12 / (DEG2M * Math.cos((33.57 * Math.PI) / 180));
+    const bowTie: LngLat[] = [
+      [-7.6, 33.57],
+      [-7.6 + dLng, 33.57 + dLat],
+      [-7.6 + dLng, 33.57],
+      [-7.6, 33.57 + dLat],
+    ];
+    expect(isSimplePolygon(bowTie)).toBe(false);
+  });
+
+  it('moins de 4 sommets → simple par défaut (rien à croiser)', () => {
+    expect(isSimplePolygon([])).toBe(true);
+    expect(isSimplePolygon([[-7.6, 33.57], [-7.5, 33.57], [-7.55, 33.58]])).toBe(true);
   });
 });
 

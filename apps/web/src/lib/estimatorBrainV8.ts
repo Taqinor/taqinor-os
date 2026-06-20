@@ -208,7 +208,15 @@ export interface PitchedLiveResult {
   pitchDeg: number;
   facingAzimuthDeg: number;
   offSouthDeg: number;
+  /** Pan orienté NORD : production quasi nulle → on ne pose rien (honnêteté). */
   northFacing: boolean;
+  /**
+   * W74 — AUCUNE config viable : tout le balayage pose 0 panneau / 0 kWh (pan trop petit
+   * pour un seul panneau, ou contraint à néant) SANS être un pan nord. Distinct de
+   * `northFacing` : ici le toit est simplement trop petit/contraint. L'UI doit afficher
+   * un message honnête plutôt qu'un faux « 0 panneau gagnant ». Optionnel/rétro-compatible.
+   */
+  noViableConfig: boolean;
   winner: PitchedLiveEval;
   globalWinner: PitchedLiveEval;
   recommended: {
@@ -238,7 +246,14 @@ export function solveLivePitched(
 ): PitchedLiveResult {
   const tariff = tariffForCity(options.city);
   const target = billToAnnualKwh(monthlyBillMad, tariff);
-  const neededPanels = neededPanelsForTarget(target, latitudeDeg);
+  // W72 — UNE seule source de rendement pour le cap « besoin » ET la production. En pente,
+  // le couple (pente, face) est IMPOSÉ : on résout son rendement par panneau (PVGIS pose
+  // 'building', repli table) et on dimensionne le cap « +10 % » sur CE rendement — la
+  // couverture affichée vaut ~110 % au MÊME rendement que la production. Repli table si
+  // PVGIS indisponible (perPanelYieldOverride non fini → neededPanelsForTarget retombe sur
+  // la table au sud optimal).
+  const planYield = resolvePitchedYield(options.yieldFn, latitudeDeg, pitchDeg, facingAzimuthDeg).value;
+  const neededPanels = neededPanelsForTarget(target, latitudeDeg, planYield);
   const lockedNeed = locks.need != null && locks.need > 0 ? Math.round(locks.need) : undefined;
   const effectiveNeed = lockedNeed ?? neededPanels;
 
@@ -258,6 +273,9 @@ export function solveLivePitched(
   const { winner, rows } = solvePitchedConstrained(ctx, locks);
   const offSouthDeg = winner.pack.offSouthDeg;
   const northFacing = winner.pack.northFacing;
+  // W74 — pan trop petit / contraint à néant SANS être nord : le gagnant ne loge AUCUN
+  // panneau (fit 0 → 0 kWh). Distinct du pan nord (production quasi nulle par orientation).
+  const noViableConfig = !northFacing && (winner.fitCount <= 0 || winner.annualKwh <= 0);
 
   // Optimum GLOBAL = axes libres, besoin dérivé de la facture (cible de « Réinitialiser »).
   let globalWinner = winner;
@@ -278,6 +296,7 @@ export function solveLivePitched(
     facingAzimuthDeg,
     offSouthDeg,
     northFacing,
+    noViableConfig,
     winner,
     globalWinner,
     recommended: {
@@ -286,6 +305,6 @@ export function solveLivePitched(
       need: neededPanels,
     },
     rows,
-    roofLimited: !northFacing && effectiveNeed > 0 && winner.placedCount < effectiveNeed,
+    roofLimited: !northFacing && !noViableConfig && effectiveNeed > 0 && winner.placedCount < effectiveNeed,
   };
 }

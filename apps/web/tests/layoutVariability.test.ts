@@ -218,3 +218,54 @@ describe('W69 — invariants : footprint / besoin tiennent, comptage ≤ lattice
     expect(nearestEmptyCell(s, 0, 0)).toBe(-1);
   });
 });
+
+// W79 — re-snap d'une disposition personnalisée sur une NOUVELLE lattice (après l'édition
+// d'un obstacle / d'un axe pendant que l'éditeur est ouvert) : c'est l'algorithme pur que
+// reenterCustomLayout applique (capture des centres → rebuild de la lattice → re-snap au
+// plus proche). Les panneaux survivent, re-snappés, jamais effacés.
+describe('W79 — re-snap d\'une disposition après re-pavage (lattice changée)', () => {
+  // Reproduit reenterCustomLayout en pur : centres posés + lattice fraîche → occupation.
+  function reSnap(centers: { cx: number; cy: number }[], packed: PackedLike[]) {
+    const st = createLayoutState(packed, 0); // lattice fraîche, rien d'occupé
+    for (const c of centers) {
+      const idx = nearestEmptyCell(st, c.cx, c.cy);
+      if (idx >= 0) st.occupied.add(idx);
+    }
+    return st;
+  }
+
+  it('une pose personnalisée survit à un re-pavage IDENTIQUE (même comptage, mêmes cellules)', () => {
+    const cells = gridCells(4, 3);
+    const s = createLayoutState(cells, 12);
+    // pose personnalisée non contiguë : on retire 2 panneaux du milieu
+    removePanel(s, 5);
+    removePanel(s, 6);
+    const centers = occupiedIndices(s).map((i) => ({ cx: cells[i].cx, cy: cells[i].cy }));
+    const re = reSnap(centers, gridCells(4, 3));
+    expect(occupiedCount(re)).toBe(occupiedCount(s)); // 10 panneaux survivent
+    // ce sont les MÊMES cellules (re-snap au plus proche sur une lattice identique).
+    expect(occupiedIndices(re)).toEqual(occupiedIndices(s));
+    expect(layoutIsValid(re)).toBe(true);
+  });
+
+  it('chaque panneau re-snappe vers une cellule VIDE valide (aucun doublon, jamais hors lattice)', () => {
+    const cells = gridCells(4, 3);
+    const s = createLayoutState(cells, 8);
+    const centers = occupiedIndices(s).map((i) => ({ cx: cells[i].cx + 0.1, cy: cells[i].cy + 0.1 }));
+    // re-pavage LÉGÈREMENT décalé (obstacle ajouté ailleurs) : la grille reste 4×3.
+    const re = reSnap(centers, gridCells(4, 3));
+    expect(occupiedCount(re)).toBe(8); // 8 panneaux, chacun sur une cellule distincte
+    expect(new Set(occupiedIndices(re)).size).toBe(8); // pas de collision (cellule vide la + proche)
+    expect(layoutIsValid(re)).toBe(true);
+  });
+
+  it('si le toit RÉTRÉCIT (moins de cellules), les panneaux en trop sont perdus honnêtement', () => {
+    const before = gridCells(4, 3); // 12 cellules
+    const s = createLayoutState(before, 12); // toutes occupées
+    const centers = occupiedIndices(s).map((i) => ({ cx: before[i].cx, cy: before[i].cy }));
+    // un obstacle réduit le toit à une grille 3×2 (6 cellules) : 6 panneaux au plus.
+    const re = reSnap(centers, gridCells(3, 2));
+    expect(occupiedCount(re)).toBeLessThanOrEqual(6); // jamais au-delà de ce qui tient
+    expect(layoutIsValid(re)).toBe(true);
+  });
+});

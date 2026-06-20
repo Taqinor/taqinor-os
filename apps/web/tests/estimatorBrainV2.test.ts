@@ -24,6 +24,14 @@ import {
   roofDominantAzimuthDeg,
   PANEL2_WATT,
   TILT_SWEEP_MIN,
+  ANNUAL_DEGRADATION,
+  LIFETIME_YEARS,
+  DC_AC_RATIO,
+  degradationFactor,
+  clipDcAcKwh,
+  effectiveDcAcRatio,
+  BIFACIAL_GAIN_FLAT,
+  BIFACIAL_GAIN_TILTED,
 } from '../src/lib/estimatorBrainV2';
 import { type LngLat } from '../src/lib/roof';
 
@@ -471,5 +479,137 @@ describe('W1 recommendedOptions — une recommandation calculée par groupe, ind
     const a = recommend(squareRing(24), LAT, 2500).recommendedOptions;
     const b = recommend(squareRing(24), LAT, 2500).recommendedOptions;
     expect(b).toEqual(a);
+  });
+});
+
+// ——————————————————————————————————————————————————————————————————————
+// W72 — UNE source de rendement pour le cap besoin ET la production.
+// neededPanelsForTarget accepte un rendement par panneau (PVGIS) en surcharge :
+// quand on le passe, le cap se recalcule sur CE rendement, pas la table sud-optimal.
+// optimalSouthTiltDeg devient sensible à l'aspect (scan au vrai aspect, pas 0).
+// ——————————————————————————————————————————————————————————————————————
+describe('W72 — neededPanelsForTarget(yieldOverride) recale le cap sur le rendement PVGIS', () => {
+  it('passer un rendement PVGIS change le compte vs la table par défaut', () => {
+    const target = 18000;
+    const tableNeed = neededPanelsForTarget(target, LAT); // table, sud optimal
+    const tableYield = specificYield(LAT, optimalSouthTiltDeg(LAT), 0);
+    // un rendement PVGIS PLUS BAS que la table → il faut PLUS de panneaux pour la cible.
+    const lowNeed = neededPanelsForTarget(target, LAT, tableYield * 0.7);
+    expect(lowNeed).toBeGreaterThan(tableNeed);
+    // un rendement PVGIS PLUS HAUT que la table → il en faut MOINS.
+    const highNeed = neededPanelsForTarget(target, LAT, tableYield * 1.3);
+    expect(highNeed).toBeLessThan(tableNeed);
+  });
+
+  it('un override égal au rendement de table redonne EXACTEMENT le compte de table', () => {
+    const target = 9000;
+    const tableYield = specificYield(LAT, optimalSouthTiltDeg(LAT), 0);
+    expect(neededPanelsForTarget(target, LAT, tableYield)).toBe(neededPanelsForTarget(target, LAT));
+  });
+
+  it('un override non fini / ≤ 0 retombe sur la table (rétro-compatible)', () => {
+    const target = 9000;
+    const base = neededPanelsForTarget(target, LAT);
+    expect(neededPanelsForTarget(target, LAT, NaN)).toBe(base);
+    expect(neededPanelsForTarget(target, LAT, 0)).toBe(base);
+    expect(neededPanelsForTarget(target, LAT, -100)).toBe(base);
+    expect(neededPanelsForTarget(target, LAT, Infinity)).toBe(base);
+  });
+
+  it('optimalSouthTiltDeg est sensible à l\'aspect : l\'optimum à l\'est diffère du plein sud', () => {
+    const south = optimalSouthTiltDeg(LAT); // aspect 0 par défaut (inchangé)
+    expect(optimalSouthTiltDeg(LAT, 0)).toBe(south);
+    // à un aspect fortement décalé (est), l'inclinaison qui maximise le rendement
+    // n'est pas forcément la même qu'au plein sud — au minimum, jamais une exception
+    // et toujours une inclinaison bornée [0, 35].
+    const east = optimalSouthTiltDeg(LAT, -45);
+    expect(east).toBeGreaterThanOrEqual(0);
+    expect(east).toBeLessThanOrEqual(35);
+  });
+});
+
+// ══════════════════════════ W94 — TROIS UPGRADES D'HONNÊTETÉ ══════════════════════════
+
+// 1. Dégradation linéaire des panneaux : fourchette Année 1 ↔ Année 25.
+describe('W94 dégradation — Année 25 ≈ Année 1 × (1 − deg)^24', () => {
+  it('la constante est une valeur datasheet défendable (~0,5 %/an)', () => {
+    expect(ANNUAL_DEGRADATION).toBeGreaterThan(0);
+    expect(ANNUAL_DEGRADATION).toBeLessThanOrEqual(0.01); // jamais une dégradation absurde
+    expect(LIFETIME_YEARS).toBe(25);
+  });
+
+  it('Année 1 = facteur 1,0 ; Année 25 = (1 − deg)^24, strictement < Année 1', () => {
+    expect(degradationFactor(1)).toBe(1);
+    expect(degradationFactor(LIFETIME_YEARS)).toBeCloseTo(Math.pow(1 - ANNUAL_DEGRADATION, 24), 10);
+    expect(degradationFactor(LIFETIME_YEARS)).toBeLessThan(1);
+    // monotone décroissante : chaque année rend strictement moins.
+    expect(degradationFactor(10)).toBeLessThan(degradationFactor(5));
+  });
+
+  it('la production Année 25 est une fraction honnête (≈ 89 %) de l’Année 1', () => {
+    const y1 = productionKwh(LAT, 'south', OPT, 10, 0);
+    const y25 = y1 * degradationFactor(LIFETIME_YEARS);
+    expect(y25).toBeLessThan(y1);
+    expect(y25).toBeGreaterThan(0.85 * y1); // ~11 % de perte sur 25 ans à 0,5 %/an
+  });
+});
+
+// 2. Plafond onduleur DC:AC : un champ DC sur-densifié ne sur-estime plus son kWh.
+describe('W94 clip DC:AC — l’onduleur écrête les champs DC sur-densifiés', () => {
+  it('un champ au ratio de design (ou en-dessous) n’est PAS écrêté', () => {
+    expect(clipDcAcKwh(10000, DC_AC_RATIO)).toBe(10000);
+    expect(clipDcAcKwh(10000, DC_AC_RATIO - 0.3)).toBe(10000);
+    expect(clipDcAcKwh(10000, 1.0)).toBe(10000);
+  });
+
+  it('un champ AU-DELÀ du ratio de design perd de l’énergie (écrêtage), borné à 30 %', () => {
+    const clipped = clipDcAcKwh(10000, DC_AC_RATIO + 0.5);
+    expect(clipped).toBeLessThan(10000);
+    expect(clipped).toBeGreaterThanOrEqual(7000); // plafond de perte 30 %
+    // monotone : plus le ratio dépasse, plus on écrête.
+    expect(clipDcAcKwh(10000, DC_AC_RATIO + 1)).toBeLessThan(clipDcAcKwh(10000, DC_AC_RATIO + 0.2));
+  });
+
+  it('Sud = ratio de design (jamais écrêté) ; E-O = ratio plus haut (écrêté)', () => {
+    expect(effectiveDcAcRatio('south')).toBe(DC_AC_RATIO);
+    expect(effectiveDcAcRatio('eastwest')).toBeGreaterThan(DC_AC_RATIO);
+  });
+
+  it('productionKwh : un Sud normal est INCHANGÉ, une tente E-O respecte le plafond AC', () => {
+    const kwc = 8;
+    // Sud : la production = kWc × rendement, sans écrêtage (ratio = design).
+    expect(productionKwh(LAT, 'south', OPT, kwc, 0)).toBeCloseTo(kwc * specificYield(LAT, OPT, 0), 6);
+    // E-O : la production est STRICTEMENT sous la somme DC brute des deux faces.
+    const ewRaw = (kwc / 2) * specificYield(LAT, 10, -90) + (kwc / 2) * specificYield(LAT, 10, 90);
+    const ewClipped = productionKwh(LAT, 'eastwest', 10, kwc, 0);
+    expect(ewClipped).toBeLessThan(ewRaw);
+    expect(ewClipped).toBe(clipDcAcKwh(ewRaw, effectiveDcAcRatio('eastwest')));
+  });
+
+  it('le plafond d’économies tient toujours après écrêtage (jamais > facture)', () => {
+    for (const side of [12, 20, 30]) {
+      const rec = recommend(squareRing(side), LAT, 4000);
+      const cap = billMAD(rec.targetAnnualKwh / 12) * 12 + 1e-6;
+      for (const c of [...rec.comparison, rec.recommended]) {
+        expect(c.savingsHigh, c.label).toBeLessThanOrEqual(cap);
+      }
+    }
+  });
+});
+
+// 3. Bifacial : constantes réelles, pas un littéral magique.
+describe('W94 bifacial — constantes flat/tilted, jamais un « × 0,05 » magique', () => {
+  it('les constantes sont distinctes et la flat (E-O/plate) est ≤ la tilted (sud inclinée)', () => {
+    expect(BIFACIAL_GAIN_FLAT).toBeGreaterThan(0);
+    expect(BIFACIAL_GAIN_TILTED).toBeGreaterThan(0);
+    expect(BIFACIAL_GAIN_FLAT).toBeLessThanOrEqual(BIFACIAL_GAIN_TILTED);
+  });
+
+  it('bifacialAnnualKwh d’une config reflète la bonne constante (flat E-O vs tilted sud)', () => {
+    const rec = recommend(squareRing(24), LAT, 2500);
+    for (const c of rec.comparison) {
+      const expectedGain = c.family === 'eastwest' || c.tiltDeg < 12 ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
+      expect(c.bifacialAnnualKwh).toBeCloseTo(c.annualKwh * (1 + expectedGain), 6);
+    }
   });
 });

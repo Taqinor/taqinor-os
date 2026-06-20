@@ -32,10 +32,40 @@ import {
   AC_BTU_PRESETS,
   EV_CHARGER_KW_PRESETS,
   EV_KWH_PER_100KM_DEFAULT,
+  DAYS_IN_MONTH,
+  MONTHS_PER_YEAR,
+  BATTERY_KWH_USABLE,
+  BATTERY_COST_PER_KWH_MAD_LOW,
+  BATTERY_COST_PER_KWH_MAD_HIGH,
+  annualSelfConsumptionKwh,
+  annualProductionKwh,
+  annualSavingsFromMonthly,
+  slotEndHour,
+  annualBatterySizing,
+  SUMMER_MONTHS,
+  isSummerMonth,
+  seasonalConsumptionByMonth,
+  annualSelfConsumptionSeasonalKwh,
+  batteryCostRangeMad,
+  batteryPaybackYears,
+  windowHours as windowHoursFn,
   type Appliance,
   type HourlyCurve,
 } from '../src/lib/applianceConsumption';
-import { billToAnnualKwh, billMAD } from '../src/lib/estimatorBrainV2';
+import { billToAnnualKwh, billMAD, annualSavingsMad } from '../src/lib/estimatorBrainV2';
+
+/** Construit un profil de production en cloche (kW=kWh au pas 1 h) sommant à `dailyKwh`. */
+function bellProduction(dailyKwh: number, startHour = 8, endHour = 16): HourlyCurve {
+  const c = emptyCurve();
+  const n = endHour - startHour;
+  for (let h = startHour; h < endHour; h++) c[h] = dailyKwh / n;
+  return c;
+}
+
+/** 12 jours-types identiques (production constante toute l'année). */
+function flatYear(daily: HourlyCurve): HourlyCurve[] {
+  return Array.from({ length: 12 }, () => daily.slice());
+}
 
 const approx = (a: number, b: number, eps = 1e-9) => expect(Math.abs(a - b)).toBeLessThan(eps);
 
@@ -258,5 +288,207 @@ describe('W68 — catalogue d’appareils (défauts éditables, sourcés)', () =
       approx(a.dailyKwh, kwhFromWattsHours(t.watts, t.hoursPerDay));
       expect(a.billing === 'onTop' || a.billing === 'inBill').toBe(true);
     }
+  });
+});
+
+describe('W82 — autoconsommation annuelle 12 mois (invariante au mois affiché)', () => {
+  it('DAYS_IN_MONTH = 12 mois sommant à 365', () => {
+    expect(DAYS_IN_MONTH).toHaveLength(MONTHS_PER_YEAR);
+    expect(DAYS_IN_MONTH.reduce((a, b) => a + b, 0)).toBe(365);
+  });
+
+  it('année à production CONSTANTE : annuel = quotidien × 365 (sanity courbe égale)', () => {
+    const prod = bellProduction(12); // 12 kWh/jour produits
+    const cons = baselineCurve(20);
+    const year = flatYear(prod);
+    const selfDaily = selfConsumptionDailyKwh(cons, prod);
+    const { annualKwh, perMonthKwh } = annualSelfConsumptionKwh(cons, year);
+    approx(annualKwh, selfDaily * 365, 1e-6);
+    // chaque mois = autoconso quotidienne × jours du mois
+    perMonthKwh.forEach((v, m) => approx(v, selfDaily * DAYS_IN_MONTH[m], 1e-6));
+  });
+
+  it('un mois fort-soleil et un mois faible-soleil somment correctement (intégrale réelle)', () => {
+    // conso 8h–16h pour aligner sur le solaire ; été produit beaucoup, hiver peu
+    const cons = emptyCurve();
+    for (let h = 8; h < 16; h++) cons[h] = 1; // 8 kWh en journée
+    const summer = bellProduction(16); // gros mois (2 kWh/h × 8h)
+    const winter = bellProduction(4); // petit mois (0.5 kWh/h × 8h)
+    const year: HourlyCurve[] = Array.from({ length: 12 }, (_, m) =>
+      isSummerMonth(m) ? summer.slice() : winter.slice(),
+    );
+    const { annualKwh } = annualSelfConsumptionKwh(cons, year);
+    // attendu : Σ min(1, prod/h) × 8h × jours, mois par mois
+    let expected = 0;
+    for (let m = 0; m < 12; m++) {
+      const prof = isSummerMonth(m) ? summer : winter;
+      expected += selfConsumptionDailyKwh(cons, prof) * DAYS_IN_MONTH[m];
+    }
+    approx(annualKwh, expected, 1e-6);
+    // l'été (prod 2>1 → autoconso plafonnée à conso=8) et l'hiver (prod 0.5<1 → autoconso=4)
+    // diffèrent : le total n'est donc PAS quotidien-d'un-mois × 365
+    expect(annualKwh).not.toBeCloseTo(selfConsumptionDailyKwh(cons, summer) * 365, 0);
+  });
+
+  it('entrée mal formée (mois manquant / profil tronqué) comptée 0, jamais NaN', () => {
+    const cons = baselineCurve(20);
+    const bad: HourlyCurve[] = [bellProduction(12)]; // 1 seul mois, profils manquants ailleurs
+    const { annualKwh, perMonthKwh } = annualSelfConsumptionKwh(cons, bad);
+    expect(Number.isFinite(annualKwh)).toBe(true);
+    expect(perMonthKwh).toHaveLength(12);
+    // le mois 0 compte, les autres sont 0
+    expect(perMonthKwh[0]).toBeGreaterThan(0);
+    for (let m = 1; m < 12; m++) expect(perMonthKwh[m]).toBe(0);
+  });
+
+  it('annualProductionKwh = Σ (production journalière × jours du mois)', () => {
+    const prod = bellProduction(10);
+    const year = flatYear(prod);
+    approx(annualProductionKwh(year), 10 * 365, 1e-6);
+  });
+
+  it('économies annuelles 12 mois ≤ plafond billMAD et indépendantes du mois affiché', () => {
+    const annualCons = billToAnnualKwh(1500);
+    const cons = baselineCurve(annualCons / 365);
+    const summer = bellProduction(18);
+    const winter = bellProduction(6);
+    const year: HourlyCurve[] = Array.from({ length: 12 }, (_, m) =>
+      isSummerMonth(m) ? summer.slice() : winter.slice(),
+    );
+    const s = annualSavingsFromMonthly(cons, year, annualCons);
+    expect(s.high).toBeGreaterThanOrEqual(s.low);
+    const cap = billMAD(annualCons / 12) * 12;
+    expect(s.high).toBeLessThanOrEqual(cap + 1e-6);
+    // l'économie 12 mois ne dépend d'aucun « mois sélectionné » : la fonction ne prend
+    // pas de mois en argument, donc elle est par construction invariante. On vérifie en
+    // outre qu'elle diffère de l'extrapolation naïve d'un seul mois.
+    const selfNaiveSummer = selfConsumptionDailyKwh(cons, summer) * 365;
+    const naive = annualSavingsMad(selfNaiveSummer, annualCons).high;
+    expect(s.high).not.toBeCloseTo(naive, 0);
+  });
+});
+
+describe('W84 — heures saisies → créneau, et batterie annuelle stable', () => {
+  it('slotEndHour : une durée de 3 h donne un créneau de 3 heures (pas 10)', () => {
+    const end = slotEndHour(13, 3);
+    expect(end).toBe(16);
+    expect(windowHoursFn(13, end)).toEqual([13, 14, 15]); // 3 heures exactement
+  });
+
+  it('slotEndHour : durée fractionnaire arrondie au-dessus, ≥ 1 h, ≤ 24 h', () => {
+    expect(windowHoursFn(11, slotEndHour(11, 2.5))).toEqual([11, 12, 13]); // ceil(2.5)=3
+    expect(windowHoursFn(0, slotEndHour(0, 0))).toHaveLength(1); // 0 h → 1 h minimum
+    expect(windowHoursFn(0, slotEndHour(0, 30))).toHaveLength(24); // borné à 24 h
+  });
+
+  it('un appareil « 3 h » distribue son énergie sur 3 heures seulement', () => {
+    const start = 13;
+    const a: Appliance = { kind: 'clim', label: 'Clim', dailyKwh: 9, startHour: start, endHour: slotEndHour(start, 3), billing: 'onTop' };
+    const curve = applianceCurve(a);
+    approx(curveTotal(curve), 9);
+    approx(curve[13], 3); // 9 kWh / 3 h
+    approx(curve[15], 3);
+    expect(curve[16]).toBe(0); // PAS étalé au-delà des 3 h
+  });
+
+  it('batterie annuelle : stable d’un mois à l’autre (intégrale 12 mois)', () => {
+    const cons = emptyCurve();
+    cons[20] = 6;
+    cons[21] = 6; // 12 kWh le soir
+    const summer = bellProduction(21, 9, 16);
+    const winter = bellProduction(7, 9, 16);
+    const year: HourlyCurve[] = Array.from({ length: 12 }, (_, m) =>
+      isSummerMonth(m) ? summer.slice() : winter.slice(),
+    );
+    const annual = annualBatterySizing(cons, year);
+    // la moyenne pondérée est bornée par le pire/meilleur mois, et non nulle
+    expect(annual.storableDailyKwh).toBeGreaterThan(0);
+    expect(annual.batteries).toBe(Math.ceil(annual.storableDailyKwh / BATTERY_KWH_USABLE));
+    // un seul appel → un seul résultat : pas de « flip » selon un mois affiché
+    expect(annualBatterySizing(cons, year)).toEqual(annual);
+  });
+
+  it('batterie annuelle : aucune production toute l’année → 0 batterie', () => {
+    const cons = baselineCurve(20);
+    const year = flatYear(emptyCurve());
+    expect(annualBatterySizing(cons, year)).toEqual({ storableDailyKwh: 0, batteries: 0 });
+  });
+});
+
+describe('W95 — profil saisonnier été ≠ hiver + détail mensuel', () => {
+  it('SUMMER_MONTHS bien classés', () => {
+    expect(SUMMER_MONTHS.every((m) => isSummerMonth(m))).toBe(true);
+    expect(isSummerMonth(0)).toBe(false); // janvier = hiver
+    expect(isSummerMonth(6)).toBe(true); // juillet = été
+  });
+
+  it('seasonalConsumptionByMonth : l’été monte, l’hiver baisse, la forme est conservée', () => {
+    const ref = baselineCurve(20);
+    const byMonth = seasonalConsumptionByMonth(ref, 1.4, 0.8);
+    expect(byMonth).toHaveLength(12);
+    approx(curveTotal(byMonth[6]), 20 * 1.4); // juillet
+    approx(curveTotal(byMonth[0]), 20 * 0.8); // janvier
+    // forme conservée : ratio heure 19h/heure 3h identique à la référence
+    approx(byMonth[6][19] / byMonth[6][3], ref[19] / ref[3]);
+  });
+
+  it('un split saisonnier CHANGE l’autoconsommation annuelle (honnêtement)', () => {
+    const ref = baselineCurve(20);
+    const prod = bellProduction(14);
+    const year = flatYear(prod);
+    const flat = annualSelfConsumptionSeasonalKwh(seasonalConsumptionByMonth(ref, 1, 1), year);
+    const seasonal = annualSelfConsumptionSeasonalKwh(seasonalConsumptionByMonth(ref, 1.5, 0.7), year);
+    // une conso d’été plus forte (mieux alignée au gros soleil d’été) déplace le total
+    expect(seasonal.annualKwh).not.toBeCloseTo(flat.annualKwh, 1);
+    expect(seasonal.perMonthKwh).toHaveLength(12);
+  });
+
+  it('détail mensuel : 12 valeurs ≥ 0 pour le mini-graphe', () => {
+    const cons = baselineCurve(18);
+    const { perMonthKwh } = annualSelfConsumptionKwh(cons, flatYear(bellProduction(12)));
+    expect(perMonthKwh).toHaveLength(12);
+    perMonthKwh.forEach((v) => expect(v).toBeGreaterThanOrEqual(0));
+  });
+});
+
+describe('W96 — coût et retour sur investissement INDICATIFS de la batterie', () => {
+  it('constantes exposées et cohérentes (bas < haut)', () => {
+    expect(BATTERY_KWH_USABLE).toBeGreaterThan(0);
+    expect(BATTERY_COST_PER_KWH_MAD_LOW).toBeGreaterThan(0);
+    expect(BATTERY_COST_PER_KWH_MAD_HIGH).toBeGreaterThan(BATTERY_COST_PER_KWH_MAD_LOW);
+  });
+
+  it('coût = nb × capacité × coût/kWh (fourchette bas→haut)', () => {
+    const { low, high } = batteryCostRangeMad(2);
+    approx(low, 2 * BATTERY_KWH_USABLE * BATTERY_COST_PER_KWH_MAD_LOW);
+    approx(high, 2 * BATTERY_KWH_USABLE * BATTERY_COST_PER_KWH_MAD_HIGH);
+    expect(batteryCostRangeMad(0)).toEqual({ low: 0, high: 0 });
+  });
+
+  it('payback : fourchette d’années = coût ÷ économie, jamais d’économie inventée', () => {
+    const saving = 4000; // économie annuelle additionnelle réelle (MAD/an), plafonnée ailleurs
+    const { years, cost } = batteryPaybackYears(2, saving);
+    expect(years).not.toBeNull();
+    if (years) {
+      approx(years.low, cost.low / saving);
+      approx(years.high, cost.high / saving);
+      expect(years.high).toBeGreaterThanOrEqual(years.low);
+    }
+  });
+
+  it('payback indéfini (null) si l’économie est nulle — on n’invente pas un retour', () => {
+    expect(batteryPaybackYears(2, 0).years).toBeNull();
+    expect(batteryPaybackYears(0, 4000).years).toBeNull(); // pas de batterie → pas de payback
+  });
+
+  it('le payback ne s’appuie que sur une économie ≤ coût évité (passée en argument)', () => {
+    // on simule l’économie additionnelle de la batterie comme une part de l’économie
+    // plafonnée billMAD : la fonction ne fabrique rien, elle divise un coût par CETTE valeur.
+    const annualCons = billToAnnualKwh(2000);
+    const cap = annualSavingsMad(annualCons, annualCons).high; // plafond honnête
+    const batterySaving = 0.2 * cap; // hypothèse conservatrice fournie par l’appelant
+    const { years } = batteryPaybackYears(3, batterySaving);
+    expect(years).not.toBeNull();
+    if (years) expect(years.low).toBeGreaterThan(0);
   });
 });

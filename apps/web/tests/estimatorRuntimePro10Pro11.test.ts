@@ -17,6 +17,9 @@ import { createRoofTypeSelect } from '../src/lib/roofTypeSelect';
 const fakeMaps: FakeMap[] = [];
 class FakeMap {
   handlers: Record<string, ((e: unknown) => void)[]> = {};
+  controls: unknown[] = [];
+  flyToCalls: unknown[] = [];
+  jumpToCalls: unknown[] = [];
   doubleClickZoom = { disable() {}, enable() {} };
   dragPan = { disable() {}, enable() {} };
   constructor() {
@@ -29,19 +32,31 @@ class FakeMap {
   fire(ev: string, e: unknown) {
     (this.handlers[ev] || []).forEach((h) => h(e));
   }
-  addControl() { return this; }
+  addControl(ctrl: unknown) { this.controls.push(ctrl); return this; }
   addLayer() { return this; }
   addSource() { return this; }
-  getSource() { return { setData() {} }; }
+  // W77 — on capte les setData par id de source pour pouvoir compter les sommets posés
+  // (`rp9-pts`) et vérifier qu'aucun coin n'est jeté en traçant vite.
+  sourceData: Record<string, unknown> = {};
+  getSource(id?: string) {
+    const self = this;
+    return { setData(d: unknown) { if (id) self.sourceData[id] = d; } };
+  }
   getLayer() { return null; }
   removeLayer() {}
   easeTo() { return this; }
-  flyTo() { return this; }
-  jumpTo() { return this; }
+  flyTo(opts: unknown) { this.flyToCalls.push(opts); return this; }
+  jumpTo(opts: unknown) { this.jumpToCalls.push(opts); return this; }
   getBearing() { return 0; }
   getCanvas() { return { style: {} as Record<string, string>, width: 800, height: 600 }; }
   getContainer() { return document.getElementById('rp9-map'); }
-  queryRenderedFeatures() { return []; }
+  // W92 — les tests peuvent forcer le résultat du hit-test (sommet/obstacle) en posant
+  // queryHits[layerId] ; sinon aucun hit (comportement par défaut inchangé).
+  queryHits: Record<string, Array<{ properties: Record<string, unknown> }>> = {};
+  queryRenderedFeatures(_pt: unknown, opts?: { layers?: string[] }) {
+    const layer = opts?.layers?.[0];
+    return (layer && this.queryHits[layer]) || [];
+  }
   triggerRepaint() {}
   project() { return { x: 0, y: 0 }; }
   unproject() { return { lng: 0, lat: 0 }; }
@@ -51,6 +66,13 @@ class FakeMap {
 
 vi.mock('maplibre-gl', () => {
   class NavigationControl {}
+  // W91 — GeolocateControl natif mocké : un émetteur d'événements minimal (on/fire) pour
+  // que l'entrée puisse s'abonner à `geolocate` et qu'un test déclenche une position.
+  class GeolocateControl {
+    geoHandlers: Record<string, ((e: unknown) => void)[]> = {};
+    on(ev: string, h: (e: unknown) => void) { (this.geoHandlers[ev] ||= []).push(h); return this; }
+    fire(ev: string, e: unknown) { (this.geoHandlers[ev] || []).forEach((h) => h(e)); }
+  }
   class Point {
     x: number; y: number;
     constructor(x: number, y: number) { this.x = x; this.y = y; }
@@ -58,7 +80,7 @@ vi.mock('maplibre-gl', () => {
   const MercatorCoordinate = {
     fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }),
   };
-  const api = { Map: FakeMap, NavigationControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
+  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
   return { default: api, ...api };
 });
 
@@ -77,12 +99,14 @@ function squareCorners(side: number, lng0 = -7.62, lat0 = 33.59): [number, numbe
 const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width'];
 const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range'];
 const ID_BUTTONS = [
-  'rp9-finish', 'rp9-clear', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
+  'rp9-finish', 'rp9-clear', 'rp9-undo-point', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
   'rp9-obstacle', 'rp9-obstacle-clear', 'rp9-obs-delete', 'rp9-obs-plus', 'rp9-obs-minus',
   'rp9-optimum', 'rp9-optimum-apply', 'rp9-cta',
   // W50 — pickers de la fenêtre de production.
   'rp9-prod-month-prev', 'rp9-prod-month-next',
   'rp9-prod-day-prev', 'rp9-prod-day-next', 'rp9-prod-day-reset',
+  // W78 (W97 §2) — « + Ajouter une zone » (multi-zones).
+  'rp9-add-area',
 ];
 const ID_GENERIC = [
   'rp9-map', 'rp9-status', 'rp9-bill-kwh', 'rp9-config', 'rp9-azimuth-group', 'rp9-compass-arrow',
@@ -96,6 +120,9 @@ const ID_GENERIC = [
   'rp9-prod-window', 'rp9-prod-scope', 'rp9-prod-month-picker', 'rp9-prod-month-label',
   'rp9-prod-day-picker', 'rp9-prod-day-label', 'rp9-prod-headline', 'rp9-prod-sub',
   'rp9-prod-graph', 'rp9-prod-source', 'rp9-prod-savings',
+  // W78 (W97 §2) — panneau « Zones » : conteneur, liste, totaux agrégés (panneaux/kWc/prod/éco).
+  'rp9-areas-window', 'rp9-areas-list', 'rp9-areas-total-panels', 'rp9-areas-total-kwc',
+  'rp9-areas-total-prod', 'rp9-areas-total-savings',
 ];
 
 const CHIP_GROUPS: { attr: string; values: string[]; badge?: boolean }[] = [
@@ -149,9 +176,10 @@ function setupDom() {
     root.appendChild(r);
   }
   for (const id of ID_BUTTONS) root.appendChild(el('button', id));
-  // formulaire d'adresse
+  // formulaire d'adresse + liste de suggestions (W93 — combobox autocomplétion)
   const form = el('form', 'rp9-search');
   root.appendChild(form);
+  root.appendChild(el('ul', 'rp9-suggestions'));
   // groupes de puces (avec badge « Recommandé » là où le script l'attend)
   for (const g of CHIP_GROUPS) {
     for (const v of g.values) {
@@ -197,6 +225,22 @@ function setupDom() {
   root.appendChild(table);
   const filter = el('select', 'rp9-matrix-filter');
   root.appendChild(filter);
+  // W97 §1 — champs du diagnostic enrichi que prefillLead pré-remplit (handoff, jamais
+  // un POST). lf-orient est un <select> ; prefillLead remonte au <details> parent + défile
+  // vers #simulateur (jsdom n'a pas scrollIntoView → on le stubbe juste avant).
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+  const diag = el('details', 'diag') as HTMLDetailsElement;
+  diag.appendChild(el('input', 'lf-area'));
+  const orient = el('select', 'lf-orient') as HTMLSelectElement;
+  for (const id of ['sud', 'sud-est', 'sud-ouest', 'est', 'ouest']) {
+    const o = document.createElement('option');
+    o.value = id;
+    orient.appendChild(o);
+  }
+  diag.appendChild(orient);
+  diag.appendChild(el('input', 'lf-kwc-est'));
+  root.appendChild(diag);
+  root.appendChild(el('div', 'simulateur'));
   document.body.appendChild(root);
 }
 
@@ -759,4 +803,600 @@ describe('W50 — fenêtre de production : scope, cyclage, jour type/date, resca
     expect((document.getElementById('rp9-prod-window') as HTMLElement).hidden).toBe(false);
     expect(txt('rp9-prod-headline')).toMatch(/kWh\/an/);
   }, 60000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W91 — bouton « ma position » (GeolocateControl natif MapLibre, aucune dépendance ajoutée).
+// On vérifie que le contrôle est bien AJOUTÉ à la carte, et qu'une position géolocalisée
+// recentre en zoom 19 (flyTo en mouvement normal, jumpTo en reduced-motion).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W91 (map) — bouton ma position (GeolocateControl)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function geolocateControl(map: FakeMap) {
+    return map.controls.find(
+      (c) => typeof (c as { fire?: unknown }).fire === 'function' && 'geoHandlers' in (c as object),
+    ) as { fire: (ev: string, e: unknown) => void } | undefined;
+  }
+
+  it('un GeolocateControl est ajouté à la carte', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    expect(geolocateControl(fakeMaps[0])).toBeDefined();
+  });
+
+  it('géolocaliser recentre en zoom 19 (flyTo en mouvement normal)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    const ctrl = geolocateControl(fakeMaps[0])!;
+    ctrl.fire('geolocate', { coords: { longitude: -7.62, latitude: 33.59 } });
+    const calls = fakeMaps[0].flyToCalls as Array<{ center: [number, number]; zoom: number }>;
+    expect(calls.length).toBeGreaterThan(0);
+    const last = calls[calls.length - 1];
+    expect(last.zoom).toBe(19);
+    expect(last.center).toEqual([-7.62, 33.59]);
+  });
+
+  it('en reduced-motion, géolocaliser saute (jumpTo) en zoom 19', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const ctrl = geolocateControl(fakeMaps[0])!;
+    ctrl.fire('geolocate', { coords: { longitude: -7.62, latitude: 33.59 } });
+    const calls = fakeMaps[0].jumpToCalls as Array<{ center: [number, number]; zoom: number }>;
+    expect(calls.some((c) => c.zoom === 19)).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W77 — PARITÉ TACTILE DU TRACÉ : double-tap pour finir + aucun coin perdu en traçant vite.
+// On compte les sommets réellement posés via la source `rp9-pts` captée par FakeMap, et on
+// vérifie que (1) tracer 4 coins distincts PLUS VITE que le délai anti-dblclick n'en perd
+// aucun, (2) un double-tap tactile au même endroit FERME le tracé, (3) le double-clic
+// desktop ferme SANS laisser de sommet parasite (comportement desktop inchangé).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W77 (map) — parité tactile du tracé', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // Nombre de sommets actuellement posés (features de la source rp9-pts).
+  function vertexCount(map: FakeMap): number {
+    const d = map.sourceData['rp9-pts'] as { features?: unknown[] } | undefined;
+    return d?.features?.length ?? 0;
+  }
+
+  // 4 coins d'un carré, à des POINTS écran DISTINCTS (sinon le garde double-tap les
+  // confondrait). lng/lat n'ont pas besoin d'être exacts pour le comptage de sommets.
+  const corners: Array<{ lng: number; lat: number; x: number; y: number }> = [
+    { lng: -7.62, lat: 33.59, x: 100, y: 100 },
+    { lng: -7.619, lat: 33.59, x: 300, y: 100 },
+    { lng: -7.619, lat: 33.591, x: 300, y: 300 },
+    { lng: -7.62, lat: 33.591, x: 100, y: 300 },
+  ];
+
+  it('tracer 4 coins PLUS VITE que le délai ne perd aucun sommet', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    // chaque clic n'avance le temps que de 50 ms (< 240 ms) → l'ancien code jetait
+    // les coins rapides ; le nouveau pose d'abord le précédent.
+    for (const c of corners) {
+      map.fire('click', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      vi.advanceTimersByTime(50);
+    }
+    vi.advanceTimersByTime(300); // laisse le dernier délai s'écouler
+    vi.useRealTimers();
+    expect(vertexCount(map)).toBe(4); // les 4 coins posés, aucun perdu
+  });
+
+  it('double-tap tactile au même endroit FERME le tracé', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    // pose 3 coins distincts au doigt (touchend + click synthétique chacun)
+    vi.useFakeTimers();
+    for (const c of corners.slice(0, 3)) {
+      map.fire('touchend', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      map.fire('click', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      vi.advanceTimersByTime(241); // chaque coin posé
+    }
+    expect(vertexCount(map)).toBe(3);
+    // double-tap au MÊME endroit (dans la fenêtre 300 ms) = terminer
+    const last = corners[2];
+    map.fire('touchend', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y } });
+    vi.advanceTimersByTime(120);
+    map.fire('touchend', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y } });
+    vi.useRealTimers();
+    // close() a tourné → la config est visible et le calcul rempli
+    expect((document.getElementById('rp9-config') as HTMLElement).hidden).toBe(false);
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  });
+
+  it('double-clic desktop ferme SANS laisser de sommet parasite (desktop inchangé)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    for (const c of corners.slice(0, 3)) {
+      map.fire('click', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      vi.advanceTimersByTime(241);
+    }
+    expect(vertexCount(map)).toBe(3);
+    // double-clic au même endroit que le 3ᵉ coin : 2ᵉ clic immédiat puis dblclick
+    const last = corners[2];
+    map.fire('click', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y } });
+    map.fire('dblclick', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y }, preventDefault() {} });
+    vi.useRealTimers();
+    // fermé avec EXACTEMENT 3 sommets (le clic du double-clic n'a pas ajouté de 4ᵉ)
+    expect((document.getElementById('rp9-config') as HTMLElement).hidden).toBe(false);
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W93 — AUTOCOMPLÉTION D'ADRESSE (combobox). On mocke MapTiler pour renvoyer 5 résultats,
+// puis on vérifie : (1) la frappe peuple jusqu'à 5 suggestions (aria-expanded, role=option) ;
+// (2) sélectionner une suggestion VOLE vers son centre (et ferme la liste) ; (3) la
+// navigation clavier (flèches) met à jour aria-activedescendant et Entrée valide. On NE vole
+// JAMAIS avant la sélection (geocode ne flyTo plus de lui-même).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W93 (map) — autocomplétion d\'adresse', () => {
+  // 5 features MapTiler factices (centres distincts au Maroc).
+  function geoResponse() {
+    const features = Array.from({ length: 5 }, (_, i) => ({
+      center: [-7.6 - i * 0.01, 33.5 + i * 0.01],
+      place_name: `Adresse ${i + 1}, Casablanca`,
+      text: `Adresse ${i + 1}`,
+    }));
+    return { ok: true, json: () => Promise.resolve({ features }) };
+  }
+
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(geoResponse() as unknown as Response)));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function type(q: string) {
+    const addr = document.getElementById('rp9-address') as HTMLInputElement;
+    addr.value = q;
+    vi.useFakeTimers();
+    addr.dispatchEvent(new window.Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(310); // laisse le débounce 300 ms s'écouler
+    vi.useRealTimers();
+    await Promise.resolve(); // laisse résoudre la promesse fetch
+    await Promise.resolve();
+  }
+
+  const options = () => Array.from(document.querySelectorAll('#rp9-suggestions [role="option"]'));
+
+  it('taper une adresse peuple jusqu\'à 5 suggestions (combobox ouverte, aria)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    expect(options().length).toBe(5);
+    const list = document.getElementById('rp9-suggestions') as HTMLElement;
+    expect(list.hidden).toBe(false);
+    expect(document.getElementById('rp9-address')!.getAttribute('aria-expanded')).toBe('true');
+    // la requête a demandé 5 résultats (et pas 1)
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(String(calls[calls.length - 1][0])).toContain('limit=5');
+  });
+
+  it('aucun vol AVANT sélection (geocode ne flyTo plus tout seul)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    // suggestions affichées mais aucun flyTo/jumpTo déclenché
+    expect(fakeMaps[0].flyToCalls.length).toBe(0);
+    expect(fakeMaps[0].jumpToCalls.length).toBe(0);
+  });
+
+  it('sélectionner une suggestion vole vers son centre et ferme la liste', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    // clic (mousedown) sur la 2ᵉ suggestion
+    const second = options()[1] as HTMLElement;
+    second.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+    const calls = fakeMaps[0].flyToCalls as Array<{ center: [number, number]; zoom: number }>;
+    expect(calls.length).toBe(1);
+    expect(calls[0].center[0]).toBeCloseTo(-7.61, 5);
+    expect(calls[0].center[1]).toBeCloseTo(33.51, 5);
+    expect(calls[0].zoom).toBe(19);
+    expect((document.getElementById('rp9-suggestions') as HTMLElement).hidden).toBe(true);
+  });
+
+  it('navigation clavier : flèches → aria-activedescendant, Entrée valide', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    const addr = document.getElementById('rp9-address') as HTMLInputElement;
+    addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(addr.getAttribute('aria-activedescendant')).toBe('rp9-suggestion-0');
+    addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(addr.getAttribute('aria-activedescendant')).toBe('rp9-suggestion-1');
+    // Entrée valide la suggestion survolée → vol
+    addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(fakeMaps[0].flyToCalls.length).toBe(1);
+    expect((document.getElementById('rp9-suggestions') as HTMLElement).hidden).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W92 — SOMMETS DU TRACÉ ÉDITABLES + ANNULER LE DERNIER POINT. On vérifie : (1) « Annuler
+// le dernier point » dépile le dernier coin pendant le tracé (bouton visible quand ≥1 coin,
+// masqué une fois fermé) ; (2) un coin POSÉ peut être glissé (souris ET tactile) → le
+// sommet bouge et la disposition se re-résout (recalc) au relâchement.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W92 (map) — sommets éditables + annuler le dernier point', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function vertexCount(map: FakeMap): number {
+    const d = map.sourceData['rp9-pts'] as { features?: unknown[] } | undefined;
+    return d?.features?.length ?? 0;
+  }
+  function vertexAt(map: FakeMap, idx: number): [number, number] | undefined {
+    const d = map.sourceData['rp9-pts'] as { features?: Array<{ geometry: { coordinates: [number, number] } }> } | undefined;
+    return d?.features?.[idx]?.geometry.coordinates;
+  }
+  // Pose 3 coins sans fermer (chaque clic → un sommet après le délai anti-dblclick).
+  function placeThree(map: FakeMap) {
+    vi.useFakeTimers();
+    const pts = [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }];
+    const lls = [{ lng: -7.62, lat: 33.59 }, { lng: -7.619, lat: 33.59 }, { lng: -7.619, lat: 33.591 }];
+    pts.forEach((p, i) => {
+      map.fire('click', { lngLat: lls[i], point: p });
+      vi.advanceTimersByTime(241);
+    });
+    vi.useRealTimers();
+  }
+
+  it('« Annuler le dernier point » dépile le dernier coin (visible pendant le tracé)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const map = fakeMaps[0];
+    placeThree(map);
+    expect(vertexCount(map)).toBe(3);
+    const undo = document.getElementById('rp9-undo-point') as HTMLButtonElement;
+    expect(undo.hidden).toBe(false); // visible pendant le tracé
+    undo.click();
+    expect(vertexCount(map)).toBe(2); // un coin retiré
+    undo.click();
+    undo.click();
+    expect(vertexCount(map)).toBe(0); // tout dépilé
+    expect(undo.hidden).toBe(true); // plus aucun coin → masqué
+  });
+
+  it('un coin posé peut être glissé à la souris → le sommet bouge et la 3D re-résout', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    // toit fermé (4 coins) → recalc rempli
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+    const before = vertexAt(map, 0);
+    expect(before).toBeDefined();
+    // le hit-test rp9-pts renvoie le sommet 0 → on le saisit et on le glisse
+    map.queryHits['rp9-pts'] = [{ properties: { idx: 0 } }];
+    map.fire('mousedown', { lngLat: { lng: before![0], lat: before![1] }, point: { x: 10, y: 10 } });
+    map.fire('mousemove', { lngLat: { lng: before![0] + 0.0003, lat: before![1] + 0.0003 }, point: { x: 40, y: 40 } });
+    map.fire('mouseup', { lngLat: { lng: before![0] + 0.0003, lat: before![1] + 0.0003 }, point: { x: 40, y: 40 } });
+    const after = vertexAt(map, 0);
+    expect(after).toBeDefined();
+    // le sommet 0 a bougé du delta appliqué
+    expect(after![0]).toBeCloseTo(before![0] + 0.0003, 6);
+    expect(after![1]).toBeCloseTo(before![1] + 0.0003, 6);
+    // la carte reste remplie (recalc a re-tourné sans casser)
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  });
+
+  it('un coin posé peut être glissé au DOIGT (touch) → le sommet bouge', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    const before = vertexAt(map, 1)!;
+    map.queryHits['rp9-pts'] = [{ properties: { idx: 1 } }];
+    map.fire('touchstart', { lngLat: { lng: before[0], lat: before[1] }, point: { x: 20, y: 20 }, points: [{ x: 20, y: 20 }] });
+    map.fire('touchmove', { lngLat: { lng: before[0] - 0.0002, lat: before[1] - 0.0002 }, point: { x: 5, y: 5 }, preventDefault() {} });
+    map.fire('touchend', { lngLat: { lng: before[0] - 0.0002, lat: before[1] - 0.0002 }, point: { x: 5, y: 5 } });
+    const after = vertexAt(map, 1)!;
+    expect(after[0]).toBeCloseTo(before[0] - 0.0002, 6);
+    expect(after[1]).toBeCloseTo(before[1] - 0.0002, 6);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §1 — PRÉ-REMPLISSAGE CORRECT + AUCUN LEAD POSTÉ (à travers le script MONTÉ).
+// Le test focalisé W85 (prefillOrientationW85) couvre déjà le MAPPING d'orientation en
+// pur (createPrefill). Ici on vérifie le chemin VIVANT : tracer → la carte reco peint →
+// le CTA #rp9-cta câble prefillLead → un clic écrit lf-area / lf-kwc-est / lf-orient avec
+// les VRAIES valeurs, et la preview ne POSTe JAMAIS /api/preview-lead ni /api/simulate.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §1 — prefill via le CTA + aucun POST de lead', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const lf = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
+
+  it('toit plat : cliquer le CTA pré-remplit lf-area / lf-kwc-est / lf-orient (sud) sans POST', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const cta = document.getElementById('rp9-cta') as HTMLButtonElement;
+    expect(cta.hidden).toBe(false); // une config gagnante existe → CTA offert
+    cta.click(); // → prefillLead(d) (handoff, jamais un POST)
+    // surface géodésique d'un carré de 16 m ≈ 256 m² (tolérance projection)
+    expect(Number(lf('lf-area'))).toBeGreaterThan(180);
+    expect(Number(lf('lf-area'))).toBeLessThan(340);
+    // kWc estimé non vide et > 0
+    expect(Number(lf('lf-kwc-est'))).toBeGreaterThan(0);
+    // toit plat (famille sud par défaut) → orientation « sud » (la liste n'a pas d'est-ouest)
+    expect(lf('lf-orient')).toBe('sud');
+    // le diagnostic est ouvert (handoff terminé)
+    expect((document.getElementById('diag') as HTMLDetailsElement).open).toBe(true);
+    // AUCUN appel à une route lead / simulation (le repli PVGIS échoue volontairement,
+    // mais ne vise JAMAIS /api/preview-lead ni /api/simulate).
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      const url = String(c[0]);
+      expect(url).not.toContain('/api/preview-lead');
+      expect(url).not.toContain('/api/simulate');
+    }
+  });
+
+  it('toit plat Est-Ouest verrouillé : l\'orientation pré-remplie reste « sud » (W85)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    // verrouille la famille Est-Ouest (la liste enrichment n'a pas d'« est-ouest » → sud)
+    document.querySelector<HTMLButtonElement>('[data-family="eastwest"]')!.click();
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    expect(lf('lf-orient')).toBe('sud');
+    expect(Number(lf('lf-kwc-est'))).toBeGreaterThan(0);
+  });
+
+  it('toit en pente face sud-ouest : l\'orientation pré-remplie suit la face réelle (W85)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    // bascule en pente puis choisit la face 225° (sud-ouest)
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    const sw = document.querySelector<HTMLButtonElement>('[data-facing="225"]');
+    if (sw) sw.click();
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    // 225° → « sud-ouest » dans enrichment.ORIENTATIONS (si la face a bien été appliquée)
+    if (sw) expect(lf('lf-orient')).toBe('sud-ouest');
+    // dans tous les cas, aucune route lead/simulation n'a été appelée
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      expect(String(c[0])).not.toContain('/api/preview-lead');
+      expect(String(c[0])).not.toContain('/api/simulate');
+    }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §2 — TOTAUX MULTI-ZONES (W78 au NIVEAU DONNÉES). On trace une 1ʳᵉ zone, on relève
+// ses panneaux/kWc, puis « + Ajouter une zone », on trace une 2ᵉ zone et on vérifie que
+// le panneau « Zones » agrège : total panneaux/kWc = somme des deux zones (la zone active
+// = résultat LIVE, l'autre = snapshot). Confirme le câblage rp9-add-area + rp9-areas-*.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §2 — totaux multi-zones = somme des zones', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // Premier nombre entier (sépare les espaces fines) du texte d'un id.
+  const intOf = (id: string): number => Number((txt(id).match(/[\d   ]+/)?.[0] ?? '0').replace(/[^\d]/g, ''));
+  // kWc (décimal français) du texte d'un id.
+  const kwcOf = (id: string): number => {
+    const m = txt(id).match(/[\d   ]+(?:[.,]\d+)?/);
+    return m ? Number(m[0].replace(/[   ]/g, '').replace(',', '.')) : 0;
+  };
+
+  it('ajouter une 2ᵉ zone fait que les totaux = somme des deux zones (panneaux + kWc)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('3000'); // besoin large → les deux zones posent des panneaux
+    // Zone 1 : carré de 20 m.
+    traceRoof(fakeMaps[0], 20);
+    const panels1 = intOf('rp9-reco-panels');
+    const kwc1 = kwcOf('rp9-reco-kwc');
+    expect(panels1).toBeGreaterThan(0);
+    // le panneau « Zones » est visible avec un total = la seule zone tracée
+    expect((document.getElementById('rp9-areas-window') as HTMLElement).hidden).toBe(false);
+    expect(intOf('rp9-areas-total-panels')).toBe(panels1);
+
+    // + Ajouter une zone (autorisé car la zone active est fermée) → 2ᵉ zone vierge.
+    const addBtn = document.getElementById('rp9-add-area') as HTMLButtonElement;
+    expect(addBtn.disabled).toBe(false);
+    addBtn.click();
+    // Zone 2 : carré de 16 m (centre différent → tracé indépendant).
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16, -7.60, 33.60)) {
+      fakeMaps[0].fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    const panels2 = intOf('rp9-reco-panels'); // zone active = zone 2 (résultat live)
+    const kwc2 = kwcOf('rp9-reco-kwc');
+    expect(panels2).toBeGreaterThan(0);
+
+    // Totaux agrégés = somme des deux zones.
+    const totalPanels = intOf('rp9-areas-total-panels');
+    expect(totalPanels).toBe(panels1 + panels2);
+    const totalKwc = kwcOf('rp9-areas-total-kwc');
+    expect(totalKwc).toBeCloseTo(kwc1 + kwc2, 1);
+    // deux lignes de zone listées
+    expect(document.querySelectorAll('#rp9-areas-list [data-area-row]').length).toBe(2);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §4 — PLAFOND DES ÉCONOMIES À LA COUCHE RENDUE. annualSavingsMad plafonne l'économie
+// au coût énergie évitable = billMAD(conso) × 12 = monthlyBill × 12 (par construction de
+// billToAnnualKwh, inverse de billMAD). On MONTE le script, on trace, et on vérifie que le
+// chiffre RENDU #rp9-reco-savings (et la fenêtre de production #rp9-prod-savings quand elle
+// est peuplée) ne dépasse JAMAIS ce plafond dérivé de la facture — assertion d'exécution,
+// pas seulement le solveur pur.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §4 — les économies rendues ne dépassent pas le plafond facture', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    // PVGIS GÉNÉREUX (rendement élevé) → un toit spacieux produirait beaucoup plus que la
+    // conso ; seul le PLAFOND empêche l'économie d'exploser. C'est ce qu'on veut tester.
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: { body?: string }) => {
+      const body = init?.body ? (JSON.parse(init.body) as { legs?: { kwc?: number }[] }) : {};
+      const legs = body.legs || [];
+      const annual = legs.reduce((a, lg) => a + (lg.kwc || 1) * 2200, 0); // rendement très élevé
+      return { ok: true, json: async () => ({ ok: true, annualKwh: annual }) } as unknown as Response;
+    }));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // Borne haute (MAD) du texte « X – Y/an » : on prend le 2ᵉ nombre (fourchette haute).
+  function savingsHigh(id: string): number {
+    const nums = (txt(id).match(/[\d   ]+/g) ?? []).map((s) => Number(s.replace(/[^\d]/g, ''))).filter((n) => n > 0);
+    return nums.length ? Math.max(...nums) : 0;
+  }
+
+  it('toit spacieux + facture modeste : #rp9-reco-savings ≤ facture × 12 (plafond conso)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const monthlyBill = 1200;
+    setBill(String(monthlyBill));
+    traceRoof(fakeMaps[0], 30); // grand toit → bien plus de production que la conso
+    await flushPvgis();
+    const ceiling = monthlyBill * 12; // billMAD(conso) × 12 = facture × 12 (round-trip exact)
+    const recoHigh = savingsHigh('rp9-reco-savings');
+    expect(recoHigh).toBeGreaterThan(0); // une économie est bien affichée
+    // tolérance d'arrondi (fmtMad arrondit chaque borne à l'entier)
+    expect(recoHigh).toBeLessThanOrEqual(ceiling + 24);
+    // la fenêtre de production, si peuplée, respecte le même plafond
+    const prodSav = (document.getElementById('rp9-prod-savings') as HTMLElement | null)?.textContent ?? '';
+    if (prodSav && /\d/.test(prodSav)) {
+      expect(savingsHigh('rp9-prod-savings')).toBeLessThanOrEqual(ceiling + 24);
+    }
+  }, 60000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W97 §6 — DÉGAGEMENT D'OBSTACLE À TRAVERS LE SCRIPT MONTÉ (chemin 0,3 m de bout en bout).
+// Le test pur du solveur couvre déjà la règle ; ici on dessine, via le MONTAGE, un obstacle
+// qui COUVRE tout le toit (mode obstacle → glissé carte), et on vérifie que la pose chute :
+// le calepinage n'a plus de cellule valide → 0 panneau posé + le message honnête « non
+// viable ». C'est le chemin de dégagement complet (UI → ctx.obstacles → optimiseur → carte).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W97 §6 — un obstacle couvrant fait chuter la pose (dégagement bout en bout)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const intOf = (id: string): number => Number((txt(id).match(/[\d   ]+/)?.[0] ?? '0').replace(/[^\d]/g, ''));
+
+  it('dessiner un obstacle qui recouvre le toit → 0 panneau + message « non viable »', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const map = fakeMaps[0];
+    // avant l'obstacle : des panneaux tiennent
+    expect(intOf('rp9-reco-panels')).toBeGreaterThan(0);
+
+    // Active le mode obstacle puis glisse un grand rectangle qui DÉBORDE le toit (16 m).
+    // Les coins lng/lat couvrent largement le carré centré sur (-7.62, 33.59).
+    (document.getElementById('rp9-obstacle') as HTMLButtonElement).click();
+    const sw = { lng: -7.6215, lat: 33.5885 };
+    const ne = { lng: -7.6185, lat: 33.5915 };
+    // un VRAI glissé (deltas pixel >> seuil de tap) → obstacleFromDrag (pas un tap par défaut)
+    map.fire('mousedown', { lngLat: { lng: sw.lng, lat: sw.lat }, point: { x: 50, y: 350 } });
+    map.fire('mousemove', { lngLat: { lng: ne.lng, lat: ne.lat }, point: { x: 350, y: 50 } });
+    map.fire('mouseup', { lngLat: { lng: ne.lng, lat: ne.lat }, point: { x: 350, y: 50 } });
+
+    // l'obstacle a été posé et le calepinage l'évite : plus aucun panneau ne tient.
+    expect(intOf('rp9-reco-panels')).toBe(0);
+    expect(intOf('rp9-reco-kwc')).toBe(0);
+    // message honnête « non viable » (W74) au lieu d'un faux « 0 panneau gagnant ».
+    expect(txt('rp9-reco-why')).toMatch(/non viable/i);
+  });
 });

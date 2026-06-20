@@ -25,12 +25,27 @@ améliorations, toutes ajustables dans `src/lib/roofPro2.ts` et `src/scripts/roo
   - `ombre = rise ÷ tan(élévation_design)`
   - `pas ≥ empreinte (1,303 × cos tilt) + ombre + marge` → aucune rangée n'ombre la suivante
     à l'angle de design.
-- **Soleil d'affichage** : matin clair (azimut = visée − 45°, à l'est), élévation liée à la
-  latitude et **supérieure** à l'élévation de design → ombres bien visibles ET jour de soleil
-  entre les rangées (on VOIT que l'ombrage a été géré). Vraies ombres portées (panneaux,
-  châssis, lest) sur le toit et entre rangées (PCFSoftShadowMap).
+- **Soleil réel (W87, builder pro-11)** : la scène 3D ne pose plus un soleil arbitraire
+  (l'ancien « azimut = visée − 45° » + une élévation factice). Elle calcule une **VRAIE
+  position solaire** via `sunDirection(latDeg, dayOfYear, hour)` (`src/lib/roofPro2.ts`,
+  testée) — déclinaison `δ = −23,44° × cos(360°·(jour+10)/365)`, angle horaire
+  `H = 15°·(heure−12)`, `sin(élév) = sinφ·sinδ + cosφ·cosδ·cosH`, azimut signé
+  matin (Est) / après-midi (Ouest). Un **curseur d'heure solaire** (6–18 h) et une
+  **bascule saison** (hiver/été) sur la page pilotent `ctx.sunHour` / `ctx.sunDay`. Le
+  **défaut = midi au solstice d'hiver** (jour 355, `WINTER_SOLSTICE_DAY`) : c'est le PIRE
+  cas d'ombrage, où l'élévation du soleil rejoint exactement `designSunElevationDeg` —
+  donc les rangées espacées par ce même angle se dégagent **visiblement** (l'ombre portée
+  PROUVE le pas anti-ombrage). Le soleil est borné à ≥ 6° au-dessus de l'horizon pour que
+  la scène reste éclairée près du lever/coucher. Vraies ombres portées (panneaux, châssis,
+  lest) sur le toit et entre rangées (PCFSoftShadowMap).
 
 ## 4. Fidélité visuelle
+- **Massing toit en pente (W90, builder pro-11)** : en pose affleurante, la dalle est un
+  PLAN INCLINÉ posé au-dessus du toit plat du bâtiment. Une **jupe de pignon** périmétrique
+  (un quadrilatère vertical par arête de l'anneau, du toit plat `wallH` jusqu'au dessous de
+  la dalle inclinée) ferme le volume → le toit en pente se lit comme un **volume fermé**
+  (pignon/croupe) plutôt qu'un couvercle flottant, pour toute empreinte tracée. Même teinte
+  que le bâtiment, double-face. Toit PLAT inchangé (jupe strictement conditionnée à `flush`).
 - Châssis triangulaires (montant arrière haut / avant bas), rails, **lest béton** aux coins.
 - Soleil directionnel + ambiance ciel + ombres douces ; matériaux PBR ; massing bâtiment
   propre ; satellite en sol. **InstancedMesh** pour tous les éléments répétés.

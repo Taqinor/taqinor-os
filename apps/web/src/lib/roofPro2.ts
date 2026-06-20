@@ -92,6 +92,46 @@ export function designSunElevationDeg(latitudeDeg: number): number {
   return Math.max(8, 90 - Math.abs(latitudeDeg) - SOLAR_DECLINATION_DEG);
 }
 
+/** Solstice d'hiver de l'hémisphère NORD ≈ 21 décembre (jour 355) → pire cas d'ombrage. */
+export const WINTER_SOLSTICE_DAY = 355;
+
+/** Position du soleil renvoyée par `sunDirection`. */
+export interface SunDirection {
+  /** Élévation au-dessus de l'horizon (degrés ; < 0 = sous l'horizon, nuit). */
+  elevationDeg: number;
+  /** Azimut RÉEL (degrés, 0 = Nord, 90 = Est, 180 = Sud, 270 = Ouest). */
+  azimuthDeg: number;
+}
+
+/**
+ * VRAIE position du soleil pour une latitude, un jour de l'année et une heure
+ * solaire locale — astronomie standard (déclinaison + angle horaire), pas un
+ * soleil arbitraire. Sert à PROUVER l'espacement anti-ombrage : au midi du
+ * solstice d'hiver (pire cas), l'élévation rejoint `designSunElevationDeg` —
+ * donc les rangées espacées par ce même angle se dégagent visiblement.
+ *
+ * - `dayOfYear` : 1 (1ᵉʳ janv.) … 365 ; le solstice d'hiver nord ≈ 355.
+ * - `hour` : heure solaire locale, 0–24 (midi solaire = 12).
+ *
+ * Déclinaison δ = −23,44° × cos(360° × (jour + 10) / 365) (modèle cosinus
+ * usuel, `SOLAR_DECLINATION_DEG` = 23,44). Angle horaire H = 15° × (heure − 12).
+ * sin(élév) = sin φ sin δ + cos φ cos δ cos H ; l'azimut est dérivé de
+ * l'élévation, signé par le matin (Est) / l'après-midi (Ouest).
+ */
+export function sunDirection(latDeg: number, dayOfYear: number, hour: number): SunDirection {
+  const lat = latDeg * DEG2RAD;
+  const decl = -SOLAR_DECLINATION_DEG * Math.cos((2 * Math.PI * (dayOfYear + 10)) / 365) * DEG2RAD;
+  const hourAngle = (hour - 12) * 15 * DEG2RAD; // 15°/h, négatif le matin
+  const sinElev = Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(hourAngle);
+  const elev = Math.asin(Math.max(-1, Math.min(1, sinElev)));
+  // Azimut mesuré depuis le Nord en tournant vers l'Est. cos(az) à partir de la
+  // déclinaison, signe (Est le matin, Ouest l'après-midi) à partir de l'angle horaire.
+  const cosAz = (Math.sin(decl) - Math.sin(elev) * Math.sin(lat)) / (Math.cos(elev) * Math.cos(lat) || 1e-9);
+  let az = Math.acos(Math.max(-1, Math.min(1, cosAz))); // 0..π depuis le Nord
+  if (hourAngle > 0) az = 2 * Math.PI - az; // après-midi → côté Ouest (>180°)
+  return { elevationDeg: elev / DEG2RAD, azimuthDeg: (az / DEG2RAD + 360) % 360 };
+}
+
 function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];

@@ -169,8 +169,19 @@ const chipClass =
           <div class="cine-card overflow-hidden">
             <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
               <label for="rp9-address" class="sr-only">Votre adresse</label>
-              <input id="rp9-address" name="address" type="text" autocomplete="street-address"
-                placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+              <!-- W93 — autocomplétion d'adresse : combobox WAI-ARIA. La liste de
+                   suggestions (jusqu'à 5) est positionnée sous le champ ; le survol
+                   clavier (flèches) met à jour aria-activedescendant ; on ne vole
+                   vers une adresse QUE sur sélection. -->
+              <div class="relative flex-1">
+                <input id="rp9-address" name="address" type="text" autocomplete="off"
+                  role="combobox" aria-autocomplete="list" aria-expanded="false"
+                  aria-controls="rp9-suggestions" aria-haspopup="listbox"
+                  placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+                <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
+                  class="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900 shadow-xl">
+                </ul>
+              </div>
               <button type="submit"
                 class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
                 Localiser mon toit
@@ -205,6 +216,12 @@ const chipClass =
               <button type="button" id="rp9-finish" disabled
                 class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
                 Terminer le tracé
+              </button>
+              <!-- W92 — annule le dernier coin posé pendant le tracé (avant fermeture).
+                   Masqué tant qu'aucun coin n'est posé / une fois le toit fermé. -->
+              <button type="button" id="rp9-undo-point" hidden
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                Annuler le dernier point
               </button>
               <button type="button" id="rp9-clear"
                 class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
@@ -354,6 +371,32 @@ const chipClass =
                 <p id="rp9-pitched-note" class="min-h-[1.25rem] text-xs leading-relaxed text-lune-soft" aria-live="polite"></p>
               </div>
 
+              <!-- W87 — Soleil réel : l'ombre portée de la scène 3D suit une VRAIE position
+                   solaire (latitude du toit + heure + saison). Le défaut « midi solstice
+                   d'hiver » est le PIRE cas d'ombrage : à cet angle, les rangées espacées par
+                   la géométrie solaire se dégagent visiblement (la preuve de l'anti-ombrage).
+                   Curseur d'heure solaire + bascule saison. Zéro CLS (hauteur réservée). -->
+              <div id="rp9-sun-controls" class="space-y-3 border border-white/10 bg-nuit-900/40 p-3">
+                <div class="flex items-center gap-3">
+                  <label for="rp9-sun-hour" class="tech-label shrink-0 text-lune-faint">Heure du soleil</label>
+                  <input id="rp9-sun-hour" type="range" min="6" max="18" step="1" value="12"
+                    class="h-2 w-full min-w-0 flex-1 cursor-pointer accent-brass-400"
+                    aria-label="Heure solaire (6 h à 18 h, midi solaire = 12 h)" />
+                  <span id="rp9-sun-hour-value" class="w-12 shrink-0 text-right text-sm font-semibold text-brass-300">12 h</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="tech-label mr-1 text-lune-faint">Saison</span>
+                  <button type="button" data-sun-season="winter" class={chipClass} aria-pressed="true">Hiver (pire cas)</button>
+                  <button type="button" data-sun-season="summer" class={chipClass} aria-pressed="false">Été</button>
+                </div>
+                <p class="text-xs leading-relaxed text-lune-faint">
+                  L'ombre de la 3D suit le vrai soleil à la latitude du toit. Au
+                  <strong class="text-lune-soft">midi du solstice d'hiver</strong> (pire cas),
+                  les rangées se dégagent l'une l'autre — c'est la preuve de l'espacement
+                  anti-ombrage.
+                </p>
+              </div>
+
               <div class="flex flex-wrap items-center gap-2">
                 <span class="tech-label mr-1 text-lune-faint">Obstacles</span>
                 <button type="button" id="rp9-obstacle" class={chipClass}>Ajouter un obstacle (cheminée…)</button>
@@ -491,7 +534,7 @@ const chipClass =
               <p id="rp9-need-note" class="mt-2 min-h-[1.5rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
             </div>
 
-            <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-6">
+            <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
               <div>
                 <dd id="rp9-reco-kwc" class="fig text-2xl text-white sm:text-3xl">—</dd>
                 <dt class="tech-label mt-1 text-lune-faint">Puissance</dt>
@@ -517,12 +560,18 @@ const chipClass =
               Indiquez votre facture et tracez votre toit pour voir la recommandation.
             </p>
             <p id="rp9-reco-bifacial" class="mt-2 text-xs leading-relaxed text-lune-faint/80"></p>
+            <!-- W94 — fourchette d'honnêteté Année 1 ↔ Année 25 (dégradation linéaire des
+                 panneaux ; économies plafonnées à la facture à chaque horizon). Hauteur
+                 réservée (min-h) pour zéro CLS ; aria-live polite pour l'annoncer. -->
+            <p id="rp9-reco-band" class="mt-2 min-h-[2.5rem] text-xs leading-relaxed text-lune-faint/80" aria-live="polite"></p>
             <p id="rp9-maxline" class="mt-3 text-xs leading-relaxed text-lune-faint"></p>
 
+            <!-- W86 — libellé HONNÊTE : ce bouton ne fait AUCUNE action WhatsApp ;
+                 il ne fait que pré-remplir le diagnostic puis y défiler (l'étape
+                 WhatsApp réelle est la soumission du formulaire de diagnostic). -->
             <button type="button" id="rp9-cta" hidden
               class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-              Recevoir mon étude sur WhatsApp
+              Continuer vers le diagnostic →
             </button>
           </div>
         </div>
@@ -537,7 +586,7 @@ const chipClass =
             <p class="tech-label rule-brass text-brass-300">Total — toutes les zones</p>
             <p class="text-xs text-lune-faint">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
           </div>
-          <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4" aria-live="polite">
             <div>
               <dd id="rp9-areas-total-panels" class="fig text-lg text-white sm:text-xl">—</dd>
               <dt class="tech-label mt-0.5 text-lune-faint">Panneaux</dt>
@@ -632,9 +681,9 @@ const chipClass =
             </button>
           </div>
 
-          <!-- Chiffre de tête -->
-          <p id="rp9-prod-headline" class="fig mt-4 text-2xl text-white sm:text-3xl">—</p>
-          <p id="rp9-prod-sub" class="mt-1 text-sm text-lune-soft">—</p>
+          <!-- Chiffre de tête — W86 : annoncé aux lecteurs d'écran quand il change. -->
+          <p id="rp9-prod-headline" class="fig mt-4 text-2xl text-white sm:text-3xl" aria-live="polite">—</p>
+          <p id="rp9-prod-sub" class="mt-1 text-sm text-lune-soft" aria-live="polite">—</p>
 
           <!-- Graphe inline SVG — hauteur RÉSERVÉE (zéro CLS). viewBox 320×140, étiré en largeur. -->
           <div class="rp9-prod-graph-wrap mt-4">
@@ -696,14 +745,28 @@ const chipClass =
               </div>
             </dl>
 
+            <!-- W96 — retour sur investissement INDICATIF de la batterie. Hauteur réservée
+                 (min-height) → zéro CLS ; masqué quand aucune batterie/économie honnête.
+                 aria-live pour annoncer le retour quand il apparaît. -->
+            <p id="rp9-cons-payback" hidden aria-live="polite"
+              class="min-h-[1rem] text-xs leading-relaxed text-lune-faint"></p>
+
             <!-- (A) Édition à la main : barres glissables + saisie numérique -->
             <div>
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="tech-label text-lune-faint">Courbe horaire (kWh) — glissez les barres ou tapez les valeurs</p>
-                <button type="button" id="rp9-cons-recal"
-                  class="border border-white/25 px-3 py-2 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
-                  Recaler sur ma facture
-                </button>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" id="rp9-cons-recal"
+                    class="border border-white/25 px-3 py-2 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                    Recaler sur ma facture
+                  </button>
+                  <!-- W83 — restaure la forme CALCULÉE (socle facture + appareils) après une
+                       édition à la main. -->
+                  <button type="button" id="rp9-cons-reset"
+                    class="border border-white/25 px-3 py-2 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                    Réinitialiser la courbe
+                  </button>
+                </div>
               </div>
               <!-- Graphe SVG de conso (barres glissables) — superpose la production (or pâle).
                    Hauteur RÉSERVÉE → zéro CLS. -->
@@ -716,6 +779,40 @@ const chipClass =
                 <summary class="cursor-pointer text-xs font-semibold text-brass-300">Saisie numérique des 24 heures</summary>
                 <div id="rp9-cons-inputs" class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6"></div>
               </details>
+            </div>
+
+            <!-- W95 — PROFIL SAISONNIER (été ≠ hiver) + mini-graphe d'autoconsommation
+                 MENSUELLE. La production est fortement saisonnière ; un split de conso
+                 (clim l'été) change HONNÊTEMENT l'autoconsommation annuelle. Hauteurs
+                 réservées (graphe) → zéro CLS ; mouvement réduit (CSS). -->
+            <div class="border-t border-white/10 pt-5">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="tech-label text-lune-faint">Profil saisonnier (été ≠ hiver) + autoconsommation mensuelle</p>
+                <button type="button" id="rp9-cons-seasonal-toggle" aria-pressed="false"
+                  class="border border-white/25 px-3 py-2 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                  Profil saisonnier : désactivé
+                </button>
+              </div>
+              <!-- Facteurs été/hiver — multiplient le total journalier (la forme est conservée).
+                   Tout nombre est accepté (step="any", jamais rejeté). -->
+              <div id="rp9-cons-seasonal-controls" hidden class="mt-3 grid grid-cols-2 gap-3 border border-white/10 bg-nuit-900/40 p-3 sm:max-w-md">
+                <label class="block text-xs text-lune-soft">
+                  Facteur été (juin–sept.)
+                  <input id="rp9-cons-summer" type="text" inputmode="decimal" step="any" value="1.3"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400" />
+                </label>
+                <label class="block text-xs text-lune-soft">
+                  Facteur hiver
+                  <input id="rp9-cons-winter" type="text" inputmode="decimal" step="any" value="0.9"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400" />
+                </label>
+              </div>
+              <!-- Mini-graphe SVG de l'autoconsommation mensuelle (12 barres) — hauteur RÉSERVÉE. -->
+              <div class="rp9-cons-month-wrap mt-3">
+                <svg id="rp9-cons-month-chart" viewBox="0 0 360 120" preserveAspectRatio="none"
+                  class="rp9-cons-month-chart" role="img"
+                  aria-label="Autoconsommation mensuelle estimée (12 mois)"></svg>
+              </div>
             </div>
 
             <!-- (B) Calculateur d'appareils -->
@@ -962,6 +1059,12 @@ const chipClass =
   .rp9-cons-bar:hover, .rp9-cons-bar:focus { fill: var(--color-brass-300, #f3cc66); }
   @media (prefers-reduced-motion: reduce) {
     .rp9-cons-graph * { transition: none !important; animation: none !important; }
+  }
+  /* W95 — mini-graphe d'autoconsommation mensuelle. Hauteur RÉSERVÉE (zéro CLS). */
+  .rp9-cons-month-wrap { width: 100%; height: 130px; }
+  .rp9-cons-month-chart { width: 100%; height: 100%; display: block; }
+  @media (prefers-reduced-motion: reduce) {
+    .rp9-cons-month-chart * { transition: none !important; animation: none !important; }
   }
   /* W69 — plan des emplacements (cellules de la lattice valide). Grille auto-fit, zéro CLS. */
   .rp9-layout-grid {

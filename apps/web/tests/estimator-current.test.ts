@@ -21,6 +21,7 @@ import {
   recommend, packConfig, neededPanelsForTarget, optimalSouthTiltDeg, tiltSweepSouth,
   specificYield, productionKwh, aspectForAzimuth, billMAD, billToAnnualKwh, annualSavingsMad,
   tariffForCity, REGIE_TARIFF, PANEL2_WATT, TILT_SWEEP_MIN, TILT_SWEEP_STEP,
+  clipDcAcKwh, effectiveDcAcRatio,
 } from '../src/lib/estimatorBrainV2';
 import { PANEL2_LONG_M, PANEL2_SHORT_M } from '../src/lib/roofPro2';
 import { recommendPitched, packFlushPlane, FLUSH_MAINTENANCE_GAP_M, PITCH_PRESETS_DEG, type RoofPlane } from '../src/lib/estimatorBrainV3';
@@ -218,11 +219,17 @@ describe('cerveau — signe d’azimut PVGIS & formule de génération', () => {
     expect(aspectForAzimuth('eastwest', 90)).toBe(0);
   });
 
-  it('génération = kWc × rendement spécifique (Sud) ; E-O = moitié Est + moitié Ouest', () => {
+  it('génération = kWc × rendement spécifique (Sud, non écrêté) ; E-O = (moitié Est + moitié Ouest) ÉCRÊTÉ DC:AC', () => {
     const kwc = 5;
+    // Sud = mono-orientation : ratio DC:AC = design → AUCUN écrêtage (inchangé W94).
     expect(productionKwh(LAT, 'south', 20, kwc, 0)).toBeCloseTo(kwc * specificYield(LAT, 20, 0), 6);
+    // W94 — E-O dos à dos partage un onduleur : son kWh DC brut est écrêté au plafond
+    // AC (clipDcAcKwh au ratio effectif E-O). Valeur attendue = somme face avant ×
+    // (1 − perte d'écrêtage) → STRICTEMENT sous la somme non écrêtée.
+    const ewRaw = 2 * specificYield(LAT, 10, -90) + 2 * specificYield(LAT, 10, 90);
     const ew = productionKwh(LAT, 'eastwest', 10, 4, 0);
-    expect(ew).toBeCloseTo(2 * specificYield(LAT, 10, -90) + 2 * specificYield(LAT, 10, 90), 6);
+    expect(ew).toBeCloseTo(clipDcAcKwh(ewRaw, effectiveDcAcRatio('eastwest')), 6);
+    expect(ew).toBeLessThan(ewRaw); // l'écrêtage onduleur abaisse honnêtement l'E-O
   });
 
   it('le rendement baisse honnêtement hors plein sud', () => {

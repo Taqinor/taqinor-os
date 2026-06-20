@@ -267,3 +267,48 @@ describe('V7 — repli gracieux PVGIS', () => {
     expect(res.winner.yieldSource).toBe('estimate');
   });
 });
+
+// W72 — UNE seule source de rendement pour le cap besoin ET la production : le PVGIS du
+// gagnant pilote neededPanels, donc la couverture affichée ~110 % se calcule au MÊME
+// rendement que la production (plus de dérive table↔PVGIS).
+describe('W72 — le PVGIS du gagnant pilote le cap « besoin »', () => {
+  const ring = squareRing(40); // grand toit : non limité, le cap besoin domine
+
+  it('un PVGIS plus BAS que la table augmente neededPanels (cap recalé)', () => {
+    const tableOnly = solveLive(ring, LAT, BILL, [], {});
+    const lowYield = solveLive(ring, LAT, BILL, [], {}, { yieldFn: () => 900 });
+    // rendement < table (~1700) → il faut plus de panneaux pour la même cible.
+    expect(lowYield.winner.yieldSource).toBe('pvgis');
+    expect(lowYield.neededPanels).toBeGreaterThan(tableOnly.neededPanels);
+  });
+
+  it('la couverture du gagnant est ~110 % au MÊME rendement PVGIS que la production', () => {
+    const res = solveLive(ring, LAT, BILL, [], {}, { yieldFn: () => 1300 });
+    // toit spacieux → posé = besoin (cap atteint), pctOfTarget ≈ marge de couverture 110 %.
+    expect(res.roofLimited).toBe(false);
+    expect(res.winner.placedCount).toBe(res.neededPanels);
+    expect(res.winner.pctOfTarget).toBeGreaterThan(100);
+    expect(res.winner.pctOfTarget).toBeLessThan(125);
+  });
+});
+
+// W74 — état honnête « aucune config viable » : un toit trop petit pour loger un seul
+// panneau pose 0/0 ; le « gagnant » n'est qu'un repli de départage, pas un vrai choix.
+// On le signale via `noViableConfig` (et `roofLimited` n'est PLUS vrai dans ce cas).
+describe('W74 — « configuration non viable » sur un toit minuscule', () => {
+  it('toit minuscule (0/0) → noViableConfig=true, roofLimited=false', () => {
+    const res = solveLive(squareRing(1), LAT, BILL, [], {});
+    expect(res.winner.fitCount).toBe(0);
+    expect(res.winner.placedCount).toBe(0);
+    expect(res.winner.annualKwh).toBe(0);
+    expect(res.noViableConfig).toBe(true);
+    // contradiction levée : un toit non viable n'est pas « limité » (faux 0-panneau gagnant).
+    expect(res.roofLimited).toBe(false);
+  });
+
+  it('toit spacieux → noViableConfig=false (config réelle)', () => {
+    const res = solveLive(squareRing(40), LAT, BILL, [], {});
+    expect(res.winner.placedCount).toBeGreaterThan(0);
+    expect(res.noViableConfig).toBe(false);
+  });
+});
