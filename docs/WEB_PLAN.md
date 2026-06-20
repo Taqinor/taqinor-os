@@ -369,7 +369,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   Year-1 / Year-25 savings band, apply the AC clip in the kWh eval, and use the bifacial constants in
   `paintCard`. Accept: an honest 25-yr band shows; E-W kWh respects the AC cap; bifacial line uses the
   flat/tilted constants. Files: `estimatorBrainV2.ts`, `roof-tool-pro11.ts` + tests.
-- [ ] **W95 — consumption: seasonal profile + monthly self-consumption breakdown.** `consCurve` is one
+- [x] **W95 — consumption: seasonal profile + monthly self-consumption breakdown.** `consCurve` is one
   flat daily average while production is strongly seasonal. Add a summer/winter split
   (`ete_differente`-style toggle) and a per-month autoconsommation mini-chart driven by
   `typicalDayByMonth`. Accept: a seasonal consumption split feeds the 12-month integral and a monthly
