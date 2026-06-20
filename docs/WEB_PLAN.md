@@ -290,7 +290,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   recalc-ing the scene. Clamp on `change`/`blur` (or skip while focused); keep the commit clamp. Accept:
   typing intermediate values no longer snaps the obstacle or fights the user. Files: `roof-tool-pro11.ts`,
   `obstacles.ts`.
-- [ ] **W82 — consumption: annual 12-month self-consumption integration (THE honesty fix).**
+- [x] **W82 — consumption: annual 12-month self-consumption integration (THE honesty fix).**
   `productionHourly()` returns the typical day of the W50-selected month and `savingsFromHourly` does
   `selfDaily × 365`, so flipping the production month toggle silently changes the headline annual
   savings (Dec understates, Jul overstates). Add `annualSelfConsumptionKwh(scaled, consCurve)` that sums

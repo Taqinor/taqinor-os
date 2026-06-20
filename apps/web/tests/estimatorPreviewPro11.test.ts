@@ -318,13 +318,16 @@ describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma cons
   it('le script branche la logique PURE applianceConsumption (jamais dupliquée)', () => {
     expect(all).toContain("lib/applianceConsumption'");
     expect(all).toContain('composeConsumption(');
-    expect(all).toContain('savingsFromHourly(');
-    expect(all).toContain('batterySizing(');
+    // W82 — la synthèse de TÊTE passe par l'INTÉGRALE ANNUELLE 12 mois (invariante au mois
+    // affiché), pas par l'extrapolation d'un seul jour-type.
+    expect(all).toContain('annualSavingsFromMonthly(');
+    expect(all).toContain('annualSelfConsumptionKwh(');
+    expect(all).toContain('annualBatterySizing(');
     expect(all).toContain('rescaleToDaily(');
   });
 
   it('les deux voies alimentent le MÊME moteur (économies + sizing existants)', () => {
-    // économies via le modèle billMAD existant (annualSavingsMad sous savingsFromHourly),
+    // économies via le modèle billMAD existant (annualSavingsMad sous annualSavingsFromMonthly),
     // sizing via le besoin existant (neededPanelsForTarget → renderActive).
     expect(all).toContain('applyConsumptionToSizing');
     expect(all).toContain('neededPanelsForTarget(');
@@ -339,6 +342,56 @@ describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma cons
 
   it('un fichier de sources d\'appareils existe (typiques éditables, jamais inventés)', () => {
     expect(existsSync(fileURLToPath(new URL('../APPLIANCES_NOTES.md', import.meta.url)))).toBe(true);
+  });
+});
+
+describe('pro-11 — W82/W83/W84/W95/W96 : consommation honnête (intégrale annuelle + ROI)', () => {
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const all = pro11Sources();
+
+  it('W82 — la synthèse de tête passe par l\'intégrale annuelle 12 mois (invariante au mois)', () => {
+    // économies + autoconso + batterie intégrées sur les 12 mois → indépendantes du mois affiché.
+    expect(all).toContain('annualSavingsFromMonthly(');
+    expect(all).toContain('annualSelfConsumptionKwh(');
+    expect(all).toContain('annualBatterySizing(');
+    // les 12 jours-types de production sont la source de l\'intégrale.
+    expect(all).toContain('typicalDayByMonth');
+  });
+
+  it('W83 — Recaler préserve l\'énergie « en plus » + bouton « Réinitialiser la courbe »', () => {
+    // Recaler vise facture + Σ onTop (jamais la seule facture qui effacerait l\'énergie « en plus »).
+    expect(all).toContain('onTopDailyKwh(');
+    expect(all).toContain('billDailyKwh() + onTopDailyKwh()');
+    // contrôle de réinitialisation câblé sur l\'id de page.
+    expect(page).toContain('id="rp9-cons-reset"');
+    expect(all).toContain('consResetEl');
+  });
+
+  it('W84 — les créneaux clim/VE respectent les heures saisies (slotEndHour)', () => {
+    expect(all).toContain('slotEndHour(');
+    // plus de fenêtres codées en dur 13–23 / 11–15 pour la clim/VE.
+    expect(all).not.toContain("endHour: 23, billing: 'onTop'");
+    expect(all).not.toContain("endHour: 15, billing: 'onTop'");
+  });
+
+  it('W95 — profil saisonnier + mini-graphe d\'autoconsommation mensuelle (DOM + wiring)', () => {
+    expect(page).toContain('id="rp9-cons-seasonal-toggle"');
+    expect(page).toContain('id="rp9-cons-summer"');
+    expect(page).toContain('id="rp9-cons-winter"');
+    expect(page).toContain('id="rp9-cons-month-chart"');
+    expect(all).toContain('seasonalConsumptionByMonth(');
+    expect(all).toContain('annualSelfConsumptionSeasonalKwh(');
+    // hauteur réservée (zéro CLS) + mouvement réduit pour le mini-graphe mensuel.
+    expect(page).toContain('.rp9-cons-month-wrap');
+    expect(page).toContain('.rp9-cons-month-chart * { transition: none !important');
+  });
+
+  it('W96 — retour sur investissement batterie INDICATIF, jamais un devis', () => {
+    expect(page).toContain('id="rp9-cons-payback"');
+    expect(all).toContain('batteryPaybackYears(');
+    expect(all).toContain('pas un devis');
+    // aria-live pour annoncer le retour quand il apparaît.
+    expect(page).toMatch(/id="rp9-cons-payback"[^>]*aria-live="polite"/);
   });
 });
 

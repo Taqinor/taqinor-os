@@ -10,18 +10,24 @@
  */
 import {
   HOURS_PER_DAY,
+  MONTHS_PER_YEAR,
+  DAYS_IN_MONTH,
   emptyCurve,
   curveTotal,
   baselineCurve,
   composeConsumption,
   rescaleToDaily,
-  selfConsumptionDailyKwh,
-  savingsFromHourly,
   annualConsumptionFromDaily,
-  batterySizing,
+  annualSelfConsumptionKwh,
+  annualSavingsFromMonthly,
+  annualBatterySizing,
+  seasonalConsumptionByMonth,
+  annualSelfConsumptionSeasonalKwh,
+  batteryPaybackYears,
   acWattsFromBtu,
   kwhFromWattsHours,
   evKwhFromDistance,
+  slotEndHour,
   applianceFromTypical,
   APPLIANCE_TYPICALS,
   AC_BTU_PRESETS,
@@ -31,7 +37,7 @@ import {
   type Appliance,
   type HourlyCurve,
 } from '../../lib/applianceConsumption';
-import { billToAnnualKwh, neededPanelsForTarget, tariffForCity } from '../../lib/estimatorBrainV2';
+import { annualSavingsMad, billToAnnualKwh, neededPanelsForTarget, tariffForCity } from '../../lib/estimatorBrainV2';
 import { fmtSavings } from '../../lib/productionWindow';
 import { fmt as fmtInt, esc } from './dom';
 import { type Ctx } from './context';
@@ -48,6 +54,20 @@ export interface ConsumptionDom {
   consGraphEl: HTMLElement | null;
   consInputsEl: HTMLElement | null;
   consRecalEl: HTMLButtonElement | null;
+  /** W83 — « Réinitialiser la courbe » (efface l'override, rebâtit socle + appareils). */
+  consResetEl: HTMLButtonElement | null;
+  /** W96 — fourchette de retour sur investissement batterie (rendu conditionnel). */
+  consPaybackEl: HTMLElement | null;
+  /** W95 — bascule du profil saisonnier (été ≠ hiver). */
+  consSeasonalToggleEl: HTMLButtonElement | null;
+  /** W95 — bloc des facteurs été/hiver (visible quand le profil saisonnier est actif). */
+  consSeasonalControlsEl: HTMLElement | null;
+  /** W95 — saisie du facteur d'été. */
+  consSummerFactorEl: HTMLInputElement | null;
+  /** W95 — saisie du facteur d'hiver. */
+  consWinterFactorEl: HTMLInputElement | null;
+  /** W95 — mini-graphe SVG de l'autoconsommation mensuelle (12 barres). */
+  consMonthlyChartEl: HTMLElement | null;
   applKindEl: HTMLSelectElement | null;
   applAddEl: HTMLButtonElement | null;
   applAcEl: HTMLElement | null;
@@ -113,6 +133,91 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     return emptyCurve();
   }
 
+  /** Les 12 jours-types de PRODUCTION (kW = kWh au pas 1 h), alignés sur 24 h chacun —
+   *  source de l'INTÉGRALE ANNUELLE (W82) : économies/autoconso/batterie qui ne dépendent
+   *  PAS du mois affiché. Vide (12 × 0) tant qu'aucun plan de production n'existe. */
+  function typicalDayByMonth(): HourlyCurve[] {
+    const prodScaled = ctx.prodScaled;
+    if (!prodScaled || !Array.isArray(prodScaled.typicalDayByMonth)) {
+      return Array.from({ length: MONTHS_PER_YEAR }, () => emptyCurve());
+    }
+    return Array.from({ length: MONTHS_PER_YEAR }, (_, m) => {
+      const prof = prodScaled.typicalDayByMonth[m];
+      return Array.isArray(prof) && prof.length === HOURS_PER_DAY
+        ? prof.map((v) => (Number.isFinite(v) && v > 0 ? v : 0))
+        : emptyCurve();
+    });
+  }
+
+  /** Σ de l'énergie journalière des appareils « en plus » (onTop) — l'énergie qui s'AJOUTE
+   *  au-dessus du socle facture (W83). Sert à recaler la courbe en PRÉSERVANT cette énergie. */
+  function onTopDailyKwh(): number {
+    let sum = 0;
+    for (const a of ctx.consAppliances) {
+      if (a.billing === 'onTop' && Number.isFinite(a.dailyKwh) && a.dailyKwh > 0) sum += a.dailyKwh;
+    }
+    return sum;
+  }
+
+  /** Construit les 12 courbes de conso MENSUELLES (W95). En mode saisonnier (toggle
+   *  `consSeasonal`) on applique le facteur été/hiver à la courbe de référence ; sinon les
+   *  12 mois partagent la même courbe (intégrale 12 mois « à plat »). */
+  function consumptionByMonth(): HourlyCurve[] {
+    if (ctx.consSeasonal) {
+      return seasonalConsumptionByMonth(ctx.consCurve, ctx.consSummerFactor, ctx.consWinterFactor);
+    }
+    return Array.from({ length: MONTHS_PER_YEAR }, () => ctx.consCurve.slice());
+  }
+
+  /** Synthèse ANNUELLE honnête (W82/W84/W95) : autoconsommation + économies + batterie
+   *  intégrées sur les 12 mois réels, donc INVARIANTES au mois affiché. En mode saisonnier
+   *  la conso varie par mois (W95). Renvoie le détail mensuel d'autoconso pour le mini-graphe. */
+  function annualSummary(): {
+    selfAnnualKwh: number;
+    selfDailyAvgKwh: number;
+    annualConsKwh: number;
+    savings: { low: number; high: number };
+    batteries: number;
+    perMonthSelfKwh: number[];
+  } {
+    const months = typicalDayByMonth();
+    const dailyTotal = curveTotal(ctx.consCurve);
+    if (ctx.consSeasonal) {
+      const byMonth = consumptionByMonth();
+      // Conso annuelle réelle = Σ (total journalier du mois × jours du mois).
+      let annualCons = 0;
+      for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+        annualCons += curveTotal(byMonth[m]) * (DAYS_IN_MONTH[m] ?? 0);
+      }
+      const self = annualSelfConsumptionSeasonalKwh(byMonth, months);
+      // Économies : autoconso 12 mois saisonnière plafonnée par le modèle billMAD existant
+      // (JAMAIS production × tarif). Batterie : intégrée 12 mois sur la courbe d'ÉTÉ (la plus
+      // consommatrice) → stable au mois affiché.
+      const savings = annualSavingsMad(self.annualKwh, Math.max(0, annualCons), tariffForCity(undefined));
+      const batt = annualBatterySizing(byMonth[6] ?? ctx.consCurve, months);
+      return {
+        selfAnnualKwh: self.annualKwh,
+        selfDailyAvgKwh: self.annualKwh / 365,
+        annualConsKwh: annualCons,
+        savings: { low: savings.low, high: savings.high },
+        batteries: batt.batteries,
+        perMonthSelfKwh: self.perMonthKwh,
+      };
+    }
+    const annualCons = annualConsumptionFromDaily(dailyTotal);
+    const self = annualSelfConsumptionKwh(ctx.consCurve, months);
+    const savings = annualSavingsFromMonthly(ctx.consCurve, months, annualCons, tariffForCity(undefined));
+    const batt = annualBatterySizing(ctx.consCurve, months);
+    return {
+      selfAnnualKwh: self.annualKwh,
+      selfDailyAvgKwh: self.annualKwh / 365,
+      annualConsKwh: annualCons,
+      savings: { low: savings.low, high: savings.high },
+      batteries: batt.batteries,
+      perMonthSelfKwh: self.perMonthKwh,
+    };
+  }
+
   /** Recompose la courbe de conso depuis le socle (facture) + appareils, SAUF si
    *  l'utilisateur l'a éditée à la main (auquel cas on garde son override). */
   function rebuildConsCurve() {
@@ -134,18 +239,31 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
    *  ré-entrance ET on FIGE le besoin issu de la conso (`neededAuto = false`) pour que
    *  liveResolveFlat ne le rebascule pas — la boucle se termine en un seul cycle. */
   let inConsSizing = false;
-  function applyConsumptionToSizing() {
-    if (!ctx.neededAuto || inConsSizing) return;
-    const dailyTotal = curveTotal(ctx.consCurve);
-    const annualCons = annualConsumptionFromDaily(dailyTotal);
-    if (annualCons <= 0) return;
-    const n = neededPanelsForTarget(annualCons, ctx.centroidLat);
-    if (n <= 0) return;
-    const clamped = clampNeeded(n);
-    if (clamped === ctx.neededPanels) return;
+  function applyConsumptionToSizing(annualConsKwh?: number) {
+    // W83 — RÉVERSIBLE (correctif du cliquet à sens unique). L'ancienne garde
+    // `if (!ctx.neededAuto) return` rendait le besoin IRRÉVERSIBLE : le premier appareil
+    // « en plus » latchait `neededAuto = false`, et le besoin n'était plus jamais RECALCULÉ —
+    // supprimer l'appareil ne rétrécissait donc jamais les panneaux/la batterie. On REDÉRIVE
+    // maintenant le besoin à CHAQUE rendu = max(besoin facture, besoin dicté par la conso).
+    // Retirer un appareil « en plus » fait baisser le besoin conso → le système RÉTRÉCIT ;
+    // sans appareil en plus le besoin conso ≈ le besoin facture → rien ne change.
+    //
+    // On garde le LATCH `neededAuto = false` (sinon `liveResolveFlat`, en mode auto, réécrit
+    // `neededPanels` depuis la facture et écrase notre max), mais on n'en fait PLUS une
+    // condition de sortie : la réversibilité vient du recalcul, pas du flag.
+    if (inConsSizing) return;
+    const annualCons = annualConsKwh ?? annualSummary().annualConsKwh;
+    // Besoin DICTÉ PAR LA FACTURE seule (le socle, sans les « en plus »).
+    const annualBill = annualConsumptionFromDaily(billDailyKwh());
+    const billNeeded = annualBill > 0 ? clampNeeded(neededPanelsForTarget(annualBill, ctx.centroidLat)) : 0;
+    // Besoin DICTÉ PAR LA CONSO (socle facture + Σ « en plus » composés dans consCurve).
+    const consNeeded = annualCons > 0 ? clampNeeded(neededPanelsForTarget(annualCons, ctx.centroidLat)) : 0;
+    const target = Math.max(billNeeded, consNeeded);
+    if (target <= 0 || target === ctx.neededPanels) return;
     inConsSizing = true;
-    ctx.neededPanels = clamped;
-    ctx.neededAuto = false; // besoin issu de la conso → figé (liveResolveFlat ne le réécrit plus)
+    ctx.neededPanels = target;
+    ctx.neededAuto = false; // figé pour que liveResolveFlat ne réécrive pas notre max ;
+    //                         la réversibilité vient du recalcul ci-dessus à chaque rendu.
     renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
     inConsSizing = false;
   }
@@ -204,6 +322,92 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       .join('');
   }
 
+  /** Initiales des mois (mini-graphe W95) — jan→déc. */
+  const MONTH_INITIALS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+  const MONTH_NAMES = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+  ];
+
+  /** W96 — RETOUR SUR INVESTISSEMENT INDICATIF de la batterie. Affiche une fourchette
+   *  d'années à côté du nombre de batteries recommandé, plafonnée à l'économie SUPPLÉMENTAIRE
+   *  honnête (la part de l'économie annuelle qu'un report soir/nuit fait gagner). Quand il n'y
+   *  a ni batterie ni économie honnête, `batteryPaybackYears` renvoie `years: null` → on
+   *  N'AFFICHE RIEN (on n'invente jamais un retour). Toujours étiqueté « pas un devis ». */
+  function renderBatteryPayback(batteries: number, savings: { low: number; high: number }) {
+    const { consPaybackEl } = dom;
+    if (!consPaybackEl) return;
+    if (batteries <= 0) {
+      consPaybackEl.hidden = true;
+      consPaybackEl.textContent = '';
+      return;
+    }
+    // L'économie ATTRIBUABLE à la batterie est, prudemment, l'économie annuelle d'autoconso :
+    // sans report soir/nuit cette part serait perdue (surplus à zéro). On prend la borne BASSE
+    // de la fourchette d'économies comme gain annuel additionnel honnête (jamais surévalué).
+    const annualBattSaving = Math.max(0, savings.low);
+    const payback = batteryPaybackYears(batteries, annualBattSaving);
+    if (!payback.years) {
+      consPaybackEl.hidden = true; // pas d'économie honnête → on n'invente pas de retour
+      consPaybackEl.textContent = '';
+      return;
+    }
+    const lo = Math.max(0, Math.round(payback.years.low));
+    const hi = Math.max(lo, Math.round(payback.years.high));
+    const range = lo === hi ? `≈ ${lo} ans` : `≈ ${lo} – ${hi} ans`;
+    consPaybackEl.hidden = false;
+    consPaybackEl.textContent = `Retour batterie ${range} · estimation indicative, pas un devis`;
+  }
+
+  /** W95 — MINI-GRAPHE SVG de l'autoconsommation MENSUELLE (12 barres). Hauteur RÉSERVÉE
+   *  côté page (zéro CLS), sans transition (mouvement réduit). Une barre par mois, étiquetée
+   *  par initiale, avec `<title>` détaillé pour le survol/lecteur d'écran. */
+  function renderMonthlyChart(perMonthSelfKwh: number[]) {
+    const { consMonthlyChartEl } = dom;
+    if (!consMonthlyChartEl) return;
+    const months = Array.isArray(perMonthSelfKwh) && perMonthSelfKwh.length === 12
+      ? perMonthSelfKwh.map((v) => (Number.isFinite(v) && v > 0 ? v : 0))
+      : new Array<number>(12).fill(0);
+    const W = 360;
+    const H = 120;
+    const padBottom = 14;
+    const padTop = 6;
+    const plotH = H - padTop - padBottom;
+    const max = months.reduce((m, v) => Math.max(m, v), 1e-6);
+    const slot = W / 12;
+    const barW = slot * 0.62;
+    const baseY = (H - padBottom).toFixed(1);
+    const bars = months
+      .map((v, m) => {
+        const x = m * slot + (slot - barW) / 2;
+        const h = (v / max) * plotH;
+        const y = H - padBottom - h;
+        return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}" rx="1" fill="var(--color-brass-400,#e8b54a)" fill-opacity="0.7"><title>${MONTH_NAMES[m]} : ${fmt1(v)} kWh autoconsommés</title></rect>`;
+      })
+      .join('');
+    const labels = MONTH_INITIALS
+      .map((l, m) => `<text x="${(m * slot + slot / 2).toFixed(1)}" y="${(H - 3).toFixed(1)}" text-anchor="middle" font-size="7" fill="var(--color-lune-faint,#6f7791)">${l}</text>`)
+      .join('');
+    consMonthlyChartEl.innerHTML = `<line x1="0" y1="${baseY}" x2="${W}" y2="${baseY}" stroke="var(--color-white,#fff)" stroke-opacity="0.12" stroke-width="1"/>${bars}${labels}`;
+  }
+
+  /** W95 — état visuel des contrôles saisonniers (bascule + bloc des facteurs). */
+  function renderSeasonalControls() {
+    const { consSeasonalToggleEl, consSeasonalControlsEl, consSummerFactorEl, consWinterFactorEl } = dom;
+    if (consSeasonalToggleEl) {
+      consSeasonalToggleEl.setAttribute('aria-pressed', String(ctx.consSeasonal));
+      consSeasonalToggleEl.textContent = ctx.consSeasonal ? 'Profil saisonnier : activé' : 'Profil saisonnier : désactivé';
+    }
+    if (consSeasonalControlsEl) consSeasonalControlsEl.hidden = !ctx.consSeasonal;
+    // On NE réécrit la valeur des champs que s'ils ne sont pas en cours de saisie (focus).
+    if (consSummerFactorEl && document.activeElement !== consSummerFactorEl) {
+      consSummerFactorEl.value = String(ctx.consSummerFactor);
+    }
+    if (consWinterFactorEl && document.activeElement !== consWinterFactorEl) {
+      consWinterFactorEl.value = String(ctx.consWinterFactor);
+    }
+  }
+
   /** Recompute complet de la conso (synthèse + graphe + saisie) + impact sizing/batterie. */
   function renderConsumption() {
     const { consWindowEl, consTotalEl, consSelfEl, consSavingsEl, consBattEl } = dom;
@@ -215,23 +419,23 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     rebuildConsCurve();
     if (!ctx.consMode) return; // panneau replié : rien à dessiner
 
-    const consCurve = ctx.consCurve;
-    const prod = productionHourly();
-    const dailyTotal = curveTotal(consCurve);
-    const annualCons = annualConsumptionFromDaily(dailyTotal);
-    const selfDaily = selfConsumptionDailyKwh(consCurve, prod);
-    const savings = savingsFromHourly(consCurve, prod, annualCons, tariffForCity(undefined));
-    const batt = batterySizing(consCurve, prod);
+    const dailyTotal = curveTotal(ctx.consCurve);
+    // W82 — la synthèse de TÊTE (autoconso/économies/batterie) est l'INTÉGRALE ANNUELLE
+    // 12 mois, donc INVARIANTE au mois de production affiché (le graphe reste mois-aware).
+    const summary = annualSummary();
 
     if (consTotalEl) consTotalEl.textContent = `${fmt1(dailyTotal)} kWh`;
-    if (consSelfEl) consSelfEl.textContent = `${fmt1(selfDaily)} kWh/j`;
-    if (consSavingsEl) consSavingsEl.textContent = annualCons > 0 ? fmtSavings(savings.low, savings.high) + ' MAD' : '—';
-    if (consBattEl) consBattEl.textContent = batt.batteries > 0 ? `${batt.batteries} × 6 kWh` : 'aucune';
+    if (consSelfEl) consSelfEl.textContent = `${fmt1(summary.selfDailyAvgKwh)} kWh/j`;
+    if (consSavingsEl) consSavingsEl.textContent = summary.annualConsKwh > 0 ? fmtSavings(summary.savings.low, summary.savings.high) + ' MAD' : '—';
+    if (consBattEl) consBattEl.textContent = summary.batteries > 0 ? `${summary.batteries} × 6 kWh` : 'aucune';
 
+    renderBatteryPayback(summary.batteries, summary.savings);
+    renderMonthlyChart(summary.perMonthSelfKwh);
+    renderSeasonalControls();
     renderConsGraph();
     renderConsInputs();
     renderApplianceList();
-    applyConsumptionToSizing();
+    applyConsumptionToSizing(summary.annualConsKwh);
   }
 
   /** Liste des appareils ajoutés : créneau + bascule « en plus » / « déjà compris » + suppr. */
@@ -261,17 +465,14 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
   function renderConsumptionSummaryOnly() {
     const { consTotalEl, consSelfEl, consSavingsEl, consBattEl } = dom;
     if (!ctx.prodScaled || !ctx.consMode) return;
-    const consCurve = ctx.consCurve;
-    const prod = productionHourly();
-    const dailyTotal = curveTotal(consCurve);
-    const annualCons = annualConsumptionFromDaily(dailyTotal);
-    const selfDaily = selfConsumptionDailyKwh(consCurve, prod);
-    const savings = savingsFromHourly(consCurve, prod, annualCons, tariffForCity(undefined));
-    const batt = batterySizing(consCurve, prod);
+    const dailyTotal = curveTotal(ctx.consCurve);
+    const summary = annualSummary(); // W82 — intégrale annuelle, invariante au mois affiché
     if (consTotalEl) consTotalEl.textContent = `${fmt1(dailyTotal)} kWh`;
-    if (consSelfEl) consSelfEl.textContent = `${fmt1(selfDaily)} kWh/j`;
-    if (consSavingsEl) consSavingsEl.textContent = annualCons > 0 ? fmtSavings(savings.low, savings.high) + ' MAD' : '—';
-    if (consBattEl) consBattEl.textContent = batt.batteries > 0 ? `${batt.batteries} × 6 kWh` : 'aucune';
+    if (consSelfEl) consSelfEl.textContent = `${fmt1(summary.selfDailyAvgKwh)} kWh/j`;
+    if (consSavingsEl) consSavingsEl.textContent = summary.annualConsKwh > 0 ? fmtSavings(summary.savings.low, summary.savings.high) + ' MAD' : '—';
+    if (consBattEl) consBattEl.textContent = summary.batteries > 0 ? `${summary.batteries} × 6 kWh` : 'aucune';
+    renderBatteryPayback(summary.batteries, summary.savings);
+    renderMonthlyChart(summary.perMonthSelfKwh);
   }
 
   function populateConsSelects() {
@@ -311,7 +512,8 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     const {
       consToggleEl, consPanelEl, applKindEl, applAcEl, applEvEl, acBtuEl, acEerEl, acHoursEl,
       acWattsEl, applAddEl, evKmEl, evKwEl, evHoursEl, applNoteEl, applListEl, consRecalEl,
-      consInputsEl, consGraphEl,
+      consResetEl, consInputsEl, consGraphEl, consSeasonalToggleEl, consSummerFactorEl,
+      consWinterFactorEl,
     } = dom;
 
     populateConsSelects();
@@ -360,18 +562,23 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
         const eer = readNum(acEerEl, AC_EER_DEFAULT_NON_INVERTER);
         const hours = readNum(acHoursEl, 6);
         const watts = acWattsFromBtu(btu, eer);
-        appliance = { kind: 'clim', label: `Climatisation ${fmtInt(btu)} BTU`, dailyKwh: kwhFromWattsHours(watts, hours), startHour: 13, endHour: 23, billing: 'onTop' };
+        // W84 — le créneau respecte les HEURES SAISIES (slotEndHour) au lieu d'un 13–23 codé
+        // en dur qui étalait une clim « 3 h » sur 10 h (forme d'autoconso faussée).
+        const startHour = 13;
+        appliance = { kind: 'clim', label: `Climatisation ${fmtInt(btu)} BTU`, dailyKwh: kwhFromWattsHours(watts, hours), startHour, endHour: slotEndHour(startHour, hours), billing: 'onTop' };
       } else if (kind === 'ev') {
         const km = parseFloat((evKmEl?.value ?? '').replace(',', '.'));
+        const hours = readNum(evHoursEl, 3);
         let kwh: number;
         if (Number.isFinite(km) && km > 0) {
           kwh = evKwhFromDistance(km, EV_KWH_PER_100KM_DEFAULT);
         } else {
           const kw = readNum(evKwEl as unknown as HTMLInputElement, 7.4);
-          const hours = readNum(evHoursEl, 3);
           kwh = kwhFromWattsHours(kw * 1000, hours);
         }
-        appliance = { kind: 'ev', label: 'Recharge voiture électrique', dailyKwh: kwh, startHour: 11, endHour: 15, billing: 'onTop' };
+        // W84 — créneau VE depuis les heures saisies (slotEndHour), pas le 11–15 codé en dur.
+        const startHour = 11;
+        appliance = { kind: 'ev', label: 'Recharge voiture électrique', dailyKwh: kwh, startHour, endHour: slotEndHour(startHour, hours), billing: 'onTop' };
       } else if (kind === 'autre') {
         appliance = { kind: 'autre', label: `Autre appareil ${++ctx.consApplCounter}`, dailyKwh: 1, startHour: 18, endHour: 22, billing: 'onTop' };
       } else {
@@ -408,11 +615,44 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       }
     });
 
-    // « Recaler sur ma facture » : remet le total de la courbe ÉDITÉE à la valeur facture.
+    // « Recaler sur ma facture » (W83) : remet le total de la courbe ÉDITÉE à la cible
+    // facture + Σ « en plus ». L'ancienne version recalait sur la SEULE facture, EFFAÇANT
+    // l'énergie des appareils « en plus » (clim/VE neufs pas encore dans la facture) — le
+    // recalage ne doit que reproportionner la FORME, jamais supprimer cette énergie légitime.
     consRecalEl?.addEventListener('click', () => {
-      ctx.consCurve = rescaleToDaily(ctx.consCurve, billDailyKwh());
+      ctx.consCurve = rescaleToDaily(ctx.consCurve, billDailyKwh() + onTopDailyKwh());
       ctx.consHandEdited = true; // c'est un override manuel recalé
       renderConsumption();
+    });
+
+    // « Réinitialiser la courbe » (W83) : efface l'override manuel et RECONSTRUIT la courbe
+    // depuis le socle facture + appareils composés — la forme calculée est ainsi RESTAURABLE
+    // après n'importe quelle édition à la main.
+    consResetEl?.addEventListener('click', () => {
+      ctx.consHandEdited = false;
+      rebuildConsCurve();
+      renderConsumption();
+    });
+
+    // W95 — bascule du profil saisonnier (été ≠ hiver). Active/désactive l'intégrale 12 mois
+    // saisonnière qui change HONNÊTEMENT l'autoconsommation annuelle.
+    consSeasonalToggleEl?.addEventListener('click', () => {
+      ctx.consSeasonal = !ctx.consSeasonal;
+      renderConsumption();
+    });
+
+    // W95 — facteurs été/hiver (jamais rejetés ; tout nombre fini > 0 accepté, sinon neutre 1).
+    function readFactor(el: HTMLInputElement | null): number {
+      const v = parseFloat((el?.value ?? '').replace(',', '.'));
+      return Number.isFinite(v) && v > 0 ? v : 1;
+    }
+    consSummerFactorEl?.addEventListener('input', () => {
+      ctx.consSummerFactor = readFactor(consSummerFactorEl);
+      renderConsumptionSummaryOnly();
+    });
+    consWinterFactorEl?.addEventListener('input', () => {
+      ctx.consWinterFactor = readFactor(consWinterFactorEl);
+      renderConsumptionSummaryOnly();
     });
 
     // Saisie numérique des heures (délégation sur le conteneur).

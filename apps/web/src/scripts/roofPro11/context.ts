@@ -213,4 +213,10 @@ export interface Ctx {
   consDailyTarget: number;
   /** Compteur d'appareils « autre » ajoutés. */
   consApplCounter: number;
+  /** W95 — le profil saisonnier (été ≠ hiver) est-il activé ? */
+  consSeasonal: boolean;
+  /** W95 — facteur multiplicatif de la conso l'été (mois juin→sept.). */
+  consSummerFactor: number;
+  /** W95 — facteur multiplicatif de la conso l'hiver. */
+  consWinterFactor: number;
 }

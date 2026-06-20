@@ -216,6 +216,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const consGraphEl = $('rp9-cons-graph');
   const consInputsEl = $('rp9-cons-inputs');
   const consRecalEl = $<HTMLButtonElement>('rp9-cons-recal');
+  const consResetEl = $<HTMLButtonElement>('rp9-cons-reset');
+  const consPaybackEl = $('rp9-cons-payback');
+  const consSeasonalToggleEl = $<HTMLButtonElement>('rp9-cons-seasonal-toggle');
+  const consSeasonalControlsEl = $('rp9-cons-seasonal-controls');
+  const consSummerFactorEl = $<HTMLInputElement>('rp9-cons-summer');
+  const consWinterFactorEl = $<HTMLInputElement>('rp9-cons-winter');
+  const consMonthlyChartEl = $('rp9-cons-month-chart');
   const applKindEl = $<HTMLSelectElement>('rp9-appl-kind');
   const applAddEl = $<HTMLButtonElement>('rp9-appl-add');
   const applAcEl = $('rp9-appl-ac');
@@ -368,6 +375,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let consAppliances: Appliance[] = [];
   let consDailyTarget = 0; // socle journalier (kWh) dérivé de la facture
   let consApplCounter = 0;
+  // W95 — profil saisonnier (été ≠ hiver). Désactivé par défaut (12 mois identiques).
+  let consSeasonal = false;
+  let consSummerFactor = 1.3; // conso d'été ≈ +30 % (clim) par défaut, éditable
+  let consWinterFactor = 0.9; // conso d'hiver ≈ −10 % par défaut, éditable
 
   // ═══════════ W69 — VARIABILITÉ de disposition (« Personnaliser la disposition ») ═══════════
   // `layoutMode` : le mode est-il actif ? `layoutState` : la lattice (toutes cellules
@@ -690,6 +701,24 @@ export function initRoofToolPro8(opts: InitOptions): void {
     set consApplCounter(v) {
       consApplCounter = v;
     },
+    get consSeasonal() {
+      return consSeasonal;
+    },
+    set consSeasonal(v) {
+      consSeasonal = v;
+    },
+    get consSummerFactor() {
+      return consSummerFactor;
+    },
+    set consSummerFactor(v) {
+      consSummerFactor = v;
+    },
+    get consWinterFactor() {
+      return consWinterFactor;
+    },
+    set consWinterFactor(v) {
+      consWinterFactor = v;
+    },
     get centroid() {
       return centroid;
     },
@@ -793,6 +822,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
       consGraphEl,
       consInputsEl,
       consRecalEl,
+      consResetEl,
+      consPaybackEl,
+      consSeasonalToggleEl,
+      consSeasonalControlsEl,
+      consSummerFactorEl,
+      consWinterFactorEl,
+      consMonthlyChartEl,
       applKindEl,
       applAddEl,
       applAcEl,
