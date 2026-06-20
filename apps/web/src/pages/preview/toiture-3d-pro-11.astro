@@ -169,8 +169,19 @@ const chipClass =
           <div class="cine-card overflow-hidden">
             <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
               <label for="rp9-address" class="sr-only">Votre adresse</label>
-              <input id="rp9-address" name="address" type="text" autocomplete="street-address"
-                placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+              <!-- W93 — autocomplétion d'adresse : combobox WAI-ARIA. La liste de
+                   suggestions (jusqu'à 5) est positionnée sous le champ ; le survol
+                   clavier (flèches) met à jour aria-activedescendant ; on ne vole
+                   vers une adresse QUE sur sélection. -->
+              <div class="relative flex-1">
+                <input id="rp9-address" name="address" type="text" autocomplete="off"
+                  role="combobox" aria-autocomplete="list" aria-expanded="false"
+                  aria-controls="rp9-suggestions" aria-haspopup="listbox"
+                  placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+                <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
+                  class="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900 shadow-xl">
+                </ul>
+              </div>
               <button type="submit"
                 class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
                 Localiser mon toit

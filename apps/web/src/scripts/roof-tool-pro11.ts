@@ -1107,7 +1107,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
     });
     map.addLayer(customLayer);
     updateCompass();
-    if (opts.initialQuery) void geocode(opts.initialQuery);
+    // W93 — `initialQuery` est programmatique : on auto-sélectionne le 1ᵉʳ résultat (vol
+    // direct), au lieu d'ouvrir la liste de suggestions.
+    if (opts.initialQuery) void geocode(opts.initialQuery, true);
     else setStatus('Cherchez votre adresse, puis cliquez les coins de votre toit.');
   });
 

@@ -358,7 +358,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   machinery to the `rp9-pts` source (drag a corner → update `vertices[i]` → `recalc`) and add an
   "Annuler le dernier point" control during tracing. Accept: a placed corner can be dragged and the last
   point undone. File: `roof-tool-pro11.ts`.
-- [ ] **W93 — map: address autocomplete.** Geocode is fire-on-submit `limit=1` (one guess, no list).
+- [x] **W93 — map: address autocomplete.** Geocode is fire-on-submit `limit=1` (one guess, no list).
   Switch to `limit=5`, render a dropdown bound to the address field, and `flyTo` only on selection
   (reuses the same MapTiler endpoint, no new key). Accept: typing shows up to 5 Morocco suggestions;
   selecting one flies there. File: `roof-tool-pro11.ts`.

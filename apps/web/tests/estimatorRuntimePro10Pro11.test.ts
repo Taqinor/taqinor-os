@@ -165,9 +165,10 @@ function setupDom() {
     root.appendChild(r);
   }
   for (const id of ID_BUTTONS) root.appendChild(el('button', id));
-  // formulaire d'adresse
+  // formulaire d'adresse + liste de suggestions (W93 — combobox autocomplétion)
   const form = el('form', 'rp9-search');
   root.appendChild(form);
+  root.appendChild(el('ul', 'rp9-suggestions'));
   // groupes de puces (avec badge « Recommandé » là où le script l'attend)
   for (const g of CHIP_GROUPS) {
     for (const v of g.values) {
@@ -921,5 +922,100 @@ describe('runtime W77 (map) — parité tactile du tracé', () => {
     // fermé avec EXACTEMENT 3 sommets (le clic du double-clic n'a pas ajouté de 4ᵉ)
     expect((document.getElementById('rp9-config') as HTMLElement).hidden).toBe(false);
     expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W93 — AUTOCOMPLÉTION D'ADRESSE (combobox). On mocke MapTiler pour renvoyer 5 résultats,
+// puis on vérifie : (1) la frappe peuple jusqu'à 5 suggestions (aria-expanded, role=option) ;
+// (2) sélectionner une suggestion VOLE vers son centre (et ferme la liste) ; (3) la
+// navigation clavier (flèches) met à jour aria-activedescendant et Entrée valide. On NE vole
+// JAMAIS avant la sélection (geocode ne flyTo plus de lui-même).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W93 (map) — autocomplétion d\'adresse', () => {
+  // 5 features MapTiler factices (centres distincts au Maroc).
+  function geoResponse() {
+    const features = Array.from({ length: 5 }, (_, i) => ({
+      center: [-7.6 - i * 0.01, 33.5 + i * 0.01],
+      place_name: `Adresse ${i + 1}, Casablanca`,
+      text: `Adresse ${i + 1}`,
+    }));
+    return { ok: true, json: () => Promise.resolve({ features }) };
+  }
+
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(geoResponse() as unknown as Response)));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function type(q: string) {
+    const addr = document.getElementById('rp9-address') as HTMLInputElement;
+    addr.value = q;
+    vi.useFakeTimers();
+    addr.dispatchEvent(new window.Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(310); // laisse le débounce 300 ms s'écouler
+    vi.useRealTimers();
+    await Promise.resolve(); // laisse résoudre la promesse fetch
+    await Promise.resolve();
+  }
+
+  const options = () => Array.from(document.querySelectorAll('#rp9-suggestions [role="option"]'));
+
+  it('taper une adresse peuple jusqu\'à 5 suggestions (combobox ouverte, aria)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    expect(options().length).toBe(5);
+    const list = document.getElementById('rp9-suggestions') as HTMLElement;
+    expect(list.hidden).toBe(false);
+    expect(document.getElementById('rp9-address')!.getAttribute('aria-expanded')).toBe('true');
+    // la requête a demandé 5 résultats (et pas 1)
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(String(calls[calls.length - 1][0])).toContain('limit=5');
+  });
+
+  it('aucun vol AVANT sélection (geocode ne flyTo plus tout seul)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    // suggestions affichées mais aucun flyTo/jumpTo déclenché
+    expect(fakeMaps[0].flyToCalls.length).toBe(0);
+    expect(fakeMaps[0].jumpToCalls.length).toBe(0);
+  });
+
+  it('sélectionner une suggestion vole vers son centre et ferme la liste', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    // clic (mousedown) sur la 2ᵉ suggestion
+    const second = options()[1] as HTMLElement;
+    second.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+    const calls = fakeMaps[0].flyToCalls as Array<{ center: [number, number]; zoom: number }>;
+    expect(calls.length).toBe(1);
+    expect(calls[0].center[0]).toBeCloseTo(-7.61, 5);
+    expect(calls[0].center[1]).toBeCloseTo(33.51, 5);
+    expect(calls[0].zoom).toBe(19);
+    expect((document.getElementById('rp9-suggestions') as HTMLElement).hidden).toBe(true);
+  });
+
+  it('navigation clavier : flèches → aria-activedescendant, Entrée valide', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: false, roofType: createRoofTypeSelect(document) });
+    await type('Casa');
+    const addr = document.getElementById('rp9-address') as HTMLInputElement;
+    addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(addr.getAttribute('aria-activedescendant')).toBe('rp9-suggestion-0');
+    addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(addr.getAttribute('aria-activedescendant')).toBe('rp9-suggestion-1');
+    // Entrée valide la suggestion survolée → vol
+    addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(fakeMaps[0].flyToCalls.length).toBe(1);
+    expect((document.getElementById('rp9-suggestions') as HTMLElement).hidden).toBe(true);
   });
 });

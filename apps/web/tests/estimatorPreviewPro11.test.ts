@@ -213,9 +213,11 @@ describe('pro-11 — W75 : recherche d\'adresse anti-course (jeton + abort + dé
     expect(script).toContain('fetch(url, { signal: ctrl.signal })');
   });
 
-  it('la soumission de recherche est débouncée (~300 ms)', () => {
-    expect(script).toContain('geoSubmitTimer');
-    expect(script).toMatch(/geoSubmitTimer = setTimeout\([\s\S]{0,120}300\)/);
+  it('la recherche est débouncée (~300 ms) — W93 : sur la SAISIE de l\'adresse', () => {
+    // W93 a déplacé le débounce de la soumission vers l'événement `input` (autocomplétion
+    // au fil de la frappe) ; le garde anti-course (jeton + abort) est conservé.
+    expect(script).toContain('geoInputTimer');
+    expect(script).toMatch(/geoInputTimer = setTimeout\([\s\S]{0,120}300\)/);
   });
 });
 
