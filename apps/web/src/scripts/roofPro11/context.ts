@@ -111,6 +111,12 @@ export interface Ctx {
   readonly obstacleMeshes: Map<string, THREE.Mesh>;
   /** Origine ENU de la scène 3D courante (lng/lat du pack actif). */
   sceneOrigin: LngLat;
+  /** W88 — InstancedMesh des panneaux de la zone ACTIVE (rempli par renderScene) pour le
+   *  pick/highlight 3D, ou null. */
+  activePanelMesh: THREE.InstancedMesh | null;
+  /** W88 — mapping instance i → index de cellule de la lattice (ordre des panneaux posés
+   *  rendus), pour relier un panneau 3D survolé/tapé à sa cellule (highlight + suppression). */
+  activePanelCellIndex: number[];
 
   // — Type/pente/face du toit actif (mutable) —
   roofType: RoofType;

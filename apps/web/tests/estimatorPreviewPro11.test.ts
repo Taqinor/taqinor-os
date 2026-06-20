@@ -703,7 +703,83 @@ describe('pro-11 — W80 : glissé-déplacer un panneau au DOIGT (touch) en 3D',
   it('le commit du déplacement (souris ET doigt) atterrit sur une cellule VIDE valide', () => {
     // endLayoutDrag passe par movePanelToPoint → snap sur la cellule vide valide la + proche.
     const end = editor.slice(editor.indexOf('function endLayoutDrag'));
-    expect(end).toContain('movePanelToPoint(ctx.layoutState, layoutDrag.from, enu.x, enu.y)');
+    expect(end).toContain('movePanelToPoint(ctx.layoutState, from, enu.x, enu.y)');
     expect(end).toContain('renderCustomLayout()'); // readouts recompute après le déplacement
+  });
+});
+
+describe('pro-11 — W88 : pick + highlight + suppression d\'un panneau ciblé en 3D', () => {
+  const scene = read('../src/scripts/roofPro11/scene3d.ts');
+  const editor = read('../src/scripts/roofPro11/layoutEditor.ts');
+  const context = read('../src/scripts/roofPro11/context.ts');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('l\'InstancedMesh des panneaux porte un buffer instanceColor (pour le surlignage)', () => {
+    expect(scene).toContain('instanceColor');
+    expect(scene).toContain('THREE.InstancedBufferAttribute');
+    // le mapping instance → cellule de lattice est mémorisé pour relier un panneau à sa cellule.
+    expect(scene).toContain('panelCellIndices');
+    expect(scene).toContain('ctx.activePanelMesh');
+    expect(scene).toContain('ctx.activePanelCellIndex');
+  });
+
+  it('setPanelHighlight tinte (or) l\'instance de la cellule, ou efface tout (null)', () => {
+    expect(scene).toContain('function setPanelHighlight(');
+    const fn = scene.slice(scene.indexOf('function setPanelHighlight'));
+    // tinte or pour la cellule sélectionnée, blanc (neutre) pour les autres.
+    expect(fn).toContain('map[i] === cellIndex');
+    expect(fn).toContain('col.setXYZ(i, 1.0, 0.78, 0.32)'); // GOLD
+    expect(fn).toContain('col.setXYZ(i, 1, 1, 1)'); // teinte d'origine
+    expect(fn).toContain('col.needsUpdate = true');
+    // ctx expose les champs requis (pick/highlight).
+    expect(context).toContain('activePanelMesh: THREE.InstancedMesh | null');
+    expect(context).toContain('activePanelCellIndex: number[]');
+  });
+
+  it('le survol surligne le panneau sous le curseur (UNIQUEMENT en mode disposition)', () => {
+    const mm = editor.slice(editor.indexOf("map.on('mousemove'"), editor.indexOf("map.on('mouseup'"));
+    // garde-fou mode disposition + pas en mode obstacle.
+    expect(mm).toMatch(/if \(!ctx\.layoutMode \|\| isObstacleMode\(\) \|\| !ctx\.layoutState\) return/);
+    expect(mm).toContain('setPanelHighlight(layoutPanelAt(e.point))');
+  });
+
+  it('clic desktop SANS glissé supprime le panneau ciblé (removePanel) + recompute', () => {
+    expect(editor).toContain("from '../../lib/layoutVariability'");
+    expect(editor).toContain('removePanel,'); // réutilise la logique PURE (jamais dupliquée)
+    expect(editor).toContain('function removePanelInScene(');
+    const fn = editor.slice(editor.indexOf('function removePanelInScene'));
+    expect(fn).toContain('removePanel(ctx.layoutState, cellIndex)');
+    expect(fn).toContain('renderCustomLayout()'); // les figures recomputent
+    // mouseup déclenche la suppression sur clic sans glissé (removeOnTap=true).
+    expect(editor).toContain('endLayoutDrag(e.point, true)');
+    const end = editor.slice(editor.indexOf('function endLayoutDrag'));
+    expect(end).toContain('if (!moved && removeOnTap)');
+    expect(end).toContain('removePanelInScene(from)');
+  });
+
+  it('au DOIGT, un appui long (sans glissé) supprime ; un tap bref ne supprime pas', () => {
+    expect(editor).toContain('LONG_PRESS_MS');
+    // le minuteur d'appui long supprime le panneau saisi s'il n'a pas bougé.
+    const ts = editor.slice(editor.indexOf("map.on('touchstart'"), editor.indexOf("map.on('touchmove'"));
+    expect(ts).toContain('setTimeout');
+    expect(ts).toContain('removePanelInScene(cell)');
+    // un glissé annule l'appui long (déplacement, pas suppression).
+    const tm = editor.slice(editor.indexOf("map.on('touchmove'"), editor.indexOf("map.on('touchend'"));
+    expect(tm).toContain('cancelLongPress()');
+    // touchend : annule le minuteur (tap bref ≠ suppression) et NE supprime pas (removeOnTap omis).
+    const te = editor.slice(editor.indexOf("map.on('touchend'"));
+    expect(te).toContain('cancelLongPress()');
+    expect(te).toContain('endLayoutDrag(e.point)');
+    expect(te).not.toContain('endLayoutDrag(e.point, true)');
+  });
+
+  it('le pick/highlight n\'est ACTIF qu\'en mode disposition (effacé en sortant)', () => {
+    const sm = editor.slice(editor.indexOf('function setLayoutMode'));
+    expect(sm).toContain('setPanelHighlight(null)'); // efface le surlignage à la sortie
+  });
+
+  it('l\'entrée câble setPanelHighlight (scene3d) vers l\'éditeur de disposition', () => {
+    expect(script).toContain('const setPanelHighlight = scene3d.setPanelHighlight');
+    expect(script).toContain('setPanelHighlight: (cellIndex) => setPanelHighlight(cellIndex)');
   });
 });

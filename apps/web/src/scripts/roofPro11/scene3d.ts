@@ -77,6 +77,9 @@ export interface Scene3d {
   ) => void;
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
   resetTextures: () => void;
+  /** W88 — surligne le panneau de la zone active correspondant à `cellIndex` (or = sélection),
+   *  ou efface tout surlignage (cellIndex null). Pose les couleurs d'instance + repeint. */
+  setPanelHighlight: (cellIndex: number | null) => void;
 }
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
@@ -607,9 +610,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // Cellules POSÉES : disposition personnalisée explicite (zone active en mode
     // calepinage → ces cellules exactes, possiblement non contiguës) sinon les
     // `plan.count` premières cellules du pavage (comportement historique).
-    const panels = occupiedSet
-      ? grid.panels.filter((_, i) => occupiedSet.has(i))
-      : grid.panels.slice(0, Math.max(0, plan.count));
+    // W88 — on garde aussi l'INDEX de lattice de chaque panneau rendu (ordre des instances),
+    // pour relier un panneau 3D survolé/tapé à sa cellule (highlight + suppression ciblée).
+    const panelCellIndices: number[] = [];
+    const panels = grid.panels.filter((_, i) => {
+      const keep = occupiedSet ? occupiedSet.has(i) : i < Math.max(0, plan.count);
+      if (keep) panelCellIndices.push(i);
+      return keep;
+    });
     const panelMatsArr: THREE.Matrix4[] = [];
     const frontMats: THREE.Matrix4[] = [];
     const backMats: THREE.Matrix4[] = [];
@@ -661,8 +669,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
     }
 
+    const panelIM = makeIM(panelGeo, panelMats, panelMatsArr, true, false);
     const meshes = [
-      makeIM(panelGeo, panelMats, panelMatsArr, true, false),
+      panelIM,
       makeIM(jboxGeo, jboxMat, panelMatsArr, true, false),
       makeIM(frontGeo, rackMat, frontMats, true, false),
       makeIM(backGeo, rackMat, backMats, true, false),
@@ -670,6 +679,20 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       makeIM(ballastGeo, ballastMat, ballastMats, true, true),
     ];
     for (const me of meshes) if (me) sceneRoot!.add(me);
+
+    // W88 — pick/highlight des panneaux : SEULEMENT pour la zone ACTIVE (non dim). On dote
+    // l'InstancedMesh des panneaux d'un buffer instanceColor (tous blancs = teinte d'origine ;
+    // MeshStandardMaterial multiplie sa couleur par instanceColor) pour pouvoir surligner un
+    // panneau sans recréer le mesh, et on mémorise sur ctx le mesh + le mapping instance→cellule
+    // afin que l'éditeur de disposition relie un panneau 3D à sa cellule de lattice.
+    if (!dim) {
+      if (panelIM) {
+        panelIM.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(panelCellIndices.length * 3).fill(1), 3);
+        panelIM.instanceColor.needsUpdate = true;
+      }
+      ctx.activePanelMesh = panelIM;
+      ctx.activePanelCellIndex = panelCellIndices;
+    }
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
     // à leur vraie position relative. La zone active gère ses obstacles vivants ailleurs.
@@ -786,6 +809,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     setOrigin(pack.origin);
     ctx.sceneOrigin = pack.origin;
     ctx.obstacleMeshes.clear();
+    // W88 — l'ancien InstancedMesh des panneaux va être libéré (disposeScene) : on oublie sa
+    // référence + son mapping avant le re-rendu (buildZoneMeshes les ré-attribue pour la zone
+    // active). Évite de garder un pick/highlight sur un mesh disposé.
+    ctx.activePanelMesh = null;
+    ctx.activePanelCellIndex = [];
     disposeScene();
 
     const wallH = FLOORS * FLOOR_HEIGHT_M;
@@ -916,5 +944,29 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     modelMatrix = null;
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures };
+  /** W88 — surligne (or) l'instance de panneau dont la cellule de lattice est `cellIndex`,
+   *  toutes les autres à leur teinte d'origine (blanc = pas de modification). `cellIndex`
+   *  null → tout remis à blanc (aucun panneau sélectionné). No-op sans mesh de panneaux. */
+  function setPanelHighlight(cellIndex: number | null) {
+    const mesh = ctx.activePanelMesh;
+    if (!mesh || !mesh.instanceColor) return;
+    const col = mesh.instanceColor as THREE.InstancedBufferAttribute;
+    const map = ctx.activePanelCellIndex;
+    for (let i = 0; i < map.length; i++) {
+      if (cellIndex != null && map[i] === cellIndex) {
+        // teinte laiton (GOLD) : panneau sélectionné/survolé bien visible.
+        col.setXYZ(i, 1.0, 0.78, 0.32);
+      } else {
+        col.setXYZ(i, 1, 1, 1); // teinte d'origine (instanceColor neutre)
+      }
+    }
+    col.needsUpdate = true;
+    map3dRepaint();
+  }
+  /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
+  function map3dRepaint() {
+    map.triggerRepaint();
+  }
+
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight };
 }

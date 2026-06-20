@@ -18,6 +18,7 @@ import {
   movePanelToCell,
   addFirstEmpty,
   removeLast,
+  removePanel,
   resetToOptimal,
 } from '../../lib/layoutVariability';
 import { PANEL2_LONG_M } from '../../lib/roofPro2';
@@ -63,6 +64,8 @@ export interface LayoutEditorDeps {
   renderActive: () => void;
   /** Le mode obstacle est-il actif ? (le glissé 3D le respecte). */
   isObstacleMode: () => boolean;
+  /** W88 — surligne (or) le panneau 3D de la cellule donnée, ou efface tout (null). */
+  setPanelHighlight: (cellIndex: number | null) => void;
 }
 
 export interface LayoutEditor {
@@ -90,6 +93,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderAreasPanel,
     renderActive,
     isObstacleMode,
+    setPanelHighlight,
   } = deps;
   const opts = ctx.opts;
 
@@ -251,6 +255,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     } else {
       // En sortant, on re-rend la disposition de l'optimiseur (recalc rebranche tout).
       ctx.layoutSel = null;
+      setPanelHighlight(null); // W88 — efface tout surlignage de panneau en quittant le mode
       if (ctx.closed) renderActive();
     }
     renderLayoutPanel();
@@ -379,25 +384,53 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const target = nearestEmptyCell(ctx.layoutState, enu.x, enu.y);
     if (layoutNoteEl) layoutNoteEl.textContent = target >= 0 ? 'Relâchez sur un emplacement valide (vert).' : 'Aucun emplacement libre — il reviendra à sa place.';
   }
+  /** W88 — SUPPRIME le panneau de la cellule `cellIndex` directement depuis la 3D (clic
+   *  desktop / appui long tactile), puis recompute les chiffres (renderCustomLayout). Efface
+   *  tout surlignage. No-op si la cellule n'est pas occupée. */
+  function removePanelInScene(cellIndex: number) {
+    if (!ctx.layoutState) return;
+    const r = removePanel(ctx.layoutState, cellIndex);
+    if (!r.ok) return;
+    ctx.layoutSel = null;
+    setPanelHighlight(null);
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = ctx.neededPanels > 0 && r.count < ctx.neededPanels
+        ? `Panneau supprimé — ${r.count} posés. La disposition ne couvre plus tout le besoin (${fmt(ctx.neededPanels)}).`
+        : `Panneau supprimé — ${r.count} posés.`;
+    }
+    renderCustomLayout(); // recompute production/économies/couverture
+    renderLayoutPanel();
+  }
+
   /** Fin d'un glissé-déplacer (souris OU doigt) : commit du déplacement sur la cellule vide
-   *  valide la plus proche (movePanelToPoint), sinon snap-back ; ré-active le pan. Un simple
-   *  tap/clic (pas de mouvement au-delà du seuil) ne déplace pas — il a seulement sélectionné. */
-  function endLayoutDrag(point: maplibregl.Point) {
+   *  valide la plus proche (movePanelToPoint), sinon snap-back ; ré-active le pan. W88 — un
+   *  simple CLIC (souris, `removeOnTap`) sans glissé SUPPRIME le panneau saisi ; un tap tactile
+   *  bref ne supprime pas (la suppression tactile passe par l'appui long, géré séparément). */
+  function endLayoutDrag(point: maplibregl.Point, removeOnTap = false) {
     if (!layoutDrag || !ctx.layoutState) return;
-    const enu = layoutDrag.moved ? screenToENU(point) : null;
-    if (enu) {
-      const res = movePanelToPoint(ctx.layoutState, layoutDrag.from, enu.x, enu.y);
-      if (res.ok && res.toIndex !== layoutDrag.from) {
-        if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
-        renderCustomLayout();
-      } else if (layoutNoteEl) {
-        layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+    const from = layoutDrag.from;
+    const moved = layoutDrag.moved;
+    if (moved) {
+      const enu = screenToENU(point);
+      if (enu) {
+        const res = movePanelToPoint(ctx.layoutState, from, enu.x, enu.y);
+        if (res.ok && res.toIndex !== from) {
+          if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
+          renderCustomLayout();
+        } else if (layoutNoteEl) {
+          layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+        }
       }
     }
     layoutDrag = null;
     ctx.layoutSel = null;
     map.dragPan.enable();
     map.getCanvas().style.cursor = '';
+    // W88 — clic desktop sans glissé sur un panneau = suppression ciblée de CE panneau.
+    if (!moved && removeOnTap) {
+      removePanelInScene(from);
+      return;
+    }
     renderLayoutPanel();
   }
 
@@ -405,25 +438,59 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   map.on('mousedown', (e) => {
     if (beginLayoutDrag(e.point)) e.preventDefault();
   });
-  map.on('mousemove', (e) => moveLayoutDrag(e.point));
-  map.on('mouseup', (e) => endLayoutDrag(e.point));
+  map.on('mousemove', (e) => {
+    if (layoutDrag) {
+      moveLayoutDrag(e.point);
+      return;
+    }
+    // W88 — survol : surligne (or) le panneau sous le curseur en mode disposition, sinon rien.
+    if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return;
+    setPanelHighlight(layoutPanelAt(e.point));
+  });
+  map.on('mouseup', (e) => endLayoutDrag(e.point, true)); // clic sans glissé = supprimer (W88)
 
   // W80 — TOUCH : glissé-déplacer au DOIGT, miroir du chemin souris, gardé par layoutMode
   // (via beginLayoutDrag). On ne saisit qu'à UN seul doigt (un pinch/zoom à deux doigts ne
   // doit pas déplacer un panneau). preventDefault en touchmove neutralise le pan de la carte
   // pendant qu'on glisse le panneau (parité avec dragPan.disable du chemin souris).
+  // W88 — un APPUI LONG (sans glissé) au doigt SUPPRIME le panneau saisi : un minuteur démarré
+  // à touchstart, annulé si le doigt bouge (glissé) ou se relève avant l'échéance (tap bref).
+  const LONG_PRESS_MS = 500;
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  function cancelLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
   map.on('touchstart', (e) => {
     if (e.points && e.points.length > 1) return; // multi-touch (pinch) → pas un glissé panneau
-    if (beginLayoutDrag(e.point)) e.preventDefault();
+    if (beginLayoutDrag(e.point)) {
+      e.preventDefault();
+      // W88 — appui long → suppression du panneau saisi (s'il n'a pas bougé entre-temps).
+      cancelLongPress();
+      const cell = layoutDrag ? layoutDrag.from : -1;
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (layoutDrag && !layoutDrag.moved && cell >= 0) {
+          layoutDrag = null;
+          map.dragPan.enable();
+          map.getCanvas().style.cursor = '';
+          removePanelInScene(cell);
+        }
+      }, LONG_PRESS_MS);
+    }
   });
   map.on('touchmove', (e) => {
     if (!layoutDrag) return;
     e.preventDefault();
     moveLayoutDrag(e.point);
+    if (layoutDrag.moved) cancelLongPress(); // un glissé annule l'appui long (c'est un déplacement)
   });
   map.on('touchend', (e) => {
+    cancelLongPress(); // tap bref / fin de glissé : pas de suppression par appui long
     if (!layoutDrag) return;
-    endLayoutDrag(e.point);
+    endLayoutDrag(e.point); // tactile : pas de suppression sur tap bref (removeOnTap=false)
   });
 
   return { layoutCap, ensureLayoutState, renderCustomLayout, screenToENU, renderLayoutPanel, setLayoutMode, occupiedCenters, reenterCustomLayout };

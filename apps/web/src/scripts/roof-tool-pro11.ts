@@ -553,6 +553,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
     set sceneOrigin(v) {
       sceneOrigin = v;
     },
+    get activePanelMesh() {
+      return activePanelMesh;
+    },
+    set activePanelMesh(v) {
+      activePanelMesh = v;
+    },
+    get activePanelCellIndex() {
+      return activePanelCellIndex;
+    },
+    set activePanelCellIndex(v) {
+      activePanelCellIndex = v;
+    },
     get roofType() {
       return roofType;
     },
@@ -990,6 +1002,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
     renderAreasPanel,
     renderActive: () => renderActive(),
     isObstacleMode: () => obstacleMode,
+    // W88 — surlignage/pick des panneaux 3D : `setPanelHighlight` (scene3d) est déclaré plus
+    // bas → wrapper paresseux (référencé seulement à l'exécution d'un survol/clic 3D).
+    setPanelHighlight: (cellIndex) => setPanelHighlight(cellIndex),
   });
   // `renderLayoutPanel` est appelé depuis l'entrée (injecté dans la fenêtre de production) ;
   // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
@@ -1052,6 +1067,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // Pont partagé (sur ctx) avec scene3d (rempli par renderScene) et obstaclesUi (drag).
   const obstacleMeshes = new Map<string, THREE.Mesh>();
   let sceneOrigin: LngLat = [0, 0];
+  // W88 — InstancedMesh des panneaux de la zone active + mapping instance→cellule (lattice),
+  // remplis par renderScene ; lus par l'éditeur de disposition pour le pick/highlight/suppr.
+  let activePanelMesh: THREE.InstancedMesh | null = null;
+  let activePanelCellIndex: number[] = [];
 
   const empty = { type: 'FeatureCollection', features: [] } as const;
 
@@ -1062,6 +1081,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const customLayer = scene3d.customLayer;
   const disposeScene = scene3d.disposeScene;
   const renderScene = scene3d.renderScene;
+  const setPanelHighlight = scene3d.setPanelHighlight; // W88 — surlignage/pick des panneaux 3D
 
   // — Moteur d'optimisation vivante (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) :
   // voir roofPro11/optimizer.ts. `syncChips`/`renderMatrixOptimumCard` sont déclarés plus

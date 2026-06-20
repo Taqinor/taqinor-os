@@ -337,7 +337,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   (winter noon) inter-row shadow so the spacing reads. Accept: shadows track the chosen hour and the
   rows visibly clear each other at design elevation. Files: `roof-tool-pro11.ts`, `roofPro2.ts`,
   `SOLAR_3D_PRO2_NOTES.md`.
-- [ ] **W88 — 3D: panel pick + highlight + per-panel delete in 3D.** Panels are one `InstancedMesh` with
+- [x] **W88 — 3D: panel pick + highlight + per-panel delete in 3D.** Panels are one `InstancedMesh` with
   no picking; the layout editor only works via the 2D grid. Add an `instanceColor` buffer + raycast pick
   to highlight a panel on hover and toggle/remove it directly in the 3D view (desktop click + touch
   long-press), reusing the existing `layoutState`/`occupiedSet`. Accept: clicking a panel in 3D selects/
