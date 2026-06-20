@@ -299,6 +299,37 @@ Anything typed after the command is extra detail for that run.
   moves the plan fingerprint, so the `stage-names` check fails otherwise), then
   commit on `dev` and self-merge to `main`. Confirm in one line.
 
+### "work on error plan"
+Identical to `work on the plan` in every respect — same lane partitioning, same
+**up to 8 concurrent worktree subagents in waves of 8**, same
+dynamic-workflow-with-adversarial-review engine (fall back to parallel worktree
+subagents; never a single serial one-task-at-a-time agent), same stop conditions
+(queue drained / usage cap / a genuine stop-and-ask → mark `[BLOCKED: <reason>]`,
+move to GATED, and CONTINUE the rest), same verify-each-task-isn't-already-built
+step (mark `[x] (already present)` when it is), same commit-tick-DONE-LOG per task
+on each lane's own worktree branch, same CODEMAP refresh rules, and the same
+**sync-safe single self-merge `dev` → `main`** (integrate the latest `origin/main`
+first, recompute the structure fingerprint if the structural surface moved, re-run
+the full CI suite once over the whole batch, never force-push) — **with EXACTLY ONE
+difference: it drains `docs/ERROR_PLAN.md`** (the bug/error backlog) instead of
+`docs/PLAN.md` / `docs/PLAN2.md`. Anything typed after the command is extra detail
+for that run.
+- **No lock — same as `work on the plan`.** There is no `.running` lock; only ever
+  one session at a time, and the sync-safe single merge is what keeps `main`
+  collision-free even when an OS-plan, web-plan, or error-plan run lands
+  concurrently. (So there is no `reset the plan lock` to mirror.)
+- **Plan-status wiring.** `docs/ERROR_PLAN.md` is registered in
+  `scripts/codemap_fingerprint.py` (`PLAN_FILES`) exactly like the other plan files,
+  so ticking / adding / removing an `ERR*` task moves the plan fingerprint: refresh
+  §10 "Plan status" of `docs/CODEMAP.md` (paste `--print-plan-status`) and re-run
+  `python scripts/codemap_fingerprint.py --write` in the SAME commit as the tick, or
+  the required `stage-names` CI job fails.
+- **Headless-loop status.** When asked — or at the end of a run — print exactly
+  `PLAN_STATUS: EMPTY` if no unchecked `[ ]` task remains in `docs/ERROR_PLAN.md`,
+  otherwise `PLAN_STATUS: MORE`, so the same headless loop that drives
+  `work on the plan` can drive this command too.
+- Report once, in plain language, including the lane plan.
+
 ### "work on the web plan"
 The website autopilot stays strictly inside `apps/web/**` plus its own
 `docs/WEB_PLAN*` files. Anything typed after the command is extra detail.
