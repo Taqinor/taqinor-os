@@ -35,15 +35,22 @@ def make_company(slug='errfix-co', nom='ErrFix Co'):
 # ── ERR11 — injection de formules xlsx ──────────────────────────────────────
 class TestXlsxFormulaInjection(TestCase):
     def test_string_cells_with_risky_lead_are_prefixed(self):
+        # ERR11 — la neutralisation vit dans le builder PARTAGÉ ; crm.exports
+        # ré-exporte la même fonction (identité préservée). On intercepte
+        # build_workbook pour inspecter les cellules réellement envoyées.
+        from apps.records import xlsx as shared
+        from openpyxl import Workbook
+
+        self.assertIs(exports.build_xlsx_response, shared.build_xlsx_response)
+
         captured = {}
 
-        def fake_build(filename, headers, rows, sheet_title='Export'):
+        def fake_build(headers, rows, sheet_title='Export'):
             captured['rows'] = rows
-            return 'OK'
+            return Workbook()
 
-        # On intercepte le builder partagé pour inspecter les cellules envoyées.
-        original = exports._build_xlsx_response
-        exports._build_xlsx_response = fake_build
+        original = shared.build_workbook
+        shared.build_workbook = fake_build
         try:
             rows = [[
                 '=SUM(A1:A9)', '+1', '-2+3', '@cmd', 'Normal',
@@ -51,7 +58,7 @@ class TestXlsxFormulaInjection(TestCase):
             ]]
             exports.build_xlsx_response('x.xlsx', ['h'], rows)
         finally:
-            exports._build_xlsx_response = original
+            shared.build_workbook = original
 
         out = captured['rows'][0]
         self.assertEqual(out[0], "'=SUM(A1:A9)")

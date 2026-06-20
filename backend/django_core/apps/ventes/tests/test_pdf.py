@@ -210,7 +210,8 @@ class TestGeneratePdfMocked(TestCase):
 
         key = generate_devis_pdf(devis.id)
 
-        self.assertEqual(key, f'devis/{devis.reference}.pdf')
+        # ERR75 — legacy fallback key is now company-scoped (mirrors premium).
+        self.assertEqual(key, f'devis/{devis.company_id}/{devis.reference}.pdf')
         mock_upload.assert_called_once()
 
         # Check upload received real PDF bytes
