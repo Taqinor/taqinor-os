@@ -7,11 +7,20 @@
    étude d'autoconsommation). Lit le lead directement (pas d'état React). */
 import { createDevis, addLigneDevis } from './store/ventesSlice'
 import {
-  estimerPanneaux, estimerMois, htFromTtc, optionTotalsTTC,
+  estimerPanneaux, estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
   autoFillLines, computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, DAY_USAGE_DEFAULTS,
 } from './solar'
+
+// ERR107 — Cohérence d'arrondi écran : une ligne est ENREGISTRÉE en HT 2 déc.
+// (htFromTtc), donc le TTC RÉAFFICHÉ d'une ligne est ttcFromHt(htFromTtc(ttc)),
+// qui peut différer du TTC brut saisi d'1 MAD. Pour que le total d'étude affiché
+// à l'écran corresponde exactement à la somme des lignes telles que l'écran les
+// recompose, on aligne d'abord chaque prix_unit_ttc sur ce même aller-retour.
+// (Écran uniquement — le PDF backend recalcule de façon autoritaire.)
+const screenTtc = (r) => ttcFromHt(htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20), r.taux_tva ?? 20)
+const roundTripRowsTtc = (rows) => rows.map((r) => ({ ...r, prix_unit_ttc: screenTtc(r) }))
 
 export const LEAD_TYPE_TO_MODE = {
   residentiel: 'residentiel', commercial: 'industriel',
@@ -103,7 +112,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         ? computeEtudeIndustrielle({
             kwp: kwpAuto, consoMensuelleKwh: conso,
             dayUsagePct: DAY_USAGE_DEFAULTS['Industrielle'],
-            totalTtc: optionTotalsTTC(rows, discountStr || '0').totalSans,
+            totalTtc: optionTotalsTTC(roundTripRowsTtc(rows), discountStr || '0').totalSans,
           })
         : null
       // Surface les chiffres clés (taux d'autoconsommation, économies, payback)

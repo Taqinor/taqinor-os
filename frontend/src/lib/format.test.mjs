@@ -21,6 +21,18 @@ test('toNumber: nombres, chaînes fr/en, invalides', () => {
   assert.equal(toNumber(NaN), null)
 })
 
+// ERR106 — Sans virgule décimale, un point est un VRAI point décimal : un
+// nombre technique « 1.234 » reste 1,234 et n'est PAS écrasé en 1234. Les
+// points de milliers ne sont retirés que dans la notation fr (virgule présente).
+test('toNumber: décimale « 1.234 » préservée (pas un séparateur de milliers)', () => {
+  assert.equal(toNumber('1.234'), 1.234)
+  assert.equal(toNumber('0.500'), 0.5)
+  assert.equal(toNumber('12.000'), 12) // vraie décimale .000
+  // Notation fr avec virgule : le point RESTE un séparateur de milliers.
+  assert.equal(toNumber('1.234,5'), 1234.5)
+  assert.equal(toNumber('1.234.567,89'), 1234567.89)
+})
+
 test('formatMAD: 2 décimales + suffixe MAD, tiret si invalide', () => {
   assert.equal(norm(formatMAD(1234.5)), '1 234,50 MAD')
   assert.equal(norm(formatMAD(0)), '0,00 MAD')

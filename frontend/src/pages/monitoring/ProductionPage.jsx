@@ -4,7 +4,7 @@
 // aucun fournisseur de monitoring n'est configuré). La config de supervision
 // (fournisseur / activation) est éditable par responsable/admin. Tout no-ope
 // proprement tant qu'aucun fournisseur n'est configuré.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, RefreshCw, Search, CheckCircle2, AlertTriangle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import monitoringApi from '../../api/monitoringApi'
@@ -47,18 +47,26 @@ export default function ProductionPage() {
     () => systems.find((s) => String(s.id) === String(selectedId)) || null,
     [systems, selectedId])
 
+  // ERR100 — Garde anti-réponse périmée : on retient l'installation REQUÊTÉE et
+  // on ignore toute réponse tardive si la sélection a changé entre-temps (sinon
+  // un relevé chargé pour un ancien système écrase le système courant).
+  const currentInstallationRef = useRef(selectedId)
+  useEffect(() => { currentInstallationRef.current = selectedId }, [selectedId])
+
   const reloadReadings = (id) => {
     if (!id) return
+    const isStale = () => String(currentInstallationRef.current) !== String(id)
     monitoringApi.getReadings({ installation: id })
-      .then((r) => setReadings(r.data.results ?? r.data ?? []))
-      .catch(() => setReadings([]))
-      .finally(() => setLoadingReadings(false))
+      .then((r) => { if (!isStale()) setReadings(r.data.results ?? r.data ?? []) })
+      .catch(() => { if (!isStale()) setReadings([]) })
+      .finally(() => { if (!isStale()) setLoadingReadings(false) })
     monitoringApi.getConfigForInstallation(id)
       .then((r) => {
+        if (isStale()) return
         const rows = r.data.results ?? r.data ?? []
         setConfig(rows[0] ?? { installation: id, provider: 'noop', enabled: false })
       })
-      .catch(() => setConfig({ installation: id, provider: 'noop', enabled: false }))
+      .catch(() => { if (!isStale()) setConfig({ installation: id, provider: 'noop', enabled: false }) })
   }
 
   useEffect(() => {

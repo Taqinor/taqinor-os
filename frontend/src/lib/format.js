@@ -14,9 +14,15 @@ export function toNumber(value) {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   // Accepte "1 234,56", "1234.56", "1.234,56", "12 %" (incl. espaces insécables)
-  const cleaned = String(value)
-    .replace(/\s|%|MAD|DH|dh/g, '')
-    .replace(/\.(?=\d{3}(\D|$))/g, '') // points de milliers
+  const stripped = String(value).replace(/\s|%|MAD|DH|dh/g, '')
+  // ERR106 — Un point n'est un séparateur de milliers QUE dans une notation fr
+  // où la virgule joue le rôle de séparateur décimal (ex. "1.234,56"). Sans
+  // virgule, un point est un vrai point décimal : "1.234" reste 1,234 (et ne
+  // devient pas 1234). On ne retire donc les points de milliers que si une
+  // virgule décimale est présente.
+  const cleaned = (stripped.includes(',')
+    ? stripped.replace(/\.(?=\d{3}(\D|$))/g, '') // points de milliers (fr)
+    : stripped)
     .replace(',', '.')
   const n = Number(cleaned)
   return Number.isFinite(n) ? n : null

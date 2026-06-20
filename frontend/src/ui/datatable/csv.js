@@ -10,10 +10,15 @@
 /** BOM UTF-8 (U+FEFF) — préfixe pour qu'Excel (fr) ouvre les accents. */
 export const UTF8_BOM = String.fromCharCode(0xfeff)
 
-/** Échappe une cellule CSV (guillemets si virgule, guillemet, saut de ligne). */
+/** Échappe une cellule CSV (guillemets si virgule, guillemet, saut de ligne).
+ *  ERR97 — Garde anti-injection de formules : une cellule commençant par
+ *  `=` `+` `-` `@` est interprétée comme une formule par Excel/Sheets. On
+ *  préfixe alors une apostrophe pour neutraliser l'exécution (technique OWASP),
+ *  AVANT le quoting RFC-4180. */
 export function escapeCSVCell(value, { delimiter = ',' } = {}) {
   if (value === null || value === undefined) return ''
-  const str = String(value)
+  let str = String(value)
+  if (/^[=+\-@]/.test(str)) str = `'${str}`
   if (str.includes('"') || str.includes(delimiter) || /[\r\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`
   }
