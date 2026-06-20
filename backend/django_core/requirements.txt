@@ -43,3 +43,5 @@ gunicorn==22.0.0
 
 # Web push (PWA) — N92. NO-OP tant que les clés VAPID ne sont pas configurées.
 pywebpush==2.0.0
+# TOTP two-factor auth (2FA opt-in, N96)
+pyotp==2.10.0

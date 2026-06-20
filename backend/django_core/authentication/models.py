@@ -84,6 +84,46 @@ class CustomUser(AbstractUser):
         related_name='subordinates',
     )
 
+    # ── Double authentification (2FA TOTP) — strictement OPT-IN (N96) ──────
+    # Le secret TOTP partagé (base32). Posé dès la phase de configuration mais
+    # le 2FA n'est ACTIF qu'une fois ``totp_enabled`` passé à True (après
+    # vérification d'un premier code). Nullable/vide par défaut : tout compte
+    # existant a donc le 2FA DÉSACTIVÉ et se connecte exactement comme avant —
+    # aucun verrouillage possible.
+    totp_secret = models.CharField(max_length=64, blank=True, null=True)
+    # Drapeau d'activation. Défaut False : 2FA inactif tant que l'utilisateur
+    # ne l'a pas explicitement activé et vérifié lui-même.
+    totp_enabled = models.BooleanField(default=False)
+    # Codes de secours à usage unique, stockés HACHÉS (jamais en clair).
+    # Liste JSON de hachages (make_password). Permet de se reconnecter si le
+    # téléphone d'authentification est perdu. Additif, défaut liste vide.
+    totp_recovery_codes = models.JSONField(default=list, blank=True)
+
+    def verify_totp(self, code):
+        """Valide un code TOTP courant (ou un code de secours à usage unique).
+
+        Retourne True si le code est valide. Un code de secours consommé est
+        retiré de ``totp_recovery_codes`` et persisté. Tolérance d'une fenêtre
+        (±30 s) pour absorber les petites dérives d'horloge."""
+        if not self.totp_secret:
+            return False
+        import pyotp
+        from django.contrib.auth.hashers import check_password
+        code = (str(code) if code is not None else '').strip().replace(' ', '')
+        if not code:
+            return False
+        totp = pyotp.TOTP(self.totp_secret)
+        if totp.verify(code, valid_window=1):
+            return True
+        # Repli : code de secours à usage unique (haché en base).
+        for hashed in list(self.totp_recovery_codes or []):
+            if check_password(code, hashed):
+                remaining = [h for h in self.totp_recovery_codes if h != hashed]
+                self.totp_recovery_codes = remaining
+                self.save(update_fields=['totp_recovery_codes'])
+                return True
+        return False
+
     @staticmethod
     def tier_for_role(role):
         """Palier de menu hérité correspondant à un Role (ou None sans rôle).
