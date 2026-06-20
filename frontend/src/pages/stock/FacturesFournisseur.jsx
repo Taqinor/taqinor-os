@@ -359,7 +359,8 @@ export default function FacturesFournisseur() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [aPayerSeul])  // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { reload() }, [aPayerSeul])
 
   useEffect(() => {
     stockApi.getFournisseurs({ page_size: 1000 })

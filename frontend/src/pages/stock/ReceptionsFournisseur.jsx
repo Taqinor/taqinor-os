@@ -55,6 +55,8 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 
   // Charge le détail (lignes à jour) du BCF choisi.
   useEffect(() => {
+    // Réinitialise l'aperçu quand aucun BCF n'est choisi (reset volontaire).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!bonId) { setBon(null); setSaisies({}); return }
     let active = true
     stockApi.getBonCommandeFournisseur(bonId)

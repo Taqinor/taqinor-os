@@ -193,7 +193,7 @@ class TestLettreRelanceEscaladeNiveau(_Base):
         firm = build_lettre_relance_html(
             ctx, client, resume,
             niveau=3, message='Mise en demeure formelle de payer la facture '
-                             '{reference}.')
+                              '{reference}.')
         # Corps distincts, chacun reprenant SON message (gabarit {reference}
         # resolu avec la reference de la facture).
         self.assertIn('Petit rappel tres courtois', soft)

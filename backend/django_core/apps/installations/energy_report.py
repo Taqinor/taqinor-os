@@ -19,7 +19,6 @@ le moteur premium du devis n'est jamais importé ni modifié.
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from html import escape
-from io import BytesIO
 
 # ── Hypothèses PAR DÉFAUT (toutes surchargeables, toutes « estimations ») ─────
 # Rendement spécifique marocain typique (irradiation + pertes système) : on

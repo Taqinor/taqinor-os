@@ -23,7 +23,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.stock.models import (
     Produit, Fournisseur, MouvementStock, BonCommandeFournisseur,
     LigneBonCommandeFournisseur, ReceptionFournisseur,
-    LigneReceptionFournisseur, FactureFournisseur, PaiementFournisseur,
+    FactureFournisseur, PaiementFournisseur,
 )
 
 User = get_user_model()
@@ -260,7 +260,7 @@ class TestFactureFournisseur(G5Base):
     def test_comptes_a_payer_lists_unpaid_only(self):
         # Une facture soldée + une partiellement payée + une à payer.
         r1 = self._create_facture(montant_ttc='100.00', montant_ht='100.00',
-                                   montant_tva='0.00')
+                                  montant_tva='0.00')
         self.api.post(
             f"/api/django/stock/factures-fournisseur/{r1.data['id']}/paiements/",
             {'montant': '100.00', 'mode': 'virement'}, format='json')  # payée

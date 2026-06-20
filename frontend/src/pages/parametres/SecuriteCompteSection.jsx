@@ -36,6 +36,7 @@ export default function SecuriteCompteSection() {
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadStatus() }, [])
 
   const errMsg = (e, fallback) =>

@@ -19,7 +19,6 @@ Principes (règles fondatrices) :
   Texte utilisateur en FRANÇAIS ; code/identifiants en anglais.
 """
 import logging
-from datetime import timedelta
 
 from celery import shared_task
 
