@@ -50,7 +50,13 @@ class FakeMap {
   getBearing() { return 0; }
   getCanvas() { return { style: {} as Record<string, string>, width: 800, height: 600 }; }
   getContainer() { return document.getElementById('rp9-map'); }
-  queryRenderedFeatures() { return []; }
+  // W92 — les tests peuvent forcer le résultat du hit-test (sommet/obstacle) en posant
+  // queryHits[layerId] ; sinon aucun hit (comportement par défaut inchangé).
+  queryHits: Record<string, Array<{ properties: Record<string, unknown> }>> = {};
+  queryRenderedFeatures(_pt: unknown, opts?: { layers?: string[] }) {
+    const layer = opts?.layers?.[0];
+    return (layer && this.queryHits[layer]) || [];
+  }
   triggerRepaint() {}
   project() { return { x: 0, y: 0 }; }
   unproject() { return { lng: 0, lat: 0 }; }
@@ -93,7 +99,7 @@ function squareCorners(side: number, lng0 = -7.62, lat0 = 33.59): [number, numbe
 const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width'];
 const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range'];
 const ID_BUTTONS = [
-  'rp9-finish', 'rp9-clear', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
+  'rp9-finish', 'rp9-clear', 'rp9-undo-point', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
   'rp9-obstacle', 'rp9-obstacle-clear', 'rp9-obs-delete', 'rp9-obs-plus', 'rp9-obs-minus',
   'rp9-optimum', 'rp9-optimum-apply', 'rp9-cta',
   // W50 — pickers de la fenêtre de production.
@@ -1017,5 +1023,112 @@ describe('runtime W93 (map) — autocomplétion d\'adresse', () => {
     addr.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(fakeMaps[0].flyToCalls.length).toBe(1);
     expect((document.getElementById('rp9-suggestions') as HTMLElement).hidden).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W92 — SOMMETS DU TRACÉ ÉDITABLES + ANNULER LE DERNIER POINT. On vérifie : (1) « Annuler
+// le dernier point » dépile le dernier coin pendant le tracé (bouton visible quand ≥1 coin,
+// masqué une fois fermé) ; (2) un coin POSÉ peut être glissé (souris ET tactile) → le
+// sommet bouge et la disposition se re-résout (recalc) au relâchement.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W92 (map) — sommets éditables + annuler le dernier point', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function vertexCount(map: FakeMap): number {
+    const d = map.sourceData['rp9-pts'] as { features?: unknown[] } | undefined;
+    return d?.features?.length ?? 0;
+  }
+  function vertexAt(map: FakeMap, idx: number): [number, number] | undefined {
+    const d = map.sourceData['rp9-pts'] as { features?: Array<{ geometry: { coordinates: [number, number] } }> } | undefined;
+    return d?.features?.[idx]?.geometry.coordinates;
+  }
+  // Pose 3 coins sans fermer (chaque clic → un sommet après le délai anti-dblclick).
+  function placeThree(map: FakeMap) {
+    vi.useFakeTimers();
+    const pts = [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }];
+    const lls = [{ lng: -7.62, lat: 33.59 }, { lng: -7.619, lat: 33.59 }, { lng: -7.619, lat: 33.591 }];
+    pts.forEach((p, i) => {
+      map.fire('click', { lngLat: lls[i], point: p });
+      vi.advanceTimersByTime(241);
+    });
+    vi.useRealTimers();
+  }
+
+  it('« Annuler le dernier point » dépile le dernier coin (visible pendant le tracé)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const map = fakeMaps[0];
+    placeThree(map);
+    expect(vertexCount(map)).toBe(3);
+    const undo = document.getElementById('rp9-undo-point') as HTMLButtonElement;
+    expect(undo.hidden).toBe(false); // visible pendant le tracé
+    undo.click();
+    expect(vertexCount(map)).toBe(2); // un coin retiré
+    undo.click();
+    undo.click();
+    expect(vertexCount(map)).toBe(0); // tout dépilé
+    expect(undo.hidden).toBe(true); // plus aucun coin → masqué
+  });
+
+  it('un coin posé peut être glissé à la souris → le sommet bouge et la 3D re-résout', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    // toit fermé (4 coins) → recalc rempli
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+    const before = vertexAt(map, 0);
+    expect(before).toBeDefined();
+    // le hit-test rp9-pts renvoie le sommet 0 → on le saisit et on le glisse
+    map.queryHits['rp9-pts'] = [{ properties: { idx: 0 } }];
+    map.fire('mousedown', { lngLat: { lng: before![0], lat: before![1] }, point: { x: 10, y: 10 } });
+    map.fire('mousemove', { lngLat: { lng: before![0] + 0.0003, lat: before![1] + 0.0003 }, point: { x: 40, y: 40 } });
+    map.fire('mouseup', { lngLat: { lng: before![0] + 0.0003, lat: before![1] + 0.0003 }, point: { x: 40, y: 40 } });
+    const after = vertexAt(map, 0);
+    expect(after).toBeDefined();
+    // le sommet 0 a bougé du delta appliqué
+    expect(after![0]).toBeCloseTo(before![0] + 0.0003, 6);
+    expect(after![1]).toBeCloseTo(before![1] + 0.0003, 6);
+    // la carte reste remplie (recalc a re-tourné sans casser)
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  });
+
+  it('un coin posé peut être glissé au DOIGT (touch) → le sommet bouge', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    const before = vertexAt(map, 1)!;
+    map.queryHits['rp9-pts'] = [{ properties: { idx: 1 } }];
+    map.fire('touchstart', { lngLat: { lng: before[0], lat: before[1] }, point: { x: 20, y: 20 }, points: [{ x: 20, y: 20 }] });
+    map.fire('touchmove', { lngLat: { lng: before[0] - 0.0002, lat: before[1] - 0.0002 }, point: { x: 5, y: 5 }, preventDefault() {} });
+    map.fire('touchend', { lngLat: { lng: before[0] - 0.0002, lat: before[1] - 0.0002 }, point: { x: 5, y: 5 } });
+    const after = vertexAt(map, 1)!;
+    expect(after[0]).toBeCloseTo(before[0] - 0.0002, 6);
+    expect(after[1]).toBeCloseTo(before[1] - 0.0002, 6);
   });
 });

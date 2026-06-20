@@ -22,7 +22,7 @@ import {
   type Obstacle,
 } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
-import { OBSTACLE_TAP_PX, DEG2RAD, DEG2M } from './constants';
+import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
 
@@ -34,6 +34,8 @@ export interface ObstaclesUiDeps {
   recalc: () => void;
   /** Affiche un message dans le bandeau de statut. */
   setStatus: (msg: string) => void;
+  /** W92 — re-dessine la ligne + les pastilles de sommets après un glissé/undo. */
+  redrawTrace: () => void;
 }
 
 export interface ObstaclesUi {
@@ -53,10 +55,15 @@ export interface ObstaclesUi {
   tryBeginMove: (lngLat: LngLat, point: maplibregl.Point) => boolean;
   doMove: (lngLat: LngLat) => void;
   endMove: () => void;
+  // W92 — glissé d'un SOMMET du tracé (généralisation du glissé d'obstacle).
+  vertexAtPoint: (pt: maplibregl.Point) => number | null;
+  tryBeginVertexMove: (lngLat: LngLat, point: maplibregl.Point) => boolean;
+  doVertexMove: (lngLat: LngLat) => void;
+  endVertexMove: () => void;
 }
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
-  const { map, recalc, setStatus } = deps;
+  const { map, recalc, setStatus, redrawTrace } = deps;
 
   // FeatureCollection vide réutilisable (efface une source) — identique à l'entrée.
   const empty = { type: 'FeatureCollection', features: [] } as const;
@@ -254,6 +261,54 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     if (moved) recalc();
   }
 
+  // — W92 — Déplacement d'un SOMMET du tracé (généralisation du glissé d'obstacle) —
+  /** Sommet du tracé touché au point écran `pt`, ou null (lit la propriété `idx`). */
+  function vertexAtPoint(pt: maplibregl.Point): number | null {
+    // Boîte de tolérance (rayon doigt ⊃ pastille) autour du point, comme un hit-test élargi.
+    const box: [maplibregl.Point, maplibregl.Point] = [
+      { x: pt.x - VERTEX_GRAB_PX, y: pt.y - VERTEX_GRAB_PX } as maplibregl.Point,
+      { x: pt.x + VERTEX_GRAB_PX, y: pt.y + VERTEX_GRAB_PX } as maplibregl.Point,
+    ];
+    const hits = map.queryRenderedFeatures(box, { layers: ['rp9-pts'] });
+    const idx = hits[0]?.properties?.idx;
+    return typeof idx === 'number' ? idx : null;
+  }
+
+  /** Tente de saisir un SOMMET sous le pointeur pour le déplacer. Renvoie true si un glissé
+   *  démarre (→ on neutralise le pan de la carte). N'opère que sur un tracé FERMÉ, hors mode
+   *  obstacle / disposition (mêmes gardes que le glissé d'obstacle). */
+  function tryBeginVertexMove(lngLat: LngLat, point: maplibregl.Point): boolean {
+    if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    const idx = vertexAtPoint(point);
+    if (idx == null) return false;
+    const v = ctx.vertices[idx];
+    if (!v) return false;
+    ctx.moveVertex = { idx, startLng: lngLat[0], startLat: lngLat[1], vLng: v[0], vLat: v[1], moved: false };
+    map.dragPan.disable();
+    return true;
+  }
+  function doVertexMove(lngLat: LngLat) {
+    const mv = ctx.moveVertex;
+    if (!mv) return;
+    if (mv.idx < 0 || mv.idx >= ctx.vertices.length) return;
+    // Delta lng/lat (annule le parallaxe de la vue inclinée), comme le glissé d'obstacle.
+    const lng = mv.vLng + (lngLat[0] - mv.startLng);
+    const lat = mv.vLat + (lngLat[1] - mv.startLat);
+    mv.moved = true;
+    ctx.vertices[mv.idx] = [lng, lat];
+    redrawTrace(); // ligne + pastilles suivent le doigt en direct
+  }
+  function endVertexMove() {
+    const mv = ctx.moveVertex;
+    if (!mv) return;
+    const moved = mv.moved;
+    ctx.moveVertex = null;
+    map.dragPan.enable();
+    ctx.suppressClick = true; // évite une désélection/sélection parasite au click de synthèse
+    // Re-pavage + recalcul seulement si le sommet a réellement bougé.
+    if (moved) recalc();
+  }
+
   // — Câblage : bouton « ajouter », bouton « effacer », et édition de l'obstacle —
   obstacleBtn?.addEventListener('click', () => {
     if (!ctx.closed) {
@@ -321,5 +376,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     tryBeginMove,
     doMove,
     endMove,
+    vertexAtPoint,
+    tryBeginVertexMove,
+    doVertexMove,
+    endVertexMove,
   };
 }

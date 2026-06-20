@@ -27,6 +27,8 @@ export interface MapDrawDeps {
 export interface MapDraw {
   redrawTrace: () => void;
   addVertex: (v: LngLat) => void;
+  /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
+  undoLastPoint: () => void;
   /** W93 — `autoSelect` (programmatique, ex. initialQuery) vole directement au 1ᵉʳ
    *  résultat ; sinon la liste de suggestions est peuplée et on attend la sélection. */
   geocode: (query: string, autoSelect?: boolean) => Promise<void>;
@@ -39,6 +41,8 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   const srcOf = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
   const finishBtn = $<HTMLButtonElement>('rp9-finish');
+  // W92 — bouton « Annuler le dernier point » : visible pendant le tracé (≥1 coin, non fermé).
+  const undoPointBtn = $<HTMLButtonElement>('rp9-undo-point');
   const searchForm = $<HTMLFormElement>('rp9-search');
   const addressEl = $<HTMLInputElement>('rp9-address');
   // W93 — liste de suggestions (combobox). Peut être null (harness jsdom partiel).
@@ -46,8 +50,12 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
 
   function redrawTrace() {
     srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: ctx.vertices }, properties: {} } as never);
-    srcOf('rp9-pts')?.setData({ type: 'FeatureCollection', features: ctx.vertices.map((v) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: v }, properties: {} })) } as never);
+    // W92 — chaque sommet porte son index `idx` : le hit-test du glissé-sommet sait quel
+    // `ctx.vertices[i]` déplacer (parité avec le glissé d'obstacle).
+    srcOf('rp9-pts')?.setData({ type: 'FeatureCollection', features: ctx.vertices.map((v, idx) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: v }, properties: { idx } })) } as never);
     if (finishBtn) finishBtn.disabled = ctx.vertices.length < 3 || ctx.closed;
+    // W92 — « Annuler le dernier point » : seulement pendant le tracé (au moins un coin posé).
+    if (undoPointBtn) undoPointBtn.hidden = ctx.closed || ctx.vertices.length < 1;
     updateAreaReadout();
   }
 
@@ -66,6 +74,19 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (ctx.vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
     else setStatus(`Coin ${ctx.vertices.length} placé — continuez à tracer le contour.`);
   }
+
+  // W92 — retire le DERNIER sommet posé pendant le tracé (avant fermeture). N'agit pas une
+  // fois le toit fermé (le glissé-sommet édite alors les coins). Re-dessine + remet à jour
+  // le statut/les boutons via redrawTrace.
+  function undoLastPoint() {
+    if (ctx.closed || ctx.vertices.length === 0) return;
+    ctx.vertices.pop();
+    redrawTrace();
+    if (ctx.vertices.length === 0) setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer et lancer le calcul.');
+    else if (ctx.vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
+    else setStatus(`Dernier point annulé — ${ctx.vertices.length} coin(s) restant(s). Continuez le tracé.`);
+  }
+  undoPointBtn?.addEventListener('click', undoLastPoint);
 
   // ═══════════ W93 — AUTOCOMPLÉTION D'ADRESSE (combobox WAI-ARIA) ═══════════
   // Une suggestion MapTiler retenue (libellé affiché + coordonnées de vol).
@@ -237,5 +258,5 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     void geocode(q, true);
   });
 
-  return { redrawTrace, addVertex, geocode };
+  return { redrawTrace, addVertex, undoLastPoint, geocode };
 }

@@ -353,7 +353,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 - [x] **W91 — map: current-location button.** No way for an on-site Moroccan user to centre on their
   roof. Add MapLibre's built-in `GeolocateControl` (no new dependency) → `flyTo` zoom 19 on geolocate.
   Accept: the control appears and centres on the device location. File: `roof-tool-pro11.ts`.
-- [ ] **W92 — map: editable trace vertices + undo-last-point.** Roof corners are immutable once placed
+- [x] **W92 — map: editable trace vertices + undo-last-point.** Roof corners are immutable once placed
   (only "Effacer" restarts), unlike the fully-draggable obstacles. Generalize the obstacle-drag
   machinery to the `rp9-pts` source (drag a corner → update `vertices[i]` → `recalc`) and add an
   "Annuler le dernier point" control during tracing. Accept: a placed corner can be dragged and the last

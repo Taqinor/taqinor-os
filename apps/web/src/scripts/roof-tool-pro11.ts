@@ -150,6 +150,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const billKwhEl = $('rp9-bill-kwh');
   const finishBtn = $<HTMLButtonElement>('rp9-finish');
   const clearBtn = $<HTMLButtonElement>('rp9-clear');
+  // W92 — « Annuler le dernier point » : visible pendant le tracé, masqué dès la fermeture/reset.
+  const undoPointBtn = $<HTMLButtonElement>('rp9-undo-point');
   // — Recherche d'adresse (rp9-search / rp9-address) : DOM piloté par roofPro11/mapDraw.ts —
   const configPanel = $('rp9-config');
   // W1 : groupe AZIMUT, masqué quand le toit n'est pas tourné (cf. syncAzimuthGroupVisibility).
@@ -292,6 +294,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // Change C : déplacement (glissé) d'un obstacle existant. Delta-based (newCenter =
   // centre de départ + déplacement lng/lat) → robuste au parallaxe en vue inclinée.
   let moveObs: { id: string; startLng: number; startLat: number; centerLng: number; centerLat: number; moved: boolean } | null = null;
+  // W92 — glissé-déplacement d'un SOMMET du tracé (delta lng/lat sur ctx.vertices[idx]).
+  let moveVertex: { idx: number; startLng: number; startLat: number; vLng: number; vLat: number; moved: boolean } | null = null;
   let rec: Recommendation | null = null;
   // V3 — type de toit (plat = modèle existant, défaut ; pente = pose affleurante),
   // pente + face SAISIES (imposent l'inclinaison et l'azimut de l'array), et le
@@ -533,6 +537,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set moveObs(v) {
       moveObs = v;
+    },
+    get moveVertex() {
+      return moveVertex;
+    },
+    set moveVertex(v) {
+      moveVertex = v;
     },
     get obstacleMeshes() {
       return obstacleMeshes;
@@ -993,6 +1003,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
     map,
     recalc: () => recalc(),
     setStatus,
+    // W92 — wrapper paresseux : `redrawTrace` (du module mapDraw) est assigné plus bas ;
+    // référencé seulement à l'exécution d'un glissé-sommet, donc pas de TDZ.
+    redrawTrace: () => redrawTrace(),
   });
   const redrawObstacles = obstaclesUi.redrawObstacles;
   const clearPreview = obstaclesUi.clearPreview;
@@ -1006,6 +1019,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const tryBeginMove = obstaclesUi.tryBeginMove;
   const doMove = obstaclesUi.doMove;
   const endMove = obstaclesUi.endMove;
+  // W92 — glissé d'un SOMMET du tracé (généralisation du glissé d'obstacle).
+  const tryBeginVertexMove = obstaclesUi.tryBeginVertexMove;
+  const doVertexMove = obstaclesUi.doVertexMove;
+  const endVertexMove = obstaclesUi.endVertexMove;
 
   // — Tracé du contour + recherche d'adresse (géocodage W75). Le module câble lui-même
   // le formulaire de recherche ; l'entrée garde la construction de la carte, le boot
@@ -1289,6 +1306,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
     closed = true;
     if (finishBtn) finishBtn.disabled = true;
+    if (undoPointBtn) undoPointBtn.hidden = true; // W92 — plus d'annulation après fermeture
     let lng = 0;
     let lat = 0;
     for (const [x, y] of vertices) {
@@ -1305,8 +1323,11 @@ export function initRoofToolPro8(opts: InitOptions): void {
     prodPlaneKey = ''; // W50 : nouvelle localisation → fenêtre de production à re-charger
     prodPerKwc = null;
     if (optimumCard) optimumCard.hidden = true;
+    // W92 — on GARDE les pastilles de sommets (avec leur `idx`) comme POIGNÉES éditables :
+    // un coin posé reste glissable après fermeture. redrawTrace re-pose les points indexés
+    // depuis ctx.vertices ; on efface ENSUITE la ligne plate (la 3D la remplace).
+    redrawTrace();
     srcOf('rp9-line')?.setData(empty as never);
-    srcOf('rp9-pts')?.setData(empty as never);
     if (configPanel) configPanel.hidden = false;
     go3DView();
     syncRoofTypeChips();
@@ -1360,6 +1381,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     map.triggerRepaint();
     if (configPanel) configPanel.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
+    if (undoPointBtn) undoPointBtn.hidden = true; // W92 — masqué tant qu'aucun coin n'est posé
     updateAreaReadout();
     const wrap = $('rp9-compare-wrap');
     if (wrap) wrap.hidden = true;
@@ -1532,14 +1554,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
       beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
       return;
     }
+    // W92 — un SOMMET du tracé a priorité sur un obstacle (pastille au-dessus).
+    if (tryBeginVertexMove([e.lngLat.lng, e.lngLat.lat], e.point)) return;
     tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
   });
   map.on('mousemove', (e) => {
     if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
+    else if (moveVertex) doVertexMove([e.lngLat.lng, e.lngLat.lat]);
     else if (moveObs) doMove([e.lngLat.lng, e.lngLat.lat]);
   });
   map.on('mouseup', (e) => {
     if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+    else if (moveVertex) endVertexMove();
     else if (moveObs) endMove();
   });
   map.on('touchstart', (e) => {
@@ -1548,12 +1574,19 @@ export function initRoofToolPro8(opts: InitOptions): void {
       beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
       return;
     }
-    if (!e.points || e.points.length === 1) tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
+    if (!e.points || e.points.length === 1) {
+      // W92 — un SOMMET du tracé a priorité sur un obstacle (pastille au-dessus).
+      if (tryBeginVertexMove([e.lngLat.lng, e.lngLat.lat], e.point)) return;
+      tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
+    }
   });
   map.on('touchmove', (e) => {
     if (drawing) {
       e.preventDefault();
       moveDraw([e.lngLat.lng, e.lngLat.lat]);
+    } else if (moveVertex) {
+      e.preventDefault();
+      doVertexMove([e.lngLat.lng, e.lngLat.lat]);
     } else if (moveObs) {
       e.preventDefault();
       doMove([e.lngLat.lng, e.lngLat.lat]);

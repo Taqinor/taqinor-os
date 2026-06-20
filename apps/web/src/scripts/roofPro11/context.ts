@@ -101,6 +101,10 @@ export interface Ctx {
   moveObs:
     | { id: string; startLng: number; startLat: number; centerLng: number; centerLat: number; moved: boolean }
     | null;
+  /** W92 — glissé-déplacement d'un SOMMET du tracé (index + delta lng/lat) ou null. */
+  moveVertex:
+    | { idx: number; startLng: number; startLat: number; vLng: number; vLat: number; moved: boolean }
+    | null;
 
   // — Scène 3D partagée avec le déplacement d'obstacle en direct —
   /** Meshes 3D des obstacles, par id (ref STABLE — Map remplie par renderScene). */
