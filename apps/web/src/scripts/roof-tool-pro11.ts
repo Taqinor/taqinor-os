@@ -731,6 +731,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
       renderer.resetState();
       renderer.render(scene, threeCamera);
     },
+    // W70 — libère TOUTES les ressources GPU quand la couche est retirée (navigation
+    // client Astro, démontage de la carte) : meshes/matériaux de scène (disposeScene),
+    // textures partagées (panneau + photo de toit) et le WebGLRenderer lui-même. Sans
+    // cela le renderer + ses textures fuient à chaque départ de la page.
+    onRemove(_m: maplibregl.Map, _gl: WebGLRenderingContext | WebGL2RenderingContext) {
+      disposeScene();
+      panelTex.dispose();
+      roofTex?.dispose();
+      roofTex = null;
+      renderer?.dispose();
+      renderer = null;
+    },
   };
 
   /** Libère un objet (et sa géométrie/ses matériaux). L'étiquette d'obstacle porte
@@ -817,6 +829,11 @@ export function initRoofToolPro8(opts: InitOptions): void {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
       tex.needsUpdate = true;
+      // W70 — libère l'ANCIENNE texture de toit avant de la remplacer (fuite GPU à chaque
+      // re-tracé sur une nouvelle bbox). On NE libère QUE l'orpheline : si la texture courante
+      // est encore montée sur le matériau du deck (.map), three la libérera à la prochaine
+      // recomposition du matériau — la libérer ici corromprait le rendu en cours.
+      if (roofTex && roofTex !== tex && roofTex !== deckMaterial?.map) roofTex.dispose();
       roofTex = tex;
       roofTexKey = key;
       // Réapplique sur le deck COURANT (un bascule a pu le recréer entre-temps).

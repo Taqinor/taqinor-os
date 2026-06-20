@@ -217,7 +217,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 **TIER 1 — MALFUNCTIONS (fix first — "correct all the malfunctions"):**
 
-- [ ] **W70 — 3D: dispose GPU resources on re-trace + on teardown.** In `roof-tool-pro11.ts`,
+- [x] **W70 — 3D: dispose GPU resources on re-trace + on teardown.** In `roof-tool-pro11.ts`,
   `applyRoofPhoto` reassigns `roofTex` without disposing the previous texture (GPU leak on every
   re-trace at a new bbox); and the `WebGLRenderer`/`panelTex` are never disposed (leak on Astro
   client-nav away). Dispose the old `roofTex` before reassigning (guard the one still on
@@ -421,6 +421,10 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state of the site +
   preview lab)*
+- 2026-06-20 — W70: pro-11 now disposes the orphaned `roofTex` before reassigning it on re-trace
+  (guarded so it never frees the texture still on `deckMaterial.map`), and a new `customLayer.onRemove`
+  frees the `WebGLRenderer`, `panelTex`, `roofTex`, and the scene (`disposeScene`) on teardown —
+  repeated trace/clear cycles no longer leak textures and client-nav frees the renderer.
 - 2026-06-20 — W76: added pure `isSimplePolygon(ring)` to `roof.ts` (proper segment-intersection
   test, ring treated closed) + unit tests (convex/concave-simple true, bow-tie false); wired into
   pro-11 `addVertex` (rejects a crossing point) and `close()` (refuses a self-intersecting ring)

@@ -155,6 +155,22 @@ describe('pro-11 — le toit PLAT garde l\'optimiseur vivant W34 (V7) intact', (
   });
 });
 
+describe('pro-11 — W70 : libération des ressources GPU (re-tracé + démontage)', () => {
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('la couche custom expose onRemove qui libère renderer + textures + scène', () => {
+    expect(script).toContain('onRemove(');
+    expect(script).toContain('renderer?.dispose()');
+    expect(script).toContain('panelTex.dispose()');
+  });
+
+  it('applyRoofPhoto libère l\'ancienne texture de toit avant de la remplacer (orpheline seule)', () => {
+    // garde anti double-libération : ne touche pas la texture encore montée sur le deck.
+    expect(script).toContain('roofTex !== deckMaterial?.map');
+    expect(script).toContain('roofTex.dispose()');
+  });
+});
+
 describe('pro-11 — l\'existant est strictement préservé', () => {
   it('les baselines pro-3..pro-10 gardent leur page et leur script dédiés', () => {
     for (const n of [3, 4, 5, 6, 7, 8, 9, 10]) {
