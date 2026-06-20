@@ -42,6 +42,14 @@ export interface CardData {
   savingsLow: number;
   savingsHigh: number;
   why: string;
+  /** W94 — famille du plan (sélection de la constante bifaciale flat/tilted +
+   * libellé de la fourchette). Optionnel (rétro-compatible). */
+  family?: ConfigFamily;
+  /** W94 — inclinaison du plan (°) : < 12° ou E-O → gain bifacial FLAT, sinon TILTED. */
+  tiltDeg?: number;
+  /** W94 — besoin annuel (kWh) pour plafonner les économies de la fourchette
+   * Année 1 ↔ Année 25 à la facture, à CHAQUE horizon. Optionnel (rétro-compatible). */
+  target?: number;
 }
 
 // ═══════════ « PLUSIEURS ZONES » — enregistrements de zone ═══════════

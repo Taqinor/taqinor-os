@@ -188,6 +188,65 @@ export function billMAD(monthlyKwh: number, grid: TariffGrid = REGIE_TARIFF): nu
 export const BIFACIAL_GAIN_TILTED = 0.05; // sud incliné, bien espacé
 export const BIFACIAL_GAIN_FLAT = 0.03; // pose dense/plate (E-O)
 
+// — W94 : dégradation linéaire annuelle des panneaux (vieillissement) —
+/**
+ * Dégradation linéaire de puissance par an (fraction). Le vrai panneau du
+ * calepinage (Canadian Solar TOPBiHiKu7 CS7N-690-720TB-AG, roofPro2.ts) garantit
+ * une dégradation ≤ 0,40 %/an après la 1re année sur sa fiche technique ; 0,5 %/an
+ * est la valeur conservatrice STANDARD de l'industrie (médiane NREL/PVsyst pour le
+ * c-Si moderne) — on l'utilise pour une fourchette honnête Année 1 ↔ Année 25, donc
+ * on ne SOUS-estime jamais le vieillissement. La performance résiduelle en année N
+ * vaut (1 − deg)^(N−1). */
+export const ANNUAL_DEGRADATION = 0.005;
+/** Horizon « long terme » affiché dans la fourchette d'honnêteté (durée de vie
+ * conventionnelle d'une installation PV ; les garanties produit/rendement courent
+ * sur 25 ans). */
+export const LIFETIME_YEARS = 25;
+
+/** Facteur de production résiduelle à l'année `year` (1-based) sous dégradation
+ * linéaire : (1 − deg)^(year−1). Année 1 = 1,0 ; année 25 ≈ (1 − deg)^24. PUR. */
+export function degradationFactor(year: number, deg = ANNUAL_DEGRADATION): number {
+  const y = Math.max(1, Math.floor(year));
+  return Math.pow(Math.max(0, 1 - deg), y - 1);
+}
+
+// — W94 : plafond onduleur (DC:AC) — l'énergie utilisable d'un champ TRÈS dense (DC)
+// est limitée par la puissance AC de l'onduleur ; sans plafond, une « tente » E-O
+// sur-densifiée sur-estime la production annuelle. —
+/**
+ * Ratio DC/AC de dimensionnement onduleur (kWc DC posé ÷ kW AC onduleur). 1,2 est
+ * le ratio de design STANDARD résidentiel/commercial (défaut NREL SAM ≈ 1,2 ; les
+ * intégrateurs montent jusqu'à ~1,3 sur les sites diffus) : un onduleur ainsi
+ * dimensionné écrête les pointes de midi rares et ne perd presque rien en énergie
+ * annuelle. Au-DELÀ de ce ratio (champ DC encore plus sur-dimensionné par rapport à
+ * l'AC), l'écrêtage devient sensible — c'est ce que modélise clipDcAcKwh. */
+export const DC_AC_RATIO = 1.2;
+/**
+ * Perte d'énergie ANNUELLE par unité de DC:AC AU-DELÀ du ratio de design. Ordre de
+ * grandeur DOCUMENTÉ : à DC:AC ≈ 1,2 l'écrêtage annuel reste < 0,5 % (≈ nul ici,
+ * absorbé par le design), et il atteint ~3–5 %/an quand le ratio grimpe vers ~1,5
+ * (relevés NREL/SAM sur l'écrêtage onduleur). On prend une pente prudente de 10 %
+ * d'énergie perdue par unité de ratio EXCÉDENTAIRE (donc +0,1 de ratio au-delà de
+ * 1,2 → ~1 % de perte) — une borne basse honnête qui ne gonfle jamais la production. */
+export const DC_AC_CLIP_LOSS_PER_RATIO = 0.1;
+
+/**
+ * Écrête une production annuelle DC brute (kWh) au plafond AC de l'onduleur, en
+ * fonction du ratio DC:AC EFFECTIF du champ. Modèle : l'onduleur est dimensionné au
+ * ratio de design `DC_AC_RATIO` ; un champ dont le ratio effectif `dcAcRatio` le
+ * dépasse perd `DC_AC_CLIP_LOSS_PER_RATIO` d'énergie par unité de dépassement
+ * (plafonné à 30 % — au-delà le modèle linéaire n'a plus de sens physique). Un
+ * champ au ratio de design (ou en-dessous) n'est PAS touché → les configs
+ * normalement dimensionnées restent inchangées ; seuls les champs DC sur-densifiés
+ * (tentes E-O serrées) voient leur kWh annuel ramené sous la valeur non écrêtée.
+ * PUR (testé). */
+export function clipDcAcKwh(rawAnnualKwh: number, dcAcRatio: number): number {
+  if (!Number.isFinite(rawAnnualKwh) || rawAnnualKwh <= 0) return Math.max(0, rawAnnualKwh || 0);
+  const excess = Math.max(0, (Number.isFinite(dcAcRatio) ? dcAcRatio : 0) - DC_AC_RATIO);
+  const loss = Math.min(0.3, excess * DC_AC_CLIP_LOSS_PER_RATIO);
+  return rawAnnualKwh * (1 - loss);
+}
+
 // — Dimensionnement de la recommandation —
 const COVERAGE_MARGIN = 1.1; // couvrir la cible + 10 %
 
@@ -781,11 +840,30 @@ export interface ConfigResult {
   notes: string;
 }
 
+/**
+ * W94 — ratio DC:AC EFFECTIF d'un champ selon sa famille. L'onduleur est dimensionné
+ * au ratio de design `DC_AC_RATIO` (cas mono-orientation = Sud) → ratio effectif =
+ * DC_AC_RATIO, écrêtage nul. En Est-Ouest dos à dos, les deux demi-champs (Est, Ouest)
+ * partagent un seul onduleur double-MPPT : leur nameplate DC COMBINÉE est très
+ * supérieure à la puissance AC jamais demandée en même temps (les deux faces ne
+ * culminent jamais ensemble), donc le ratio DC:AC effectif est PLUS HAUT → l'onduleur
+ * écrête davantage. Facteur de simultanéité E-O ≈ 0,70 (la sortie AC combinée des deux
+ * faces plafonne autour de 0,70 du nameplate aux inclinaisons E-O réalistes 10–15° —
+ * borne prudente), d'où ratio effectif ≈ DC_AC_RATIO / 0,70. PUR. */
+export const EW_SIMULTANEITY_FACTOR = 0.7;
+export function effectiveDcAcRatio(family: ConfigFamily): number {
+  return family === 'eastwest' ? DC_AC_RATIO / EW_SIMULTANEITY_FACTOR : DC_AC_RATIO;
+}
+
 /** Production annuelle (kWh, face avant) pour une puissance donnée selon la
  * famille/inclinaison. E-O = somme des sous-champs Est (base−90°) et Ouest
  * (base+90°). `aspectDeg` = écart au sud de la FACE (Sud) ou du faîte (E-O) :
  * 0 par défaut (plein sud / faîte nord-sud), non nul quand l'array suit un toit
- * tourné — le rendement par panneau baisse alors d'après la vraie table PVGIS. */
+ * tourné — le rendement par panneau baisse alors d'après la vraie table PVGIS.
+ * W94 — l'énergie DC brute est ENSUITE écrêtée au plafond AC de l'onduleur
+ * (clipDcAcKwh au ratio DC:AC effectif de la famille) : un Sud normalement
+ * dimensionné est inchangé (ratio = design) ; une « tente » E-O sur-densifiée voit
+ * son kWh annuel ramené sous la valeur non écrêtée. */
 export function productionKwh(
   latitudeDeg: number,
   family: ConfigFamily,
@@ -793,12 +871,15 @@ export function productionKwh(
   kwc: number,
   aspectDeg = 0,
 ): number {
+  let rawKwh: number;
   if (family === 'eastwest') {
     const yE = specificYield(latitudeDeg, tiltDeg, aspectDeg - 90);
     const yW = specificYield(latitudeDeg, tiltDeg, aspectDeg + 90);
-    return (kwc / 2) * yE + (kwc / 2) * yW;
+    rawKwh = (kwc / 2) * yE + (kwc / 2) * yW;
+  } else {
+    rawKwh = kwc * specificYield(latitudeDeg, tiltDeg, aspectDeg);
   }
-  return kwc * specificYield(latitudeDeg, tiltDeg, aspectDeg);
+  return clipDcAcKwh(rawKwh, effectiveDcAcRatio(family));
 }
 
 /** Aspect PVGIS (écart au sud) d'un pavage selon sa famille et son azimut réel :

@@ -362,7 +362,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   Switch to `limit=5`, render a dropdown bound to the address field, and `flyTo` only on selection
   (reuses the same MapTiler endpoint, no new key). Accept: typing shows up to 5 Morocco suggestions;
   selecting one flies there. File: `roof-tool-pro11.ts`.
-- [ ] **W94 — brain: 25-year degradation band + DC:AC clip + real bifacial constants.** Savings imply
+- [x] **W94 — brain: 25-year degradation band + DC:AC clip + real bifacial constants.** Savings imply
   year-1 production forever; `kwc = count × 0.72` is raw DC with no inverter clip, overstating dense
   E-W tents; the live cards hardcode a literal `× 0.05` bifacial gain instead of the `BIFACIAL_GAIN_*`
   constants. Add `ANNUAL_DEGRADATION` + `DC_AC_RATIO`/`INVERTER_KW` to `estimatorBrainV2.ts`, surface a

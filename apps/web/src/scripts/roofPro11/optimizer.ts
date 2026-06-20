@@ -27,6 +27,13 @@ import {
   neededPanelsForTarget,
   roofDominantAzimuthDeg,
   tariffForCity,
+  degradationFactor,
+  clipDcAcKwh,
+  effectiveDcAcRatio,
+  BIFACIAL_GAIN_FLAT,
+  BIFACIAL_GAIN_TILTED,
+  ANNUAL_DEGRADATION,
+  LIFETIME_YEARS,
   type PackResult,
   type PanelGrid,
   type ConfigFamily,
@@ -218,6 +225,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         savingsLow: savings.low,
         savingsHigh: savings.high,
         why: o.why,
+        family: o.family,
+        tiltDeg: o.tiltDeg,
+        target,
       },
       o.sourceLabel,
     );
@@ -316,7 +326,15 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     });
     const grid = w.layout === 'portrait' ? pack.portrait : pack.landscape;
     renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
-    const cov = Math.round(w.pctOfTarget);
+    // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
+    // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
+    // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
+    // couverture + économies (plafonnées à la conso) à partir du kWh écrêté.
+    const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family));
+    const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
+    const savings = annualSavingsMad(annualKwh, target);
+    const pct = target > 0 ? (annualKwh / target) * 100 : 0;
+    const cov = Math.round(pct);
     // W74 — AUCUNE config viable (toit trop petit / contraint à néant) : on n'affiche
     // PAS un faux « 0 panneau gagnant », mais un message honnête.
     const why = res.noViableConfig
@@ -330,11 +348,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         isReco,
         count: w.placedCount,
         kwc: w.kwc,
-        annualKwh: w.annualKwh,
-        pct: w.pctOfTarget,
-        savingsLow: w.savingsLow,
-        savingsHigh: w.savingsHigh,
+        annualKwh,
+        pct,
+        savingsLow: savings.low,
+        savingsHigh: savings.high,
         why,
+        family: w.family,
+        tiltDeg: w.tiltDeg,
+        target,
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS au GPS exact)' : '(production estimée — table par latitude)',
     );
@@ -421,8 +442,34 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '');
     const bif = $('rp9-reco-bifacial');
     if (bif) {
-      const gain = d.annualKwh * 0.05;
-      bif.textContent = d.annualKwh > 0 ? `+ gain bifacial (estimation prudente, ~+5 %) : ~${fmt(Math.round(gain))} kWh/an — non compté dans le chiffre ci-dessus.` : '';
+      // W94 — gain bifacial via les VRAIES constantes (face dense/plate ou E-O → FLAT,
+      // sud incliné bien espacé → TILTED) ; plus de littéral « × 0,05 » magique.
+      const flatGain = d.family === 'eastwest' || (d.tiltDeg != null && d.tiltDeg < 12);
+      const bifGain = flatGain ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
+      const gain = d.annualKwh * bifGain;
+      const pct = Math.round(bifGain * 100);
+      bif.textContent = d.annualKwh > 0 ? `+ gain bifacial (estimation prudente, ~+${pct} %) : ~${fmt(Math.round(gain))} kWh/an — non compté dans le chiffre ci-dessus.` : '';
+    }
+    // W94 — fourchette honnête Année 1 ↔ Année 25 : la production baisse sous la
+    // dégradation linéaire des panneaux ((1 − deg)^24 en année 25) et les économies
+    // restent plafonnées à la facture À CHAQUE horizon (annualSavingsMad bill-capé).
+    const band = $('rp9-reco-band');
+    if (band) {
+      if (d.annualKwh > 0) {
+        const fac25 = degradationFactor(LIFETIME_YEARS);
+        const kwh25 = d.annualKwh * fac25;
+        const target = d.target ?? ctx.prodTarget;
+        const sav25 =
+          target > 0 ? annualSavingsMad(kwh25, target) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
+        const degPct = Math.round(ANNUAL_DEGRADATION * 1000) / 10; // 0,5 %
+        band.textContent =
+          `Dans la durée (dégradation ~${degPct.toLocaleString('fr-FR')} %/an) : ` +
+          `Année 1 ~${fmt(Math.round(d.annualKwh))} kWh/an (${fmtMad(d.savingsHigh)}/an) → ` +
+          `Année ${LIFETIME_YEARS} ~${fmt(Math.round(kwh25))} kWh/an (${fmtMad(sav25.high)}/an). ` +
+          `Économies toujours plafonnées à votre facture.`;
+      } else {
+        band.textContent = '';
+      }
     }
     $('rp9-results')?.classList.add('rp9-results--ready');
     const cta = $<HTMLButtonElement>('rp9-cta');
@@ -525,6 +572,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         savingsLow: savings.low,
         savingsHigh: savings.high,
         why: pitchedWhy(),
+        family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
+        tiltDeg: fp.pitchDeg,
+        target,
       },
       usePvgis ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
     );
@@ -593,6 +643,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         savingsLow: w.savingsLow,
         savingsHigh: w.savingsHigh,
         why,
+        family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
+        tiltDeg: w.pack.pitchDeg,
+        target: ctx.pitchedRec ? ctx.pitchedRec.targetAnnualKwh : undefined,
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
     );
