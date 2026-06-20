@@ -327,15 +327,17 @@ class ContratMaintenance(models.Model):
         return date(y, mo, day)
 
     def is_due(self, today=None):
-        from datetime import date
-        return self.actif and (today or date.today()) >= self.prochaine_visite()
+        # Bucket « aujourd'hui » sur le fuseau de l'app (Africa/Casablanca) :
+        # un date.today() naïf (UTC) décalait le « dû » d'un jour à minuit.
+        return self.actif and (
+            today or timezone.localdate()) >= self.prochaine_visite()
 
     def renouvellement_du(self, today=None):
         """True si la date de renouvellement est atteinte (contrat à renouveler)."""
-        from datetime import date
         if not self.date_renouvellement:
             return False
-        return self.actif and (today or date.today()) >= self.date_renouvellement
+        return self.actif and (
+            today or timezone.localdate()) >= self.date_renouvellement
 
 
 class PieceConsommee(models.Model):

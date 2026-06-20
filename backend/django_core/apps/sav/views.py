@@ -336,6 +336,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': 'Produit inconnu.'}, status=404)
         decrement = str(request.data.get('decrement') or '') in (
             '1', 'true', 'True', 'on')
+        if decrement:
+            # ERR80 — garde plancher : ne jamais piloter le stock en négatif.
+            # On bloque le décrément qui dépasserait le stock en main.
+            produit.refresh_from_db()
+            if quantite > produit.quantite_stock:
+                return Response(
+                    {'detail': 'Stock insuffisant : '
+                     f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             piece = PieceConsommee.objects.create(
                 company=ticket.company, ticket=ticket, produit=produit,
