@@ -64,11 +64,9 @@ def lettre_relance_premium(request, facture_id):
 @permission_classes([IsAnyRole])
 def fiche_remise_premium(request, chantier_id):
     """Fiche de remise / garantie après-vente (une page) pour un chantier."""
-    # Import local : lecture seule du modèle d'une autre app (jamais modifié).
-    from apps.installations.models import Installation
-    qs = Installation.objects.select_related(
-        'client', 'devis', 'company', 'technicien_responsable',
-    ).prefetch_related('devis__lignes__produit')
+    # Lecture seule du chantier d'une autre app, via son sélecteur (jamais modifié).
+    from apps.installations.selectors import installation_qs_for_remise
+    qs = installation_qs_for_remise()
     chantier = _scope(qs, request.user).filter(pk=chantier_id).first()
     if chantier is None:
         return Response({'detail': 'Chantier introuvable.'},

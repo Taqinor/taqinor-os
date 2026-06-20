@@ -281,11 +281,8 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
 
         if prefix == labels.SYSTEME_PREFIX:
             # Import paresseux : résolution en LECTURE SEULE, jamais d'écriture.
-            from apps.installations.models import Installation
-            inst = (Installation.objects
-                    .filter(company=request.user.company, id=obj_id)
-                    .select_related('client')
-                    .first())
+            from apps.installations.selectors import installation_scoped
+            inst = installation_scoped(request.user.company, obj_id)
             if inst is None:
                 return Response(
                     {'detail': 'Système installé introuvable.'},
@@ -304,11 +301,8 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         if prefix == labels.INTERVENTION_PREFIX:
             # F23 — résolution LECTURE SEULE vers une intervention (sortie
             # chantier), scopée société. Import paresseux, aucune écriture.
-            from apps.installations.models import Intervention
-            itv = (Intervention.objects
-                   .filter(company=request.user.company, id=obj_id)
-                   .select_related('installation', 'installation__client')
-                   .first())
+            from apps.installations.selectors import intervention_scoped
+            itv = intervention_scoped(request.user.company, obj_id)
             if itv is None:
                 return Response(
                     {'detail': 'Intervention introuvable.'},

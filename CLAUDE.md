@@ -74,6 +74,15 @@ repo yet, the rule still applies to any future integration.
   models need a `company` FK; new viewsets must filter querysets by
   `request.user.company` and force-assign `company` in `perform_create` —
   never accept it from the request body.
+- **Cross-app boundary — go through `services.py`/`selectors.py`, never another
+  app's `models`/`views`.** Between business-core domain apps
+  (`apps/{crm,ventes,stock,installations,sav}`), all cross-app READS and WRITES
+  route through the TARGET app's `selectors.py` (reads) or `services.py`
+  (writes/orchestration) — or through string-FK references — never by importing
+  its `models`/`views` directly. Add a thin function to the target app's
+  selector/service and call it (keep lazy/function-local imports where they avoid
+  cycles). Same-app imports and imports of foundation apps (roles, records,
+  authentication, core, customfields, parametres, reporting, etc.) are exempt.
 - Run tests: `python manage.py test apps` (inside the django_core container or
   with env vars pointing at a local Postgres).
 - Full stack: `docker compose up` (nginx :80, Postgres+pgvector, Redis, MinIO,

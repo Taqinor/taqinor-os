@@ -346,8 +346,10 @@ def merge_leads(survivor, others, user):
             absorbed.devis.update(lead=survivor)
             # 2) Chantiers liés au lead → survivant (FK SET_NULL, on réassigne).
             try:
-                from apps.installations.models import Installation
-                Installation.objects.filter(lead=absorbed).update(lead=survivor)
+                from apps.installations.selectors import (
+                    update_installation_lead,
+                )
+                update_installation_lead(absorbed, survivor)
             except Exception:
                 pass
             # 3) Activités + pièces jointes génériques → survivant.

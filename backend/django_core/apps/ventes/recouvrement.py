@@ -9,7 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.crm.models import Client
+from apps.crm.selectors import client_base_qs
 from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import Facture, FollowupLevel
@@ -258,7 +258,7 @@ def _releve_data(client, user=None):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve(request, client_id):
-    client = _scope(Client.objects.all(), request.user).filter(
+    client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
     if client is None:
         return Response({'detail': 'Client introuvable.'},
@@ -269,7 +269,7 @@ def client_releve(request, client_id):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve_pdf(request, client_id):
-    client = _scope(Client.objects.all(), request.user).filter(
+    client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
     if client is None:
         return Response({'detail': 'Client introuvable.'},

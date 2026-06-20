@@ -4,7 +4,9 @@ from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from apps.stock.models import MouvementStock
+from apps.stock.services import (
+    mouvement_type_sortie, record_stock_movement,
+)
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
@@ -623,10 +625,10 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                             )},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
-                    MouvementStock.objects.create(
+                    record_stock_movement(
                         company=bc.company,
                         produit=produit,
-                        type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                        type_mouvement=mouvement_type_sortie(),
                         quantite=qte,
                         quantite_avant=qte_avant,
                         quantite_apres=qte_apres,
@@ -634,8 +636,6 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                         note=f'Livraison BC {bc.reference}',
                         created_by=request.user,
                     )
-                    produit.quantite_stock = qte_apres
-                    produit.save(update_fields=['quantite_stock'])
             bc.statut = BonCommande.Statut.LIVRE
             bc.save()
         return Response(BonCommandeSerializer(bc).data)

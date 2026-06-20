@@ -264,14 +264,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     def creer_depuis_devis(self, request):
         """Crée un chantier pré-rempli depuis un devis accepté. Si un chantier
         existe déjà pour ce devis, le RETOURNE (jamais de doublon)."""
-        from apps.ventes.models import Devis
+        from apps.ventes.selectors import get_devis_by_pk, is_devis_accepte
         company = request.user.company
         devis_id = request.data.get('devis')
-        devis = Devis.objects.filter(pk=devis_id).first()
+        devis = get_devis_by_pk(devis_id)
         if devis is None or devis.company_id != company.id:
             return Response({'detail': 'Devis inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        if devis.statut != Devis.Statut.ACCEPTE:
+        if not is_devis_accepte(devis):
             return Response(
                 {'detail': 'Le devis doit être « Accepté » pour créer le chantier.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -452,20 +452,16 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             serie = (eq.get('numero_serie') or '').strip()
             if not produit_id:
                 continue
-            from apps.stock.models import Produit
-            from apps.sav.models import Equipement
-            produit = Produit.objects.filter(
-                id=produit_id, company=inst.company).first()
+            from apps.stock.selectors import get_produit_scoped
+            from apps.sav.services import create_equipement_from_serial
+            produit = get_produit_scoped(inst.company, produit_id)
             if produit is None:
                 continue
-            equip = Equipement.objects.create(
+            create_equipement_from_serial(
                 company=inst.company, produit=produit, installation=inst,
                 numero_serie=serie or None,
                 date_pose=inst.date_pose_reelle or timezone.localdate(),
                 created_by=request.user)
-            equip.recompute_garanties()
-            equip.save(update_fields=[
-                'date_fin_garantie', 'date_fin_garantie_production'])
             created_equip += 1
             captures.append(
                 f"{produit.nom}"
@@ -1167,15 +1163,14 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         from django.contrib.contenttypes.models import ContentType
         from apps.records.models import Attachment
         from apps.records.storage import store_attachment
-        from apps.stock.models import Produit
+        from apps.stock.selectors import get_produit_scoped
         from . import swappable
         interv = self.get_object()
         company = interv.company
         produit = None
         produit_id = request.data.get('produit')
         if produit_id:
-            produit = Produit.objects.filter(
-                id=produit_id, company=company).first()
+            produit = get_produit_scoped(company, produit_id)
             if produit is None:
                 return Response({'produit': 'Produit inconnu.'},
                                 status=status.HTTP_400_BAD_REQUEST)
@@ -1298,7 +1293,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
     def ajouter_ligne_consommation(self, request, pk=None):
         """F11 — ajoute une ligne hors-nomenclature (câble, vis, MC4…). Corps :
         designation, quantite_utilisee, [produit], [justification]."""
-        from apps.stock.models import Produit
+        from apps.stock.selectors import get_produit_scoped
         interv = self.get_object()
         if getattr(interv, 'consommation', None) and interv.consommation.valide:
             return Response({'detail': 'Réconciliation déjà validée.'},
@@ -1310,8 +1305,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         produit = None
         if request.data.get('produit'):
-            produit = Produit.objects.filter(
-                id=request.data.get('produit'), company=interv.company).first()
+            produit = get_produit_scoped(
+                interv.company, request.data.get('produit'))
         from decimal import Decimal, InvalidOperation
         try:
             qte = Decimal(str(request.data.get('quantite_utilisee') or 0))
@@ -1586,21 +1581,16 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
     def _spawn_ticket_for_reserve(self, reserve, user):
         """F16 — crée un ticket SAV correctif pour une réserve, selon le design
         SAV existant (référence sans collision)."""
-        from apps.sav.models import Ticket
-        from apps.ventes.utils.references import create_with_reference
+        from apps.sav.services import create_corrective_ticket
         interv = reserve.intervention
         inst = interv.installation
         if inst is None or inst.client_id is None:
             return None
         company = reserve.company
-
-        def _create(ref):
-            return Ticket.objects.create(
-                company=company, reference=ref, client=inst.client,
-                installation=inst, type=Ticket.Type.CORRECTIF,
-                description=reserve.description or 'Réserve d\'intervention',
-                created_by=user)
-        return create_with_reference(Ticket, 'SAV', company, _create)
+        return create_corrective_ticket(
+            company=company, client=inst.client, installation=inst,
+            description=reserve.description or 'Réserve d\'intervention',
+            created_by=user)
 
     @action(detail=True, methods=['post'], url_path='modifier-reserve',
             permission_classes=[IsResponsableOrAdmin])
@@ -1715,11 +1705,10 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         tr.rendu = bool(request.data.get('rendu', True))
         fields = ['rendu']
         if 'emplacement' in request.data:
-            from apps.stock.models import EmplacementStock
+            from apps.stock.selectors import get_emplacement_scoped
             emp_id = request.data.get('emplacement')
             tr.emplacement_retour = (
-                EmplacementStock.objects.filter(
-                    id=emp_id, company=interv.company).first()
+                get_emplacement_scoped(interv.company, emp_id)
                 if emp_id else None)
             fields.append('emplacement_retour')
         tr.save(update_fields=fields)
