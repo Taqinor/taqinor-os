@@ -151,6 +151,7 @@ import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
 import { createLayoutEditor } from './roofPro11/layoutEditor';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
+import { createMapDraw } from './roofPro11/mapDraw';
 
 let booted = false;
 
@@ -178,8 +179,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const billKwhEl = $('rp9-bill-kwh');
   const finishBtn = $<HTMLButtonElement>('rp9-finish');
   const clearBtn = $<HTMLButtonElement>('rp9-clear');
-  const searchForm = $<HTMLFormElement>('rp9-search');
-  const addressEl = $<HTMLInputElement>('rp9-address');
+  // — Recherche d'adresse (rp9-search / rp9-address) : DOM piloté par roofPro11/mapDraw.ts —
   const configPanel = $('rp9-config');
   // W1 : groupe AZIMUT, masqué quand le toit n'est pas tourné (cf. syncAzimuthGroupVisibility).
   const azimuthGroup = $('rp9-azimuth-group');
@@ -949,6 +949,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const doMove = obstaclesUi.doMove;
   const endMove = obstaclesUi.endMove;
 
+  // — Tracé du contour + recherche d'adresse (géocodage W75). Le module câble lui-même
+  // le formulaire de recherche ; l'entrée garde la construction de la carte, le boot
+  // map.on('load') (couche WebGL) et l'orchestration close().
+  const mapDraw = createMapDraw(ctx, {
+    map,
+    setStatus,
+    updateAreaReadout,
+  });
+  const redrawTrace = mapDraw.redrawTrace;
+  const addVertex = mapDraw.addVertex;
+  const geocode = mapDraw.geocode;
+
   const updateCompass = () => {
     if (compassArrow) compassArrow.style.transform = `rotate(${-map.getBearing()}deg)`;
   };
@@ -1588,33 +1600,14 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   const srcOf = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
-  function redrawTrace() {
-    srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: vertices }, properties: {} } as never);
-    srcOf('rp9-pts')?.setData({ type: 'FeatureCollection', features: vertices.map((v) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: v }, properties: {} })) } as never);
-    if (finishBtn) finishBtn.disabled = vertices.length < 3 || closed;
-    updateAreaReadout();
-  }
+  // ═══════════ TRACÉ + GÉOCODAGE : voir roofPro11/mapDraw.ts ═══════════
+  // redrawTrace/addVertex (garde W76) + geocode (garde anti-course W75) + le câblage du
+  // formulaire de recherche vivent dans le module ; créés plus haut via createMapDraw(ctx, …).
 
   // ═══════════ OBSTACLES (zones d'exclusion) : voir roofPro11/obstaclesUi.ts ═══════════
   // redrawObstacles/setPreviewRect/clearPreview/syncObsEdit/selectObstacle/updateSelected/
   // deleteSelected/addObstacle/obstacleAtPoint + le glissé-dessin/déplacement + l'édition
   // numérique vivent dans le module ; créés plus bas via createObstaclesUi(ctx, …).
-
-  function addVertex(v: LngLat) {
-    if (closed) return;
-    // W76 — refuse un point qui ferait CROISER le contour (nœud papillon). isSimplePolygon
-    // traite l'anneau comme FERMÉ (dernier→premier), donc tester [...vertices, v] vérifie à
-    // la fois la nouvelle arête et l'arête de fermeture implicite v→1ᵉʳ sommet. Un anneau
-    // croisé fausse l'aire géodésique (la shoelace s'annule) et le pavage.
-    if (vertices.length >= 3 && !isSimplePolygon([...vertices, v])) {
-      setStatus('Ce point croiserait votre tracé — placez-le ailleurs pour garder un contour simple.');
-      return;
-    }
-    vertices.push(v);
-    redrawTrace();
-    if (vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
-    else setStatus(`Coin ${vertices.length} placé — continuez à tracer le contour.`);
-  }
 
   // — Sélection de config → grille —
   function tiltOf(family: ConfigFamily): number {
@@ -3144,51 +3137,5 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   // — Obstacles : bouton « ajouter »/« effacer » + édition numérique : voir roofPro11/obstaclesUi.ts —
 
-  // W75 — débounce la soumission de recherche (~300 ms, comme le débounce billTimer de la
-  // facture) : des « Entrée » rapprochés ne lancent qu'UNE requête, celle de la dernière saisie.
-  let geoSubmitTimer: ReturnType<typeof setTimeout> | null = null;
-  searchForm?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const q = addressEl?.value.trim();
-    if (!q) return;
-    if (geoSubmitTimer != null) clearTimeout(geoSubmitTimer);
-    setStatus('Recherche de l’adresse…');
-    geoSubmitTimer = setTimeout(() => {
-      geoSubmitTimer = null;
-      void geocode(q);
-    }, 300);
-  });
-
-  // W75 — jeton + AbortController anti-course : deux recherches concurrentes ne peuvent
-  // plus « gagner » dans le désordre (le flyTo lent ne supplante plus le rapide). Chaque
-  // appel incrémente geoToken, annule la requête précédente, et ignore sa réponse si un
-  // appel plus récent est parti entre-temps.
-  let geoToken = 0;
-  let geoAbort: AbortController | null = null;
-  async function geocode(query: string) {
-    const myToken = ++geoToken;
-    geoAbort?.abort();
-    const ctrl = new AbortController();
-    geoAbort = ctrl;
-    setStatus('Recherche de l’adresse…');
-    try {
-      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${encodeURIComponent(opts.maptilerKey)}&country=ma&limit=1&language=fr`;
-      const res = await fetch(url, { signal: ctrl.signal });
-      if (!res.ok) throw new Error('geocode');
-      const data = (await res.json()) as { features?: Array<{ center?: [number, number] }> };
-      if (myToken !== geoToken) return; // une recherche plus récente l'a emporté
-      const center = data.features?.[0]?.center;
-      if (!center) {
-        setStatus('Adresse introuvable. Précisez la ville ou déplacez la carte à la main.');
-        return;
-      }
-      const target = { center, zoom: 19, pitch: 0 } as const;
-      if (opts.reducedMotion) map.jumpTo(target);
-      else map.flyTo({ ...target, essential: true });
-      setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer et lancer le calcul.');
-    } catch (err) {
-      if ((err as Error)?.name === 'AbortError' || myToken !== geoToken) return; // annulée / périmée
-      setStatus('Recherche indisponible. Déplacez la carte à la main pour trouver votre toit.');
-    }
-  }
+  // — Recherche d'adresse (géocodage W75) : voir roofPro11/mapDraw.ts —
 }

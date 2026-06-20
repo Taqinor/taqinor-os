@@ -172,7 +172,8 @@ describe('pro-11 — le toit PLAT garde l\'optimiseur vivant W34 (V7) intact', (
 });
 
 describe('pro-11 — W75 : recherche d\'adresse anti-course (jeton + abort + débounce)', () => {
-  const script = read('../src/scripts/roof-tool-pro11.ts');
+  // Split modulaire : le géocodage W75 vit désormais dans roofPro11/mapDraw.ts.
+  const script = read('../src/scripts/roofPro11/mapDraw.ts');
 
   it('geocode capture un jeton de requête et ignore les réponses périmées', () => {
     expect(script).toContain('let geoToken = 0');
