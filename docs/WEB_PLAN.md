@@ -224,7 +224,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `deckMaterial.map`), and add a `customLayer.onRemove` that calls `renderer.dispose()`,
   `panelTex.dispose()`, `roofTex?.dispose()`, `disposeScene()`. Accept: repeated trace/clear cycles
   do not grow GPU texture count; teardown frees the renderer. File: `roof-tool-pro11.ts`.
-- [ ] **W71 — 3D: hoist shared materials + static geometries out of the per-render path.** Panel/glass/
+- [x] **W71 — 3D: hoist shared materials + static geometries out of the per-render path.** Panel/glass/
   frame/rack/ballast `Material`s and the static `BoxGeometry`/`EdgesGeometry` are re-allocated inside
   `buildZoneMeshes`/`renderScene` on every tilt-slider drag / obstacle move / layout edit, forcing
   `MeshPhysicalMaterial` shader recompiles. Cache them once in closure scope (active + `dim` variants)

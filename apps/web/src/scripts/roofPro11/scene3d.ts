@@ -114,6 +114,96 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return new THREE.Matrix4().compose(new THREE.Vector3(px, py, pz), _q, _scl);
   };
 
+  // W71 — CACHE des matériaux + géométries STATIQUES du système panneau (verre/cadre/
+  // dos/boîtier/châssis/lest). Avant le split ils étaient ré-alloués DANS buildZoneMeshes
+  // à CHAQUE rendu (glissé du curseur d'inclinaison, déplacement d'obstacle, édition de
+  // disposition) → chaque MeshPhysicalMaterial (verre, clearcoat) reprovoquait une
+  // recompilation de shader. On les fabrique UNE fois ici (variantes active + `dim`,
+  // distinctes car `dim` mute couleur/opacité en place) et on les réutilise tel quel.
+  // disposeScene ne touche QUE les meshes par zone ; ce cache n'est libéré qu'à
+  // onRemove (disposeSharedCache). Les matériaux bâtiment/dalle restent par rendu (la
+  // dalle porte la photo satellite, et leur géométrie varie de toute façon par zone).
+  // Les géométries panneau/rail/châssis-arrière dépendent de grid (alongRow/slope/rise)
+  // → restent par rendu ; seules les BoxGeometry à arêtes CONSTANTES sont cachées.
+  // Ressources PARTAGÉES (matériaux + géométries cachés) : disposeObject ne doit JAMAIS
+  // les libérer (un rendu suivant les réutilise) ; seul disposeSharedCache le fait.
+  const sharedResources = new WeakSet<THREE.Material | THREE.BufferGeometry>();
+  interface PanelMatSet {
+    glassMat: THREE.MeshPhysicalMaterial;
+    frameMat: THREE.MeshStandardMaterial;
+    backMat: THREE.MeshStandardMaterial;
+    panelMats: THREE.Material[];
+    jboxMat: THREE.MeshStandardMaterial;
+    rackMat: THREE.MeshStandardMaterial;
+    ballastMat: THREE.MeshStandardMaterial;
+  }
+  const buildPanelMatSet = (dim: boolean): PanelMatSet => {
+    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
+    const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
+    if (dim) {
+      // Panneaux légèrement désaturés/assombris pour les zones non actives.
+      glassMat.color.set(0xb8bcc6);
+      frameMat.color.set(0x70757e);
+      backMat.color.set(0xb0b3ba);
+    }
+    const jboxMat = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: 0.3, roughness: 0.6 });
+    const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
+    const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
+    for (const m of [glassMat, frameMat, backMat, jboxMat, rackMat, ballastMat]) sharedResources.add(m);
+    return { glassMat, frameMat, backMat, panelMats: [frameMat, frameMat, frameMat, frameMat, glassMat, backMat], jboxMat, rackMat, ballastMat };
+  };
+  let panelMatsActive: PanelMatSet | null = null;
+  let panelMatsDim: PanelMatSet | null = null;
+  const panelMatSet = (dim: boolean): PanelMatSet => {
+    if (dim) return (panelMatsDim ??= buildPanelMatSet(true));
+    return (panelMatsActive ??= buildPanelMatSet(false));
+  };
+
+  // Géométries STATIQUES (arêtes constantes) du système panneau : boîtier de jonction,
+  // montant avant du châssis, lest béton. Indépendantes de grid → cachées une fois.
+  let jboxGeoCache: THREE.BoxGeometry | null = null;
+  let frontGeoCache: THREE.BoxGeometry | null = null;
+  let ballastGeoCache: THREE.BoxGeometry | null = null;
+  const jboxGeoOf = (): THREE.BoxGeometry => {
+    if (!jboxGeoCache) {
+      jboxGeoCache = new THREE.BoxGeometry(0.4, 0.12, 0.035);
+      jboxGeoCache.translate(0, 0, -(PANEL2_THICK_M / 2 + 0.02));
+      sharedResources.add(jboxGeoCache);
+    }
+    return jboxGeoCache;
+  };
+  const frontGeoOf = (frontStrut: number): THREE.BoxGeometry => {
+    if (!frontGeoCache) sharedResources.add((frontGeoCache = new THREE.BoxGeometry(0.06, 0.06, frontStrut)));
+    return frontGeoCache;
+  };
+  const ballastGeoOf = (): THREE.BoxGeometry => {
+    if (!ballastGeoCache) sharedResources.add((ballastGeoCache = new THREE.BoxGeometry(0.34, 0.18, 0.12)));
+    return ballastGeoCache;
+  };
+
+  /** Libère le cache W71 (matériaux + géométries statiques partagés). Appelé UNIQUEMENT
+   *  à onRemove — jamais par disposeScene (sinon le rendu suivant perdrait son cache). */
+  function disposeSharedCache() {
+    for (const set of [panelMatsActive, panelMatsDim]) {
+      if (!set) continue;
+      set.glassMat.dispose();
+      set.frameMat.dispose();
+      set.backMat.dispose();
+      set.jboxMat.dispose();
+      set.rackMat.dispose();
+      set.ballastMat.dispose();
+    }
+    panelMatsActive = null;
+    panelMatsDim = null;
+    jboxGeoCache?.dispose();
+    frontGeoCache?.dispose();
+    ballastGeoCache?.dispose();
+    jboxGeoCache = null;
+    frontGeoCache = null;
+    ballastGeoCache = null;
+  }
+
   const customLayer = {
     id: 'rp9-3d',
     type: 'custom' as const,
@@ -153,6 +243,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // cela le renderer + ses textures fuient à chaque départ de la page.
     onRemove(_m: maplibregl.Map, _gl: WebGLRenderingContext | WebGL2RenderingContext) {
       disposeScene();
+      disposeSharedCache(); // W71 — cache matériaux/géométries partagés (jamais dans disposeScene)
       panelTex.dispose();
       roofTex?.dispose();
       roofTex = null;
@@ -168,12 +259,17 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const holder = obj as THREE.Mesh & { material?: THREE.Material | THREE.Material[] };
     const isSprite = (obj as THREE.Sprite).isSprite === true;
     // La géométrie d'un Sprite est PARTAGÉE (interne à three) → ne pas la libérer.
-    if (!isSprite) holder.geometry?.dispose?.();
+    // W71 — les géométries STATIQUES cachées (jbox/front/lest) sont partagées entre
+    // rendus → jamais libérées ici (sinon corruption au rendu suivant) ; seul
+    // disposeSharedCache les libère à onRemove. Les géométries par rendu (panneau/rail/
+    // arrière, bâtiment/dalle, boîtes d'obstacle) restent libérées normalement.
+    if (!isSprite && holder.geometry && !sharedResources.has(holder.geometry)) holder.geometry.dispose();
     const mat = holder.material;
     const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
     for (const m of mats) {
       if (isSprite) (m as THREE.SpriteMaterial).map?.dispose?.(); // texture canvas unique
-      m.dispose();
+      // W71 — matériaux cachés (système panneau, active + dim) partagés → non libérés ici.
+      if (!sharedResources.has(m)) m.dispose();
     }
   }
 
@@ -405,22 +501,12 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const halfAlong = alongRow / 2;
     const halfDepth = depthFootprint / 2;
 
-    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
-    const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
-    if (dim) {
-      // Panneaux légèrement désaturés/assombris pour les zones non actives.
-      glassMat.color.set(0xb8bcc6);
-      frameMat.color.set(0x70757e);
-      backMat.color.set(0xb0b3ba);
-    }
-    const panelMats = [frameMat, frameMat, frameMat, frameMat, glassMat, backMat];
+    // W71 — matériaux du système panneau réutilisés depuis le cache (variante active ou
+    // `dim`) au lieu d'être ré-alloués à chaque rendu (plus de recompilation de shader
+    // MeshPhysicalMaterial sur un simple glissé). Rendu visuel identique.
+    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, ballastMat } = panelMatSet(dim);
     const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
-    const jboxGeo = new THREE.BoxGeometry(0.4, 0.12, 0.035);
-    jboxGeo.translate(0, 0, -(PANEL2_THICK_M / 2 + 0.02));
-    const jboxMat = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: 0.3, roughness: 0.6 });
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
-    const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
+    const jboxGeo = jboxGeoOf();
 
     // Cellules POSÉES : disposition personnalisée explicite (zone active en mode
     // calepinage → ces cellules exactes, possiblement non contiguës) sinon les
@@ -433,10 +519,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const backMats: THREE.Matrix4[] = [];
     const railMats: THREE.Matrix4[] = [];
     const ballastMats: THREE.Matrix4[] = [];
+    // railGeo (slope) et backGeo (frontStrut + rise) dépendent de grid/tilt → par rendu.
+    // frontGeo (0.06³ × frontStrut constant) et ballastGeo (0.34×0.18×0.12) sont statiques
+    // → cache W71.
     const railGeo = new THREE.BoxGeometry(0.05, slope, 0.05);
-    const frontGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut);
+    const frontGeo = frontGeoOf(frontStrut);
     const backGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut + rise);
-    const ballastGeo = new THREE.BoxGeometry(0.34, 0.18, 0.12);
+    const ballastGeo = ballastGeoOf();
     const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
 
     for (const p of panels) {

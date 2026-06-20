@@ -219,6 +219,36 @@ describe('pro-11 — W70 : libération des ressources GPU (re-tracé + démontag
   });
 });
 
+describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du chemin de rendu', () => {
+  const script = read('../src/scripts/roofPro11/scene3d.ts');
+
+  it('le système panneau a un cache de matériaux (active + dim) réutilisé par rendu', () => {
+    // les matériaux ne sont plus ré-alloués DANS buildZoneMeshes : une fabrique + un cache.
+    expect(script).toContain('panelMatsActive');
+    expect(script).toContain('panelMatsDim');
+    expect(script).toContain('const buildPanelMatSet');
+    expect(script).toContain('panelMatSet(dim)');
+    // le verre MeshPhysicalMaterial (recompilation de shader) n'est construit que dans la fabrique
+    expect(script.match(/new THREE\.MeshPhysicalMaterial/g)?.length).toBe(1);
+  });
+
+  it('les géométries STATIQUES (boîtier/montant avant/lest) sont cachées une fois', () => {
+    expect(script).toContain('jboxGeoOf()');
+    expect(script).toContain('frontGeoOf(frontStrut)');
+    expect(script).toContain('ballastGeoOf()');
+  });
+
+  it('disposeScene ne libère JAMAIS le cache partagé (seul disposeSharedCache à onRemove)', () => {
+    // garde anti-corruption : disposeObject saute les ressources partagées.
+    expect(script).toContain('sharedResources');
+    expect(script).toContain('!sharedResources.has(holder.geometry)');
+    expect(script).toContain('!sharedResources.has(m)');
+    // le cache n'est libéré qu'au démontage de la couche (onRemove), pas par rendu.
+    expect(script).toContain('disposeSharedCache()');
+    expect(script).toMatch(/onRemove\([\s\S]{0,200}disposeSharedCache\(\)/);
+  });
+});
+
 describe('pro-11 — l\'existant est strictement préservé', () => {
   it('les baselines pro-3..pro-10 gardent leur page et leur script dédiés', () => {
     for (const n of [3, 4, 5, 6, 7, 8, 9, 10]) {
