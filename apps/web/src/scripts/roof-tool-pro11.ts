@@ -3061,13 +3061,22 @@ export function initRoofToolPro8(opts: InitOptions): void {
     const kwh = billToAnnualKwh(monthlyBill());
     if (billKwhEl) billKwhEl.textContent = kwh > 0 ? `${fmt(Math.round(kwh))} kWh` : '—';
   }
+  // Le recalcul complet (balayage dense fineGridMatrixV6 + rafale de requêtes PVGIS)
+  // est LOURD : le lancer à CHAQUE frappe figeait la page pendant qu'on tape la facture.
+  // On débounce donc le recalcul (la conversion kWh, légère, reste instantanée).
+  let billTimer: ReturnType<typeof setTimeout> | null = null;
   billEl?.addEventListener('input', () => {
     updateBillKwh();
     // Changer la facture = nouveau besoin : on relâche le réglage manuel éventuel.
     neededAuto = true;
     // W68 — un nouveau socle de facture recompose la courbe de conso (override repris).
     consHandEdited = false;
-    if (closed) recalc();
+    if (!closed) return;
+    if (billTimer != null) clearTimeout(billTimer);
+    billTimer = setTimeout(() => {
+      billTimer = null;
+      recalc();
+    }, 320);
   });
   updateBillKwh();
 
