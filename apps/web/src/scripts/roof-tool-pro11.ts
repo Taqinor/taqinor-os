@@ -97,15 +97,7 @@ import {
   type PitchedMarginAxis,
 } from '../lib/estimatorBrainV8';
 import { isSimplePolygon, roofAreaLabel, ringBBox, type LngLat } from '../lib/roof';
-import {
-  obstacleRing,
-  obstacleFromDrag,
-  defaultObstacle,
-  scaledObstacle,
-  resizedObstacle,
-  OBSTACLE_STEP_FACTOR,
-  type Obstacle,
-} from '../lib/obstacles';
+import { obstacleRing, type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
 import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
@@ -145,7 +137,6 @@ import {
   DECK_THK,
   FLOORS,
   OBSTACLE_BOX_H_M,
-  OBSTACLE_TAP_PX,
   DEG2RAD,
   DEG2M,
 } from './roofPro11/constants';
@@ -159,6 +150,7 @@ import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
 import { createLayoutEditor } from './roofPro11/layoutEditor';
+import { createObstaclesUi } from './roofPro11/obstaclesUi';
 
 let booted = false;
 
@@ -201,15 +193,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const tiltRangeEl = $<HTMLInputElement>('rp9-tilt-range');
   const tiltValueEl = $('rp9-tilt-value');
   const tiltRecoBtn = $<HTMLButtonElement>('rp9-tilt-reco');
-  const obstacleBtn = $<HTMLButtonElement>('rp9-obstacle');
-  const obstacleClearBtn = $<HTMLButtonElement>('rp9-obstacle-clear');
-  const obsEditPanel = $('rp9-obs-edit');
-  const obsLengthEl = $<HTMLInputElement>('rp9-obs-length');
-  const obsWidthEl = $<HTMLInputElement>('rp9-obs-width');
-  const obsDimsEl = $('rp9-obs-dims');
-  const obsDeleteBtn = $<HTMLButtonElement>('rp9-obs-delete');
-  const obsPlusBtn = $<HTMLButtonElement>('rp9-obs-plus');
-  const obsMinusBtn = $<HTMLButtonElement>('rp9-obs-minus');
+  // — Obstacles : le DOM (bouton ajouter/effacer, panneau d'édition, saisies longueur/
+  // largeur, +/−, suppr.) est piloté par le module roofPro11/obstaclesUi.ts. —
   // V3 : bouton Optimum, toggle type de toit, et contrôles toit en pente.
   const optimumBtn = $<HTMLButtonElement>('rp9-optimum');
   const optimumNoteEl = $('rp9-optimum-note');
@@ -313,6 +298,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let drawStart: { lngLat: LngLat; point: maplibregl.Point } | null = null;
   let drawing = false;
   let suppressClick = false; // ignore le « click » de synthèse après un glissé
+  let lastDraw: LngLat | null = null; // dernier point pointé pendant un glissé-dessin
   // Change C : déplacement (glissé) d'un obstacle existant. Delta-based (newCenter =
   // centre de départ + déplacement lng/lat) → robuste au parallaxe en vue inclinée.
   let moveObs: { id: string; startLng: number; startLat: number; centerLng: number; centerLat: number; moved: boolean } | null = null;
@@ -523,6 +509,63 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set obstacles(v) {
       obstacles = v;
+    },
+    get selectedObsId() {
+      return selectedObsId;
+    },
+    set selectedObsId(v) {
+      selectedObsId = v;
+    },
+    get obsCounter() {
+      return obsCounter;
+    },
+    set obsCounter(v) {
+      obsCounter = v;
+    },
+    get obstacleMode() {
+      return obstacleMode;
+    },
+    set obstacleMode(v) {
+      obstacleMode = v;
+    },
+    get drawStart() {
+      return drawStart;
+    },
+    set drawStart(v) {
+      drawStart = v;
+    },
+    get drawing() {
+      return drawing;
+    },
+    set drawing(v) {
+      drawing = v;
+    },
+    get suppressClick() {
+      return suppressClick;
+    },
+    set suppressClick(v) {
+      suppressClick = v;
+    },
+    get lastDraw() {
+      return lastDraw;
+    },
+    set lastDraw(v) {
+      lastDraw = v;
+    },
+    get moveObs() {
+      return moveObs;
+    },
+    set moveObs(v) {
+      moveObs = v;
+    },
+    get obstacleMeshes() {
+      return obstacleMeshes;
+    },
+    get sceneOrigin() {
+      return sceneOrigin;
+    },
+    set sceneOrigin(v) {
+      sceneOrigin = v;
     },
     get roofType() {
       return roofType;
@@ -883,6 +926,28 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // Seul `renderLayoutPanel` est appelé depuis l'entrée (injecté dans la fenêtre de
   // production) ; les autres méthodes du module pilotent son propre câblage interne.
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
+
+  // — Obstacles (zones d'exclusion). `recalc` est déclaré plus bas : injecté en wrapper
+  // paresseux. Le module câble lui-même le bouton « ajouter »/« effacer » + l'édition
+  // numérique ; l'entrée garde le DISPATCHER carte (partagé avec le tracé) qui appelle
+  // beginDraw/moveDraw/endDraw/tryBeginMove/doMove/endMove.
+  const obstaclesUi = createObstaclesUi(ctx, {
+    map,
+    recalc: () => recalc(),
+    setStatus,
+  });
+  const redrawObstacles = obstaclesUi.redrawObstacles;
+  const clearPreview = obstaclesUi.clearPreview;
+  const syncObsEdit = obstaclesUi.syncObsEdit;
+  const selectObstacle = obstaclesUi.selectObstacle;
+  const obstacleAtPoint = obstaclesUi.obstacleAtPoint;
+  const setObstacleMode = obstaclesUi.setObstacleMode;
+  const beginDraw = obstaclesUi.beginDraw;
+  const moveDraw = obstaclesUi.moveDraw;
+  const endDraw = obstaclesUi.endDraw;
+  const tryBeginMove = obstaclesUi.tryBeginMove;
+  const doMove = obstaclesUi.doMove;
+  const endMove = obstaclesUi.endMove;
 
   const updateCompass = () => {
     if (compassArrow) compassArrow.style.transform = `rotate(${-map.getBearing()}deg)`;
@@ -1530,27 +1595,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
     updateAreaReadout();
   }
 
-  function redrawObstacles() {
-    srcOf('rp9-obs')?.setData({
-      type: 'FeatureCollection',
-      features: obstacles.map((o) => {
-        const ring = obstacleRing(o);
-        return {
-          type: 'Feature',
-          geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] },
-          properties: { id: o.id, selected: o.id === selectedObsId, dims: dimsLabel(o) },
-        };
-      }),
-    } as never);
-  }
-
-  function setPreviewRect(a: LngLat, b: LngLat) {
-    const ring: LngLat[] = [a, [b[0], a[1]], b, [a[0], b[1]], a];
-    srcOf('rp9-obs-preview')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: ring }, properties: {} } as never);
-  }
-  function clearPreview() {
-    srcOf('rp9-obs-preview')?.setData(empty as never);
-  }
+  // ═══════════ OBSTACLES (zones d'exclusion) : voir roofPro11/obstaclesUi.ts ═══════════
+  // redrawObstacles/setPreviewRect/clearPreview/syncObsEdit/selectObstacle/updateSelected/
+  // deleteSelected/addObstacle/obstacleAtPoint + le glissé-dessin/déplacement + l'édition
+  // numérique vivent dans le module ; créés plus bas via createObstaclesUi(ctx, …).
 
   function addVertex(v: LngLat) {
     if (closed) return;
@@ -1566,56 +1614,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
     redrawTrace();
     if (vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
     else setStatus(`Coin ${vertices.length} placé — continuez à tracer le contour.`);
-  }
-
-  // — Sélection + édition d'un obstacle —
-  function syncObsEdit() {
-    const o = obstacles.find((x) => x.id === selectedObsId) ?? null;
-    if (obsEditPanel) obsEditPanel.hidden = !o;
-    if (!o) return;
-    if (obsLengthEl && document.activeElement !== obsLengthEl) obsLengthEl.value = fmt1(o.lengthM);
-    if (obsWidthEl && document.activeElement !== obsWidthEl) obsWidthEl.value = fmt1(o.widthM);
-    if (obsDimsEl) obsDimsEl.textContent = dimsLabel(o);
-  }
-
-  function selectObstacle(id: string | null) {
-    selectedObsId = id;
-    redrawObstacles();
-    syncObsEdit();
-  }
-
-  /** Remplace l'obstacle sélectionné par une version transformée, puis recalcule. */
-  function updateSelected(transform: (o: Obstacle) => Obstacle) {
-    const idx = obstacles.findIndex((x) => x.id === selectedObsId);
-    if (idx < 0) return;
-    obstacles[idx] = transform(obstacles[idx]);
-    redrawObstacles();
-    syncObsEdit();
-    recalc();
-  }
-
-  function deleteSelected() {
-    if (!selectedObsId) return;
-    obstacles = obstacles.filter((x) => x.id !== selectedObsId);
-    selectedObsId = null;
-    redrawObstacles();
-    syncObsEdit();
-    recalc();
-  }
-
-  function addObstacle(o: Obstacle) {
-    obstacles.push(o);
-    selectedObsId = o.id;
-    redrawObstacles();
-    syncObsEdit();
-    recalc();
-  }
-
-  /** Obstacle touché au point écran `pt`, ou null. */
-  function obstacleAtPoint(pt: maplibregl.Point): string | null {
-    const hits = map.queryRenderedFeatures(pt, { layers: ['rp9-obs'] });
-    const id = hits[0]?.properties?.id;
-    return typeof id === 'string' ? id : null;
   }
 
   // — Sélection de config → grille —
@@ -2714,108 +2712,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
   }
 
-  // — Mode obstacle : on désactive le pan pour glisser-dessiner le rectangle —
-  function setObstacleMode(on: boolean) {
-    obstacleMode = on;
-    obstacleBtn?.setAttribute('aria-pressed', String(on));
-    if (on) {
-      map.dragPan.disable();
-      map.getCanvas().style.cursor = 'crosshair';
-    } else {
-      map.dragPan.enable();
-      map.getCanvas().style.cursor = '';
-      drawing = false;
-      drawStart = null;
-      clearPreview();
-    }
-  }
-
-  let lastDraw: LngLat | null = null;
-  function beginDraw(lngLat: LngLat, point: maplibregl.Point) {
-    if (!obstacleMode || !closed) return;
-    drawStart = { lngLat, point };
-    drawing = true;
-    lastDraw = lngLat;
-  }
-  function moveDraw(lngLat: LngLat) {
-    if (!drawing || !drawStart) return;
-    lastDraw = lngLat;
-    setPreviewRect(drawStart.lngLat, lngLat);
-  }
-  function endDraw(lngLat: LngLat, point: maplibregl.Point) {
-    if (!drawing || !drawStart) return;
-    drawing = false;
-    clearPreview();
-    const start = drawStart;
-    drawStart = null;
-    suppressClick = true;
-    const end = lngLat ?? lastDraw ?? start.lngLat;
-    const dx = Math.abs(point.x - start.point.x);
-    const dy = Math.abs(point.y - start.point.y);
-    const id = `obs-${++obsCounter}`;
-    if (dx < OBSTACLE_TAP_PX && dy < OBSTACLE_TAP_PX) {
-      // simple tap : sélectionne un obstacle existant, sinon en crée un par défaut
-      const hit = obstacleAtPoint(point);
-      if (hit) {
-        setObstacleMode(false);
-        selectObstacle(hit);
-        setStatus('Obstacle sélectionné — ajustez sa taille au doigt ou au clavier.');
-        return;
-      }
-      addObstacle(defaultObstacle(id, end));
-    } else {
-      addObstacle(obstacleFromDrag(id, start.lngLat, end));
-    }
-    setObstacleMode(false);
-    setStatus('Obstacle ajouté — le calepinage l’évite. Touchez-le pour l’ajuster, ou ajoutez-en un autre.');
-  }
-
-  // — Déplacement d'un obstacle (glissé), Change C —
-  /** Tente de saisir un obstacle sous le pointeur pour le déplacer. Renvoie true si
-   *  un glissé de déplacement démarre (→ on neutralise le pan de la carte). */
-  function tryBeginMove(lngLat: LngLat, point: maplibregl.Point): boolean {
-    // W69 — en mode « Personnaliser la disposition », le glissé sert à déplacer un
-    // PANNEAU (handlers dédiés plus bas). On ne saisit donc PAS un obstacle ici, sinon
-    // les deux drags démarrent ensemble et relâcher déclenche un recalc qui efface la
-    // disposition personnalisée.
-    if (!closed || obstacleMode || layoutMode) return false;
-    const hit = obstacleAtPoint(point);
-    if (!hit) return false;
-    const o = obstacles.find((x) => x.id === hit);
-    if (!o) return false;
-    selectObstacle(hit);
-    moveObs = { id: hit, startLng: lngLat[0], startLat: lngLat[1], centerLng: o.centerLng, centerLat: o.centerLat, moved: false };
-    map.dragPan.disable();
-    return true;
-  }
-  function doMove(lngLat: LngLat) {
-    if (!moveObs) return;
-    const idx = obstacles.findIndex((x) => x.id === moveObs!.id);
-    if (idx < 0) return;
-    // Delta lng/lat : annule le parallaxe absolu de la vue inclinée.
-    const centerLng = moveObs.centerLng + (lngLat[0] - moveObs.startLng);
-    const centerLat = moveObs.centerLat + (lngLat[1] - moveObs.startLat);
-    moveObs.moved = true;
-    obstacles[idx] = { ...obstacles[idx], centerLng, centerLat };
-    redrawObstacles();
-    // Déplacement 3D EN DIRECT du seul mesh concerné (pas de re-pavage par image).
-    const mesh = obstacleMeshes.get(moveObs.id);
-    if (mesh) {
-      const cosLat = Math.cos(sceneOrigin[1] * DEG2RAD);
-      mesh.position.x = (centerLng - sceneOrigin[0]) * DEG2M * cosLat;
-      mesh.position.y = (centerLat - sceneOrigin[1]) * DEG2M;
-      map.triggerRepaint();
-    }
-  }
-  function endMove() {
-    if (!moveObs) return;
-    const moved = moveObs.moved;
-    moveObs = null;
-    map.dragPan.enable();
-    suppressClick = true; // évite la désélection au click de synthèse
-    // Re-pavage + recalcul seulement si l'obstacle a réellement bougé.
-    if (moved) recalc();
-  }
+  // — Mode obstacle / glissé-dessin / glissé-déplacement : voir roofPro11/obstaclesUi.ts —
 
   // — Interactions carte —
   map.on('mousedown', (e) => {
@@ -3245,49 +3142,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     renderSelection();
   });
 
-  obstacleBtn?.addEventListener('click', () => {
-    if (!closed) {
-      setStatus('Fermez d’abord le tracé du toit, puis ajoutez vos obstacles.');
-      return;
-    }
-    setObstacleMode(!obstacleMode);
-    selectObstacle(null);
-    setStatus(
-      obstacleMode
-        ? 'Glissez sur le toit pour dessiner un obstacle (cheminée, climatiseur, lanterneau…).'
-        : 'Ajout d’obstacle annulé.',
-    );
-  });
-  obstacleClearBtn?.addEventListener('click', () => {
-    if (!obstacles.length) return;
-    obstacles = [];
-    selectedObsId = null;
-    setObstacleMode(false);
-    redrawObstacles();
-    syncObsEdit();
-    if (closed) recalc();
-    setStatus('Obstacles effacés — le calepinage reprend tout le toit.');
-  });
-
-  // — Édition de l'obstacle sélectionné (saisie exacte + boutons + / − + suppr.) —
-  const parseNum = (s: string): number => parseFloat((s || '').replace(/\s/g, '').replace(',', '.'));
-  obsLengthEl?.addEventListener('input', () => {
-    if (!selectedObsId) return;
-    const L = parseNum(obsLengthEl.value);
-    if (!Number.isFinite(L)) return;
-    updateSelected((o) => resizedObstacle(o, L, o.widthM));
-  });
-  obsWidthEl?.addEventListener('input', () => {
-    if (!selectedObsId) return;
-    const w = parseNum(obsWidthEl.value);
-    if (!Number.isFinite(w)) return;
-    updateSelected((o) => resizedObstacle(o, o.lengthM, w));
-  });
-  obsLengthEl?.addEventListener('blur', syncObsEdit);
-  obsWidthEl?.addEventListener('blur', syncObsEdit);
-  obsPlusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, OBSTACLE_STEP_FACTOR)));
-  obsMinusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, 1 / OBSTACLE_STEP_FACTOR)));
-  obsDeleteBtn?.addEventListener('click', deleteSelected);
+  // — Obstacles : bouton « ajouter »/« effacer » + édition numérique : voir roofPro11/obstaclesUi.ts —
 
   // W75 — débounce la soumission de recherche (~300 ms, comme le débounce billTimer de la
   // facture) : des « Entrée » rapprochés ne lancent qu'UNE requête, celle de la dernière saisie.

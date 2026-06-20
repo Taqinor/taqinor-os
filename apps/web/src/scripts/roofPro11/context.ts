@@ -9,6 +9,8 @@
  * L'interface grandit module par module ; on n'ajoute ici QUE ce qu'un module
  * extrait référence réellement.
  */
+import * as THREE from 'three';
+import type maplibregl from 'maplibre-gl';
 import { type SvgBox, type ProductionScope, type ProductionSource } from '../../lib/productionWindow';
 import { type SpecificDateProfile, type ScaledProduction, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
@@ -53,6 +55,32 @@ export interface Ctx {
   obstacles: Obstacle[];
   /** Centroïde lng/lat du tracé fermé. */
   centroid: LngLat;
+
+  // — Obstacles : sélection + glissé-dessin + glissé-déplacement (mutable) —
+  /** Identifiant de l'obstacle sélectionné, ou null. */
+  selectedObsId: string | null;
+  /** Compteur d'identifiants d'obstacle (obs-N). */
+  obsCounter: number;
+  /** Le mode « ajout d'obstacle » est-il actif ? */
+  obstacleMode: boolean;
+  /** Glissé-dessin d'un obstacle en cours (point de départ) ou null. */
+  drawStart: { lngLat: LngLat; point: maplibregl.Point } | null;
+  /** Un glissé-dessin est-il en cours ? */
+  drawing: boolean;
+  /** Ignorer le « click » de synthèse émis après un glissé. */
+  suppressClick: boolean;
+  /** Dernier point pointé pendant un glissé-dessin (replis tactile). */
+  lastDraw: LngLat | null;
+  /** Glissé-déplacement d'un obstacle existant (delta lng/lat) ou null. */
+  moveObs:
+    | { id: string; startLng: number; startLat: number; centerLng: number; centerLat: number; moved: boolean }
+    | null;
+
+  // — Scène 3D partagée avec le déplacement d'obstacle en direct —
+  /** Meshes 3D des obstacles, par id (ref STABLE — Map remplie par renderScene). */
+  readonly obstacleMeshes: Map<string, THREE.Mesh>;
+  /** Origine ENU de la scène 3D courante (lng/lat du pack actif). */
+  sceneOrigin: LngLat;
 
   // — Type/pente/face du toit actif (mutable) —
   roofType: RoofType;
