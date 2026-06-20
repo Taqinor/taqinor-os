@@ -69,6 +69,9 @@ export default defineConfig({
       injectManifest: {
         // Shell précaché : JS/CSS/HTML/icônes + polices. Pas l'API.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        // Les écrans de démarrage iOS sont chargés par l'OS au lancement (1 seul
+        // par appareil), pas via le SW : inutile de les précacher (≈2 Mo évités).
+        globIgnores: ['**/splash/**'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
     }),

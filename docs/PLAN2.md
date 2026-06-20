@@ -65,7 +65,7 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## Pending Reda (carry these in the plan)
 - [x] Group G/H frontend dependencies — RESOLVED 2026-06-20: all installed in frontend/package.json + lockfile and in use (@radix-ui/* primitives, class-variance-authority, tailwind-merge, clsx, lucide-react, sonner). @tanstack/react-table is installed but not yet wired (the current DataTable is hand-rolled) — a build detail, not a dependency-approval blocker. No further Reda approval pending.
-- [ ] Logo — PENDING Reda: upload a high-res PNG of the sun-with-bolt logo to generate the PWA icons/favicon + splash screens (unblocks M59).
+- [x] Logo — RESOLVED 2026-06-20 (Reda: the logo already lives in the repo — the one the quote engine/simulator uses — so use it): the OS now uses the official `TAQIN☀R` wordmark (`quote_engine/assets/logo.png`) as product branding. Added `frontend/scripts/gen_brand_assets.py` (reproducible) → trimmed transparent wordmark `public/taqinor-logo.png` (now shown on the Login card, replacing the hand-drawn SVG) + a white variant `public/taqinor-logo-light.png` + the missing **iOS splash screens** `public/splash/apple-splash-*` (light logo on the navy brand bg, 8 common iPhone sizes, wired in index.html; excluded from the SW precache). PWA icons/favicon were already from this logo's sun-bolt glyph (M59). Also fixed the N92 sw.js notification icon path (`/pwa-192x192.png` → `/pwa-192.png`). The sidebar keeps the per-tenant company name (multi-tenant — not overridden).
 - [x] Default theme (F18) — RESOLVED 2026-06-20: the app theme FOLLOWS the system/device setting, per user (each user may override). Theme scaffolding already exists in frontend/src/design/ (ThemeProvider, theme.js with prefers-color-scheme).
 - Hard constraints (do not violate): never touch the devis/facture PDF templates, the public PDF pages, the PdfCanvas content, or the apps/web marketing site; STAGES.py stays a fixed CI contract; all schema changes additive/nullable, seeded from current in-code defaults.
 
@@ -87,5 +87,6 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-06-20 — Logo resolved: the OS uses the official Taqinor wordmark (the repo's quote-engine logo) as product branding — real logo on the Login screen + iOS splash screens generated from it (`gen_brand_assets.py`), PWA icons already from its glyph; fixed the web-push notification icon path. Sidebar keeps the per-tenant company name.
 - 2026-06-20 — G10 (first half) verified already-present: the lead model already carries `fbclid` + `utm_source/medium/campaign/content/term` (crm migration 0006), the website lead webhook maps and stores them (`apps/crm/webhooks.py`), and `apps/web` captures first-touch fbclid+UTM from the landing URL and submits them (`Layout.astro`, `lib/lead.ts`), covered by `apps/crm/tests_webhook.py`. Ticked `[x] (already present)`. The CAPI SEND (second half) stays gated on Reda's Meta pixel token.
 
