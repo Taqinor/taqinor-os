@@ -9,7 +9,8 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
-    RetourFournisseur,
+    RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
+    PaiementFournisseur,
 )
 from .serializers import (
     ProduitSerializer,
@@ -22,6 +23,9 @@ from .serializers import (
     TransfertStockSerializer,
     PrixFournisseurSerializer,
     RetourFournisseurSerializer,
+    ReceptionFournisseurSerializer,
+    FactureFournisseurSerializer,
+    PaiementFournisseurSerializer,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -855,3 +859,205 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="{bc.reference}.pdf"')
         return response
+
+
+class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
+
+    Numérotation sans trou (préfixe REC). La confirmation incrémente le stock
+    via MouvementStock (ENTREE) pour chaque ligne reçue, avance les quantités
+    reçues du BCF et son statut, et reste IDEMPOTENTE (une réception confirmée
+    ne re-crée jamais de mouvement). Usage INTERNE."""
+    queryset = ReceptionFournisseur.objects.select_related(
+        'bon_commande', 'bon_commande__fournisseur', 'recu_par', 'created_by',
+    ).prefetch_related('lignes__produit').all()
+    serializer_class = ReceptionFournisseurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'reference', 'bon_commande__reference',
+        'bon_commande__fournisseur__nom', 'note',
+    ]
+    ordering_fields = ['date_creation', 'date_reception', 'statut', 'reference']
+    ordering = ['-date_creation']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler']:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bon_id = self.request.query_params.get('bon_commande')
+        if bon_id:
+            qs = qs.filter(bon_commande_id=bon_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+
+        def _save(ref):
+            return serializer.save(
+                reference=ref, company=company,
+                created_by=self.request.user,
+            )
+        create_with_reference(ReceptionFournisseur, 'REC', company, _save)
+
+    @action(detail=True, methods=['post'], url_path='confirmer')
+    def confirmer(self, request, pk=None):
+        """Confirme la réception : incrémente le stock (ENTREE) pour chaque
+        ligne reçue et avance le statut du BCF. Idempotent : une réception déjà
+        confirmée ne re-crée jamais de mouvement."""
+        from .services import confirm_reception_fournisseur
+        reception = self.get_object()
+        try:
+            confirm_reception_fournisseur(reception, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reception).data)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        reception = self.get_object()
+        if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
+            return Response(
+                {'detail': 'Une réception confirmée ne peut pas être annulée '
+                           '(le stock a déjà été incrémenté).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        reception.statut = ReceptionFournisseur.Statut.ANNULE
+        reception.save(update_fields=['statut'])
+        return Response(self.get_serializer(reception).data)
+
+
+class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """G5 — Factures fournisseur / comptes à payer (AP).
+
+    Numérotation sans trou (préfixe FF). Le solde dû = TTC − Σ paiements ; le
+    statut de règlement est recalculé à chaque paiement. L'action `paiements`
+    liste/ajoute les règlements ; `comptes-a-payer` liste les factures non
+    soldées. Usage INTERNE (montants d'achat jamais client-facing)."""
+    queryset = FactureFournisseur.objects.select_related(
+        'fournisseur', 'bon_commande', 'created_by',
+    ).prefetch_related('lignes__produit', 'paiements').all()
+    serializer_class = FactureFournisseurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'reference', 'ref_fournisseur', 'fournisseur__nom', 'note',
+    ]
+    ordering_fields = [
+        'date_creation', 'date_facture', 'date_echeance', 'statut',
+        'reference', 'montant_ttc',
+    ]
+    ordering = ['-date_creation']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['comptes_a_payer']:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS + ['paiements']:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        fournisseur_id = self.request.query_params.get('fournisseur')
+        if fournisseur_id:
+            qs = qs.filter(fournisseur_id=fournisseur_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+
+        def _save(ref):
+            return serializer.save(
+                reference=ref, company=company,
+                created_by=self.request.user,
+            )
+        create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+    @action(detail=False, methods=['get'], url_path='comptes-a-payer')
+    def comptes_a_payer(self, request):
+        """Liste des factures fournisseur NON soldées (à payer ou
+        partiellement payées), triées par échéance puis date. INTERNE."""
+        from decimal import Decimal
+        qs = self.filter_queryset(self.get_queryset()).exclude(
+            statut=FactureFournisseur.Statut.PAYEE).order_by(
+            'date_echeance', '-date_creation')
+        data = self.get_serializer(qs, many=True).data
+        total_du = sum((Decimal(f['solde_du']) for f in data), Decimal('0'))
+        return Response({'results': data, 'total_du': str(total_du)})
+
+    @action(detail=True, methods=['get', 'post'], url_path='paiements')
+    def paiements(self, request, pk=None):
+        """GET : liste des paiements de la facture. POST : enregistre un
+        paiement (montant/date/mode), recalcule le statut + le solde dû."""
+        facture = self.get_object()
+        if request.method.lower() == 'get':
+            qs = facture.paiements.select_related('created_by').all()
+            return Response(
+                PaiementFournisseurSerializer(qs, many=True).data)
+        # POST — enregistre un paiement, company posée serveur.
+        serializer = PaiementFournisseurSerializer(
+            data={**request.data, 'facture': facture.id},
+            context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            serializer.save(
+                company=request.user.company, created_by=request.user)
+            from .services import recompute_facture_fournisseur_statut
+            facture.refresh_from_db()
+            recompute_facture_fournisseur_statut(facture)
+        return Response(self.get_serializer(facture).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """G5 — Paiements fournisseur (règlements). Lecture + création/suppression ;
+    chaque écriture recalcule le statut de la facture. company posée serveur."""
+    queryset = PaiementFournisseur.objects.select_related(
+        'facture', 'created_by').all()
+    serializer_class = PaiementFournisseurSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_paiement', 'date_creation', 'montant']
+    ordering = ['-date_paiement', '-date_creation']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        facture_id = self.request.query_params.get('facture')
+        if facture_id:
+            qs = qs.filter(facture_id=facture_id)
+        return qs
+
+    def perform_create(self, serializer):
+        from .services import recompute_facture_fournisseur_statut
+        with transaction.atomic():
+            paiement = serializer.save(company=self.request.user.company,
+                                       created_by=self.request.user)
+            paiement.facture.refresh_from_db()
+            recompute_facture_fournisseur_statut(paiement.facture)
+
+    def perform_destroy(self, instance):
+        from .services import recompute_facture_fournisseur_statut
+        facture = instance.facture
+        with transaction.atomic():
+            instance.delete()
+            facture.refresh_from_db()
+            recompute_facture_fournisseur_statut(facture)

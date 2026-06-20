@@ -475,6 +475,113 @@ def apply_retour_fournisseur(retour, user):
     return retour
 
 
+# ── G5 — Réception fournisseur (goods-in) : confirmation = ENTRÉE de stock ────
+# La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
+# pour chaque ligne reçue, avance `quantite_recue` sur la ligne de BCF et fait
+# évoluer le statut du BCF vers reçu/partiellement reçu via ses quantités reçues
+# existantes (`est_entierement_recu`). IDEMPOTENTE : une réception déjà confirmée
+# ne re-crée jamais de mouvement. Mêmes règles que l'action `recevoir` du BCF.
+
+def confirm_reception_fournisseur(reception, user):
+    """Confirme une réception fournisseur : crée un MouvementStock ENTREE par
+    ligne reçue, incrémente le stock + `quantite_recue` du BCF, puis avance le
+    statut du BCF (reçu si entièrement reçu). Lève ValueError si la réception
+    n'est pas en brouillon ou est vide. INTERNE."""
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import (
+        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+    )
+    if reception.statut != ReceptionFournisseur.Statut.BROUILLON:
+        # Idempotence : une réception déjà confirmée/annulée ne touche pas le
+        # stock une seconde fois.
+        raise ValueError(
+            'Seule une réception en brouillon peut être confirmée.')
+    lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
+    if not lignes:
+        raise ValueError('La réception ne contient aucune ligne.')
+
+    today = timezone.now().date()
+    bc = reception.bon_commande
+    with transaction.atomic():
+        for ligne in lignes:
+            qte = int(ligne.quantite or 0)
+            if qte <= 0:
+                continue
+            # Plafonne au reste dû de la ligne de commande (jamais plus que
+            # commandé — protège contre une saisie incohérente, idempotence).
+            ligne_cmd = ligne.ligne_commande
+            ligne_cmd.refresh_from_db()
+            qte = min(qte, ligne_cmd.quantite_restante)
+            if qte <= 0:
+                continue
+            produit = ligne.produit
+            produit.refresh_from_db()
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant + qte
+            MouvementStock.objects.create(
+                company=reception.company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=qte_avant,
+                quantite_apres=qte_apres, reference=reception.reference,
+                note=f'Réception {reception.reference}'
+                     + (f' (BCF {bc.reference})' if bc else ''),
+                created_by=user)
+            produit.quantite_stock = qte_apres
+            produit.save(update_fields=['quantite_stock'])
+            ligne_cmd.quantite_recue += qte
+            ligne_cmd.save(update_fields=['quantite_recue'])
+            # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
+            if bc is not None:
+                record_purchase_price(
+                    company=reception.company, produit=produit,
+                    fournisseur=bc.fournisseur,
+                    prix_achat=ligne_cmd.prix_achat_unitaire, date=today)
+        reception.statut = ReceptionFournisseur.Statut.CONFIRME
+        reception.recu_par = reception.recu_par or user
+        reception.save(update_fields=['statut', 'recu_par'])
+        # Avance le statut du BCF selon ses quantités reçues existantes.
+        if bc is not None:
+            bc.refresh_from_db()
+            if bc.statut not in (
+                BonCommandeFournisseur.Statut.ANNULE,
+                BonCommandeFournisseur.Statut.RECU,
+            ):
+                if bc.est_entierement_recu:
+                    bc.statut = BonCommandeFournisseur.Statut.RECU
+                else:
+                    # Une réception partielle confirmée laisse un BCF brouillon
+                    # passer à « envoyé » (commande engagée, partiellement reçue).
+                    bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+                bc.save(update_fields=['statut'])
+    return reception
+
+
+# ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
+# Le solde dû d'une facture = TTC − Σ paiements. Le statut de règlement est
+# RECALCULÉ après chaque paiement (à payer / partiellement payée / payée). Les
+# montants d'achat sont INTERNES (jamais client-facing).
+
+def recompute_facture_fournisseur_statut(facture):
+    """Recalcule le statut de règlement d'une facture fournisseur depuis ses
+    paiements et le persiste. À payer si rien réglé, payée si le solde ≤ 0,
+    sinon partiellement payée."""
+    from decimal import Decimal
+    from .models import FactureFournisseur
+    paye = facture.total_paye
+    ttc = facture.montant_ttc or Decimal('0')
+    if paye <= Decimal('0'):
+        statut = FactureFournisseur.Statut.A_PAYER
+    elif paye >= ttc:
+        statut = FactureFournisseur.Statut.PAYEE
+    else:
+        statut = FactureFournisseur.Statut.PARTIELLEMENT_PAYEE
+    if facture.statut != statut:
+        facture.statut = statut
+        facture.save(update_fields=['statut'])
+    return statut
+
+
 # ── N14 — Réservé vs disponible : engagé-mais-non-consommé ───────────────────
 # Une réservation de chantier (installations.StockReservation) ENGAGE le stock
 # d'un SKU sans le décrémenter. Le « disponible » d'un produit en tient compte :
