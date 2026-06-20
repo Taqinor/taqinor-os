@@ -183,7 +183,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         déclencheur explicite de la création d'un chantier."""
         from datetime import date as _date
         from .. import activity
-        from apps.crm.services import avancer_stage_pour_devis
+        from core.events import devis_accepted
         devis = self.get_object()
         # ERR33 — garde de statut : seul un devis « en cours » (brouillon /
         # envoyé) peut être accepté. Un devis refusé, expiré ou déjà accepté
@@ -224,7 +224,13 @@ class DevisViewSet(viewsets.ModelViewSet):
             'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
         activity.log_devis_acceptance(
             devis, request.user, nom, date_acc, option)
-        avancer_stage_pour_devis(devis, ancien, devis.statut, request.user)
+        # M6 — découplage par événement : au lieu d'appeler directement
+        # crm.services, on émet l'événement métier « devis accepté ». Le CRM y
+        # est abonné (apps/crm/receivers.py) et avance l'étape du lead (→ SIGNED)
+        # — comportement identique, mais ventes n'appelle plus crm au site
+        # d'acceptation.
+        devis_accepted.send(
+            sender=Devis, devis=devis, user=request.user, ancien_statut=ancien)
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
