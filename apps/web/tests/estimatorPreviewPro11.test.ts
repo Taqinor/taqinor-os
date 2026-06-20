@@ -8,10 +8,23 @@
 //   - le toit PLAT garde l'optimiseur vivant W34 (V7) intact.
 // Tout l'existant (pro-3..pro-10 + le formulaire live) reste strictement intact.
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+
+// Split modulaire (2026-06-20) : le builder pro-11 est désormais réparti entre
+// roof-tool-pro11.ts ET les modules roofPro11/**. Les garde-fous de sécurité
+// (« aucun lead posté ») doivent tenir sur TOUTE la surface du builder.
+const pro11Sources = (): string => {
+  const dir = fileURLToPath(new URL('../src/scripts/roofPro11/', import.meta.url));
+  const mods = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith('.ts'))
+        .map((f) => read(`../src/scripts/roofPro11/${f}`))
+    : [];
+  return [read('../src/scripts/roof-tool-pro11.ts'), ...mods].join('\n');
+};
 
 describe('pro-11 — route privée, jamais indexée', () => {
   it('la page /preview/toiture-3d-pro-11 est noindex', () => {
@@ -42,10 +55,11 @@ describe('pro-11 — 3D + cerveau chargés paresseusement, hors page publique', 
   });
 
   it('le script ne poste aucun lead — il ne fait que pré-remplir les champs', () => {
-    const script = read('../src/scripts/roof-tool-pro11.ts');
-    expect(script).not.toContain('/api/preview-lead');
-    expect(script).not.toContain('/api/simulate');
-    expect(script).toContain('prefillLead(');
+    // Garde-fou de sécurité élargi à TOUTE la surface du builder (split modulaire).
+    const all = pro11Sources();
+    expect(all).not.toContain('/api/preview-lead');
+    expect(all).not.toContain('/api/simulate');
+    expect(all).toContain('prefillLead(');
   });
 });
 

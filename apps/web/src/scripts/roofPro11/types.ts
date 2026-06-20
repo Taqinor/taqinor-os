@@ -24,3 +24,17 @@ export type AzimuthMode = 'south' | 'aligned';
 export type MarginMode = 'keep' | 'remove';
 
 export type RoofType = 'flat' | 'pitched';
+
+/** Données d'une carte « résultat » (recommandation / optimum), partagées entre
+ * le rendu de carte et le pré-remplissage du diagnostic. */
+export interface CardData {
+  title: string;
+  isReco: boolean;
+  count: number;
+  kwc: number;
+  annualKwh: number;
+  pct: number;
+  savingsLow: number;
+  savingsHigh: number;
+  why: string;
+}

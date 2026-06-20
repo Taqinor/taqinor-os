@@ -11,10 +11,19 @@
  */
 import { type SvgBox } from '../../lib/productionWindow';
 import { type SpecificDateProfile } from '../../lib/productionEngine';
+import { type LngLat } from '../../lib/roof';
+import { type InitOptions } from './types';
 
 export interface Ctx {
+  // — Options d'initialisation (figées au boot) —
+  readonly opts: InitOptions;
+
   // — Constantes de rendu graphes (figées au boot) —
   readonly svgBox: SvgBox;
+
+  // — Géométrie du tracé courant (mutable) —
+  /** Sommets lng/lat du tracé du toit actif. */
+  vertices: LngLat[];
 
   // — État de la fenêtre de production (mutable) —
   /** Index 0–11 du mois sélectionné dans la fenêtre de production. */

@@ -179,6 +179,7 @@ import {
   type OrientMode,
   type AzimuthMode,
   type MarginMode,
+  type CardData,
 } from './roofPro11/types';
 import {
   GOLD,
@@ -190,13 +191,13 @@ import {
   OBSTACLE_BOX_H_M,
   OBSTACLE_TAP_PX,
   DEG2RAD,
-  WGS84_RADIUS,
   DEG2M,
 } from './roofPro11/constants';
 import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { makeCanadianPanelTexture } from './roofPro11/panelTexture';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
+import { createPrefill } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -477,7 +478,14 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // d'état mutables sont exposés par accesseur : le code resté dans ce fichier garde
   // ses `let` bruts, les modules lisent/écrivent via `ctx.*` — comportement INCHANGÉ.
   const ctx: Ctx = {
+    opts,
     svgBox: SVG_BOX,
+    get vertices() {
+      return vertices;
+    },
+    set vertices(v) {
+      vertices = v;
+    },
     get prodMonth() {
       return prodMonth;
     },
@@ -492,6 +500,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
   };
   const graphs = createGraphs(ctx);
+  const prefill = createPrefill(ctx);
+  const prefillLead = prefill.prefillLead;
 
   // ═══════════ W68 — VARIABILITÉ de consommation (« Affiner ma consommation ») ═══════════
   // `consCurve` = courbe horaire de conso (24 kWh) effectivement utilisée pour
@@ -2222,18 +2232,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
     liveResolveFlat();
   }
 
-  interface CardData {
-    title: string;
-    isReco: boolean;
-    count: number;
-    kwc: number;
-    annualKwh: number;
-    pct: number;
-    savingsLow: number;
-    savingsHigh: number;
-    why: string;
-  }
-
   function paintCard(d: CardData, sourceLabel?: string) {
     const set = (id: string, v: string) => {
       const el = $(id);
@@ -2951,34 +2949,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
       return;
     }
     applyOptimum();
-  }
-
-  function prefillLead(d: CardData) {
-    // Pré-remplit le diagnostic enrichi — RÉUTILISE le même formulaire et toute sa
-    // plomberie (seuil 1 000 MAD, consentement, webhook, CAPI) : on n'écrit que
-    // dans ses champs, on ne poste AUCUN lead ici.
-    const area = $<HTMLInputElement>('lf-area');
-    const orient = $<HTMLSelectElement>('lf-orient');
-    const kwc = $<HTMLInputElement>('lf-kwc-est');
-    if (area) area.value = String(Math.round(geodesicArea()));
-    if (orient) orient.value = 'sud'; // Sud et Est-Ouest se rapportent tous deux au sud
-    if (kwc) kwc.value = String(Math.round(d.kwc * 100) / 100);
-    const details = (area?.closest('details') as HTMLDetailsElement | null) ?? null;
-    if (details) details.open = true;
-    document.getElementById('simulateur')?.scrollIntoView({ behavior: opts.reducedMotion ? 'auto' : 'smooth', block: 'start' });
-  }
-
-  function geodesicArea(): number {
-    // surface tracée (m²) pour pré-remplir le champ « surface toit »
-    const ring = vertices;
-    if (ring.length < 3) return 0;
-    let total = 0;
-    for (let i = 0; i < ring.length; i++) {
-      const [lng1, lat1] = ring[i];
-      const [lng2, lat2] = ring[(i + 1) % ring.length];
-      total += (lng2 - lng1) * DEG2RAD * (2 + Math.sin(lat1 * DEG2RAD) + Math.sin(lat2 * DEG2RAD));
-    }
-    return Math.abs((total * WGS84_RADIUS * WGS84_RADIUS) / 2);
   }
 
   // — Fermeture du tracé —
