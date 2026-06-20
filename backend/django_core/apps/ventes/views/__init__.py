@@ -1,0 +1,26 @@
+"""Vues de l'app Ventes — surface d'import publique.
+
+L'ancien ``views.py`` monolithe a été éclaté en un module par ressource pour
+que plusieurs vues puissent évoluer en parallèle sans se gêner. Ce package
+ré-exporte toutes les classes/fonctions publiques pour que
+``from apps.ventes.views import …`` (et ``urls.py``) continuent de fonctionner à
+l'identique. Aucun changement de comportement ni d'endpoint."""
+from .devis import DevisViewSet
+from .ligne_devis import LigneDevisViewSet
+from .bon_commande import BonCommandeViewSet
+from .facture import FactureViewSet
+from .avoir import AvoirViewSet
+from .paiement import PaiementViewSet
+from .ligne_facture import LigneFactureViewSet
+from .email import email_config
+
+__all__ = [
+    'DevisViewSet',
+    'LigneDevisViewSet',
+    'BonCommandeViewSet',
+    'FactureViewSet',
+    'AvoirViewSet',
+    'PaiementViewSet',
+    'LigneFactureViewSet',
+    'email_config',
+]

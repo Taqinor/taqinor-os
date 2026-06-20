@@ -238,12 +238,11 @@ class LeadSerializer(serializers.ModelSerializer):
         # que la fiche lead propose en ligne « Générer la facture » et « Créer le
         # chantier » (sans doublon) après acceptation. Une seule requête
         # Installation pour tous les devis du lead.
-        from apps.installations.models import Installation
+        from apps.installations.selectors import (
+            installation_summaries_for_devis,
+        )
         rows = list(obj.devis.order_by('-date_creation'))
-        chantiers = {
-            i.devis_id: {'id': i.id, 'reference': i.reference, 'statut': i.statut}
-            for i in Installation.objects.filter(devis__in=rows)
-        }
+        chantiers = installation_summaries_for_devis(rows)
         return [
             {
                 'id': d.id,

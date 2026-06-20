@@ -49,3 +49,7 @@ gunicorn==22.0.0
 pywebpush==2.0.3
 # TOTP two-factor auth (2FA opt-in, N96)
 pyotp==2.10.0
+# Architectural import contracts (M3) — enforces the import rules in
+# backend/django_core/.importlinter via the `lint-imports` CI step (no cycles
+# between core domain models; the `core` app stays a base foundation layer).
+import-linter==2.11

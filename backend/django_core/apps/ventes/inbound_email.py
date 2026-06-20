@@ -66,13 +66,8 @@ def _find_document(reference, company=None):
 
 
 def _find_client_by_email(from_email, company=None):
-    from apps.crm.models import Client
-    if not from_email:
-        return None
-    qs = Client.objects.all()
-    if company is not None:
-        qs = qs.filter(company=company)
-    return qs.filter(email__iexact=from_email.strip()).first()
+    from apps.crm.selectors import find_client_by_email
+    return find_client_by_email(from_email, company=company)
 
 
 def capture_inbound_email(from_email='', subject='', body='', company=None,

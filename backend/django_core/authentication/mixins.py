@@ -1,20 +1,9 @@
-class TenantMixin:
-    """
-    Filters querysets to the current user's company.
-    Superusers WITH a company are scoped to that company (ERP usage).
-    Superusers WITHOUT a company see all data (platform-level admin).
-    """
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.company_id:
-            return qs.filter(company=user.company)
-        if user.is_superuser:
-            return qs
-        return qs.none()
+"""Back-compat shim — the real implementation now lives in ``core.mixins``.
 
-    def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company)
+Apps depend DOWN on ``core`` instead of sideways on ``authentication``. This
+module re-exports ``TenantMixin`` so existing imports such as
+``from authentication.mixins import TenantMixin`` keep working unchanged.
+"""
+from core.mixins import TenantMixin  # noqa: F401
 
-    def perform_update(self, serializer):
-        serializer.save(company=self.request.user.company)
+__all__ = ['TenantMixin']
