@@ -33,6 +33,10 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+### TOP PRIORITY — build first (queued 2026-06-20)
+
+- [ ] G10 — Lead-source capture (G10 first half): (1) add nullable fields to the lead model — `fbclid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` (additive / nullable migration, company FK forced server-side); (2) on the marketing-site contact form (`apps/web/`), capture `fbclid` + the UTM params from the landing URL, persist them across the session, submit them with the lead, and store them on the created lead. The Meta Conversions API SEND (G10 second half) STAYS GATED — pending Reda's Meta pixel access token; only the CAPI send remains after this ships. (Note: the apps/web portion crosses into web-plan territory but is intentionally bundled here per Reda's instruction.)
+
 # Taqinor OS — UI/UX overhaul ("prettier than Odoo")
 
 *Goal: a calm, premium, data-first ERP — Linear/Stripe-tier polish, brand-matched to Taqinor, denser and cleaner than Odoo. Built on the existing React 19 + Vite + Tailwind 4 + recharts stack. Positioned ahead of Groups A–D so feature work inherits the new design language. Constraints: do NOT touch the devis/facture PDF templates, the public PDF pages, or the PdfCanvas PDF content (client-facing, gated separately); do NOT touch the apps/web marketing site; STAGES.py stays a fixed CI contract; schema changes additive/nullable only, every new value seeded from current in-code defaults.*
@@ -60,9 +64,9 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 ## Group P — Consistency & cleanup
 
 ## Pending Reda (carry these in the plan)
-- [ ] New dependencies to approve before Groups G/H build: @tanstack/react-table, plus shadcn's helper set (@radix-ui/* primitives, class-variance-authority, tailwind-merge, clsx, lucide-react, sonner) — all small, free, MIT.
-- [ ] Upload the sun-with-bolt logo + one high-res PNG for the PWA icons/favicon (unblocks M59).
-- [ ] Confirm default theme for F18 (light / dark / follow-system).
+- [x] Group G/H frontend dependencies — RESOLVED 2026-06-20: all installed in frontend/package.json + lockfile and in use (@radix-ui/* primitives, class-variance-authority, tailwind-merge, clsx, lucide-react, sonner). @tanstack/react-table is installed but not yet wired (the current DataTable is hand-rolled) — a build detail, not a dependency-approval blocker. No further Reda approval pending.
+- [ ] Logo — PENDING Reda: upload a high-res PNG of the sun-with-bolt logo to generate the PWA icons/favicon + splash screens (unblocks M59).
+- [x] Default theme (F18) — RESOLVED 2026-06-20: the app theme FOLLOWS the system/device setting, per user (each user may override). Theme scaffolding already exists in frontend/src/design/ (ThemeProvider, theme.js with prefers-color-scheme).
 - Hard constraints (do not violate): never touch the devis/facture PDF templates, the public PDF pages, the PdfCanvas content, or the apps/web marketing site; STAGES.py stays a fixed CI contract; all schema changes additive/nullable, seeded from current in-code defaults.
 
 ---

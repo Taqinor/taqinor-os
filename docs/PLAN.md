@@ -194,29 +194,30 @@ conformity warning banner).
 ### Chantiers / projets & execution
 ### Parc installé (installed-systems asset base)
 ### Procurement & inventory
+- [ ] G5 — Supplier procurement module (a dedicated multi-session module): bons de commande fournisseur (BC fournisseur), goods-in / receiving, and supplier invoices / accounts payable (AP). (UNGATED 2026-06-20 — approved as its own multi-session project. Additive only, multi-tenant with the company FK forced server-side, French UI; buy prices / margins never client-facing.)
 ### Post-sale / client-facing documents
 ### Devis acceptance trigger
 ### Moroccan legal billing & compliance
 ### Loi 82-21 / Article 33 regulatory
 ### SAV / maintenance / warranty / monitoring
-- [BLOCKED: needs production data from the monitoring framework (N50, gated — external service/credentials).] N53 — Client energy-yield report PDF (French): a system's production over a period, estimated bill savings, CO2 avoided; client-facing, no buy prices.
+- [ ] N53 — Client energy-yield report PDF (French) from ESTIMATED / MANUAL data (nameplate kWc + irradiation assumptions and/or manual entry): a system's production over a period, estimated bill savings, CO2 avoided; client-facing, no buy prices. (UNGATED 2026-06-20 — the estimated/manual version is approved and buildable now; the real MEASURED-monitoring version stays gated on the N50 monitoring integration.)
 ### Editability layer (Paramètres hub)
 ### Notifications / dashboards / analytics
-- [BLOCKED: scheduled daily/weekly digest delivery needs a scheduler (G9, gated). On-demand summary data is now available via the N49/N80 insights endpoints.] N76 — Daily & weekly digest notification for Reda & Meryem (jobs to plan, quotes awaiting acceptance, overdue payments, due maintenance, open SAV), in-app and optionally WhatsApp/email.
-- [BLOCKED: the "schedule a periodic export by email" half needs a scheduler + email provider (G9/G1, gated). Saved-view persistence deferred with it.] N79 — Saved-reports & custom-views capability: save filtered/grouped views of any major object, pin to dashboard, schedule a periodic export of a saved report by email when email is configured.
+- [ ] N76 — Daily & weekly digest notification for Reda & Meryem (jobs to plan, quotes awaiting acceptance, overdue payments, due maintenance, open SAV), in-app and optionally WhatsApp/email. (UNGATED 2026-06-20 — verified on main: the Celery Beat scheduler (G9) and the Brevo email integration (N87) both shipped; register the digest as a new beat_schedule job and deliver via the existing email/WhatsApp/notification services. CAVEAT for the build run: a celery **beat process** is not yet deployed in docker-compose/prod — add it so the scheduled job actually fires.)
+- [ ] N79 — Saved-reports & custom-views capability: save filtered/grouped views of any major object, pin to dashboard, schedule a periodic export of a saved report by email when email is configured. (UNGATED 2026-06-20 — scheduler (G9) + Brevo email (N87) verified on main; local named saved-views already shipped, so only the SCHEDULED EMAIL EXPORT of a saved view remains. Same beat-process deployment caveat as N76.)
 ### Import/export / search / calendar / map
 ### Chatbot / integrations / API
 ### PWA / mobile / offline
-- [BLOCKED: offline-sync — nouvelle architecture de file d’attente hors-ligne (décision/architecture), couplée à F21] N91 — Offline-tolerant field capture for the chantier checklist, photos, and PV de réception signature, syncing when back online.
-- [BLOCKED: nouvelle dépendance pywebpush + clés VAPID (push web)] N92 — Push notifications to the PWA for high-priority events from the notification engine.
+- [BLOCKED: ROUTED to the dev-field-exec branch — the offline-sync architecture is APPROVED, but build it ONLY on dev-field-exec; it must NOT be built in a main "work on the plan" run (branch-collision risk on main). Coupled with F21.] N91 — Offline-tolerant field capture for the chantier checklist, photos, and PV de réception signature, syncing when back online.
+- [ ] N92 — PWA web push notifications for high-priority events from the notification engine. (UNGATED 2026-06-20 — pywebpush dependency approved; in the build run generate the VAPID keypair — public key to the frontend, private key to the backend env. Opt-in per device subscription.)
 ### Localisation / audit / security / data
-- [BLOCKED: i18n + RTL pan-application — nouvelle dépendance i18n et composant architectural couvrant tout le frontend] N93 — Full Arabic & Darija localisation as a selectable interface language with RTL layout support across the app, French default, English in code; client-facing document language selectable per client (facture/devis in French or Arabic).
-- [BLOCKED: dépend du cadre i18n de N93 (gaté)] N94 — Translation-management surface in settings so interface strings can be reviewed/adjusted per language without a code change.
-- [BLOCKED: changement d’authentification (2FA) + nouvelle dépendance pyotp] N96 — Account security: optional 2FA, visible active sessions with revoke, forced credential-rotation flow; production DEBUG setting left unchanged.
+- [ ] N93 — Full Arabic & Darija localisation as a selectable interface language with RTL layout support across the app, French default, English in code; client-facing document language selectable per client (facture/devis in French or Arabic). (UNGATED 2026-06-20 — i18n framework approved. SEQUENCING NOTE (do NOT prioritize): this touches every component, so run it as the FINAL step of the UI/UX overhaul, AFTER the component restyle, to avoid re-translating restyled components — pull forward only on Reda's explicit instruction.)
+- [ ] N94 — Translation-management surface in settings so interface strings can be reviewed/adjusted per language without a code change. (UNGATED 2026-06-20 — depends on the N93 i18n framework; SAME sequencing note — final step of the UI/UX overhaul, not prioritized.)
+- [ ] N96 — Account security: optional 2FA, visible active sessions with revoke, forced credential-rotation flow; production DEBUG setting left unchanged. (UNGATED 2026-06-20 — auth change approved (this closes G8); pyotp dependency approved. Build 2FA as OPT-IN per user so it can NEVER lock existing users out.)
 ### Growth / multi-tenant platform
-- [BLOCKED: plateforme multi-tenant + facturation par tenant (coût) + nouvelle architecture] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
-- [BLOCKED: console d’administration tenant + auto-inscription (changement d’auth) + nouvelle architecture] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
-- [BLOCKED: dépend de N100/N101 (gatés)] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped.
+- [BLOCKED: full multi-tenant SaaS platform + per-tenant billing (cost) + new architecture. REVIEWED 2026-06-20 — Reda chose to KEEP this deferred post-V1.] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
+- [BLOCKED: tenant administration console + self-serve signup (auth change) + new architecture. REVIEWED 2026-06-20 — Reda chose to KEEP this deferred post-V1.] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
+- [BLOCKED: depends on N100/N101 (final platform doc/update). REVIEWED 2026-06-20 — kept deferred post-V1 together with N100/N101.] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped.
 
 ---
 
@@ -248,7 +249,7 @@ STANDING RULE plus the **module-specific constraints** below.
   into one `dev` → self-merged to `main` exactly once after tests pass — never one PR per agent,
   never a merge per task, never split into review PRs.**
 
-- [BLOCKED: capture hors-ligne — même architecture de synchronisation hors-ligne gatée que N91] F21 — **Offline-tolerant field capture** covering the whole intervention flow — préparation checklist, GPS check-in, photos, serial capture, voice memos, Matériel consommé, réserves, and the signature — queuing locally on a poor connection and syncing when back online (extends the planned offline field capture to the full intervention workflow).
+- [BLOCKED: ROUTED to the dev-field-exec branch — same offline-sync architecture as N91; APPROVED but build it ONLY on dev-field-exec, never in a main "work on the plan" run (branch-collision risk on main).] F21 — **Offline-tolerant field capture** covering the whole intervention flow — préparation checklist, GPS check-in, photos, serial capture, voice memos, Matériel consommé, réserves, and the signature — queuing locally on a poor connection and syncing when back online (extends the planned offline field capture to the full intervention workflow).
 
 ---
 
@@ -285,18 +286,17 @@ client-facing PDFs are GALLERY-gated).
 #### Mobile / ergonomie
 
 #### Cohérence cross-module / export / localisation
-[ ] [CRM/Leads] [L17] [DECISION] Capturer/afficher la langue de communication préférée du lead (FR/Darija) pour préparer l'envoi WhatsApp bilingue (whatsapp_devis prend déjà un paramètre langue, mais rien ne le mémorise sur le lead). Fait = un champ "Langue préférée" sur la fiche pré-sélectionne la langue du message WhatsApp. [cf. N93]
+[ ] [CRM/Leads] [L17] [ROUTINE] Capturer/afficher la langue de communication préférée du lead (FR/Darija) pour préparer l'envoi WhatsApp bilingue (whatsapp_devis prend déjà un paramètre langue, mais rien ne le mémorise sur le lead). Fait = un champ "Langue préférée" (nullable FR/Darija) sur la fiche pré-sélectionne la langue du message WhatsApp. (UNGATED 2026-06-20 — migration additive nullable, FK société forcée serveur.) [cf. N93]
 
 ### Clients
 
 ### Devis (génération & PDF)
 
 ### Facturation
-[ ] [Facturation/Relances] [L13] [GALLERY] Adapter la lettre de relance PDF au niveau courant (ton J+7 vs J+30) en variant le corps depuis FollowupLevel.message. Fait = generate_lettre_relance_pdf rend un texte distinct par niveau, sans changer la mise en page premium.
-[ ] [Facturation] [L7] [DECISION] Décider si l'auto-passage en "En retard" des factures échues doit être matérialisé (aujourd'hui seulement calculé à la lecture). Fait = note tranchée — garder le on-the-fly (jours_retard) ou ajouter un job (gaté G9 scheduler), le choix consigné dans PLAN.md.
+[ ] [Facturation/Relances] [L13] [ROUTINE] Adapter la lettre de relance PDF au niveau courant (ton J+7 doux → J+30 ferme) en variant le corps depuis FollowupLevel.message. Fait = generate_lettre_relance_pdf rend un texte distinct par niveau, sans changer la mise en page premium. (UNGATED 2026-06-20 — approuvé par Reda ; construire sur le rendu de relance existant (N106), NE PAS toucher generate_devis_premium.py.)
 
 ### Chantiers / Installations
-[ ] [Chantiers] [L4] [GALLERY] Ajouter un aperçu in-app des PDF client après-vente (PV de réception, bon de livraison, dossier de remise, attestation) avant téléchargement dans InstallationDetail.jsx. Fait = chaque bouton "Documents après-vente" ouvre un aperçu PDF inline au lieu de seulement downloadBlob, sans changer le contenu du PDF généré.
+[ ] [Chantiers] [L4] [ROUTINE] Ajouter un aperçu in-app des PDF client après-vente (PV de réception, bon de livraison, dossier de remise, attestation) avant téléchargement dans InstallationDetail.jsx. Fait = chaque bouton "Documents après-vente" ouvre un aperçu PDF inline au lieu de seulement downloadBlob, sans changer le contenu du PDF généré. (UNGATED 2026-06-20 — approuvé par Reda ; aperçu seulement, le PDF généré est inchangé.)
 
 #### Équipement
 
@@ -370,35 +370,37 @@ need Reda's taste. Reda decides; then I write a focused task and move it into th
 - **G1 — Real email sending** (devis/facture/relance by email). **UNGATED 2026-06-18 → BUILD QUEUE
   (N87/N88, Brevo).** Provider chosen = **Brevo** (SDK or SMTP), key from settings/env, no-op
   without a key; pre-approved (see the PRE-APPROVED block). No longer a blocker.
-- **G2 — WhatsApp Business Cloud API** (true auto-send + PDF *attached*, message templates). Cost +
-  Meta Business setup. Already your Month-2 roadmap.
+- **G2 — WhatsApp Business Cloud API** (true auto-send + PDF *attached*, message templates). STILL
+  GATED — unblocks when Reda provides: Meta Business **verification** + a WhatsApp Cloud API **access
+  token**, the **phone-number ID**, and an **approved template name**. Cost + Meta Business setup (Month-2 roadmap).
 - **G3 — Full document visual redesign** (devis/facture/bon de commande). **Still GATED** — the
   full visual redesign **needs your gallery approval** (taste) and is a deliberate non-goal for an
   unattended run; `PDF_ENGINE=legacy` stays as the fallback. **PARTIAL UNGATE 2026-06-18 → BUILD
   QUEUE (N106):** only the two additive deliverables in the EXISTING premium visual language — the
   three escalating-tone relance letters and the one-page after-sale handover/warranty sheet — were
-  ungated; the redesign itself stays here.
-- **G4 — Custom per-module roles/permissions.** New architecture; becomes important at multi-tenant
-  Phase 6. Today Commerciale vs admin works.
+  ungated; the redesign itself stays here. STILL GATED 2026-06-20 — the full devis/facture/BC redesign needs a deliberate design pass with **gallery review**; the premium devis engine (`generate_devis_premium.py`) stays off-limits.
 - **G5 — Supplier procurement module** (bons de commande fournisseur, goods-in/receiving, supplier
-  invoices / accounts payable). A real new module — a multi-session project of its own.
+  invoices / accounts payable). **UNGATED 2026-06-20 → BUILD QUEUE (G5, under « Procurement & inventory »).** Approved as a dedicated multi-session module.
 - **G6 — Stock auto-decrement on installation** (a chantier consumes its equipment from stock).
   **UNGATED 2026-06-18 → folded into BUILD QUEUE N14.** The exact rule is now confirmed and
   pre-approved: **reserve on chantier create → decrement on « Installé » → release on
   cancel/close** (see the PRE-APPROVED block). No longer a blocker.
-- **G7 — Quote e-signature.** External dependency / provider.
-- **G8 — 2FA / SSO.** Auth change.
+- **G7 — Quote e-signature.** STILL GATED — pending Reda's choice of a **paid external e-signature provider**. LOW PRIORITY: lightweight in-OS quote acceptance already exists, so this only adds certified third-party signing.
+- **G8 — 2FA / SSO.** **2FA UNGATED 2026-06-20 → BUILD QUEUE (N96)** — auth change approved, pyotp approved, built OPT-IN per user (never locks out existing users). SSO stays gated (separate provider / architecture).
 - **G9 — Automation engine / scheduler.** **UNGATED 2026-06-18 → BUILD QUEUE (G9).** Decision made:
   **Celery Beat (in-app)**, two scheduled jobs in Africa/Casablanca time — scheduled relance
   reminders + a daily facture-overdue check (overdue = échéance passed & not fully paid → « En
   retard »; default échéance = issue + 30 days). Pre-approved (see the PRE-APPROVED block). The
   broader no-code automation engine (N72/N73) and n8n workflows stay separate.
-- **G10 — CAPI service** (Meta Conversions API, sends `SignedQuote` on Signé, EMQ ≥ 7.0). Roadmap;
-  **gated on fbclid/UTM capture landing in the site form first**.
-- **G11 — Chatbot → Reda's Claude API key.** Small, but a cost change — needs the key present + your OK.
-- **G12 — MCP server + M365** (Entra ID, Outlook, OneDrive, Teams). Roadmap.
-- **G13 — One-off 619-lead Odoo import.** Uses the reusable importer (T9) once built, but **gated on a
-  2nd Odoo backup** before any real extraction. File holds PII → gitignored, never in chat/GitHub.
+- **G10 — CAPI service** (Meta Conversions API, sends `SignedQuote` on Signé, EMQ ≥ 7.0). **First half
+  — lead-source capture (fbclid + UTM on the lead model and the apps/web form) — UNGATED 2026-06-20 →
+  queued as the TOP item of `docs/PLAN2.md`.** The **second half (the CAPI SEND itself) STAYS GATED**,
+  pending Reda's **Meta pixel access token**; only the CAPI send remains once the capture ships.
+- **G11 — Chatbot → Reda's Claude API key.** STILL GATED — unblocks when Reda provides a **Claude API key** and **approves the per-use cost**. Small but a cost change.
+- **G12 — MCP server + Microsoft 365** (Entra ID, Outlook, OneDrive, Teams). STILL GATED — unblocks when Reda provides **M365 / Entra access**. Roadmap.
+- **G13 — Import of the 619 real Odoo leads.** The idempotent importer is **already built**; STILL
+  GATED — unblocks on a **fresh Odoo backup file**. The backup holds PII → must **never be committed**
+  (gitignored, never in chat/GitHub).
 - **G14 — DGI e-invoicing readiness (Morocco).** Mandatory ~**Jan 2027** for businesses with CA >
   500k DH — likely Taqinor's wave. **PARTIAL UNGATE 2026-06-18 → BUILD QUEUE (N105):** only the
   **silent, backend-only local capability** was ungated — on-demand **UBL 2.1 / CII** XML export
@@ -406,9 +408,11 @@ need Reda's taste. Reda decides; then I write a focused task and move it into th
   OFF and is completely invisible while off. **STILL GATED here** (blocked on the unpublished DGI
   implementing decree — no API spec exists yet, not a decision of Reda's): the **Simpl-TVA portal
   transmission** and the **certified e-signature** (a PDF is explicitly NOT compliant; clearance
-  needs the live DGI platform). Start those when the specs publish.
-- **G15 — Arabic / Darija UI** (full interface localization, not just message templates). Decide if
-  needed and for whom.
+  needs the live DGI platform). Start those when the specs publish. CONFIRMED 2026-06-20 — the silent local UBL/XML export already shipped (N105); only the DGI portal transmission + certified e-signature wait on the unpublished DGI implementing decree.
+- **G15 — Arabic / Darija UI** (full interface localization, not just message templates). **UNGATED
+  2026-06-20 → BUILD QUEUE (N93/N94)** — i18n framework approved. SEQUENCING: run as the FINAL step of
+  the UI/UX overhaul (after the component restyle); not prioritized — pull forward only on Reda's
+  explicit instruction.
 
 ### From the 2026-06-18 refinement audit — gated copies (do NOT auto-build)
 
@@ -425,16 +429,14 @@ _(none — the Parc « Carte » Leaflet refinement was UNGATED 2026-06-18 to `[R
 pre-approved — see the PRE-APPROVED block + N85.)_
 
 **DECISION — needs Reda's product call**
-[ ] [CRM/Leads] [L17] [DECISION] Capturer/afficher la langue de communication préférée du lead (FR/Darija) pour préparer l'envoi WhatsApp bilingue (whatsapp_devis prend déjà un paramètre langue, mais rien ne le mémorise sur le lead). Fait = un champ "Langue préférée" sur la fiche pré-sélectionne la langue du message WhatsApp. [cf. N93]
-[ ] [Facturation] [L7] [DECISION] Décider si l'auto-passage en "En retard" des factures échues doit être matérialisé (aujourd'hui seulement calculé à la lecture). Fait = note tranchée — garder le on-the-fly (jours_retard) ou ajouter un job (gaté G9 scheduler), le choix consigné dans PLAN.md.
+_(none remaining — 2026-06-20: L17 « Langue préférée » UNGATED to `[ROUTINE]`; L7 « En retard » matérialisé RESOLVED + DONE — already shipped via the G9 daily job (`check_overdue_factures` flips the stored `statut` → `en_retard`), see docs/DONE.md.)_
 _(UNGATED 2026-06-18 to `[ROUTINE]` in their module sections — see the PRE-APPROVED block:
 saved named views (local, no email); comptable export; per-company `Equipement` serial uniqueness;
 Stock-category management UI; Fournisseurs management screen; Retours list; public ShareLink
 noindex + per-token throttle.)_
 
 **GALLERY — changes a client-facing PDF/visual (needs gallery approval)**
-[ ] [Facturation/Relances] [L13] [GALLERY] Adapter la lettre de relance PDF au niveau courant (ton J+7 vs J+30) en variant le corps depuis FollowupLevel.message. Fait = generate_lettre_relance_pdf rend un texte distinct par niveau, sans changer la mise en page premium.
-[ ] [Chantiers] [L4] [GALLERY] Ajouter un aperçu in-app des PDF client après-vente (PV de réception, bon de livraison, dossier de remise, attestation) avant téléchargement dans InstallationDetail.jsx. Fait = chaque bouton "Documents après-vente" ouvre un aperçu PDF inline au lieu de seulement downloadBlob, sans changer le contenu du PDF généré.
+_(none remaining — 2026-06-20: L13 (escalating-tone relance letter) and L4 (in-app after-sale PDF preview) both UNGATED to `[ROUTINE]` in their module sections on Reda's explicit approval; the premium devis engine stays off-limits.)_
 
 ---
 
