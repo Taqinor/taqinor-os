@@ -1,26 +1,60 @@
 ---
-// Logotype TAQINOR — image OFFICIELLE (le même PNG que le générateur de devis,
-// `quote_engine/assets/logo.png`). Le PNG est à fond TRANSPARENT et son texte est
-// bleu nuit : invisible directement sur l'en-tête sombre. On le pose donc sur une
-// petite PUCE BLANCHE arrondie (badge), qui le rend lisible sur fond sombre comme
-// clair. `size` ≈ la taille historique du logotype ; l'image est un carré.
+// Logotype TAQINOR — porté en TEXTE (le mot reste lisible, sélectionnable et
+// accessible) et dessiné fidèlement au logo OFFICIEL
+// (quote_engine/assets/logo.png) : le « O » est remplacé par le SOLEIL de la
+// marque — un disque doré ceint de 8 rayons et traversé d'un éclair bleu nuit.
+// L'ancienne version texte n'avait qu'un disque brass plat sans rayons : elle
+// ne ressemblait pas au vrai logo, d'où ce rendu. Sur l'en-tête sombre
+// (theme="dark") le texte passe en blanc ; le soleil garde ses couleurs de
+// marque sur les deux fonds (il porte son propre disque doré).
 interface Props {
   size?: number;
   theme?: 'light' | 'dark';
 }
-const { size = 26 } = Astro.props;
-const h = Math.round(size * 1.6); // hauteur (= largeur) de l'image dans la puce
+const { size = 26, theme = 'light' } = Astro.props;
+const textColor = theme === 'dark' ? '#ffffff' : '#0a1238';
+const gold = '#f7b919'; // jaune solaire vif du logo officiel
+const ink = '#0a1238'; // bleu nuit de l'éclair (= azur-950)
+const sun = Math.round(size * 1.2); // le soleil (rayons compris) déborde un peu la hauteur des lettres
+
+// 8 rayons régulièrement répartis (générés pour éviter le code répétitif).
+const cx = 50;
+const cy = 50;
+const rInner = 35;
+const rOuter = 47;
+const rays = Array.from({ length: 8 }, (_, i) => {
+  const a = (Math.PI / 4) * i;
+  return {
+    x1: +(cx + rInner * Math.cos(a)).toFixed(2),
+    y1: +(cy + rInner * Math.sin(a)).toFixed(2),
+    x2: +(cx + rOuter * Math.cos(a)).toFixed(2),
+    y2: +(cy + rOuter * Math.sin(a)).toFixed(2),
+  };
+});
 ---
 
-<span class="inline-flex items-center rounded-md bg-white px-1.5 py-1 shadow-sm">
-  <img
-    src="/logo.png"
-    alt="TAQINOR"
-    width={h}
-    height={h}
-    style={`height:${h}px;width:${h}px`}
-    class="block"
-    loading="eager"
-    decoding="async"
-  />
+<span
+  class="inline-flex items-center font-display"
+  style={`font-weight:800;font-size:${size}px;color:${textColor};line-height:1;letter-spacing:0.02em;`}
+  aria-label="TAQINOR"
+>
+  <span aria-hidden="true">TAQIN</span>
+  <svg
+    width={sun}
+    height={sun}
+    viewBox="0 0 100 100"
+    aria-hidden="true"
+    class="mx-px inline-block shrink-0"
+    style="vertical-align:middle;"
+  >
+    <g stroke={gold} stroke-width="6" stroke-linecap="round">
+      {rays.map((r) => <line x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} />)}
+    </g>
+    <circle cx="50" cy="50" r="28" fill={gold} />
+    <path
+      d="M52.1 28.8 L31.1 54.2 L50 54.2 L47.9 71 L68.9 45.8 L50 45.8 Z"
+      fill={ink}
+    />
+  </svg>
+  <span aria-hidden="true">R</span>
 </span>
