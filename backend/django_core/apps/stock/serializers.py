@@ -146,7 +146,38 @@ class ProduitSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Produit
-        fields = '__all__'
+        # ERR95 — allowlist EXPLICITE (comme le chemin d'export) plutôt que
+        # `__all__` : un nouveau champ sensible ajouté au modèle n'est plus
+        # exposé au client par défaut (loi « prix_achat jamais client-facing »).
+        # `prix_achat` reste listé mais demeure gardé par permission dans
+        # get_fields() (retiré pour les rôles sans can_view_buy_prices). Les
+        # champs déclarés (read_only/method) sont ajoutés automatiquement par
+        # DRF s'ils figurent dans `fields`.
+        fields = [
+            # Identité & catalogue
+            'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # Prix (prix_achat gardé par permission, cf. get_fields)
+            'prix_achat', 'prix_vente', 'tva',
+            # Stock
+            'quantite_stock', 'seuil_alerte', 'is_archived',
+            # Relations (lecture imbriquée + écriture par *_id)
+            'categorie', 'categorie_id', 'fournisseur', 'fournisseur_id',
+            # Garanties
+            'garantie', 'garantie_mois', 'garantie_production_mois',
+            # Spécifications pompage
+            'pompe_cv', 'hmt_m', 'debit_m3j', 'pompe_kw', 'tension_v',
+            'courbe_pompe',
+            # Dates & data personnalisée
+            'date_creation', 'date_mise_a_jour', 'custom_data',
+            # Champs dérivés / calculés (SerializerMethodField, lecture seule)
+            'is_low_stock', 'categorie_type', 'categorie_type_display',
+            'quantite_reservee', 'quantite_disponible',
+            'is_low_stock_disponible', 'nb_mouvements',
+            'premiere_date_mouvement', 'derniere_date_mouvement',
+            'stock_par_emplacement',
+        ]
+        # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
+        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
 
     def _reserved_map(self):
         """Map {produit_id: quantité réservée} calculée UNE fois par sérialisation

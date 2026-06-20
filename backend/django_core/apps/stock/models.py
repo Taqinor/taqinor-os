@@ -280,7 +280,16 @@ class StockEmplacement(models.Model):
     class Meta:
         verbose_name = "Stock par emplacement"
         verbose_name_plural = "Stocks par emplacement"
-        unique_together = [('produit', 'emplacement')]
+        # ERR93 — `company` ajouté à la contrainte d'unicité (convention
+        # company-in-constraint) ; la quantité ventilée ne peut jamais être
+        # négative (CheckConstraint additive, sûre sur les données existantes
+        # car les gardes de transfert plafonnent déjà au stock disponible).
+        unique_together = [('company', 'produit', 'emplacement')]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(quantite__gte=0),
+                name='stockemplacement_quantite_non_negative'),
+        ]
 
     def __str__(self):
         return f'{self.produit_id} @ {self.emplacement_id} = {self.quantite}'
