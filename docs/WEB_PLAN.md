@@ -298,7 +298,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   annual savings + battery through it; keep the day graph month-aware for display only. Accept: annual
   savings is invariant to the month toggle and equals the 12-month integral. Files:
   `applianceConsumption.ts`, `roof-tool-pro11.ts` + tests.
-- [ ] **W83 — consumption: reversible sizing + correct "Recaler".** `applyConsumptionToSizing` is a
+- [x] **W83 — consumption: reversible sizing + correct "Recaler".** `applyConsumptionToSizing` is a
   one-way ratchet (adding an "en plus" appliance latches `neededAuto=false`, so deleting it never
   shrinks panels/battery); and "Recaler sur ma facture" rescales to bare `billDailyKwh()`, erasing
   legitimate "en plus" energy and unable to restore the appliance-composed shape. Re-derive the
