@@ -393,6 +393,55 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 ---
 
+### W98–W104 — TECHNICAL SEO AUDIT & FIXES (public site, 2026-06-20)
+
+A single-session full crawlability / indexability / structured-data pass over the **public** site.
+**Constraints (every task):** stay strictly inside `apps/web/**`; **read the real source first** —
+the actual `<head>`/layout components, the sitemap config in `apps/web/astro.config.mjs`, and
+`robots.txt` — and fix only **genuine** gaps found in the real code (don't assume; leave good pages
+alone). The **live public pages**, the **lead-capture flow** (1 000 MAD threshold, consent, WhatsApp
+deeplink, webhook, CAPI), and **every tariff number** stay **byte-for-byte unchanged**. **No new npm
+or API dependencies** — if a fix needs one, SKIP it and name it in the report for Reda to approve.
+**Invent nothing** — omit any schema field with no real value on the site. The **private estimator
+preview routes are out of scope for all of these** — they keep their `noindex` and stay unchanged;
+the latest `toiture-3d-pro-*` route must NEVER enter the sitemap or nav. **Lighthouse held 97–100,
+zero layout shift, reduced-motion respected.**
+
+- [ ] **W98 — Structured data (JSON-LD) across public routes.** Keep `/faq` as the **sole owner** of
+  `FAQPage`. Add an **Organization/LocalBusiness** block on the homepage using the real business
+  name, the phone already on the site, and the real address from the contact/footer — invent nothing,
+  omit any field with no real value; set `areaServed` to the cities the site already serves; include
+  `geo`/`openingHours` ONLY if real values exist on the site. Add **Service** schema on the service
+  pages and a **BreadcrumbList** matching the existing nav. Leave `sameAs` OUT until real social
+  profiles exist. Accept: homepage carries valid LocalBusiness JSON-LD; service pages carry Service +
+  BreadcrumbList; `/faq` still the only FAQPage; no fabricated fields. Files: `apps/web/**`.
+- [ ] **W99 — Per-page head hygiene.** Every public route gets a **unique, descriptive `<title>` and
+  meta description**, a **self-referencing canonical**, and a complete **Open Graph + Twitter Card**
+  set (`og:title`, `og:description`, `og:url`, `og:type`, `og:locale = fr_MA`, `twitter:card`) with a
+  **real `og:image` from an existing asset**. Fix pages missing these; leave good ones alone. Accept:
+  each public route has exactly one canonical (self-referencing) and a complete OG/Twitter set with a
+  real image. Files: `apps/web/**` (head/layout components).
+- [ ] **W100 — Sitemap completeness + exclusions.** Confirm every public page is included and that the
+  private estimator preview routes and any `noindex` page are excluded. Safety line: the latest
+  `toiture-3d-pro-*` route must NEVER enter the sitemap or nav. Accept: all public pages present, all
+  `/preview/*` + noindex pages absent. Files: `apps/web/astro.config.mjs` (sitemap filter).
+- [ ] **W101 — robots.txt.** Confirm it references the sitemap, allows legitimate crawlers, and
+  disallows the private estimator path as defense-in-depth alongside `noindex`. Accept: robots.txt
+  cites the sitemap, allows crawlers, disallows the private estimator path. Files: `apps/web/**`
+  (`robots.txt` / its generator).
+- [ ] **W102 — Locale.** Confirm `<html lang="fr">` site-wide. Leave `hreflang`/Arabic alone —
+  parked. Accept: every public route renders `lang="fr"`. Files: `apps/web/**` (root layout).
+- [ ] **W103 — Images & headings.** Add descriptive `alt` text to content images missing it; confirm
+  one `<h1>` per page with a sane H2/H3 order. Accept: no content image without alt; exactly one h1
+  per public page; heading order is sane. Files: `apps/web/**`.
+- [ ] **W104 — Tests for the new SEO invariants.** Keep Vitest green and add assertions for the new
+  invariants: the latest private preview route is **absent from the sitemap**, the homepage carries
+  the **LocalBusiness JSON-LD**, and **each public route has exactly one canonical**. Accept: new
+  assertions pass, full suite green; Lighthouse held 97–100, zero CLS, reduced-motion respected.
+  Files: `apps/web/**/tests/*.ts` (+ new test files as needed).
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
