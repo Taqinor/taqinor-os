@@ -109,6 +109,7 @@ import {
   OBSTACLE_STEP_FACTOR,
   type Obstacle,
 } from '../lib/obstacles';
+import { aggregateAreas, areaLabel, emptyResult, type AreaResult } from '../lib/roofAreas';
 import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { PANEL_KWC, type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
@@ -385,6 +386,15 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const layoutResetEl = $<HTMLButtonElement>('rp9-layout-reset');
   const layoutGridEl = $('rp9-layout-grid');
   const layoutNoteEl = $('rp9-layout-note');
+  // « Plusieurs zones » — tous facultatifs (le harness jsdom ne les fournit pas) :
+  // chaque accès est null-gardé, l'outil monte et tourne sans aucun de ces éléments.
+  const addAreaBtn = $<HTMLButtonElement>('rp9-add-area');
+  const areasWindowEl = $('rp9-areas-window');
+  const areasListEl = $('rp9-areas-list');
+  const areasTotalPanelsEl = $('rp9-areas-total-panels');
+  const areasTotalKwcEl = $('rp9-areas-total-kwc');
+  const areasTotalProdEl = $('rp9-areas-total-prod');
+  const areasTotalSavingsEl = $('rp9-areas-total-savings');
   if (!mapEl) return;
 
   const setStatus = (msg: string) => {
@@ -561,6 +571,47 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // de facture ou nouveau tracé.
   let neededPanels = 0;
   let neededAuto = true;
+
+  // ═══════════ « PLUSIEURS ZONES » — modèle additif « zone sélectionnée » ═══════════
+  // L'utilisateur trace la zone 1 (flux existant), puis peut en AJOUTER d'autres ; le
+  // total SOMME tout. RISQUE MINIMAL : on ne rend JAMAIS toutes les zones en même temps
+  // en 3D — la 3D montre la SEULE zone active (renderScene inchangé). Chaque zone est un
+  // enregistrement : sa géométrie + un instantané de résultat. La zone ACTIVE est éditée
+  // par le pipeline mono-zone existant ; sa géométrie VIVE EST l'état `vertices`/`obstacles`/
+  // `roofType`/`pitchDeg`/`facingAzimuthDeg`/`neededPanels`/`neededAuto`. `activeAreaId`
+  // désigne la zone en cours. On initialise avec UNE zone active (comportement mono-zone
+  // strictement inchangé tant qu'il n'y a qu'une zone).
+  interface AreaRecord {
+    id: string;
+    label: string;
+    vertices: LngLat[];
+    obstacles: Obstacle[];
+    roofType: RoofType;
+    pitchDeg: number;
+    facingAzimuthDeg: number;
+    neededPanels: number;
+    neededAuto: boolean;
+    result: AreaResult | null;
+  }
+  let areaCounter = 0;
+  const newAreaRecord = (): AreaRecord => {
+    const id = `area-${++areaCounter}`;
+    return {
+      id,
+      label: areaLabel(areaCounter - 1),
+      vertices: [],
+      obstacles: [],
+      roofType: 'flat',
+      pitchDeg: 22,
+      facingAzimuthDeg: 180,
+      neededPanels: 0,
+      neededAuto: true,
+      result: null,
+    };
+  };
+  const areas: AreaRecord[] = [newAreaRecord()];
+  let activeAreaId = areas[0].id;
+  const activeArea = (): AreaRecord | undefined => areas.find((a) => a.id === activeAreaId);
 
   const monthlyBill = (): number => {
     const raw = parseFloat((billEl?.value || '').replace(/\s/g, '').replace(',', '.'));
@@ -1679,7 +1730,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   /** Synchronise la fenêtre de production avec l'état courant (appelée après chaque rendu). */
   function syncProductionWindow() {
-    if (!prodWindowEl) return;
+    if (!prodWindowEl) {
+      // Même sans la fenêtre de production, on garde l'instantané de zone + le total à jour.
+      snapshotActiveAreaResult();
+      renderAreasPanel();
+      return;
+    }
     const cfg = prodConfigFromState();
     if (!cfg) {
       prodScaled = null;
@@ -1687,6 +1743,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
       prodPanels = 0;
       renderProdWindow();
       renderLayoutPanel();
+      snapshotActiveAreaResult();
+      renderAreasPanel();
       return;
     }
     // W69 — en mode disposition personnalisée, le NOMBRE posé vient de l'occupation
@@ -1697,6 +1755,100 @@ export function initRoofToolPro8(opts: InitOptions): void {
       updateProductionWindow(cfg);
     }
     renderLayoutPanel();
+    // « Plusieurs zones » — APRÈS chaque recompute/rendu de la zone active, on écrit son
+    // résultat courant (gagnant vivant) dans l'enregistrement de la zone active, puis on
+    // rafraîchit le total. Hook unique partagé par les optimiseurs plat ET pente.
+    snapshotActiveAreaResult();
+    renderAreasPanel();
+  }
+
+  // ═══════════ « PLUSIEURS ZONES » — instantané du résultat + panneau de total ═══════════
+
+  /** Résultat VIVANT de la zone active (gagnant de l'optimiseur courant) — plat
+   *  (`liveResult.winner`) ou pente (`pitchedLiveResult.winner`). null si rien de calculé
+   *  ou pose nulle (zone sans panneaux). */
+  function liveActiveResult(): AreaResult | null {
+    if (!closed || vertices.length < 3) return null;
+    if (roofType === 'pitched') {
+      const res = pitchedLiveResult;
+      if (!res || res.northFacing) return null;
+      const w = res.winner;
+      if (w.placedCount <= 0) return null;
+      return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh, savingsLow: w.savingsLow, savingsHigh: w.savingsHigh };
+    }
+    const res = liveResult;
+    if (!res) return null;
+    const w = res.winner;
+    if (w.placedCount <= 0) return null;
+    return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh, savingsLow: w.savingsLow, savingsHigh: w.savingsHigh };
+  }
+
+  /** Écrit l'instantané du résultat vivant dans l'enregistrement de la zone active. */
+  function snapshotActiveAreaResult() {
+    const a = activeArea();
+    if (a) a.result = liveActiveResult();
+  }
+
+  /** Capture la GÉOMÉTRIE + l'état d'édition courants de la zone active dans son
+   *  enregistrement (sans toucher au résultat, géré par le snapshot ci-dessus). */
+  function snapshotActiveAreaGeometry() {
+    const a = activeArea();
+    if (!a) return;
+    a.vertices = [...vertices];
+    a.obstacles = obstacles.map((o) => ({ ...o }));
+    a.roofType = roofType;
+    a.pitchDeg = pitchDeg;
+    a.facingAzimuthDeg = facingAzimuthDeg;
+    a.neededPanels = neededPanels;
+    a.neededAuto = neededAuto;
+  }
+
+  /** Active/désactive le bouton « + Ajouter une zone » : autorisé seulement quand la
+   *  zone active est FERMÉE (un tracé valide existe). */
+  function syncAddAreaButton() {
+    if (addAreaBtn) addAreaBtn.disabled = !closed || vertices.length < 3;
+  }
+
+  /** Rend le panneau « Zones » : total agrégé (zone active = résultat LIVE, pas le snapshot
+   *  potentiellement périmé) + une ligne par zone. Masqué tant qu'aucune zone n'a de résultat. */
+  function renderAreasPanel() {
+    syncAddAreaButton();
+    if (!areasWindowEl) return;
+    const liveActive = liveActiveResult();
+    // Résultats agrégés : la zone active prend son résultat LIVE, les autres leur snapshot.
+    const results = areas.map((a) => (a.id === activeAreaId ? liveActive : a.result));
+    const anyResult = results.some((r) => r != null);
+    areasWindowEl.hidden = !anyResult;
+    if (!anyResult) return;
+    const total = aggregateAreas(results);
+    if (areasTotalPanelsEl) areasTotalPanelsEl.textContent = `${fmt(total.panels)} × 720 W`;
+    if (areasTotalKwcEl) areasTotalKwcEl.textContent = `${total.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`;
+    if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
+    if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—';
+    if (!areasListEl) return;
+    areasListEl.innerHTML = areas
+      .map((a, i) => {
+        const r = a.id === activeAreaId ? liveActive : a.result;
+        const active = a.id === activeAreaId;
+        const panels = r ? fmt(r.panels) : '—';
+        const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc` : 'à tracer';
+        const rowClass = active
+          ? 'border-brass-400 bg-brass-400/10'
+          : 'border-white/10 bg-nuit-900/40';
+        const delBtn =
+          areas.length > 1
+            ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(a.label)}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
+            : '';
+        const viewBtn = active
+          ? `<span class="text-xs font-semibold text-brass-300">● active</span>`
+          : `<button type="button" data-area-select="${a.id}" class="border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">Voir</button>`;
+        return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
+          <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
+          <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}</span>
+          <span class="ml-auto flex items-center gap-2">${viewBtn}${delBtn}</span>
+        </li>`;
+      })
+      .join('');
   }
 
   // ═══════════ W68 — « Affiner ma consommation » : logique de rendu/recompute ═══════════
@@ -1882,6 +2034,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
     const count = occ.size;
     const cfg = prodConfigFromState();
     if (cfg) updateProductionWindow({ ...cfg, panels: count });
+    // « Plusieurs zones » — garde l'instantané + le total à jour après chaque édition de
+    // disposition (le résultat de zone suit le gagnant vivant, hook partagé).
+    snapshotActiveAreaResult();
+    renderAreasPanel();
   }
 
   /** Convertit un point ÉCRAN (carte) en coordonnées ENU relatives à l'origine de la
@@ -2799,7 +2955,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
     else map.easeTo({ ...target, duration: 1100, essential: true });
   }
 
-  function reset() {
+  /** Remet l'ÉDITEUR (géométrie + sous-panneaux) à l'état « prêt à tracer », SANS toucher
+   *  la facture ni la liste des zones. Partagé par « Effacer » (reset complet) et
+   *  « + Ajouter une zone » (nouveau tracé vierge sur la même facture). */
+  function clearEditorState() {
     vertices = [];
     closed = false;
     obstacles = [];
@@ -2882,6 +3041,126 @@ export function initRoofToolPro8(opts: InitOptions): void {
     else map.easeTo({ ...target, duration: 600 });
     updateCompass();
     setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
+  }
+
+  /** « Effacer » (reset complet) : vide l'éditeur ET ramène la liste des zones à UNE
+   *  seule zone vide active. */
+  function reset() {
+    clearEditorState();
+    areas.length = 0;
+    areaCounter = 0;
+    const fresh = newAreaRecord();
+    areas.push(fresh);
+    activeAreaId = fresh.id;
+    if (areasWindowEl) areasWindowEl.hidden = true;
+    renderAreasPanel();
+  }
+
+  // ═══════════ « PLUSIEURS ZONES » — ajouter / sélectionner / supprimer ═══════════
+
+  /** Charge l'enregistrement d'une zone dans l'état d'édition (géométrie + réglages),
+   *  recompute le centroïde, et la rend en 3D via le pipeline mono-zone. */
+  function loadArea(a: AreaRecord) {
+    vertices = [...a.vertices];
+    obstacles = a.obstacles.map((o) => ({ ...o }));
+    roofType = a.roofType;
+    pitchDeg = a.pitchDeg;
+    facingAzimuthDeg = a.facingAzimuthDeg;
+    neededPanels = a.neededPanels;
+    neededAuto = a.neededAuto;
+    closed = a.vertices.length >= 3;
+    selectedObsId = null;
+    // Recentre sur la zone chargée (mêmes caches purgés qu'à la fermeture du tracé).
+    if (vertices.length >= 3) {
+      let lng = 0;
+      let lat = 0;
+      for (const [x, y] of vertices) {
+        lng += x;
+        lat += y;
+      }
+      centroid = [lng / vertices.length, lat / vertices.length];
+      centroidLat = centroid[1];
+    }
+    pvgisCache.clear();
+    v4YieldCache.clear();
+    matrixResult = null;
+    pitchedYieldCache.clear();
+    pitchedPvgisPerKwc = null;
+    prodPlaneKey = '';
+    prodPerKwc = null;
+    // Sous-panneaux liés à la zone active : on repart propre pour la zone chargée.
+    layoutMode = false;
+    layoutState = null;
+    layoutPlan = null;
+    layoutOptimalCount = 0;
+    layoutSel = null;
+    if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', 'false');
+    if (layoutPanelEl) layoutPanelEl.hidden = true;
+    consMode = false;
+    consHandEdited = false;
+    if (consToggleEl) consToggleEl.setAttribute('aria-expanded', 'false');
+    if (consPanelEl) consPanelEl.hidden = true;
+    redrawTrace();
+    redrawObstacles();
+    syncObsEdit();
+    syncRoofTypeChips();
+    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
+    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
+    if (configPanel) configPanel.hidden = !closed;
+    updateAreaReadout();
+    if (closed) {
+      go3DView();
+      recalc();
+    } else {
+      renderAreasPanel();
+      setStatus('Zone vide sélectionnée — tracez son contour.');
+    }
+  }
+
+  /** « + Ajouter une zone » : fige la zone active (géométrie + résultat), crée une
+   *  NOUVELLE zone vide, l'active et vide l'éditeur pour un tracé vierge (facture +
+   *  liste des zones conservées). N'agit que si la zone active est fermée. */
+  function addArea() {
+    if (!closed || vertices.length < 3) return;
+    snapshotActiveAreaGeometry();
+    snapshotActiveAreaResult();
+    const fresh = newAreaRecord();
+    areas.push(fresh);
+    activeAreaId = fresh.id;
+    clearEditorState();
+    renderAreasPanel();
+    setStatus(`${fresh.label} — tracez le contour de cette nouvelle zone (double-cliquez pour fermer).`);
+  }
+
+  /** « Voir » une zone : fige la zone active d'abord, puis charge la zone choisie. */
+  function selectArea(id: string) {
+    if (id === activeAreaId) return;
+    const target = areas.find((a) => a.id === id);
+    if (!target) return;
+    snapshotActiveAreaGeometry();
+    snapshotActiveAreaResult();
+    activeAreaId = id;
+    loadArea(target);
+  }
+
+  /** Supprime une zone. Si c'était l'active, on bascule sur la première restante (chargée),
+   *  ou — s'il n'en reste aucune — on fait un reset complet (jamais zéro zone). */
+  function deleteArea(id: string) {
+    const idx = areas.findIndex((a) => a.id === id);
+    if (idx < 0) return;
+    const wasActive = id === activeAreaId;
+    areas.splice(idx, 1);
+    if (areas.length === 0) {
+      reset();
+      return;
+    }
+    if (wasActive) {
+      const next = areas[0];
+      activeAreaId = next.id;
+      loadArea(next);
+    } else {
+      renderAreasPanel();
+    }
   }
 
   // — Mode obstacle : on désactive le pan pour glisser-dessiner le rectangle —
@@ -3056,18 +3335,37 @@ export function initRoofToolPro8(opts: InitOptions): void {
   finishBtn?.addEventListener('click', close);
   clearBtn?.addEventListener('click', reset);
 
+  // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —
+  addAreaBtn?.addEventListener('click', addArea);
+  areasListEl?.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const sel = t.closest<HTMLElement>('[data-area-select]');
+    const del = t.closest<HTMLElement>('[data-area-del]');
+    if (sel?.dataset.areaSelect) selectArea(sel.dataset.areaSelect);
+    else if (del?.dataset.areaDel) deleteArea(del.dataset.areaDel);
+  });
+
   // — Facture —
   function updateBillKwh() {
     const kwh = billToAnnualKwh(monthlyBill());
     if (billKwhEl) billKwhEl.textContent = kwh > 0 ? `${fmt(Math.round(kwh))} kWh` : '—';
   }
+  // Le recalcul complet (balayage dense fineGridMatrixV6 + rafale de requêtes PVGIS)
+  // est LOURD : le lancer à CHAQUE frappe figeait la page pendant qu'on tape la facture.
+  // On débounce donc le recalcul (la conversion kWh, légère, reste instantanée).
+  let billTimer: ReturnType<typeof setTimeout> | null = null;
   billEl?.addEventListener('input', () => {
     updateBillKwh();
     // Changer la facture = nouveau besoin : on relâche le réglage manuel éventuel.
     neededAuto = true;
     // W68 — un nouveau socle de facture recompose la courbe de conso (override repris).
     consHandEdited = false;
-    if (closed) recalc();
+    if (!closed) return;
+    if (billTimer != null) clearTimeout(billTimer);
+    billTimer = setTimeout(() => {
+      billTimer = null;
+      recalc();
+    }, 320);
   });
   updateBillKwh();
 

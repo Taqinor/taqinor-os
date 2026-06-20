@@ -210,6 +210,12 @@ const chipClass =
                 class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
                 Effacer
               </button>
+              <!-- Plusieurs zones — fige la zone tracée et démarre un nouveau tracé.
+                   Activé seulement quand la zone active est fermée (cf. script, null-gardé). -->
+              <button type="button" id="rp9-add-area" disabled
+                class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:border-white/25 disabled:bg-transparent disabled:text-lune-faint disabled:opacity-50">
+                + Ajouter une zone
+              </button>
               <!-- Surface tracée — emplacement réservé (hauteur constante, zéro CLS) -->
               <p id="rp9-area" class="ml-auto min-w-0 text-sm text-lune-faint" aria-live="polite">
                 <span>Surface du toit&nbsp;: </span><span id="rp9-area-value" class="fig text-white">—</span>
@@ -455,6 +461,44 @@ const chipClass =
           </div>
         </div>
 
+        <!-- ZONES — « Plusieurs zones de panneaux ». Chaque zone est dimensionnée par
+             l'optimiseur existant (best-fit) puis ajustable au panneau près ; le total
+             SOMME panneaux / kWc / production / économies sur TOUTES les zones. La 3D et
+             les sous-panneaux (production, conso, disposition) restent liés à la zone
+             ACTIVE. Affichée dès qu'une zone est calculée (script bascule .hidden). -->
+        <div id="rp9-areas-window" hidden class="cine-card mt-6 p-5 sm:p-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="tech-label rule-brass text-brass-300">Total — toutes les zones</p>
+            <p class="text-xs text-lune-faint">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+            <div>
+              <dd id="rp9-areas-total-panels" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Panneaux</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-kwc" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-prod" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Production estimée</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-savings" class="fig text-lg text-brass-300 sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Économies estimées</dt>
+            </div>
+          </dl>
+          <!-- Liste des zones (script-rendu) : libellé, panneaux, kWc, « Voir » + suppr.
+               La zone active est mise en évidence. -->
+          <ul id="rp9-areas-list" class="mt-5 space-y-2"></ul>
+          <p class="mt-3 text-xs leading-relaxed text-lune-faint">
+            « + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même
+            facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ;
+            les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
+          </p>
+        </div>
+
         <!-- V4 — OPTIMUM CALCULÉ : le vrai gagnant de la grille fine (production
              PVGIS au GPS exact). Sa PROPRE ligne quand ce n'est pas une config
              standard ; badgée « Recommandé », avec la raison et la source. -->
@@ -479,45 +523,6 @@ const chipClass =
             class="mt-4 border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
             Appliquer cet optimum
           </button>
-        </div>
-
-        <!-- MATRICE complète balayée (FIX 2 V6) : triable, filtrable, optimum badgé -->
-        <div id="rp9-compare-wrap" hidden class="cine-card mt-6 p-0">
-          <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-            <p class="tech-label text-brass-300">Matrice complète des configurations sur CE toit — optimum réel badgé « Recommandé »</p>
-            <label class="flex items-center gap-2 text-xs text-lune-faint">
-              Filtrer
-              <select id="rp9-matrix-filter" class="rp9-filter border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-brass-400">
-                <option value="all">Toutes les orientations</option>
-              </select>
-            </label>
-          </div>
-          <div class="mt-3 overflow-x-auto">
-            <table class="w-full min-w-[640px] text-left text-sm">
-              <thead class="text-lune-faint">
-                <tr class="border-b border-white/10">
-                  <th class="px-5 py-3 font-semibold">Configuration</th>
-                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
-                    <button type="button" data-rp9-sort="placedCount" class="rp9-sort">Panneaux<span class="rp9-sort-arrow"></span></button>
-                  </th>
-                  <th class="px-5 py-3 text-right font-semibold">kWc</th>
-                  <th class="px-5 py-3 text-right font-semibold" aria-sort="descending">
-                    <button type="button" data-rp9-sort="annualKwh" class="rp9-sort">kWh/an<span class="rp9-sort-arrow"></span></button>
-                  </th>
-                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
-                    <button type="button" data-rp9-sort="pctOfTarget" class="rp9-sort">% facture<span class="rp9-sort-arrow"></span></button>
-                  </th>
-                  <th class="px-5 py-3 text-right font-semibold">Économies/an</th>
-                </tr>
-              </thead>
-              <tbody id="rp9-compare" class="text-lune-soft"></tbody>
-            </table>
-          </div>
-          <p class="px-5 pb-5 pt-2 text-xs text-lune-faint">
-            Balayage dense (inclinaison 0→35°, azimut sud ±45° + Est-Ouest, portrait/paysage) noté
-            sur la production PVGIS au GPS exact. Triez par colonne, filtrez par orientation, cliquez
-            une ligne pour la voir en 3D. Chiffres face avant (monoface), pas un devis.
-          </p>
         </div>
 
         <!-- W50 — FENÊTRE « PRODUCTION ESTIMÉE » : Année / Mois / Jour. Reflète le plan
@@ -771,6 +776,47 @@ const chipClass =
           </div>
         </div>
 
+        <!-- MATRICE complète balayée (FIX 2 V6) : triable, filtrable, optimum badgé.
+             Placée EN BAS (sous la recommandation, la production, la conso et la
+             personnalisation) — c'est une référence détaillée, pas l'info principale. -->
+        <div id="rp9-compare-wrap" hidden class="cine-card mt-6 p-0">
+          <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
+            <p class="tech-label text-brass-300">Matrice complète des configurations sur CE toit — optimum réel badgé « Recommandé »</p>
+            <label class="flex items-center gap-2 text-xs text-lune-faint">
+              Filtrer
+              <select id="rp9-matrix-filter" class="rp9-filter border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-brass-400">
+                <option value="all">Toutes les orientations</option>
+              </select>
+            </label>
+          </div>
+          <div class="mt-3 overflow-x-auto">
+            <table class="w-full min-w-[640px] text-left text-sm">
+              <thead class="text-lune-faint">
+                <tr class="border-b border-white/10">
+                  <th class="px-5 py-3 font-semibold">Configuration</th>
+                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
+                    <button type="button" data-rp9-sort="placedCount" class="rp9-sort">Panneaux<span class="rp9-sort-arrow"></span></button>
+                  </th>
+                  <th class="px-5 py-3 text-right font-semibold">kWc</th>
+                  <th class="px-5 py-3 text-right font-semibold" aria-sort="descending">
+                    <button type="button" data-rp9-sort="annualKwh" class="rp9-sort">kWh/an<span class="rp9-sort-arrow"></span></button>
+                  </th>
+                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
+                    <button type="button" data-rp9-sort="pctOfTarget" class="rp9-sort">% facture<span class="rp9-sort-arrow"></span></button>
+                  </th>
+                  <th class="px-5 py-3 text-right font-semibold">Économies/an</th>
+                </tr>
+              </thead>
+              <tbody id="rp9-compare" class="text-lune-soft"></tbody>
+            </table>
+          </div>
+          <p class="px-5 pb-5 pt-2 text-xs text-lune-faint">
+            Balayage dense (inclinaison 0→35°, azimut sud ±45° + Est-Ouest, portrait/paysage) noté
+            sur la production PVGIS au GPS exact. Triez par colonne, filtrez par orientation, cliquez
+            une ligne pour la voir en 3D. Chiffres face avant (monoface), pas un devis.
+          </p>
+        </div>
+
         <p class="mt-6 text-xs text-lune-faint">
           Modèle panneau : Canadian Solar TOPBiHiKu7 CS7N-690-720TB-AG (720 W, 2384 × 1303 × 33 mm,
           bifacial double-verre, 132 demi-cellules). Productible PVGIS (Commission européenne) /
@@ -842,6 +888,24 @@ const chipClass =
   .rp9-sort[data-active='true'] { color: var(--color-brass-300, #f3cc66); }
   .rp9-sort-arrow { font-variant-numeric: tabular-nums; }
   .rp9-filter { border-radius: 0; }
+
+  /* Listes déroulantes (<select>) : sur fond sombre, le menu natif s'affichait en
+     blanc sur blanc — illisible tant qu'une ligne n'était pas survolée. `color-scheme:
+     dark` rend le menu natif sombre (Chrome/Firefox/Edge/Safari) ; les couleurs d'option
+     explicites sont un repli pour les navigateurs qui ignorent color-scheme. */
+  #rp9-matrix-filter,
+  #rp9-appl-kind,
+  #rp9-ac-btu,
+  #rp9-ev-kw {
+    color-scheme: dark;
+  }
+  #rp9-matrix-filter option,
+  #rp9-appl-kind option,
+  #rp9-ac-btu option,
+  #rp9-ev-kw option {
+    background-color: #11182b;
+    color: #fff;
+  }
 
   .rp9-compass {
     position: absolute;
