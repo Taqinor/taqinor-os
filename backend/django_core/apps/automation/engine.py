@@ -14,12 +14,25 @@ est isolée. Sans règle, ``evaluate`` ne fait rien (aucun changement de
 comportement par défaut).
 """
 import logging
+import threading
 
 from .models import (
     ActionType, AutomationApproval, AutomationRule, AutomationRun, TriggerType,
 )
 
 logger = logging.getLogger(__name__)
+
+# Garde anti-récursion : quand une action écrit l'enregistrement (SET_FIELD /
+# ASSIGN_RECORD), son ``instance.save()`` ré-émet le ``post_save`` qui a
+# déclenché la règle. Sans garde, une règle qui écrit le champ que son propre
+# déclencheur surveille reboucle jusqu'à ``RecursionError`` et bloque tout save.
+# Ce drapeau thread-local marque « on est en train d'exécuter une automatisation »
+# pour que ``evaluate`` n'enchaîne pas une nouvelle évaluation pendant ce temps.
+_GUARD = threading.local()
+
+
+def _in_automation():
+    return getattr(_GUARD, 'active', False)
 
 
 def _log_run(rule, company, instance, status, message):
@@ -44,6 +57,15 @@ def _model_label(instance):
     if meta is None:
         return ''
     return f'{meta.app_label}.{meta.model_name}'
+
+
+def _has_company_fk(model):
+    """Le modèle porte-t-il un champ ``company`` (modèle multi-tenant) ?"""
+    try:
+        return any(
+            f.name == 'company' for f in model._meta.concrete_fields)
+    except Exception:  # pragma: no cover - défensif
+        return False
 
 
 # ── Correspondance déclencheur ────────────────────────────────────────────
@@ -122,6 +144,10 @@ def evaluate(trigger_type, instance, company, *, context=None, user=None):
     """
     if company is None:
         return
+    # Garde anti-récursion : un save déclenché PAR une action ne relance pas le
+    # moteur (sinon une règle self-référentielle reboucle à l'infini).
+    if _in_automation():
+        return
     try:
         rules = list(AutomationRule.objects.filter(
             company=company, enabled=True, trigger_type=trigger_type
@@ -154,7 +180,16 @@ def run_action(rule, instance, company, *, context=None, user=None):
     Utilisée par ``evaluate`` (immédiat) et par l'approbation (différée).
     """
     from . import actions
-    status, message = actions.run(rule, instance, company, context, user)
+    # Marque la fenêtre d'exécution : tout ``instance.save()` déclenché par
+    # l'action (SET_FIELD / ASSIGN_RECORD) ré-émet le post_save, mais
+    # ``evaluate`` se court-circuite tant que ce drapeau est posé → pas de
+    # récursion.
+    previous = _in_automation()
+    _GUARD.active = True
+    try:
+        status, message = actions.run(rule, instance, company, context, user)
+    finally:
+        _GUARD.active = previous
     _log_run(rule, company, instance, status, message)
     return status, message
 
@@ -176,7 +211,12 @@ def run_approved(approval, *, user=None):
         try:
             app_label, model_name = approval.target_model.split('.', 1)
             model = django_apps.get_model(app_label, model_name)
-            instance = model.objects.filter(pk=approval.target_id).first()
+            # Filtre société : empêche de résoudre (et donc d'écrire) une cible
+            # d'un autre tenant si target_model/target_id venaient à croiser.
+            lookup = {'pk': approval.target_id}
+            if approval.company_id and _has_company_fk(model):
+                lookup['company'] = approval.company
+            instance = model.objects.filter(**lookup).first()
         except Exception:  # pragma: no cover
             instance = None
     run_action(rule, instance, approval.company,

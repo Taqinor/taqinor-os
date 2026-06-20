@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from .stages import STAGE_CHOICES, NEW
@@ -190,10 +191,15 @@ class Lead(models.Model):
     # message WhatsApp. Nullable : non renseignée → retombe sur le FR.
     langue_preferee = models.CharField(
         max_length=10, choices=LanguePreferee.choices, blank=True, null=True)
+    # Bornes géographiques : latitude ∈ [-90, 90], longitude ∈ [-180, 180].
+    # Les validateurs s'appliquent à full_clean()/serializers ; le DecimalField
+    # max_digits=9/decimal_places=6 autorise déjà ±999.999999, d'où ces gardes.
     gps_lat = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True)
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)])
     gps_lng = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True)
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)])
 
     # ── Pipeline / CRM ──
     owner = models.ForeignKey(

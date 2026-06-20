@@ -13,6 +13,7 @@ import logging
 import httpx
 
 from .models import Webhook, WebhookDelivery
+from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,28 @@ def sign_payload(secret, body_bytes):
 
 def _deliver_one(webhook, event, payload):
     """Livre un évènement à UN webhook. Journalise toujours, ne lève jamais."""
+    # ERR46 — Garde-fou anti-SSRF AU MOMENT de la livraison (defense-in-depth) :
+    # même si une URL interne a été stockée avant ce correctif — ou si le DNS a
+    # été ré-pointé depuis (DNS rebinding) — on ne POST jamais vers un hôte
+    # interne. On journalise un échec auditable et on s'arrête.
+    try:
+        validate_webhook_target_url(webhook.target_url)
+    except UnsafeWebhookURL as exc:
+        logger.warning('Webhook delivery blocked (SSRF) (%s): %s',
+                       webhook.target_url, exc)
+        try:
+            WebhookDelivery.objects.create(
+                company_id=webhook.company_id,
+                webhook=webhook,
+                event=event,
+                payload=payload,
+                status=WebhookDelivery.Statut.FAILED,
+                response_status=None,
+                error=f'URL bloquée (SSRF) : {exc}'[:1000],
+            )
+        except Exception:  # noqa: BLE001 — ne jamais propager
+            logger.exception('Could not log blocked webhook delivery')
+        return
     body_bytes = json.dumps(payload, default=str, sort_keys=True).encode('utf-8')
     signature = sign_payload(webhook.secret, body_bytes)
     headers = {

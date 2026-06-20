@@ -23,10 +23,19 @@ const appReducer = combineReducers({
   tickets: ticketsReducer,
 })
 
+// Clés localStorage strictement liées à l'authentification à purger au logout.
+// L'auth est basée sur des cookies httpOnly : aucun token n'est stocké côté
+// client, donc cette liste est vide aujourd'hui. On purge UNIQUEMENT ces clés
+// — surtout PAS `localStorage.clear()`, qui effacerait le thème, l'état de la
+// sidebar, les vues/filtres de leads enregistrés et les drapeaux PWA.
+const AUTH_LOCALSTORAGE_KEYS = []
+
 // Reset all slices to their initial state on logout so no data leaks between users
 const rootReducer = (state, action) => {
   if (action.type === 'auth/logout') {
-    localStorage.clear()
+    AUTH_LOCALSTORAGE_KEYS.forEach((key) => {
+      try { localStorage.removeItem(key) } catch { /* stockage indisponible */ }
+    })
     return appReducer(undefined, action)
   }
   return appReducer(state, action)

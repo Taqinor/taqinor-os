@@ -21,6 +21,7 @@ import {
   buildLeadRecord,
   fireCapi,
   forwardLead,
+  redactLeadForLog,
   runSimulation,
   validateLead,
   type LeadEnv,
@@ -28,15 +29,25 @@ import {
 import { cleanEnrichment, hasEnrichment } from '../../lib/enrichment';
 import { leadWhatsappText, whatsappLink } from '../../lib/whatsapp';
 import { WHATSAPP_LEADS } from '../../lib/nap';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
   });
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // ERR112 — même garde-fou anti-spam que /api/simulate (miroir strict),
+  // bucket distinct par endpoint. Best-effort, sans dépendance ni secret.
+  const rl = rateLimit(`preview-lead:${clientIpFromRequest(request)}`);
+  if (!rl.allowed) {
+    return json({ ok: false, errors: { rate: 'Trop de tentatives, réessayez dans un instant.' } }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -61,7 +72,13 @@ export const POST: APIRoute = async ({ request }) => {
   const background = (async () => {
     const fw = await forwardLead(record, env, fetch);
     if (!fw.delivered && baseRecord.qualified) {
-      console.log(`[lead] non transmis au CRM (${fw.reason}) — lead qualifié:`, JSON.stringify(record));
+      // ERR32 : aucune PII dans les logs (nom/téléphone/ville/consentement).
+      // Diagnostic rédacté seulement (id haché, indicateurs, raison) — l'objet
+      // `record` enrichi n'est jamais sérialisé tel quel.
+      console.log(
+        `[lead] non transmis au CRM (${fw.reason}) — lead qualifié:`,
+        JSON.stringify(redactLeadForLog(record)),
+      );
     }
     // CAPI inchangé : l'événement publicitaire ne porte jamais les champs
     // facultatifs (signal propre, identique à la production).

@@ -305,7 +305,10 @@ export default function RolesManagement() {
     } catch (err) {
       // Suppression bloquée car des utilisateurs y sont assignés → proposer la
       // réassignation dans le même dialogue (perform_destroy → PermissionDenied).
-      if (role.users_count > 0 && (role.users?.length ?? 0) > 0) {
+      // ERR101 — On se base sur users_count seul : le sérialiseur de liste peut
+      // omettre le tableau `users` imbriqué, mais le dialogue doit quand même
+      // s'ouvrir dès qu'il y a au moins un utilisateur.
+      if (role.users_count > 0) {
         setReassign({ role, target: '' })
       } else {
         setError(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')

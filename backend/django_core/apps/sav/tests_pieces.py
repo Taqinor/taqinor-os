@@ -57,6 +57,16 @@ class TestSavPieces(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, Decimal('7'))
 
+    def test_decrement_over_stock_blocked(self):
+        # ERR80 — décrémenter plus que le stock en main est refusé (jamais
+        # négatif) et ne crée pas la pièce.
+        r = self._add(quantite='99', decrement=True)
+        self.assertEqual(r.status_code, 400, r.data)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
+        self.assertFalse(PieceConsommee.objects.filter(
+            ticket=self.ticket).exists())
+
     def test_remove_decremented_piece_restores_stock(self):
         r = self._add(quantite='3', decrement=True)
         pid = r.data['id']

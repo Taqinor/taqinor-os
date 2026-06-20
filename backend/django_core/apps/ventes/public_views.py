@@ -83,7 +83,10 @@ def public_document(request, token):
 
     try:
         if link.devis_id:
-            key = generate_premium_devis_pdf(link.devis_id, clean_pdf_options({}))
+            # ERR74 — public share link is a safe GET: render + stream without
+            # persisting fichier_pdf on every access (persist=False).
+            key = generate_premium_devis_pdf(
+                link.devis_id, clean_pdf_options({}), persist=False)
             pdf_bytes = download_pdf(key)
             filename = f'Devis_{link.devis.reference}.pdf'
         elif link.facture_id:

@@ -16,7 +16,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier
-from apps.ventes.utils.minio_client import get_minio_client
+from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
 from .models import SettingsAuditLog
 from .serializers import CompanyProfileSerializer
 from .views_common import _audit_company, _profile
@@ -85,6 +85,7 @@ def _upload_image(request, field, prefix):
     key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
 
     client = get_minio_client()
+    ensure_uploads_bucket()  # N108 — self-heal a missing bucket before upload
     client.upload_fileobj(
         file,
         settings.MINIO_BUCKET_UPLOADS,

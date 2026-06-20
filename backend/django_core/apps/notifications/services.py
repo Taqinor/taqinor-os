@@ -31,6 +31,12 @@ DEFAULT_PREFS = {
     'email': False,
 }
 
+# ERR91 — Bornes cohérentes pour la ligne in-app. `title` (255) et `link` (512)
+# sont déjà tronqués sur leur taille de colonne ; le corps (TextField, sans
+# limite de colonne) l'était pas — un appelant pouvait écrire une notification
+# arbitrairement grosse. On borne le corps de façon cohérente.
+MAX_BODY_LEN = 2000
+
 
 def default_prefs_for(event_type):
     """Retourne les toggles par défaut pour un événement (copie mutable)."""
@@ -109,16 +115,46 @@ def _dispatch_whatsapp(user, title, body):
     return bool(url)
 
 
-def _is_webpush_configured():
-    """True si une paire VAPID est réellement configurée (clé privée présente).
+def resolve_vapid_keys():
+    """Renvoie la paire VAPID effective `(public, private)`.
 
-    Sans clé privée, le push est un NO-OP total — aucune dépendance n'est même
-    chargée. C'est l'interrupteur qui préserve le comportement actuel."""
+    Précédence (N109) :
+      1. clés d'environnement (`settings.VAPID_PUBLIC_KEY/PRIVATE_KEY`) si TOUTES
+         DEUX non vides → on les utilise telles quelles ;
+      2. sinon, si l'auto-génération est désactivée (`VAPID_AUTOGENERATE` faux),
+         on renvoie les valeurs d'env (possiblement vides) SANS toucher la base —
+         ce qui préserve le contrat « clés vides => endpoint vide => no-op » des
+         tests ;
+      3. sinon, on assure le singleton `VapidKeyPair` (génère+persiste si besoin)
+         et on renvoie sa paire ; en cas d'échec on retombe sur les valeurs d'env.
+
+    Best-effort : jamais d'exception remontée."""
     try:
         from django.conf import settings
-        return bool(
-            getattr(settings, 'VAPID_PRIVATE_KEY', '')
-            and getattr(settings, 'VAPID_PUBLIC_KEY', ''))
+        env_pub = getattr(settings, 'VAPID_PUBLIC_KEY', '') or ''
+        env_priv = getattr(settings, 'VAPID_PRIVATE_KEY', '') or ''
+        if env_pub and env_priv:
+            return (env_pub, env_priv)
+        if not getattr(settings, 'VAPID_AUTOGENERATE', False):
+            return (env_pub, env_priv)
+        from .models import VapidKeyPair
+        kp = VapidKeyPair.ensure()
+        if kp is not None and kp.public_key and kp.private_key:
+            return (kp.public_key, kp.private_key)
+        return (env_pub, env_priv)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Résolution des clés VAPID échouée : %s', exc)
+        return ('', '')
+
+
+def _is_webpush_configured():
+    """True si une paire VAPID est réellement disponible (les deux clés résolues).
+
+    Sans clé privée, le push est un NO-OP total — aucune dépendance d'envoi n'est
+    même chargée. C'est l'interrupteur qui préserve le comportement actuel."""
+    try:
+        public, private = resolve_vapid_keys()
+        return bool(public and private)
     except Exception:  # pragma: no cover - défensif
         return False
 
@@ -155,7 +191,8 @@ def _dispatch_webpush(user, title, body, link=None):
     })
     admin_email = getattr(settings, 'VAPID_ADMIN_EMAIL', '') or 'admin@erp.local'
     claims = {'sub': f'mailto:{admin_email}'}
-    private_key = getattr(settings, 'VAPID_PRIVATE_KEY', '')
+    # Clé privée résolue (env si fournie, sinon singleton auto-généré).
+    _public, private_key = resolve_vapid_keys()
 
     sent = 0
     for sub in subs:
@@ -208,7 +245,7 @@ def notify(user, event_type, title, body='', link=None, company=None):
         try:
             created = Notification.objects.create(
                 company=company, recipient=user, event_type=event_type,
-                title=str(title)[:255], body=str(body or ''),
+                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
                 link=str(link or '')[:512])
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)

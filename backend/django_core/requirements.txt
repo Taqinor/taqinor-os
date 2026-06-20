@@ -41,12 +41,15 @@ httpx==0.28.1
 # Server
 gunicorn==22.0.0
 
-# Web push (PWA) — N92. Dépendance OPTIONNELLE : la diffusion web-push est
-# importée paresseusement (try/except) et reste un NO-OP tant que les clés VAPID
-# ne sont pas configurées, donc l'absence du paquet ne casse rien. Pour ACTIVER
-# le web-push en prod, installer la lib (son sdist http-ece ne se build pas avec
-# les setuptools récents, d'où l'install séparée) :
-#   pip install pywebpush==2.0.0
-# (laissée hors de l'install de base pour ne jamais bloquer la CI sur http-ece).
+# Web push (PWA) — N92/N109. Diffusion web-push + génération de paire VAPID
+# (py_vapid arrive en dépendance transitive). Le sdist http-ece se build
+# proprement avec des setuptools récents (la CI et le build Docker mettent pip/
+# setuptools à jour avant l'install). Toujours importé paresseusement côté code :
+# sans clés VAPID, le push reste un NO-OP.
+pywebpush==2.0.3
 # TOTP two-factor auth (2FA opt-in, N96)
 pyotp==2.10.0
+# Architectural import contracts (M3) — enforces the import rules in
+# backend/django_core/.importlinter via the `lint-imports` CI step (no cycles
+# between core domain models; the `core` app stays a base foundation layer).
+import-linter==2.11

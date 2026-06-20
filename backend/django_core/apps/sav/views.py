@@ -322,7 +322,12 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if request.method == 'GET':
             qs = ticket.pieces.select_related('produit')
             return Response(PieceConsommeeSerializer(qs, many=True).data)
-        from apps.stock.models import Produit, MouvementStock
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+        from apps.stock.services import (
+            mouvement_type_sortie, record_stock_movement,
+        )
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
         except (InvalidOperation, TypeError):
@@ -330,12 +335,21 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if quantite <= 0:
             return Response({'detail': 'Quantité invalide.'}, status=400)
         try:
-            produit = Produit.objects.get(
-                pk=request.data.get('produit'), company=ticket.company)
-        except (Produit.DoesNotExist, ValueError, TypeError):
+            produit = get_produit_or_raise(
+                ticket.company, request.data.get('produit'))
+        except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
         decrement = str(request.data.get('decrement') or '') in (
             '1', 'true', 'True', 'on')
+        if decrement:
+            # ERR80 — garde plancher : ne jamais piloter le stock en négatif.
+            # On bloque le décrément qui dépasserait le stock en main.
+            produit.refresh_from_db()
+            if quantite > produit.quantite_stock:
+                return Response(
+                    {'detail': 'Stock insuffisant : '
+                     f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             piece = PieceConsommee.objects.create(
                 company=ticket.company, ticket=ticket, produit=produit,
@@ -344,15 +358,13 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 produit.refresh_from_db()
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant - quantite
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=ticket.company, produit=produit,
-                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    type_mouvement=mouvement_type_sortie(),
                     quantite=quantite, quantite_avant=qte_avant,
                     quantite_apres=qte_apres, reference=ticket.reference,
                     note=f'Consommation SAV {ticket.reference}',
                     created_by=request.user)
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
                 piece.stock_decremente = True
                 piece.save(update_fields=['stock_decremente'])
             # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
@@ -370,7 +382,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         """Retire une pièce du ticket ; si le stock avait été décrémenté, le
         ré-incrémente (MouvementStock ENTRÉE) pour rester cohérent."""
         ticket = self.get_object()
-        from apps.stock.models import MouvementStock
+        from apps.stock.services import (
+            mouvement_type_entree, record_stock_movement,
+        )
         try:
             piece = ticket.pieces.select_related('produit').get(pk=piece_id)
         except (PieceConsommee.DoesNotExist, ValueError):
@@ -381,15 +395,13 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 produit.refresh_from_db()
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + piece.quantite
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=ticket.company, produit=produit,
-                    type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                    type_mouvement=mouvement_type_entree(),
                     quantite=piece.quantite, quantite_avant=qte_avant,
                     quantite_apres=qte_apres, reference=ticket.reference,
                     note=f'Annulation pièce SAV {ticket.reference}',
                     created_by=request.user)
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
             # L310 — journaliser le retrait (et la ré-incrémentation éventuelle).
             suffixe = ' (stock +)' if piece.stock_decremente else ''
             nom = getattr(piece.produit, 'nom', '?')

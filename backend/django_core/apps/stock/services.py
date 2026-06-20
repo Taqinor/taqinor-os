@@ -5,7 +5,7 @@ l'utilisateur. Le PRIX D'ACHAT n'est JAMAIS modifié ni exposé (règle marges).
 Les changements sont journalisés (audit logger).
 """
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 
 logger = logging.getLogger('stock.audit')
 
@@ -201,7 +201,10 @@ def stock_breakdown(produit):
                  for e in emplacements if not e.is_principal)
     out = []
     for e in emplacements:
-        qte = (produit.quantite_stock - autres) if e.is_principal \
+        # ERR94 — le principal détient le reste (total − non principaux), mais
+        # ne doit JAMAIS afficher une quantité négative : on le plafonne à 0
+        # si le total est tombé sous l'allocation ventilée.
+        qte = max(produit.quantite_stock - autres, 0) if e.is_principal \
             else records.get(e.id, 0)
         out.append({
             'emplacement_id': e.id,
@@ -238,7 +241,8 @@ def stock_breakdown_map(company):
             'emplacement_id': e.id,
             'emplacement_nom': e.nom,
             'is_principal': e.is_principal,
-            'quantite': (p.quantite_stock - autres) if e.is_principal
+            # ERR94 — principal plafonné à 0, jamais négatif (cf. stock_breakdown).
+            'quantite': max(p.quantite_stock - autres, 0) if e.is_principal
             else rec.get(e.id, 0),
         } for e in emplacements]
     return out
@@ -448,7 +452,7 @@ def apply_retour_fournisseur(retour, user):
     SORTIE) pour chaque ligne, puis passe le retour à « validé ». Lève
     ValueError si le retour n'est pas en brouillon ou est vide. INTERNE."""
     from django.db import transaction
-    from .models import RetourFournisseur, MouvementStock
+    from .models import Produit, RetourFournisseur, MouvementStock
     if retour.statut != RetourFournisseur.Statut.BROUILLON:
         raise ValueError('Seul un retour en brouillon peut être validé.')
     lignes = list(retour.lignes.select_related('produit'))
@@ -456,8 +460,10 @@ def apply_retour_fournisseur(retour, user):
         raise ValueError('Le retour ne contient aucune ligne.')
     with transaction.atomic():
         for ligne in lignes:
-            produit = ligne.produit
-            produit.refresh_from_db()
+            # ERR24 — verrou de ligne produit dans la transaction pour que des
+            # retours concurrents du même produit ne perdent pas de décrément.
+            produit = (Produit.objects.select_for_update()
+                       .get(pk=ligne.produit_id))
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
             MouvementStock.objects.create(
@@ -593,24 +599,15 @@ def recompute_facture_fournisseur_statut(facture):
 def reserved_quantity(produit):
     """Quantité de ce produit ENGAGÉE par des réservations de chantier actives
     et non encore consommées (0 si aucune). Lecture seule."""
-    from django.db.models import Sum
-    from apps.installations.models import StockReservation
-    agg = (StockReservation.objects
-           .filter(produit=produit, active=True, consomme=False)
-           .aggregate(total=Sum('quantite')))
-    return agg['total'] or 0
+    from apps.installations.selectors import reserved_quantity_for_produit
+    return reserved_quantity_for_produit(produit)
 
 
 def reserved_quantities(company):
     """Map {produit_id: quantité réservée active} pour toute la société — un
     seul agrégat (évite un N+1 sur la liste produits). Lecture seule."""
-    from django.db.models import Sum
-    from apps.installations.models import StockReservation
-    rows = (StockReservation.objects
-            .filter(company=company, active=True, consomme=False)
-            .values('produit_id')
-            .annotate(total=Sum('quantite')))
-    return {r['produit_id']: (r['total'] or 0) for r in rows}
+    from apps.installations.selectors import reserved_quantities_for_company
+    return reserved_quantities_for_company(company)
 
 
 def available_quantity(produit, reserved=None):
@@ -625,11 +622,8 @@ def _own_reservation_map(installation):
     """Map {produit_id: quantité} des réservations actives non consommées
     propres à CE chantier (pour ne pas les décompter de son propre disponible).
     """
-    from apps.installations.models import StockReservation
-    rows = (StockReservation.objects
-            .filter(installation=installation, active=True, consomme=False)
-            .values_list('produit_id', 'quantite'))
-    return {pid: qte for pid, qte in rows}
+    from apps.installations.selectors import own_reservation_map
+    return own_reservation_map(installation)
 
 
 def is_low_stock_available(produit, reserved=None):
@@ -666,10 +660,12 @@ def compute_besoin_materiel(installation):
         produit = ligne.produit
         if produit is None:
             continue
+        # ERR54 — une ligne fractionnaire (ex. 2,5 unités) exige un APPRO ARRONDI
+        # AU SUPÉRIEUR (3, pas 2) : un int() tronquait et sous-commandait.
         try:
-            requis = int(ligne.quantite)
-        except (TypeError, ValueError):
-            requis = int(float(ligne.quantite))
+            requis = int(_dec(ligne.quantite).to_integral_value(rounding=ROUND_CEILING))
+        except (AttributeError, InvalidOperation, TypeError, ValueError):
+            requis = 0
         entry = besoins.get(produit.id)
         if entry is None:
             # Disponible pour CE chantier = stock total − réservé par les AUTRES
@@ -764,3 +760,47 @@ def resolve_fournisseur(company, fournisseur_id, installation):
             return Fournisseur.objects.filter(
                 id=cible, company=company).first()
     return None
+
+
+# ── Point d'entrée cross-app : mouvement de stock + maj du produit ───────────
+# Les autres apps (ventes, installations, sav) décrémentent/incrémentent le
+# stock à travers ce service plutôt qu'en créant `MouvementStock` directement et
+# en sauvant `Produit` à la main (voir CLAUDE.md, règle de modularité). L'appelant
+# garde sa propre logique de garde (refresh_from_db, plancher zéro, etc.) et passe
+# les quantités déjà calculées : le service ne fait que l'écriture, à l'identique.
+
+def record_stock_movement(*, company, produit, type_mouvement, quantite,
+                          quantite_avant, quantite_apres, reference, note,
+                          created_by, save_produit=True):
+    """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
+    `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
+    `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
+    appelants faisaient inline. À utiliser dans la transaction de l'appelant."""
+    from .models import MouvementStock
+    mouvement = MouvementStock.objects.create(
+        company=company,
+        produit=produit,
+        type_mouvement=type_mouvement,
+        quantite=quantite,
+        quantite_avant=quantite_avant,
+        quantite_apres=quantite_apres,
+        reference=reference,
+        note=note,
+        created_by=created_by,
+    )
+    if save_produit:
+        produit.quantite_stock = quantite_apres
+        produit.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
+def mouvement_type_sortie():
+    """Valeur enum SORTIE (sans importer le modèle côté appelant)."""
+    from .models import MouvementStock
+    return MouvementStock.TypeMouvement.SORTIE
+
+
+def mouvement_type_entree():
+    """Valeur enum ENTREE (sans importer le modèle côté appelant)."""
+    from .models import MouvementStock
+    return MouvementStock.TypeMouvement.ENTREE

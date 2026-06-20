@@ -33,20 +33,17 @@ def push_serials_to_parc(intervention, user):
     via `pousse_parc` : un même relevé ne crée jamais deux équipements. Un n° de
     série VIDE n'empêche PAS la création (l'appareil est tracé sans série).
     Renvoie le nombre d'équipements créés."""
-    from apps.sav.models import Equipement
+    from apps.sav.services import create_equipement_from_serial
     inst = intervention.installation
     created = 0
     for serial in intervention.serials.filter(
             pousse_parc=False, produit__isnull=False):
-        equip = Equipement.objects.create(
+        create_equipement_from_serial(
             company=intervention.company, produit=serial.produit,
             installation=inst,
             numero_serie=(serial.numero_serie or '').strip() or None,
             date_pose=inst.date_pose_reelle or timezone.localdate(),
             created_by=user)
-        equip.recompute_garanties()
-        equip.save(update_fields=[
-            'date_fin_garantie', 'date_fin_garantie_production'])
         serial.pousse_parc = True
         serial.save(update_fields=['pousse_parc'])
         created += 1
@@ -135,7 +132,10 @@ def validate_consommation(cons, user):
     La réservation N14 du chantier (estimation devis) est libérée : c'est la
     consommation terrain, pas l'estimation, qui meut le stock."""
     from django.db import transaction
-    from apps.stock.models import MouvementStock, Produit
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement,
+    )
 
     missing = consommation_missing_justifications(cons)
     if missing:
@@ -154,20 +154,23 @@ def validate_consommation(cons, user):
                 li.stock_applique = True
                 li.save(update_fields=['stock_applique'])
                 continue
-            produit = Produit.objects.select_for_update().get(pk=li.produit_id)
+            produit = lock_produit(li.produit_id)
             qte_avant = produit.quantite_stock
-            qte_apres = qte_avant - int(qte)
-            MouvementStock.objects.create(
+            # ERR80 — garde plancher : ne sors jamais plus que le stock en main
+            # (on borne à zéro plutôt que de piloter `quantite_stock` négatif).
+            qte_sortie = min(qte, qte_avant) if qte_avant > 0 else Decimal('0')
+            # ERR41 — sortie sur la quantité DÉCIMALE (jamais int(qte)) : une
+            # ligne de 0,5 sort bien 0,5 (et n'est plus tronquée à 0/perdue).
+            qte_apres = qte_avant - qte_sortie
+            record_stock_movement(
                 company=cons.company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.SORTIE,
-                quantite=int(qte), quantite_avant=qte_avant,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=qte_sortie, quantite_avant=qte_avant,
                 quantite_apres=qte_apres,
                 reference=installation.reference,
                 note=(f'Consommation réelle intervention '
                       f'{cons.intervention_id} ({installation.reference})'),
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             li.stock_applique = True
             li.save(update_fields=['stock_applique'])
             applied += 1

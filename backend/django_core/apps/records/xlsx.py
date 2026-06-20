@@ -89,11 +89,35 @@ def workbook_bytes(headers, rows, sheet_title='Export'):
     return buf.getvalue()
 
 
+# ERR11 — caractères qui, en tête d'une cellule, déclenchent une FORMULE à
+# l'ouverture du classeur dans Excel/LibreOffice (injection CSV/Excel).
+_RISKY_LEADING = ('=', '+', '-', '@')
+
+
+def _neutralize_cell(value):
+    """Préfixe une apostrophe aux chaînes texte commençant par = + - @.
+
+    La cellule reste lisible (texte) et n'exécute jamais de formule. Ne
+    concerne QUE les chaînes — nombres, booléens, dates passent intacts.
+    """
+    if isinstance(value, str) and value[:1] in _RISKY_LEADING:
+        return "'" + value
+    return value
+
+
 def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
-    """Réponse HTTP .xlsx construite avec le builder partagé."""
+    """Réponse HTTP .xlsx construite avec le builder partagé.
+
+    ERR11 — chaque cellule TEXTE commençant par ``= + - @`` est neutralisée
+    (apostrophe) pour qu'aucun export TÉLÉCHARGÉ n'exécute de formule à
+    l'ouverture. Le chemin octets (``workbook_bytes``, sauvegardes/restaurations)
+    n'est volontairement PAS neutralisé, pour préserver les valeurs au
+    round-trip (ex. un téléphone « +212… »).
+    """
     from django.http import HttpResponse
 
-    wb = build_workbook(headers, rows, sheet_title=sheet_title)
+    safe_rows = [[_neutralize_cell(v) for v in row] for row in rows]
+    wb = build_workbook(headers, safe_rows, sheet_title=sheet_title)
     response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)

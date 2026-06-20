@@ -326,10 +326,93 @@ class TestAttachments(TestCase):
         self.assertFalse(fake_client.upload_fileobj.called)
         self.assertEqual(Attachment.objects.count(), 0)
 
+    def test_upload_self_heals_absent_bucket(self):
+        """N108 — un upload réussit même si le bucket erp-uploads n'existe pas
+        encore : ensure_uploads_bucket le crée (head_bucket échoue →
+        create_bucket) juste avant le téléversement, au lieu de renvoyer un 500
+        NoSuchBucket comme en production."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.records.storage import store_attachment
+
+        pdf = SimpleUploadedFile(
+            'doc.pdf', b'%PDF-1.4 contenu de test', content_type='application/pdf')
+
+        fake_client = mock.MagicMock()
+        # Bucket absent : head_bucket lève, comme le ferait MinIO (NoSuchBucket).
+        fake_client.head_bucket.side_effect = Exception('NoSuchBucket')
+
+        # ensure_uploads_bucket appelle get_minio_client depuis SON module ; on
+        # patche les deux références pour ne jamais toucher un vrai stockage.
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            result, err = store_attachment(pdf)
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(result)
+        self.assertEqual(result['mime'], 'application/pdf')
+        # Le bucket manquant a été auto-créé avant le téléversement…
+        fake_client.create_bucket.assert_called_once()
+        # …puis le fichier a bien été téléversé.
+        self.assertTrue(fake_client.upload_fileobj.called)
+
 
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType
     return ContentType.objects.get_for_model(Lead)
+
+
+class TestResolveTargetErrors(TestCase):
+    """ERR56 — un `model` valide + `id` inexistant ou de mauvais type doit
+    produire une 400/200-vide propre (jamais un 500 non rattrapé)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Res Co', slug='res-co')
+        self.type_appel = ActivityType.objects.create(
+            company=self.company, nom='Appel', ordre=10)
+        self.user = User.objects.create_user(
+            username='res_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+
+    def test_resolve_target_nonexistent_pk_raises_valueerror(self):
+        from apps.records.serializers import resolve_target
+        with self.assertRaises(ValueError):
+            resolve_target('crm.lead', 999999, self.company)
+
+    def test_resolve_target_bad_type_pk_raises_valueerror(self):
+        from apps.records.serializers import resolve_target
+        with self.assertRaises(ValueError):
+            resolve_target('crm.lead', 'pas-un-entier', self.company)
+
+    def test_create_activity_nonexistent_target_is_400_not_500(self):
+        resp = self.api.post('/api/django/records/activities/', {
+            'model': 'crm.lead', 'id': 999999,
+            'activity_type': self.type_appel.id, 'summary': 'X',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+
+    def test_create_activity_bad_type_id_is_400_not_500(self):
+        resp = self.api.post('/api/django/records/activities/', {
+            'model': 'crm.lead', 'id': 'pas-un-entier',
+            'activity_type': self.type_appel.id, 'summary': 'X',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+
+    def test_list_activities_nonexistent_target_is_clean_empty(self):
+        resp = self.api.get(
+            '/api/django/records/activities/?model=crm.lead&id=999999')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        data = resp.data['results'] if 'results' in resp.data else resp.data
+        self.assertEqual(len(data), 0)
+
+    def test_attachments_count_bad_type_id_is_clean_zero(self):
+        resp = self.api.get(
+            '/api/django/records/attachments-count/'
+            '?model=crm.lead&id=pas-un-entier')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        self.assertEqual(resp.data['count'], 0)
 
 
 class TestVentesAttachmentTargets(TestCase):

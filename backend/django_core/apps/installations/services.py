@@ -282,14 +282,10 @@ def seed_reservations(installation):
     mise à jour à la quantité du BOM. Ne touche JAMAIS une réservation déjà
     CONSOMMÉE (le stock a déjà été décrémenté). Robuste au BOM vide (ne crée
     rien). Renvoie la liste des réservations actives du chantier."""
-    from apps.stock.models import Produit
+    from apps.stock.selectors import valid_produit_ids
     company = installation.company
     besoins = _bom_quantities(installation)
-    valid_ids = set(
-        Produit.objects.filter(
-            id__in=list(besoins), company=company
-        ).values_list('id', flat=True)
-    ) if besoins else set()
+    valid_ids = valid_produit_ids(company, list(besoins)) if besoins else set()
     for produit_id, qte in besoins.items():
         if produit_id not in valid_ids:
             continue
@@ -323,7 +319,10 @@ def consume_reservations(installation, user):
     crée aucun mouvement supplémentaire. Renvoie le nombre de SKU consommés."""
     from django.db import transaction
     from django.utils import timezone
-    from apps.stock.models import Produit, MouvementStock
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement,
+    )
 
     consumed = 0
     with transaction.atomic():
@@ -340,19 +339,21 @@ def consume_reservations(installation, user):
                 resa.date_consommation = timezone.now()
                 resa.save(update_fields=['consomme', 'date_consommation'])
                 continue
-            produit = Produit.objects.select_for_update().get(pk=resa.produit_id)
+            produit = lock_produit(resa.produit_id)
             qte_avant = produit.quantite_stock
-            qte_apres = qte_avant - resa.quantite
-            MouvementStock.objects.create(
+            # ERR80 — garde plancher : ne pilote jamais le stock en négatif. On
+            # sort au plus le stock en main (borné à zéro), comme la
+            # réconciliation terrain et les pièces SAV.
+            qte_sortie = min(resa.quantite, qte_avant) if qte_avant > 0 else 0
+            qte_apres = qte_avant - qte_sortie
+            record_stock_movement(
                 company=installation.company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.SORTIE,
-                quantite=resa.quantite,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=qte_sortie,
                 quantite_avant=qte_avant, quantite_apres=qte_apres,
                 reference=installation.reference,
                 note=f'Consommation chantier {installation.reference}',
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             resa.consomme = True
             resa.date_consommation = timezone.now()
             resa.save(update_fields=['consomme', 'date_consommation'])

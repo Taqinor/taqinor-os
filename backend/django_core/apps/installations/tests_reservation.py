@@ -213,6 +213,45 @@ class TestConsumptionIdempotent(TestCase):
         for mv in MouvementStock.objects.filter(reference=self.inst.reference):
             self.assertEqual(mv.company_id, self.company.id)
 
+    def test_consume_floor_never_drives_stock_negative(self):
+        # ERR80 — si une réservation dépasse le stock en main, la consommation
+        # ne pilote jamais `quantite_stock` en négatif (bornée à zéro).
+        self.onduleur.quantite_stock = 1  # réservé 2, en main 1
+        self.onduleur.save(update_fields=['quantite_stock'])
+        consume_reservations(self.inst, self.user)
+        self.onduleur.refresh_from_db()
+        self.assertGreaterEqual(self.onduleur.quantite_stock, 0)
+
+    def test_mise_en_service_stamps_reception_date(self):
+        # ERR40 — la mise en service passe désormais par les mêmes aides de
+        # transition : elle horodate `date_reception` (« Mise en service » se
+        # rabat sur le jalon canonique « Réceptionné »). Avant le correctif le
+        # statut était posé brut, sans jamais horodater le jalon.
+        url = (f'/api/django/installations/chantiers/'
+               f'{self.inst.id}/mise-en-service/')
+        self.assertIsNone(self.inst.date_reception)
+        r = self.api.post(url, {'date_mise_en_service': '2026-06-20'},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertIsNotNone(self.inst.date_reception)
+
+    def test_mise_en_service_applies_stock_effects(self):
+        # ERR40 — quand le chantier était déjà « Installé » (stock consommé), la
+        # mise en service route bien par `_apply_stock_statut_effects` sans
+        # jamais re-sortir le stock (idempotent) : une seule SORTIE au total.
+        url = f'/api/django/installations/chantiers/{self.inst.id}/'
+        self.api.patch(url, {'statut': 'installe'}, format='json')
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 20)  # 30 - 10
+        self.api.post(f'{url}mise-en-service/',
+                      {'date_mise_en_service': '2026-06-20'}, format='json')
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 20)  # pas de double sortie
+        self.assertEqual(self._sortie_count(self.panneau), 1)
+        self.inst.refresh_from_db()
+        self.assertIsNotNone(self.inst.date_reception)
+
 
 class TestReleaseOnCancelClose(TestCase):
     def setUp(self):

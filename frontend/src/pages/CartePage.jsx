@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../api/reportingApi'
-import MapView from '../components/MapView'
+import MapView, { escapeHtml } from '../components/MapView'
 
 // N85 — Vue carte : leads, chantiers, systèmes installés et visites prévues sur
 // une carte (Leaflet / OpenStreetMap), filtrables par type ET par statut.
@@ -70,9 +70,10 @@ export default function CartePage() {
       label: p.label,
       color: COLOR[p.type] || '#64748b',
       detail_path: p.detail_path,
+      // ERR26 — échapper chaque valeur serveur avant de l'injecter dans le HTML.
       popupHtml: `<div style="margin-top:4px;color:#475569;font-size:0.8rem">`
-        + `${p.type_label}${p.statut_label ? ' · ' + p.statut_label : ''}`
-        + (p.date ? ` · ${p.date}` : '')
+        + `${escapeHtml(p.type_label)}${p.statut_label ? ' · ' + escapeHtml(p.statut_label) : ''}`
+        + (p.date ? ` · ${escapeHtml(p.date)}` : '')
         + `</div>`,
     })), [points, hidden, statut])
 

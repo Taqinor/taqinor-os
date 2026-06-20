@@ -5,15 +5,20 @@ CHAQUE exécution, gating par approbation (N73) avec relance à l'approbation,
 caractère best-effort des signaux (jamais casser le save d'origine), isolation
 par société, et la sécurité des écritures (champ protégé refusé).
 """
+from datetime import date, timedelta
+from unittest import mock
+
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.stock.models import Produit
-from apps.ventes.models import Devis
+from apps.ventes.models import Devis, Facture
 
 from apps.automation import engine
 from apps.automation.models import (
@@ -385,3 +390,179 @@ class RunLogTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(len(rows(resp)) >= 1)
         self.assertEqual(rows(resp)[0]['rule'], rule.pk)
+
+
+class RecursionGuardTests(TestCase):
+    """ERR6 — une règle self-référentielle ne doit pas reboucler à l'infini."""
+
+    def setUp(self):
+        self.co = make_company('auto-rec', 'Auto Rec')
+
+    def test_self_referential_rule_does_not_recurse(self):
+        # La règle écoute le changement d'étape ET réécrit `stage`. Sans garde,
+        # le save de l'action ré-émet post_save → RecursionError.
+        AutomationRule.objects.create(
+            company=self.co, nom='Boucle stage',
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'stage', 'value': 'CONTACTED'})
+        lead = Lead.objects.create(company=self.co, nom='T', stage='NEW')
+        lead.stage = 'SIGNED'
+        lead.save()  # ne doit PAS lever RecursionError
+        lead.refresh_from_db()
+        # L'action s'est exécutée une fois (écrit CONTACTED) sans reboucler.
+        self.assertEqual(lead.stage, 'CONTACTED')
+        # Exactement un run journalisé : pas de cascade d'évaluations.
+        self.assertEqual(
+            AutomationRun.objects.filter(company=self.co).count(), 1)
+
+    def test_action_save_does_not_retrigger_other_rules(self):
+        # Une seconde règle sur le même déclencheur ne doit pas être relancée
+        # par le save interne de la première action.
+        AutomationRule.objects.create(
+            company=self.co, nom='Écrit priorite', ordre=1,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        AutomationRule.objects.create(
+            company=self.co, nom='Note', ordre=2,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.CREATE_ACTIVITY,
+            action_config={'body': 'note'})
+        lead = Lead.objects.create(company=self.co, nom='T', stage='NEW')
+        lead.stage = 'SIGNED'
+        lead.save()
+        # Chaque règle s'exécute exactement une fois (2 runs), pas de re-déclenche.
+        self.assertEqual(
+            AutomationRun.objects.filter(company=self.co).count(), 2)
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=lead, body='note').count(), 1)
+
+
+class RunApprovedScopingTests(TestCase):
+    """ERR48 — run_approved ne doit jamais résoudre une cible d'un autre tenant."""
+
+    def setUp(self):
+        self.co_a = make_company('auto-ra-a', 'RA A')
+        self.co_b = make_company('auto-ra-b', 'RA B')
+
+    def test_run_approved_does_not_cross_tenant(self):
+        rule = AutomationRule.objects.create(
+            company=self.co_a, nom='Diff', requires_approval=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        # Lead appartenant à la société B, mais ciblé par une approbation A
+        # (même PK croisé). La résolution doit échouer (filtre company).
+        lead_b = Lead.objects.create(company=self.co_b, nom='B', stage='NEW')
+        approval = AutomationApproval.objects.create(
+            company=self.co_a, rule=rule,
+            target_model='crm.lead', target_id=lead_b.pk,
+            status=AutomationApproval.Status.APPROVED)
+        engine.run_approved(approval)
+        lead_b.refresh_from_db()
+        # La cible cross-tenant n'a PAS été écrite.
+        self.assertNotEqual(lead_b.priorite, 'haute')
+
+    def test_run_approved_runs_for_same_tenant(self):
+        rule = AutomationRule.objects.create(
+            company=self.co_a, nom='Diff', requires_approval=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        lead_a = Lead.objects.create(company=self.co_a, nom='A', stage='NEW')
+        approval = AutomationApproval.objects.create(
+            company=self.co_a, rule=rule,
+            target_model='crm.lead', target_id=lead_a.pk,
+            status=AutomationApproval.Status.APPROVED)
+        engine.run_approved(approval)
+        lead_a.refresh_from_db()
+        self.assertEqual(lead_a.priorite, 'haute')
+
+
+class SendEmailHonestyTests(TestCase):
+    """ERR49 — un email perdu doit être journalisé FAILED, jamais SUCCESS."""
+
+    def setUp(self):
+        self.co = make_company('auto-mail', 'Auto Mail')
+
+    def test_dropped_email_is_reported_failed(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Mail',
+            trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
+            action_type=ActionType.SEND_EMAIL, action_config={'body': 'salut'})
+        client = Client.objects.create(
+            company=self.co, nom='C', email='c@example.com')
+        devis = Devis.objects.create(
+            company=self.co, reference='DEV-MAIL', statut='brouillon',
+            client=client)
+        # send_mail renvoie 0 (aucun message remis) → FAILED honnête.
+        with mock.patch('django.core.mail.send_mail', return_value=0):
+            status, _ = engine.run_action(rule, devis, self.co)
+        self.assertEqual(status, AutomationRun.Status.FAILED)
+
+    def test_send_error_is_reported_failed(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Mail',
+            trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
+            action_type=ActionType.SEND_EMAIL, action_config={'body': 'salut'})
+        client = Client.objects.create(
+            company=self.co, nom='C', email='c@example.com')
+        devis = Devis.objects.create(
+            company=self.co, reference='DEV-MAIL2', statut='brouillon',
+            client=client)
+        with mock.patch('django.core.mail.send_mail',
+                        side_effect=RuntimeError('SMTP down')):
+            status, msg = engine.run_action(rule, devis, self.co)
+        self.assertEqual(status, AutomationRun.Status.FAILED)
+        self.assertIn('SMTP down', msg)
+
+    def test_delivered_email_is_success(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Mail',
+            trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
+            action_type=ActionType.SEND_EMAIL, action_config={'body': 'salut'})
+        client = Client.objects.create(
+            company=self.co, nom='C', email='c@example.com')
+        devis = Devis.objects.create(
+            company=self.co, reference='DEV-MAIL3', statut='brouillon',
+            client=client)
+        mail.outbox = []
+        status, _ = engine.run_action(rule, devis, self.co)
+        self.assertEqual(status, AutomationRun.Status.SUCCESS)
+
+
+class FactureOverdueTimezoneTests(TestCase):
+    """ERR90 — l'échéance se compare à la date LOCALE (Africa/Casablanca)."""
+
+    def setUp(self):
+        self.co = make_company('auto-tz', 'Auto TZ')
+        self.client_obj = Client.objects.create(company=self.co, nom='C')
+        AutomationRule.objects.create(
+            company=self.co, nom='Retard',
+            trigger_type=TriggerType.FACTURE_OVERDUE, trigger_config={},
+            action_type=ActionType.CREATE_ACTIVITY, action_config={'body': 'r'})
+
+    def _facture(self, echeance):
+        return Facture.objects.create(
+            company=self.co, reference='F-TZ', statut='emise',
+            client=self.client_obj, date_echeance=echeance)
+
+    def test_uses_localdate_not_utc(self):
+        # localdate() = hier ; date UTC simulée = demain. La facture dont
+        # l'échéance == localdate() n'est PAS en retard et ne doit PAS déclencher,
+        # même si la date UTC (demain) la ferait paraître échue.
+        local_today = date(2026, 6, 20)
+        with mock.patch.object(
+                timezone, 'localdate', return_value=local_today):
+            self._facture(local_today)  # échéance = aujourd'hui local → pas due
+        self.assertFalse(AutomationRun.objects.filter(
+            rule__trigger_type=TriggerType.FACTURE_OVERDUE).exists())
+
+    def test_overdue_facture_fires(self):
+        local_today = date(2026, 6, 20)
+        with mock.patch.object(
+                timezone, 'localdate', return_value=local_today):
+            self._facture(local_today - timedelta(days=1))  # échue hier
+        self.assertTrue(AutomationRun.objects.filter(
+            rule__trigger_type=TriggerType.FACTURE_OVERDUE).exists())

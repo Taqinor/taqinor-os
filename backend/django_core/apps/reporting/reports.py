@@ -144,8 +144,12 @@ def stock_report(request):
         qs.values('categorie__nom')
         .annotate(nb=Count('id'), valeur_vente=sum_vente)
         .order_by('-valeur_vente'))
+    # ERR57 — `seuil_alerte=0` signifie « aucun seuil » : exclu de la liste bas
+    # stock (cohérent avec le dashboard), sinon tout produit à 0 en stock par
+    # défaut serait faussement signalé.
     bas_stock = list(
-        qs.filter(quantite_stock__lte=F('seuil_alerte'))
+        qs.exclude(seuil_alerte=0)
+        .filter(quantite_stock__lte=F('seuil_alerte'))
         .values('nom', 'sku', 'quantite_stock', 'seuil_alerte')[:200])
 
     rows = [[c['categorie__nom'] or '—', c['nb'], str(c['valeur_vente'])]

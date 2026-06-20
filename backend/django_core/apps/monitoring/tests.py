@@ -282,3 +282,34 @@ class TestUnderperformance(TestCase):
         self.assertFalse(res['underperforming'])
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 0)
+
+    def test_reevaluation_does_not_duplicate_open_flag(self):
+        """ERR47 — ré-évaluer un système déjà sous-performant ne crée jamais un
+        second drapeau ouvert (idempotence préservée par get_or_create atomique
+        + contrainte partielle unique), sans lever d'IntegrityError."""
+        self._add_reading(1000)
+        res1 = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertTrue(res1['underperforming'])
+        flag_id = res1['flag'].id
+        # Deuxième passe : même drapeau ouvert réutilisé, pas de doublon.
+        res2 = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertEqual(res2['flag'].id, flag_id)
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(
+                installation=self.inst, is_open=True).count(), 1)
+
+    def test_preexisting_open_flag_is_reused_not_duplicated(self):
+        """ERR47 — un drapeau ouvert pré-existant (ex. posé par une évaluation
+        concurrente) est verrouillé et réutilisé, pas redoublé."""
+        existing = UnderperformanceFlag.objects.create(
+            company=self.company, installation=self.inst,
+            ratio_pct=Decimal('10.00'))
+        self._add_reading(1000)
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertEqual(res['flag'].id, existing.id)
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(
+                installation=self.inst, is_open=True).count(), 1)

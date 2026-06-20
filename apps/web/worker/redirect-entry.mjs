@@ -9,18 +9,28 @@
  * jamais une page périmée. Le reste passe à l'app Astro inchangé.
  */
 import astro from './entry.mjs';
-import { canonicalTarget } from './canonical.mjs';
+import { canonicalTarget, canonicalRedirectStatus } from './canonical.mjs';
 import { pathRedirect, trailingSlashRedirect } from './redirects.mjs';
 import { applyHtmlCacheControl } from './cache.mjs';
 
 export default {
   async fetch(request, env, ctx) {
     // 1) Hôte canonique : *.workers.dev → taqinor.ma (chemin + query préservés).
+    //    GET/HEAD → 301 indexable (mis en cache 1 h, signal SEO canonique).
+    //    Toute autre méthode (POST du formulaire / de l'API) → 308 : préserve
+    //    la méthode ET le corps de la requête (un 301 laisse le client repasser
+    //    en GET et PERD le corps → lead silencieusement abandonné). ERR109.
     const target = canonicalTarget(request.url);
     if (target) {
+      const status = canonicalRedirectStatus(request.method);
+      // Un 308 sur une soumission ne doit pas être mis en cache comme un 301
+      // de page : on ne cache que la redirection des requêtes idempotentes.
       return new Response(null, {
-        status: 301,
-        headers: { location: target, 'cache-control': 'public, max-age=3600' },
+        status,
+        headers:
+          status === 301
+            ? { location: target, 'cache-control': 'public, max-age=3600' }
+            : { location: target },
       });
     }
     // 2) Redirections de chemin (anciennes URL / variantes sans accent).

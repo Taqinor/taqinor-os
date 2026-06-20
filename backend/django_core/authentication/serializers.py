@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CustomUser, Company
+from .models import CustomUser, Company, UserSession
 
 
 class CompanySerializer(serializers.ModelSerializer):
@@ -134,12 +134,19 @@ class UserSerializer(serializers.ModelSerializer):
             'poste', 'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
             'is_active', 'is_superuser', 'is_protected',
+            # Rotation forcée des identifiants (N96). ``must_change_password`` est
+            # piloté par un admin (UserViewSet) pour forcer un changement à la
+            # prochaine session, et lu par le frontend depuis /auth/me/. Défaut
+            # False → aucun compte forcé tant qu'un admin ne l'active pas.
+            # ``password_changed_at`` est calculé côté serveur (lecture seule).
+            'must_change_password', 'password_changed_at',
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
         )
         read_only_fields = (
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
+            'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             # avatar_key se pilote par l'endpoint d'upload dédié, jamais par
             # un PATCH direct du corps ; avatar_url est calculé (présigné).
@@ -154,6 +161,32 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role:
             return obj.role.permissions or []
         return []
+
+    def validate_role(self, value):
+        """Le rôle assigné doit appartenir à l'entreprise de l'assignateur, et
+        seul un administrateur peut octroyer un rôle de palier admin (ERR21).
+
+        Sans ce contrôle, ``UserViewSet`` (ouvert au Responsable promu) acceptait
+        un PK de rôle arbitraire : un manager pouvait assigner le rôle d'un AUTRE
+        tenant, ou le rôle Administrateur local, pour escalader un compte."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None)
+        company = getattr(actor, 'company', None)
+        # Multi-tenant : le rôle doit être de la société de l'assignateur.
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Ce rôle n'appartient pas à votre entreprise.")
+        # Tier : seul un administrateur (roles_gerer/superuser) peut octroyer un
+        # rôle de palier admin. Un Responsable ne peut pas fabriquer un admin.
+        from .models import CustomUser
+        if CustomUser.tier_for_role(value) == CustomUser.ROLE_ADMIN \
+                and actor is not None \
+                and not getattr(actor, 'is_admin_role', False):
+            raise serializers.ValidationError(
+                "Seul un administrateur peut assigner un rôle administrateur.")
+        return value
 
     def validate_supervisor(self, value):
         """Le superviseur doit être dans la même entreprise et jamais soi-même."""
@@ -202,3 +235,22 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+class UserSessionSerializer(serializers.ModelSerializer):
+    """Session active visible (N96). ``is_current`` marque la session de
+    l'appareil courant pour l'UI (« cet appareil »). Le ``jti`` n'est jamais
+    exposé."""
+    is_current = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserSession
+        fields = (
+            'id', 'user_agent', 'ip_address',
+            'created_at', 'last_seen_at', 'is_current',
+        )
+        read_only_fields = fields
+
+    def get_is_current(self, obj):
+        current_jti = self.context.get('current_jti')
+        return bool(current_jti and obj.jti == current_jti)

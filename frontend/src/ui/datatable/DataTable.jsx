@@ -123,6 +123,7 @@ export const DataTable = forwardRef(function DataTable(
     columnState, dispatchColumns,
     selected, selectedKeys, selectedRows, pageSelectionState, onToggleRow, onToggleAllPage, clearSelection,
     view, setView,
+    keyOf, pageOffset,
   } = table
 
   const [expanded, setExpanded] = useState({})
@@ -425,7 +426,7 @@ export const DataTable = forwardRef(function DataTable(
                       )}
                       {visibleRows.map((row, vi) => {
                         const i = (virtualize ? win.startIndex : 0) + vi
-                        const rowKey = String(getRowId(row, i))
+                        const rowKey = keyOf(row, pageOffset + i)
                         const isSelected = !!selected[rowKey]
                         const isExpanded = !!expanded[rowKey]
                         const actions = rowActions ? rowActions(row) : []
@@ -561,7 +562,7 @@ export const DataTable = forwardRef(function DataTable(
               <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} />
             ) : (
               rows.map((row, i) => {
-                const rowKey = String(getRowId(row, i))
+                const rowKey = keyOf(row, pageOffset + i)
                 const isSelected = !!selected[rowKey]
                 const actions = rowActions ? rowActions(row) : []
                 const mobileCols = resolvedColumns.filter((c) => c.mobileHidden !== true)

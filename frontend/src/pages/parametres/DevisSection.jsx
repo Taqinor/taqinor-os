@@ -26,7 +26,7 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
                 {['acompte', 'materiel', 'solde'].map(k => (
                   <div key={k} className="flex flex-col gap-1">
                     <Label className="text-[10.5px] font-normal capitalize text-muted-foreground">{k} %</Label>
-                    <Input type="number" min="0" max="100"
+                    <Input type="number" step="any"
                            value={form.payment_terms?.[mode]?.[k] ?? ''}
                            onChange={e => setPT(mode, k, e.target.value)} />
                   </div>
@@ -36,11 +36,11 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
           ))}
           <div className="pe-grid-2 mt-2.5">
             <Field label="Validité du devis (jours)" htmlFor="pe-validity">
-              <Input id="pe-validity" type="number" min="1" name="quote_validity_days"
+              <Input id="pe-validity" type="number" step="any" name="quote_validity_days"
                      value={form.quote_validity_days} onChange={set} />
             </Field>
             <Field label="Heures de pompage / jour (agricole, défaut)" htmlFor="pe-pump-hours">
-              <Input id="pe-pump-hours" type="number" min="0" step="0.5" name="agricole_pump_hours"
+              <Input id="pe-pump-hours" type="number" step="any" name="agricole_pump_hours"
                      value={form.agricole_pump_hours} onChange={set} />
             </Field>
           </div>
@@ -58,7 +58,7 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label className="text-[10.5px] font-normal text-muted-foreground">Largeur (chiffres)</Label>
-                  <Input type="number" min="1" max="10"
+                  <Input type="number" step="any"
                          value={form.doc_numbering?.[k]?.padding ?? 4}
                          onChange={e => setNumbering(k, 'padding', e.target.value)} />
                 </div>
@@ -108,10 +108,10 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
             </Field>
             <Field label={form.commission_mode === 'par_kwc'
               ? 'Valeur (MAD/kWc)' : 'Valeur (%)'} htmlFor="pe-commission-val">
-              <Input id="pe-commission-val" type="number" min="0" step="any"
+              <Input id="pe-commission-val" type="number" step="any"
                      name="commission_valeur" value={form.commission_valeur}
                      onChange={set}
-                     required={form.commission_mode !== 'off'}
+                     aria-required={form.commission_mode !== 'off'}
                      aria-invalid={form.commission_mode !== 'off'
                        && (form.commission_valeur === '' || form.commission_valeur == null)}
                      disabled={form.commission_mode === 'off'} />
@@ -138,11 +138,11 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
           </p>
           <div className="pe-grid-2">
             <Field label="Taux standard (%)" htmlFor="pe-tva-standard">
-              <Input id="pe-tva-standard" type="number" min="0" max="100" step="0.01"
+              <Input id="pe-tva-standard" type="number" step="any"
                      name="tva_standard" value={form.tva_standard} onChange={set} />
             </Field>
             <Field label="Taux panneaux PV (%)" htmlFor="pe-tva-panneaux">
-              <Input id="pe-tva-panneaux" type="number" min="0" max="100" step="0.01"
+              <Input id="pe-tva-panneaux" type="number" step="any"
                      name="tva_panneaux" value={form.tva_panneaux} onChange={set} />
             </Field>
           </div>

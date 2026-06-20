@@ -20,6 +20,7 @@ import {
   Spinner,
   EmptyState,
   Card,
+  toast,
 } from '../../ui'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
@@ -244,19 +245,23 @@ export default function InstallationsPage() {
     crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
-  // N2 — glisser une carte change le statut ; un select réassigne l'installateur.
-  const onChangeStatus = (inst, statut) =>
-    dispatch(updateInstallation({ id: inst.id, data: { statut } }))
-  const onReassign = (inst, technicien) =>
-    dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } }))
-  // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
-  // journalise le changement de date dans le chatter).
-  const onReschedule = (inst, dateKey) =>
-    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: dateKey } }))
-
   // Les filtres « annulés » et « Mes chantiers » sont des dimensions SERVEUR :
   // on refait l'appel quand ils changent (les autres filtres restent côté client).
   const refetch = () => dispatch(fetchInstallations(serverParams(filters)))
+
+  // N2 — glisser une carte change le statut ; un select réassigne l'installateur.
+  // En cas d'échec serveur : message FR + resynchronisation (rollback) du tableau.
+  const onChangeStatus = (inst, statut) =>
+    dispatch(updateInstallation({ id: inst.id, data: { statut } })).unwrap()
+      .catch(() => { toast.error('Changement de statut impossible.'); refetch() })
+  const onReassign = (inst, technicien) =>
+    dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } })).unwrap()
+      .catch(() => { toast.error('Réassignation impossible.'); refetch() })
+  // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
+  // journalise le changement de date dans le chatter).
+  const onReschedule = (inst, dateKey) =>
+    dispatch(updateInstallation({ id: inst.id, data: { date_pose_prevue: dateKey } })).unwrap()
+      .catch(() => { toast.error('Replanification impossible.'); refetch() })
   useEffect(() => {
     dispatch(fetchInstallations(serverParams(filters)))
   }, [dispatch, filters.annule, filters.mine])
@@ -274,7 +279,11 @@ export default function InstallationsPage() {
       </div>
     )
   }
-  if (error) {
+  // L'erreur ne couvre tout l'écran QUE si rien n'est chargé (échec initial).
+  // Avec des chantiers déjà à l'écran, une erreur de fond (ex. écriture refusée)
+  // s'affiche en bandeau au-dessus du tableau sans démonter le board, les
+  // modales ouvertes ni la position de défilement.
+  if (error && items.length === 0) {
     return (
       <div className="page lp-page">
         <EmptyState
@@ -289,6 +298,15 @@ export default function InstallationsPage() {
 
   return (
     <div className="page lp-page">
+      {error && (
+        <div role="alert"
+             className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <span className="flex-1">
+            {typeof error === 'string' ? error : 'Une erreur est survenue. Réessayez.'}
+          </span>
+          <Button size="sm" variant="outline" onClick={refetch}>Réessayer</Button>
+        </div>
+      )}
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Chantiers

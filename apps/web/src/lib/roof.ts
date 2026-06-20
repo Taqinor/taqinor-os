@@ -212,13 +212,38 @@ export function fallbackAnnualKwh(kwc: number, yieldPerKwc = KWH_PER_KWC_YEAR): 
   return kwc * yieldPerKwc;
 }
 
-/** Fourchette d'économies annuelles (MAD) : 60–90 % de la valeur produite. */
-export function annualSavingsBandMad(annualKwh: number): { low: number; high: number } {
+export interface SavingsBandOptions {
+  /**
+   * Facture annuelle estimée (MAD) — PLAFOND de l'économie modélisée. On ne
+   * peut pas économiser plus que ce que l'on dépense réellement : sans ce
+   * plafond, une petite toiture produisant plus que sa consommation affiche
+   * une « économie » > facture, ce qui surévalue le ROI (ERR113). Omis ⇒ pas
+   * de plafond (compatibilité ascendante : appel à un seul argument inchangé).
+   */
+  annualBillMad?: number;
+}
+
+/**
+ * Fourchette d'économies annuelles (MAD) : 60–90 % de la valeur produite,
+ * PLAFONNÉE à la facture annuelle estimée si elle est fournie (ERR113). Le
+ * plafond garde l'estimation plausible : l'autoconsommation ne peut pas
+ * dépasser la dépense réelle. La borne basse est plafonnée au plafond aussi
+ * (jamais low > high), donc une toiture surdimensionnée affiche au plus
+ * « 100 % de la facture » des deux côtés.
+ */
+export function annualSavingsBandMad(
+  annualKwh: number,
+  opts: SavingsBandOptions = {},
+): { low: number; high: number } {
   const value = annualKwh * TARIFF_MAD_PER_KWH;
-  return {
-    low: value * SELF_CONSUMPTION_LOW,
-    high: value * SELF_CONSUMPTION_HIGH,
-  };
+  let low = value * SELF_CONSUMPTION_LOW;
+  let high = value * SELF_CONSUMPTION_HIGH;
+  const cap = opts.annualBillMad;
+  if (typeof cap === 'number' && Number.isFinite(cap) && cap >= 0) {
+    low = Math.min(low, cap);
+    high = Math.min(high, cap);
+  }
+  return { low, high };
 }
 
 export interface PanelLayoutOptions {

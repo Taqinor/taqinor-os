@@ -9,7 +9,7 @@ import { Download, Search, FileBarChart } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import { downloadBlob } from '../../utils/downloadBlob'
-import MapView from '../../components/MapView'
+import MapView, { escapeHtml } from '../../components/MapView'
 import {
   TYPE_LABELS,
   REGIME_8221_LABELS,
@@ -211,8 +211,9 @@ export default function ParcInstallePage() {
   // société côté serveur (?parc=1 borné au queryset de l'utilisateur).
   const markers = useMemo(() => located.map((it) => {
     const g = PARC_GARANTIE_LABELS[it.parc_garantie_etat]
-    const ville = it.site_ville ? ` · ${it.site_ville}` : ''
-    const kwc = it.puissance_installee_kwc ? ` · ${it.puissance_installee_kwc} kWc` : ''
+    // ERR26 — échapper chaque valeur serveur avant de l'injecter dans le HTML.
+    const ville = it.site_ville ? ` · ${escapeHtml(it.site_ville)}` : ''
+    const kwc = it.puissance_installee_kwc ? ` · ${escapeHtml(it.puissance_installee_kwc)} kWc` : ''
     return {
       id: it.id,
       lat: Number(it.gps_lat),
@@ -220,8 +221,8 @@ export default function ParcInstallePage() {
       label: it.reference || it.client_nom || 'Système',
       color: GARANTIE_MARKER_COLOR[it.parc_garantie_etat] ?? '#16a34a',
       popupHtml: `<div style="margin-top:4px;color:#475569;font-size:0.8rem">`
-        + `${it.client_nom ?? ''}${ville}${kwc}`
-        + (g ? `<br/>${g.label}` : '')
+        + `${escapeHtml(it.client_nom ?? '')}${ville}${kwc}`
+        + (g ? `<br/>${escapeHtml(g.label)}` : '')
         + `</div>`,
     }
   }), [located])

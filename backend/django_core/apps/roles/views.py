@@ -44,6 +44,23 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        # ── Anti auto-escalade (ERR5) ─────────────────────────────────────
+        # Un non-administrateur ne peut pas modifier les permissions du rôle
+        # qui lui est ASSIGNÉ (changer son propre rôle pour s'octroyer des
+        # droits). L'admin (roles_gerer/superuser) garde le contrôle total. La
+        # garde des permissions élevées + rôles système vit dans le serializer ;
+        # celle-ci ferme l'auto-escalade sur son propre rôle (même non système).
+        user = self.request.user
+        instance0 = serializer.instance
+        if user.role_id == instance0.pk \
+                and not getattr(user, 'is_admin_role', False):
+            new_perms = serializer.validated_data.get('permissions')
+            if new_perms is not None and \
+                    sorted(new_perms or []) != sorted(instance0.permissions or []):
+                raise PermissionDenied(
+                    "Vous ne pouvez pas modifier les permissions de votre "
+                    "propre rôle."
+                )
         old_nom = serializer.instance.nom
         old_perms = sorted(serializer.instance.permissions or [])
         instance = serializer.save(company=self.request.user.company)

@@ -78,6 +78,23 @@ class TestStockReport(ReportsBase):
         self.assertEqual(resp.data['valorisation_vente'], '10000.00')
         self.assertEqual(resp.data['valorisation_achat'], '6000.00')
 
+    def test_low_stock_excludes_zero_threshold(self):
+        """ERR57 — un produit à seuil_alerte=0 (aucun seuil) n'est PAS signalé
+        bas stock, même à 0 en stock ; un produit avec seuil renseigné l'est."""
+        # seuil 0 → ignoré, même à quantité 0.
+        Produit.objects.create(
+            company=self.company, nom='SansSeuil', sku='Z-0',
+            prix_vente=Decimal('100'), quantite_stock=0, seuil_alerte=0)
+        # seuil renseigné et stock sous le seuil → signalé.
+        Produit.objects.create(
+            company=self.company, nom='AvecSeuil', sku='Z-1',
+            prix_vente=Decimal('100'), quantite_stock=2, seuil_alerte=5)
+        resp = self.api.get('/api/django/reporting/reports/stock/')
+        self.assertEqual(resp.status_code, 200)
+        noms = {p['nom'] for p in resp.data['bas_stock']}
+        self.assertIn('AvecSeuil', noms)
+        self.assertNotIn('SansSeuil', noms)
+
 
 class TestServiceReport(ReportsBase):
     def test_structure(self):

@@ -190,13 +190,43 @@ class CustomUser(AbstractUser):
 
     @property
     def is_responsable(self):
+        """Porte les endpoints d'écriture/gestion gardés par
+        ``IsResponsableOrAdmin``.
+
+        Bug historique (ERR4) : renvoyait True dès qu'un Role était posé, ce qui
+        laissait passer les rôles STRICTEMENT lecture seule (Viewer,
+        Utilisateur…) sur tous les endpoints d'écriture — y compris validation de
+        devis, émission de facture, mouvements de stock, édition/réassignation de
+        leads, etc.
+
+        Correctif : pour un compte portant un Role fin, on n'est « responsable »
+        que si le rôle accorde AU MOINS UNE permission d'écriture/gestion — un
+        rôle ne portant que des permissions de lecture (suffixe ``_voir``) et/ou
+        des marqueurs de portée (``records_scope_*``) est désormais EXCLU. Cela
+        bloque les rôles lecture seule sans pénaliser les rôles métier
+        légitimes (Commercial, Technicien…) qui détiennent leurs droits
+        d'écriture fins. Les comptes HÉRITÉS sans Role fin gardent exactement
+        leur comportement via ``role_legacy`` (aucune régression légacy)."""
         if self.is_superuser:
             return True
-        if self.role:
-            return True
+        if self.role_id:
+            return self._role_grants_write(self.role.permissions or [])
         return self.role_legacy in (
             self.ROLE_RESPONSABLE, self.ROLE_ADMIN
         )
+
+    @staticmethod
+    def _role_grants_write(permissions):
+        """True si la liste de permissions accorde au moins une action
+        d'écriture/gestion (toute permission qui n'est ni une lecture
+        ``*_voir`` ni un marqueur de portée ``records_scope_*``)."""
+        for perm in permissions:
+            if perm.endswith('_voir'):
+                continue
+            if perm.startswith('records_scope'):
+                continue
+            return True
+        return False
 
     def has_erp_permission(self, code):
         """Check if user has a specific ERP permission code."""
@@ -241,6 +271,19 @@ class CustomUser(AbstractUser):
         from authentication.scoping import visible_user_ids
         return visible_user_ids(self)
 
+    # ── Rotation forcée des identifiants (N96) — strictement OPT-IN ──────────
+    # Drapeau de rotation : quand un administrateur le passe à True, l'utilisateur
+    # est invité à changer son mot de passe à sa PROCHAINE session (le frontend
+    # lit ``must_change_password`` dans /auth/me/ et force le formulaire). Le
+    # changement de mot de passe efface le drapeau. Défaut False : AUCUN compte
+    # existant n'est jamais verrouillé ni forcé — comportement inchangé tant
+    # qu'un admin ne l'active pas explicitement.
+    must_change_password = models.BooleanField(default=False)
+    # Horodatage du dernier changement de mot de passe (informatif, affiché dans
+    # l'onglet sécurité). Nullable : null pour tout compte qui n'a jamais changé
+    # son mot de passe via le flux dédié — additif, aucun défaut imposé.
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+
     groups = models.ManyToManyField(
         Group,
         verbose_name='groups',
@@ -262,3 +305,49 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.username
+
+
+class UserSession(models.Model):
+    """Session de connexion visible et révocable (N96).
+
+    Chaque connexion réussie crée une ligne tracée (appareil/navigateur, IP,
+    horodatages) liée à l'utilisateur ET à sa société (multi-tenant). Le ``jti``
+    du jeton de rafraîchissement permet de relier la session au jeton JWT et de
+    le blacklister à la révocation. Additif : aucune session existante n'est
+    affectée ; les comptes qui ne se reconnectent pas n'ont simplement aucune
+    ligne tant qu'ils ne se connectent pas à nouveau.
+
+    Révoquer une session = marquer ``revoked=True`` (elle disparaît de la liste)
+    ET blacklister son jeton de rafraîchissement (via ``token_blacklist``) pour
+    qu'il ne puisse plus rafraîchir d'accès."""
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name='user_sessions',
+        null=True,
+        blank=True,
+    )
+    user = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='sessions',
+    )
+    # Identifiant du jeton de rafraîchissement (claim ``jti``) — sert à relier la
+    # session au jeton JWT et à le blacklister. Indexé pour retrouver la session
+    # courante d'une requête à partir de son cookie refresh.
+    jti = models.CharField(max_length=255, db_index=True)
+    user_agent = models.CharField(max_length=400, blank=True, default='')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    # Révocation : la session reste en base (trace) mais sort de la liste active.
+    revoked = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Session utilisateur"
+        verbose_name_plural = "Sessions utilisateur"
+        ordering = ('-last_seen_at',)
+
+    def __str__(self):
+        return f"{self.user_id} — {self.user_agent[:40]}"

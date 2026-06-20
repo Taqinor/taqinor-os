@@ -1,0 +1,67 @@
+# import-linter contracts (M3) — architectural import rules enforced in CI by
+# the `lint-imports` step. The goal is to PIN the decoupling already achieved
+# (M1: string FKs between core domains; M5: a pure `core` foundation app) so a
+# future careless import cannot silently reintroduce a load-time cycle.
+#
+# These contracts are intentionally scoped to the invariants that genuinely
+# hold today. The five business-core apps (crm, ventes, stock, installations,
+# sav) still call each other at the service/selector layer, so a full
+# "no cycles between the core apps" / strict three-tier `layers` contract does
+# NOT pass yet — that deeper decoupling is tracked by the remaining M-series
+# tasks. What is locked here is real and regression-prone:
+#
+#   1. core domain *models* stay mutually decoupled (the M1 win — a model-level
+#      cross-import is exactly what collided in production), and
+#   2. the `core` foundation app never imports a domain-core or satellite app
+#      (it must remain a base layer everything can depend DOWN on).
+
+[importlinter]
+root_packages =
+    apps
+    authentication
+    core
+
+[importlinter:contract:core-domain-models-decoupled]
+name = Core domain models stay decoupled (string FKs only between domains — locks M1)
+type = independence
+modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+
+[importlinter:contract:installations-split-models-decoupled]
+name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
+type = forbidden
+source_modules =
+    apps.installations.models_chantier
+    apps.installations.models_field
+    apps.installations.models_installation
+    apps.installations.models_intervention
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+
+[importlinter:contract:core-foundation-is-a-base-layer]
+name = The core foundation app imports downward only (no domain-core or satellite app)
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    apps.crm
+    apps.ventes
+    apps.stock
+    apps.installations
+    apps.sav
+    apps.reporting
+    apps.automation
+    apps.monitoring
+    apps.notifications
+    apps.publicapi
+    apps.audit
+    apps.documents
+    apps.dataimport
+    apps.contact

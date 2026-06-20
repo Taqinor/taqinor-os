@@ -232,6 +232,35 @@ class TestConsommation(_Base):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertTrue(r.data['hors_nomenclature'])
 
+    def test_fractional_consumption_not_lost(self):
+        # ERR41 — une consommation fractionnaire (0,5) ne doit plus être tronquée
+        # à 0 et perdue : le stock est bien décrémenté (≠ avant le correctif).
+        cons = field_capture.ensure_consommation(self.interv)
+        ligne = cons.lignes.get(designation='Onduleur 5kW')  # prévu 1
+        ligne.quantite_utilisee = Decimal('0.5')
+        ligne.justification = 'Demi-unité posée'
+        ligne.save()
+        before = self.onduleur.quantite_stock  # 10
+        field_capture.validate_consommation(cons, self.user)
+        self.onduleur.refresh_from_db()
+        # Avant le correctif : int(0.5)=0 → stock inchangé (consommation perdue).
+        # Après : le stock baisse (la consommation n'est plus perdue).
+        self.assertLess(self.onduleur.quantite_stock, before)
+
+    def test_consumption_floor_never_negative(self):
+        # ERR80 — consommer plus que le stock en main ne pilote jamais le stock
+        # en négatif (borné à zéro).
+        self.onduleur.quantite_stock = 1
+        self.onduleur.save(update_fields=['quantite_stock'])
+        cons = field_capture.ensure_consommation(self.interv)
+        ligne = cons.lignes.get(designation='Onduleur 5kW')
+        ligne.quantite_utilisee = Decimal('5')  # > 1 en main
+        ligne.justification = 'Plus que le stock'
+        ligne.save()
+        field_capture.validate_consommation(cons, self.user)
+        self.onduleur.refresh_from_db()
+        self.assertGreaterEqual(self.onduleur.quantite_stock, 0)
+
     def test_overage_review_threshold(self):
         cons = field_capture.ensure_consommation(self.interv)
         ligne = cons.lignes.get(designation='Panneau 550W')
@@ -363,7 +392,8 @@ class TestToolReturn(_Base):
 
     def test_confirm_updates_tool(self):
         depot, outil = self._make_kit()
-        r = self.api.get(f'{self.url}/tool-return/')
+        # ERR81 — la matérialisation des lignes passe par POST (idempotent).
+        r = self.api.post(f'{self.url}/tool-return/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(len(r.data), 1)
         line_id = r.data[0]['id']
@@ -379,11 +409,57 @@ class TestToolReturn(_Base):
 
     def test_not_returned_flagged(self):
         depot, outil = self._make_kit()
-        self.api.get(f'{self.url}/tool-return/')
+        self.api.post(f'{self.url}/tool-return/', {}, format='json')
         r = self.api.post(f'{self.url}/confirmer-tool-return/', {}, format='json')
         self.assertEqual(r.data['non_rendus'], ['Perceuse'])
         outil.refresh_from_db()
         self.assertEqual(outil.statut, Outillage.Statut.EN_INTERVENTION)
+
+    def test_tool_return_post_idempotent(self):
+        # ERR81 — POST répété ne crée jamais de doublon (anti-course sur le
+        # unique_together intervention+outil).
+        from apps.installations.models import ToolReturn
+        depot, outil = self._make_kit()
+        r1 = self.api.post(f'{self.url}/tool-return/', {}, format='json')
+        self.assertEqual(r1.status_code, 200, r1.data)
+        self.assertEqual(len(r1.data), 1)
+        r2 = self.api.post(f'{self.url}/tool-return/', {}, format='json')
+        self.assertEqual(len(r2.data), 1)
+        self.assertEqual(
+            ToolReturn.objects.filter(
+                intervention=self.interv, outil=outil).count(), 1)
+
+    def test_get_still_reads_state(self):
+        # ERR81 — le GET reste lisible (amorce sans doublonner).
+        depot, outil = self._make_kit()
+        r = self.api.get(f'{self.url}/tool-return/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data), 1)
+
+    def test_tool_double_booking_rejected(self):
+        # ERR82 — un même outil dans deux préparations n'est sorti qu'une fois :
+        # la seconde intervention ne se voit PAS attribuer la ligne (signalée
+        # en conflit), évitant la double-réservation.
+        from apps.installations.models import ToolReturn
+        from apps.installations import field_services
+        depot, outil = self._make_kit()
+        # Première sortie : crée la ligne (non rendue, non confirmée).
+        self.api.post(f'{self.url}/tool-return/', {}, format='json')
+        self.assertEqual(ToolReturn.objects.filter(outil=outil).count(), 1)
+        # Seconde intervention avec le MÊME kit/outil.
+        interv2 = make_intervention(self.inst, self.company, self.user)
+        prep2 = field_services.ensure_preparation(interv2)
+        prep2.kit = outil.kit_items.first().kit
+        prep2.save()
+        field_services._sync_outils(prep2)
+        url2 = f'/api/django/installations/interventions/{interv2.id}'
+        r = self.api.post(f'{url2}/tool-return/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        # L'outil est en conflit et N'A PAS de ligne sur la 2e intervention.
+        self.assertIn('conflits', r.data)
+        self.assertEqual(
+            ToolReturn.objects.filter(
+                intervention=interv2, outil=outil).count(), 0)
 
 
 # ── F18 — consignes de sécurité ──────────────────────────────────────────────

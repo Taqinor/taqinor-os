@@ -9,7 +9,7 @@ Page 1 : white-background v1 layout
 Pages 2-3 : v4 premium dark design
 Usage : python generate_devis_premium.py
 """
-import base64, io, json, subprocess, sys, tempfile
+import base64, html, io, json, subprocess, sys, tempfile, threading
 from pathlib import Path
 
 
@@ -33,6 +33,32 @@ matplotlib.use("Agg")
 BASE_DIR = Path(__file__).resolve().parent
 FONT_DIR = BASE_DIR / "assets" / "fonts"
 ASSET_DIR = BASE_DIR / "assets"
+
+# ERR17 — a render writes ~40 module-level globals and reads them back while
+# building the HTML; under Gunicorn --threads two concurrent renders would
+# interleave one client's data into another's PDF (cross-tenant leak).
+# Serialize every render on one process-level lock.
+_RENDER_LOCK = threading.RLock()
+
+
+def _esc(value):
+    """HTML-escape a user-controlled scalar (ERR37). Byte-identical for text
+    without &<>"' so legitimate names/PDFs are unchanged."""
+    return html.escape(str(value)) if value is not None else ""
+
+
+def _esc_items(items):
+    """Copy line-item dicts with their user-controlled text fields HTML-escaped
+    (ERR37). Numeric fields and the designation/marque classification keywords
+    are unaffected (escape only touches &<>"')."""
+    out = []
+    for it in (items or []):
+        e = dict(it)
+        for k in ("designation", "marque", "description", "garantie"):
+            if e.get(k) is not None:
+                e[k] = html.escape(str(e[k]))
+        out.append(e)
+    return out
 
 # ── Inline SVG icons for Page 1 (WeasyPrint renders inline SVG perfectly) ────
 SVG_CHECK   = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="#2e7d32" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -1270,6 +1296,9 @@ def page3():
         else:
             _acompte = round(_pay_total * PAY_A / 100 / 1000) * 1000
         _solde = round(_pay_total * PAY_S / 100 / 1000) * 1000
+        # ERR76 — clamp the acompte into [0, total - solde] so a user-supplied
+        # custom acompte can never yield a negative "Matériel" or exceed 100 %.
+        _acompte = max(0, min(_acompte, int(_pay_total) - _solde))
         _materiel = int(_pay_total - _acompte - _solde)
 
         _pct_a = round(_acompte / _pay_total * 100) if _pay_total else 0
@@ -1943,6 +1972,14 @@ def generate_premium_pdf(data: dict, out_path) -> str:
 
     Items dicts must have: designation, quantite, prix_unit_ttc, marque.
     """
+    # ERR17 — serialize the whole render: the body writes module globals and
+    # reads them back while building the HTML, so concurrent renders must not
+    # interleave (one client's data leaking into another's PDF).
+    with _RENDER_LOCK:
+        return _render_premium_pdf(data, out_path)
+
+
+def _render_premium_pdf(data: dict, out_path) -> str:
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
@@ -1956,10 +1993,11 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
 
-    CLIENT_NAME  = data["client_name"]
-    CLIENT_ADDR  = data["client_addr"]
-    CLIENT_PHONE = data["client_phone"]
-    CLIENT_ICE   = data.get("client_ice", "")
+    # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
+    CLIENT_NAME  = _esc(data["client_name"])
+    CLIENT_ADDR  = _esc(data["client_addr"])
+    CLIENT_PHONE = _esc(data["client_phone"])
+    CLIENT_ICE   = _esc(data.get("client_ice", ""))
     REF          = str(data["ref"])
     DATE_STR     = data["date"]
     KWC          = float(data["puissance_kwc"])
@@ -2029,8 +2067,10 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     _with_etude = bool(INCLUDE_ETUDE and ETUDE) and data.get("pdf_mode", "full") == "full"
     PAGES_TOTAL = 4 if _with_etude else 3
     PAGE3_NUM = PAGES_TOTAL
-    SANS_ITEMS   = data["sans_items"]
-    AVEC_ITEMS   = data["avec_items"]
+    # ERR37 — escape user text in line items at the ingestion boundary so every
+    # downstream renderer (full + one-page) emits safe HTML.
+    SANS_ITEMS   = _esc_items(data["sans_items"])
+    AVEC_ITEMS   = _esc_items(data["avec_items"])
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
     FACTURES_M   = list(data["factures_mensuelles"])
@@ -2041,7 +2081,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     out_path = Path(out_path)
     mode = data.get("pdf_mode", "full")
     if mode == "onepage":
-        html = build_html_onepage(data.get("all_items", []))
+        html = build_html_onepage(_esc_items(data.get("all_items", [])))
     else:
         html = build_html()
 

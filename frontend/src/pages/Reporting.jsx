@@ -260,7 +260,14 @@ export function Component() {
 
   if (!data) return null
 
-  const { kpis, top_produits, statuts_factures, conversion, stock_alerte, creances } = data
+  const {
+    kpis = {},
+    top_produits = [],
+    statuts_factures = [],
+    conversion = {},
+    stock_alerte = [],
+    creances = [],
+  } = data
   const caVide = caWindow.every((m) => m.ca === 0)
 
   return (

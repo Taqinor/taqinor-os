@@ -131,7 +131,13 @@ def website_lead_webhook(request):
             )
 
         if existing:
+            # Re-POST idempotent (< 1 min) : on COMPLÈTE sans jamais écraser une
+            # donnée déjà captée. Un second payload plus pauvre (champ absent →
+            # None/'') ne doit pas annuler ce que le premier a rempli. On
+            # n'écrit donc que les valeurs réellement renseignées.
             for key, value in fields.items():
+                if value is None or value == '':
+                    continue
                 setattr(existing, key, value)
             existing.save()
             lead, created = existing, False

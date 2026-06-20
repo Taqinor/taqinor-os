@@ -1,7 +1,7 @@
 // Onglet « Messages & relances » de la page Paramètres (niveaux de relance,
 // modèles WhatsApp FR/Darija). Restylé sur le système de design (@/ui) ;
 // champs, libellés et comportement identiques.
-import { Check, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { Card, CardContent, Input, Textarea, Button, IconButton } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 
@@ -15,7 +15,7 @@ function renderPreview(corps) {
 }
 
 export default function MessagesSection({
-  niveaux, setNiveau, saveNiveaux, niveauxSaved, addNiveau, delNiveau, seedNiveaux,
+  niveaux, setNiveau, saveNiveaux, niveauxSaved, niveauxError, addNiveau, delNiveau, seedNiveaux,
   messages, setMsgField, saveMessage, resetMessage, msgSavedCle,
 }) {
   return (
@@ -37,7 +37,7 @@ export default function MessagesSection({
                          onChange={e => setNiveau(n.id, 'nom', e.target.value)} />
                 </Field>
                 <Field label="Jours (J+)" htmlFor={`pe-niv-jours-${n.id}`}>
-                  <Input id={`pe-niv-jours-${n.id}`} type="number" min="0" value={n.delai_jours}
+                  <Input id={`pe-niv-jours-${n.id}`} type="number" step="any" value={n.delai_jours}
                          onChange={e => setNiveau(n.id, 'delai_jours', e.target.value)} />
                 </Field>
               </div>
@@ -79,6 +79,13 @@ export default function MessagesSection({
               ) : 'Enregistrer les niveaux'}
             </Button>
           </div>
+          {/* ERR63 — échec par-ligne remonté en français (au lieu d'être avalé). */}
+          {niveauxError && (
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              <span>{niveauxError}</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

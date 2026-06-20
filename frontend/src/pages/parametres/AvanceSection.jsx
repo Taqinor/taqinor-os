@@ -64,11 +64,11 @@ export default function AvanceSection({
           </p>
           <div className="pe-grid-2">
             <Field label="Tarif ONEE moyen (MAD/kWh)" htmlFor="pe-onee">
-              <Input id="pe-onee" type="number" min="0" step="0.001"
+              <Input id="pe-onee" type="number" step="any"
                      name="onee_tarif_kwh" value={form.onee_tarif_kwh} onChange={set} />
             </Field>
             <Field label="Productible (kWh/kWc/an)" htmlFor="pe-productible">
-              <Input id="pe-productible" type="number" min="0" step="1"
+              <Input id="pe-productible" type="number" step="any"
                      name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
             </Field>
             {/* L787 — impact recalculé en direct sous tarif ONEE / productible. */}
@@ -79,17 +79,17 @@ export default function AvanceSection({
               {' '}{Number(form.onee_tarif_kwh) || 0} MAD/kWh).
             </div>
             <Field label="Seuil d'approbation de remise (%)" htmlFor="pe-discount-thr">
-              <Input id="pe-discount-thr" type="number" min="0" max="100" step="0.01"
+              <Input id="pe-discount-thr" type="number" step="any"
                      name="discount_approval_threshold" placeholder="vide = désactivé"
                      value={form.discount_approval_threshold} onChange={set} />
             </Field>
             <Field label="Seuil régime « Déclaration » (kWc)" htmlFor="pe-seuil-decl">
-              <Input id="pe-seuil-decl" type="number" min="0" step="0.01"
+              <Input id="pe-seuil-decl" type="number" step="any"
                      name="seuil_regime_declaration_kwc"
                      value={form.seuil_regime_declaration_kwc} onChange={set} />
             </Field>
             <Field label="Seuil régime « Autorisation ANRE » (kWc)" htmlFor="pe-seuil-anre">
-              <Input id="pe-seuil-anre" type="number" min="0" step="0.01"
+              <Input id="pe-seuil-anre" type="number" step="any"
                      name="seuil_regime_anre_kwc"
                      value={form.seuil_regime_anre_kwc} onChange={set} />
             </Field>
@@ -118,20 +118,20 @@ export default function AvanceSection({
           </p>
           <div className="pe-grid-2">
             <Field label="Rendement global (0–1)" htmlFor="pe-rendement">
-              <Input id="pe-rendement" type="number" min="0" max="1" step="0.01"
+              <Input id="pe-rendement" type="number" step="any"
                      name="rendement_global" value={form.rendement_global} onChange={set} />
             </Field>
             <Field label="Panneaux par tranche de 900 MAD (auto-remplir)" htmlFor="pe-panneaux900">
-              <Input id="pe-panneaux900" type="number" min="1" step="1"
+              <Input id="pe-panneaux900" type="number" step="any"
                      name="panneaux_par_900mad" value={form.panneaux_par_900mad} onChange={set} />
             </Field>
             <Field label="Prix cible /kWc par défaut (MAD)" htmlFor="pe-prix-cible">
-              <Input id="pe-prix-cible" type="number" min="0" step="any"
+              <Input id="pe-prix-cible" type="number" step="any"
                      name="prix_cible_kwc_defaut" placeholder="vide = aucun"
                      value={form.prix_cible_kwc_defaut} onChange={set} />
             </Field>
             <Field label="Limite de remise conseillée (%)" htmlFor="pe-remise-max">
-              <Input id="pe-remise-max" type="number" min="0" max="100" step="0.01"
+              <Input id="pe-remise-max" type="number" step="any"
                      name="remise_max_pct" placeholder="vide = aucune"
                      value={form.remise_max_pct} onChange={set} />
             </Field>
@@ -158,7 +158,8 @@ export default function AvanceSection({
           </p>
           {typesItv.map(t => (
             <div key={t.id} className="mb-1.5 flex items-center gap-1.5">
-              <Input className="flex-1" defaultValue={t.libelle}
+              {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+              <Input key={t.libelle} className="flex-1" defaultValue={t.libelle}
                      onBlur={e => renameType(t, e.target.value)} />
               {t.protege
                 ? <Badge tone="info">système</Badge>
@@ -204,7 +205,8 @@ export default function AvanceSection({
                   <ChevronDown className="size-3.5" aria-hidden="true" />
                 </IconButton>
               </div>
-              <Input className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')} defaultValue={et.libelle}
+              {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+              <Input key={et.libelle} className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')} defaultValue={et.libelle}
                      onBlur={e => renameEtape(et, e.target.value)} />
               {/* L785 — capture_serie en toggle éditable (au lieu d'un simple badge). */}
               <Button type="button" size="sm"

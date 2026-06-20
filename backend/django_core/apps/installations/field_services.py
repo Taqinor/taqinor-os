@@ -176,14 +176,13 @@ def _sync_materiel(prep):
     existing = {(li.produit_id, li.designation): li
                 for li in prep.materiel.all()}
     seen = set()
-    from apps.stock.models import Produit
-    from apps.stock.services import _own_reservation_map
-    own_reserved = _own_reservation_map(installation)
+    from apps.stock.selectors import get_produit_scoped
+    from .selectors import own_reservation_map
+    own_reserved = own_reservation_map(installation)
     for i, b in enumerate(lignes):
         produit = None
         if b['produit_id']:
-            produit = Produit.objects.filter(
-                id=b['produit_id'], company=company).first()
+            produit = get_produit_scoped(company, b['produit_id'])
         key = (produit.id if produit else None, b['designation'])
         seen.add(key)
         manque = _shortfall_for(produit, b['quantite'], company, own_reserved)

@@ -505,9 +505,13 @@ export default function InterventionsPage() {
       .catch(() => { toast.error('Changement de statut impossible.'); fetchData() })
   }
   const reassign = (it, technicien) => {
+    // Optimiste : reflète immédiatement, puis resynchronise. En cas d'échec on
+    // recharge (rollback) pour que le Select ne reste pas sur le technicien
+    // choisi alors que le serveur garde l'ancien.
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, technicien } : x)))
     installationsApi.updateIntervention(it.id, { technicien })
       .then(() => { toast.success('Technicien mis à jour.'); fetchData() })
-      .catch(() => toast.error('Réassignation impossible.'))
+      .catch(() => { toast.error('Réassignation impossible.'); fetchData() })
   }
 
   if (loading) {

@@ -9,6 +9,7 @@ import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
 import { Button, IconButton, Spinner } from '../../../ui'
+import { errorMessageFrom } from '../../../lib/toast'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
 import FilterBar from './FilterBar'
@@ -329,7 +330,14 @@ export default function LeadsPage() {
       <p className="page-loading"><Spinner /> Chargement des leads…</p>
     )
   }
-  if (error) return <p className="page-error">Erreur : {JSON.stringify(error)}</p>
+  // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
+  // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
+  // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
+  if (error) return (
+    <p className="page-error">
+      Erreur : {errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}
+    </p>
+  )
 
   const viewProps = {
     leads: filtered,

@@ -17,3 +17,14 @@ export function canonicalTarget(requestUrl, canonicalOrigin = CANONICAL_ORIGIN) 
   if (!url.hostname.endsWith('.workers.dev')) return null;
   return canonicalOrigin + url.pathname + url.search;
 }
+
+/**
+ * Statut HTTP de la redirection canonique workers.dev selon la méthode (ERR109).
+ * GET/HEAD → 301 (indexable, mis en cache). Toute autre méthode (POST du
+ * formulaire / de l'API) → 308 : un 308 préserve la MÉTHODE et le CORPS, alors
+ * qu'un 301 autorise le client à repasser en GET et à perdre le corps — ce qui
+ * abandonnerait silencieusement un lead posté sur le sous-domaine workers.dev.
+ */
+export function canonicalRedirectStatus(method = 'GET') {
+  return method === 'GET' || method === 'HEAD' ? 301 : 308;
+}

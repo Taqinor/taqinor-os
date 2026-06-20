@@ -94,6 +94,16 @@ class NotifyServiceTests(TestCase):
             n = notify(self.user, EventType.STOCK_LOW, 'Stock bas')
         self.assertIsNotNone(n)
 
+    def test_in_app_body_is_bounded(self):
+        # ERR91 — le corps in-app est borné comme le titre/lien, pas illimité.
+        from .services import MAX_BODY_LEN
+        huge = 'x' * (MAX_BODY_LEN + 500)
+        n = notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body=huge)
+        self.assertIsNotNone(n)
+        self.assertEqual(len(n.body), MAX_BODY_LEN)
+        n.refresh_from_db()
+        self.assertEqual(len(n.body), MAX_BODY_LEN)
+
     def test_merged_preferences_covers_all_events(self):
         prefs = merged_preferences(self.user)
         self.assertEqual(len(prefs), len(EventType.choices))
@@ -383,3 +393,45 @@ class WebPushTests(TestCase):
         from .services import _dispatch_webpush
         self.assertEqual(
             _dispatch_webpush(self.user, 'Titre', 'Corps'), 0)
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='', VAPID_AUTOGENERATE=True)
+    def test_autogenerate_creates_persistent_singleton(self):
+        # N109 — sans clé d'env mais auto-génération activée : l'endpoint renvoie
+        # une clé publique NON vide, une ligne VapidKeyPair est créée, et un
+        # second appel renvoie EXACTEMENT la même clé (singleton, pas régénéré).
+        from .models import VapidKeyPair
+        self.assertEqual(VapidKeyPair.objects.count(), 0)
+        res = self.client.get(
+            '/api/django/notifications/push/vapid-public-key/')
+        self.assertEqual(res.status_code, 200)
+        first_key = res.data['public_key']
+        self.assertTrue(first_key)  # non vide
+        self.assertEqual(VapidKeyPair.objects.count(), 1)
+        res2 = self.client.get(
+            '/api/django/notifications/push/vapid-public-key/')
+        self.assertEqual(res2.data['public_key'], first_key)
+        self.assertEqual(VapidKeyPair.objects.count(), 1)  # pas régénéré
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='envpub', VAPID_PRIVATE_KEY='envpriv',
+        VAPID_AUTOGENERATE=True)
+    def test_env_keys_take_precedence_no_db_row(self):
+        # N109 — précédence de l'environnement : même avec auto-génération ON, des
+        # clés d'env présentes l'emportent et AUCUNE ligne DB n'est créée.
+        from .models import VapidKeyPair
+        res = self.client.get(
+            '/api/django/notifications/push/vapid-public-key/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['public_key'], 'envpub')
+        self.assertEqual(VapidKeyPair.objects.count(), 0)
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='', VAPID_AUTOGENERATE=False)
+    def test_resolve_vapid_keys_empty_when_disabled(self):
+        # Contrat verrouillé : env vide ET auto-génération OFF → ('', '') sans
+        # jamais toucher la base.
+        from .models import VapidKeyPair
+        from .services import resolve_vapid_keys
+        self.assertEqual(resolve_vapid_keys(), ('', ''))
+        self.assertEqual(VapidKeyPair.objects.count(), 0)

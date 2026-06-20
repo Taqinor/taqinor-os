@@ -15,6 +15,7 @@ au-dessus du seuil : on ferme le drapeau ouvert.
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from django.utils import timezone
 
 from .models import (
@@ -128,35 +129,50 @@ def evaluate_underperformance(installation, *, user=None, today=None):
                      if settings_obj else Decimal('20'))
     # Sous-performe si le ratio est sous (100 - seuil) % de l'attendu.
     floor_pct = Decimal('100') - Decimal(str(threshold_pct))
-    open_flag = UnderperformanceFlag.objects.filter(
-        installation=installation, is_open=True).first()
 
-    if ratio < floor_pct:
-        result['underperforming'] = True
-        if open_flag is None:
-            open_flag = UnderperformanceFlag.objects.create(
-                company=company, installation=installation,
-                ratio_pct=result['ratio_pct'])
+    # ERR47 — lecture-puis-création du drapeau ouvert SANS verrou : deux
+    # évaluations concurrentes pour un même système inséraient toutes deux,
+    # violant la contrainte partielle uniq_open_underperf_flag (500). On rend
+    # l'open/close atomique et on verrouille le drapeau ouvert existant
+    # (select_for_update) ou on le crée idempotemment via get_or_create —
+    # défendu par la contrainte unique partielle en dernier recours.
+    with transaction.atomic():
+        open_flag = (UnderperformanceFlag.objects
+                     .select_for_update()
+                     .filter(installation=installation, is_open=True)
+                     .first())
+
+        if ratio < floor_pct:
+            result['underperforming'] = True
+            if open_flag is None:
+                open_flag, _created = (
+                    UnderperformanceFlag.objects.get_or_create(
+                        installation=installation, is_open=True,
+                        defaults={'company': company,
+                                  'ratio_pct': result['ratio_pct']}))
+                if not _created:
+                    open_flag.ratio_pct = result['ratio_pct']
+                    open_flag.save(update_fields=['ratio_pct'])
+            else:
+                open_flag.ratio_pct = result['ratio_pct']
+                open_flag.save(update_fields=['ratio_pct'])
+            result['flag'] = open_flag
+            # Auto-ticket SAV — seulement si activé ET pas déjà lié (idempotent).
+            if (settings_obj and settings_obj.auto_create_ticket
+                    and open_flag.ticket_id is None):
+                ticket = _create_underperf_ticket(installation, open_flag, user)
+                if ticket is not None:
+                    open_flag.ticket = ticket
+                    open_flag.save(update_fields=['ticket'])
+                    result['ticket'] = ticket
+            elif open_flag.ticket_id is not None:
+                result['ticket'] = open_flag.ticket
         else:
-            open_flag.ratio_pct = result['ratio_pct']
-            open_flag.save(update_fields=['ratio_pct'])
-        result['flag'] = open_flag
-        # Auto-ticket SAV — seulement si activé ET pas déjà lié (idempotent).
-        if (settings_obj and settings_obj.auto_create_ticket
-                and open_flag.ticket_id is None):
-            ticket = _create_underperf_ticket(installation, open_flag, user)
-            if ticket is not None:
-                open_flag.ticket = ticket
-                open_flag.save(update_fields=['ticket'])
-                result['ticket'] = ticket
-        elif open_flag.ticket_id is not None:
-            result['ticket'] = open_flag.ticket
-    else:
-        # Performance revenue au-dessus du seuil : on ferme le drapeau ouvert.
-        if open_flag is not None:
-            open_flag.is_open = False
-            open_flag.date_cloture = timezone.now()
-            open_flag.save(update_fields=['is_open', 'date_cloture'])
+            # Performance revenue au-dessus du seuil : on ferme le drapeau ouvert.
+            if open_flag is not None:
+                open_flag.is_open = False
+                open_flag.date_cloture = timezone.now()
+                open_flag.save(update_fields=['is_open', 'date_cloture'])
     return result
 
 

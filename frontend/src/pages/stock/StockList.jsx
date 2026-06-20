@@ -715,9 +715,9 @@ export default function StockList() {
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
-    stockApi.getMarques().then(r => setMarques(r.data.results ?? r.data)).catch(() => {})
+    stockApi.getMarques().then(r => setMarques(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getEmplacements()
-      .then(r => setEmplacementsList((r.data.results ?? r.data).filter(e => !e.archived)))
+      .then(r => setEmplacementsList((r.data?.results ?? r.data ?? []).filter(e => !e.archived)))
       .catch(() => {})
   }, [dispatch])
 

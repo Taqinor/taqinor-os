@@ -9,7 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.crm.models import Client
+from apps.crm.selectors import client_base_qs
 from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import Facture, FollowupLevel
@@ -182,11 +182,21 @@ def balance_agee(request):
     return Response(out)
 
 
-def _releve_data(client):
-    """Relevé de compte : factures (payé/avoir/dû), paiements, avoirs, soldes."""
+def _releve_data(client, user=None):
+    """Relevé de compte : factures (payé/avoir/dû), paiements, avoirs, soldes.
+
+    ERR73 — applique la portée de visibilité (Feature F) : un rôle restreint ne
+    voit que les factures créées par soi / son équipe, exactement comme la liste
+    des impayés et la balance âgée. L'isolation société tient déjà (le client est
+    scopé) ; on ajoute la portée propriétaire. ``user=None`` (chemin interne) →
+    aucun filtre de portée, comportement historique préservé.
+    """
+    qs = Facture.objects.filter(client=client).exclude(statut='annulee')
+    if user is not None:
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, user, ['created_by'])
     factures = list(
-        Facture.objects.filter(client=client).exclude(statut='annulee')
-        .prefetch_related('lignes', 'paiements', 'avoirs')
+        qs.prefetch_related('lignes', 'paiements', 'avoirs')
         .order_by('date_emission'))
     lignes = []
     paiements = []
@@ -248,25 +258,25 @@ def _releve_data(client):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve(request, client_id):
-    client = _scope(Client.objects.all(), request.user).filter(
+    client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
     if client is None:
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
-    return Response(_releve_data(client))
+    return Response(_releve_data(client, request.user))
 
 
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve_pdf(request, client_id):
-    client = _scope(Client.objects.all(), request.user).filter(
+    client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
     if client is None:
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     from .utils.pdf import generate_releve_pdf
     try:
-        pdf_bytes = generate_releve_pdf(client, _releve_data(client))
+        pdf_bytes = generate_releve_pdf(client, _releve_data(client, request.user))
     except Exception as exc:
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)

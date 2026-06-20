@@ -123,3 +123,88 @@ class RolesRbacTest(TestCase):
         self.assertEqual(resp.status_code, 201)
         role = Role.objects.get(nom='Pirate')
         self.assertEqual(role.company, self.company)
+
+
+class RolesEscalationGuardTest(TestCase):
+    """ERR5 : un Responsable (palier promu, non-admin) ne peut pas s'auto-
+    octroyer de permissions élevées ni modifier un rôle système, ce qui le
+    promouvrait Administrateur."""
+
+    def setUp(self):
+        from apps.roles.models import (
+            RESPONSABLE_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+        )
+        self.company = Company.objects.create(nom='Esc Co', slug='esc-co')
+        self.admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        # Rôle (non système) porté par le Responsable, avec users_voir → palier
+        # responsable mais SANS roles_gerer (donc non-admin).
+        self.resp_role = Role.objects.create(
+            company=self.company, nom='Resp perso',
+            permissions=list(RESPONSABLE_PERMISSIONS), est_systeme=False)
+        self.resp = User.objects.create_user(
+            username='esc_resp', password='x', role=self.resp_role,
+            role_legacy='responsable', company=self.company)
+        self.admin = User.objects.create_user(
+            username='esc_admin', password='x', role=self.admin_role,
+            role_legacy='admin', company=self.company)
+        self.com_perms = list(COMMERCIAL_PERMISSIONS)
+
+    def _api(self, user):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_responsable_cannot_self_grant_roles_gerer(self):
+        # Tente d'ajouter roles_gerer à son propre rôle → auto-escalade admin.
+        new_perms = list(self.resp_role.permissions) + ['roles_gerer']
+        resp = self._api(self.resp).patch(
+            f'/api/django/roles/{self.resp_role.id}/',
+            {'permissions': new_perms}, format='json')
+        self.assertIn(resp.status_code, (400, 403), resp.data)
+        self.resp_role.refresh_from_db()
+        self.assertNotIn('roles_gerer', self.resp_role.permissions)
+
+    def test_responsable_cannot_grant_elevated_on_new_role(self):
+        resp = self._api(self.resp).post(
+            '/api/django/roles/',
+            {'nom': 'Pirate', 'permissions': ['crm_voir', 'prix_achat_voir']},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertFalse(Role.objects.filter(
+            company=self.company, nom='Pirate').exists())
+
+    def test_responsable_cannot_modify_system_role(self):
+        # Modifier un rôle système (ici Administrateur) est réservé à l'admin.
+        resp = self._api(self.resp).patch(
+            f'/api/django/roles/{self.admin_role.id}/',
+            {'permissions': ['crm_voir']}, format='json')
+        self.assertIn(resp.status_code, (400, 403), resp.data)
+        self.admin_role.refresh_from_db()
+        self.assertIn('roles_gerer', self.admin_role.permissions)
+
+    def test_responsable_can_create_non_elevated_role(self):
+        resp = self._api(self.resp).post(
+            '/api/django/roles/',
+            {'nom': 'Magasinier', 'permissions': ['stock_voir', 'stock_creer']},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_admin_can_grant_elevated_permission(self):
+        resp = self._api(self.admin).post(
+            '/api/django/roles/',
+            {'nom': 'Compta', 'permissions': ['reporting_voir',
+                                              'prix_achat_voir']},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        role = Role.objects.get(nom='Compta')
+        self.assertIn('prix_achat_voir', role.permissions)
+
+    def test_responsable_cannot_edit_own_role_permissions(self):
+        # Même sans permission élevée, modifier les permissions de SON PROPRE
+        # rôle est bloqué (auto-escalade défensive).
+        resp = self._api(self.resp).patch(
+            f'/api/django/roles/{self.resp_role.id}/',
+            {'permissions': self.com_perms}, format='json')
+        self.assertIn(resp.status_code, (400, 403), resp.data)
