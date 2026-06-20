@@ -104,9 +104,12 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
 describe('pro-11 — la pose AFFLEURANTE et la 3D pente restent INCHANGÉES (modèle V6)', () => {
   const script = read('../src/scripts/roof-tool-pro11.ts');
   it('rendu pente : plan incliné + pose coplanaire (géométrie V6), flush=true', () => {
-    expect(script).toContain('pitchedDeckZ(');
-    expect(script).toContain('flushPanelCenterAt(');
-    expect(script).toContain('PITCHED_FLUSH_STANDOFF_M');
+    // Split modulaire : la géométrie V6 (plan incliné + pose coplanaire affleurante) vit
+    // dans roofPro11/scene3d.ts ; l'appel renderScene(…, true) en pente reste dans l'entrée.
+    const scene = read('../src/scripts/roofPro11/scene3d.ts');
+    expect(scene).toContain('pitchedDeckZ(');
+    expect(scene).toContain('flushPanelCenterAt(');
+    expect(scene).toContain('PITCHED_FLUSH_STANDOFF_M');
     // renderScene rendu avec flush=true en pente (dernier argument)
     expect(script).toContain("'south', w.placedCount, true)");
   });
@@ -194,7 +197,8 @@ describe('pro-11 — W75 : recherche d\'adresse anti-course (jeton + abort + dé
 });
 
 describe('pro-11 — W70 : libération des ressources GPU (re-tracé + démontage)', () => {
-  const script = read('../src/scripts/roof-tool-pro11.ts');
+  // Split modulaire : la scène 3D (couche custom + photo de toit) vit dans roofPro11/scene3d.ts.
+  const script = read('../src/scripts/roofPro11/scene3d.ts');
 
   it('la couche custom expose onRemove qui libère renderer + textures + scène', () => {
     expect(script).toContain('onRemove(');

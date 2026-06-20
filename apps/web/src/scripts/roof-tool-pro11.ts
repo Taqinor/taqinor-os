@@ -44,7 +44,6 @@
 import maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import * as THREE from 'three';
-import { PANEL2_THICK_M } from '../lib/roofPro2';
 import {
   recommend,
   packConfig,
@@ -72,11 +71,7 @@ import {
 } from '../lib/estimatorBrainV3';
 import { pitchedPlaneLeg } from '../lib/estimatorBrainV5';
 import {
-  PITCHED_FLUSH_STANDOFF_M,
-  eaveUpSlopeCoord,
   fineGridMatrixV6,
-  flushPanelCenterAt,
-  pitchedDeckZ,
   pvgisCoarsePairs,
   pvgisMatrixCandidatePairs,
   pvgisRefinePairs,
@@ -96,10 +91,10 @@ import {
   type PitchedLiveResult,
   type PitchedMarginAxis,
 } from '../lib/estimatorBrainV8';
-import { isSimplePolygon, roofAreaLabel, ringBBox, type LngLat } from '../lib/roof';
+import { isSimplePolygon, roofAreaLabel, type LngLat } from '../lib/roof';
 import { obstacleRing, type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
-import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
+import { buildSatelliteStyle } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
 import {
@@ -132,16 +127,9 @@ import {
 import {
   GOLD,
   MOROCCO_CENTER,
-  FLOOR_HEIGHT_M,
   PITCH_VIEW,
-  DECK_THK,
-  FLOORS,
-  OBSTACLE_BOX_H_M,
-  DEG2RAD,
-  DEG2M,
 } from './roofPro11/constants';
 import { $, fmt, fmtMad, esc } from './roofPro11/dom';
-import { makeCanadianPanelTexture } from './roofPro11/panelTexture';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
@@ -152,6 +140,7 @@ import { createMatrix } from './roofPro11/matrix';
 import { createLayoutEditor } from './roofPro11/layoutEditor';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMapDraw } from './roofPro11/mapDraw';
+import { createScene3d } from './roofPro11/scene3d';
 
 let booted = false;
 
@@ -968,592 +957,21 @@ export function initRoofToolPro8(opts: InitOptions): void {
   map.on('pitch', updateCompass);
   updateCompass();
 
-  let renderer: THREE.WebGLRenderer | null = null;
-  let scene: THREE.Scene | null = null;
-  let sceneRoot: THREE.Group | null = null;
-  let threeCamera: THREE.Camera | null = null;
-  let sun: THREE.DirectionalLight | null = null;
-  let modelMatrix: THREE.Matrix4 | null = null;
-  const panelTex = makeCanadianPanelTexture();
-  // Change B : photo satellite posée sur la face supérieure du toit. Texture mise en
-  // cache par bbox (chargée UNE fois par tracé) ; matériau du deck courant suivi pour
-  // l'appliquer dès l'arrivée de l'image. Repli silencieux (deck gris) si pas de token
-  // Mapbox ou échec de chargement.
-  let roofTex: THREE.Texture | null = null;
-  let roofTexKey = '';
-  let deckMaterial: THREE.MeshStandardMaterial | null = null;
   // Change C : meshes d'obstacles 3D (transparents) suivis par id pour les DÉPLACER
   // en direct pendant un glissé, et l'origine ENU de la scène courante (centroïde).
+  // Pont partagé (sur ctx) avec scene3d (rempli par renderScene) et obstaclesUi (drag).
   const obstacleMeshes = new Map<string, THREE.Mesh>();
   let sceneOrigin: LngLat = [0, 0];
 
-  const AXIS_X = new THREE.Vector3(1, 0, 0);
-  const AXIS_Z = new THREE.Vector3(0, 0, 1);
-  const _q = new THREE.Quaternion();
-  const _qz = new THREE.Quaternion();
-  const _qx = new THREE.Quaternion();
-  const _scl = new THREE.Vector3(1, 1, 1);
-  const compose = (px: number, py: number, pz: number, rotZ: number, rotX: number): THREE.Matrix4 => {
-    _qz.setFromAxisAngle(AXIS_Z, rotZ);
-    _qx.setFromAxisAngle(AXIS_X, rotX);
-    _q.copy(_qz).multiply(_qx);
-    return new THREE.Matrix4().compose(new THREE.Vector3(px, py, pz), _q, _scl);
-  };
-
   const empty = { type: 'FeatureCollection', features: [] } as const;
 
-  const customLayer = {
-    id: 'rp9-3d',
-    type: 'custom' as const,
-    renderingMode: '3d' as const,
-    onAdd(_m: maplibregl.Map, gl: WebGLRenderingContext | WebGL2RenderingContext) {
-      threeCamera = new THREE.Camera();
-      scene = new THREE.Scene();
-      sceneRoot = new THREE.Group();
-      scene.add(sceneRoot);
-      scene.add(new THREE.AmbientLight(0xb9c8ee, 0.5));
-      scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x20242e, 0.5));
-      sun = new THREE.DirectionalLight(0xfff2d6, 2.5);
-      sun.castShadow = true;
-      sun.shadow.mapSize.set(shadowSize, shadowSize);
-      sun.shadow.bias = -0.0005;
-      sun.shadow.normalBias = 0.03;
-      scene.add(sun);
-      scene.add(sun.target);
-      renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: !lowEnd });
-      renderer.autoClear = false;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.05;
-    },
-    render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: maplibregl.CustomRenderMethodInput) {
-      if (!renderer || !scene || !threeCamera || !modelMatrix) return;
-      const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix));
-      threeCamera.projectionMatrix = m.multiply(modelMatrix);
-      renderer.resetState();
-      renderer.render(scene, threeCamera);
-    },
-    // W70 — libère TOUTES les ressources GPU quand la couche est retirée (navigation
-    // client Astro, démontage de la carte) : meshes/matériaux de scène (disposeScene),
-    // textures partagées (panneau + photo de toit) et le WebGLRenderer lui-même. Sans
-    // cela le renderer + ses textures fuient à chaque départ de la page.
-    onRemove(_m: maplibregl.Map, _gl: WebGLRenderingContext | WebGL2RenderingContext) {
-      disposeScene();
-      panelTex.dispose();
-      roofTex?.dispose();
-      roofTex = null;
-      renderer?.dispose();
-      renderer = null;
-    },
-  };
-
-  /** Libère un objet (et sa géométrie/ses matériaux). L'étiquette d'obstacle porte
-   *  une texture canvas UNIQUE par rendu → libérée ici ; les textures PARTAGÉES
-   *  (texture de panneau, photo de toit en cache) ne sont jamais touchées. */
-  function disposeObject(obj: THREE.Object3D) {
-    const holder = obj as THREE.Mesh & { material?: THREE.Material | THREE.Material[] };
-    const isSprite = (obj as THREE.Sprite).isSprite === true;
-    // La géométrie d'un Sprite est PARTAGÉE (interne à three) → ne pas la libérer.
-    if (!isSprite) holder.geometry?.dispose?.();
-    const mat = holder.material;
-    const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
-    for (const m of mats) {
-      if (isSprite) (m as THREE.SpriteMaterial).map?.dispose?.(); // texture canvas unique
-      m.dispose();
-    }
-  }
-
-  function disposeScene() {
-    if (!sceneRoot) return;
-    for (const child of [...sceneRoot.children]) {
-      child.traverse(disposeObject); // inclut les arêtes/étiquettes enfants
-      sceneRoot.remove(child);
-    }
-  }
-
-  function setOrigin(origin: LngLat) {
-    const mc = maplibregl.MercatorCoordinate.fromLngLat(origin, 0);
-    const sUnit = mc.meterInMercatorCoordinateUnits();
-    modelMatrix = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(sUnit, -sUnit, sUnit));
-  }
-
-  function makeIM(geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], matrices: THREE.Matrix4[], cast = true, receive = false): THREE.InstancedMesh | null {
-    if (!matrices.length) return null;
-    const im = new THREE.InstancedMesh(geo, mat as THREE.Material, matrices.length);
-    im.castShadow = cast;
-    im.receiveShadow = receive;
-    for (let i = 0; i < matrices.length; i++) im.setMatrixAt(i, matrices[i]);
-    im.instanceMatrix.needsUpdate = true;
-    return im;
-  }
-
-  /** UV de la face supérieure du toit = VRAIE position (Web Mercator) de chaque
-   *  sommet dans l'étendue EXACTE de l'image satellite (calculée par
-   *  roofImageRequest, et NON la bbox demandée — l'endpoint Static élargit la bbox).
-   *  Le sommet, en ENU, est reprojeté en lng/lat via l'origine de la scène puis en
-   *  UV. Le mesh ÉTANT le polygone tracé (ShapeGeometry), seule l'imagerie du
-   *  contour est peinte, alignée au pixel près sur le calepinage et les obstacles. */
-  function setDeckUVs(geo: THREE.BufferGeometry, origin: LngLat, extent: [number, number, number, number]) {
-    const cosLat = Math.cos(origin[1] * DEG2RAD);
-    const pos = geo.attributes.position;
-    const uv = new Float32Array(pos.count * 2);
-    for (let i = 0; i < pos.count; i++) {
-      const lng = origin[0] + pos.getX(i) / (DEG2M * cosLat);
-      const lat = origin[1] + pos.getY(i) / DEG2M;
-      const [u, v] = roofVertexUV(lng, lat, extent);
-      uv[i * 2] = u;
-      uv[i * 2 + 1] = v;
-    }
-    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  }
-
-  /** Pose (ou réapplique) la photo satellite sur la face supérieure du toit. Image
-   *  demandée par centre+zoom (étendue déterministe) → cachée par cette étendue,
-   *  chargée une seule fois par tracé. Sans token Mapbox ou en cas d'échec : deck
-   *  gris inchangé (gracieux). */
-  function applyRoofPhoto(deck: THREE.Mesh, mat: THREE.MeshStandardMaterial, origin: LngLat) {
-    deckMaterial = mat;
-    if (!opts.mapboxToken || vertices.length < 3) return;
-    const req = roofImageRequest(ringBBox(vertices));
-    setDeckUVs(deck.geometry, origin, req.extent);
-    const key = req.extent.map((n) => n.toFixed(6)).join(',');
-    if (roofTex && roofTexKey === key) {
-      mat.map = roofTex;
-      mat.color.set(0xffffff);
-      mat.needsUpdate = true;
-      return;
-    }
-    const url = mapboxStaticRoofImageUrl(opts.mapboxToken, req.center, req.zoom, req.w, req.h);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const tex = new THREE.Texture(img);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 8;
-      tex.needsUpdate = true;
-      // W70 — libère l'ANCIENNE texture de toit avant de la remplacer (fuite GPU à chaque
-      // re-tracé sur une nouvelle bbox). On NE libère QUE l'orpheline : si la texture courante
-      // est encore montée sur le matériau du deck (.map), three la libérera à la prochaine
-      // recomposition du matériau — la libérer ici corromprait le rendu en cours.
-      if (roofTex && roofTex !== tex && roofTex !== deckMaterial?.map) roofTex.dispose();
-      roofTex = tex;
-      roofTexKey = key;
-      // Réapplique sur le deck COURANT (un bascule a pu le recréer entre-temps).
-      if (deckMaterial) {
-        deckMaterial.map = tex;
-        deckMaterial.color.set(0xffffff);
-        deckMaterial.needsUpdate = true;
-        map.triggerRepaint();
-      }
-    };
-    img.onerror = () => {
-      /* imagerie indisponible → on garde le deck gris, sans erreur visible */
-    };
-    img.src = url;
-  }
-
-  /** Étiquette de taille (« L × l m ») dessinée sur un canevas → sprite 3D posé SUR
-   *  la boîte d'obstacle (Change B). Enfant du mesh : suit la boîte quand on la
-   *  déplace. Toujours face caméra, sans test de profondeur (lisible par-dessus la
-   *  3D, jamais masquée par le bâtiment), dimensionnée en mètres réels (lisible sur
-   *  mobile sans écraser la boîte ni les panneaux). */
-  function makeDimSprite(text: string): THREE.Sprite {
-    const fontPx = 60;
-    const padX = 26;
-    const padY = 16;
-    const font = `bold ${fontPx}px "Inter", system-ui, -apple-system, Segoe UI, sans-serif`;
-    const measure = document.createElement('canvas').getContext('2d');
-    if (measure) measure.font = font;
-    const textW = measure ? measure.measureText(text).width : text.length * fontPx * 0.55;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(textW + padX * 2);
-    canvas.height = fontPx + padY * 2;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.font = font;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const r = 18;
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.beginPath();
-      ctx.moveTo(r, 0);
-      ctx.arcTo(w, 0, w, h, r);
-      ctx.arcTo(w, h, 0, h, r);
-      ctx.arcTo(0, h, 0, 0, r);
-      ctx.arcTo(0, 0, w, 0, r);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(7, 11, 29, 0.84)';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(243, 204, 102, 0.7)'; // teinte laiton (GOLD) discrète
-      ctx.stroke();
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = 'rgba(7, 11, 29, 0.95)';
-      ctx.strokeText(text, w / 2, h / 2 + 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(text, w / 2, h / 2 + 2);
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
-    tex.needsUpdate = true;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
-    const worldW = 1.9; // largeur ~1,9 m → lisible sans masquer la boîte/les panneaux
-    sprite.scale.set(worldW, (worldW * canvas.height) / canvas.width, 1);
-    sprite.renderOrder = 20;
-    return sprite;
-  }
-
-  /** CHEMIN DE CONSTRUCTION UNIQUE d'une zone : bâtiment + dalle (deck) + panneaux
-   *  (+ châssis/lest en toit plat). Utilisé par renderScene pour la zone ACTIVE
-   *  (offX=offY=0, dim=false → octet pour octet identique à avant) ET par
-   *  appendOtherZones pour les AUTRES zones (offset GPS→ENU + dim=true subdué). Tout
-   *  est ajouté à `sceneRoot`. NE touche PAS `setOrigin`/`disposeScene` (renderScene
-   *  en reste propriétaire) ni la photo satellite (zone active uniquement). En dim, les
-   *  obstacles de la zone (depuis `plan.obstacles`) sont rendus en boîtes subduées sans
-   *  étiquette ni enregistrement (non manipulables). Renvoie la dalle (+ son matériau,
-   *  pour la photo) et l'anneau TRANSLATÉ (pour l'enveloppe d'ombre). */
-  function buildZoneMeshes(
-    plan: ZoneRenderPlan,
-    offX: number,
-    offY: number,
-    dim: boolean,
-    occupiedSet?: Set<number>,
-  ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][] } {
-    const { pack, grid, tiltDeg, family, flush } = plan;
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
-    const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
-
-    // Bâtiment
-    const shape = new THREE.Shape();
-    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-    shape.closePath();
-    const buildingMat = new THREE.MeshStandardMaterial({ color: 0xe2e7f2, roughness: 0.85, metalness: 0 });
-    if (dim) {
-      // Zone NON active : bâtiment subdué (plus sombre + légèrement transparent) pour
-      // que la zone ACTIVE (en cours d'édition) ressorte clairement.
-      buildingMat.color.set(0x9aa3b4);
-      buildingMat.transparent = true;
-      buildingMat.opacity = 0.55;
-    }
-    const building = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }),
-      buildingMat,
-    );
-    building.castShadow = true;
-    building.receiveShadow = true;
-    sceneRoot!.add(building);
-
-    const baseZ = wallH + DECK_THK;
-    // FIX 1 (V6) — en pente (flush), réf. d'égout (le point le plus AVAL du tracé) :
-    // la pente monte à partir de l'égout, rien ne passe sous le toit.
-    const pitchEaveCoord = flush ? eaveUpSlopeCoord(ring, pack.azimuthDeg) : 0;
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0xb9bfca, roughness: 0.95, metalness: 0 });
-    if (dim) {
-      deckMat.color.set(0x8b9099);
-      deckMat.transparent = true;
-      deckMat.opacity = 0.7;
-    }
-    const deckGeo = new THREE.ShapeGeometry(shape);
-    if (flush) {
-      // FIX 1 (V6) — la SURFACE DE TOIT elle-même devient un plan INCLINÉ : chaque
-      // sommet de la dalle est relevé à la hauteur du plan (pente × distance à
-      // l'égout). La photo détourée, mappée par position HORIZONTALE (applyRoofPhoto),
-      // reste géo-alignée. Plat : dalle horizontale (inchangé).
-      const dpos = deckGeo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < dpos.count; i++) {
-        dpos.setZ(i, pitchedDeckZ(dpos.getX(i), dpos.getY(i), pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg));
-      }
-      dpos.needsUpdate = true;
-      deckGeo.computeVertexNormals();
-    }
-    const deck = new THREE.Mesh(deckGeo, deckMat);
-    deck.position.z = wallH + 0.02;
-    deck.receiveShadow = true;
-    sceneRoot!.add(deck);
-
-    // Axes de visée à partir de l'azimut de la famille.
-    const azRad = pack.azimuthDeg * DEG2RAD;
-    const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
-    const u: [number, number] = [-f[1], f[0]];
-    const rowAngleRad = Math.atan2(u[1], u[0]);
-    const ca = Math.cos(rowAngleRad);
-    const sa = Math.sin(rowAngleRad);
-    const rx = (lx: number, ly: number): [number, number] => [lx * ca - ly * sa, lx * sa + ly * ca];
-
-    const alongRow = grid.rowWidthM;
-    const slope = grid.slopeLenM;
-    const tilt = tiltDeg * DEG2RAD;
-    const rise = slope * Math.sin(tilt);
-    const depthFootprint = slope * Math.cos(tilt);
-    const frontStrut = 0.1;
-    const halfAlong = alongRow / 2;
-    const halfDepth = depthFootprint / 2;
-
-    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
-    const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
-    if (dim) {
-      // Panneaux légèrement désaturés/assombris pour les zones non actives.
-      glassMat.color.set(0xb8bcc6);
-      frameMat.color.set(0x70757e);
-      backMat.color.set(0xb0b3ba);
-    }
-    const panelMats = [frameMat, frameMat, frameMat, frameMat, glassMat, backMat];
-    const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
-    const jboxGeo = new THREE.BoxGeometry(0.4, 0.12, 0.035);
-    jboxGeo.translate(0, 0, -(PANEL2_THICK_M / 2 + 0.02));
-    const jboxMat = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: 0.3, roughness: 0.6 });
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
-    const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
-
-    // Cellules POSÉES : disposition personnalisée explicite (zone active en mode
-    // calepinage → ces cellules exactes, possiblement non contiguës) sinon les
-    // `plan.count` premières cellules du pavage (comportement historique).
-    const panels = occupiedSet
-      ? grid.panels.filter((_, i) => occupiedSet.has(i))
-      : grid.panels.slice(0, Math.max(0, plan.count));
-    const panelMatsArr: THREE.Matrix4[] = [];
-    const frontMats: THREE.Matrix4[] = [];
-    const backMats: THREE.Matrix4[] = [];
-    const railMats: THREE.Matrix4[] = [];
-    const ballastMats: THREE.Matrix4[] = [];
-    const railGeo = new THREE.BoxGeometry(0.05, slope, 0.05);
-    const frontGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut);
-    const backGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut + rise);
-    const ballastGeo = new THREE.BoxGeometry(0.34, 0.18, 0.12);
-    const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
-
-    for (const p of panels) {
-      const cx = p.cx + offX;
-      const cy = p.cy + offY;
-      // Pour l'Est-Ouest : le sens d'inclinaison vient de la FACE du panneau
-      // (chevrons dos à dos faces E/O), fournie par le cerveau. Sud : tilt simple.
-      const signedTilt = family === 'eastwest' ? (p.face === 'E' ? -tilt : tilt) : tilt;
-      // Toit plat : panneau surélevé sur châssis (frontStrut + montée d'ombre).
-      // Toit en pente (flush) : FIX 1 (V6) — panneau COPLANAIRE, AFFLEURANT sur le
-      // plan incliné. compose(yaw, tilt) donne déjà au panneau la normale du toit
-      // (donc tous les panneaux sont coplanaires) ; flushPanelCenterAt pose le CENTRE
-      // sur le plan + un décalage CONSTANT le long de la normale → le centre monte
-      // avec la pente (vrai plan incliné, pas un calepinage plat de panneaux inclinés).
-      if (flush) {
-        const c = flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ, tiltDeg, pack.azimuthDeg, PITCHED_FLUSH_STANDOFF_M);
-        panelMatsArr.push(compose(c.x + offX, c.y + offY, c.z, rowAngleRad, signedTilt));
-      } else {
-        const pZ = baseZ + frontStrut + rise / 2 + 0.07;
-        panelMatsArr.push(compose(cx, cy, pZ, rowAngleRad, signedTilt));
-      }
-      if (!flush) for (const xe of ends) {
-        const lowDepth = signedTilt >= 0 ? -halfDepth : halfDepth;
-        const highDepth = -lowDepth;
-        const fpt = rx(xe, lowDepth);
-        frontMats.push(compose(cx + fpt[0], cy + fpt[1], baseZ + frontStrut / 2, rowAngleRad, 0));
-        const bpt = rx(xe, highDepth);
-        backMats.push(compose(cx + bpt[0], cy + bpt[1], baseZ + (frontStrut + rise) / 2, rowAngleRad, 0));
-        const cpt = rx(xe, 0);
-        railMats.push(compose(cx + cpt[0], cy + cpt[1], baseZ + frontStrut + rise / 2, rowAngleRad, signedTilt));
-      }
-      if (!flush) for (const xe of [-halfAlong + 0.08, halfAlong - 0.08]) {
-        const bf = rx(xe, -halfDepth - 0.02);
-        ballastMats.push(compose(cx + bf[0], cy + bf[1], baseZ + 0.06, rowAngleRad, 0));
-        const bb = rx(xe, halfDepth + 0.02);
-        ballastMats.push(compose(cx + bb[0], cy + bb[1], baseZ + 0.06, rowAngleRad, 0));
-      }
-    }
-
-    const meshes = [
-      makeIM(panelGeo, panelMats, panelMatsArr, true, false),
-      makeIM(jboxGeo, jboxMat, panelMatsArr, true, false),
-      makeIM(frontGeo, rackMat, frontMats, true, false),
-      makeIM(backGeo, rackMat, backMats, true, false),
-      makeIM(railGeo, rackMat, railMats, true, false),
-      makeIM(ballastGeo, ballastMat, ballastMats, true, true),
-    ];
-    for (const me of meshes) if (me) sceneRoot!.add(me);
-
-    // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
-    // à leur vraie position relative. La zone active gère ses obstacles vivants ailleurs.
-    if (dim && plan.obstacles.length) {
-      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
-      for (const o of plan.obstacles) {
-        const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat + offX;
-        const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
-        const tint = 0xc06464;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
-        const mat = new THREE.MeshStandardMaterial({
-          color: tint,
-          metalness: 0.1,
-          roughness: 0.7,
-          transparent: true,
-          opacity: 0.3,
-          depthWrite: false,
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
-        mesh.renderOrder = 3;
-        const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(geo),
-          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.6 }),
-        );
-        mesh.add(edges);
-        sceneRoot!.add(mesh);
-      }
-    }
-
-    return { deck, deckMat, ring };
-  }
-
-  /** Re-dessine TOUTES les zones SAUF l'active, à leur vraie position relative (« toutes
-   *  les zones empilées »). Pour chaque zone disposant d'un `renderPlan`, on calcule
-   *  l'offset ENU entre son origine GPS et celle de la zone active, puis on construit ses
-   *  meshes (subdués) via le MÊME chemin que la zone active. N'appelle JAMAIS
-   *  disposeScene/setOrigin (propriété de renderScene). Renvoie les anneaux TRANSLATÉS
-   *  des autres zones, pour étendre l'enveloppe d'ombre. No-op (→ []) tant qu'il n'y a
-   *  qu'une zone ou qu'aucune autre n'a de plan. */
-  function appendOtherZones(activeOrigin: LngLat): [number, number][][] {
-    if (!sceneRoot) return [];
-    const rings: [number, number][][] = [];
-    const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
-    for (const a of areas) {
-      if (a.id === activeAreaId || !a.renderPlan) continue;
-      const plan = a.renderPlan;
-      const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
-      const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
-      const built = buildZoneMeshes(plan, offX, offY, true);
-      rings.push(built.ring);
-    }
-    return rings;
-  }
-
-  // — Rendu d'une config (Sud sur châssis OU Est-Ouest en chevrons). `flush` (V3,
-  //   toit en pente) pose les panneaux AFFLEURANTS sur la pente : pas de châssis ni
-  //   de lest, panneau couché à l'inclinaison du toit. flush=false ⇒ rendu toit plat
-  //   octet pour octet identique à pro-5. —
-  function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false, occupiedSet?: Set<number>) {
-    if (!sceneRoot || !sun) return;
-    // W69 — un rendu SANS occupation explicite vient de l'optimiseur : on mémorise le
-    // plan gagnant (pack/grid/tilt/family/flush) + le comptage optimal, pour pouvoir
-    // re-rendre une disposition PERSONNALISÉE (occupation non contiguë) sur le MÊME plan.
-    if (!occupiedSet) {
-      layoutPlan = { pack, grid, tiltDeg, family, flush };
-      layoutOptimalCount = Math.max(0, Math.min(grid.panels.length, Math.round(maxCount)));
-      // Un rendu optimiseur = le PLAN a (peut-être) changé : la disposition personnalisée
-      // courante n'a plus de sens (cellules différentes) → on la repart de l'optimum.
-      layoutState = null;
-      layoutSel = null;
-    }
-    setOrigin(pack.origin);
-    sceneOrigin = pack.origin;
-    obstacleMeshes.clear();
-    disposeScene();
-
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
-
-    // W69 — disposition personnalisée : si un ensemble d'index occupés est fourni, on
-    // rend EXACTEMENT ces cellules (potentiellement non contiguës) ; sinon on garde le
-    // comportement historique (les `maxCount` premières cellules du pavage).
-    const drawnPanels = occupiedSet
-      ? grid.panels.filter((_, i) => occupiedSet.has(i))
-      : grid.panels.slice(0, Math.max(0, maxCount));
-
-    // Bâtiment + dalle + panneaux de la zone ACTIVE : MÊME chemin de construction que les
-    // autres zones (buildZoneMeshes), à offset NUL et sans atténuation → octet pour octet
-    // identique à avant. Les obstacles VIVANTS (tinte sélection + étiquette + drag) et la
-    // photo satellite restent gérés ici car ils dépendent de l'état d'édition courant.
-    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles };
-    const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
-    // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
-    // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
-    applyRoofPhoto(built.deck, built.deckMat, pack.origin);
-
-    // Obstacles marqués (Change C) : volume SEMI-TRANSPARENT à la VRAIE taille
-    // (largeur E-O × longueur N-S), posé sur le toit, avec une arête visible — la
-    // photo satellite dessous (le vrai climatiseur/cheminée) transparaît, ce qui
-    // confirme que la boîte est bien posée dessus. Sélectionné → teinte or. Zone active
-    // uniquement : étiquette de taille + enregistrement pour le glissé en direct.
-    if (obstacles.length) {
-      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
-      for (const o of obstacles) {
-        const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat;
-        const oy = (o.centerLat - pack.origin[1]) * DEG2M;
-        const selected = o.id === selectedObsId;
-        const tint = selected ? 0xf3cc66 : 0xff6b6b;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
-        const mat = new THREE.MeshStandardMaterial({
-          color: tint,
-          metalness: 0.1,
-          roughness: 0.7,
-          transparent: true,
-          opacity: selected ? 0.5 : 0.42,
-          depthWrite: false, // laisse la texture du toit transparaître
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
-        mesh.renderOrder = 3;
-        const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(geo),
-          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.95 }),
-        );
-        mesh.add(edges);
-        // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
-        // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
-        const label = makeDimSprite(dimsLabel(o));
-        label.position.set(0, 0, OBSTACLE_BOX_H_M / 2 + 0.6);
-        mesh.add(label);
-        sceneRoot.add(mesh);
-        obstacleMeshes.set(o.id, mesh);
-      }
-    }
-
-    // W-MULTI : mémorise le plan de re-rendu de la zone ACTIVE pour que les AUTRES
-    // zones puissent être re-dessinées (subduées) à leur vraie position relative.
-    const aRec = activeArea();
-    if (aRec) aRec.renderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: obstacles.map((o) => ({ ...o })) };
-
-    // — Soleil d'affichage (matin clair, élévation liée à la latitude) —
-    // Bornes d'ombre = enveloppe de TOUTES les zones rendues (active + autres), pour que
-    // l'ombre ne soit pas tronquée quand plusieurs zones coexistent. `appendOtherZones`
-    // (appelée plus bas) ajoute les anneaux translatés des autres zones à cette liste.
-    const shadowRings: [number, number][][] = [built.ring];
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const otherRings = appendOtherZones(pack.origin);
-    for (const r of otherRings) shadowRings.push(r);
-    for (const r of shadowRings) for (const [x, y] of r) {
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-    const cxm = (minX + maxX) / 2;
-    const cym = (minY + maxY) / 2;
-    const span = Math.max(maxX - minX, maxY - minY, wallH) + 8;
-    // Aucun « tapis » sombre : le fond satellite réel (les vrais environs) reste
-    // visible autour du bâtiment, qui se lit comme un volume 3D posé dans son
-    // contexte, son toit texturé sur le dessus (détouré au tracé). La photo du toit
-    // (surélevée) et le sol viennent de la même imagerie source.
-    const roofZ = wallH + 0.5;
-    const latAbs = Math.abs(pack.origin[1]);
-    const dispElevDeg = Math.max(28, (90 - latAbs) * 0.62);
-    const dispAzDeg = pack.azimuthDeg - 45;
-    const azR = dispAzDeg * DEG2RAD;
-    const elR = dispElevDeg * DEG2RAD;
-    const dist = span * 2.5;
-    sun.target.position.set(cxm, cym, roofZ);
-    sun.position.set(cxm + Math.sin(azR) * Math.cos(elR) * dist, cym + Math.cos(azR) * Math.cos(elR) * dist, roofZ + Math.sin(elR) * dist);
-    const sc = sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -span;
-    sc.right = span;
-    sc.top = span;
-    sc.bottom = -span;
-    sc.near = 0.5;
-    sc.far = dist * 2;
-    sc.updateProjectionMatrix();
-
-    map.triggerRepaint();
-  }
+  // — Scène 3D Three.js (couche WebGL custom MapLibre) : voir roofPro11/scene3d.ts. Le
+  // module possède le renderer/scène/caméra/soleil + la photo de toit (W70) ; l'entrée
+  // garde la construction de la carte et le boot map.on('load') (qui ajoute customLayer).
+  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize });
+  const customLayer = scene3d.customLayer;
+  const disposeScene = scene3d.disposeScene;
+  const renderScene = scene3d.renderScene;
 
   // — Carte / tracé —
   map.on('load', () => {
@@ -2517,10 +1935,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
     pitchedYieldCache.clear();
     pitchedPvgisPerKwc = null;
     if (optimumCard) optimumCard.hidden = true;
-    roofTex?.dispose();
-    roofTex = null;
-    roofTexKey = '';
-    deckMaterial = null;
     neededPanels = 0;
     neededAuto = true;
     if (needInputEl) {
@@ -2538,7 +1952,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     redrawObstacles();
     syncObsEdit();
     disposeScene();
-    modelMatrix = null;
+    scene3d.resetTextures(); // photo de toit + matrice modèle (scene3d en est propriétaire)
     map.triggerRepaint();
     if (configPanel) configPanel.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
