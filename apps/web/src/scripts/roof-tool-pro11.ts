@@ -2944,7 +2944,11 @@ export function initRoofToolPro8(opts: InitOptions): void {
   /** Tente de saisir un obstacle sous le pointeur pour le déplacer. Renvoie true si
    *  un glissé de déplacement démarre (→ on neutralise le pan de la carte). */
   function tryBeginMove(lngLat: LngLat, point: maplibregl.Point): boolean {
-    if (!closed || obstacleMode) return false;
+    // W69 — en mode « Personnaliser la disposition », le glissé sert à déplacer un
+    // PANNEAU (handlers dédiés plus bas). On ne saisit donc PAS un obstacle ici, sinon
+    // les deux drags démarrent ensemble et relâcher déclenche un recalc qui efface la
+    // disposition personnalisée.
+    if (!closed || obstacleMode || layoutMode) return false;
     const hit = obstacleAtPoint(point);
     if (!hit) return false;
     const o = obstacles.find((x) => x.id === hit);
@@ -3253,7 +3257,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
     const prod = productionHourly();
     const maxC = consCurve.reduce((m, v) => Math.max(m, v), 0);
     const maxP = prod.reduce((m, v) => Math.max(m, v), 0);
-    const max = Math.max(maxC, maxP, 1);
+    // Même plancher d'échelle que renderConsGraph (1e-6) : sinon le glissé et le dessin
+    // des barres utilisent deux échelles différentes et la barre saisie ne suit pas le doigt.
+    const max = Math.max(maxC, maxP, 1e-6);
     return frac * max;
   }
   consGraphEl?.addEventListener('pointerdown', (e) => {
@@ -3387,7 +3393,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   // Glissé sur la 3D : raycast (déprojection) → snap à la cellule VIDE valide la plus
   // proche, commit au relâchement. Désactive le pan de la carte pendant le glissé.
-  let layoutDrag: { from: number } | null = null;
+  let layoutDrag: { from: number; startPoint: maplibregl.Point; moved: boolean } | null = null;
   function layoutPanelAt(point: maplibregl.Point): number | null {
     if (!layoutState) return null;
     const enu = screenToENU(point);
@@ -3411,7 +3417,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (!layoutMode || obstacleMode || !layoutState) return;
     const from = layoutPanelAt(e.point);
     if (from == null) return;
-    layoutDrag = { from };
+    layoutDrag = { from, startPoint: e.point, moved: false };
     layoutSel = from;
     map.dragPan.disable();
     map.getCanvas().style.cursor = 'grabbing';
@@ -3420,6 +3426,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
   });
   map.on('mousemove', (e) => {
     if (!layoutDrag || !layoutState) return;
+    // Un déplacement réel ne commence qu'au-delà d'un seuil pixel : sinon un simple
+    // clic sur un panneau le ferait sauter vers la cellule vide la plus proche.
+    if (!layoutDrag.moved && (Math.abs(e.point.x - layoutDrag.startPoint.x) >= OBSTACLE_TAP_PX || Math.abs(e.point.y - layoutDrag.startPoint.y) >= OBSTACLE_TAP_PX)) {
+      layoutDrag.moved = true;
+    }
+    if (!layoutDrag.moved) return;
     const enu = screenToENU(e.point);
     if (!enu) return;
     const target = nearestEmptyCell(layoutState, enu.x, enu.y);
@@ -3429,7 +3441,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (!layoutDrag || !layoutState) {
       return;
     }
-    const enu = screenToENU(e.point);
+    // Clic sans glissé (pas de mouvement au-delà du seuil) → on NE déplace pas le
+    // panneau : on l'a seulement sélectionné. Seul un vrai glissé le repositionne.
+    const enu = layoutDrag.moved ? screenToENU(e.point) : null;
     if (enu) {
       const res = movePanelToPoint(layoutState, layoutDrag.from, enu.x, enu.y);
       if (res.ok && res.toIndex !== layoutDrag.from) {
