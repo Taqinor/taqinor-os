@@ -306,7 +306,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `billDailyKwh + Σ onTop`, and add a "Réinitialiser la courbe" that clears `consHandEdited` and rebuilds
   baseline+appliances. Accept: removing an appliance shrinks the system; Recaler keeps onTop energy; the
   computed shape is restorable. File: `roof-tool-pro11.ts`.
-- [ ] **W84 — consumption: respect user AC/EV hours + sane battery.** AC/EV appliances are created with
+- [x] **W84 — consumption: respect user AC/EV hours + sane battery.** AC/EV appliances are created with
   hardcoded slot windows (`13–23`, `11–15`) ignoring the entered hours, so `distributeAppliance` smears
   a "3 h" load over 10 h (wrong self-consumption shape); and battery sizing, fed a single month's
   production vs a flat-average load, flips between months / returns 0. Set the slot end-hour from the
