@@ -7,6 +7,7 @@ import { type PackResult, type PanelGrid, type ConfigFamily } from '../../lib/es
 import { type Obstacle } from '../../lib/obstacles';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
+import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
 
 export interface InitOptions {
   maptilerKey: string;
@@ -68,4 +69,37 @@ export interface AreaRecord {
   neededAuto: boolean;
   result: AreaResult | null;
   renderPlan: ZoneRenderPlan | null;
+}
+
+// ═══════════ W50 — fenêtre « Production estimée » ═══════════
+/** Clé d'identité du PLAN de production (GPS/inclinaison/azimut/pose). */
+export interface ProdPlaneKey {
+  lat: number;
+  lon: number;
+  tiltDeg: number;
+  aspect: number;
+  mountingplace: 'building' | 'free';
+}
+
+/** Configuration de production du plan courant (déduite du winner de l'optimiseur). */
+export interface ProdConfig {
+  lat: number;
+  lon: number;
+  tiltDeg: number;
+  aspect: number;
+  mountingplace: 'building' | 'free';
+  panels: number;
+  target: number;
+}
+
+/** Réponse JSON de /api/roof-production (forme consommée par la fenêtre). */
+export interface ProductionApiResponse {
+  ok: boolean;
+  source: ProductionSource;
+  placedKwc?: number;
+  annualKwh: number;
+  monthlyKwh: number[];
+  dailyKwhByMonth: number[];
+  typicalDayByMonth: number[][];
+  specificDate: SpecificDateProfile | null;
 }

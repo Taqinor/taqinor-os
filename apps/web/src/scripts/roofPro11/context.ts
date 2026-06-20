@@ -9,13 +9,14 @@
  * L'interface grandit module par module ; on n'ajoute ici QUE ce qu'un module
  * extrait référence réellement.
  */
-import { type SvgBox } from '../../lib/productionWindow';
-import { type SpecificDateProfile, type ScaledProduction } from '../../lib/productionEngine';
+import { type SvgBox, type ProductionScope, type ProductionSource } from '../../lib/productionWindow';
+import { type SpecificDateProfile, type ScaledProduction, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { type LiveSolveResult } from '../../lib/estimatorBrainV7';
 import { type PitchedLiveResult } from '../../lib/estimatorBrainV8';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
+import { type LayoutState } from '../../lib/layoutVariability';
 import { type InitOptions, type RoofType, type AreaRecord } from './types';
 
 /** Références DOM partagées avec les modules extraits (sous-ensemble du DOM du
@@ -48,6 +49,8 @@ export interface Ctx {
   closed: boolean;
   /** Obstacles (zones d'exclusion) de la zone active. */
   obstacles: Obstacle[];
+  /** Centroïde lng/lat du tracé fermé. */
+  centroid: LngLat;
 
   // — Type/pente/face du toit actif (mutable) —
   roofType: RoofType;
@@ -71,16 +74,36 @@ export interface Ctx {
   activeArea: () => AreaRecord | undefined;
 
   // — État de la fenêtre de production (mutable) —
+  /** Portée de la fenêtre (année / mois / jour). */
+  prodScope: ProductionScope;
   /** Index 0–11 du mois sélectionné dans la fenêtre de production. */
   prodMonth: number;
+  /** Jour sélectionné (1-based) ou null = jour TYPE du mois. */
+  prodDay: number | null;
+  /** Jeton anti-course pour les requêtes /api/roof-production. */
+  prodToken: number;
+  /** Production PAR 1 kWc (pour rescale client) ou null. */
+  prodPerKwc: PerKwcProduction | null;
   /** Profil de la date précise (mis à l'échelle) ou null = jour TYPE du mois. */
   prodSpecificDate: SpecificDateProfile | null;
+  /** Source de la production courante (pvgis / estimate…). */
+  prodSource: ProductionSource;
   /** Production mise à l'échelle (panneaux courants) ou null. */
   prodScaled: ScaledProduction | null;
   /** Nombre de panneaux du plan de production courant. */
   prodPanels: number;
+  /** Besoin annuel (kWh) pour les économies plafonnées. */
+  prodTarget: number;
+  /** Clé d'identité du plan de production courant. */
+  prodPlaneKey: string;
   /** Latitude du centroïde du tracé (pour le dimensionnement). */
   centroidLat: number;
+
+  // — W69 « Personnaliser la disposition » (lecture pour la fenêtre de production) —
+  /** Le mode disposition personnalisée est-il actif ? */
+  layoutMode: boolean;
+  /** Lattice de disposition (occupation éditée) ou null. */
+  layoutState: LayoutState | null;
 
   // — W68 « Affiner ma consommation » (mutable) —
   /** Le panneau « Affiner » est-il ouvert ? */

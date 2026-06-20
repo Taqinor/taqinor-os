@@ -114,24 +114,9 @@ import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofIm
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { PANEL_KWC, type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
 import {
-  yearSeries,
-  monthSeries,
-  daySeries,
-  barGeometry,
-  dayCurvePath,
-  dayAreaPath,
   cycleMonth,
   cycleDay,
   daysInMonth,
-  rescaleByPanels,
-  annualSavings,
-  monthlySavings,
-  dailySavings,
-  fmtKwh,
-  fmtSavings,
-  sourceLabel as prodSourceLabel,
-  isEstimate,
-  MONTH_NAMES_FR,
   DEFAULT_GRAPH_BOX,
   type ProductionScope,
   type ProductionSource,
@@ -184,6 +169,7 @@ import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
 import { createZones } from './roofPro11/zones';
 import { createConsumption } from './roofPro11/consumption';
+import { createProdWindow } from './roofPro11/prodWindow';
 
 let booted = false;
 
@@ -440,13 +426,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // renvoyée par /api/roof-production pour pouvoir RESCALER côté client (édition du nombre
   // de panneaux) sans nouvel appel serveur. Jeton anti-course : seule la dernière requête
   // applique son résultat. Toutes les figures « estimé » si la source est le repli interne.
-  interface ProdPlaneKey {
-    lat: number;
-    lon: number;
-    tiltDeg: number;
-    aspect: number;
-    mountingplace: 'building' | 'free';
-  }
   let prodScope: ProductionScope = 'year';
   let prodMonth = 0; // index 0–11 (mois sélectionné)
   let prodDay: number | null = null; // null = jour TYPE du mois ; sinon date précise (1-based)
@@ -487,8 +466,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
     | { pack: PackResult; grid: PanelGrid; tiltDeg: number; family: ConfigFamily; flush: boolean }
     | null = null;
 
-  const prodPlaneKeyOf = (p: ProdPlaneKey): string =>
-    `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}`;
   // Plafond « panneaux nécessaires » (Change A) : dicté par la facture, PERSISTE à
   // travers les bascules d'orientation/calepinage et l'édition d'obstacles. Posés =
   // min(neededPanels, ce qui tient). `neededAuto` : tant que vrai, on le redérive de
@@ -680,6 +657,66 @@ export function initRoofToolPro8(opts: InitOptions): void {
     set consApplCounter(v) {
       consApplCounter = v;
     },
+    get centroid() {
+      return centroid;
+    },
+    set centroid(v) {
+      centroid = v;
+    },
+    get prodScope() {
+      return prodScope;
+    },
+    set prodScope(v) {
+      prodScope = v;
+    },
+    get prodDay() {
+      return prodDay;
+    },
+    set prodDay(v) {
+      prodDay = v;
+    },
+    get prodToken() {
+      return prodToken;
+    },
+    set prodToken(v) {
+      prodToken = v;
+    },
+    get prodPerKwc() {
+      return prodPerKwc;
+    },
+    set prodPerKwc(v) {
+      prodPerKwc = v;
+    },
+    get prodSource() {
+      return prodSource;
+    },
+    set prodSource(v) {
+      prodSource = v;
+    },
+    get prodTarget() {
+      return prodTarget;
+    },
+    set prodTarget(v) {
+      prodTarget = v;
+    },
+    get prodPlaneKey() {
+      return prodPlaneKey;
+    },
+    set prodPlaneKey(v) {
+      prodPlaneKey = v;
+    },
+    get layoutMode() {
+      return layoutMode;
+    },
+    set layoutMode(v) {
+      layoutMode = v;
+    },
+    get layoutState() {
+      return layoutState;
+    },
+    set layoutState(v) {
+      layoutState = v;
+    },
   };
   const graphs = createGraphs(ctx);
   const prefill = createPrefill(ctx);
@@ -727,6 +764,35 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
   );
   const renderConsumption = consumption.renderConsumption;
+  // W50 — fenêtre « Production estimée ». `renderLayoutPanel` est injectée en wrapper
+  // paresseux (fonction déclarée plus bas, hoistée mais référencée à l'exécution).
+  const prodWindow = createProdWindow(
+    ctx,
+    {
+      prodWindowEl,
+      prodScopeWrap,
+      prodMonthPickerEl,
+      prodMonthLabelEl,
+      prodDayPickerEl,
+      prodDayLabelEl,
+      prodDayResetEl,
+      prodHeadlineEl,
+      prodSubEl,
+      prodGraphEl,
+      prodSourceEl,
+      prodSavingsEl,
+    },
+    {
+      graphs,
+      renderConsumption,
+      renderLayoutPanel: () => renderLayoutPanel(),
+      snapshotActiveAreaResult,
+      renderAreasPanel,
+    },
+  );
+  const updateProductionWindow = prodWindow.updateProductionWindow;
+  const prodConfigFromState = prodWindow.prodConfigFromState;
+  const syncProductionWindow = prodWindow.syncProductionWindow;
 
   const monthlyBill = (): number => {
     const raw = parseFloat((billEl?.value || '').replace(/\s/g, '').replace(',', '.'));
@@ -1704,250 +1770,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
   }
 
-  // ═══════════ W50 — rendu de la fenêtre « Production estimée » ═══════════
-
-  /** Configuration de production du plan courant (déduite du winner de l'optimiseur). */
-  interface ProdConfig {
-    lat: number;
-    lon: number;
-    tiltDeg: number;
-    aspect: number;
-    mountingplace: 'building' | 'free';
-    panels: number;
-    target: number;
-  }
-
-  /** Rend la fenêtre de production complète (toggle, pickers, headline, graphe, économies). */
-  function renderProdWindow() {
-    if (!prodWindowEl) return;
-    const prod = prodScaled;
-    if (!prod || prodPanels <= 0) {
-      prodWindowEl.hidden = true;
-      return;
-    }
-    prodWindowEl.hidden = false;
-    const estimated = isEstimate(prodSource);
-    const approx = estimated; // « estimé » → on préfixe « ~ »
-    const tag = estimated ? ' (estimé)' : '';
-
-    // Visibilité des pickers selon le scope.
-    if (prodMonthPickerEl) prodMonthPickerEl.hidden = prodScope === 'year';
-    if (prodDayPickerEl) prodDayPickerEl.hidden = prodScope !== 'day';
-
-    // Boutons de scope : aria-pressed reflète le scope courant.
-    if (prodScopeWrap) {
-      prodScopeWrap.querySelectorAll<HTMLButtonElement>('[data-prod-scope]').forEach((b) => {
-        b.setAttribute('aria-pressed', String(b.dataset.prodScope === prodScope));
-      });
-    }
-
-    // Libellés des pickers.
-    if (prodMonthLabelEl) prodMonthLabelEl.textContent = MONTH_NAMES_FR[prodMonth];
-    if (prodDayLabelEl) {
-      prodDayLabelEl.textContent =
-        prodDay == null ? `jour type · ${MONTH_NAMES_FR[prodMonth]}` : `${prodDay} ${MONTH_NAMES_FR[prodMonth]}`;
-    }
-    if (prodDayResetEl) prodDayResetEl.hidden = prodDay == null;
-
-    let headline = '';
-    let sub = '';
-    let graph = '';
-    let savingsTxt = '';
-
-    if (prodScope === 'year') {
-      const { totalKwh } = yearSeries(prod);
-      headline = `${fmtKwh(totalKwh, approx)}/an${tag}`;
-      sub = 'Production annuelle estimée · 12 mois';
-      graph = graphs.renderYearGraph(prod);
-      const s = annualSavings(totalKwh, prodTarget);
-      savingsTxt = prodTarget > 0 ? `Économies estimées (plafonnées) : ${fmtSavings(s.low, s.high)}/an` : '';
-    } else if (prodScope === 'month') {
-      const { totalKwh } = monthSeries(prod, prodMonth);
-      headline = `${fmtKwh(totalKwh, approx)}${tag}`;
-      sub = `Production de ${MONTH_NAMES_FR[prodMonth]} · ${daysInMonth(prodMonth)} jours`;
-      graph = graphs.renderMonthGraph(prod);
-      const s = monthlySavings(totalKwh, prodTarget);
-      savingsTxt = prodTarget > 0 ? `Économies estimées (plafonnées) : ${fmtSavings(s.low, s.high)}/mois` : '';
-    } else {
-      const { totalKwh, isTypical } = daySeries(prod, prodMonth, prodSpecificDate);
-      headline = `${fmtKwh(totalKwh, approx)}${tag}`;
-      const dayTxt = prodDay == null ? `jour type de ${MONTH_NAMES_FR[prodMonth]}` : `${prodDay} ${MONTH_NAMES_FR[prodMonth]}`;
-      sub = `Courbe horaire · ${dayTxt}${isTypical ? ' (moyenne du mois)' : ''}`;
-      graph = graphs.renderDayGraph(prod);
-      const s = dailySavings(totalKwh, prodTarget);
-      savingsTxt = prodTarget > 0 ? `Économies estimées (plafonnées) : ${fmtSavings(s.low, s.high)}/jour` : '';
-    }
-
-    if (prodHeadlineEl) prodHeadlineEl.textContent = headline;
-    if (prodSubEl) prodSubEl.textContent = sub;
-    if (prodGraphEl) prodGraphEl.innerHTML = graph;
-    if (prodSourceEl) prodSourceEl.textContent = `Source : ${prodSourceLabel(prodSource)}`;
-    if (prodSavingsEl) prodSavingsEl.textContent = savingsTxt;
-    // W68 — la fenêtre « Affiner ma consommation » suit le même plan/production.
-    renderConsumption();
-  }
-
-  /**
-   * Met à jour la fenêtre de production pour le plan courant. Si le PLAN (GPS/inclinaison/
-   * azimut/pose) a changé, on interroge /api/roof-production (serveur → PVGIS, jamais le
-   * client directement). Si seul le NOMBRE de panneaux change (même plan), on RESCALE côté
-   * client (linéaire en kWc) sans appel serveur. La date précise sélectionnée est
-   * re-demandée au serveur (la silhouette inter-années ne se rescale pas en pur kWc côté
-   * client sans la série horaire — on la garde donc serveur-side, rescalée par le serveur).
-   */
-  function updateProductionWindow(cfg: ProdConfig) {
-    if (!prodWindowEl) return;
-    prodPanels = Math.max(0, Math.round(cfg.panels));
-    prodTarget = Math.max(0, cfg.target);
-    if (prodPanels <= 0) {
-      prodScaled = null;
-      prodPerKwc = null;
-      renderProdWindow();
-      return;
-    }
-    const planKey = prodPlaneKeyOf(cfg);
-    const planeChanged = planKey !== prodPlaneKey;
-    const dateChanged = prodScope === 'day' && prodDay != null;
-
-    // Plan inchangé ET pas de date à (re)charger → rescale CLIENT pur (zéro appel serveur).
-    if (!planeChanged && !dateChanged && prodPerKwc) {
-      prodScaled = rescaleByPanels(prodPerKwc, prodPanels, PANEL_KWC);
-      renderProdWindow();
-      return;
-    }
-
-    const token = ++prodToken;
-    const wantDay = prodScope === 'day' && prodDay != null;
-    const dayMonth = prodMonth + 1; // l'API attend 1-based
-    void fetch('/api/roof-production', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        lat: cfg.lat,
-        lon: cfg.lon,
-        tiltDeg: cfg.tiltDeg,
-        aspect: cfg.aspect,
-        mountingplace: cfg.mountingplace,
-        placedPanels: prodPanels,
-        ...(wantDay ? { dateMonth: dayMonth, dateDay: prodDay } : {}),
-      }),
-    })
-      .then((r) => r.json())
-      .then((data: ProductionApiResponse) => {
-        if (token !== prodToken) return; // une requête plus récente a pris la main
-        if (!data || data.ok !== true) return;
-        // On reconstitue la production PAR 1 kWc (pour rescaler ensuite côté client) en
-        // divisant la réponse mise à l'échelle par le kWc posé renvoyé.
-        const placedKwc = typeof data.placedKwc === 'number' && data.placedKwc > 0 ? data.placedKwc : prodPanels * PANEL_KWC;
-        prodPerKwc = perKwcFromResponse(data, placedKwc);
-        prodScaled = {
-          source: data.source,
-          placedKwc,
-          annualKwh: data.annualKwh,
-          monthlyKwh: data.monthlyKwh,
-          typicalDayByMonth: data.typicalDayByMonth,
-          dailyKwhByMonth: data.dailyKwhByMonth,
-        };
-        prodSource = data.source;
-        prodPlaneKey = planKey;
-        prodSpecificDate = data.specificDate ?? null;
-        renderProdWindow();
-      })
-      .catch(() => {
-        /* réseau indisponible : on garde l'affichage précédent (repli gracieux) */
-      });
-  }
-
-  /** Réponse JSON de /api/roof-production (forme consommée par la fenêtre). */
-  interface ProductionApiResponse {
-    ok: boolean;
-    source: ProductionSource;
-    placedKwc?: number;
-    annualKwh: number;
-    monthlyKwh: number[];
-    dailyKwhByMonth: number[];
-    typicalDayByMonth: number[][];
-    specificDate: SpecificDateProfile | null;
-  }
-
-  /** Reconstitue une production PAR 1 kWc à partir d'une réponse mise à l'échelle. */
-  function perKwcFromResponse(data: ProductionApiResponse, placedKwc: number): PerKwcProduction {
-    const inv = placedKwc > 0 ? 1 / placedKwc : 0;
-    return {
-      source: data.source,
-      annualKwh: data.annualKwh * inv,
-      monthlyKwh: data.monthlyKwh.map((v) => v * inv),
-      typicalDayByMonth: data.typicalDayByMonth.map((prof) => prof.map((v) => v * inv)),
-      dailyKwhByMonth: data.dailyKwhByMonth.map((v) => v * inv),
-    };
-  }
-
-  /** Déduit la config de production du winner de l'optimiseur courant (plat ou pente). */
-  function prodConfigFromState(): ProdConfig | null {
-    if (!closed || vertices.length < 3) return null;
-    if (roofType === 'pitched') {
-      const res = pitchedLiveResult;
-      if (!res || res.northFacing) return null;
-      const w = res.winner;
-      if (w.placedCount <= 0) return null;
-      return {
-        lat: centroid[1],
-        lon: centroid[0],
-        tiltDeg: res.pitchDeg,
-        aspect: res.facingAzimuthDeg - 180, // jambe sud : aspect = azimut − 180
-        mountingplace: 'building',
-        panels: w.placedCount,
-        target: res.target,
-      };
-    }
-    const res = liveResult;
-    if (!res) return null;
-    const w = res.winner;
-    if (w.placedCount <= 0) return null;
-    return {
-      lat: centroid[1],
-      lon: centroid[0],
-      tiltDeg: w.tiltDeg,
-      aspect: w.aspect,
-      mountingplace: 'free', // toit plat racké
-      panels: w.placedCount,
-      target: res.target,
-    };
-  }
-
-  /** Synchronise la fenêtre de production avec l'état courant (appelée après chaque rendu). */
-  function syncProductionWindow() {
-    if (!prodWindowEl) {
-      // Même sans la fenêtre de production, on garde l'instantané de zone + le total à jour.
-      snapshotActiveAreaResult();
-      renderAreasPanel();
-      return;
-    }
-    const cfg = prodConfigFromState();
-    if (!cfg) {
-      prodScaled = null;
-      prodPerKwc = null;
-      prodPanels = 0;
-      renderProdWindow();
-      renderLayoutPanel();
-      snapshotActiveAreaResult();
-      renderAreasPanel();
-      return;
-    }
-    // W69 — en mode disposition personnalisée, le NOMBRE posé vient de l'occupation
-    // éditée (pas de l'optimiseur) ; le plan (GPS/tilt/azimut) reste celui du gagnant.
-    if (layoutMode && layoutState) {
-      updateProductionWindow({ ...cfg, panels: occupiedCount(layoutState) });
-    } else {
-      updateProductionWindow(cfg);
-    }
-    renderLayoutPanel();
-    // « Plusieurs zones » — APRÈS chaque recompute/rendu de la zone active, on écrit son
-    // résultat courant (gagnant vivant) dans l'enregistrement de la zone active, puis on
-    // rafraîchit le total. Hook unique partagé par les optimiseurs plat ET pente.
-    snapshotActiveAreaResult();
-    renderAreasPanel();
-  }
+  // ═══════════ W50 — fenêtre « Production estimée » : voir roofPro11/prodWindow.ts ═══════════
 
   // ═══════════ « PLUSIEURS ZONES » — instantané + panneau de total : voir roofPro11/zones.ts ═══════════
 
