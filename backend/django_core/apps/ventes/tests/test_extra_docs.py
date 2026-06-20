@@ -11,6 +11,7 @@ n'IMPORTE que ses helpers visuels.
 """
 from datetime import date, timedelta
 from decimal import Decimal
+from html import escape
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -20,7 +21,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.stock.models import Produit
-from apps.ventes.models import Devis, Facture, LigneDevis, LigneFacture
+from apps.ventes.models import (
+    Devis, Facture, FollowupLevel, LigneDevis, LigneFacture)
 
 User = get_user_model()
 
@@ -153,6 +155,116 @@ class TestLettreRelancePremium(_Base):
             f'/api/django/ventes/factures/{facture.id}/'
             'lettre-relance-premium/?niveau=1')
         self.assertEqual(resp.status_code, 404)
+
+
+class TestLettreRelanceEscaladeNiveau(_Base):
+    """L13 — le CORPS de la lettre escalade selon le ``FollowupLevel.message``
+    du niveau (ton doux J+7 → ferme J+30), sans changer la mise en page premium.
+    """
+
+    def _seed_levels(self):
+        """Trois niveaux à messages distincts (doux → ferme)."""
+        FollowupLevel.objects.create(
+            company=self.company, ordre=1, nom='Rappel', delai_jours=7,
+            message='Petit rappel tres courtois pour la facture {reference}.')
+        FollowupLevel.objects.create(
+            company=self.company, ordre=2, nom='Relance', delai_jours=15,
+            message='Relance ferme : reglez la facture {reference} sans delai.')
+        FollowupLevel.objects.create(
+            company=self.company, ordre=3, nom='Mise en demeure',
+            delai_jours=30,
+            message='Mise en demeure formelle de payer la facture {reference}.')
+
+    def test_distinct_body_per_level(self):
+        """Niveau doux (1, J+7) et niveau ferme (3, J+30) produisent des corps
+        de texte DIFFERENTS, repris du message du niveau correspondant."""
+        from apps.ventes.quote_engine.extra_docs import (
+            _facture_resume, build_lettre_relance_html, render_lettre_relance_pdf)
+        self._seed_levels()
+        facture = self._facture()
+        resume = _facture_resume(facture)
+        ctx = {'entreprise_nom': 'N106 Co'}
+        client = {'nom': 'Bennani', 'prenom': 'Sara'}
+
+        soft = build_lettre_relance_html(
+            ctx, client, resume,
+            niveau=1, message='Petit rappel tres courtois pour la facture '
+                              '{reference}.')
+        firm = build_lettre_relance_html(
+            ctx, client, resume,
+            niveau=3, message='Mise en demeure formelle de payer la facture '
+                             '{reference}.')
+        # Corps distincts, chacun reprenant SON message (gabarit {reference}
+        # resolu avec la reference de la facture).
+        self.assertIn('Petit rappel tres courtois', soft)
+        self.assertNotIn('Petit rappel tres courtois', firm)
+        self.assertIn('Mise en demeure formelle de payer', firm)
+        self.assertNotIn('Mise en demeure formelle de payer', soft)
+        self.assertIn(resume['reference'], soft)
+        self.assertIn(resume['reference'], firm)
+        self.assertNotEqual(soft, firm)
+
+        # Le rendu PDF de bout en bout resout aussi le message du niveau
+        # (J+7 doux vs J+30 ferme) et produit des octets PDF non vides.
+        pdf_soft = render_lettre_relance_pdf(facture, 1)
+        pdf_firm = render_lettre_relance_pdf(facture, 3)
+        self.assertTrue(_is_pdf(pdf_soft))
+        self.assertTrue(_is_pdf(pdf_firm))
+        self.assertGreater(len(pdf_soft), 1000)
+        self.assertGreater(len(pdf_firm), 1000)
+
+    def test_default_body_when_no_level_message(self):
+        """Sans message specifique (aucun niveau configure), le corps par
+        defaut du ton est conserve — retro-compatibilite."""
+        from apps.ventes.quote_engine.extra_docs import (
+            RELANCE_TONES, _facture_resume, build_lettre_relance_html,
+            render_lettre_relance_pdf)
+        facture = self._facture()  # aucun FollowupLevel cree
+        resume = _facture_resume(facture)
+        ctx = {'entreprise_nom': 'N106 Co'}
+        client = {'nom': 'Bennani', 'prenom': 'Sara'}
+        for niveau in (1, 2, 3):
+            default_html = build_lettre_relance_html(
+                ctx, client, resume, niveau)
+            via_none = build_lettre_relance_html(
+                ctx, client, resume, niveau, message=None)
+            via_empty = build_lettre_relance_html(
+                ctx, client, resume, niveau, message='')
+            # Le corps par defaut (premier paragraphe du ton) est present.
+            first_para = RELANCE_TONES[niveau]['paras'][0]
+            self.assertIn(escape(first_para)[:40], default_html)
+            # message=None ou message='' == comportement historique.
+            self.assertEqual(default_html, via_none)
+            self.assertEqual(default_html, via_empty)
+        # Le PDF se rend toujours (octets non vides) sans niveau configure.
+        pdf = render_lettre_relance_pdf(facture, 1)
+        self.assertTrue(_is_pdf(pdf))
+        self.assertGreater(len(pdf), 1000)
+
+    def test_layout_unchanged_only_body_text_varies(self):
+        """La mise en page premium (squelette CSS/en-tete/pied) est identique
+        entre le corps par defaut et le corps issu d'un message de niveau ;
+        seul le texte des paragraphes change."""
+        from apps.ventes.quote_engine.extra_docs import (
+            _facture_resume, build_lettre_relance_html)
+        facture = self._facture()
+        resume = _facture_resume(facture)
+        ctx = {'entreprise_nom': 'N106 Co'}
+        client = {'nom': 'Bennani', 'prenom': 'Sara'}
+        default_html = build_lettre_relance_html(ctx, client, resume, 1)
+        custom_html = build_lettre_relance_html(
+            ctx, client, resume, 1, message='Un corps de niveau entierement '
+                                            'different du defaut.')
+        # Le squelette de mise en page (classes premium) est present a
+        # l'identique dans les deux variantes.
+        for marker in ('<div class="page">', 'class="hdr"', 'class="body"',
+                       'class="ftr"', 'class="callout"', 'class="title serif"',
+                       'class="sign"'):
+            self.assertIn(marker, default_html)
+            self.assertIn(marker, custom_html)
+        # Seul le texte du corps differe.
+        self.assertIn('Un corps de niveau entierement', custom_html)
+        self.assertNotIn('Un corps de niveau entierement', default_html)
 
 
 class TestFicheRemisePremium(_Base):

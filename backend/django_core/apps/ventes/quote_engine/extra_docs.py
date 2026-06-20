@@ -6,7 +6,10 @@ Deux familles de documents, tous CLIENT-FACING (jamais de prix d'achat / marge) 
 
 1. ``build_lettre_relance_html`` / ``render_lettre_relance_pdf`` — trois lettres
    de relance à ton croissant (1 courtois, 2 ferme, 3 mise en demeure) pour une
-   facture en retard.
+   facture en retard. Le CORPS s'adapte au niveau : si le ``FollowupLevel`` du
+   niveau (J+7 doux → J+30 ferme) porte un ``message``, ce texte remplace le
+   corps par défaut ; sinon le corps par défaut du ton est conservé (la mise en
+   page premium ne change jamais — seul le texte des paragraphes varie).
 2. ``build_fiche_remise_html`` / ``render_fiche_remise_pdf`` — fiche de remise /
    garantie après-vente sur UNE page pour un chantier.
 
@@ -290,13 +293,41 @@ def _facture_resume(facture):
     }
 
 
-def build_lettre_relance_html(ctx, client, resume, niveau):
-    """HTML de la lettre de relance de niveau ``niveau`` (1/2/3)."""
+def _custom_message_paras(message, resume):
+    """Découpe un message de niveau (``FollowupLevel.message``) en paragraphes.
+
+    Le message configuré par l'admin escalade le ton selon le niveau (J+7 doux →
+    J+30 ferme). On respecte ses sauts de ligne (un paragraphe par ligne non
+    vide) et on résout le gabarit ``{reference}`` avec la référence de la
+    facture. Retourne ``None`` quand aucun message spécifique n'est fourni —
+    l'appelant retombe alors sur le corps par défaut (comportement historique).
+    """
+    if not message or not str(message).strip():
+        return None
+    try:
+        text = str(message).format(reference=resume.get("reference", ""))
+    except (KeyError, IndexError, ValueError):
+        # Gabarit malformé : on imprime le message tel quel, sans planter.
+        text = str(message)
+    return [block.strip() for block in text.splitlines() if block.strip()]
+
+
+def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
+    """HTML de la lettre de relance de niveau ``niveau`` (1/2/3).
+
+    Si ``message`` (texte du ``FollowupLevel`` du niveau) est fourni et non vide,
+    son contenu remplace le CORPS par défaut — la lettre s'adapte ainsi au niveau
+    (ton doux J+7 → ferme J+30). Sinon, le corps par défaut du ton est conservé
+    (comportement historique). La MISE EN PAGE premium reste identique : seul le
+    texte des paragraphes change.
+    """
     niveau = int(niveau)
     tone = RELANCE_TONES.get(niveau, RELANCE_TONES[1])
     ref_line = (f"Facture {escape(str(resume['reference']))}<br>"
                 f"Le {escape(_fr_date(date.today()))}")
-    paras = "".join(f"<p>{escape(p)}</p>" for p in tone["paras"])
+    custom_paras = _custom_message_paras(message, resume)
+    body_paras = custom_paras if custom_paras else tone["paras"]
+    paras = "".join(f"<p>{escape(p)}</p>" for p in body_paras)
     jr = resume.get("jours_retard") or 0
     retard_txt = f"{jr} jour(s)" if jr else "échéance dépassée"
     callout = (
@@ -328,9 +359,33 @@ def build_lettre_relance_html(ctx, client, resume, niveau):
     return _shell(ctx, tone["marker"], ref_line, body, title)
 
 
-def render_lettre_relance_pdf(facture, niveau):
+def _level_message_for(facture, niveau):
+    """Texte du ``FollowupLevel`` (du niveau demandé) configuré pour la société
+    de la facture, ou ``None``. Mappe le niveau 1/2/3 sur le n-ième seuil de
+    relance trié par délai (J+7 → J+15 → J+30). Lecture seule, jamais d'erreur
+    bloquante : si aucun niveau n'est configuré on retombe sur le corps par
+    défaut (comportement historique)."""
+    try:
+        from apps.ventes.models import FollowupLevel
+        levels = list(
+            FollowupLevel.objects.filter(company=facture.company)
+            .order_by("delai_jours", "ordre"))
+    except Exception:
+        return None
+    idx = int(niveau) - 1
+    if 0 <= idx < len(levels):
+        return levels[idx].message or None
+    return None
+
+
+def render_lettre_relance_pdf(facture, niveau, message=None):
     """Octets PDF de la lettre de relance premium pour ``facture`` au niveau
-    ``niveau`` (1/2/3). Identité société résolue depuis CompanyProfile."""
+    ``niveau`` (1/2/3). Identité société résolue depuis CompanyProfile.
+
+    Le corps escalade avec le niveau via ``FollowupLevel.message`` : si un
+    ``message`` est passé explicitement il prime ; sinon on résout celui du
+    niveau pour la société. À défaut de message configuré, le corps par défaut
+    du ton est conservé (comportement historique)."""
     from apps.ventes.utils.pdf import _company_context
     ctx = _company_context(company=facture.company)
     client = facture.client
@@ -342,7 +397,9 @@ def render_lettre_relance_pdf(facture, niveau):
         "adresse": getattr(client, "adresse", "") or "",
     }
     resume = _facture_resume(facture)
-    html = build_lettre_relance_html(ctx, client_block, resume, niveau)
+    if message is None:
+        message = _level_message_for(facture, niveau)
+    html = build_lettre_relance_html(ctx, client_block, resume, niveau, message)
     return _render_pdf(html)
 
 
