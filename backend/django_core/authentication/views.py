@@ -8,12 +8,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from .models import CustomUser, Company
+from .models import CustomUser, Company, UserSession
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
     CompanySerializer,
     CustomTokenObtainPairSerializer,
+    UserSessionSerializer,
 )
 from .throttles import LoginRateThrottle, RegisterRateThrottle
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
@@ -78,6 +79,63 @@ def _clear_auth_cookies(response):
     response.delete_cookie('refresh_token', path='/')
 
 
+def _client_ip(request):
+    """Adresse IP du client (premier saut X-Forwarded-For, sinon REMOTE_ADDR)."""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
+
+def _refresh_jti(refresh_raw):
+    """Extrait le claim ``jti`` d'un jeton de rafraîchissement brut (ou None)."""
+    if not refresh_raw:
+        return None
+    try:
+        return RefreshToken(refresh_raw).get('jti')
+    except TokenError:
+        return None
+
+
+def _record_session(user, refresh_raw, request):
+    """Crée (best-effort) une ligne ``UserSession`` pour une connexion réussie.
+
+    Tracée par le ``jti`` du jeton de rafraîchissement, scopée à l'utilisateur et
+    à sa société (jamais depuis le corps de la requête). N'échoue jamais la
+    connexion : toute erreur est avalée."""
+    try:
+        jti = _refresh_jti(refresh_raw)
+        if not jti or user is None:
+            return
+        UserSession.objects.create(
+            user=user,
+            company=getattr(user, 'company', None),
+            jti=jti,
+            user_agent=(request.META.get('HTTP_USER_AGENT', '') or '')[:400],
+            ip_address=_client_ip(request),
+        )
+    except Exception:
+        pass
+
+
+def _blacklist_refresh_jti(jti):
+    """Blackliste le jeton de rafraîchissement portant ``jti`` (best-effort).
+
+    S'appuie sur l'app ``token_blacklist`` (présente dans INSTALLED_APPS) : on
+    retrouve l'``OutstandingToken`` émis pour ce jti et on crée son entrée
+    blacklistée. Sans correspondance (jeton jamais sorti via la voie standard),
+    la révocation repose alors uniquement sur la suppression de la session."""
+    try:
+        from rest_framework_simplejwt.token_blacklist.models import (
+            OutstandingToken, BlacklistedToken,
+        )
+        outstanding = OutstandingToken.objects.filter(jti=jti).first()
+        if outstanding is not None:
+            BlacklistedToken.objects.get_or_create(token=outstanding)
+    except Exception:
+        pass
+
+
 # ── Login ──────────────────────────────────────────────────────
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -108,17 +166,17 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             access = response.data.pop('access', None)
             refresh = response.data.pop('refresh', None)
             _set_auth_cookies(response, access, refresh)
+            # ERR92 — sur un login RÉUSSI, résoudre l'objet utilisateur depuis
+            # le username (insensible à la casse), source d'autorité.
+            raw_uname = (request.data.get('username') or '').strip()
+            u = CustomUser.objects.filter(username__iexact=raw_uname).first()
+            # Sessions actives (N96) — tracer cette connexion par le jti du
+            # jeton de rafraîchissement. Best-effort, ne bloque jamais le login.
+            _record_session(u, refresh, request)
             # Journal d'activité (Feature G) — connexion réussie. Best-effort.
             try:
                 from apps.audit.recorder import record
                 from apps.audit.models import AuditLog
-                # ERR92 — sur un login RÉUSSI, normaliser actor_username depuis
-                # l'objet utilisateur résolu (autorité), jamais depuis la chaîne
-                # request.data['username'] brute (qui peut différer en casse ou
-                # être truquée). On résout par username insensible à la casse.
-                raw_uname = (request.data.get('username') or '').strip()
-                u = CustomUser.objects.filter(
-                    username__iexact=raw_uname).first()
                 actor = u.username if u is not None else raw_uname
                 record(AuditLog.Action.LOGIN, user=u, actor_username=actor,
                        company=getattr(u, 'company', None), detail='Connexion')
@@ -602,3 +660,101 @@ class TwoFactorStatusView(APIView):
             'enabled': bool(user.totp_enabled),
             'recovery_codes_remaining': len(user.totp_recovery_codes or []),
         })
+
+
+# ── Sessions actives & révocation (N96) ────────────────────────────────────
+class SessionListView(generics.ListAPIView):
+    """GET — liste les sessions actives (non révoquées) de l'utilisateur
+    connecté, scopées à sa société. La session courante (déduite du cookie
+    refresh) est marquée ``is_current`` pour l'affichage « cet appareil »."""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSessionSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = UserSession.objects.filter(user=user, revoked=False)
+        # Garde multi-tenant : ne jamais sortir de la société de l'utilisateur.
+        if user.company_id:
+            qs = qs.filter(company=user.company)
+        return qs
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['current_jti'] = _refresh_jti(
+            self.request.COOKIES.get('refresh_token'))
+        return ctx
+
+
+class SessionRevokeView(APIView):
+    """POST /auth/sessions/<pk>/revoke/ — révoque une session de l'utilisateur
+    connecté : marque la ligne ``revoked`` ET blackliste son jeton de
+    rafraîchissement pour qu'il ne puisse plus rafraîchir d'accès."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        session = UserSession.objects.filter(
+            pk=pk, user=user, revoked=False).first()
+        # Scope multi-tenant supplémentaire.
+        if session is not None and user.company_id \
+                and session.company_id != user.company_id:
+            session = None
+        if session is None:
+            return Response(
+                {'detail': 'Session introuvable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        _blacklist_refresh_jti(session.jti)
+        session.revoked = True
+        session.save(update_fields=['revoked'])
+        # Si l'utilisateur révoque SA session courante, on efface ses cookies
+        # pour le déconnecter immédiatement de cet appareil.
+        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
+        response = Response({'detail': 'Session révoquée.'})
+        if current_jti and current_jti == session.jti:
+            _clear_auth_cookies(response)
+        return response
+
+
+# ── Changement / rotation du mot de passe (N96) ────────────────────────────
+class ChangePasswordView(APIView):
+    """POST — change le mot de passe de l'utilisateur connecté.
+
+    Corps : ``{"current_password": "...", "new_password": "..."}``. Vérifie le
+    mot de passe courant, applique les validateurs Django, pose le nouveau,
+    horodate ``password_changed_at`` et efface le drapeau de rotation forcée
+    ``must_change_password``. Sert aussi bien au changement volontaire qu'au
+    flux de rotation forcée déclenché par un administrateur."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjValidationError
+        from django.utils import timezone
+        user = request.user
+        current = request.data.get('current_password', '')
+        new = request.data.get('new_password', '')
+        if not user.check_password(current):
+            return Response(
+                {'detail': 'Mot de passe actuel incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not new:
+            return Response(
+                {'detail': 'Le nouveau mot de passe est requis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_password(new, user=user)
+        except DjValidationError as exc:
+            return Response(
+                {'detail': ' '.join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.set_password(new)
+        user.must_change_password = False
+        user.password_changed_at = timezone.now()
+        user.save(update_fields=[
+            'password', 'must_change_password', 'password_changed_at'])
+        return Response({'detail': 'Mot de passe mis à jour.'})

@@ -112,8 +112,8 @@ class DevisSerializer(serializers.ModelSerializer):
     chantier = serializers.SerializerMethodField()
 
     def get_chantier(self, obj):
-        from apps.installations.models import Installation
-        inst = Installation.objects.filter(devis=obj).first()
+        from apps.installations.selectors import installation_for_devis
+        inst = installation_for_devis(obj)
         if inst is None:
             return None
         return {'id': inst.id, 'reference': inst.reference,

@@ -1,0 +1,93 @@
+"""Sélecteurs LECTURE SEULE du domaine Installations exposés aux AUTRES apps.
+
+Point d'entrée cross-app : les autres apps lisent les chantiers / interventions /
+réservations de stock à travers ces fonctions plutôt qu'en important
+`apps.installations.models` directement (voir CLAUDE.md, règle de modularité).
+Comportement strictement identique aux requêtes inline d'origine.
+"""
+from django.db.models import Sum
+
+
+def installation_for_devis(devis):
+    """Le chantier lié à un devis (ou None). Lecture seule."""
+    from .models import Installation
+    return Installation.objects.filter(devis=devis).first()
+
+
+def installation_summaries_for_devis(devis_qs):
+    """Map {devis_id: {id, reference, statut}} des chantiers liés à un lot de
+    devis — une seule requête (évite un N+1 sur la fiche lead)."""
+    from .models import Installation
+    return {
+        i.devis_id: {'id': i.id, 'reference': i.reference, 'statut': i.statut}
+        for i in Installation.objects.filter(devis__in=devis_qs)
+    }
+
+
+def installation_scoped(company, pk):
+    """Chantier (Installation) scopé société, par id, avec client préchargé."""
+    from .models import Installation
+    return (Installation.objects
+            .filter(company=company, id=pk)
+            .select_related('client')
+            .first())
+
+
+def installation_qs_for_remise():
+    """Queryset Installation prêt pour la fiche de remise (relations préchargées).
+    L'appelant applique son propre scope société puis filtre par pk."""
+    from .models import Installation
+    return (Installation.objects
+            .select_related('client', 'devis', 'company',
+                            'technicien_responsable')
+            .prefetch_related('devis__lignes__produit'))
+
+
+def intervention_scoped(company, pk):
+    """Intervention scopée société, par id, avec chantier + client préchargés."""
+    from .models import Intervention
+    return (Intervention.objects
+            .filter(company=company, id=pk)
+            .select_related('installation', 'installation__client')
+            .first())
+
+
+def reserved_quantity_for_produit(produit):
+    """Quantité d'un produit ENGAGÉE par des réservations de chantier actives et
+    non encore consommées (0 si aucune). Lecture seule."""
+    agg = (_active_reservations()
+           .filter(produit=produit)
+           .aggregate(total=Sum('quantite')))
+    return agg['total'] or 0
+
+
+def reserved_quantities_for_company(company):
+    """Map {produit_id: quantité réservée active} pour toute la société — un seul
+    agrégat (évite un N+1 sur la liste produits). Lecture seule."""
+    rows = (_active_reservations()
+            .filter(company=company)
+            .values('produit_id')
+            .annotate(total=Sum('quantite')))
+    return {r['produit_id']: (r['total'] or 0) for r in rows}
+
+
+def own_reservation_map(installation):
+    """Map {produit_id: quantité} des réservations actives non consommées propres
+    à CE chantier (pour ne pas les décompter de son propre disponible)."""
+    rows = (_active_reservations()
+            .filter(installation=installation)
+            .values_list('produit_id', 'quantite'))
+    return {pid: qte for pid, qte in rows}
+
+
+def update_installation_lead(absorbed_lead, survivor_lead):
+    """Réassigne les chantiers liés au lead absorbé vers le lead survivant (fusion
+    de leads). Renvoie le nombre de chantiers réassignés."""
+    from .models import Installation
+    return Installation.objects.filter(lead=absorbed_lead).update(
+        lead=survivor_lead)
+
+
+def _active_reservations():
+    from .models import StockReservation
+    return StockReservation.objects.filter(active=True, consomme=False)

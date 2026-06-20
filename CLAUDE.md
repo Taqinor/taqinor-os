@@ -74,6 +74,29 @@ repo yet, the rule still applies to any future integration.
   models need a `company` FK; new viewsets must filter querysets by
   `request.user.company` and force-assign `company` in `perform_create` —
   never accept it from the request body.
+- **Cross-app boundary — go through `services.py`/`selectors.py`, never another
+  app's `models`/`views`.** Between business-core domain apps
+  (`apps/{crm,ventes,stock,installations,sav}`), all cross-app READS and WRITES
+  route through the TARGET app's `selectors.py` (reads) or `services.py`
+  (writes/orchestration) — or through string-FK references — never by importing
+  its `models`/`views` directly. Add a thin function to the target app's
+  selector/service and call it (keep lazy/function-local imports where they avoid
+  cycles). Same-app imports and imports of foundation apps (roles, records,
+  authentication, core, customfields, parametres, reporting, etc.) are exempt.
+- **Import contracts are CI-enforced (M3).** `backend/django_core/.importlinter`
+  pins the decoupling already achieved and the `lint-imports` step (in the
+  `backend-lint` CI job) fails on a regression: the five core domain *models*
+  must stay mutually decoupled (string FKs only — the M1 win), and the `core`
+  app must stay a base foundation layer (it never imports a domain-core or
+  satellite app). A full no-cycles/strict-layers contract is deferred until the
+  deeper service-layer decoupling lands.
+- **Domain-event layer for cross-app reactions (M6).** `core/events.py` holds a
+  small Django-signal event bus (foundation, depends on nothing). Apps react to
+  another app's state change by subscribing in their `apps.py` `ready()` rather
+  than being called directly — e.g. `ventes` emits `devis_accepted` on quote
+  acceptance and `crm` subscribes (`apps/crm/receivers.py`) to advance the lead
+  stage. Signals fire synchronously, so behaviour is identical to the old direct
+  call.
 - Run tests: `python manage.py test apps` (inside the django_core container or
   with env vars pointing at a local Postgres).
 - Full stack: `docker compose up` (nginx :80, Postgres+pgvector, Redis, MinIO,

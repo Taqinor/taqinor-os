@@ -289,7 +289,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         appuie lui-même sur Envoyer). Chaque {lien} est un lien public tokenisé
         (30 j) vers le PDF CLIENT — jamais de prix d'achat ni de marge.
         """
-        from apps.ventes.models import Devis
+        from apps.ventes.selectors import devis_for_lead
         from apps.ventes.utils.phone import normalize_ma_phone
         from apps.ventes.utils.whatsapp import (
             build_devis_whatsapp, build_wa_url,
@@ -312,9 +312,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Devis du lead, dans la société courante uniquement.
-        devis_list = list(
-            Devis.objects.filter(id__in=ids, lead=lead, company=lead.company)
-            .order_by('id'))
+        devis_list = devis_for_lead(lead, ids)
         if len(devis_list) != len(set(ids)):
             return Response(
                 {'detail': 'Un devis sélectionné est introuvable pour ce lead.'},
