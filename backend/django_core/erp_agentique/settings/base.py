@@ -292,3 +292,17 @@ USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 SECURE_BROWSER_XSS_FILTER = True
+
+# ─────────────────────────────────────────────────────────────────────────────
+# N92 — Web push (PWA). Clés VAPID lues depuis l'environnement. Par défaut VIDES
+# → le push est un NO-OP TOTAL : `notify()` n'envoie aucune notification push et
+# l'endpoint de clé publique renvoie une chaîne vide. Pour activer, générer une
+# paire VAPID (ex. `vapid --gen` / web-push) et renseigner ces variables :
+#   VAPID_PUBLIC_KEY   — clé publique (base64url), exposée au navigateur ;
+#   VAPID_PRIVATE_KEY  — clé privée (base64url), serveur uniquement ;
+#   VAPID_ADMIN_EMAIL  — contact mailto: requis par la spec Web Push (claim VAPID).
+# Tant que la clé privée est vide, AUCUN envoi push n'a lieu (comportement actuel
+# préservé). Aucune dépendance n'est chargée tant que rien n'est configuré.
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')

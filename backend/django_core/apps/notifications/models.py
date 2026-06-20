@@ -29,6 +29,7 @@ class EventType(models.TextChoices):
     STOCK_LOW = 'stock_low', 'Stock bas'
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
+    DIGEST = 'digest', 'Récapitulatif'
 
 
 class Channel(models.TextChoices):
@@ -106,3 +107,45 @@ class NotificationPreference(models.Model):
 
     def __str__(self):
         return f'{self.user_id} / {self.event_type}'
+
+
+class PushSubscription(models.Model):
+    """N92 — Abonnement Web Push d'un APPAREIL pour un utilisateur d'une société.
+
+    Opt-in par appareil : le navigateur fournit un `endpoint` unique + les clés
+    de chiffrement (`p256dh`, `auth`). MULTI-TENANT : `company` et `user` sont
+    posés CÔTÉ SERVEUR (jamais lus du corps de requête). Un même utilisateur peut
+    avoir plusieurs abonnements (un par appareil/navigateur). ADDITIF : aucun
+    abonnement = comportement actuel (aucun push). Quand les clés VAPID sont
+    absentes, ces lignes restent inertes (le moteur ne les utilise pas)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='push_subscriptions')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='push_subscriptions')
+    # Endpoint unique fourni par le PushManager du navigateur (identifie l'appareil).
+    endpoint = models.URLField(max_length=1000, unique=True)
+    # Clés de chiffrement de l'abonnement (base64url) — requises par Web Push.
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Abonnement push'
+        verbose_name_plural = 'Abonnements push'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'user']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} @ {self.endpoint[:40]}'
+
+    def as_subscription_info(self):
+        """Format `subscription_info` attendu par pywebpush."""
+        return {
+            'endpoint': self.endpoint,
+            'keys': {'p256dh': self.p256dh, 'auth': self.auth},
+        }

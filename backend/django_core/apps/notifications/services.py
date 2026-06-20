@@ -109,6 +109,80 @@ def _dispatch_whatsapp(user, title, body):
     return bool(url)
 
 
+def _is_webpush_configured():
+    """True si une paire VAPID est réellement configurée (clé privée présente).
+
+    Sans clé privée, le push est un NO-OP total — aucune dépendance n'est même
+    chargée. C'est l'interrupteur qui préserve le comportement actuel."""
+    try:
+        from django.conf import settings
+        return bool(
+            getattr(settings, 'VAPID_PRIVATE_KEY', '')
+            and getattr(settings, 'VAPID_PUBLIC_KEY', ''))
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def _dispatch_webpush(user, title, body, link=None):
+    """Best-effort : envoie un Web Push à TOUS les appareils de l'utilisateur.
+
+    NO-OP silencieux si les clés VAPID sont absentes OU si l'utilisateur n'a
+    aucun abonnement. Erreurs avalées+journalisées ; un abonnement expiré
+    (HTTP 404/410) est SUPPRIMÉ. Renvoie le nombre d'envois réussis."""
+    if not _is_webpush_configured():
+        return 0
+    try:
+        from .models import PushSubscription
+        subs = list(PushSubscription.objects.filter(user=user))
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Chargement des abonnements push échoué : %s', exc)
+        return 0
+    if not subs:
+        return 0
+
+    try:
+        import json
+
+        from django.conf import settings
+        from pywebpush import WebPushException, webpush
+    except Exception as exc:  # pragma: no cover - lib absente / non installée
+        logger.warning('pywebpush indisponible, push ignoré : %s', exc)
+        return 0
+
+    payload = json.dumps({
+        'title': str(title), 'body': str(body or ''),
+        'link': str(link or ''),
+    })
+    admin_email = getattr(settings, 'VAPID_ADMIN_EMAIL', '') or 'admin@erp.local'
+    claims = {'sub': f'mailto:{admin_email}'}
+    private_key = getattr(settings, 'VAPID_PRIVATE_KEY', '')
+
+    sent = 0
+    for sub in subs:
+        try:
+            webpush(
+                subscription_info=sub.as_subscription_info(),
+                data=payload,
+                vapid_private_key=private_key,
+                vapid_claims=dict(claims),
+            )
+            sent += 1
+        except WebPushException as exc:  # pragma: no cover - dépend du réseau
+            # Abonnement périmé / désinscrit côté navigateur → on le retire.
+            resp = getattr(exc, 'response', None)
+            code = getattr(resp, 'status_code', None)
+            if code in (404, 410):
+                try:
+                    sub.delete()
+                except Exception:  # pragma: no cover - défensif
+                    pass
+            else:
+                logger.warning('Web push échoué (sub %s) : %s', sub.pk, exc)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Web push échoué (sub %s) : %s', sub.pk, exc)
+    return sent
+
+
 def notify(user, event_type, title, body='', link=None, company=None):
     """Émet une notification pour `user` en respectant ses préférences.
 
@@ -151,6 +225,14 @@ def notify(user, event_type, title, body='', link=None, company=None):
             _dispatch_whatsapp(user, str(title), str(body or ''))
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
+
+    # Web push (N92) : best-effort, opt-in par APPAREIL (pas un toggle
+    # d'événement). NO-OP total sans clés VAPID ni abonnement — donc aucun
+    # changement de comportement tant que rien n'est configuré.
+    try:
+        _dispatch_webpush(user, str(title), str(body or ''), link=link)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Dispatch web push notification échoué : %s', exc)
 
     return created
 

@@ -40,3 +40,6 @@ httpx==0.28.1
 
 # Server
 gunicorn==22.0.0
+
+# Web push (PWA) — N92. NO-OP tant que les clés VAPID ne sont pas configurées.
+pywebpush==2.0.0
