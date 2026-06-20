@@ -204,6 +204,51 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     ballastGeoCache = null;
   }
 
+  // W89 — récupération de perte de contexte WebGL. Sur mobile (mise en arrière-plan /
+  // retour au premier plan), le GPU peut PERDRE le contexte WebGL : sans gestionnaire,
+  // la 3D reste DÉFINITIVEMENT blanche. On écoute `webglcontextlost` (preventDefault →
+  // autorise la restauration) et `webglcontextrestored` (reconstruit le WebGLRenderer
+  // sur le contexte frais + re-rend). `glLost` met `render` en no-op tant que le contexte
+  // est perdu (rien à dessiner sans GPU).
+  let glLost = false;
+  let glCanvas: HTMLCanvasElement | null = null;
+
+  /** (Re)construit le WebGLRenderer Three.js sur le contexte GL fourni + (re)configure
+   *  ses options de rendu. Extrait de onAdd pour être réutilisable à la restauration. */
+  function buildRenderer(gl: WebGLRenderingContext | WebGL2RenderingContext) {
+    renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: !lowEnd });
+    renderer.autoClear = false;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+  }
+
+  function onContextLost(e: Event) {
+    // preventDefault impératif : sans cela le navigateur n'émettra JAMAIS
+    // `webglcontextrestored` et la 3D resterait perdue à jamais.
+    e.preventDefault();
+    glLost = true;
+    renderer?.dispose();
+    renderer = null;
+  }
+
+  function onContextRestored() {
+    if (!glCanvas) return;
+    // Récupère le contexte frais du canvas MapLibre (même attributs) et reconstruit le
+    // renderer ; la scène (meshes/lumières/soleil) survit en mémoire JS → un simple
+    // re-rendu via triggerRepaint la repeint avec le GPU restauré.
+    const gl = (glCanvas.getContext('webgl2') || glCanvas.getContext('webgl')) as
+      | WebGLRenderingContext
+      | WebGL2RenderingContext
+      | null;
+    if (!gl) return;
+    buildRenderer(gl);
+    glLost = false;
+    map.triggerRepaint();
+  }
+
   const customLayer = {
     id: 'rp9-3d',
     type: 'custom' as const,
@@ -222,16 +267,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       sun.shadow.normalBias = 0.03;
       scene.add(sun);
       scene.add(sun.target);
-      renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: !lowEnd });
-      renderer.autoClear = false;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.05;
+      buildRenderer(gl);
+      // W89 — branche les gestionnaires de perte/restauration de contexte sur le canvas
+      // MapLibre (un seul et même canvas WebGL partagé). preventDefault à la perte, rebuild
+      // à la restauration.
+      glCanvas = map.getCanvas();
+      glCanvas.addEventListener('webglcontextlost', onContextLost as EventListener, false);
+      glCanvas.addEventListener('webglcontextrestored', onContextRestored as EventListener, false);
     },
     render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: maplibregl.CustomRenderMethodInput) {
-      if (!renderer || !scene || !threeCamera || !modelMatrix) return;
+      if (glLost || !renderer || !scene || !threeCamera || !modelMatrix) return;
       const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix));
       threeCamera.projectionMatrix = m.multiply(modelMatrix);
       renderer.resetState();
@@ -249,6 +294,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       roofTex = null;
       renderer?.dispose();
       renderer = null;
+      // W89 — détache les gestionnaires de perte/restauration de contexte (pas de fuite
+      // d'écouteur sur le canvas après le démontage de la couche).
+      if (glCanvas) {
+        glCanvas.removeEventListener('webglcontextlost', onContextLost as EventListener, false);
+        glCanvas.removeEventListener('webglcontextrestored', onContextRestored as EventListener, false);
+        glCanvas = null;
+      }
     },
   };
 

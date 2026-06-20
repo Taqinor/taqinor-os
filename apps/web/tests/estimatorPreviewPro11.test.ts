@@ -266,6 +266,32 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
   });
 });
 
+describe('pro-11 — W89 : récupération de perte de contexte WebGL', () => {
+  const scene = read('../src/scripts/roofPro11/scene3d.ts');
+
+  it('onAdd branche webglcontextlost (preventDefault) + webglcontextrestored sur le canvas', () => {
+    expect(scene).toContain("addEventListener('webglcontextlost'");
+    expect(scene).toContain("addEventListener('webglcontextrestored'");
+    // le gestionnaire de perte preventDefault (sinon pas de restauration possible).
+    expect(scene).toMatch(/function onContextLost[\s\S]{0,200}e\.preventDefault\(\)/);
+  });
+
+  it('la restauration reconstruit le renderer (buildRenderer) et re-rend (triggerRepaint)', () => {
+    expect(scene).toContain('function buildRenderer(');
+    // onContextRestored reconstruit le renderer sur le contexte frais puis re-rend.
+    const restored = scene.slice(scene.indexOf('function onContextRestored'));
+    expect(restored).toContain('buildRenderer(gl)');
+    expect(restored).toContain('map.triggerRepaint()');
+  });
+
+  it('render est un no-op tant que le contexte est perdu (glLost) et onRemove détache les écouteurs', () => {
+    expect(scene).toContain('let glLost = false');
+    expect(scene).toMatch(/render\([\s\S]{0,120}if \(glLost/);
+    expect(scene).toContain("removeEventListener('webglcontextlost'");
+    expect(scene).toContain("removeEventListener('webglcontextrestored'");
+  });
+});
+
 describe('pro-11 — W87 : soleil RÉEL + preuve d\'ombrage inter-rangées + contrôle heure/saison', () => {
   const scene = read('../src/scripts/roofPro11/scene3d.ts');
   const page = read('../src/pages/preview/toiture-3d-pro-11.astro');

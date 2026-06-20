@@ -342,7 +342,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   to highlight a panel on hover and toggle/remove it directly in the 3D view (desktop click + touch
   long-press), reusing the existing `layoutState`/`occupiedSet`. Accept: clicking a panel in 3D selects/
   removes it and the readouts recompute. File: `roof-tool-pro11.ts`.
-- [ ] **W89 — 3D: WebGL context-loss recovery.** No `webglcontextlost`/`webglcontextrestored` handler, so
+- [x] **W89 — 3D: WebGL context-loss recovery.** No `webglcontextlost`/`webglcontextrestored` handler, so
   a GPU context loss (mobile background/foreground) blanks the 3D permanently. Add handlers that
   `preventDefault` the loss and rebuild the scene on restore. Accept: backgrounding/restoring the tab
   recovers the 3D. File: `roof-tool-pro11.ts`.
