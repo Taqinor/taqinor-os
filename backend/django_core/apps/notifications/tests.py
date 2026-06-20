@@ -296,3 +296,90 @@ class DigestTaskTests(TestCase):
         self.assertEqual(
             Notification.objects.filter(company=empty).count(), 0)
         self.assertIsInstance(emitted, int)
+
+
+class WebPushTests(TestCase):
+    """N92 — Web push (PWA) : abonnement par appareil + no-op sans clés VAPID."""
+
+    def setUp(self):
+        from .models import PushSubscription  # noqa: F401 - import vérifie le modèle
+        self.company = _make_company('PushCo')
+        self.user = _make_user(self.company, username='pushuser')
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_subscribe_stores_company_scoped_subscription(self):
+        from .models import PushSubscription
+        res = self.client.post(
+            '/api/django/notifications/push/subscribe/',
+            {'endpoint': 'https://push.example/abc',
+             'keys': {'p256dh': 'KEYp256', 'auth': 'KEYauth'}},
+            format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        sub = PushSubscription.objects.get(endpoint='https://push.example/abc')
+        # company + user posés CÔTÉ SERVEUR (jamais lus du corps).
+        self.assertEqual(sub.company, self.company)
+        self.assertEqual(sub.user, self.user)
+        self.assertEqual(sub.p256dh, 'KEYp256')
+        self.assertEqual(sub.auth, 'KEYauth')
+
+    def test_subscribe_is_idempotent_by_endpoint(self):
+        from .models import PushSubscription
+        body = {'endpoint': 'https://push.example/dup',
+                'keys': {'p256dh': 'A', 'auth': 'B'}}
+        self.client.post(
+            '/api/django/notifications/push/subscribe/', body, format='json')
+        body['keys'] = {'p256dh': 'A2', 'auth': 'B2'}
+        self.client.post(
+            '/api/django/notifications/push/subscribe/', body, format='json')
+        subs = PushSubscription.objects.filter(endpoint='https://push.example/dup')
+        self.assertEqual(subs.count(), 1)
+        self.assertEqual(subs.first().p256dh, 'A2')
+
+    def test_subscribe_rejects_incomplete(self):
+        res = self.client.post(
+            '/api/django/notifications/push/subscribe/',
+            {'endpoint': 'https://push.example/x'}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_unsubscribe_only_own_subscription(self):
+        from .models import PushSubscription
+        other = _make_user(self.company, username='other')
+        PushSubscription.objects.create(
+            company=self.company, user=other,
+            endpoint='https://push.example/other', p256dh='p', auth='a')
+        res = self.client.post(
+            '/api/django/notifications/push/unsubscribe/',
+            {'endpoint': 'https://push.example/other'}, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['deleted'], 0)  # pas le mien → rien supprimé
+        self.assertTrue(PushSubscription.objects.filter(
+            endpoint='https://push.example/other').exists())
+
+    @override_settings(VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='')
+    def test_vapid_public_key_empty_when_unconfigured(self):
+        res = self.client.get(
+            '/api/django/notifications/push/vapid-public-key/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['public_key'], '')
+
+    @override_settings(VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='')
+    def test_notify_no_vapid_keys_does_not_error(self):
+        from .models import PushSubscription
+        # Même avec un abonnement présent, sans clés VAPID le push est un NO-OP
+        # total : notify() ne lève jamais et l'in-app est créée normalement.
+        PushSubscription.objects.create(
+            company=self.company, user=self.user,
+            endpoint='https://push.example/me', p256dh='p', auth='a')
+        n = notify(self.user, EventType.LEAD_ASSIGNED, 'Test push')
+        self.assertIsNotNone(n)
+        self.assertEqual(Notification.objects.count(), 1)
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='pub', VAPID_PRIVATE_KEY='priv',
+        VAPID_ADMIN_EMAIL='admin@x.com')
+    def test_dispatch_webpush_noop_without_subscriptions(self):
+        # Clés présentes mais aucun abonnement → 0 envoi, aucune erreur.
+        from .services import _dispatch_webpush
+        self.assertEqual(
+            _dispatch_webpush(self.user, 'Titre', 'Corps'), 0)
