@@ -138,7 +138,9 @@ def clean_pdf_options(raw) -> dict:
         opts['payment_mode'] = raw['payment_mode']
     try:
         acompte = raw.get('custom_acompte')
-        opts['custom_acompte'] = float(acompte) if acompte not in (None, '') else None
+        # ERR76 — never forward a negative acompte; the engine additionally
+        # clamps it to the order total.
+        opts['custom_acompte'] = max(0.0, float(acompte)) if acompte not in (None, '') else None
     except (TypeError, ValueError):
         opts['custom_acompte'] = None
     return opts

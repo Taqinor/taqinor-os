@@ -152,7 +152,10 @@ def generate_devis_pdf(devis_id):
     html = _render_html('devis.html', context)
     pdf_bytes = _html_to_pdf(html)
 
-    key = f'devis/{devis.reference}.pdf'
+    # ERR75 — company-scope the legacy fallback key so two tenants sharing a
+    # reference (per-company/month numbering) can never collide on the same
+    # MinIO object. Mirrors the premium path (builder._pdf_key).
+    key = f'devis/{devis.company_id}/{devis.reference}.pdf'
     _upload_pdf(pdf_bytes, key)
 
     devis.fichier_pdf = key

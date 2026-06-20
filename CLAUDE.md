@@ -41,6 +41,10 @@ repo yet, the rule still applies to any future integration.
    downstream BonCommande/Facture chains are preserved 1:1 — a separate,
    permanent layer from the `STAGES.py` funnel (rule #2). See
    `docs/quote-engine-swap-map.md`.
+   EDIT-BAN LIFTED (2026-06-20, founder): the premium engine
+   (`generate_devis_premium.py`) may now be edited for fixes — the former
+   "never edit the premium pages" prohibition is removed. `/proposal` stays the
+   only client-facing quote-PDF path and STATUS PRESERVATION above still holds.
 
 5. **Scraper policy.** Scrapers must never run from personal accounts. Any
    scraping with Terms-of-Service risk requires BOTH: (a) a risk file committed
@@ -108,8 +112,8 @@ repo yet, the rule still applies to any future integration.
   aligned with `quote_engine/builder.py` (réseau/injection, hybride,
   batterie, panneau) — the PDF option split depends on line designations.
 - **Quote PDFs.** One vendored engine
-  (`apps/ventes/quote_engine/generate_devis_premium.py`, never edit the
-  premium pages) renders all formats, selected via the list's PDF dialog →
+  (`apps/ventes/quote_engine/generate_devis_premium.py`) renders all formats,
+  selected via the list's PDF dialog →
   `generer-pdf` body / `/proposal` query params (whitelist in
   `clean_pdf_options`): premium 'full' = 3 pages, +`include_etude` = 4 pages
   (degrades to 3 without étude data), 'onepage' = 1 page (adaptive density:
