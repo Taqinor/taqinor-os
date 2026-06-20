@@ -11,13 +11,27 @@ export function getLocaleFromPath(pathname: string): Locale {
   return seg && isLocale(seg) ? seg : DEFAULT_LOCALE;
 }
 
-/** Chemin sans le préfixe de locale (ex. /en/contact → /contact). */
+/**
+ * Chemin sans le préfixe de locale (ex. /en/contact → /contact).
+ *
+ * SLASH-CONSISTANT (ERR70) : la barre finale du chemin d'origine est préservée
+ * à l'identique dans les deux branches (avec ou sans préfixe de locale). Ainsi
+ * les alternates hreflang émises depuis /contact/ et depuis /en/contact/
+ * concordent toutes (toutes avec barre, ou toutes sans) et ne déclenchent
+ * jamais le 301 de canonicalisation de la barre finale (worker/redirects.mjs).
+ */
 export function stripLocale(pathname: string): string {
-  const parts = pathname.split('/').filter(Boolean);
+  const normalized = pathname.startsWith('/') ? pathname : '/' + pathname;
+  const parts = normalized.split('/').filter(Boolean);
+  // La forme canonique du site est AVEC barre finale ; on la conserve telle
+  // quelle (racine `/` exclue) pour que toutes les locales s'accordent.
+  const hadTrailingSlash = normalized.length > 1 && normalized.endsWith('/');
   if (parts[0] && isLocale(parts[0]) && parts[0] !== DEFAULT_LOCALE) {
-    return '/' + parts.slice(1).join('/');
+    const rest = parts.slice(1).join('/');
+    if (!rest) return '/';
+    return '/' + rest + (hadTrailingSlash ? '/' : '');
   }
-  return pathname.startsWith('/') ? pathname : '/' + pathname;
+  return normalized;
 }
 
 /** Préfixe un chemin racine (/contact) pour une locale (FR = pas de préfixe). */

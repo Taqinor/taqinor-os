@@ -3,6 +3,10 @@ import {
   buildLeadRecord,
   fireCapi,
   forwardLead,
+  hashCityForCapi,
+  hashPhoneForCapi,
+  leadLogId,
+  redactLeadForLog,
   runSimulation,
   validateLead,
   type LeadEnv,
@@ -177,6 +181,63 @@ describe('forwardLead — tolérance', () => {
     await forwardLead(record, { LEAD_WEBHOOK_URL: 'https://crm.example/hook' }, fetchFn);
     expect(sentHeaders['x-webhook-secret']).toBeUndefined();
   });
+
+  it('joint un en-tête x-webhook-timestamp ISO (atténuation rejeu, ERR110)', async () => {
+    let sentHeaders: Record<string, string> = {};
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      sentHeaders = (init?.headers ?? {}) as Record<string, string>;
+      return new Response('ok');
+    }) as unknown as typeof fetch;
+    const record = buildLeadRecord(makeLead(), band, new Date());
+    await forwardLead(record, { LEAD_WEBHOOK_URL: 'https://crm.example/hook' }, fetchFn);
+    expect(sentHeaders['x-webhook-timestamp']).toBeDefined();
+    // ISO 8601 valide → re-parsable.
+    expect(Number.isNaN(Date.parse(sentHeaders['x-webhook-timestamp']))).toBe(false);
+  });
+});
+
+describe('redactLeadForLog — aucune PII dans les logs (ERR32)', () => {
+  const band = { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' as const };
+
+  it('ne contient JAMAIS nom/téléphone/ville/email/consentement', () => {
+    const record = buildLeadRecord(makeLead(), band, new Date('2026-06-11T10:00:00Z'), '/contact');
+    const redacted = redactLeadForLog(record);
+    const serialized = JSON.stringify(redacted);
+    // PII brute absente de la sérialisation des logs.
+    expect(serialized).not.toContain('Karim Benali');
+    expect(serialized).not.toContain('+212612345678');
+    expect(serialized).not.toContain('612345678');
+    expect(serialized).not.toContain('Casablanca');
+    // Pas de champs PII même vides.
+    expect(redacted).not.toHaveProperty('fullName');
+    expect(redacted).not.toHaveProperty('phoneE164');
+    expect(redacted).not.toHaveProperty('city');
+    expect(redacted).not.toHaveProperty('consent');
+    expect(redacted).not.toHaveProperty('consentTimestamp');
+  });
+
+  it('garde des diagnostics non identifiants utiles', () => {
+    const record = buildLeadRecord(makeLead(), band, new Date('2026-06-11T10:00:00Z'), '/contact');
+    const redacted = redactLeadForLog(record);
+    expect(redacted.qualified).toBe(true);
+    expect(redacted.billRange).toBe('1500-3000');
+    expect(redacted.hasName).toBe(true);
+    expect(redacted.hasCity).toBe(true);
+    expect(typeof redacted.id).toBe('string');
+    expect(redacted.fbclid).toBe('present');
+    expect(redacted.utmKeys).toContain('utm_source');
+  });
+
+  it('id corrélable, stable, non réversible (même téléphone → même id)', () => {
+    const id1 = leadLogId('+212612345678');
+    const id2 = leadLogId('+212612345678');
+    const id3 = leadLogId('+212699999999');
+    expect(id1).toBe(id2);
+    expect(id1).not.toBe(id3);
+    // Hash court hex, ne contient pas le numéro.
+    expect(id1).not.toContain('612345678');
+    expect(id1).toMatch(/^[0-9a-f]{8}$/);
+  });
 });
 
 describe('fireCapi — fire-and-forget', () => {
@@ -196,6 +257,42 @@ describe('fireCapi — fire-and-forget', () => {
     expect(payload.event).toBe('Lead');
     expect(payload.fbclid).toBe('fb.1.123.abc');
     expect(payload.utm.utm_term).toBe('solaire');
+  });
+
+  it('hache téléphone + ville en SHA-256, ne fuite jamais la PII en clair (ERR111)', async () => {
+    let sentBody = '';
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      sentBody = String(init?.body);
+      return new Response('ok');
+    }) as unknown as typeof fetch;
+    const record = buildLeadRecord(makeLead(), band, new Date());
+    await fireCapi(record, env, fetchFn);
+    const payload = JSON.parse(sentBody);
+    // PII en clair JAMAIS présente.
+    expect(sentBody).not.toContain('+212612345678');
+    expect(sentBody).not.toContain('612345678');
+    expect(sentBody).not.toContain('Casablanca');
+    expect(payload).not.toHaveProperty('phoneE164');
+    expect(payload).not.toHaveProperty('city');
+    // Champs hachés présents (noms spec Meta) et conformes au hash attendu.
+    expect(payload.ph).toBe(await hashPhoneForCapi(record.phoneE164));
+    expect(payload.ct).toBe(await hashCityForCapi(record.city));
+    expect(payload.ph).toMatch(/^[0-9a-f]{64}$/);
+    expect(payload.ct).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('normalise selon la spec Meta avant de hacher (chiffres only / minuscules sans espaces)', async () => {
+    // Le téléphone est haché sur les chiffres seuls (sans « + »).
+    const knownPhone = await hashPhoneForCapi('+212612345678');
+    // SHA-256("212612345678") — vérifié indépendamment via Web Crypto.
+    const expectedPhone = await (async () => {
+      const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('212612345678'));
+      return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    })();
+    expect(knownPhone).toBe(expectedPhone);
+    // La ville : minuscules, espaces/ponctuation retirés ("Casa Blanca" → "casablanca").
+    expect(await hashCityForCapi('Casa Blanca')).toBe(await hashCityForCapi('casablanca'));
+    expect(await hashCityForCapi('  CASABLANCA  ')).toBe(await hashCityForCapi('casablanca'));
   });
 
   it("tolère l'absence du service en silence", async () => {

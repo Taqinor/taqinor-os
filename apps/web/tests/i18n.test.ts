@@ -43,6 +43,32 @@ describe('déduction & préfixage de chemin', () => {
     expect(stripLocale('/ar/')).toBe('/');
     expect(stripLocale('/contact')).toBe('/contact');
   });
+
+  it('stripLocale préserve la barre finale de façon cohérente (ERR70)', () => {
+    // FR (sans préfixe) garde la barre finale…
+    expect(stripLocale('/contact/')).toBe('/contact/');
+    // …et EN/AR (avec préfixe) la gardent EXACTEMENT pareil → alternates
+    // hreflang concordantes, jamais de 301 de canonicalisation de barre finale.
+    expect(stripLocale('/en/contact/')).toBe('/contact/');
+    expect(stripLocale('/ar/contact/')).toBe('/contact/');
+    // Sans barre, les deux formes restent sans barre.
+    expect(stripLocale('/en/contact')).toBe('/contact');
+    expect(stripLocale('/contact')).toBe('/contact');
+    // Racine de locale → racine `/` (jamais de double barre).
+    expect(stripLocale('/en/')).toBe('/');
+    expect(stripLocale('/en')).toBe('/');
+  });
+
+  it('les alternates hreflang concordent depuis FR et depuis EN (ERR70)', () => {
+    // Toutes les locales DOIVENT produire le même ensemble d'URL alternates,
+    // que la page courante soit la FR (/contact/) ou l'EN (/en/contact/).
+    const fromFr = stripLocale('/contact/');
+    const fromEn = stripLocale('/en/contact/');
+    expect(fromFr).toBe(fromEn);
+    for (const loc of ['fr', 'en', 'ar'] as const) {
+      expect(localizePath(fromFr, loc)).toBe(localizePath(fromEn, loc));
+    }
+  });
 });
 
 describe('traduction avec repli', () => {
