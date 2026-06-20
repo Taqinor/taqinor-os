@@ -99,6 +99,21 @@ const authLoader = async () => {
   return ok ? null : redirect('/login')
 }
 
+// ERR27 — Garde de rôle/permission sur les routes d'administration. Reflète
+// EXACTEMENT le gating du menu (Sidebar.jsx) : une route n'est accessible que si
+// le rôle (menu_tier) figure dans `roles` ET — si une permission est exigée —
+// qu'elle est présente dans les permissions de l'utilisateur. Sinon, l'utilisateur
+// authentifié mais non autorisé est renvoyé vers `/dashboard` (accessible à tous),
+// au lieu de monter la page d'admin via un lien direct.
+const roleLoader = (roles, perm) => async () => {
+  const ok = await ensureSession()
+  if (!ok) return redirect('/login')
+  const { role, permissions } = store.getState().auth
+  const tier = role || 'normal'
+  const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
+  return allowed ? null : redirect('/dashboard')
+}
+
 // O65 — squelette de page (en-tête + contenu) au lieu d'un texte brut, pour un
 // chargement « skeleton-first » sur toutes les routes (publiques et authentifiées).
 const Fallback = () => <RouteFallback />
@@ -183,19 +198,19 @@ const router = createBrowserRouter([
   { path: '/ia/ocr', loader: authLoader, element: <WithLayout><OcrUpload /></WithLayout> },
 
   // Reporting
-  { path: '/reporting', loader: authLoader, element: <WithLayout><Reporting /></WithLayout> },
+  { path: '/reporting', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><Reporting /></WithLayout> },
   { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
   { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
   { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
 
   // Administration
-  { path: '/admin/users', loader: authLoader, element: <WithLayout><UsersManagement /></WithLayout> },
-  { path: '/admin/roles', loader: authLoader, element: <WithLayout><RolesManagement /></WithLayout> },
-  { path: '/parametres', loader: authLoader, element: <WithLayout><ParametresEntreprise /></WithLayout> },
+  { path: '/admin/users', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><UsersManagement /></WithLayout> },
+  { path: '/admin/roles', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><RolesManagement /></WithLayout> },
+  { path: '/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><ParametresEntreprise /></WithLayout> },
   { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
   { path: '/parametres/notifications', loader: authLoader, element: <WithLayout><NotificationsPreferences /></WithLayout> },
-  { path: '/journal', loader: authLoader, element: <WithLayout><Journal /></WithLayout> },
+  { path: '/journal', loader: roleLoader(['normal', 'responsable', 'admin'], 'journal_activite_voir'), element: <WithLayout><Journal /></WithLayout> },
 
   // Catch-all
   { path: '*', element: <Navigate to="/dashboard" replace /> },
