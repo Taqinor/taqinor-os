@@ -295,11 +295,20 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             build_devis_whatsapp, build_wa_url,
         )
 
+        from .services import coerce_id_list
+
         lead = self.get_object()
-        ids = request.data.get('devis_ids') or []
-        if not isinstance(ids, list) or not ids:
+        raw_ids = request.data.get('devis_ids') or []
+        if not isinstance(raw_ids, list) or not raw_ids:
             return Response(
                 {'detail': 'Sélectionnez au moins un devis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            ids = coerce_id_list(raw_ids)
+        except ValueError:
+            return Response(
+                {'detail': 'Identifiant de devis invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Devis du lead, dans la société courante uniquement.
@@ -559,9 +568,15 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         Corps : {ids: [...]} — la sélection. Vide → 400 (l'UI exporte une
         sélection). Borné à la société de l'utilisateur."""
         from .exports import export_leads_xlsx
-        ids = request.data.get('ids') or []
-        if not isinstance(ids, list) or not ids:
+        from .services import coerce_id_list
+        raw_ids = request.data.get('ids') or []
+        if not isinstance(raw_ids, list) or not raw_ids:
             return Response({'detail': 'Sélectionnez au moins un lead.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ids = coerce_id_list(raw_ids)
+        except ValueError:
+            return Response({'detail': 'Identifiant de lead invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         leads = (Lead.objects.filter(company=request.user.company, id__in=ids)
                  .select_related('owner').order_by('id'))

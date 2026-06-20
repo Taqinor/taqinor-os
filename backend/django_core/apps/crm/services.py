@@ -147,12 +147,19 @@ def default_responsable_for(company):
 # (« on garde la valeur la plus complète », jamais d'écrasement).
 _MERGE_FILL_FIELDS = [
     'prenom', 'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
-    'gps_lat', 'gps_lng', 'facture_hiver', 'facture_ete', 'ete_differente',
-    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'type_installation',
+    'langue_preferee', 'gps_lat', 'gps_lng',
+    'facture_hiver', 'facture_ete', 'ete_differente',
+    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',
+    'type_installation', 'priorite', 'relance_date',
     'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
     'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
     'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_cv', 'pompe_hmt_m',
     'pompe_debit_m3h', 'canal', 'motif_perte', 'note', 'whatsapp_opt_in',
+    # Visite technique (légère) — préservée à la fusion.
+    'visite_prevue_le', 'visite_effectuee', 'visite_notes',
+    # Intake site web (taqinor.ma) — attribution + diagnostic préservés.
+    'bill_range_bucket', 'roof_type', 'roi_band', 'consent_timestamp', 'fbclid',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
 ]
 
 
@@ -393,14 +400,19 @@ def merge_leads(survivor, others, user):
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:
+    from django.db import IntegrityError, transaction
+
     if lead.client_id:
         return lead.client
 
-    client = None
-    if lead.email:
-        client = Client.objects.filter(
+    def _find_existing():
+        if not lead.email:
+            return None
+        return Client.objects.filter(
             company=lead.company, email__iexact=lead.email,
         ).first()
+
+    client = _find_existing()
 
     if client is None:
         # Séparateur VISIBLE entre rue et ville : un \n disparaît dans les
@@ -408,14 +420,24 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         adresse = lead.adresse or ''
         if lead.ville:
             adresse = ', '.join(p for p in (adresse, lead.ville) if p)
-        client = Client.objects.create(
-            company=lead.company,
-            nom=lead.nom,
-            prenom=lead.prenom,
-            email=lead.email,
-            telephone=(lead.telephone or '')[:20] or None,
-            adresse=adresse or None,
-        )
+        try:
+            # Savepoint : si une création concurrente partageant le même email
+            # a gagné la course, l'unique_together (company, email) lève une
+            # IntegrityError — on la rattrape et on réutilise le client existant
+            # (style get_or_create), au lieu de propager un 500.
+            with transaction.atomic():
+                client = Client.objects.create(
+                    company=lead.company,
+                    nom=lead.nom,
+                    prenom=lead.prenom,
+                    email=lead.email,
+                    telephone=(lead.telephone or '')[:20] or None,
+                    adresse=adresse or None,
+                )
+        except IntegrityError:
+            client = _find_existing()
+            if client is None:
+                raise
 
     lead.client = client
     lead.save(update_fields=['client'])
@@ -502,6 +524,31 @@ def _resolve_activity_type(company, type_id, type_nom):
     return atype
 
 
+def coerce_id_list(raw):
+    """Normalise une liste d'ids reçue du client en entiers uniques.
+
+    Accepte ints et chaînes numériques ; déduplique en préservant l'ordre.
+    Lève ValueError sur un élément non entier — la vue le traduit en 400 propre
+    au lieu de laisser un 500 remonter du `id__in` (PostgreSQL refuse un id
+    non numérique). Sert aux endpoints en masse + WhatsApp.
+    """
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("Liste d'identifiants invalide.")
+    out = []
+    seen = set()
+    for item in raw:
+        if isinstance(item, bool):
+            raise ValueError("Identifiant invalide.")
+        try:
+            value = int(item)
+        except (TypeError, ValueError):
+            raise ValueError("Identifiant invalide.")
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -514,6 +561,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
     if op not in BULK_ACTIONS:
         raise ValueError("Action en masse inconnue.")
 
+    lead_ids = coerce_id_list(lead_ids)
     leads = list(
         Lead.objects.filter(company=company, id__in=lead_ids).order_by('id'))
     updated, unchanged, skipped = 0, 0, []

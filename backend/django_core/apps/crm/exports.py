@@ -12,9 +12,37 @@ L879 : la construction du classeur vit désormais dans le builder PARTAGÉ
 tous les appelants existants. Un seul format (en-têtes en gras, largeurs,
 coercition fr-MA) pour TOUS les exports de listes.
 """
-from apps.records.xlsx import build_xlsx_response  # noqa: F401  (ré-export)
+from apps.records.xlsx import build_xlsx_response as _build_xlsx_response
 
 from .stages import STAGE_LABELS
+
+# Caractères qui, en tête d'une cellule, déclenchent une FORMULE quand le
+# classeur est ouvert dans Excel/LibreOffice (injection CSV/Excel). On les
+# neutralise en préfixant une apostrophe : la cellule reste lisible (texte) et
+# n'exécute jamais de formule. Ne concerne QUE les cellules texte — nombres,
+# booléens et dates passent intacts.
+_RISKY_LEADING = ('=', '+', '-', '@')
+
+
+def _neutralize_cell(value):
+    """Préfixe une apostrophe aux chaînes commençant par un caractère à risque."""
+    if isinstance(value, str) and value[:1] in _RISKY_LEADING:
+        return "'" + value
+    return value
+
+
+def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
+    """Réponse .xlsx avec neutralisation de l'injection de formules.
+
+    Enveloppe le builder partagé (apps.records.xlsx) en assainissant CHAQUE
+    cellule texte des lignes : une valeur commençant par ``= + - @`` est
+    préfixée d'une apostrophe pour qu'Excel l'affiche comme du texte au lieu
+    d'évaluer une formule. Les nombres/dates/booléens restent inchangés. Ce
+    helper est partagé par tous les exports xlsx du module.
+    """
+    safe_rows = [[_neutralize_cell(v) for v in row] for row in rows]
+    return _build_xlsx_response(
+        filename, headers, safe_rows, sheet_title=sheet_title)
 
 # Libellés FR des canaux/priorités — alignés sur le modèle Lead. On lit les
 # choices du modèle quand c'est possible pour ne jamais diverger.
