@@ -96,7 +96,9 @@ def _facture_saved(sender, instance, created, **kwargs):
     echeance = getattr(instance, 'date_echeance', None)
     if statut == 'payee' or echeance is None:
         return
-    if echeance >= timezone.now().date():
+    # Bucket Africa/Casablanca : comparer à la date LOCALE, pas à la date UTC,
+    # sinon FACTURE_OVERDUE peut se déclencher un jour trop tôt/tard à minuit.
+    if echeance >= timezone.localdate():
         return
     old = getattr(instance, _OLD, None)
     # Évite de re-déclencher si déjà en retard au save précédent (même statut).
