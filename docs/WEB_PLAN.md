@@ -432,4 +432,11 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 - 2026-06-20 — W76: added pure `isSimplePolygon(ring)` to `roof.ts` (proper segment-intersection
   test, ring treated closed) + unit tests (convex/concave-simple true, bow-tie false); wired into
   pro-11 `addVertex` (rejects a crossing point) and `close()` (refuses a self-intersecting ring)
-  with clear French status — a bow-tie trace is now refused, never computed.
+  with clear French status — a bow-tie trace is now refused, never computed.- 2026-06-20 — REFACTOR (founder-requested foundation): split the 4284-line monolith
+  `src/scripts/roof-tool-pro11.ts` into a 1876-line orchestration entry + 16 focused modules under
+  `src/scripts/roofPro11/` (constants, dom, panelTexture, types, context [shared `ctx` state bridge],
+  graphs, prefill, zones, consumption, prodWindow, matrix, layoutEditor, obstaclesUi, mapDraw, scene3d,
+  optimizer). Behavior byte-identical (2262 tests + typecheck + build green at every commit); the page
+  still imports `initRoofToolPro8`. The Three.js/MapLibre isolation guards now allow the whole
+  `src/scripts/roofPro11/**` prefix. This makes every W71–W97 fix localized to one module so the lanes
+  finally run in parallel.
