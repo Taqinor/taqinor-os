@@ -124,12 +124,45 @@ class Devis(models.Model):
 
     @property
     def total_tva(self):
-        # TVA par ligne quand un taux de ligne existe, sinon taux du devis
-        # (anciens devis : toutes lignes NULL → strictement l'ancien calcul).
-        return sum(
-            ligne.total_ht * (ligne.taux_tva_effectif / 100)
-            for ligne in self.lignes.all()
-        )
+        # ERR71 — TVA réconciliée au centime, par panier de taux, EXACTEMENT
+        # comme Facture/échéancier (tva_par_taux) pour que devis et facture
+        # s'accordent au centime sur un devis à taux mixtes (10/20). Mono-taux
+        # (anciens devis : toutes lignes NULL → un seul panier) → formule
+        # d'origine HT×taux, rendu strictement inchangé.
+        from decimal import Decimal
+        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+
+    @property
+    def tva_par_taux(self):
+        """Ventilation TVA par taux (10 % / 20 %), réconciliée au centime.
+
+        Miroir exact de ``Facture.tva_par_taux`` : mono-taux → un panier calculé
+        par la formule d'origine (HT × taux, aucun arrondi par panier → figures
+        historiques strictement identiques) ; taux mixtes → un panier par taux,
+        chaque TVA arrondie au centime, dont la somme est le total TVA.
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        lignes = list(self.lignes.all())
+        buckets = {}
+        for ligne in lignes:
+            # Coercition Decimal du taux : un taux non encore relu de la base
+            # (défaut modèle) peut être un float — on garde des Decimals partout
+            # pour ne jamais mélanger Decimal et float dans le calcul.
+            rate = Decimal(str(ligne.taux_tva_effectif))
+            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
+        if len(buckets) <= 1:
+            rate = next(iter(buckets), Decimal(str(self.taux_tva)))
+            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+            return [{'taux': rate, 'base_ht': base,
+                     'montant': base * rate / Decimal('100')}]
+
+        def q(x):
+            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return [
+            {'taux': rate, 'base_ht': q(buckets[rate]),
+             'montant': q(buckets[rate] * rate / Decimal('100'))}
+            for rate in sorted(buckets)
+        ]
 
     @property
     def total_ttc(self):

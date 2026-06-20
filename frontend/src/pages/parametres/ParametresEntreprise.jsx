@@ -102,6 +102,8 @@ export default function ParametresEntreprise() {
   const [assignables, setAssignables] = useState([])
   const [niveaux, setNiveaux] = useState([])
   const [niveauxSaved, setNiveauxSaved] = useState(false)
+  // ERR63 — message d'erreur par-ligne de l'enregistrement des niveaux.
+  const [niveauxError, setNiveauxError] = useState('')
   const [tags, setTags] = useState([])
   const [motifs, setMotifs] = useState([])
   const [newTag, setNewTag] = useState('')
@@ -271,7 +273,8 @@ export default function ParametresEntreprise() {
     } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameEtape = async (et, libelle) => {
-    try { await installationsApi.saveChecklistEtape(et.id, { libelle }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du libellé.
+    try { await installationsApi.saveChecklistEtape(et.id, { libelle }); loadChecklistEtapes() } catch { /* */ }
   }
   const toggleEtapeActif = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); loadChecklistEtapes() }
@@ -313,7 +316,8 @@ export default function ParametresEntreprise() {
     } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameCanal = async (c, libelle) => {
-    try { await crmApi.saveCanal(c.id, { libelle }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du libellé.
+    try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch { /* */ }
   }
   const delCanal = async (c) => {
     if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
@@ -334,7 +338,8 @@ export default function ParametresEntreprise() {
     } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameType = async (t, libelle) => {
-    try { await installationsApi.saveTypeIntervention(t.id, { libelle }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du libellé.
+    try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch { /* */ }
   }
   const delType = async (t) => {
     if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
@@ -386,7 +391,8 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch { /* */ }
   }
   const renameTag = async (t, nom) => {
-    try { await crmApi.saveTag(t.id, { nom }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du nom.
+    try { await crmApi.saveTag(t.id, { nom }); loadTags() } catch { /* */ }
   }
   // L781 — couleur d'une étiquette (color-picker), persistée immédiatement.
   const setTagColor = async (t, couleur) => {
@@ -411,7 +417,8 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch { /* */ }
   }
   const renameMotif = async (m, nom) => {
-    try { await crmApi.saveMotifPerte(m.id, { nom }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du nom.
+    try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch { /* */ }
   }
   const delMotif = async (m) => {
     if (!window.confirm(`Supprimer le motif « ${m.nom} » ?`)) return
@@ -431,15 +438,27 @@ export default function ParametresEntreprise() {
     setNiveaux(ns => ns.map(n => (n.id === id ? { ...n, [key]: val } : n)))
 
   const saveNiveaux = async () => {
-    try {
-      await Promise.all(niveaux.map(n => ventesApi.saveNiveauRelance(n.id, {
+    // ERR63 — on ne « swallow » plus les échecs : chaque ligne est tentée
+    // (allSettled, donc une ligne en échec ne rejette pas les autres déjà
+    // enregistrées) et toute défaillance est remontée en français.
+    setNiveauxError('')
+    const results = await Promise.allSettled(
+      niveaux.map(n => ventesApi.saveNiveauRelance(n.id, {
         nom: n.nom, delai_jours: Number(n.delai_jours) || 0,
         ordre: n.ordre, message: n.message || '',
       })))
-      setNiveauxSaved(true)
-      setTimeout(() => setNiveauxSaved(false), 3000)
-      loadNiveaux()
-    } catch { /* silencieux */ }
+    const failed = niveaux.filter((n, i) => results[i].status === 'rejected')
+    loadNiveaux()
+    if (failed.length > 0) {
+      const noms = failed.map(n => `« ${n.nom} »`).join(', ')
+      setNiveauxError(
+        failed.length === niveaux.length
+          ? 'Échec de l’enregistrement des niveaux. Réessayez.'
+          : `Niveau(x) non enregistré(s) : ${noms}. Les autres ont bien été sauvegardés.`)
+      return
+    }
+    setNiveauxSaved(true)
+    setTimeout(() => setNiveauxSaved(false), 3000)
   }
   // L767 — ajout/suppression d'un niveau de relance depuis la carte.
   const addNiveau = async () => {
@@ -644,7 +663,7 @@ export default function ParametresEntreprise() {
     profile, form, set, setForm, accent, uploading, dispatch,
     categories, fournisseurs,
     assignables,
-    niveaux, setNiveau, saveNiveaux, niveauxSaved, addNiveau, delNiveau, seedNiveaux,
+    niveaux, setNiveau, saveNiveaux, niveauxSaved, niveauxError, addNiveau, delNiveau, seedNiveaux,
     tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
     motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
     messages, setMsgField, saveMessage, resetMessage, msgSavedCle,
@@ -733,8 +752,11 @@ export default function ParametresEntreprise() {
         )}
 
         {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
-              masqués restent dans l'état React, donc Enregistrer sauve tout) ── */}
-        <form onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
+              masqués restent dans l'état React, donc Enregistrer sauve tout).
+              noValidate (ERR28) : la validation HTML5 native (min/max/step) ne
+              doit JAMAIS bloquer/snapper une valeur tapée — la coercition douce
+              se fait en JS dans handleSave. ── */}
+        <form noValidate onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
 
           {tab === 'societe'  && <SocieteSection {...ctx} />}
           {tab === 'leads'    && <LeadsSection {...ctx} />}

@@ -294,8 +294,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const validate = () => {
     const e = {}
     if (!fields.nom.trim())               e.nom        = 'Nom requis'
-    if (!fields.prix_vente || isNaN(parseFloat(fields.prix_vente)))
-                                           e.prix_vente = 'Prix de vente requis'
+    // Prix de vente : doit être strictement positif (0/négatif rejeté en JS au
+    // submit, jamais via min/step HTML5 qui snapperait la saisie).
+    if (!(parseFloat(fields.prix_vente) > 0))
+                                           e.prix_vente = 'Prix de vente requis (> 0)'
     if (skuDuplicate)
       e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`
     setErrors(e)

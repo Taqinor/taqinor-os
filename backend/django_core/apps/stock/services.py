@@ -5,7 +5,7 @@ l'utilisateur. Le PRIX D'ACHAT n'est JAMAIS modifié ni exposé (règle marges).
 Les changements sont journalisés (audit logger).
 """
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 
 logger = logging.getLogger('stock.audit')
 
@@ -201,7 +201,10 @@ def stock_breakdown(produit):
                  for e in emplacements if not e.is_principal)
     out = []
     for e in emplacements:
-        qte = (produit.quantite_stock - autres) if e.is_principal \
+        # ERR94 — le principal détient le reste (total − non principaux), mais
+        # ne doit JAMAIS afficher une quantité négative : on le plafonne à 0
+        # si le total est tombé sous l'allocation ventilée.
+        qte = max(produit.quantite_stock - autres, 0) if e.is_principal \
             else records.get(e.id, 0)
         out.append({
             'emplacement_id': e.id,
@@ -238,7 +241,8 @@ def stock_breakdown_map(company):
             'emplacement_id': e.id,
             'emplacement_nom': e.nom,
             'is_principal': e.is_principal,
-            'quantite': (p.quantite_stock - autres) if e.is_principal
+            # ERR94 — principal plafonné à 0, jamais négatif (cf. stock_breakdown).
+            'quantite': max(p.quantite_stock - autres, 0) if e.is_principal
             else rec.get(e.id, 0),
         } for e in emplacements]
     return out
@@ -448,7 +452,7 @@ def apply_retour_fournisseur(retour, user):
     SORTIE) pour chaque ligne, puis passe le retour à « validé ». Lève
     ValueError si le retour n'est pas en brouillon ou est vide. INTERNE."""
     from django.db import transaction
-    from .models import RetourFournisseur, MouvementStock
+    from .models import Produit, RetourFournisseur, MouvementStock
     if retour.statut != RetourFournisseur.Statut.BROUILLON:
         raise ValueError('Seul un retour en brouillon peut être validé.')
     lignes = list(retour.lignes.select_related('produit'))
@@ -456,8 +460,10 @@ def apply_retour_fournisseur(retour, user):
         raise ValueError('Le retour ne contient aucune ligne.')
     with transaction.atomic():
         for ligne in lignes:
-            produit = ligne.produit
-            produit.refresh_from_db()
+            # ERR24 — verrou de ligne produit dans la transaction pour que des
+            # retours concurrents du même produit ne perdent pas de décrément.
+            produit = (Produit.objects.select_for_update()
+                       .get(pk=ligne.produit_id))
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
             MouvementStock.objects.create(
@@ -666,10 +672,12 @@ def compute_besoin_materiel(installation):
         produit = ligne.produit
         if produit is None:
             continue
+        # ERR54 — une ligne fractionnaire (ex. 2,5 unités) exige un APPRO ARRONDI
+        # AU SUPÉRIEUR (3, pas 2) : un int() tronquait et sous-commandait.
         try:
-            requis = int(ligne.quantite)
-        except (TypeError, ValueError):
-            requis = int(float(ligne.quantite))
+            requis = int(_dec(ligne.quantite).to_integral_value(rounding=ROUND_CEILING))
+        except (AttributeError, InvalidOperation, TypeError, ValueError):
+            requis = 0
         entry = besoins.get(produit.id)
         if entry is None:
             # Disponible pour CE chantier = stock total − réservé par les AUTRES

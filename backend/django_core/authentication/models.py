@@ -190,13 +190,43 @@ class CustomUser(AbstractUser):
 
     @property
     def is_responsable(self):
+        """Porte les endpoints d'écriture/gestion gardés par
+        ``IsResponsableOrAdmin``.
+
+        Bug historique (ERR4) : renvoyait True dès qu'un Role était posé, ce qui
+        laissait passer les rôles STRICTEMENT lecture seule (Viewer,
+        Utilisateur…) sur tous les endpoints d'écriture — y compris validation de
+        devis, émission de facture, mouvements de stock, édition/réassignation de
+        leads, etc.
+
+        Correctif : pour un compte portant un Role fin, on n'est « responsable »
+        que si le rôle accorde AU MOINS UNE permission d'écriture/gestion — un
+        rôle ne portant que des permissions de lecture (suffixe ``_voir``) et/ou
+        des marqueurs de portée (``records_scope_*``) est désormais EXCLU. Cela
+        bloque les rôles lecture seule sans pénaliser les rôles métier
+        légitimes (Commercial, Technicien…) qui détiennent leurs droits
+        d'écriture fins. Les comptes HÉRITÉS sans Role fin gardent exactement
+        leur comportement via ``role_legacy`` (aucune régression légacy)."""
         if self.is_superuser:
             return True
-        if self.role:
-            return True
+        if self.role_id:
+            return self._role_grants_write(self.role.permissions or [])
         return self.role_legacy in (
             self.ROLE_RESPONSABLE, self.ROLE_ADMIN
         )
+
+    @staticmethod
+    def _role_grants_write(permissions):
+        """True si la liste de permissions accorde au moins une action
+        d'écriture/gestion (toute permission qui n'est ni une lecture
+        ``*_voir`` ni un marqueur de portée ``records_scope_*``)."""
+        for perm in permissions:
+            if perm.endswith('_voir'):
+                continue
+            if perm.startswith('records_scope'):
+                continue
+            return True
+        return False
 
     def has_erp_permission(self, code):
         """Check if user has a specific ERP permission code."""

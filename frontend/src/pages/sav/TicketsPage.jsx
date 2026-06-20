@@ -873,14 +873,24 @@ export default function TicketsPage() {
     || filters.technicien || filters.sous_garantie || filters.ouvert !== 'ouverts'
     || filters.annule || filters.urgent_garantie
 
-  // L317 — PATCH en lot (technicien ou statut) sur les tickets sélectionnés.
+  // L317/ERR64 — PATCH en lot (technicien ou statut) sur les tickets
+  // sélectionnés. Le lot n'est pas atomique : on attend TOUTES les requêtes
+  // (allSettled) et on recharge la liste dès qu'au moins une échoue, pour que la
+  // table ne reste pas sur un état périmé, avec un message FR d'échec partiel.
   const bulkPatch = async (selectedKeys, data, clear) => {
-    try {
-      await Promise.all(selectedKeys.map((id) => dispatch(updateTicket({ id, data })).unwrap()))
+    const results = await Promise.allSettled(
+      selectedKeys.map((id) => dispatch(updateTicket({ id, data })).unwrap()))
+    const echecs = results.filter((r) => r.status === 'rejected').length
+    if (echecs === 0) {
       toast.success('Tickets mis à jour')
       clear?.()
-      reload()
-    } catch { toast.error('Mise à jour groupée impossible.') }
+    } else if (echecs === selectedKeys.length) {
+      toast.error('Mise à jour groupée impossible.')
+    } else {
+      toast.error(`${echecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
+    }
+    // Toujours recharger : certains tickets ont pu changer côté serveur.
+    reload()
   }
 
   const columns = useMemo(() => [

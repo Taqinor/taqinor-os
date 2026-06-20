@@ -11,21 +11,33 @@ import {
   buildLeadRecord,
   fireCapi,
   forwardLead,
+  redactLeadForLog,
   runSimulation,
   validateLead,
   type LeadEnv,
 } from '../../lib/lead';
 import { leadWhatsappText, whatsappLink } from '../../lib/whatsapp';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
   });
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // ERR112 — garde-fou anti-spam (best-effort, sans dépendance ni secret).
+  // Limite les POST par IP : un humain ne soumet pas 8 fois par minute, un
+  // script de spam si. Voir src/lib/rateLimit.ts pour la limitation assumée.
+  const rl = rateLimit(`simulate:${clientIpFromRequest(request)}`);
+  if (!rl.allowed) {
+    return json({ ok: false, errors: { rate: 'Trop de tentatives, réessayez dans un instant.' } }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -47,7 +59,13 @@ export const POST: APIRoute = async ({ request }) => {
   const background = (async () => {
     const fw = await forwardLead(record, env, fetch);
     if (!fw.delivered && record.qualified) {
-      console.log(`[lead] non transmis au CRM (${fw.reason}) — lead qualifié:`, JSON.stringify(record));
+      // ERR32 : ne JAMAIS journaliser la PII du lead (nom/téléphone/ville/
+      // consentement). On ne loggue qu'un diagnostic rédacté (id corrélable
+      // haché, indicateurs, raison de l'échec) — jamais JSON.stringify(record).
+      console.log(
+        `[lead] non transmis au CRM (${fw.reason}) — lead qualifié:`,
+        JSON.stringify(redactLeadForLog(record)),
+      );
     }
     const capi = await fireCapi(record, env, fetch);
     if (!capi.sent && record.qualified) {

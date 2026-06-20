@@ -75,6 +75,78 @@ class TestCommit(ImportBase):
         self.assertTrue(Client.objects.filter(company=self.company, nom='Société A').exists())
 
 
+class TestCommitHardening(ImportBase):
+    def test_product_opening_stock_creates_audit_movement(self):
+        # ERR52 — un stock d'ouverture > 0 passe par MouvementStock (audit).
+        from apps.stock.models import MouvementStock
+        f = self._csv('Nom,SKU,Quantite\nPanneau,SKU-AUD,5\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'products'}, format='multipart')
+        self.assertEqual(resp.data['created'], 1)
+        p = Produit.objects.get(sku='SKU-AUD')
+        self.assertEqual(p.quantite_stock, 5)
+        mvt = MouvementStock.objects.get(produit=p)
+        self.assertEqual(mvt.type_mouvement,
+                         MouvementStock.TypeMouvement.ENTREE)
+        self.assertEqual(mvt.quantite, 5)
+        self.assertEqual(mvt.quantite_avant, 0)
+        self.assertEqual(mvt.quantite_apres, 5)
+        self.assertEqual(mvt.company, self.company)
+
+    def test_negative_opening_stock_is_refused(self):
+        # ERR52 — un stock négatif est ignoré (pas de produit, pas de mouvement).
+        from apps.stock.models import MouvementStock
+        f = self._csv('Nom,SKU,Quantite\nNeg,SKU-NEG,-3\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'products'}, format='multipart')
+        self.assertEqual(resp.data['created'], 0)
+        self.assertEqual(len(resp.data['skipped']), 1)
+        self.assertFalse(Produit.objects.filter(sku='SKU-NEG').exists())
+        self.assertEqual(MouvementStock.objects.count(), 0)
+
+    def test_commit_is_atomic_on_midloop_error(self):
+        # ERR51 — si une ligne plante en cours de boucle, AUCUNE ligne n'est
+        # créée (l'import est tout-ou-rien).
+        from unittest import mock
+        f = self._csv('Nom,Email\nA,a@x.ma\nB,b@x.ma\n')
+        before = Lead.objects.filter(company=self.company).count()
+        real_create = Lead.objects.create
+
+        def boom(*args, **kwargs):
+            if kwargs.get('nom') == 'B':
+                raise RuntimeError('boom')
+            return real_create(*args, **kwargs)
+
+        with mock.patch.object(Lead.objects, 'create', side_effect=boom):
+            resp = self.api.post('/api/django/imports/commit/',
+                                 {'file': f, 'target': 'leads'},
+                                 format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        # Rollback complet : la 1re ligne (A) n'a PAS survécu.
+        self.assertEqual(
+            Lead.objects.filter(company=self.company).count(), before)
+
+    def test_row_cap_rejected_with_clear_400(self):
+        # ERR53 — un fichier au-delà du plafond de lignes → 400 explicite.
+        from . import services
+        rows = '\n'.join(f'L{i},l{i}@x.ma' for i in range(services.MAX_ROWS + 1))
+        f = self._csv('Nom,Email\n' + rows + '\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'leads'}, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('lignes', resp.data['detail'].lower())
+
+    def test_oversized_upload_rejected(self):
+        # ERR53 — un upload trop volumineux (octets) → 400 avant tout parsing.
+        from .views import MAX_UPLOAD_BYTES
+        big = 'Nom,Email\n' + ('x' * (MAX_UPLOAD_BYTES + 10))
+        f = self._csv(big)
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'leads'}, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('volumineux', resp.data['detail'].lower())
+
+
 class TestGenericExport(ImportBase):
     def test_export_devis_xlsx(self):
         c = Client.objects.create(company=self.company, nom='C')

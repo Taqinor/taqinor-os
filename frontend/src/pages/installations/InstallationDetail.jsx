@@ -14,6 +14,7 @@ import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
+import { errorMessageFrom } from '../../lib/toast'
 import {
   pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../features/ventes/previewPdf'
@@ -385,7 +386,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await dispatch(updateInstallation({ id, data })).unwrap()
       onSaved?.()
     } catch (err) {
-      setSaveError(typeof err === 'object' ? JSON.stringify(err) : String(err))
+      // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé.
+      // Le thunk rejette avec `err.response.data ?? err.message` ; on reconstruit
+      // la forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
+      setSaveError(errorMessageFrom({ response: { data: err } }, 'Enregistrement impossible.'))
     } finally {
       setSaving(false)
     }

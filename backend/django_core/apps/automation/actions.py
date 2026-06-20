@@ -106,11 +106,16 @@ def _send_email(rule, instance, company, context, user):
         getattr(settings, 'CONTACT_FROM_EMAIL', 'no-reply@taqinor.ma')
     try:
         from django.core.mail import send_mail
-        # En local le backend est la console : aucun envoi réel, jamais
-        # d'échec — c'est notre no-op « sûr quand non configuré ».
-        send_mail(subject, body or '', from_email, [to], fail_silently=True)
+        # Honnête : on NE masque PAS l'échec (fail_silently=False) et on vérifie
+        # le nombre de messages réellement remis. Un email perdu doit être
+        # journalisé FAILED, jamais SUCCESS. En local le backend console remet
+        # bien le message (compteur 1) : pas d'effet réseau, pas d'échec.
+        sent = send_mail(
+            subject, body or '', from_email, [to], fail_silently=False)
     except Exception as exc:
         return Status.FAILED, f'Email non envoyé : {exc}'
+    if not sent:
+        return Status.FAILED, f'Email non remis à {to}.'
     return Status.SUCCESS, f'Email envoyé à {to}.'
 
 

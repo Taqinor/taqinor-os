@@ -466,13 +466,30 @@ const cp = produitsRef.current
           const bcf = created.data
           await stockApi.envoyerBcf(bcf.id)
           // Réception totale : chaque ligne du BCF à sa quantité commandée.
-          const receptions = (bcf.lignes ?? []).map(l => ({
+          // Source autoritative des lignes : si la réponse de création ne les
+          // renvoie pas, on re-fetch le BCF créé — sinon on enverrait une
+          // réception vide (BCF resté « envoyé », stock jamais incrémenté).
+          let bcfLignesSrc = bcf.lignes
+          if (!Array.isArray(bcfLignesSrc) || bcfLignesSrc.length === 0) {
+            const refetched = await stockApi.getBonCommandeFournisseur(bcf.id)
+            bcfLignesSrc = refetched.data?.lignes ?? []
+          }
+          const receptions = bcfLignesSrc.map(l => ({
             ligne: l.id, quantite: l.quantite,
           }))
-          await stockApi.recevoirBcf(bcf.id, receptions)
-          for (const l of bcfLignes) {
-            log.push({ ligneId: l.ligneId, ok: true, label: l.label,
-              msg: `Reçu via le bon de commande ${bcf.reference}` })
+          if (receptions.length === 0) {
+            // Aucune ligne autoritative : ne PAS marquer « Reçu » (le stock
+            // n'a pas bougé) — on remonte un échec rejouable.
+            for (const l of bcfLignes) {
+              log.push({ ligneId: l.ligneId, ok: false, label: l.label,
+                msg: `BCF ${bcf.reference} créé mais réception impossible (aucune ligne).` })
+            }
+          } else {
+            await stockApi.recevoirBcf(bcf.id, receptions)
+            for (const l of bcfLignes) {
+              log.push({ ligneId: l.ligneId, ok: true, label: l.label,
+                msg: `Reçu via le bon de commande ${bcf.reference}` })
+            }
           }
         } catch (e) {
           const d = e.response?.data

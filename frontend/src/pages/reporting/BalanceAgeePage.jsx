@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, CheckCircle2, Download } from 'lucide-react'
+import { FileText, CheckCircle2, Download, AlertCircle } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import reportingApi from '../../api/reportingApi'
 import { downloadXlsx } from '../../api/importApi'
@@ -21,14 +21,20 @@ const SEGMENTS = [
 export default function BalanceAgeePage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  // ERR62 — distinguer « serveur indisponible » de « aucun encours » : un
+  // échec de chargement affiche un état d'erreur + bouton Réessayer au lieu
+  // d'un tableau vide trompeur.
+  const [loadError, setLoadError] = useState(false)
   const [segment, setSegment] = useState('all')
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
 
-  useEffect(() => {
-    ventesApi.getBalanceAgee()
-      .then(r => setRows(r.data)).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  const load = () => ventesApi.getBalanceAgee()
+    .then(r => { setRows(r.data); setLoadError(false) })
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
+  useEffect(() => { load() }, [])
 
   const releve = async (r) => {
     try {
@@ -87,6 +93,18 @@ export default function BalanceAgeePage() {
             {Array.from({ length: 5 }).map((unused, i) => (
               <Skeleton key={i} className="h-9 w-full" />
             ))}
+          </CardContent>
+        </Card>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="pt-5">
+            <EmptyState
+              icon={AlertCircle}
+              title="Chargement impossible"
+              description="La balance âgée n'a pas pu être chargée (serveur indisponible ?)."
+              action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
+              className="py-6"
+            />
           </CardContent>
         </Card>
       ) : (

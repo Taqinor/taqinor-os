@@ -20,8 +20,9 @@ Creates:
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -29,8 +30,25 @@ from django.utils import timezone
 class Command(BaseCommand):
     help = 'Seed demo company with realistic data (idempotent).'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--force', action='store_true',
+            help='Autorise le seed même hors DEBUG (à utiliser en connaissance '
+                 'de cause — crée des comptes à mot de passe connu).',
+        )
+
     @transaction.atomic
     def handle(self, *args, **options):
+        # ERR88 — refus en production. Cette commande crée demo_admin/demo_resp
+        # avec un mot de passe EN DUR connu ('Demo@2026!'). Lancée par erreur
+        # contre la prod, elle sèmerait des comptes à identifiants publics. On
+        # exige donc DEBUG=True, ou un --force explicite pour passer outre.
+        if not settings.DEBUG and not options.get('force'):
+            raise CommandError(
+                "seed_demo est refusé hors DEBUG : il crée des comptes à mot "
+                "de passe connu (demo_admin/demo_resp). Relancez avec --force "
+                "si vous êtes certain de cibler un environnement de démo."
+            )
         from authentication.models import Company, CustomUser
         from apps.parametres.models import CompanyProfile
         from apps.stock.models import (

@@ -342,11 +342,15 @@ def consume_reservations(installation, user):
                 continue
             produit = Produit.objects.select_for_update().get(pk=resa.produit_id)
             qte_avant = produit.quantite_stock
-            qte_apres = qte_avant - resa.quantite
+            # ERR80 — garde plancher : ne pilote jamais le stock en négatif. On
+            # sort au plus le stock en main (borné à zéro), comme la
+            # réconciliation terrain et les pièces SAV.
+            qte_sortie = min(resa.quantite, qte_avant) if qte_avant > 0 else 0
+            qte_apres = qte_avant - qte_sortie
             MouvementStock.objects.create(
                 company=installation.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
-                quantite=resa.quantite,
+                quantite=qte_sortie,
                 quantite_avant=qte_avant, quantite_apres=qte_apres,
                 reference=installation.reference,
                 note=f'Consommation chantier {installation.reference}',

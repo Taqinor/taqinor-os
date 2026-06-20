@@ -485,30 +485,52 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         return qs.none()
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied, ValidationError
         produit = serializer.validated_data['produit']
         user = self.request.user
         # Reject cross-tenant produit references before touching stock.
         if user.company_id and produit.company_id != user.company_id:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Produit hors de votre entreprise.")
-        produit.refresh_from_db()
         qte = serializer.validated_data['quantite']
         type_mv = serializer.validated_data['type_mouvement']
-        qte_avant = produit.quantite_stock
-        if type_mv == MouvementStock.TypeMouvement.ENTREE:
-            qte_apres = qte_avant + qte
-        elif type_mv == MouvementStock.TypeMouvement.SORTIE:
-            qte_apres = qte_avant - qte
-        else:
-            qte_apres = qte
-        serializer.save(
-            created_by=user,
-            company=produit.company,
-            quantite_avant=qte_avant,
-            quantite_apres=qte_apres,
-        )
-        produit.quantite_stock = qte_apres
-        produit.save(update_fields=['quantite_stock'])
+        # ERR10 — la quantité d'une ENTREE/SORTIE doit être strictement
+        # positive : on n'accepte ni 0, ni négatif (un négatif transformerait
+        # silencieusement une SORTIE en augmentation de stock — corruption /
+        # fraude). Les ajustements/transferts portent leur propre logique.
+        if type_mv in (
+            MouvementStock.TypeMouvement.ENTREE,
+            MouvementStock.TypeMouvement.SORTIE,
+        ) and (qte is None or qte <= 0):
+            raise ValidationError(
+                {'quantite': 'La quantité doit être strictement positive.'})
+        # ERR23 — section critique atomique + verrou de ligne produit pour que
+        # des SORTIEs concurrentes ne perdent pas de mise à jour et ne
+        # corrompent pas les colonnes d'audit quantite_avant/quantite_apres.
+        with transaction.atomic():
+            produit = (Produit.objects.select_for_update()
+                       .get(pk=produit.pk))
+            qte_avant = produit.quantite_stock
+            if type_mv == MouvementStock.TypeMouvement.ENTREE:
+                qte_apres = qte_avant + qte
+            elif type_mv == MouvementStock.TypeMouvement.SORTIE:
+                qte_apres = qte_avant - qte
+                # ERR10 — une SORTIE ne peut jamais faire descendre le stock
+                # sous zéro (garde plancher) : refus explicite en 400.
+                if qte_apres < 0:
+                    raise ValidationError(
+                        {'quantite': (
+                            'Stock insuffisant : la sortie dépasse le stock '
+                            f'disponible ({qte_avant}).')})
+            else:
+                qte_apres = qte
+            serializer.save(
+                created_by=user,
+                company=produit.company,
+                quantite_avant=qte_avant,
+                quantite_apres=qte_apres,
+            )
+            produit.quantite_stock = qte_apres
+            produit.save(update_fields=['quantite_stock'])
 
 
 class PrixFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -818,8 +840,11 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         today = timezone.now().date()
         with transaction.atomic():
             for ligne, qte in plan:
-                produit = ligne.produit
-                produit.refresh_from_db()
+                # ERR24 — verrou de ligne produit dans la transaction pour que
+                # des réceptions concurrentes du même produit ne perdent pas
+                # d'incrément (au lieu d'un simple refresh_from_db sans verrou).
+                produit = (Produit.objects.select_for_update()
+                           .get(pk=ligne.produit_id))
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + qte
                 MouvementStock.objects.create(

@@ -193,6 +193,37 @@ describe('annualSavingsBandMad — fourchette 60–90 % × tarif', () => {
   it('0 kWh → bande nulle', () => {
     expect(annualSavingsBandMad(0)).toEqual({ low: 0, high: 0 });
   });
+
+  it('plafonne l’économie à la facture annuelle estimée (ERR113)', () => {
+    // 8000 kWh → low 6720 / high 10080 sans plafond ; avec une facture de
+    // 5000 MAD, les DEUX bornes sont ramenées au plafond (on ne peut pas
+    // économiser plus que ce qu’on dépense).
+    const band = annualSavingsBandMad(8000, { annualBillMad: 5000 });
+    expect(band.high).toBe(5000);
+    expect(band.low).toBe(5000); // 6720 > 5000 → plafonnée aussi
+    expect(band.low).toBeLessThanOrEqual(band.high);
+  });
+
+  it('plafond entre low et high : seule la haute est rabotée', () => {
+    // facture = 8000 MAD : high 10080 → 8000, low 6720 reste sous le plafond.
+    const band = annualSavingsBandMad(8000, { annualBillMad: 8000 });
+    expect(band.high).toBe(8000);
+    expect(band.low).toBeCloseTo(6720, 0);
+    expect(band.low).toBeLessThan(band.high);
+  });
+
+  it('facture haute → aucun plafonnement (comportement inchangé)', () => {
+    const uncapped = annualSavingsBandMad(8000);
+    const capped = annualSavingsBandMad(8000, { annualBillMad: 1_000_000 });
+    expect(capped).toEqual(uncapped);
+  });
+
+  it('plafond absent/invalide → comportement d’origine (compat ascendante)', () => {
+    const base = annualSavingsBandMad(8000);
+    expect(annualSavingsBandMad(8000, {})).toEqual(base);
+    expect(annualSavingsBandMad(8000, { annualBillMad: Number.NaN })).toEqual(base);
+    expect(annualSavingsBandMad(8000, { annualBillMad: -1 })).toEqual(base);
+  });
 });
 
 describe('layoutPanels — pavage à l’échelle, à l’intérieur du tracé, avec retrait', () => {

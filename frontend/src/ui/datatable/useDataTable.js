@@ -105,10 +105,26 @@ export function useDataTable({
     [columns, columnState],
   )
 
-  /* ---- Clés de lignes de la page courante (pour sélection « tout ») ---- */
+  /* ---- Identité de ligne cohérente (ERR96) ----
+     Le `getRowId` par défaut retombe sur l'INDEX quand la ligne n'a pas d'`id`.
+     Cet index doit alors être le MÊME repère partout : sinon les clés de page
+     (index local 0..pageSize) et la sélection (index global 0..total) divergent
+     et une ligne sans id est sélectionnée à tort. On expose donc `keyOf(row,
+     globalIndex)` et on fournit toujours l'index GLOBAL dans l'univers de lignes
+     utilisé pour la sélection (`data` en pagination manuelle, sinon `sorted`),
+     ce que la grille réutilise pour le rendu. */
+  const selectionRows = manualPagination ? data : sorted
+  // Décalage global de la page : en pagination cliente, paged = sorted.slice(...)
+  // donc l'index global d'une ligne de page est pageIndex*pageSize + i ; en
+  // pagination manuelle, paged === data, donc le décalage est nul.
+  const pageOffset = manualPagination ? 0 : pageIndex * pageSize
+  const keyOf = useCallback(
+    (row, globalIndex) => String(getRowId(row, globalIndex)),
+    [getRowId],
+  )
   const pageKeys = useMemo(
-    () => paged.map((row, i) => String(getRowId(row, i))),
-    [paged, getRowId],
+    () => paged.map((row, i) => keyOf(row, pageOffset + i)),
+    [paged, keyOf, pageOffset],
   )
   const pageSelectionState = useMemo(
     () => selectionState(selected, pageKeys),
@@ -116,8 +132,8 @@ export function useDataTable({
   )
   const selectedKeys = useMemo(() => Object.keys(selected), [selected])
   const selectedRows = useMemo(
-    () => (manualPagination ? data : sorted).filter((row, i) => selected[String(getRowId(row, i))]),
-    [selected, sorted, data, getRowId, manualPagination],
+    () => selectionRows.filter((row, i) => selected[keyOf(row, i)]),
+    [selected, selectionRows, keyOf],
   )
 
   /* ---- Actions de tri (avec seam serveur) ---- */
@@ -214,6 +230,8 @@ export function useDataTable({
     setView,
     // accès brut
     getRowId,
+    keyOf,
+    pageOffset,
     accessor,
   }
 }

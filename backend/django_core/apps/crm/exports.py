@@ -12,7 +12,11 @@ L879 : la construction du classeur vit désormais dans le builder PARTAGÉ
 tous les appelants existants. Un seul format (en-têtes en gras, largeurs,
 coercition fr-MA) pour TOUS les exports de listes.
 """
-from apps.records.xlsx import build_xlsx_response  # noqa: F401  (ré-export)
+# ERR11 — la neutralisation de l'injection de formules vit désormais dans le
+# builder PARTAGÉ (apps.records.xlsx.build_xlsx_response), pour protéger TOUS les
+# exports xlsx téléchargés (pas seulement ceux du CRM) et préserver l'identité
+# du ré-export (test_crm_exports_reexports_shared). On le ré-exporte tel quel.
+from apps.records.xlsx import build_xlsx_response  # noqa: F401
 
 from .stages import STAGE_LABELS
 

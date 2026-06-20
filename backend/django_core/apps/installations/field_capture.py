@@ -156,11 +156,16 @@ def validate_consommation(cons, user):
                 continue
             produit = Produit.objects.select_for_update().get(pk=li.produit_id)
             qte_avant = produit.quantite_stock
-            qte_apres = qte_avant - int(qte)
+            # ERR80 — garde plancher : ne sors jamais plus que le stock en main
+            # (on borne à zéro plutôt que de piloter `quantite_stock` négatif).
+            qte_sortie = min(qte, qte_avant) if qte_avant > 0 else Decimal('0')
+            # ERR41 — sortie sur la quantité DÉCIMALE (jamais int(qte)) : une
+            # ligne de 0,5 sort bien 0,5 (et n'est plus tronquée à 0/perdue).
+            qte_apres = qte_avant - qte_sortie
             MouvementStock.objects.create(
                 company=cons.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
-                quantite=int(qte), quantite_avant=qte_avant,
+                quantite=qte_sortie, quantite_avant=qte_avant,
                 quantite_apres=qte_apres,
                 reference=installation.reference,
                 note=(f'Consommation réelle intervention '

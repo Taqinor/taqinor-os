@@ -18,6 +18,24 @@ from .serializers import (
 from .throttles import LoginRateThrottle, RegisterRateThrottle
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 
+# ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
+# Les jetons JWT sont posés en cookies ``httpOnly`` (jamais lisibles par JS, ce
+# qui neutralise le vol de jeton par XSS). La protection CSRF des mutations
+# authentifiées par cookie repose sur DEUX barrières complémentaires :
+#   1. ``SameSite=Strict`` — le navigateur n'attache JAMAIS ces cookies à une
+#      requête déclenchée depuis un autre site (origine), ce qui bloque les CSRF
+#      classiques. C'est une INVARIANTE de sécurité : ne JAMAIS l'abaisser à
+#      'Lax'/'None' sans introduire au préalable un jeton CSRF explicite
+#      (double-submit / en-tête X-CSRFToken). Le test
+#      ``tests_csrf.test_auth_cookies_are_samesite_strict`` verrouille cette
+#      valeur pour qu'un relâchement silencieux casse la CI.
+#   2. ``Secure`` en production (cookies HTTPS uniquement) — posé via
+#      ``_COOKIE_SECURE`` ci-dessous, renforcé par ``SESSION/CSRF_COOKIE_SECURE``
+#      et ``SECURE_SSL_REDIRECT`` dans settings/prod.py.
+# Le frontend est servi depuis le même site eTLD+1 que l'API en production, donc
+# 'Strict' n'empêche aucun usage légitime. Si une future intégration tierce
+# cross-site devait poster avec ces cookies, il FAUDRAIT d'abord ajouter un flux
+# de jeton CSRF complet avant d'assouplir SameSite — c'est un changement gardé.
 _COOKIE_SECURE = not settings.DEBUG
 _COOKIE_SAMESITE = 'Strict'
 _ACCESS_MAX_AGE = int(
@@ -89,9 +107,15 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             try:
                 from apps.audit.recorder import record
                 from apps.audit.models import AuditLog
-                uname = request.data.get('username') or ''
-                u = CustomUser.objects.filter(username=uname).first()
-                record(AuditLog.Action.LOGIN, user=u, actor_username=uname,
+                # ERR92 — sur un login RÉUSSI, normaliser actor_username depuis
+                # l'objet utilisateur résolu (autorité), jamais depuis la chaîne
+                # request.data['username'] brute (qui peut différer en casse ou
+                # être truquée). On résout par username insensible à la casse.
+                raw_uname = (request.data.get('username') or '').strip()
+                u = CustomUser.objects.filter(
+                    username__iexact=raw_uname).first()
+                actor = u.username if u is not None else raw_uname
+                record(AuditLog.Action.LOGIN, user=u, actor_username=actor,
                        company=getattr(u, 'company', None), detail='Connexion')
             except Exception:
                 pass

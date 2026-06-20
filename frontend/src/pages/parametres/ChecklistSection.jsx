@@ -10,7 +10,7 @@
 // elle s'enregistre seule, sans le bouton « Enregistrer » global). Tout le
 // texte est en français ; les identifiants techniques (clés) restent en anglais.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -36,13 +36,16 @@ const slugify = (s) => s.trim().toLowerCase()
 export default function ChecklistSection() {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
+  // ERR62 — un échec de chargement affiche une erreur + Réessayer (pas un état
+  // « vide » trompeur faisant croire qu'aucun modèle n'existe).
+  const [loadError, setLoadError] = useState(false)
   const [newTemplate, setNewTemplate] = useState('')
   const [newType, setNewType] = useState('__none__')
   const [newEtape, setNewEtape] = useState({}) // { [templateId]: libellé }
 
   const load = () => installationsApi.getChecklistTemplates()
-    .then(r => setTemplates(r.data.results ?? r.data))
-    .catch(() => {})
+    .then(r => { setTemplates(r.data.results ?? r.data); setLoadError(false) })
+    .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
@@ -143,6 +146,16 @@ export default function ChecklistSection() {
     </p>
   )
 
+  if (loadError) return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="flex items-center gap-2 text-sm text-destructive">
+        <AlertCircle className="size-4" aria-hidden="true" />
+        Modèles de checklist indisponibles (serveur ?).
+      </p>
+      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
+    </div>
+  )
+
   return (
     <Card>
       <CardContent className="pt-4 sm:pt-5">
@@ -168,7 +181,8 @@ export default function ChecklistSection() {
             <div key={t.id} className="rounded-lg border border-border p-3">
               {/* En-tête du modèle */}
               <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                <Input className={['min-w-[140px] flex-[1_1_140px] font-medium', t.actif ? '' : 'opacity-50'].join(' ')}
+                {/* ERR102 — re-monte le champ si le serveur normalise le nom. */}
+                <Input key={t.nom} className={['min-w-[140px] flex-[1_1_140px] font-medium', t.actif ? '' : 'opacity-50'].join(' ')}
                   defaultValue={t.nom} onBlur={e => renameTemplate(t, e.target.value)} />
                 {t.protege ? (
                   <Badge tone="info">Défaut</Badge>
@@ -218,7 +232,8 @@ export default function ChecklistSection() {
               {/* Étapes du modèle */}
               {(t.etapes ?? []).map((et, ei) => (
                 <div key={et.id} className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                  <Input className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')}
+                  {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+                  <Input key={et.libelle} className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')}
                     defaultValue={et.libelle} onBlur={e => renameEtape(et, e.target.value)} />
                   <Button type="button" size="sm"
                     variant={et.capture_serie ? 'default' : 'outline'}

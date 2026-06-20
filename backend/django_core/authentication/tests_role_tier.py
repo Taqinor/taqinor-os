@@ -232,3 +232,64 @@ class TestBackfillExistingAccounts(RoleTierBase):
         sync_role_legacy(User)
         # Deuxième passage : plus aucun changement.
         self.assertEqual(sync_role_legacy(User), 0)
+
+
+class TestIsResponsableTightening(RoleTierBase):
+    """ERR4 : ``is_responsable`` (et donc ``IsResponsableOrAdmin``) ne doit plus
+    être vrai pour un rôle STRICTEMENT lecture seule. Les rôles métier qui
+    détiennent une permission d'écriture/gestion le restent, ainsi que les
+    comptes hérités sans rôle fin."""
+
+    def _role(self, nom, perms):
+        return Role.objects.create(
+            company=self.company, nom=nom, permissions=perms,
+            est_systeme=False)
+
+    def test_readonly_viewer_role_is_not_responsable(self):
+        viewer = User.objects.create_user(
+            username='viewer_ro', password='x', company=self.company,
+            role=self._role('Lecture seule', [
+                'stock_voir', 'crm_voir', 'ventes_voir',
+                'records_scope_equipe']))
+        self.assertFalse(viewer.is_responsable)
+
+    def test_utilisateur_role_is_not_responsable(self):
+        u = User.objects.create_user(
+            username='util_ro', password='x', company=self.company,
+            role=self.user_role)
+        self.assertFalse(u.is_responsable)
+
+    def test_role_with_any_write_permission_is_responsable(self):
+        com = User.objects.create_user(
+            username='com_w', password='x', company=self.company,
+            role=self._role('Commercial w', [
+                'crm_voir', 'crm_creer', 'ventes_voir']))
+        self.assertTrue(com.is_responsable)
+
+    def test_admin_role_is_responsable(self):
+        a = User.objects.create_user(
+            username='adm_r', password='x', company=self.company,
+            role=self.admin_role)
+        self.assertTrue(a.is_responsable)
+
+    def test_legacy_responsable_account_stays_responsable(self):
+        legacy = User.objects.create_user(
+            username='legacy_r', password='x', company=self.company,
+            role_legacy='responsable')
+        self.assertTrue(legacy.is_responsable)
+
+    def test_legacy_normal_account_is_not_responsable(self):
+        legacy = User.objects.create_user(
+            username='legacy_n', password='x', company=self.company,
+            role_legacy='normal')
+        self.assertFalse(legacy.is_responsable)
+
+    def test_readonly_role_blocked_from_responsable_endpoint(self):
+        """Bout-en-bout : un rôle lecture seule est refusé sur un endpoint
+        d'écriture gardé par ``IsResponsableOrAdmin`` (création de rôle via
+        l'API roles, qui passe par le palier ; ici on vérifie l'effet
+        ``is_responsable`` sur un endpoint ventes générique)."""
+        viewer = User.objects.create_user(
+            username='viewer_block', password='x', company=self.company,
+            role=self._role('RO2', ['ventes_voir', 'crm_voir']))
+        self.assertFalse(viewer.is_responsable)

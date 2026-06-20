@@ -62,6 +62,18 @@ ALL_PERMISSIONS = [
 SCOPE_TEAM = 'records_scope_equipe'
 SCOPE_SUBTREE = 'records_scope_sous_arbre'
 
+# Permissions ÉLEVÉES (ERR5) : octroyer l'une d'elles donne le contrôle des
+# rôles eux-mêmes (``roles_gerer`` = clé admin/escalade) ou l'accès aux données
+# sensibles (prix d'achat/marge, journal d'audit). Un non-administrateur ne peut
+# JAMAIS les ajouter à un rôle — sinon un Responsable s'auto-promeut
+# Administrateur en cochant ``roles_gerer`` sur son propre rôle. Réservées au
+# palier admin (porteur de ``roles_gerer``) côté serializer/vue.
+ELEVATED_PERMISSIONS = frozenset({
+    'roles_gerer',
+    'prix_achat_voir',
+    'journal_activite_voir',
+})
+
 RESPONSABLE_PERMISSIONS = [
     'stock_voir',
     'stock_creer',

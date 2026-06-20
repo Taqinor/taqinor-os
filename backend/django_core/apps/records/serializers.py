@@ -21,7 +21,14 @@ def resolve_target(model_label, object_id, company):
         ct = ContentType.objects.get(app_label=app_label, model=model)
     except ContentType.DoesNotExist:
         raise ValueError('Type de cible inconnu.')
-    obj = ct.get_object_for_this_type(pk=object_id)
+    # ERR56 — un `id` inexistant ou de mauvais type (ex. non numérique pour une
+    # PK entière) doit produire une 400 propre, jamais un 500 : les appelants ne
+    # rattrapent que ValueError, donc on convertit DoesNotExist / TypeError en
+    # ValueError ici.
+    try:
+        obj = ct.get_object_for_this_type(pk=object_id)
+    except (ct.model_class().DoesNotExist, ValueError, TypeError):
+        raise ValueError('Cible introuvable.')
     obj_company = getattr(obj, 'company_id', None)
     if company is not None and obj_company not in (None, company.id):
         raise ValueError('Cible hors de votre société.')

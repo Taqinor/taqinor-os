@@ -94,6 +94,16 @@ class NotifyServiceTests(TestCase):
             n = notify(self.user, EventType.STOCK_LOW, 'Stock bas')
         self.assertIsNotNone(n)
 
+    def test_in_app_body_is_bounded(self):
+        # ERR91 — le corps in-app est borné comme le titre/lien, pas illimité.
+        from .services import MAX_BODY_LEN
+        huge = 'x' * (MAX_BODY_LEN + 500)
+        n = notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body=huge)
+        self.assertIsNotNone(n)
+        self.assertEqual(len(n.body), MAX_BODY_LEN)
+        n.refresh_from_db()
+        self.assertEqual(len(n.body), MAX_BODY_LEN)
+
     def test_merged_preferences_covers_all_events(self):
         prefs = merged_preferences(self.user)
         self.assertEqual(len(prefs), len(EventType.choices))

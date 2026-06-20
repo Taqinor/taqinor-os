@@ -18,6 +18,15 @@ from .serializers import (
 )
 
 
+def _no_store(response):
+    """ERR89 — Empêche toute mise en cache d'une réponse révélant un secret
+    une seule fois (clé API / secret webhook). Proxies & navigateurs ne doivent
+    jamais en garder une copie."""
+    response['Cache-Control'] = 'no-store'
+    response['Pragma'] = 'no-cache'
+    return response
+
+
 class _CompanyScopedMixin:
     """Filtre toujours par la société de l'utilisateur connecté."""
     permission_classes = [IsAdminOrResponsableTier]
@@ -56,7 +65,7 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         data = ApiKeySerializer(instance).data
         # La clé en clair n'est disponible QUE dans cette réponse de création.
         data['key'] = raw_key
-        return Response(data, status=status.HTTP_201_CREATED)
+        return _no_store(Response(data, status=status.HTTP_201_CREATED))
 
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
@@ -88,7 +97,8 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         # Le secret en clair n'est disponible QU'ICI, à la création.
         data['secret'] = serializer.instance.secret
         headers = self.get_success_headers(serializer.data)
-        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+        return _no_store(
+            Response(data, status=status.HTTP_201_CREATED, headers=headers))
 
     @action(detail=True, methods=['post'])
     def rotate_secret(self, request, pk=None):
@@ -98,7 +108,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         instance.save(update_fields=['secret'])
         data = WebhookSerializer(instance).data
         data['secret'] = instance.secret
-        return Response(data)
+        return _no_store(Response(data))
 
     @action(detail=True, methods=['get'])
     def deliveries(self, request, pk=None):

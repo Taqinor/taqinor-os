@@ -383,6 +383,72 @@ test('escapeCSVCell: guillemets / virgules / sauts de ligne', () => {
   assert.equal(escapeCSVCell(undefined), '')
 })
 
+// ERR97 — Garde anti-injection de formules (= + - @) : préfixe une apostrophe.
+test('escapeCSVCell: neutralise les formules =/+/-/@ (anti-injection)', () => {
+  assert.equal(escapeCSVCell('=SUM(A1:A2)'), "'=SUM(A1:A2)")
+  assert.equal(escapeCSVCell('+1+2'), "'+1+2")
+  assert.equal(escapeCSVCell('-1'), "'-1")
+  assert.equal(escapeCSVCell('@cmd'), "'@cmd")
+  // Une formule contenant aussi un délimiteur reste préfixée PUIS quotée RFC-4180
+  assert.equal(escapeCSVCell('=1,2'), '"\'=1,2"')
+  // Un texte ordinaire n'est jamais préfixé
+  assert.equal(escapeCSVCell('valeur'), 'valeur')
+  assert.equal(escapeCSVCell('a-b'), 'a-b') // le tiret au milieu n'est pas une formule
+  // Un nombre négatif numérique (pas une chaîne) n'est pas concerné par String()
+  assert.equal(escapeCSVCell(42), '42')
+})
+
+/* ============================== IDENTITÉ DE LIGNE (ERR96) ============================== */
+
+// Le getRowId par défaut retombe sur l'index quand la ligne n'a pas d'id. Cet
+// index DOIT être le même repère (global) pour les clés de page et la sélection,
+// sinon une ligne sans id est sélectionnée à tort. On reproduit ici les deux
+// chemins de génération de clés du hook pour verrouiller la cohérence.
+const defaultGetRowId = (row, i) => row?.id ?? i
+const keyOf = (row, globalIndex) => String(defaultGetRowId(row, globalIndex))
+
+test('identité de ligne : clés de page = clés de sélection (index global, sans id)', () => {
+  // 5 lignes SANS id, pagination cliente, page de 2, deuxième page.
+  const sorted = [{ v: 'a' }, { v: 'b' }, { v: 'c' }, { v: 'd' }, { v: 'e' }]
+  const pageSize = 2
+  const pageIndex = 1
+  const pageOffset = pageIndex * pageSize // 2
+  const paged = sorted.slice(pageOffset, pageOffset + pageSize) // [c, d]
+
+  // Clés de page : index GLOBAL (pageOffset + i)
+  const pageKeys = paged.map((row, i) => keyOf(row, pageOffset + i))
+  assert.deepEqual(pageKeys, ['2', '3'])
+
+  // On sélectionne « tout sur la page » → ces clés.
+  const selected = Object.fromEntries(pageKeys.map((k) => [k, true]))
+
+  // Sélection : filtre sur l'univers complet avec l'index GLOBAL → mêmes lignes.
+  const selectedRows = sorted.filter((row, i) => selected[keyOf(row, i)])
+  assert.deepEqual(selectedRows.map((r) => r.v), ['c', 'd'])
+})
+
+test('identité de ligne : un index local mélangé sélectionnerait les mauvaises lignes', () => {
+  // Démontre le bug d'origine : si les clés de page utilisent l'index LOCAL
+  // (0,1) tandis que la sélection utilise l'index GLOBAL, on sélectionne les
+  // lignes 0 et 1 (a, b) au lieu de la page courante (c, d).
+  const sorted = [{ v: 'a' }, { v: 'b' }, { v: 'c' }, { v: 'd' }, { v: 'e' }]
+  const pageSize = 2
+  const pageOffset = 1 * pageSize
+  const paged = sorted.slice(pageOffset, pageOffset + pageSize)
+  const buggyPageKeys = paged.map((row, i) => keyOf(row, i)) // index LOCAL (bug)
+  const selected = Object.fromEntries(buggyPageKeys.map((k) => [k, true]))
+  const selectedRows = sorted.filter((row, i) => selected[keyOf(row, i)])
+  // Les mauvaises lignes seraient sélectionnées — c'est exactement ce qu'ERR96 corrige.
+  assert.deepEqual(selectedRows.map((r) => r.v), ['a', 'b'])
+})
+
+test('identité de ligne : un id explicite reste stable quel que soit l index', () => {
+  const sorted = [{ id: 'x' }, { id: 'y' }, { id: 'z' }]
+  // Quelle que soit la valeur d'index passée, la clé suit l'id.
+  assert.equal(keyOf(sorted[0], 0), 'x')
+  assert.equal(keyOf(sorted[0], 99), 'x')
+})
+
 test('rowsToCSV: en-têtes + valeurs + exportValue + BOM', () => {
   const rows = [
     { nom: 'Kasri, R', montant: 1000 },

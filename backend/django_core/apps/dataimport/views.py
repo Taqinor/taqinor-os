@@ -1,11 +1,21 @@
 """T9 — endpoints d'import réutilisable (dry-run + commit). Multi-tenant :
 la société vient toujours du serveur, jamais du corps."""
+import logging
+
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from . import services
+
+logger = logging.getLogger(__name__)
+
+# ERR53 — Bornes anti-DoS : un upload trop gros (en octets) ou un fichier de
+# trop de lignes est rejeté AVANT toute lecture/parsing intégral en mémoire,
+# avec un 400 clair plutôt qu'une erreur générique avalée.
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 Mo
+MAX_ROWS = 10000
 
 
 def _read(request):
@@ -16,6 +26,12 @@ def _read(request):
     if target not in services.TARGETS:
         return None, None, Response(
             {'detail': "Cible invalide (leads, clients ou products)."}, status=400)
+    size = getattr(f, 'size', None)
+    if size is not None and size > MAX_UPLOAD_BYTES:
+        return None, None, Response(
+            {'detail': 'Fichier trop volumineux : '
+                       f'{size} octets (max {MAX_UPLOAD_BYTES}).'},
+            status=400)
     return f, target, None
 
 
@@ -29,8 +45,16 @@ def dry_run(request):
         return err
     try:
         result = services.dry_run(f.read(), f.name, target)
-    except Exception as exc:
-        return Response({'detail': f'Lecture impossible : {exc}'}, status=400)
+    except ValueError as exc:
+        # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
+        return Response({'detail': str(exc)}, status=400)
+    except Exception:
+        # ERR53 — diagnostic : on journalise la cause réelle côté serveur sans
+        # la divulguer au client, et on renvoie un 400 générique.
+        logger.warning('Import dry-run échoué (target=%s)', target, exc_info=True)
+        return Response(
+            {'detail': 'Lecture du fichier impossible (format invalide ?).'},
+            status=400)
     return Response(result)
 
 
@@ -45,6 +69,15 @@ def commit(request):
     try:
         result = services.commit(
             f.read(), f.name, target, request.user.company, request.user)
-    except Exception as exc:
-        return Response({'detail': f'Import impossible : {exc}'}, status=400)
+    except ValueError as exc:
+        # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
+        return Response({'detail': str(exc)}, status=400)
+    except Exception:
+        # ERR53 — diagnostic : on journalise la cause réelle côté serveur sans
+        # la divulguer au client, et on renvoie un 400 générique. Le commit est
+        # atomique (ERR51) : rien n'est créé en cas d'échec.
+        logger.warning('Import commit échoué (target=%s)', target, exc_info=True)
+        return Response(
+            {'detail': 'Import impossible (vérifiez le fichier).'},
+            status=400)
     return Response(result)

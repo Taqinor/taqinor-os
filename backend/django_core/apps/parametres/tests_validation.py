@@ -94,3 +94,155 @@ class TestCommissionRequiresValue(ProfileValidationBase):
             '/api/django/parametres/update/',
             {'commission_mode': 'par_kwc'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class TestCompanyReadOnly(ProfileValidationBase):
+    """ERR25 — `company` est read-only : un PATCH ne peut pas repointer le
+    profil de l'appelant vers une autre société."""
+
+    def test_company_field_ignored_on_patch(self):
+        other = Company.objects.get_or_create(
+            slug='val-other', defaults={'nom': 'Other Co'})[0]
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(self.company)
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'company': other.id, 'nom': 'Renommé'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        profile.refresh_from_db()
+        # Le FK société est inchangé (non détourné), seul `nom` a été pris.
+        self.assertEqual(profile.company_id, self.company.id)
+        self.assertEqual(profile.nom, 'Renommé')
+
+
+class TestThresholdRanges(ProfileValidationBase):
+    """ERR55 — bornes [0, 100] sur les pourcentages éditables et non-négativité
+    des seuils kWc ; un NULL reste accepté (champ optionnel)."""
+
+    def test_negative_remise_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'remise_max_pct': -5}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('remise_max_pct', resp.data)
+
+    def test_over_100_remise_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'remise_max_pct': 120}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('remise_max_pct', resp.data)
+
+    def test_discount_threshold_out_of_range_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'discount_approval_threshold': 150}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('discount_approval_threshold', resp.data)
+
+    def test_negative_overage_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'overage_seuil_pct': -1}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('overage_seuil_pct', resp.data)
+
+    def test_negative_regime_threshold_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'seuil_regime_declaration_kwc': -3}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('seuil_regime_declaration_kwc', resp.data)
+
+    def test_valid_threshold_saved(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'remise_max_pct': 15, 'discount_approval_threshold': 10},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(str(resp.data['remise_max_pct']), '15.00')
+
+    def test_null_remise_allowed(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'remise_max_pct': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class TestJsonShapeValidation(ProfileValidationBase):
+    """ERR55 — forme des champs JSON doc_prefixes / doc_numbering /
+    payment_terms ; NULL reste accepté (repli sur le défaut historique)."""
+
+    def test_doc_prefixes_must_be_object(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'doc_prefixes': ['DEV', 'FAC']}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('doc_prefixes', resp.data)
+
+    def test_doc_prefixes_unknown_key_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'doc_prefixes': {'inconnu': 'X'}}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('doc_prefixes', resp.data)
+
+    def test_doc_prefixes_valid_saved(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'doc_prefixes': {'devis': 'DV', 'facture': 'FC'}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['doc_prefixes']['devis'], 'DV')
+
+    def test_doc_numbering_bad_padding_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'doc_numbering': {'devis': {'padding': 99, 'reset': 'monthly'}}},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('doc_numbering', resp.data)
+
+    def test_doc_numbering_bad_reset_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'doc_numbering': {'devis': {'padding': 4, 'reset': 'hourly'}}},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('doc_numbering', resp.data)
+
+    def test_doc_numbering_valid_saved(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'doc_numbering': {'facture': {'padding': 5, 'reset': 'yearly'}}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_payment_terms_must_be_object(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'payment_terms': [30, 60, 10]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('payment_terms', resp.data)
+
+    def test_payment_terms_over_100_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'payment_terms': {'reseau': {'acompte': 60, 'materiel': 60,
+                                          'solde': 10}}}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('payment_terms', resp.data)
+
+    def test_payment_terms_non_numeric_rejected(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'payment_terms': {'reseau': {'acompte': 'beaucoup'}}},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('payment_terms', resp.data)
+
+    def test_payment_terms_valid_saved(self):
+        resp = self.api.patch(
+            '/api/django/parametres/update/',
+            {'payment_terms': {'reseau': {'acompte': 30, 'materiel': 60,
+                                          'solde': 10}}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)

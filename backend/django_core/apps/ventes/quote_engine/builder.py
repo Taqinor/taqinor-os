@@ -138,7 +138,9 @@ def clean_pdf_options(raw) -> dict:
         opts['payment_mode'] = raw['payment_mode']
     try:
         acompte = raw.get('custom_acompte')
-        opts['custom_acompte'] = float(acompte) if acompte not in (None, '') else None
+        # ERR76 — never forward a negative acompte; the engine additionally
+        # clamps it to the order total.
+        opts['custom_acompte'] = max(0.0, float(acompte)) if acompte not in (None, '') else None
     except (TypeError, ValueError):
         opts['custom_acompte'] = None
     return opts
@@ -545,11 +547,20 @@ def _ensure_pdf_bucket() -> None:
             logger.warning("Could not ensure MinIO bucket %s: %s", bucket, exc)
 
 
-def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
+def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     """Render the quote PDF for a Devis in the requested format and store it
     in MinIO. pdf_options (see DEFAULT_PDF_OPTIONS) selects the simulator
     format: full 3-page premium (default) or one-page, with the monthly-chart
     and devis-final modifiers. Returns the stored MinIO key.
+
+    ERR74 — ``persist`` controls the ``devis.fichier_pdf`` write. The PDF is
+    always rendered and uploaded to its (deterministic, company-scoped) MinIO
+    key, but on a safe GET path (``/proposal``, public share link) we pass
+    ``persist=False`` so the read does not also write the model row when the
+    column already points at that same key — avoiding a write side-effect on a
+    safe method and a redundant re-persist. With ``persist=True`` (default,
+    used by the Celery generate task) the column is refreshed only when it
+    actually changed.
     """
     from apps.ventes.models import Devis
     from apps.ventes.utils.pdf import _upload_pdf
@@ -576,8 +587,11 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)
 
-    devis.fichier_pdf = key
-    devis.save(update_fields=["fichier_pdf"])
+    # Persist the key only when asked AND when it actually changed: a safe GET
+    # (persist=False) never writes; the default path writes once.
+    if persist and devis.fichier_pdf != key:
+        devis.fichier_pdf = key
+        devis.save(update_fields=["fichier_pdf"])
 
     logger.info("Premium quote PDF generated: %s (%d bytes)", key, len(pdf_bytes))
     return key

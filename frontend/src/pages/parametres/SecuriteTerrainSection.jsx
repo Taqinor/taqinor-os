@@ -6,7 +6,7 @@
 //     n° de série, QA photo IA). Vide = no-op total (aucun coût, aucune clé).
 // Section autonome (charge/enregistre seule). Texte en français.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import parametresApi from '../../api/parametresApi'
 import {
@@ -22,6 +22,9 @@ const slugify = (s) => s.trim().toLowerCase()
 export default function SecuriteTerrainSection() {
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
+  // ERR62 — un échec de chargement affiche une erreur + Réessayer (au lieu d'un
+  // état « vide » trompeur et d'un profil non chargé silencieux).
+  const [loadError, setLoadError] = useState(false)
   const [newLibelle, setNewLibelle] = useState('')
   const [profile, setProfile] = useState(null)
 
@@ -31,7 +34,8 @@ export default function SecuriteTerrainSection() {
   ]).then(([cs, pr]) => {
     setSlots(cs.data.results ?? cs.data)
     setProfile(pr.data)
-  }).catch(() => {}).finally(() => setLoading(false))
+    setLoadError(false)
+  }).catch(() => setLoadError(true)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const add = async () => {
@@ -83,6 +87,16 @@ export default function SecuriteTerrainSection() {
     </p>
   )
 
+  if (loadError) return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="flex items-center gap-2 text-sm text-destructive">
+        <AlertCircle className="size-4" aria-hidden="true" />
+        Réglages sécurité & terrain indisponibles (serveur ?).
+      </p>
+      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-4">
       {/* ── F18 — Consignes de sécurité ── */}
@@ -102,7 +116,8 @@ export default function SecuriteTerrainSection() {
             )}
             {slots.map((s, i) => (
               <div key={s.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border p-2">
-                <Input className={['min-w-[200px] flex-[1_1_200px]', s.actif ? '' : 'opacity-50'].join(' ')}
+                {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+                <Input key={s.libelle} className={['min-w-[200px] flex-[1_1_200px]', s.actif ? '' : 'opacity-50'].join(' ')}
                   defaultValue={s.libelle} onBlur={(e) => rename(s, e.target.value)} />
                 <div className="ml-auto flex items-center gap-1">
                   <IconButton size="sm" variant="ghost" label="Monter"

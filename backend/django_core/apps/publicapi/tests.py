@@ -176,6 +176,9 @@ class ManagementEndpointTests(TestCase):
             'label': 'Intégration', 'scopes': [SCOPE_READ_LEADS]}, format='json')
         self.assertEqual(resp.status_code, 201)
         self.assertIn('key', resp.data)
+        # ERR89 — la clé révélée une fois n'est jamais mise en cache.
+        self.assertEqual(resp['Cache-Control'], 'no-store')
+        self.assertEqual(resp['Pragma'], 'no-cache')
         raw = resp.data['key']
         # La clé en clair fonctionne et est rattachée à la société de l'admin.
         key = ApiKey.objects.get(key_hash=hash_key(raw))
@@ -200,17 +203,51 @@ class ManagementEndpointTests(TestCase):
 
     def test_create_webhook_returns_secret_once(self):
         api = session_auth(self.admin)
-        resp = api.post('/api/django/publicapi/webhooks/', {
-            'target_url': 'https://example.test/hook',
-            'events': [EVENT_LEAD_CREATED]}, format='json')
+        # ERR46 — la validation anti-SSRF résout le DNS ; on la neutralise ici
+        # pour tester le flux de création sans dépendre d'un hôte public réel.
+        with mock.patch('apps.publicapi.serializers.validate_webhook_target_url',
+                        side_effect=lambda u: u):
+            resp = api.post('/api/django/publicapi/webhooks/', {
+                'target_url': 'https://example.test/hook',
+                'events': [EVENT_LEAD_CREATED]}, format='json')
         self.assertEqual(resp.status_code, 201)
         self.assertIn('secret', resp.data)
+        # ERR89 — le secret révélé une fois n'est jamais mis en cache.
+        self.assertEqual(resp['Cache-Control'], 'no-store')
+        self.assertEqual(resp['Pragma'], 'no-cache')
         hook = Webhook.objects.get(id=resp.data['id'])
         self.assertEqual(hook.company, self.co)
         # Lecture suivante : pas de secret.
         listing = api.get('/api/django/publicapi/webhooks/')
         for r in rows(listing):
             self.assertNotIn('secret', r)
+
+    def test_create_webhook_rejects_http_scheme(self):
+        # ERR46 — un schéma non-https est refusé à l'écriture.
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'target_url': 'http://example.com/hook',
+            'events': [EVENT_LEAD_CREATED]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('target_url', resp.data)
+
+    def test_create_webhook_rejects_internal_host(self):
+        # ERR46 — une cible interne (métadonnées cloud) est refusée.
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'target_url': 'https://169.254.169.254/latest/meta-data/',
+            'events': [EVENT_LEAD_CREATED]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('target_url', resp.data)
+
+    def test_create_webhook_rejects_loopback_host(self):
+        # ERR46 — une cible loopback (127.0.0.1) est refusée.
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/webhooks/', {
+            'target_url': 'https://127.0.0.1:9000/',
+            'events': [EVENT_LEAD_CREATED]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('target_url', resp.data)
 
     def test_catalogue(self):
         api = session_auth(self.admin)
@@ -227,6 +264,14 @@ class WebhookDeliveryTests(TestCase):
             company=self.co, target_url='https://example.test/hook',
             secret='s3cr3t', events=[EVENT_LEAD_CREATED, EVENT_FACTURE_PAID],
             enabled=True)
+        # ERR46 — la garde anti-SSRF de livraison résout le DNS ; l'hôte de test
+        # `example.test` n'est pas résolvable, on neutralise donc la résolution
+        # ici pour tester le flux de livraison (signature, journalisation…).
+        patcher = mock.patch(
+            'apps.publicapi.delivery.validate_webhook_target_url',
+            side_effect=lambda u: u)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_signature_is_correct_hmac(self):
         payload = {'event': EVENT_LEAD_CREATED, 'id': 1}
@@ -305,3 +350,42 @@ class SignalTriggerTests(TestCase):
             facture.note = 'edit'
             facture.save()
         d.assert_not_called()
+
+
+class WebhookSSRFGuardTests(TestCase):
+    """ERR46 — la livraison ne POST jamais vers un hôte interne, même si une
+    URL dangereuse a été stockée (bypass serializer) ou si le DNS a été
+    ré-pointé depuis. Le validateur lui-même rejette schéma + hôtes internes."""
+
+    def setUp(self):
+        self.co = make_company('pa-ssrf', 'PA SSRF')
+
+    def test_delivery_blocks_internal_url_without_posting(self):
+        # URL interne stockée directement (contourne la validation serializer).
+        hook = Webhook.objects.create(
+            company=self.co, target_url='https://127.0.0.1:9000/hook',
+            secret='s', events=[EVENT_LEAD_CREATED], enabled=True)
+        with mock.patch.object(delivery.httpx, 'post') as m:
+            delivery.dispatch_event(
+                self.co.id, EVENT_LEAD_CREATED, {'event': EVENT_LEAD_CREATED})
+        # Jamais de POST réseau vers la cible interne.
+        m.assert_not_called()
+        # Échec auditable journalisé.
+        d = WebhookDelivery.objects.get(webhook=hook)
+        self.assertEqual(d.status, WebhookDelivery.Statut.FAILED)
+        self.assertIn('SSRF', d.error)
+
+    def test_validator_accepts_public_https(self):
+        from .validators import validate_webhook_target_url
+        # 8.8.8.8 est public et littéral (pas de DNS) → accepté.
+        self.assertEqual(
+            validate_webhook_target_url('https://8.8.8.8/hook'),
+            'https://8.8.8.8/hook')
+
+    def test_validator_rejects_http_and_internal(self):
+        from .validators import UnsafeWebhookURL, validate_webhook_target_url
+        for bad in ('http://8.8.8.8/', 'https://169.254.169.254/',
+                    'https://10.0.0.5/', 'https://127.0.0.1/',
+                    'ftp://8.8.8.8/'):
+            with self.assertRaises(UnsafeWebhookURL):
+                validate_webhook_target_url(bad)

@@ -128,6 +128,17 @@ export default function Journal() {
 
   // Graphe + table : période + date + filtres + page. Le setState vit dans une
   // fonction async (jamais synchrone dans le corps de l'effet).
+  //
+  // ERR69 — un changement de filtre appelle aussi `resetPage()` : `filterParams`
+  // ET `page` changent dans le MÊME rendu. Pour ne déclencher QU'UNE seule série
+  // de requêtes, on dérive une clé sérialisée stable de toutes les entrées de la
+  // requête et on l'utilise comme unique dépendance de l'effet — deux objets
+  // `range`/`filterParams` au contenu identique ne re-déclenchent plus rien.
+  const requestKey = useMemo(
+    () => JSON.stringify({ period, date, range, filterParams, page }),
+    [period, date, range, filterParams, page]
+  )
+
   useEffect(() => {
     if (!allowed) return undefined
     let cancelled = false
@@ -151,7 +162,8 @@ export default function Journal() {
     }
     run()
     return () => { cancelled = true }
-  }, [allowed, period, date, range, filterParams, page])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowed, requestKey])
 
   // Reset de page géré dans les setters de filtres (pas d'effet → pas de
   // cascade de rendus).

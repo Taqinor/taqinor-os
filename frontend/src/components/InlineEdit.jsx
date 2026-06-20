@@ -36,8 +36,12 @@ export default function InlineEdit({
     try {
       await onSave(next)
     } catch {
+      // ERR105 — Échec d'enregistrement : on est déjà sorti du mode édition, donc
+      // l'affichage repasse sur `shown` (dérivé de la prop `value` = valeur
+      // serveur), ce qui restaure bien l'ancienne valeur. On ne touche PAS à
+      // `draft` ici (état mort hors édition) : `startEdit` le ré-initialisera
+      // depuis `value` à la prochaine entrée en édition.
       setErr(true)
-      setDraft(value ?? '') // restaure l'ancienne valeur
     } finally {
       setSaving(false)
     }

@@ -59,3 +59,31 @@ class TestMaintenance(TestCase):
         resp = self.api.get('/api/django/sav/contrats-maintenance/?due=1')
         rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
         self.assertEqual(len(rows), 1)
+
+    def test_cannot_bind_foreign_client(self):
+        # ERR9 — un contrat ne peut pas lier le client d'une AUTRE société.
+        other = Company.objects.get_or_create(
+            slug='cm-other', defaults={'nom': 'Other'})[0]
+        foreign_client = Client.objects.create(company=other, nom='Étranger')
+        r = self.api.post('/api/django/sav/contrats-maintenance/', {
+            'client': foreign_client.id, 'periodicite': 'annuel',
+            'date_debut': date.today().isoformat()}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('client', r.data)
+        self.assertFalse(ContratMaintenance.objects.filter(
+            client=foreign_client).exists())
+
+    def test_cannot_bind_foreign_installation(self):
+        # ERR9 — ni le chantier d'une autre société.
+        from apps.installations.models import Installation
+        other = Company.objects.get_or_create(
+            slug='cm-other2', defaults={'nom': 'Other2'})[0]
+        other_client = Client.objects.create(company=other, nom='B')
+        foreign_inst = Installation.objects.create(
+            company=other, reference='CHT-X', client=other_client)
+        r = self.api.post('/api/django/sav/contrats-maintenance/', {
+            'client': self.client_obj.id, 'installation': foreign_inst.id,
+            'periodicite': 'annuel', 'date_debut': date.today().isoformat()},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('installation', r.data)

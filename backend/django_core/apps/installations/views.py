@@ -343,8 +343,17 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             inst.mes_production_test = data['mes_production_test']
         if data.get('mes_tension') not in (None, ''):
             inst.mes_tension = data['mes_tension']
+        canon_old = Installation.canonical_statut(old.statut)
         inst.statut = Installation.Statut.MISE_EN_SERVICE
         inst.save()
+        canon_new = Installation.canonical_statut(inst.statut)
+        # ERR40 — route le changement de statut par les MÊMES aides que
+        # `perform_update` : horodate le jalon (« Mise en service » se rabat sur
+        # « Réceptionné » → `date_reception`) et applique les effets stock du
+        # changement (consommation des réservations). Sans cela le chantier
+        # comptait au parc sans `date_reception` ni sortie de stock.
+        _stamp_statut_dates(inst, old.statut)
+        _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
         activity.log_changes(old, inst, request.user)
         # Note de chatter explicite incluant les valeurs mesurées (production /
         # tension) quand elles sont renseignées — pas seulement la date.
@@ -1636,27 +1645,61 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             reserve, context={'request': request}).data)
 
     # ── F17 — réconciliation du retour d'outillage ──────────────────────────
-    @action(detail=True, methods=['get'], url_path='tool-return',
+    @action(detail=True, methods=['get', 'post'], url_path='tool-return',
             permission_classes=[IsAnyRole])
     def tool_return(self, request, pk=None):
         """F17 — état du retour d'outillage : les outils du kit de préparation,
-        rendu/non rendu. Matérialisé depuis le kit à la première consultation."""
-        return self._tool_return_response(self.get_object())
+        rendu/non rendu.
+
+        ERR81 — la matérialisation des lignes (écriture) passe par POST et est
+        IDEMPOTENTE/anti-course (get_or_create sur l'unique_together
+        intervention+outil) ; le GET reste une simple lecture qui amorce les
+        lignes manquantes sans jamais doublonner.
+        ERR82 — un outil déjà sorti (réservé) sur une AUTRE intervention non
+        confirmée n'est pas ajouté ici (anti double-réservation) ; il est
+        signalé dans `conflits`."""
+        interv = self.get_object()
+        return self._tool_return_response(interv)
+
+    def _checkout_conflicts(self, interv, outil_ids):
+        """ERR82 — outils déjà « sortis » (réservés) sur une autre intervention :
+        une ligne de retour NON confirmée et NON rendue ailleurs vaut une
+        sortie en cours. Renvoie {outil_id: intervention_id} en conflit."""
+        if not outil_ids:
+            return {}
+        busy = (ToolReturn.objects
+                .filter(company=interv.company, outil_id__in=list(outil_ids),
+                        rendu=False, confirme_le__isnull=True)
+                .exclude(intervention=interv)
+                .values_list('outil_id', 'intervention_id'))
+        return {oid: iid for oid, iid in busy}
 
     def _tool_return_response(self, interv):
-        # Amorce les lignes de retour depuis les outils de la préparation.
+        # Amorce les lignes de retour depuis les outils de la préparation, de
+        # façon IDEMPOTENTE (get_or_create) — pas de doublon même en course
+        # (ERR81). Un outil déjà réservé sur une autre intervention non
+        # confirmée est ÉCARTÉ (anti double-réservation, ERR82).
         prep = getattr(interv, 'preparation', None)
-        existing = {tr.outil_id for tr in interv.tool_returns.all()}
+        conflicts = {}
         if prep is not None:
-            for ol in prep.outils.all():
-                if ol.outil_id and ol.outil_id not in existing:
-                    ToolReturn.objects.create(
-                        company=interv.company, intervention=interv,
-                        outil=ol.outil)
-                    existing.add(ol.outil_id)
-        return Response(ToolReturnSerializer(
+            existing = {tr.outil_id for tr in interv.tool_returns.all()}
+            wanted = [ol.outil_id for ol in prep.outils.all()
+                      if ol.outil_id and ol.outil_id not in existing]
+            conflicts = self._checkout_conflicts(interv, wanted)
+            for outil_id in wanted:
+                if outil_id in conflicts:
+                    continue
+                ToolReturn.objects.get_or_create(
+                    intervention=interv, outil_id=outil_id,
+                    defaults={'company': interv.company})
+        rows = ToolReturnSerializer(
             interv.tool_returns.select_related(
-                'outil', 'emplacement_retour').all(), many=True).data)
+                'outil', 'emplacement_retour').all(), many=True).data
+        if conflicts:
+            return Response({'tool_returns': rows, 'conflits': [
+                {'outil': oid, 'intervention': iid}
+                for oid, iid in conflicts.items()]})
+        return Response(rows)
 
     @action(detail=True, methods=['post'], url_path='cocher-tool-return',
             permission_classes=[IsResponsableOrAdmin])
