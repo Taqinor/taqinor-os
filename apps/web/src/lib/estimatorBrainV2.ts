@@ -304,12 +304,18 @@ export function specificYield(latitudeDeg: number, tiltDeg: number, aspect: numb
   return interpAspect(cities[0].grid, aspect, tiltDeg);
 }
 
-/** Inclinaison sud optimale (max kWh/kWc) à cette latitude, lue dans la table. */
-export function optimalSouthTiltDeg(latitudeDeg: number): number {
+/**
+ * Inclinaison optimale (max kWh/kWc) à cette latitude, lue dans la table.
+ * `aspect` (W72) : par DÉFAUT 0 (plein sud — comportement historique inchangé).
+ * En passant l'aspect RÉEL du pavage gagnant (ex. un toit aligné/tourné), le pic se
+ * déplace honnêtement vers l'inclinaison qui maximise le rendement à CET aspect — pas
+ * une inclinaison sud théorique. La signature reste rétro-compatible (aspect optionnel).
+ */
+export function optimalSouthTiltDeg(latitudeDeg: number, aspect = 0): number {
   let best = -1;
   let bestTilt = 29;
   for (let t = 0; t <= 35; t++) {
-    const y = specificYield(latitudeDeg, t, 0);
+    const y = specificYield(latitudeDeg, t, aspect);
     if (y > best) {
       best = y;
       bestTilt = t;
@@ -927,9 +933,21 @@ export interface RecommendOptions {
  * « besoin » que le calepinage ne dépasse jamais : panneaux posés = min(besoin, ce
  * qui tient réellement après retrait/obstacles). Même formule que la branche
  * « couvre » de recommend(), isolée ici pour piloter le curseur côté écran. */
-export function neededPanelsForTarget(targetAnnualKwh: number, latitudeDeg: number): number {
+export function neededPanelsForTarget(
+  targetAnnualKwh: number,
+  latitudeDeg: number,
+  perPanelYieldOverride?: number,
+): number {
   if (!(targetAnnualKwh > 0)) return 0;
-  const yld = specificYield(latitudeDeg, optimalSouthTiltDeg(latitudeDeg), 0);
+  // W72 — UNE SEULE source de rendement pour le cap ET la production : si l'appelant
+  // fournit le rendement par panneau RÉEL du gagnant (PVGIS, à son aspect réel), on
+  // dimensionne le cap « +10 % » sur CE rendement — sinon on retombe sur la table au sud
+  // optimal (comportement historique). Le plafond d'économies (annualSavingsMad) reste
+  // intact : on dimensionne au besoin dérivé de la facture, jamais au-delà.
+  const yld =
+    perPanelYieldOverride != null && Number.isFinite(perPanelYieldOverride) && perPanelYieldOverride > 0
+      ? perPanelYieldOverride
+      : specificYield(latitudeDeg, optimalSouthTiltDeg(latitudeDeg), 0);
   if (!(yld > 0)) return 0;
   const kwcNeeded = (targetAnnualKwh * COVERAGE_MARGIN) / yld;
   return Math.max(1, Math.ceil(kwcNeeded / (PANEL2_WATT / 1000)));

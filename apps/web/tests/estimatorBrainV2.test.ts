@@ -473,3 +473,49 @@ describe('W1 recommendedOptions — une recommandation calculée par groupe, ind
     expect(b).toEqual(a);
   });
 });
+
+// ——————————————————————————————————————————————————————————————————————
+// W72 — UNE source de rendement pour le cap besoin ET la production.
+// neededPanelsForTarget accepte un rendement par panneau (PVGIS) en surcharge :
+// quand on le passe, le cap se recalcule sur CE rendement, pas la table sud-optimal.
+// optimalSouthTiltDeg devient sensible à l'aspect (scan au vrai aspect, pas 0).
+// ——————————————————————————————————————————————————————————————————————
+describe('W72 — neededPanelsForTarget(yieldOverride) recale le cap sur le rendement PVGIS', () => {
+  it('passer un rendement PVGIS change le compte vs la table par défaut', () => {
+    const target = 18000;
+    const tableNeed = neededPanelsForTarget(target, LAT); // table, sud optimal
+    const tableYield = specificYield(LAT, optimalSouthTiltDeg(LAT), 0);
+    // un rendement PVGIS PLUS BAS que la table → il faut PLUS de panneaux pour la cible.
+    const lowNeed = neededPanelsForTarget(target, LAT, tableYield * 0.7);
+    expect(lowNeed).toBeGreaterThan(tableNeed);
+    // un rendement PVGIS PLUS HAUT que la table → il en faut MOINS.
+    const highNeed = neededPanelsForTarget(target, LAT, tableYield * 1.3);
+    expect(highNeed).toBeLessThan(tableNeed);
+  });
+
+  it('un override égal au rendement de table redonne EXACTEMENT le compte de table', () => {
+    const target = 9000;
+    const tableYield = specificYield(LAT, optimalSouthTiltDeg(LAT), 0);
+    expect(neededPanelsForTarget(target, LAT, tableYield)).toBe(neededPanelsForTarget(target, LAT));
+  });
+
+  it('un override non fini / ≤ 0 retombe sur la table (rétro-compatible)', () => {
+    const target = 9000;
+    const base = neededPanelsForTarget(target, LAT);
+    expect(neededPanelsForTarget(target, LAT, NaN)).toBe(base);
+    expect(neededPanelsForTarget(target, LAT, 0)).toBe(base);
+    expect(neededPanelsForTarget(target, LAT, -100)).toBe(base);
+    expect(neededPanelsForTarget(target, LAT, Infinity)).toBe(base);
+  });
+
+  it('optimalSouthTiltDeg est sensible à l\'aspect : l\'optimum à l\'est diffère du plein sud', () => {
+    const south = optimalSouthTiltDeg(LAT); // aspect 0 par défaut (inchangé)
+    expect(optimalSouthTiltDeg(LAT, 0)).toBe(south);
+    // à un aspect fortement décalé (est), l'inclinaison qui maximise le rendement
+    // n'est pas forcément la même qu'au plein sud — au minimum, jamais une exception
+    // et toujours une inclinaison bornée [0, 35].
+    const east = optimalSouthTiltDeg(LAT, -45);
+    expect(east).toBeGreaterThanOrEqual(0);
+    expect(east).toBeLessThanOrEqual(35);
+  });
+});

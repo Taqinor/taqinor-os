@@ -230,7 +230,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `MeshPhysicalMaterial` shader recompiles. Cache them once in closure scope (active + `dim` variants)
   and reuse; keep `disposeScene` correct (don't dispose the shared cache, only per-zone meshes).
   Accept: no per-drag material/geometry allocation; visuals unchanged. File: `roof-tool-pro11.ts`.
-- [ ] **W72 — brain: one yield source for the needed-panel cap AND production.** `neededPanelsForTarget`
+- [x] **W72 — brain: one yield source for the needed-panel cap AND production.** `neededPanelsForTarget`
   (`estimatorBrainV2.ts`) sizes the "+10% coverage" cap off the committed TABLE yield at a hardcoded
   south aspect, while `solveLive`/`solveLivePitched` produce kWh from PVGIS — so the shown coverage %
   drifts from the intended 110%. Thread the winning config's PVGIS per-panel yield into the cap, and

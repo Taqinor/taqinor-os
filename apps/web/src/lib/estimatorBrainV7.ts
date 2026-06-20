@@ -338,25 +338,10 @@ export function solveLive(
 ): LiveSolveResult {
   const tariff = tariffForCity(options.city);
   const target = billToAnnualKwh(monthlyBillMad, tariff);
-  const neededPanels = neededPanelsForTarget(target, latitudeDeg);
   const lockedNeed = locks.need != null && locks.need > 0 ? Math.round(locks.need) : undefined;
-  const effectiveNeed = lockedNeed ?? neededPanels;
   const roofAz = roofDominantAzimuthDeg(ring);
   const offSouthDeg = ((roofAz - 180 + 540) % 360) - 180;
   const hasAlignedChoice = Math.abs(offSouthDeg) >= ALIGNED_MIN_OFFSET_DEG;
-
-  const ctx: SolveCtx = {
-    ring,
-    latitudeDeg,
-    target,
-    effectiveNeed,
-    obstructions,
-    defaultSetbackM: PERIMETER_SETBACK_M,
-    tariff,
-    yieldFn: options.yieldFn,
-    roofAz,
-    cache: new Map<string, PackResult>(),
-  };
 
   // Verrous géométriques courants (sans le besoin, porté par effectiveNeed).
   const geomLocks: AxisLocks = {
@@ -366,9 +351,33 @@ export function solveLive(
     margin: locks.margin,
   };
 
+  const baseCtx = {
+    ring,
+    latitudeDeg,
+    target,
+    obstructions,
+    defaultSetbackM: PERIMETER_SETBACK_M,
+    tariff,
+    yieldFn: options.yieldFn,
+    roofAz,
+  };
+
+  // W72 — UNE seule source de rendement pour le cap « besoin » ET la production. Le cap
+  // table (sud optimal) sert d'amorce ; on résout l'optimum GLOBAL (tous axes libres) une
+  // première fois pour connaître le rendement par panneau RÉEL (PVGIS, à son aspect réel)
+  // du gagnant, puis on recale `neededPanels` sur CE rendement. La couverture affichée
+  // vaut alors ~110 % au MÊME rendement PVGIS que la production. Le plafond d'économies
+  // reste intact : posé = min(besoin, ce qui tient), jamais au-delà du besoin.
+  const seedNeed = neededPanelsForTarget(target, latitudeDeg);
+  const globalSeed = solveConstrained({ ...baseCtx, effectiveNeed: seedNeed, cache: new Map() }, {}, hasAlignedChoice);
+  const neededPanels = neededPanelsForTarget(target, latitudeDeg, globalSeed.perPanelYield);
+  const effectiveNeed = lockedNeed ?? neededPanels;
+
+  const ctx: SolveCtx = { ...baseCtx, effectiveNeed, cache: new Map<string, PackResult>() };
+
   const winner = solveConstrained(ctx, geomLocks, hasAlignedChoice);
 
-  // Optimum GLOBAL = tous axes libres, besoin dérivé de la facture.
+  // Optimum GLOBAL = tous axes libres, besoin dérivé de la facture (recalé W72).
   let globalWinner = winner;
   if (Object.values(geomLocks).some((v) => v != null) || effectiveNeed !== neededPanels) {
     const globalCtx: SolveCtx = { ...ctx, effectiveNeed: neededPanels, cache: new Map() };

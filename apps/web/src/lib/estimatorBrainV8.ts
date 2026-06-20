@@ -238,7 +238,14 @@ export function solveLivePitched(
 ): PitchedLiveResult {
   const tariff = tariffForCity(options.city);
   const target = billToAnnualKwh(monthlyBillMad, tariff);
-  const neededPanels = neededPanelsForTarget(target, latitudeDeg);
+  // W72 — UNE seule source de rendement pour le cap « besoin » ET la production. En pente,
+  // le couple (pente, face) est IMPOSÉ : on résout son rendement par panneau (PVGIS pose
+  // 'building', repli table) et on dimensionne le cap « +10 % » sur CE rendement — la
+  // couverture affichée vaut ~110 % au MÊME rendement que la production. Repli table si
+  // PVGIS indisponible (perPanelYieldOverride non fini → neededPanelsForTarget retombe sur
+  // la table au sud optimal).
+  const planYield = resolvePitchedYield(options.yieldFn, latitudeDeg, pitchDeg, facingAzimuthDeg).value;
+  const neededPanels = neededPanelsForTarget(target, latitudeDeg, planYield);
   const lockedNeed = locks.need != null && locks.need > 0 ? Math.round(locks.need) : undefined;
   const effectiveNeed = lockedNeed ?? neededPanels;
 
