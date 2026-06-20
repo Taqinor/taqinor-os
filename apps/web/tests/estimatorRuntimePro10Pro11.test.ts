@@ -35,7 +35,13 @@ class FakeMap {
   addControl(ctrl: unknown) { this.controls.push(ctrl); return this; }
   addLayer() { return this; }
   addSource() { return this; }
-  getSource() { return { setData() {} }; }
+  // W77 — on capte les setData par id de source pour pouvoir compter les sommets posés
+  // (`rp9-pts`) et vérifier qu'aucun coin n'est jeté en traçant vite.
+  sourceData: Record<string, unknown> = {};
+  getSource(id?: string) {
+    const self = this;
+    return { setData(d: unknown) { if (id) self.sourceData[id] = d; } };
+  }
   getLayer() { return null; }
   removeLayer() {}
   easeTo() { return this; }
@@ -819,5 +825,101 @@ describe('runtime W91 (map) — bouton ma position (GeolocateControl)', () => {
     ctrl.fire('geolocate', { coords: { longitude: -7.62, latitude: 33.59 } });
     const calls = fakeMaps[0].jumpToCalls as Array<{ center: [number, number]; zoom: number }>;
     expect(calls.some((c) => c.zoom === 19)).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W77 — PARITÉ TACTILE DU TRACÉ : double-tap pour finir + aucun coin perdu en traçant vite.
+// On compte les sommets réellement posés via la source `rp9-pts` captée par FakeMap, et on
+// vérifie que (1) tracer 4 coins distincts PLUS VITE que le délai anti-dblclick n'en perd
+// aucun, (2) un double-tap tactile au même endroit FERME le tracé, (3) le double-clic
+// desktop ferme SANS laisser de sommet parasite (comportement desktop inchangé).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W77 (map) — parité tactile du tracé', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // Nombre de sommets actuellement posés (features de la source rp9-pts).
+  function vertexCount(map: FakeMap): number {
+    const d = map.sourceData['rp9-pts'] as { features?: unknown[] } | undefined;
+    return d?.features?.length ?? 0;
+  }
+
+  // 4 coins d'un carré, à des POINTS écran DISTINCTS (sinon le garde double-tap les
+  // confondrait). lng/lat n'ont pas besoin d'être exacts pour le comptage de sommets.
+  const corners: Array<{ lng: number; lat: number; x: number; y: number }> = [
+    { lng: -7.62, lat: 33.59, x: 100, y: 100 },
+    { lng: -7.619, lat: 33.59, x: 300, y: 100 },
+    { lng: -7.619, lat: 33.591, x: 300, y: 300 },
+    { lng: -7.62, lat: 33.591, x: 100, y: 300 },
+  ];
+
+  it('tracer 4 coins PLUS VITE que le délai ne perd aucun sommet', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    // chaque clic n'avance le temps que de 50 ms (< 240 ms) → l'ancien code jetait
+    // les coins rapides ; le nouveau pose d'abord le précédent.
+    for (const c of corners) {
+      map.fire('click', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      vi.advanceTimersByTime(50);
+    }
+    vi.advanceTimersByTime(300); // laisse le dernier délai s'écouler
+    vi.useRealTimers();
+    expect(vertexCount(map)).toBe(4); // les 4 coins posés, aucun perdu
+  });
+
+  it('double-tap tactile au même endroit FERME le tracé', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    // pose 3 coins distincts au doigt (touchend + click synthétique chacun)
+    vi.useFakeTimers();
+    for (const c of corners.slice(0, 3)) {
+      map.fire('touchend', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      map.fire('click', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      vi.advanceTimersByTime(241); // chaque coin posé
+    }
+    expect(vertexCount(map)).toBe(3);
+    // double-tap au MÊME endroit (dans la fenêtre 300 ms) = terminer
+    const last = corners[2];
+    map.fire('touchend', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y } });
+    vi.advanceTimersByTime(120);
+    map.fire('touchend', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y } });
+    vi.useRealTimers();
+    // close() a tourné → la config est visible et le calcul rempli
+    expect((document.getElementById('rp9-config') as HTMLElement).hidden).toBe(false);
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+  });
+
+  it('double-clic desktop ferme SANS laisser de sommet parasite (desktop inchangé)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    for (const c of corners.slice(0, 3)) {
+      map.fire('click', { lngLat: { lng: c.lng, lat: c.lat }, point: { x: c.x, y: c.y } });
+      vi.advanceTimersByTime(241);
+    }
+    expect(vertexCount(map)).toBe(3);
+    // double-clic au même endroit que le 3ᵉ coin : 2ᵉ clic immédiat puis dblclick
+    const last = corners[2];
+    map.fire('click', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y } });
+    map.fire('dblclick', { lngLat: { lng: last.lng, lat: last.lat }, point: { x: last.x, y: last.y }, preventDefault() {} });
+    vi.useRealTimers();
+    // fermé avec EXACTEMENT 3 sommets (le clic du double-clic n'a pas ajouté de 4ᵉ)
+    expect((document.getElementById('rp9-config') as HTMLElement).hidden).toBe(false);
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
   });
 });

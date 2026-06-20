@@ -261,7 +261,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   `isSimplePolygon(ring)` to `roof.ts` (unit-tested) and call it from `addVertex`/`close` to reject a
   crossing edge with a clear French status. Accept: a self-crossing trace is refused with a message,
   never computed. Files: `roof.ts`, `roof-tool-pro11.ts`, `tests/roof.test.ts`.
-- [ ] **W77 — map: touch tracing parity (double-tap finish + no dropped vertices).** Finish-on-double is
+- [x] **W77 — map: touch tracing parity (double-tap finish + no dropped vertices).** Finish-on-double is
   wired only to MapLibre `dblclick` (desktop); on touch the only finish is the button, and the 240 ms
   single-click delay silently DISCARDS fast-placed corners (the `if (clickTimer) return;` guard). Add a
   `touchend` double-tap-to-finish (~300 ms) and stop dropping the queued vertex when a second tap is

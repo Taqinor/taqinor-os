@@ -272,6 +272,14 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let vertices: LngLat[] = [];
   let closed = false;
   let clickTimer: ReturnType<typeof setTimeout> | null = null;
+  // W77 — sommet en attente (clic capté, pas encore posé pendant le délai anti-dblclick) :
+  // on le mémorise pour le POSER si un second tap arrive vite (tracé rapide), au lieu de le
+  // jeter. `lastTapMs`/`lastTapPt` détectent le double-tap tactile (fenêtre ~300 ms + même
+  // endroit) pour FINIR le tracé au doigt (parité avec le dblclick desktop).
+  let pendingVertex: LngLat | null = null;
+  let pendingVertexPt: maplibregl.Point | null = null;
+  let lastTapMs = 0;
+  let lastTapPt: maplibregl.Point | null = null;
   let obstacleMode = false;
   let obstacles: Obstacle[] = [];
   let selectedObsId: string | null = null;
@@ -1549,9 +1557,66 @@ export function initRoofToolPro8(opts: InitOptions): void {
       doMove([e.lngLat.lng, e.lngLat.lat]);
     }
   });
+  // W77 — fenêtre/distance du double-tap tactile pour FINIR le tracé (parité dblclick).
+  // Deux taps proches dans le temps ET l'espace = « terminer » ; deux taps éloignés = deux
+  // coins distincts (tracé rapide) → on les pose tous les deux, jamais d'oubli.
+  const TAP_FINISH_MS = 300;
+  const DOUBLE_TAP_PX = 24;
+
+  /** Pose IMMÉDIATEMENT le sommet en attente (annule le délai anti-dblclick). Sert quand un
+   *  second tap distinct arrive vite : le coin déjà capté ne doit pas être jeté (W77). */
+  function flushPendingVertex() {
+    if (clickTimer) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+    }
+    if (pendingVertex) {
+      const v = pendingVertex;
+      pendingVertex = null;
+      pendingVertexPt = null;
+      addVertex(v);
+    }
+  }
+  /** Annule le sommet en attente SANS le poser (geste « terminer » : double-clic / double-tap). */
+  function cancelPendingVertex() {
+    if (clickTimer) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+    }
+    pendingVertex = null;
+    pendingVertexPt = null;
+  }
+
   map.on('touchend', (e) => {
-    if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
-    else if (moveObs) endMove();
+    if (drawing) {
+      endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
+      return;
+    }
+    if (moveObs) {
+      endMove();
+      return;
+    }
+    // W77 — double-tap tactile = « terminer » (le dblclick desktop ne se déclenche pas au
+    // doigt de façon fiable). On ne finit QUE si le tap précédent est proche dans le temps
+    // ET l'espace ; sinon ce sont deux coins distincts (le synthétique `click` les posera).
+    if (obstacleMode || closed) return;
+    const now = Date.now();
+    const pt = e.point;
+    const isDoubleTap =
+      lastTapPt != null &&
+      now - lastTapMs <= TAP_FINISH_MS &&
+      Math.abs(pt.x - lastTapPt.x) < DOUBLE_TAP_PX &&
+      Math.abs(pt.y - lastTapPt.y) < DOUBLE_TAP_PX;
+    if (isDoubleTap && vertices.length >= 3) {
+      lastTapMs = 0;
+      lastTapPt = null;
+      cancelPendingVertex(); // le 1ᵉʳ tap du double-tap ne pose pas de sommet (parité dblclick)
+      suppressClick = true; // neutralise le `click` synthétique de ce tap
+      close();
+      return;
+    }
+    lastTapMs = now;
+    lastTapPt = pt;
   });
 
   map.on('click', (e) => {
@@ -1566,18 +1631,32 @@ export function initRoofToolPro8(opts: InitOptions): void {
       selectObstacle(obstacleAtPoint(e.point));
       return;
     }
-    if (clickTimer) return;
+    // W77 — un nouveau clic pendant le délai anti-dblclick : s'il est LOIN du sommet en
+    // attente, c'est un VRAI coin suivant (tracé rapide) → on pose d'abord le précédent
+    // (aucun coin perdu). S'il est au MÊME endroit, c'est un double-clic « terminer » : on
+    // ne pose rien, le handler `dblclick` annulera le sommet en attente et fermera (parité
+    // desktop INCHANGÉE : un double-clic ne laisse jamais de sommet parasite).
+    if (pendingVertex) {
+      const near =
+        pendingVertexPt != null &&
+        Math.abs(e.point.x - pendingVertexPt.x) < DOUBLE_TAP_PX &&
+        Math.abs(e.point.y - pendingVertexPt.y) < DOUBLE_TAP_PX;
+      if (near) return; // double-clic au même endroit → laisser dblclick gérer
+      flushPendingVertex();
+    }
+    pendingVertex = lngLat;
+    pendingVertexPt = e.point;
     clickTimer = setTimeout(() => {
       clickTimer = null;
-      addVertex(lngLat);
+      const v = pendingVertex;
+      pendingVertex = null;
+      pendingVertexPt = null;
+      if (v) addVertex(v);
     }, 240);
   });
   map.on('dblclick', (e) => {
     e.preventDefault();
-    if (clickTimer) {
-      clearTimeout(clickTimer);
-      clickTimer = null;
-    }
+    cancelPendingVertex();
     close();
   });
 
