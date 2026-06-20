@@ -10,6 +10,8 @@ export const PAGE_TITLES = [
 
   // Stock
   ['/stock/bons-commande-fournisseur', 'Bons de commande fournisseur'],
+  ['/stock/receptions-fournisseur', 'Réceptions fournisseur'],
+  ['/stock/factures-fournisseur', 'Factures fournisseur'],
   ['/stock/retours-fournisseur', 'Retours fournisseur'],
   ['/stock/fournisseurs', 'Fournisseurs'],
   ['/stock/categories', 'Catégories & marques'],
