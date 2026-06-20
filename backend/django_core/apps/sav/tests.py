@@ -184,6 +184,126 @@ def ids_payload(resp):
     return data['results'] if isinstance(data, dict) and 'results' in data else data
 
 
+class TestSerieUnicite(TestCase):
+    """L636 — unicité du n° de série par société (les vides sont permis).
+
+    Deux équipements à n° de série non vide identique dans une même société
+    sont refusés (message FR clair) ; les séries vides ne déclenchent rien et
+    une autre société peut réutiliser la même série."""
+
+    def setUp(self):
+        self.company = make_company(slug='sav-serie', nom='Serie Co')
+        self.user = User.objects.create_user(
+            username='sav_serie', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='CHT-SERIE')
+        self.produit = make_produit(self.company, sku='OND-SERIE')
+
+    def _create(self, numero_serie):
+        body = {'produit': self.produit.id, 'installation': self.inst.id}
+        if numero_serie is not None:
+            body['numero_serie'] = numero_serie
+        return self.api.post('/api/django/sav/equipements/', body,
+                             format='json')
+
+    def test_duplicate_serial_rejected(self):
+        r1 = self._create('SN-DUP')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = self._create('SN-DUP')
+        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertIn('numero_serie', r2.data)
+
+    def test_blank_serials_allowed(self):
+        # Plusieurs équipements sans série : aucune collision.
+        r1 = self._create('')
+        r2 = self._create('')
+        r3 = self._create(None)
+        self.assertEqual(
+            [r1.status_code, r2.status_code, r3.status_code], [201, 201, 201])
+
+    def test_other_company_can_reuse_serial(self):
+        self._create('SN-SHARED')
+        other = make_company(slug='sav-serie-2', nom='Serie Co 2')
+        ouser = User.objects.create_user(
+            username='sav_serie2', password='x', role_legacy='admin',
+            company=other)
+        oapi = auth(ouser)
+        oinst, _ = make_installation(other, ref='CHT-SERIE-2')
+        oprod = make_produit(other, sku='OND-SERIE-2')
+        r = oapi.post('/api/django/sav/equipements/', {
+            'produit': oprod.id, 'installation': oinst.id,
+            'numero_serie': 'SN-SHARED'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_update_keeps_own_serial(self):
+        # Mettre à jour un équipement sans changer sa série ne se rejette pas.
+        r = self._create('SN-KEEP')
+        eid = r.data['id']
+        r2 = self.api.patch(f'/api/django/sav/equipements/{eid}/',
+                            {'numero_serie': 'SN-KEEP', 'statut': 'hors_service'},
+                            format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+
+    def test_update_to_existing_serial_rejected(self):
+        self._create('SN-A')
+        second = self._create('SN-B')
+        sid = second.data['id']
+        r = self.api.patch(f'/api/django/sav/equipements/{sid}/',
+                           {'numero_serie': 'SN-A'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('numero_serie', r.data)
+
+
+class TestEquipementDetailFields(TestCase):
+    """L624/L629/L632 — champs de détail exposés par le serializer :
+    nb_tickets_ouverts, remplace_par_ticket_reference, created_by_nom."""
+
+    def setUp(self):
+        self.company = make_company(slug='sav-detail', nom='Detail Co')
+        self.user = User.objects.create_user(
+            username='sav_detail', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(
+            self.company, ref='CHT-DETAIL')
+        self.produit = make_produit(self.company, sku='OND-DETAIL')
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=self.inst,
+            numero_serie='EQ-DETAIL', created_by=self.user)
+
+    def test_nb_tickets_ouverts_counts_open_only(self):
+        # Deux tickets ouverts + un clôturé + un annulé : seul 2 comptent.
+        Ticket.objects.create(
+            company=self.company, reference='SAV-D-1', client=self.client_obj,
+            installation=self.inst, equipement=self.eq, statut='nouveau')
+        Ticket.objects.create(
+            company=self.company, reference='SAV-D-2', client=self.client_obj,
+            installation=self.inst, equipement=self.eq, statut='en_cours')
+        Ticket.objects.create(
+            company=self.company, reference='SAV-D-3', client=self.client_obj,
+            installation=self.inst, equipement=self.eq, statut='cloture')
+        Ticket.objects.create(
+            company=self.company, reference='SAV-D-4', client=self.client_obj,
+            installation=self.inst, equipement=self.eq, statut='nouveau',
+            annule=True)
+        r = self.api.get(f'/api/django/sav/equipements/{self.eq.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['nb_tickets_ouverts'], 2)
+        self.assertEqual(r.data['created_by_nom'], 'sav_detail')
+
+    def test_remplace_par_ticket_reference_surfaced(self):
+        tk = Ticket.objects.create(
+            company=self.company, reference='SAV-RMP-9', client=self.client_obj,
+            installation=self.inst)
+        self.eq.statut = 'remplace'
+        self.eq.remplace_par_ticket = tk
+        self.eq.save(update_fields=['statut', 'remplace_par_ticket'])
+        r = self.api.get(f'/api/django/sav/equipements/{self.eq.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['remplace_par_ticket_reference'], 'SAV-RMP-9')
+
+
 class TestTicketWarrantyAndChatter(TestCase):
     def setUp(self):
         self.company = make_company()
@@ -267,6 +387,48 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertTrue(r.data['annule'])
         self.assertEqual(r.data['motif_annulation'], 'Doublon')
         self.assertTrue(Ticket.objects.filter(pk=tid).exists())
+
+
+class TestTicketPrefillFromEquipement(TestCase):
+    """Un ticket ouvert depuis le parc (équipement) porte client + installation
+    + equipement sans sélection manuelle (déduits côté serveur)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_prefill', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(
+            self.company, ref='CHT-PREFILL')
+        self.produit = make_produit(self.company, sku='OND-PREFILL',
+                                    garantie_mois=120)
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=self.inst,
+            numero_serie='EQ-PREFILL')
+
+    def test_equipement_only_resolves_client_and_installation(self):
+        r = self.api.post('/api/django/sav/tickets/', {
+            'equipement': self.eq.id,
+            'type': 'correctif', 'description': 'Panne depuis le parc',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['equipement'], self.eq.id)
+        self.assertEqual(r.data['installation'], self.inst.id)
+        self.assertEqual(r.data['client'], self.client_obj.id)
+
+    def test_explicit_client_and_installation_not_overwritten(self):
+        other = Client.objects.create(
+            company=self.company, nom='Autre', prenom='Client',
+            email='autre-prefill@example.invalid')
+        r = self.api.post('/api/django/sav/tickets/', {
+            'equipement': self.eq.id, 'client': other.id,
+            'type': 'correctif', 'description': 'Choix manuel',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['client'], other.id)
+        # L'installation reste déduite de l'équipement quand non fournie.
+        self.assertEqual(r.data['installation'], self.inst.id)
 
 
 class TestTicketInterventionLink(TestCase):

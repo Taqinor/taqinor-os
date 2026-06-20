@@ -20,9 +20,48 @@ const isEnRetard = (iso) => {
   return iso < aujourdhui
 }
 
+// Seuil d'inactivité (jours sans modification) au-delà duquel on alerte.
+const INACTIF_JOURS = 14
+
+// Nombre de jours entiers écoulés depuis `date_modification` (timestamp ISO),
+// ou null si la date est absente/invalide.
+const joursInactif = (iso) => {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const jours = Math.floor((Date.now() - d.getTime()) / 86400000)
+  return jours >= 0 ? jours : null
+}
+
+// Action suggérée selon l'étape du lead (libellé + indice « cliquable »).
+// QUOTE_SENT/FOLLOW_UP sans relance → invite à planifier une relance.
+const prochaineAction = (lead) => {
+  const stage = lead?.stage
+  if (stage === 'NEW') return { label: 'À contacter', planifier: false }
+  if (stage === 'CONTACTED') return { label: 'Envoyer un devis', planifier: false }
+  if ((stage === 'QUOTE_SENT' || stage === 'FOLLOW_UP') && !lead?.relance_date) {
+    return { label: 'Planifier une relance', planifier: true }
+  }
+  return null
+}
+
+// Numéro de téléphone nettoyé pour un lien tel: / wa.me (chiffres et + initial).
+const telHref = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const cleaned = s.replace(/[^\d+]/g, '')
+  return cleaned ? `tel:${cleaned}` : null
+}
+const waHref = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const digits = s.replace(/\D/g, '')
+  return digits ? `https://wa.me/${digits}` : null
+}
+
 export default function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
-  selected = false, onToggleSelect,
+  selected = false, onToggleSelect, onPlanifierRelance,
 }) {
   const perdu = isPerdu(lead)
   const tags = tagList(lead)
@@ -31,6 +70,16 @@ export default function LeadCard({
     [lead.nom, lead.prenom].filter(Boolean).join(' ') || lead.societe || '—'
   const sousTitre = lead.ville || lead.telephone || ''
   const canal = CANAL_LABELS[lead.canal]
+  // Devis le plus récent (le serializer trie du plus récent au plus ancien).
+  const dernierDevisExpire = lead.devis?.[0]?.statut === 'expire'
+  const jInactif = joursInactif(lead.date_modification)
+  const inactif = jInactif != null && jInactif >= INACTIF_JOURS && !perdu
+  const action = prochaineAction(lead)
+  const tel = telHref(lead.telephone)
+  const wa = waHref(lead.whatsapp)
+  // ⚡ indisponible : on explique pourquoi (devis_auto.message).
+  const factureManquante =
+    lead.devis_auto && !lead.devis_auto.pret ? lead.devis_auto.message : null
 
   const classes = [
     'kb-card',
@@ -61,6 +110,24 @@ export default function LeadCard({
         )}
         <span className="kb-card-name">{nomComplet}</span>
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
+        {dernierDevisExpire && (
+          <span
+            className="kb-badge-expire"
+            style={{ background: '#fff7ed', color: '#c2410c' }}
+            title="Le dernier devis du lead est expiré"
+          >
+            Devis expiré
+          </span>
+        )}
+        {inactif && (
+          <span
+            className="kb-badge-inactif"
+            style={{ background: '#f1f5f9', color: '#64748b' }}
+            title={`Aucune modification depuis ${jInactif} jours`}
+          >
+            Inactif {jInactif} j
+          </span>
+        )}
         {lead.next_activity && (
           <span
             className={`kb-act-clock ${lead.next_activity.state}`}
@@ -89,6 +156,76 @@ export default function LeadCard({
       </div>
 
       {sousTitre && <div className="kb-card-sub">{sousTitre}</div>}
+
+      {(tel || wa) && (
+        <div
+          className="kb-card-contact"
+          style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}
+        >
+          {tel && (
+            <a
+              className="kb-card-tel"
+              href={tel}
+              title="Appeler"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              ☎ {lead.telephone}
+            </a>
+          )}
+          {wa && (
+            <a
+              className="kb-card-wa"
+              href={wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Ouvrir WhatsApp"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              WhatsApp
+            </a>
+          )}
+        </div>
+      )}
+
+      {factureManquante && (
+        <div
+          className="kb-card-facture-manquante"
+          style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}
+          title="Le devis auto (⚡) est désactivé tant qu'il manque des informations"
+        >
+          Facture manquante : {factureManquante}
+        </div>
+      )}
+
+      {action && (
+        action.planifier && onPlanifierRelance ? (
+          <button
+            type="button"
+            className="kb-card-action kb-card-action-link"
+            style={{
+              fontSize: '11px', color: '#2563eb', marginTop: '2px',
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              textAlign: 'left',
+            }}
+            onClick={(e) => { e.stopPropagation(); onPlanifierRelance(lead) }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            → {action.label}
+          </button>
+        ) : (
+          <div
+            className="kb-card-action"
+            style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}
+          >
+            → {action.label}
+          </div>
+        )
+      )}
 
       {tags.length > 0 && (
         <div className="kb-tags">

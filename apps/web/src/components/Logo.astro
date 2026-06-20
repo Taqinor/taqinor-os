@@ -1,24 +1,26 @@
 ---
-// Logotype TAQINOR — le O est un soleil porteur d'éclair (repris du logo
-// existant, soleil accordé au laiton de la nouvelle identité). Le O reste
-// une vraie lettre dans le DOM (texte visible = « TAQINOR », nom accessible
-// cohérent) ; il est rendu invisible et le soleil/éclair est dessiné en
-// arrière-plan.
+// Logotype TAQINOR — image OFFICIELLE (le même PNG que le générateur de devis,
+// `quote_engine/assets/logo.png`). Le PNG est à fond TRANSPARENT et son texte est
+// bleu nuit : invisible directement sur l'en-tête sombre. On le pose donc sur une
+// petite PUCE BLANCHE arrondie (badge), qui le rend lisible sur fond sombre comme
+// clair. `size` ≈ la taille historique du logotype ; l'image est un carré.
 interface Props {
   size?: number;
   theme?: 'light' | 'dark';
 }
-const { size = 26, theme = 'light' } = Astro.props;
-const textColor = theme === 'dark' ? '#ffffff' : '#0a1238';
-const sunDiam = Math.round(size * 0.92);
-const bolt = encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#0a1238"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-);
+const { size = 26 } = Astro.props;
+const h = Math.round(size * 1.6); // hauteur (= largeur) de l'image dans la puce
 ---
 
-<span class="inline-flex items-center font-display" style={`font-weight:800;font-size:${size}px;color:${textColor};line-height:1;letter-spacing:0.05em;`}>
-  <span>TAQIN<span
-    class="mx-px inline-block overflow-hidden rounded-full align-baseline"
-    style={`width:${sunDiam}px;height:${sunDiam}px;background-color:#E8B54A;background-image:url("data:image/svg+xml,${bolt}");background-repeat:no-repeat;background-position:center;background-size:54%;color:transparent;`}
-  >O</span>R</span>
+<span class="inline-flex items-center rounded-md bg-white px-1.5 py-1 shadow-sm">
+  <img
+    src="/logo.png"
+    alt="TAQINOR"
+    width={h}
+    height={h}
+    style={`height:${h}px;width:${h}px`}
+    class="block"
+    loading="eager"
+    decoding="async"
+  />
 </span>

@@ -8,18 +8,42 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from .models import CustomUser, Company
+from .models import CustomUser, Company, UserSession
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
     CompanySerializer,
     CustomTokenObtainPairSerializer,
+    UserSessionSerializer,
 )
 from .throttles import LoginRateThrottle, RegisterRateThrottle
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 
+# ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
+# Les jetons JWT sont posés en cookies ``httpOnly`` (jamais lisibles par JS, ce
+# qui neutralise le vol de jeton par XSS). La protection CSRF des mutations
+# authentifiées par cookie repose sur DEUX barrières complémentaires :
+#   1. ``SameSite=Lax`` — le navigateur n'attache PAS ces cookies aux requêtes
+#      cross-site qui changent l'état (POST/PUT/PATCH/DELETE déclenchés depuis un
+#      autre site), ce qui bloque les CSRF classiques. Notre API n'expose AUCUNE
+#      mutation en GET, donc Lax offre la même barrière anti-CSRF que Strict pour
+#      les écritures, tout en envoyant le cookie sur les navigations top-level.
+#      MOTIF DU PASSAGE STRICT→LAX (bug iOS connu) : WebKit n'attache PAS les
+#      cookies ``SameSite=Strict`` à la requête de DÉMARRAGE quand on lance la PWA
+#      depuis l'écran d'accueil (cold-launch). Conséquence avec Strict : l'app
+#      s'ouvrait déconnectée ET le refresh silencieux (cookie ``refresh_token``)
+#      ne partait pas non plus → re-login forcé à chaque ouverture sur iPhone.
+#      Lax corrige ce comportement (le cookie part sur la navigation de lancement)
+#      sans rouvrir de fenêtre CSRF sur les écritures. NE PAS repasser à 'None'
+#      sans un flux de jeton CSRF explicite (double-submit / X-CSRFToken).
+#   2. ``Secure`` en production (cookies HTTPS uniquement) — posé via
+#      ``_COOKIE_SECURE`` ci-dessous, renforcé par ``SESSION/CSRF_COOKIE_SECURE``
+#      et ``SECURE_SSL_REDIRECT`` dans settings/prod.py.
+# Le frontend est servi depuis le même site eTLD+1 que l'API en production. Le
+# test ``tests_hardening.test_auth_cookies_are_samesite_lax_and_httponly``
+# verrouille cette valeur pour qu'un relâchement silencieux casse la CI.
 _COOKIE_SECURE = not settings.DEBUG
-_COOKIE_SAMESITE = 'Strict'
+_COOKIE_SAMESITE = 'Lax'
 _ACCESS_MAX_AGE = int(
     settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
 )
@@ -55,17 +79,109 @@ def _clear_auth_cookies(response):
     response.delete_cookie('refresh_token', path='/')
 
 
+def _client_ip(request):
+    """Adresse IP du client (premier saut X-Forwarded-For, sinon REMOTE_ADDR)."""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or None
+
+
+def _refresh_jti(refresh_raw):
+    """Extrait le claim ``jti`` d'un jeton de rafraîchissement brut (ou None)."""
+    if not refresh_raw:
+        return None
+    try:
+        return RefreshToken(refresh_raw).get('jti')
+    except TokenError:
+        return None
+
+
+def _record_session(user, refresh_raw, request):
+    """Crée (best-effort) une ligne ``UserSession`` pour une connexion réussie.
+
+    Tracée par le ``jti`` du jeton de rafraîchissement, scopée à l'utilisateur et
+    à sa société (jamais depuis le corps de la requête). N'échoue jamais la
+    connexion : toute erreur est avalée."""
+    try:
+        jti = _refresh_jti(refresh_raw)
+        if not jti or user is None:
+            return
+        UserSession.objects.create(
+            user=user,
+            company=getattr(user, 'company', None),
+            jti=jti,
+            user_agent=(request.META.get('HTTP_USER_AGENT', '') or '')[:400],
+            ip_address=_client_ip(request),
+        )
+    except Exception:
+        pass
+
+
+def _blacklist_refresh_jti(jti):
+    """Blackliste le jeton de rafraîchissement portant ``jti`` (best-effort).
+
+    S'appuie sur l'app ``token_blacklist`` (présente dans INSTALLED_APPS) : on
+    retrouve l'``OutstandingToken`` émis pour ce jti et on crée son entrée
+    blacklistée. Sans correspondance (jeton jamais sorti via la voie standard),
+    la révocation repose alors uniquement sur la suppression de la session."""
+    try:
+        from rest_framework_simplejwt.token_blacklist.models import (
+            OutstandingToken, BlacklistedToken,
+        )
+        outstanding = OutstandingToken.objects.filter(jti=jti).first()
+        if outstanding is not None:
+            BlacklistedToken.objects.get_or_create(token=outstanding)
+    except Exception:
+        pass
+
+
 # ── Login ──────────────────────────────────────────────────────
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
+        from rest_framework.exceptions import ValidationError
+        # Double authentification (2FA, N96) : si le mot de passe est bon mais
+        # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
+        # contour stable (`otp_required: true`) que le frontend sait gérer —
+        # sans divulguer l'état 2FA d'un compte avant que le mot de passe soit
+        # validé.
+        try:
+            response = super().post(request, *args, **kwargs)
+        except ValidationError as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if detail.get('otp_required'):
+                msg = detail.get('detail')
+                if isinstance(msg, (list, tuple)):
+                    msg = msg[0] if msg else None
+                msg = str(msg) if msg else 'Double authentification requise.'
+                return Response(
+                    {'otp_required': True, 'detail': msg},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            raise
         if response.status_code == 200:
             access = response.data.pop('access', None)
             refresh = response.data.pop('refresh', None)
             _set_auth_cookies(response, access, refresh)
+            # ERR92 — sur un login RÉUSSI, résoudre l'objet utilisateur depuis
+            # le username (insensible à la casse), source d'autorité.
+            raw_uname = (request.data.get('username') or '').strip()
+            u = CustomUser.objects.filter(username__iexact=raw_uname).first()
+            # Sessions actives (N96) — tracer cette connexion par le jti du
+            # jeton de rafraîchissement. Best-effort, ne bloque jamais le login.
+            _record_session(u, refresh, request)
+            # Journal d'activité (Feature G) — connexion réussie. Best-effort.
+            try:
+                from apps.audit.recorder import record
+                from apps.audit.models import AuditLog
+                actor = u.username if u is not None else raw_uname
+                record(AuditLog.Action.LOGIN, user=u, actor_username=actor,
+                       company=getattr(u, 'company', None), detail='Connexion')
+            except Exception:
+                pass
         return response
 
 
@@ -127,25 +243,27 @@ class RegisterView(generics.CreateAPIView):
 
 
 def _create_system_roles(company):
-    """Create the 3 default system roles for a newly created company."""
-    from apps.roles.models import (
-        Role,
-        ALL_PERMISSIONS,
-        RESPONSABLE_PERMISSIONS,
-        UTILISATEUR_PERMISSIONS,
-    )
-    defaults = [
-        ('Administrateur', ALL_PERMISSIONS),
-        ('Responsable', RESPONSABLE_PERMISSIONS),
-        ('Utilisateur', UTILISATEUR_PERMISSIONS),
-    ]
+    """Create the canonical system roles for a newly created company (Feature D).
+
+    Seeds the seven roles + the two legacy ones; returns {nom: Role}.
+
+    Idempotent ET auto-réparateur (N103) : si une ligne du même nom préexiste
+    avec ``est_systeme=False`` (rôle personnalisé qui a heurté le nom canonique),
+    on la promeut en rôle système. Sans cela, un « Directeur »/« Administrateur »
+    laissé ``est_systeme=False`` résoudrait à tort au palier limité et perdrait
+    l'accès aux écrans Utilisateurs/Rôles. Additif : ne supprime jamais une ligne
+    et ne touche pas aux permissions déjà posées."""
+    from apps.roles.models import Role, CANONICAL_SYSTEM_ROLES
     roles = {}
-    for nom, perms in defaults:
-        role, _ = Role.objects.get_or_create(
+    for nom, perms in CANONICAL_SYSTEM_ROLES:
+        role, created = Role.objects.get_or_create(
             company=company,
             nom=nom,
-            defaults={'permissions': perms, 'est_systeme': True},
+            defaults={'permissions': list(perms), 'est_systeme': True},
         )
+        if not created and not role.est_systeme:
+            role.est_systeme = True
+            role.save(update_fields=['est_systeme'])
         roles[nom] = role
     return roles
 
@@ -199,7 +317,9 @@ class RegisterCompanyView(generics.GenericAPIView):
         )
 
         roles = _create_system_roles(company)
-        admin_role = roles['Administrateur']
+        # Le propriétaire fondateur de la nouvelle société est Directeur (accès
+        # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
+        admin_role = roles['Directeur']
 
         # Types d'activité par défaut (style Odoo) pour la nouvelle société.
         try:
@@ -270,6 +390,14 @@ class LogoutView(generics.GenericAPIView):
                 token.blacklist()
             except TokenError:
                 pass
+        # Journal d'activité (Feature G) — déconnexion. Best-effort.
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.LOGOUT, user=request.user,
+                   detail='Déconnexion')
+        except Exception:
+            pass
         response = Response({'detail': 'Deconnexion reussie.'})
         _clear_auth_cookies(response)
         return response
@@ -395,3 +523,238 @@ class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+# ── Double authentification (2FA TOTP) — opt-in par utilisateur (N96) ──────
+_TOTP_ISSUER = 'TAQINOR OS'
+
+
+def _generate_recovery_codes(n=8):
+    """Génère ``n`` codes de secours en clair (8 caractères base32 lisibles).
+
+    Retourne (codes_en_clair, codes_hachés). On ne montre les codes en clair
+    qu'UNE seule fois, à l'activation ; en base on ne garde que les hachages."""
+    import secrets
+    from django.contrib.auth.hashers import make_password
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    plain = [
+        ''.join(secrets.choice(alphabet) for _ in range(8))
+        for _ in range(n)
+    ]
+    hashed = [make_password(c) for c in plain]
+    return plain, hashed
+
+
+class TwoFactorSetupView(APIView):
+    """POST — démarre la configuration 2FA pour l'utilisateur connecté.
+
+    Génère un nouveau secret TOTP et l'URI otpauth (pour le QR code), persiste
+    le secret SANS activer le 2FA (``totp_enabled`` reste False). Tant que le
+    secret n'est pas vérifié, la connexion n'est jamais bloquée."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        import pyotp
+        user = request.user
+        if user.totp_enabled:
+            return Response(
+                {'detail': 'La double authentification est déjà activée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        secret = pyotp.random_base32()
+        user.totp_secret = secret
+        user.totp_enabled = False
+        user.save(update_fields=['totp_secret', 'totp_enabled'])
+        label = user.email or user.username
+        uri = pyotp.TOTP(secret).provisioning_uri(
+            name=label, issuer_name=_TOTP_ISSUER,
+        )
+        return Response({
+            'secret': secret,
+            'otpauth_uri': uri,
+            'issuer': _TOTP_ISSUER,
+            'label': label,
+        })
+
+
+class TwoFactorEnableView(APIView):
+    """POST — vérifie un premier code et active le 2FA.
+
+    Corps : ``{"code": "123456"}``. Sur succès : ``totp_enabled=True`` et
+    renvoie une liste de codes de secours à usage unique (montrés une seule
+    fois)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        import pyotp
+        user = request.user
+        if user.totp_enabled:
+            return Response(
+                {'detail': 'La double authentification est déjà activée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.totp_secret:
+            return Response(
+                {'detail': "Aucune configuration en cours. Démarrez d'abord "
+                           "la configuration de la double authentification."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        code = str(request.data.get('code', '')).strip().replace(' ', '')
+        if not pyotp.TOTP(user.totp_secret).verify(code, valid_window=1):
+            return Response(
+                {'detail': 'Code invalide. Vérifiez le code à 6 chiffres de '
+                           'votre application d\'authentification.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        plain, hashed = _generate_recovery_codes()
+        user.totp_enabled = True
+        user.totp_recovery_codes = hashed
+        user.save(update_fields=['totp_enabled', 'totp_recovery_codes'])
+        return Response({
+            'detail': 'Double authentification activée.',
+            'recovery_codes': plain,
+        })
+
+
+class TwoFactorDisableView(APIView):
+    """POST — désactive le 2FA. Exige un code TOTP/secours valide OU le mot de
+    passe du compte. Efface le secret et les codes de secours."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not user.totp_enabled:
+            return Response(
+                {'detail': 'La double authentification n\'est pas activée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        code = request.data.get('code', '')
+        password = request.data.get('password', '')
+        ok = False
+        if code and user.verify_totp(code):
+            ok = True
+        elif password and user.check_password(password):
+            ok = True
+        if not ok:
+            return Response(
+                {'detail': 'Vérification requise : fournissez un code valide '
+                           'ou votre mot de passe pour désactiver la double '
+                           'authentification.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.totp_enabled = False
+        user.totp_secret = None
+        user.totp_recovery_codes = []
+        user.save(update_fields=[
+            'totp_enabled', 'totp_secret', 'totp_recovery_codes'])
+        return Response({'detail': 'Double authentification désactivée.'})
+
+
+class TwoFactorStatusView(APIView):
+    """GET — état du 2FA pour l'utilisateur connecté (affichage Paramètres)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'enabled': bool(user.totp_enabled),
+            'recovery_codes_remaining': len(user.totp_recovery_codes or []),
+        })
+
+
+# ── Sessions actives & révocation (N96) ────────────────────────────────────
+class SessionListView(generics.ListAPIView):
+    """GET — liste les sessions actives (non révoquées) de l'utilisateur
+    connecté, scopées à sa société. La session courante (déduite du cookie
+    refresh) est marquée ``is_current`` pour l'affichage « cet appareil »."""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSessionSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = UserSession.objects.filter(user=user, revoked=False)
+        # Garde multi-tenant : ne jamais sortir de la société de l'utilisateur.
+        if user.company_id:
+            qs = qs.filter(company=user.company)
+        return qs
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['current_jti'] = _refresh_jti(
+            self.request.COOKIES.get('refresh_token'))
+        return ctx
+
+
+class SessionRevokeView(APIView):
+    """POST /auth/sessions/<pk>/revoke/ — révoque une session de l'utilisateur
+    connecté : marque la ligne ``revoked`` ET blackliste son jeton de
+    rafraîchissement pour qu'il ne puisse plus rafraîchir d'accès."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        session = UserSession.objects.filter(
+            pk=pk, user=user, revoked=False).first()
+        # Scope multi-tenant supplémentaire.
+        if session is not None and user.company_id \
+                and session.company_id != user.company_id:
+            session = None
+        if session is None:
+            return Response(
+                {'detail': 'Session introuvable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        _blacklist_refresh_jti(session.jti)
+        session.revoked = True
+        session.save(update_fields=['revoked'])
+        # Si l'utilisateur révoque SA session courante, on efface ses cookies
+        # pour le déconnecter immédiatement de cet appareil.
+        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
+        response = Response({'detail': 'Session révoquée.'})
+        if current_jti and current_jti == session.jti:
+            _clear_auth_cookies(response)
+        return response
+
+
+# ── Changement / rotation du mot de passe (N96) ────────────────────────────
+class ChangePasswordView(APIView):
+    """POST — change le mot de passe de l'utilisateur connecté.
+
+    Corps : ``{"current_password": "...", "new_password": "..."}``. Vérifie le
+    mot de passe courant, applique les validateurs Django, pose le nouveau,
+    horodate ``password_changed_at`` et efface le drapeau de rotation forcée
+    ``must_change_password``. Sert aussi bien au changement volontaire qu'au
+    flux de rotation forcée déclenché par un administrateur."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjValidationError
+        from django.utils import timezone
+        user = request.user
+        current = request.data.get('current_password', '')
+        new = request.data.get('new_password', '')
+        if not user.check_password(current):
+            return Response(
+                {'detail': 'Mot de passe actuel incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not new:
+            return Response(
+                {'detail': 'Le nouveau mot de passe est requis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_password(new, user=user)
+        except DjValidationError as exc:
+            return Response(
+                {'detail': ' '.join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.set_password(new)
+        user.must_change_password = False
+        user.password_changed_at = timezone.now()
+        user.save(update_fields=[
+            'password', 'must_change_password', 'password_changed_at'])
+        return Response({'detail': 'Mot de passe mis à jour.'})

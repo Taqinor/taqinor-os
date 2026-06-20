@@ -17,8 +17,11 @@ from django.db import models
 ALLOWED_TARGETS = {
     ('crm', 'lead'),
     ('crm', 'client'),
+    ('ventes', 'devis'),
+    ('ventes', 'facture'),
     ('installations', 'installation'),
     ('sav', 'ticket'),
+    ('outillage', 'outillage'),
 }
 
 

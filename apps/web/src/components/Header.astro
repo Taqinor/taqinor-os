@@ -13,26 +13,38 @@
  * contextuels (jamais en nav primaire).
  */
 import Logo from './Logo.astro';
+import LanguageSwitcher from './LanguageSwitcher.astro';
 import { NAP } from '../lib/nap';
+import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
+import { localesForPath, localizeNavHref } from '../i18n/pages';
+
+// Locale courante déduite de l'URL ; traductions via dictionnaire (repli FR).
+// Le rendu FR reste byte-identique : t() rend les libellés FR existants et
+// localizeNavHref('/x','fr') renvoie '/x' inchangé.
+const locale = getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+const rootPath = stripLocale(Astro.url.pathname);
+const pageLocales = localesForPath(rootPath);
+const L = (href: string) => localizeNavHref(href, locale);
 
 // Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
 const solutions = [
-  { href: '/résidentiel', label: 'Résidentiel' },
-  { href: '/professionnel', label: 'Professionnel' },
-  { href: '/pompage-solaire', label: 'Pompage solaire' },
-  { href: '/batteries-stockage', label: 'Batteries & stockage' },
-  { href: '/maintenance-monitoring', label: 'Maintenance & monitoring' },
-  { href: '/regularization-article-33', label: 'Régularisation Loi 82-21' },
+  { href: '/résidentiel', label: t('nav.residential') },
+  { href: '/professionnel', label: t('nav.professional') },
+  { href: '/pompage-solaire', label: t('nav.pumping') },
+  { href: '/batteries-stockage', label: t('nav.batteries') },
+  { href: '/maintenance-monitoring', label: t('nav.maintenance') },
+  { href: '/regularization-article-33', label: t('nav.regularization') },
 ];
 
 // Ressources — le déclencheur pointe vers /guides (repli sans-JS).
 const ressources = [
-  { href: '/guides', label: 'Guides' },
-  { href: '/faq', label: 'FAQ' },
-  { href: '/loi-82-21', label: 'Loi 82-21 expliquée' },
-  { href: '/pourquoi-taqinor', label: 'Pourquoi Taqinor' },
-  { href: '/financement', label: 'Financement & rentabilité' },
-  { href: '/marocains-du-monde', label: 'Marocains du monde' },
+  { href: '/guides', label: t('nav.guides') },
+  { href: '/faq', label: t('nav.faq') },
+  { href: '/loi-82-21', label: t('nav.law') },
+  { href: '/pourquoi-taqinor', label: t('nav.why') },
+  { href: '/financement', label: t('nav.financing') },
+  { href: '/marocains-du-monde', label: t('nav.mre') },
 ];
 
 const linkBase =
@@ -47,60 +59,61 @@ const itemClass =
 ---
 
 <header class="sticky top-0 z-50 border-b border-white/10 bg-nuit/90 backdrop-blur">
-  <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-    <a href="/" aria-label="TAQINOR — accueil">
+  <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4">
+    <a href={L('/')} aria-label="TAQINOR — accueil">
       <Logo size={24} theme="dark" />
     </a>
-    <nav class="hidden items-center gap-7 lg:flex" aria-label="Navigation principale">
+    <nav class="hidden items-center gap-7 lg:flex" aria-label={t('nav.primary')}>
       <!-- Solutions (déroulant) -->
       <div class="dropdown group relative" data-dropdown>
         <a
-          href="/nos-solutions"
+          href={L('/nos-solutions')}
           class={`flex items-center gap-1 ${linkBase}`}
           data-dropdown-trigger
           aria-haspopup="true"
           aria-expanded="false"
-        >Solutions
+        >{t('nav.solutions')}
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="opacity-70"><polyline points="6 9 12 15 18 9"></polyline></svg>
           <span class={underline}></span>
         </a>
-        <div class={`absolute left-0 top-full z-50 pt-3 ${menuReveal}`}>
-          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label="Solutions">
-            <li role="none"><a href="/nos-solutions" role="menuitem" class={`${itemClass} font-semibold text-white`}>Toutes nos solutions</a></li>
+        <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
+          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label={t('nav.solutions')}>
+            <li role="none"><a href={L('/nos-solutions')} role="menuitem" class={`${itemClass} font-semibold text-white`}>{t('nav.allSolutions')}</a></li>
             {solutions.map((s) => (
-              <li role="none"><a href={s.href} role="menuitem" class={itemClass}>{s.label}</a></li>
+              <li role="none"><a href={L(s.href)} role="menuitem" class={itemClass}>{s.label}</a></li>
             ))}
           </ul>
         </div>
       </div>
 
-      <a href="/realisations" class={linkBase}>Réalisations<span class={underline}></span></a>
-      <a href="/équipement" class={linkBase}>Équipement<span class={underline}></span></a>
+      <a href={L('/realisations')} class={linkBase}>{t('nav.realisations')}<span class={underline}></span></a>
+      <a href={L('/équipement')} class={linkBase}>{t('nav.equipment')}<span class={underline}></span></a>
 
       <!-- Ressources (déroulant) -->
       <div class="dropdown group relative" data-dropdown>
         <a
-          href="/guides"
+          href={L('/guides')}
           class={`flex items-center gap-1 ${linkBase}`}
           data-dropdown-trigger
           aria-haspopup="true"
           aria-expanded="false"
-        >Ressources
+        >{t('nav.resources')}
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="opacity-70"><polyline points="6 9 12 15 18 9"></polyline></svg>
           <span class={underline}></span>
         </a>
-        <div class={`absolute left-0 top-full z-50 pt-3 ${menuReveal}`}>
-          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label="Ressources">
+        <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
+          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label={t('nav.resources')}>
             {ressources.map((r) => (
-              <li role="none"><a href={r.href} role="menuitem" class={itemClass}>{r.label}</a></li>
+              <li role="none"><a href={L(r.href)} role="menuitem" class={itemClass}>{r.label}</a></li>
             ))}
           </ul>
         </div>
       </div>
 
-      <a href="/à-propos" class={linkBase}>À propos<span class={underline}></span></a>
+      <a href={L('/à-propos')} class={linkBase}>{t('nav.about')}<span class={underline}></span></a>
     </nav>
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5 sm:gap-3">
+      <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
       <a
         href={`tel:${NAP.phone}`}
         class="hidden items-center gap-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white md:flex"
@@ -109,15 +122,15 @@ const itemClass =
         {NAP.phoneDisplayIntl}
       </a>
       <a
-        href="/contact"
-        class="bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
-      >Diagnostic gratuit</a>
+        href={L('/contact')}
+        class="whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4"
+      >{t('nav.diagnosticCta')}</a>
       <button
         id="menu-toggle"
         class="border border-white/20 p-2 lg:hidden"
         aria-expanded="false"
         aria-controls="mobile-menu"
-        aria-label="Ouvrir le menu"
+        aria-label={t('nav.openMenu')}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -127,32 +140,32 @@ const itemClass =
       </button>
     </div>
   </div>
-  <nav id="mobile-menu" class="hidden border-t border-white/10 bg-nuit px-4 py-4 lg:hidden" aria-label="Navigation mobile">
+  <nav id="mobile-menu" class="hidden border-t border-white/10 bg-nuit px-4 py-4 lg:hidden" aria-label={t('nav.mobile')}>
     <div class="flex flex-col gap-5">
       <div>
-        <a href="/nos-solutions" class="tech-label block text-brass-300">Solutions</a>
-        <ul class="mt-2 flex flex-col gap-2 border-l border-white/10 pl-3">
+        <a href={L('/nos-solutions')} class="tech-label block text-brass-300">{t('nav.solutions')}</a>
+        <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
           {solutions.map((s) => (
-            <li><a href={s.href} class="block text-base font-semibold text-white">{s.label}</a></li>
+            <li><a href={L(s.href)} class="block text-base font-semibold text-white">{s.label}</a></li>
           ))}
         </ul>
       </div>
       <ul class="flex flex-col gap-3">
-        <li><a href="/realisations" class="block font-display text-base font-bold text-white">Réalisations</a></li>
-        <li><a href="/équipement" class="block font-display text-base font-bold text-white">Équipement</a></li>
-        <li><a href="/à-propos" class="block font-display text-base font-bold text-white">À propos</a></li>
+        <li><a href={L('/realisations')} class="block font-display text-base font-bold text-white">{t('nav.realisations')}</a></li>
+        <li><a href={L('/équipement')} class="block font-display text-base font-bold text-white">{t('nav.equipment')}</a></li>
+        <li><a href={L('/à-propos')} class="block font-display text-base font-bold text-white">{t('nav.about')}</a></li>
       </ul>
       <div>
-        <a href="/guides" class="tech-label block text-brass-300">Ressources</a>
-        <ul class="mt-2 flex flex-col gap-2 border-l border-white/10 pl-3">
+        <a href={L('/guides')} class="tech-label block text-brass-300">{t('nav.resources')}</a>
+        <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
           {ressources.map((r) => (
-            <li><a href={r.href} class="block text-base font-semibold text-white">{r.label}</a></li>
+            <li><a href={L(r.href)} class="block text-base font-semibold text-white">{r.label}</a></li>
           ))}
         </ul>
       </div>
       <ul class="flex flex-col gap-3 border-t border-white/10 pt-4">
         <li><a href={`tel:${NAP.phone}`} class="block text-sm font-semibold text-lune-soft">📞 {NAP.phoneDisplayIntl}</a></li>
-        <li><a href="/contact" class="mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">Diagnostic gratuit</a></li>
+        <li><a href={L('/contact')} class="mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">{t('nav.diagnosticCta')}</a></li>
       </ul>
     </div>
   </nav>

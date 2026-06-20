@@ -2,7 +2,10 @@
 // (statuses.js, miroir du backend), glisser-déposer via @dnd-kit/core, même
 // langage visuel que le kanban des leads. Le parent gère le changement de
 // statut (optimistic) ; cette vue ne mute rien directement.
+// J43 — cartes portées sur le système de design (StatusPill, Progress, Select)
+// SANS toucher au câblage du drag (dnd-kit) : la structure kb-* est conservée.
 import { useMemo, useState } from 'react'
+import { MapPin, Zap, CalendarDays } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -18,51 +21,80 @@ import {
   STATUS_LABELS,
   STATUS_COLORS,
   canonicalStatus,
+  canMoveStatus,
+  isPoseEnRetard,
 } from '../../../features/installations/statuses'
-import '../../crm/leads/views/kanban.css'
-import './kanban-chantier.css'
+import {
+  StatusPill,
+  Progress,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '../../../ui'
+import { formatDate } from '../../../lib/format'
 
-const formatDateFR = (iso) => {
-  if (!iso) return null
-  const d = new Date(`${iso}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('fr-FR')
-}
+// Sentinelle « aucun installateur » (le Select du design system n'accepte pas '').
+const NO_TECH = '__none__'
 
 function ChantierCard({ inst, users, onReassign }) {
+  const techValue = inst.technicien_responsable ? String(inst.technicien_responsable) : NO_TECH
   return (
-    <div className="kb-card" style={{ '--kb-accent': STATUS_COLORS[canonicalStatus(inst.statut)] }}>
-      <div className="kb-card-title">{inst.reference}</div>
-      <div className="kb-card-sub">{inst.client_nom ?? '—'}</div>
-      <div className="kb-card-meta">
-        {inst.site_ville && <span className="kb-chip">{inst.site_ville}</span>}
+    <div className="kb-card kc-card" style={{ '--kb-accent': STATUS_COLORS[canonicalStatus(inst.statut)] }}>
+      <div className="kc-card-top">
+        <span className="kc-card-ref">{inst.reference}</span>
+        <StatusPill status={inst.statut} label={STATUS_LABELS[canonicalStatus(inst.statut)]} dot={false} />
+      </div>
+      <div className="kc-card-sub">{inst.client_nom ?? '—'}</div>
+      <div className="kc-chips">
+        {inst.site_ville && (
+          <span className="kc-chip"><MapPin className="kc-chip-icon" aria-hidden="true" />{inst.site_ville}</span>
+        )}
         {inst.puissance_installee_kwc && (
-          <span className="kb-chip">{inst.puissance_installee_kwc} kWc</span>
+          <span className="kc-chip"><Zap className="kc-chip-icon" aria-hidden="true" />{inst.puissance_installee_kwc} kWc</span>
+        )}
+        {formatDate(inst.date_pose_prevue) !== '—' && (
+          <span className="kc-chip"><CalendarDays className="kc-chip-icon" aria-hidden="true" />{formatDate(inst.date_pose_prevue)}</span>
+        )}
+        {isPoseEnRetard(inst) && (
+          <StatusPill tone="danger" label="Pose en retard" dot={false} />
         )}
       </div>
-      {formatDateFR(inst.date_pose_prevue) && (
-        <div className="kb-card-meta">
-          <span className="kb-chip">📅 {formatDateFR(inst.date_pose_prevue)}</span>
-        </div>
-      )}
       {Number.isInteger(inst.checklist_completion) && (
-        <div className="kb-card-meta">
-          <span className="kb-chip">✓ {inst.checklist_completion}%</span>
+        <div className="kc-progress">
+          <Progress
+            value={inst.checklist_completion}
+            tone={inst.checklist_completion === 100 ? 'success' : 'primary'}
+          />
+          <span className="kc-progress-label">{inst.checklist_completion}%</span>
         </div>
       )}
       {/* Réassignation de l'installateur (même comportement que le kanban leads). */}
-      <select
-        className="form-select form-select-sm"
-        value={inst.technicien_responsable ?? ''}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => onReassign?.(inst, e.target.value || null)}
-        style={{ marginTop: 6, fontSize: 12 }}
-      >
-        <option value="">— Installateur —</option>
-        {(users ?? []).map((u) => (
-          <option key={u.id} value={u.id}>{u.username ?? u.nom ?? `#${u.id}`}</option>
-        ))}
-      </select>
+      {onReassign && (
+        <div
+          className="kc-reassign"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Select
+            value={techValue}
+            onValueChange={(v) => onReassign(inst, v === NO_TECH ? null : v)}
+          >
+            <SelectTrigger className="h-8 text-xs" aria-label="Installateur">
+              <SelectValue placeholder="Installateur" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_TECH}>— Installateur —</SelectItem>
+              {(users ?? []).map((u) => (
+                <SelectItem key={u.id} value={String(u.id)}>
+                  {u.username ?? u.nom ?? `#${u.id}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   )
 }
@@ -122,9 +154,16 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
   const handleDragEnd = ({ active: a, over }) => {
     setActive(null)
     const inst = a.data.current?.inst
-    if (inst && over && over.id !== canonicalStatus(inst.statut)) {
-      onChangeStatus?.(inst, over.id)
+    if (!inst || !over || over.id === canonicalStatus(inst.statut)) return
+    // N2 — n'accepte qu'un mouvement d'un seul pas sur l'entonnoir : un dépôt
+    // à plus d'un pas « snap back » (aucune mutation) avec un message FR.
+    if (!canMoveStatus(inst.statut, over.id)) {
+      window.alert(
+        'Mouvement impossible : un chantier ne peut avancer ou reculer que '
+        + "d'une étape à la fois dans l'entonnoir.")
+      return
     }
+    onChangeStatus?.(inst, over.id)
   }
 
   return (

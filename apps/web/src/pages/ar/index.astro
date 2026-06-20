@@ -1,0 +1,380 @@
+---
+/**
+ * AR — Homepage (W67). Faithful MSA Arabic translation of the FR homepage (/).
+ * No figure, %, year, kWc/kWh, MAD amount, brand name, law number (82-21) or
+ * legal line is invented, dropped or altered — Western/Latin digits stay
+ * exactly as FR. Every internal link goes through localizeNavHref so it lands
+ * on the AR page when one exists, else falls back to the existing FR page
+ * (never a dead link). The Layout auto-sets lang=ar + dir=rtl; only text is
+ * translated, classes and structure stay identical to FR. The FR homepage is
+ * untouched. The DiagnosticForm and its lead data flow are locale-agnostic.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import Faq from '../../components/Faq.astro';
+import Picture from '../../components/Picture.astro';
+import VideoChantier from '../../components/VideoChantier.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import WhatsAppMock from '../../components/WhatsAppMock.astro';
+import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
+import Testimonials from '../../components/Testimonials.astro';
+import FounderPortrait from '../../components/FounderPortrait.astro';
+import BrandStrip from '../../components/BrandStrip.astro';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const diagHref = '#simulateur';
+
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحبًا، أرغب في دراسة لتركيب نظام للطاقة الشمسية.');
+
+const heroTitle = '21 406 kWh في السنة، منتَجة على سطح في الجديدة.';
+const heroSub =
+  'تركيب رقم 468 — 17,04 kWc، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.';
+
+// PLACEHOLDER(MERYEM): FAQ مؤقتة.
+const faq = [
+  { q: 'كم يكلّف تركيب نظام شمسي سكني؟', a: 'يتوقف ذلك على استهلاككم وسطحكم. فيلا بفاتورة 1 500 MAD في الشهر تُجهَّز عادةً بـ 4 إلى 6 kWc. يمنحكم التشخيص أسفله مجالًا فوريًا؛ ويُحدَّد العرض الدقيق بعد زيارة تقنية.' },
+  { q: 'ماذا يقول القانون 82-21 بالنسبة للأفراد؟', a: 'في الجهد المنخفض، تخضع التركيبات التي تقل عن 11 kW لنظام التصريح: إجراء قبلي وليس ترخيصًا. تتولى Taqinor إعداد التصريح وإيداعه نيابةً عنكم.' },
+  { q: 'تركيبي القائم غير مُصرَّح به. ماذا أفعل؟', a: 'يفتح الفصل 33 من القانون 82-21 نافذة لتسوية وضعية التركيبات القائمة. النافذة مفتوحة: أودِعوا الآن. راجعوا صفحة التسوية للاطّلاع على المسطرة في 5 مراحل.' },
+  { q: 'كم تدوم الألواح؟', a: 'تُضمَن الألواح في الأداء على مدى 25 سنة (عمومًا ≥ 84,8 % من القدرة الأولية عند 25 سنة). أما العاكسات (onduleurs) فتُستبدَل عادةً مرة واحدة طوال عمر التركيب.' },
+  { q: 'هل تلزم البطاريات؟', a: 'ليس بالضرورة. إذا كان استهلاككم نهاريًا في الغالب، فإن الاستهلاك الذاتي المباشر هو أفضل استثمار. تُبرَّر البطاريات للاستهلاك الليلي أو لاستمرارية الخدمة — نحسب ذلك في الدراسة.' },
+];
+
+const gallery = [
+  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '17,04 kWc', prod: '21 406 kWh/سنة', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '17,04 kWc', prod: null, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'الدار البيضاء', kwc: '11,36 kWc', prod: '14 271 kWh/سنة', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'الدار البيضاء', kwc: '11,36 kWc', prod: null, type: 'إنتاج مقاس — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '5,68 kWc', prod: '7 135 kWh/سنة', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'الدار البيضاء', kwc: '5,68 kWc', prod: '7 135 kWh/سنة', type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, ville: 'النواصر', kwc: '3,72 kWc', prod: null, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 640], ratio: 1, ville: 'النواصر', kwc: '3,72 kWc', prod: null, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+];
+
+// حلولنا — كل العروض ظاهرة منذ الصفحة الرئيسية، لا في القائمة فقط. الأوصاف من
+// التموقع المنشور سلفًا، بلا أي ادعاء أو رقم جديد. بطاقات نصية (بلا صورة) → صفر CLS.
+const solutions = [
+  { href: '/résidentiel', tag: 'فيلات وشقق', title: 'الطاقة الشمسية السكنية', body: 'مُحجَّمة على فاتورتكم الحقيقية، مع إدراج تصريح القانون 82-21.' },
+  { href: '/professionnel', tag: 'صناعيون · فنادق · عيادات', title: 'الطاقة الشمسية للمهنيين', body: 'تقليص بند الكهرباء، الجهد المتوسط، مطابقة القانون 82-21.' },
+  { href: '/pompage-solaire', tag: 'الفلاحة والسقي', title: 'الضخّ الشمسي', body: 'الضخّ على إيقاع الشمس، غالبًا بلا بطاريات، مُحجَّم على الحاجة الحقيقية.' },
+  { href: '/batteries-stockage', tag: 'الاستهلاك الذاتي', title: 'البطاريات والتخزين', body: 'تخزين LFP لليل أو لاستمرارية الخدمة — حين تُبرِّر ذلك الدراسة.' },
+  { href: '/maintenance-monitoring', tag: 'بعد التركيب', title: 'الصيانة والمراقبة', body: 'إشراف Deye Cloud مع ولوج للزبون، خدمة ما بعد البيع استباقية، ملف تقني.' },
+  { href: '/regularization-article-33', tag: 'تسوية الوضعية', title: 'تسوية القانون 82-21', body: 'تسوية وضعية التركيبات القائمة عبر الفصل 33.' },
+];
+
+// المسار الحقيقي، من البداية إلى النهاية. وقائع منشورة سلفًا على الموقع (تشخيص
+// في 60 ثانية، تبادل عبر WhatsApp، زيارة ودراسة مجانيتان، تركيب، تشغيل، مراقبة
+// Deye Cloud مع ولوج للزبون). بلا أي أجل/SLA مخترَع.
+const journey = [
+  { n: '1', title: 'تشخيص في 60 ثانية', body: 'مجال فوري انطلاقًا من فاتورتكم، بلا أي التزام.' },
+  { n: '2', title: 'تبادل عبر WhatsApp', body: 'مباشر مع الفريق التقني، بصور للسطح — بلا مركز اتصال.' },
+  { n: '3', title: 'زيارة تقنية ودراسة مجانية', body: 'قراءة للسطح في عين المكان، دراسة كاملة وعرض بـ 0 MAD.' },
+  { n: '4', title: 'التركيب', body: 'عتاد tier-1 مُركَّب مع ملفه التقني الكامل.' },
+  { n: '5', title: 'التشغيل', body: 'الربط والمراقبات، وملف القانون 82-21 يُساق إلى نهايته.' },
+  { n: '6', title: 'مراقبة Deye Cloud', body: 'إنتاج مُقاس باستمرار، مع ولوج للزبون — القياس يحلّ محلّ الوعد.' },
+];
+
+// أيقونات سوبر لبطاقات «حلولنا»: خطّ SVG واحد لكل بطاقة، currentColor (درجة
+// النحاس)، ضمن لغة العلامة. مُفهرسة بـ href ليبقى ثابتًا حتى لو تغيّر ترتيب البطاقات.
+const solutionIcons: Record<string, string> = {
+  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
+  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
+  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
+  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
+  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
+  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
+};
+---
+
+<Layout
+  title="Taqinor — تركيبات الطاقة الشمسية في المغرب، مطابقة للقانون 82-21"
+  description="تصميم وتركيب والتصريح بتركيبات الطاقة الشمسية للفيلات والصناعة والفنادق في المغرب. دراسة مجانية، تحجيم بالهندسة، ومطابقة القانون 82-21."
+  ogSlug="accueil"
+  preloadHeroPoster
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <!-- الفصل الأول — القاعة المظلمة: الفيديو هو البطل، مع تواز خفيف -->
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <picture>
+          <source type="image/avif" sizes="100vw"
+            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
+          <source type="image/webp" sizes="100vw"
+            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
+          <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
+            loading="eager" decoding="async" fetchpriority="high"
+            class="h-full w-full object-cover" />
+        </picture>
+        <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
+          class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/35 to-transparent"></div>
+      </div>
+      <div class="mx-auto w-full max-w-6xl px-4 pb-20 pt-32 sm:pb-28">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">الدراسة أولًا، ثم الورش</p>
+        <h1 class="display v2-hero-title cine-in mt-6 max-w-[15ch] [animation-delay:120ms]">{heroTitle}</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroSub}</p>
+        <div class="cine-in mt-10 flex flex-wrap items-center gap-3 [animation-delay:360ms]">
+          <a href={diagHref} class="glow bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-all hover:bg-brass-300">
+            استلموا دراستكم عبر WhatsApp
+          </a>
+          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            WhatsApp مباشر
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- وعد الضمان في الصدارة: التزام حقيقي وقوي، مأخوذ من /garanties (25 سنة
+         أداء) ومن مراقبة Deye Cloud المقاسة. -->
+    <section class="border-y border-white/10 bg-brass-400/5 px-4 py-6">
+      <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
+        <span class="text-brass-300">25 سنة من الأداء المضمون</span>
+        <span class="text-lune-faint" aria-hidden="true">·</span>
+        <span>إنتاج مُقاس لا موعود — مراقبة Deye Cloud على كل تركيب</span>
+      </p>
+    </section>
+
+    <!-- شريط الثقة — أربعة أدلة، تُكشف بالتتابع -->
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <dd class="font-display text-xl font-bold text-white">أوراش قابلة للزيارة</dd>
+          <dt class="mt-2 text-sm leading-snug text-lune-soft">تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:1">
+          <dd class="fig lum whitespace-nowrap text-4xl" data-tally>43,48 kWc</dd>
+          <dt class="mt-2 text-sm leading-snug text-lune-soft">مُركَّبة — الدار البيضاء، الجديدة، النواصر</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:2">
+          <dd class="font-display text-xl font-bold text-white">دكتور-مهندس</dd>
+          <dt class="mt-2 text-sm leading-snug text-lune-soft">10+ سنوات خبرة في البحث والتطوير — كل دراسة يصادق عليها المؤسس</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:3">
+          <dd class="font-display text-xl font-bold text-white">إنتاج مُقاس</dd>
+          <dt class="mt-2 text-sm leading-snug text-lune-soft">مراقبة Deye Cloud على كل تركيب، مع ولوج للزبون</dt>
+        </div>
+      </dl>
+    </section>
+
+    <!-- الحجّة بالأرقام — أرقام تتصاعد -->
+    <section class="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+      <div class="v2-rise">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">الحجّة، بالأرقام</p>
+        <h2 class="display v2-section-title mt-5 max-w-md text-white">استثمار يُقاس، لا وعد</h2>
+        <p class="v2-lead mt-5 max-w-md text-lune-soft">
+          تركيب جيّد التحجيم يغطّي معظم فاتورتكم على مدى خمس وعشرين سنة. ينطلق
+          الحساب من استهلاككم الحقيقي — وهو ما يقرّر العتاد، لا العكس أبدًا.
+        </p>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-12 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>60–90 %</dd>
+          <dt class="tech-label mt-2 text-lune-faint">من الفاتورة مغطّاة</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:1">
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>3–7 سنوات</dd>
+          <dt class="tech-label mt-2 text-lune-faint">العائد على الاستثمار</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:2">
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>25 سنة</dd>
+          <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:3">
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>0 MAD</dd>
+          <dt class="tech-label mt-2 text-lune-faint">الدراسة والتشخيص</dt>
+        </div>
+      </dl>
+    </section>
+
+    <!-- المؤسس: إشارة ثقة قوية، مكوّن جاهز للصورة (نفس البديل النصّي إلى أن
+         يُودَع بورتريه رضا قصري). بلا أي صورة مخترَعة. -->
+    <FounderPortrait />
+
+    <!-- الفصل الثاني — مهنتان: الصور هي الضوء -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">مهنتان</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">معيار هندسي واحد، من المنزل إلى المصنع</h2>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
+          <a href={L('/résidentiel')} class="v2-rise group relative block overflow-hidden" style="--v2-i:0">
+            <Picture name="crepuscule-penthouse" alt="تركيب شمسي سكني من Taqinor عند الغسق، بنتهاوس أبيض وسخّان شمسي"
+              widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 768px) 50vw, 100vw"
+              class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
+              <p class="tech-label text-brass-300">فيلات · شقق</p>
+              <h3 class="display mt-1 text-2xl">سكني</h3>
+              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">شاهدوا السكني →</span>
+            </div>
+          </a>
+          <a href={L('/professionnel')} class="v2-rise group relative block overflow-hidden" style="--v2-i:1">
+            <Picture name="industriel-couchant" alt="ورش شمسي صناعي من Taqinor عند الغروب، صفّان من الألواح"
+              widths={[2000, 1280, 768, 480]} ratio={16 / 9} sizes="(min-width: 768px) 50vw, 100vw"
+              class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
+              <p class="tech-label text-brass-300">صناعيون · فنادق · عيادات</p>
+              <h3 class="display mt-1 text-2xl">مهني</h3>
+              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">شاهدوا المهني →</span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- حلولنا — كل العرض، أبعد من القطاعين -->
+    <section class="border-t border-white/10 px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">حلولنا</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">كل ما نركّبه</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          أبعد من السكني والمهني: الضخّ الفلاحي، والتخزين، وتتبّع الإنتاج، وتسوية
+          الوضعية. ينطلق كل حلّ من وضعيتكم الحقيقية — والدراسة هي التي تقرّر.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {solutions.map((s, i) => (
+            <a href={L(s.href)} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
+              {/* أيقونة بالخطّ، currentColor (نحاسي)، بلا أي تبعية/صورة */}
+              <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={solutionIcons[s.href] ?? ''} />
+              <p class="tech-label mt-5 text-brass-300">{s.tag}</p>
+              <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">اكتشفوا →</span>
+            </a>
+          ))}
+        </div>
+        <a href={L('/nos-solutions')} class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهدوا كل حلولنا →</a>
+      </div>
+    </section>
+
+    <!-- شريط العلامات tier-1 → مكوّن BrandStrip: شعارات رسمية حين يوجد ملف
+         (public/brands/)، وكلمات-علامات منسّقة كبديل. -->
+    <BrandStrip />
+
+    <!-- معرض-إثبات: الضوء يأتي من الصور. شبكة متساوية الارتفاع (بطاقات 4/3
+         موحّدة)؛ تحمل كل بطاقة المدينة · kWc · الإنتاج المقاس (حيث نُشر) · العتاد. -->
+    <section class="px-4 py-20 pb-28 sm:py-28 sm:pb-36">
+      <div class="mx-auto max-w-6xl">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-brass-300">إنجازات حديثة</p>
+            <h2 class="display v2-section-title mt-5 text-white">آخر إنجازاتنا</h2>
+          </div>
+          <p class="v2-rise max-w-sm text-sm leading-relaxed text-lune-soft">
+            معطيات من الملفات التقنية. الوضوح والتأطير مُعدَّلان —
+            لا إضافة ولا حذف.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {gallery.map((g, i) => (
+            <a href={L(`/realisations/${g.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+                <span class="tech-label block text-brass-300">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
+                <span class="mt-0.5 block text-xs text-lune">{g.type}</span>
+              </div>
+            </a>
+          ))}
+        </div>
+        <a href={L('/realisations')} class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهدوا كل إنجازاتنا →</a>
+      </div>
+    </section>
+
+    <!-- آراء الزبناء: إثبات اجتماعي حقيقي. فارغ اليوم (بلا أي رأي مخترَع) →
+         لا يَعرض شيئًا إلى أن يضيف المؤسس آراء حقيقية. -->
+    <Testimonials />
+
+    <!-- كيف يجري الأمر — المسار الكامل + معاينة WhatsApp. يحلّ الشريط من البداية
+         إلى النهاية (تشخيص → مراقبة) محلّ القائمة الصغيرة بثلاث خطوات؛ ولا
+         يتكرّران بعد الآن. وقائع منشورة سلفًا على الموقع، بلا أجل مخترَع. -->
+    <section class="border-t border-white/10 px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-brass-300">كيف يجري الأمر</p>
+            <h2 class="display v2-section-title mt-5 max-w-md text-white">البقية تجري على WhatsApp</h2>
+            <p class="v2-lead mt-5 max-w-md text-lune-soft">
+              لا مركز اتصال ولا ملاحقة: يصلكم تشخيصكم عبر WhatsApp، وتتبادلون
+              مباشرةً مع الفريق التقني، بصور للسطح، حتى الزيارة في عين المكان.
+              نموذج تبادل في الجانب — مع إخفاء الهوية.
+            </p>
+          </div>
+          <div class="v2-rise">
+            <WhatsAppMock />
+          </div>
+        </div>
+        <!-- شريط المسار الحقيقي — من التشخيص إلى المراقبة -->
+        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {journey.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    <VideoChantier />
+
+    <!-- طمأنة: الضمانات المكتوبة، باختصار (إحالة نحو /garanties) -->
+    <GarantiesTeaser />
+
+    <!-- الفصل الأخير — التشخيص يتنفّس، ضمن نظام الكحلي+الذهبي -->
+    <DiagnosticForm>
+      <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
+        <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
+        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
+        <p class="tech-label mt-1 text-lune-faint">الجديدة · أبريل 2026</p>
+        <p class="mt-4 text-sm leading-relaxed text-lune-soft">
+          الإنتاج: <strong class="text-brass-300" data-tally>21 406 kWh/سنة</strong><br />
+          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
+        </p>
+        <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
+          إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.
+        </p>
+      </aside>
+    </DiagnosticForm>
+
+    <!-- FAQ قصيرة للصفحة الرئيسية: أكورديون بصري بلا JSON-LD من نوع FAQPage —
+         صفحة /faq المخصّصة هي الوحيدة التي تحمل FAQPage. -->
+    <Faq items={faq} schema={false} />
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<script>
+  // فيديو البطل: مؤجَّل — أول تفاعل أو 2.8 ثانية بعد التحميل؛ لا يُشغَّل أبدًا
+  // تحت reduced-motion أو data-saver (يبقى البوستر هو البطل).
+  const video = document.getElementById('hero-video') as HTMLVideoElement | null;
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  // @ts-expect-error saveData not typed everywhere
+  const saveData = navigator.connection?.saveData === true;
+  if (video && motionOk && !saveData) {
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      video.src = '/videos/hero.mp4';
+      video.play().then(() => video.classList.add('opacity-100')).catch(() => {});
+    };
+    for (const ev of ['scroll', 'pointerdown', 'touchstart', 'keydown']) {
+      addEventListener(ev, start, { once: true, passive: true });
+    }
+    const arm = () => setTimeout(start, 2800);
+    if (document.readyState === 'complete') arm();
+    else addEventListener('load', arm, { once: true });
+  }
+</script>

@@ -12,15 +12,30 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { formatMAD, groupLeadsByStage } from '../../../../features/crm/stages'
+import {
+  formatMAD, groupLeadsByStage, PIPELINE_STAGES,
+} from '../../../../features/crm/stages'
 import LeadCard from './LeadCard'
-import './kanban.css'
+
+// Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
+// prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
+const STAGE_PROBABILITY = {
+  NEW: 0.1,
+  CONTACTED: 0.25,
+  QUOTE_SENT: 0.5,
+  FOLLOW_UP: 0.7,
+  SIGNED: 1,
+  COLD: 0.05,
+}
+
+// Rang d'une étape dans l'entonnoir (-1 si inconnue) — pour bloquer un recul.
+const stageRank = (stage) => PIPELINE_STAGES.indexOf(stage)
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
 function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
-  selected, onToggleSelect,
+  selected, onToggleSelect, onPlanifierRelance,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -36,7 +51,8 @@ function DraggableCard({
     >
       <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                 users={users} onReassign={onReassign}
-                selected={selected} onToggleSelect={onToggleSelect} />
+                selected={selected} onToggleSelect={onToggleSelect}
+                onPlanifierRelance={onPlanifierRelance} />
     </div>
   )
 }
@@ -44,6 +60,8 @@ function DraggableCard({
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 function StageColumn({ col, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
+  // Prévisionnel pondéré : total devis × probabilité de l'étape.
+  const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
   return (
     <section
       ref={setNodeRef}
@@ -57,6 +75,15 @@ function StageColumn({ col, children }) {
         </div>
         {col.totalDevis > 0 && (
           <span className="kb-col-money">{formatMAD(col.totalDevis)}</span>
+        )}
+        {col.totalDevis > 0 && (
+          <span
+            className="kb-col-forecast"
+            style={{ fontSize: '11px', color: '#64748b', display: 'block' }}
+            title={`Prévisionnel pondéré (${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} %)`}
+          >
+            Prév. {formatMAD(forecast)}
+          </span>
         )}
       </header>
       <div className="kb-col-body">
@@ -80,7 +107,10 @@ export default function KanbanView({
   onReassign,
   selected = new Set(),
   onToggleSelect,
+  onPlanifierRelance,
 }) {
+  // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
+  const [reculMsg, setReculMsg] = useState(false)
   // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
   // sur mobile, appui long 150 ms pour glisser, le scroll reste naturel.
   const sensors = useSensors(
@@ -99,9 +129,17 @@ export default function KanbanView({
   const handleDragEnd = ({ active, over }) => {
     setActiveLead(null)
     const lead = active.data.current?.lead
-    if (lead && over && over.id !== lead.stage) {
-      onChangeStage(lead, over.id)
+    if (!lead || !over || over.id === lead.stage) return
+    // Garde-fou UI : on n'autorise jamais un recul dans l'entonnoir. Les
+    // étapes inconnues (rang -1) ne déclenchent pas le garde-fou.
+    const from = stageRank(lead.stage)
+    const to = stageRank(over.id)
+    if (from >= 0 && to >= 0 && to < from) {
+      setReculMsg(true)
+      window.setTimeout(() => setReculMsg(false), 4000)
+      return // l'étape reste inchangée
     }
+    onChangeStage(lead, over.id)
   }
 
   const handleDragCancel = () => setActiveLead(null)
@@ -113,6 +151,20 @@ export default function KanbanView({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+      {reculMsg && (
+        <div
+          className="kb-recul-msg"
+          role="status"
+          style={{
+            background: '#fef2f2', color: '#b91c1c',
+            border: '1px solid #fecaca', borderRadius: '8px',
+            padding: '6px 12px', marginBottom: '8px',
+            fontSize: '13px', fontWeight: 600,
+          }}
+        >
+          On ne recule pas une étape
+        </div>
+      )}
       <div className="kb-board">
         {columns.map((col) => (
           <StageColumn key={col.key} col={col}>
@@ -127,6 +179,7 @@ export default function KanbanView({
                 onReassign={onReassign}
                 selected={selected.has(lead.id)}
                 onToggleSelect={onToggleSelect}
+                onPlanifierRelance={onPlanifierRelance}
               />
             ))}
           </StageColumn>

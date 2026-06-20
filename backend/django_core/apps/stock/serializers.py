@@ -4,6 +4,8 @@ from .models import (
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
     EmplacementStock, TransfertStock, PrixFournisseur,
     RetourFournisseur, LigneRetourFournisseur,
+    ReceptionFournisseur, LigneReceptionFournisseur,
+    FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
 )
 
 
@@ -25,9 +27,33 @@ class CategorieSerializer(serializers.ModelSerializer):
 
 
 class FournisseurSerializer(serializers.ModelSerializer):
+    # L699 — compteurs LECTURE SEULE : nombre de produits liés et de bons de
+    # commande fournisseur associés. Affichés « X produits · Y bons de
+    # commande » sur la fiche fournisseur. Annotés en amont quand disponibles
+    # (liste), sinon repli sur un count() direct (détail).
+    nb_produits = serializers.SerializerMethodField()
+    nb_bons_commande = serializers.SerializerMethodField()
+    # L698 — message FR explicite quand l'email saisi (création inline incluse)
+    # n'est pas un email valide.
+    email = serializers.EmailField(
+        required=False, allow_null=True, allow_blank=True,
+        error_messages={'invalid': 'Adresse email invalide.'})
+
     class Meta:
         model = Fournisseur
         fields = '__all__'
+
+    def get_nb_produits(self, obj):
+        annotated = getattr(obj, 'nb_produits_annot', None)
+        if annotated is not None:
+            return annotated
+        return obj.produits.count()
+
+    def get_nb_bons_commande(self, obj):
+        annotated = getattr(obj, 'nb_bons_commande_annot', None)
+        if annotated is not None:
+            return annotated
+        return obj.bons_commande.count()
 
 
 class MouvementStockSerializer(serializers.ModelSerializer):
@@ -73,18 +99,141 @@ class ProduitSerializer(serializers.ModelSerializer):
         elif request and request.user.is_superuser:
             fields['categorie_id'].queryset = Categorie.objects.all()
             fields['fournisseur_id'].queryset = Fournisseur.objects.all()
+        # Feature D — le prix d'achat (et donc la marge) ne s'expose qu'aux rôles
+        # autorisés (Directeur/Admin par défaut ; repli historique pour comptes
+        # légacy). Jamais sur un document client. Retiré pour les autres.
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_buy_prices', True):
+            fields.pop('prix_achat', None)
         return fields
     is_low_stock = serializers.SerializerMethodField()
+    # L578 — type d'équipement de la catégorie (additif, lecture seule) exposé à
+    # plat pour permettre au picker d'équipement de chantier de filtrer un slot
+    # (panneaux/onduleur…) par TYPE quel que soit le libellé free-text de la
+    # catégorie. Vide (None) quand la catégorie n'est pas typée → comportement
+    # historique préservé côté frontend (repli sur la liste BOM complète).
+    categorie_type = serializers.CharField(
+        source='categorie.type_equipement', read_only=True, allow_null=True)
+    categorie_type_display = serializers.SerializerMethodField()
+    # N14 — quantité ENGAGÉE par des réservations de chantier (non consommée) et
+    # DISPONIBLE = stock total − réservé. Les vues stock + alertes de stock bas
+    # tiennent compte de l'engagé-mais-non-consommé.
+    quantite_reservee = serializers.SerializerMethodField()
+    quantite_disponible = serializers.SerializerMethodField()
+    is_low_stock_disponible = serializers.SerializerMethodField()
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()
     derniere_date_mouvement = serializers.SerializerMethodField()
+    # N15 — ventilation du stock par emplacement dans la liste catalogue
+    # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
+    # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
+    stock_par_emplacement = serializers.SerializerMethodField()
+
+    def validate(self, attrs):
+        # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
+        # produit contre les définitions du module « produit », même chemin que
+        # Lead. À la création on valide toujours (champs obligatoires) ; en
+        # mise à jour, uniquement si custom_data est fourni.
+        is_create = self.instance is None
+        if is_create or 'custom_data' in attrs:
+            from apps.customfields.serializers import validate_custom_data
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            if company is not None:
+                attrs['custom_data'] = validate_custom_data(
+                    'produit', company, attrs.get('custom_data'))
+        return attrs
 
     class Meta:
         model = Produit
-        fields = '__all__'
+        # ERR95 — allowlist EXPLICITE (comme le chemin d'export) plutôt que
+        # `__all__` : un nouveau champ sensible ajouté au modèle n'est plus
+        # exposé au client par défaut (loi « prix_achat jamais client-facing »).
+        # `prix_achat` reste listé mais demeure gardé par permission dans
+        # get_fields() (retiré pour les rôles sans can_view_buy_prices). Les
+        # champs déclarés (read_only/method) sont ajoutés automatiquement par
+        # DRF s'ils figurent dans `fields`.
+        fields = [
+            # Identité & catalogue
+            'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # Prix (prix_achat gardé par permission, cf. get_fields)
+            'prix_achat', 'prix_vente', 'tva',
+            # Stock
+            'quantite_stock', 'seuil_alerte', 'is_archived',
+            # Relations (lecture imbriquée + écriture par *_id)
+            'categorie', 'categorie_id', 'fournisseur', 'fournisseur_id',
+            # Garanties
+            'garantie', 'garantie_mois', 'garantie_production_mois',
+            # Spécifications pompage
+            'pompe_cv', 'hmt_m', 'debit_m3j', 'pompe_kw', 'tension_v',
+            'courbe_pompe',
+            # Dates & data personnalisée
+            'date_creation', 'date_mise_a_jour', 'custom_data',
+            # Champs dérivés / calculés (SerializerMethodField, lecture seule)
+            'is_low_stock', 'categorie_type', 'categorie_type_display',
+            'quantite_reservee', 'quantite_disponible',
+            'is_low_stock_disponible', 'nb_mouvements',
+            'premiere_date_mouvement', 'derniere_date_mouvement',
+            'stock_par_emplacement',
+        ]
+        # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
+        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+
+    def _reserved_map(self):
+        """Map {produit_id: quantité réservée} calculée UNE fois par sérialisation
+        (évite un N+1 sur la liste produits). Mémoïsée sur l'instance."""
+        cache = getattr(self, '_reserved_map_cache', None)
+        if cache is not None:
+            return cache
+        from .services import reserved_quantities
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = reserved_quantities(company) if company is not None else {}
+        self._reserved_map_cache = cache
+        return cache
+
+    def get_quantite_reservee(self, obj):
+        return self._reserved_map().get(obj.id, 0)
+
+    def get_quantite_disponible(self, obj):
+        return obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+
+    def get_categorie_type_display(self, obj):
+        # Libellé FR du type d'équipement (None si catégorie non typée).
+        cat = obj.categorie
+        if cat is None or not cat.type_equipement:
+            return None
+        return cat.get_type_equipement_display()
 
     def get_is_low_stock(self, obj):
+        # Comportement historique conservé (stock brut vs seuil).
         return obj.seuil_alerte > 0 and obj.quantite_stock <= obj.seuil_alerte
+
+    def get_is_low_stock_disponible(self, obj):
+        # N14 — alerte sur le DISPONIBLE (engagé-mais-non-consommé décompté).
+        if not obj.seuil_alerte or obj.seuil_alerte <= 0:
+            return False
+        disponible = obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+        return disponible <= obj.seuil_alerte
+
+    def _breakdown_map(self):
+        """Map {produit_id: [ventilation par emplacement]} calculée UNE fois
+        par sérialisation (évite un N+1 sur la liste produits)."""
+        cache = getattr(self, '_breakdown_map_cache', None)
+        if cache is not None:
+            return cache
+        from .services import stock_breakdown_map
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = stock_breakdown_map(company) if company is not None else {}
+        self._breakdown_map_cache = cache
+        return cache
+
+    def get_stock_par_emplacement(self, obj):
+        # Seuls les emplacements détenant du stock sont remontés, pour ne pas
+        # alourdir la liste. La camionnette à 0 n'apparaît donc pas.
+        rows = self._breakdown_map().get(obj.id, [])
+        return [r for r in rows if r['quantite']]
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
@@ -302,4 +451,204 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             for ligne in lignes_data:
                 LigneBonCommandeFournisseur.objects.create(
                     bon_commande=instance, **ligne)
+        return instance
+
+
+# ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
+
+class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+
+    class Meta:
+        model = LigneReceptionFournisseur
+        fields = [
+            'id', 'ligne_commande', 'produit', 'produit_nom', 'produit_sku',
+            'quantite',
+        ]
+        # produit est dérivé de la ligne de commande côté serveur.
+        read_only_fields = ['produit']
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('La quantité doit être positive.')
+        return value
+
+
+class ReceptionFournisseurSerializer(serializers.ModelSerializer):
+    lignes = LigneReceptionFournisseurSerializer(many=True)
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True)
+    fournisseur_nom = serializers.CharField(
+        source='bon_commande.fournisseur.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    recu_par_username = serializers.CharField(
+        source='recu_par.username', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True)
+    total_recu = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ReceptionFournisseur
+        fields = [
+            'id', 'reference', 'bon_commande', 'bon_commande_reference',
+            'fournisseur_nom', 'statut', 'statut_display', 'date_reception',
+            'note', 'recu_par', 'recu_par_username', 'created_by',
+            'created_by_username', 'date_creation', 'lignes', 'total_recu',
+        ]
+        # company + reference + statut + created_by sont posés côté serveur.
+        read_only_fields = [
+            'reference', 'statut', 'created_by', 'date_creation',
+        ]
+
+    def validate_lignes(self, value):
+        if not value:
+            raise serializers.ValidationError('Au moins une ligne est requise.')
+        return value
+
+    def validate_bon_commande(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Bon de commande hors de votre entreprise.')
+        if value.statut == BonCommandeFournisseur.Statut.ANNULE:
+            raise serializers.ValidationError(
+                'Ce bon de commande est annulé.')
+        return value
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes')
+        bon = validated_data['bon_commande']
+        # Les lignes de réception se rattachent aux lignes du BCF ; le produit
+        # est dérivé de la ligne de commande (jamais du corps de requête).
+        bcf_lignes = {ligne.id: ligne for ligne in bon.lignes.all()}
+        reception = ReceptionFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
+            if ligne_cmd is None:
+                raise serializers.ValidationError(
+                    {'lignes': 'Ligne de commande hors de ce bon de commande.'})
+            LigneReceptionFournisseur.objects.create(
+                reception=reception, ligne_commande=ligne_cmd,
+                produit=ligne_cmd.produit, quantite=ligne['quantite'])
+        return reception
+
+
+# ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
+
+class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LigneFactureFournisseur
+        fields = [
+            'id', 'produit', 'produit_nom', 'designation', 'quantite',
+            'prix_unitaire_ht', 'total_ht',
+        ]
+
+
+class PaiementFournisseurSerializer(serializers.ModelSerializer):
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True)
+
+    class Meta:
+        model = PaiementFournisseur
+        fields = [
+            'id', 'facture', 'facture_reference', 'montant', 'date_paiement',
+            'mode', 'mode_display', 'note', 'created_by', 'created_by_username',
+            'date_creation',
+        ]
+        # company + created_by posés côté serveur.
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('Le montant doit être positif.')
+        return value
+
+    def validate_facture(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Facture hors de votre entreprise.')
+        return value
+
+
+class FactureFournisseurSerializer(serializers.ModelSerializer):
+    lignes = LigneFactureFournisseurSerializer(many=True, required=False)
+    paiements = PaiementFournisseurSerializer(many=True, read_only=True)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True)
+    total_paye = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    solde_du = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = FactureFournisseur
+        fields = [
+            'id', 'reference', 'fournisseur', 'fournisseur_nom', 'bon_commande',
+            'bon_commande_reference', 'ref_fournisseur', 'date_facture',
+            'date_echeance', 'montant_ht', 'montant_tva', 'montant_ttc',
+            'statut', 'statut_display', 'note', 'created_by',
+            'created_by_username', 'date_creation', 'date_mise_a_jour',
+            'lignes', 'paiements', 'total_paye', 'solde_du',
+        ]
+        # company + reference + statut + created_by sont posés côté serveur.
+        # Le statut découle des paiements (recompute_facture_fournisseur_statut).
+        read_only_fields = [
+            'reference', 'statut', 'created_by', 'date_creation',
+            'date_mise_a_jour',
+        ]
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
+        return value
+
+    def validate_bon_commande(self, value):
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Bon de commande hors de votre entreprise.')
+        return value
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes', [])
+        facture = FactureFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            LigneFactureFournisseur.objects.create(facture=facture, **ligne)
+        return facture
+
+    def update(self, instance, validated_data):
+        lignes_data = validated_data.pop('lignes', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if lignes_data is not None:
+            instance.lignes.all().delete()
+            for ligne in lignes_data:
+                LigneFactureFournisseur.objects.create(
+                    facture=instance, **ligne)
         return instance

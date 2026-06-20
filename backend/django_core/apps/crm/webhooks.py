@@ -131,10 +131,23 @@ def website_lead_webhook(request):
             )
 
         if existing:
+            # Re-POST idempotent (< 1 min) : on COMPLÈTE sans jamais écraser une
+            # donnée déjà captée. Un second payload plus pauvre (champ absent →
+            # None/'') ne doit pas annuler ce que le premier a rempli. On
+            # n'écrit donc que les valeurs réellement renseignées.
             for key, value in fields.items():
+                if value is None or value == '':
+                    continue
                 setattr(existing, key, value)
             existing.save()
             lead, created = existing, False
+            # Trace la mise à jour idempotente dans le chatter (les champs ont
+            # pu être écrasés par le re-POST du site dans la fenêtre < 1 min).
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body='Mis à jour via le site web (doublon < 1 min)',
+            )
         else:
             # Responsable par défaut de la société (Paramètres) si configuré.
             from .services import default_responsable_for

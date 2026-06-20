@@ -2,11 +2,12 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
+from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
-    ParrainageSerializer,
+    ParrainageSerializer, _tag_en_usage, _motif_en_usage,
 )
 from . import activity
 from .services import default_responsable_for
@@ -55,12 +56,28 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nom', 'prenom', 'email', 'telephone']
+    search_fields = [
+        'nom', 'prenom', 'email', 'telephone',
+        'ice', 'if_fiscal', 'rc', 'cin',
+    ]
     ordering_fields = ['nom', 'date_creation']
     ordering = ['-date_creation']
 
+    def get_queryset(self):
+        # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
+        # clients rattachés à ses documents/leads visibles. 'all' → inchangé.
+        return scope_client_queryset(super().get_queryset(), self.request.user)
+
+    def perform_create(self, serializer):
+        # Traçabilité (L16) : société ET créateur forcés côté serveur — jamais
+        # acceptés du corps de la requête.
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + ['export_xlsx', 'documents']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
@@ -77,7 +94,66 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         qs = self.get_queryset()
         if ids:
             qs = qs.filter(id__in=ids)
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
         return export_clients_xlsx(qs.order_by('nom'))
+
+    @action(detail=True, methods=['get'], url_path='documents',
+            permission_classes=[IsAnyRole])
+    def documents(self, request, pk=None):
+        """Panneau détail (L4) : devis, factures et chantiers liés à un client.
+
+        Lecture seule, bornée à la société courante (get_object passe par la
+        portée TenantMixin + visibilité). Référence / statut / total uniquement
+        — aucun prix d'achat ni marge n'apparaît (sortie client-facing)."""
+        client = self.get_object()
+
+        def _statut(obj):
+            try:
+                return obj.get_statut_display()
+            except Exception:
+                return getattr(obj, 'statut', None)
+
+        def _date(obj):
+            # Devis → date_creation ; Facture → date_emission.
+            d = getattr(obj, 'date_creation', None) \
+                or getattr(obj, 'date_emission', None)
+            return d.isoformat() if d else None
+
+        devis = [
+            {
+                'id': d.id,
+                'reference': d.reference,
+                'statut': _statut(d),
+                'total_ttc': str(d.total_ttc),
+                'date': _date(d),
+            }
+            for d in client.devis.all().order_by('-date_creation')
+        ]
+        factures = [
+            {
+                'id': f.id,
+                'reference': f.reference,
+                'statut': _statut(f),
+                'total_ttc': str(f.total_ttc),
+                'date': _date(f),
+            }
+            for f in client.factures.all().order_by('-date_emission')
+        ]
+        chantiers = [
+            {
+                'id': i.id,
+                'reference': i.reference,
+                'statut': _statut(i),
+            }
+            for i in client.installations.all().order_by('-id')
+        ]
+        return Response({
+            'devis': devis,
+            'factures': factures,
+            'chantiers': chantiers,
+        })
 
     def destroy(self, request, *args, **kwargs):
         # Un client avec des devis est PROTÉGÉ (pas de cascade) : message
@@ -108,6 +184,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) : un rôle restreint ne voit que ses
+        # leads (responsable). 'all' → inchangé. Un utilisateur voit toujours
+        # ses propres leads (son id est inclus dans la portée).
+        qs = scope_queryset(qs, self.request.user, ['owner'])
         # Optional filters: ?stage=NEW  &  ?source=odoo_import_test
         stage = self.request.query_params.get('stage')
         source = self.request.query_params.get('source')
@@ -134,9 +214,16 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         user = self.request.user
         extra = {'company': user.company}
         if not serializer.validated_data.get('owner'):
-            default = default_responsable_for(user.company)
-            if default is not None:
-                extra['owner'] = default
+            # Un utilisateur à portée restreinte (Feature F) garde la propriété
+            # de ce qu'il crée — sinon il perdrait de vue son propre lead. Les
+            # comptes « voit tout » conservent l'assignation au responsable par
+            # défaut de la société (comportement historique).
+            if user.record_scope() != 'all':
+                extra['owner'] = user
+            else:
+                default = default_responsable_for(user.company)
+                if default is not None:
+                    extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
         from .services import sync_relance_activity
@@ -152,7 +239,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
-                                          'doublons', 'export_xlsx']:
+                                          'check_duplicates', 'doublons',
+                                          'export_xlsx']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
@@ -201,23 +289,30 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         appuie lui-même sur Envoyer). Chaque {lien} est un lien public tokenisé
         (30 j) vers le PDF CLIENT — jamais de prix d'achat ni de marge.
         """
-        from apps.ventes.models import Devis
+        from apps.ventes.selectors import devis_for_lead
         from apps.ventes.utils.phone import normalize_ma_phone
         from apps.ventes.utils.whatsapp import (
             build_devis_whatsapp, build_wa_url,
         )
 
+        from .services import coerce_id_list
+
         lead = self.get_object()
-        ids = request.data.get('devis_ids') or []
-        if not isinstance(ids, list) or not ids:
+        raw_ids = request.data.get('devis_ids') or []
+        if not isinstance(raw_ids, list) or not raw_ids:
             return Response(
                 {'detail': 'Sélectionnez au moins un devis.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        try:
+            ids = coerce_id_list(raw_ids)
+        except ValueError:
+            return Response(
+                {'detail': 'Identifiant de devis invalide.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # Devis du lead, dans la société courante uniquement.
-        devis_list = list(
-            Devis.objects.filter(id__in=ids, lead=lead, company=lead.company)
-            .order_by('id'))
+        devis_list = devis_for_lead(lead, ids)
         if len(devis_list) != len(set(ids)):
             return Response(
                 {'detail': 'Un devis sélectionné est introuvable pour ce lead.'},
@@ -229,8 +324,23 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'Aucun numéro de téléphone.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        langue = request.data.get('langue', 'fr')
+        # Langue du message : la valeur explicite de la requête l'emporte ;
+        # sinon on retombe sur la langue préférée du lead, puis sur le FR.
+        langue = request.data.get('langue')
+        if langue is None:
+            langue = lead.langue_preferee or 'fr'
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.WHATSAPP, instance=lead,
+               detail=f'Lien WhatsApp devis préparé ({len(devis_list)})')
+        # L856 — trace l'action dans le chatter du lead (Historique). Acteur et
+        # société posés côté serveur, jamais lus du corps de la requête.
+        refs = ', '.join(d.reference for d in devis_list)
+        activity.log_note(
+            lead, request.user,
+            f'Lien WhatsApp généré pour {refs} '
+            f'par {getattr(request.user, "username", "?")}.')
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,
@@ -273,22 +383,76 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             for d in dups
         ])
 
+    @action(detail=False, methods=['get'], url_path='check-duplicates',
+            permission_classes=[IsAnyRole])
+    def check_duplicates(self, request):
+        """Contrôle PRÉ-CRÉATION (et édition) : un téléphone/email saisi
+        correspond-il déjà à un lead de la société ? Avertissement NON bloquant
+        côté formulaire — la société vient du serveur, jamais du corps. Saisie
+        libre acceptée (mêmes normaliseurs que la détection de doublons).
+        ?exclude=<id> retire le lead en cours d'édition de ses propres doublons."""
+        from .services import find_duplicates_by_contact
+        phone = request.query_params.get('telephone') or \
+            request.query_params.get('phone')
+        email = request.query_params.get('email')
+        exclude = request.query_params.get('exclude')
+        exclude_pk = exclude if (exclude or '').isdigit() else None
+        dups = find_duplicates_by_contact(
+            request.user.company, phone=phone, email=email,
+            exclude_pk=exclude_pk)
+        return Response([
+            {
+                'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+                'societe': d.societe, 'telephone': d.telephone,
+                'email': d.email, 'stage': d.stage,
+                'is_archived': d.is_archived,
+                'nb_devis': d.devis.count(),
+            }
+            for d in dups
+        ])
+
     @action(detail=False, methods=['get'], url_path='doublons',
             permission_classes=[IsAnyRole])
     def doublons(self, request):
         """Atelier doublons : scanne TOUS les leads de la société et renvoie les
         clusters de doublons probables (téléphone / email / nom normalisé), avec
         pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
-        from .services import find_duplicate_clusters, _completeness
+        from .services import (
+            find_duplicate_clusters, _completeness, cluster_match_keys,
+            _MERGE_FILL_FIELDS,
+        )
+        from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
         clusters, _ = find_duplicate_clusters(
             request.user.company, include_archived=include_archived)
+        # Libellés FR des champs comblés à la fusion (aperçu avant confirmation).
+        field_labels = activity.TRACKED_FIELDS
         out = []
         for group in clusters:
             suggested = max(
                 group, key=lambda le: (_completeness(le), le.date_creation))
+            others = [d for d in group if d.id != suggested.id]
+            # Aperçu de fusion : devis + activités migrés, et champs vides du
+            # survivant que les absorbés viendraient combler.
+            devis_migres = sum(d.devis.count() for d in others)
+            activites_migrees = sum(
+                LeadActivity.objects.filter(lead=d).count() for d in others)
+            champs_combles = []
+            for field in _MERGE_FILL_FIELDS:
+                cur = getattr(suggested, field, None)
+                if cur in (None, '', False):
+                    if any(getattr(d, field, None) not in (None, '', False)
+                           for d in others):
+                        champs_combles.append(field_labels.get(field, field))
             out.append({
                 'suggested_survivor_id': suggested.id,
+                'match_keys': cluster_match_keys(group),
+                'merge_preview': {
+                    'devis': devis_migres,
+                    'activites': activites_migrees,
+                    'fiches_archivees': len(others),
+                    'champs_combles': champs_combles,
+                },
                 'members': [
                     {
                         'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
@@ -296,6 +460,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                         'email': d.email, 'ville': d.ville, 'stage': d.stage,
                         'is_archived': d.is_archived,
                         'nb_devis': d.devis.count(),
+                        'nb_activites': LeadActivity.objects.filter(lead=d).count(),
                         'completeness': _completeness(d),
                         'date_creation': d.date_creation.isoformat(),
                     }
@@ -401,18 +566,29 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         Corps : {ids: [...]} — la sélection. Vide → 400 (l'UI exporte une
         sélection). Borné à la société de l'utilisateur."""
         from .exports import export_leads_xlsx
-        ids = request.data.get('ids') or []
-        if not isinstance(ids, list) or not ids:
+        from .services import coerce_id_list
+        raw_ids = request.data.get('ids') or []
+        if not isinstance(raw_ids, list) or not raw_ids:
             return Response({'detail': 'Sélectionnez au moins un lead.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ids = coerce_id_list(raw_ids)
+        except ValueError:
+            return Response({'detail': 'Identifiant de lead invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         leads = (Lead.objects.filter(company=request.user.company, id__in=ids)
                  .select_related('owner').order_by('id'))
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.EXPORT,
+               detail=f'Export leads (.xlsx) — {len(ids)} ligne(s)')
         return export_leads_xlsx(leads)
 
 
 class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
-    écriture admin."""
+    écriture admin. Garde-fou (L780) : une étiquette référencée par des leads
+    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé)."""
     queryset = LeadTag.objects.all()
     serializer_class = LeadTagSerializer
 
@@ -421,10 +597,20 @@ class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    def destroy(self, request, *args, **kwargs):
+        tag = self.get_object()
+        if _tag_en_usage(tag.company, tag.nom) > 0:
+            return Response(
+                {'detail': "Cette étiquette est utilisée par des leads — "
+                           "archivez-la plutôt que de la supprimer."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
 
 class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
-    écriture admin."""
+    écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
+    supprime pas — l'admin l'archive plutôt (comme pour les canaux)."""
     queryset = MotifPerte.objects.all()
     serializer_class = MotifPerteSerializer
 
@@ -432,6 +618,15 @@ class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+    def destroy(self, request, *args, **kwargs):
+        motif = self.get_object()
+        if _motif_en_usage(motif.company, motif.nom) > 0:
+            return Response(
+                {'detail': "Ce motif est utilisé par des leads — archivez-le "
+                           "plutôt que de le supprimer."},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 # Canaux par défaut (clés = Lead.Canal) — 'site_web' est PROTÉGÉ (webhook site).

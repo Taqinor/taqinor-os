@@ -4,28 +4,15 @@ import { useNavigate, Link } from 'react-router-dom'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
 
-// ── Logo ──────────────────────────────────────────────────────────────────────
-function TaqinorLogo({ size = 34 }) {
-  const sun = Math.round(size * 0.92)
-  const txt = {
-    fontFamily: "'Arial Black', 'Arial Bold', Impact, sans-serif",
-    fontWeight: 900, fontSize: size, color: '#0d1b3e',
-    lineHeight: 1, letterSpacing: '0.03em',
-  }
+// ── Logo officiel Taqinor (mot-symbole des devis, source de vérité de la marque).
+//    Asset généré par scripts/gen_brand_assets.py depuis quote_engine/logo.png.
+function TaqinorLogo({ height = 52 }) {
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-      <span style={txt}>TAQIN</span>
-      <div style={{
-        width: sun, height: sun, borderRadius: '50%', backgroundColor: '#F5C100',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        margin: '0 1px', flexShrink: 0,
-      }}>
-        <svg viewBox="0 0 24 24" width={sun * 0.54} height={sun * 0.54} fill="#0d1b3e">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-        </svg>
-      </div>
-      <span style={txt}>R</span>
-    </div>
+    <img
+      src="/taqinor-logo.png"
+      alt="Taqinor"
+      style={{ height, width: 'auto', maxWidth: '100%', display: 'block' }}
+    />
   )
 }
 
@@ -97,8 +84,21 @@ function BouncingBackground() {
     }
     animRef.current = requestAnimationFrame(tick)
 
+    // Re-clamp les blobs dans le viewport courant au redimensionnement/rotation —
+    // sinon ils dérivent hors écran jusqu'au rechargement.
+    const onResize = () => {
+      const W2 = window.innerWidth
+      const H2 = window.innerHeight
+      stateRef.current.forEach((b) => {
+        b.x = Math.min(Math.max(0, b.x), Math.max(0, W2 - b.w))
+        b.y = Math.min(Math.max(0, b.y), Math.max(0, H2 - b.h))
+      })
+    }
+    window.addEventListener('resize', onResize)
+
     return () => {
       cancelAnimationFrame(animRef.current)
+      window.removeEventListener('resize', onResize)
       stateRef.current.forEach((b) => b.el.remove())
     }
   }, [])
@@ -139,14 +139,23 @@ export default function Login() {
   const [error,    setError]    = useState(null)
   const [loading,  setLoading]  = useState(false)
   const [showPwd,  setShowPwd]  = useState(false)
+  // N96 — double authentification (2FA) : quand le serveur répond
+  // `otp_required`, on bascule sur la saisie du code à 6 chiffres et on
+  // resoumet username + password + otp. Les comptes sans 2FA ne voient jamais
+  // cette étape.
+  const [otpRequired, setOtpRequired] = useState(false)
+  const [otp,         setOtp]         = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
-      // Le serveur set les cookies httpOnly — aucun token visible cote frontend
-      const res = await api.post('/token/', { username, password })
+      // Le serveur set les cookies httpOnly — aucun token visible cote frontend.
+      // On joint `otp` uniquement si l'étape 2FA a été demandée.
+      const body = { username, password }
+      if (otpRequired) body.otp = otp.trim()
+      const res = await api.post('/token/', body)
       dispatch(setCredentials({
         user: { username },
         role: res.data.role || 'normal',
@@ -155,9 +164,17 @@ export default function Login() {
       }))
       navigate('/dashboard')
     } catch (err) {
-      const detail = err.response?.data?.detail
-      if (detail) {
-        setError(detail)
+      const data = err.response?.data || {}
+      // 2FA requise : on déverrouille le champ code et on demande le code.
+      if (data.otp_required) {
+        setOtpRequired(true)
+        // Si on avait déjà un code et qu'il est refusé, on signale l'erreur.
+        setError(otpRequired && otp.trim()
+          ? 'Code de double authentification invalide.'
+          : null)
+        setOtp('')
+      } else if (data.detail) {
+        setError(data.detail)
       } else if (err.message === 'Network Error') {
         setError('Impossible de contacter le serveur. Vérifiez votre connexion.')
       } else {
@@ -195,7 +212,7 @@ export default function Login() {
 
         {/* Logo centré */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-          <TaqinorLogo size={36} />
+          <TaqinorLogo height={52} />
         </div>
 
         {/* Ligne décorative */}
@@ -277,6 +294,32 @@ export default function Login() {
             </div>
           </div>
 
+          {/* Code 2FA (N96) — affiché uniquement si le serveur l'exige */}
+          {otpRequired && (
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Code de double authentification
+              </label>
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+                autoFocus
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123456"
+                style={{ ...baseInput, letterSpacing: '0.25em', fontFamily: 'monospace' }}
+                onFocus={onFocus}
+                onBlur={onBlur}
+              />
+              <p style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                Saisissez le code à 6 chiffres de votre application
+                d'authentification (ou un code de secours).
+              </p>
+            </div>
+          )}
+
           {/* Bouton */}
           <button
             type="submit"
@@ -297,7 +340,9 @@ export default function Login() {
             onMouseEnter={(e) => { if (!loading) e.target.style.opacity = '0.9' }}
             onMouseLeave={(e) => { e.target.style.opacity = '1' }}
           >
-            {loading ? 'Connexion en cours…' : 'Se connecter →'}
+            {loading
+              ? 'Connexion en cours…'
+              : otpRequired ? 'Vérifier le code →' : 'Se connecter →'}
           </button>
         </form>
 

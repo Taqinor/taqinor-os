@@ -1,7 +1,8 @@
 // Vue LISTE des leads CRM — table dense et triable, façon Odoo.
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
-import { useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { MoreHorizontal } from 'lucide-react'
 import { useDispatch, useSelector } from 'react-redux'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import {
@@ -18,7 +19,27 @@ import {
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
-import './listview.css'
+import {
+  Button, Checkbox, IconButton,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from '../../../../ui'
+
+const MOBILE_QUERY = '(max-width: 768px)'
+
+// Vrai sous 768px — les actions de ligne se replient alors dans un menu « ⋯ ».
+function useIsMobile() {
+  const [mobile, setMobile] = useState(
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY)
+    const onChange = (e) => setMobile(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return mobile
+}
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 const STAGE_OPTIONS = PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s }))
@@ -56,6 +77,9 @@ const SORTERS = {
     (PRIO_RANK[a.priorite] ?? 1) - (PRIO_RANK[b.priorite] ?? 1),
   relance: (a, b) =>
     String(a.relance_date).localeCompare(String(b.relance_date)),
+  ville: (a, b) => (a.ville ?? '').localeCompare(b.ville ?? '', 'fr'),
+  telephone: (a, b) =>
+    (a.telephone ?? '').localeCompare(b.telephone ?? '', 'fr'),
 }
 
 const todayISO = () => {
@@ -91,6 +115,7 @@ export default function ListView({
   const dispatch = useDispatch()
   const role = useSelector((s) => s.auth.role)
   const canDelete = role === 'admin' // règle existante : destroy = admin
+  const isMobile = useIsMobile()
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [busyId, setBusyId] = useState(null)
@@ -159,20 +184,23 @@ export default function ListView({
           <tr>
             {onToggleSelect && (
               <th className="lv-check-col">
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label="Tout sélectionner"
                   checked={allChecked}
-                  onChange={() => onToggleAll?.(visibleIds)}
+                  onCheckedChange={() => onToggleAll?.(visibleIds)}
                 />
               </th>
             )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
+            <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
+            <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
+            <th className="m-hide">Facture</th>
             <SortableTh col="canal" label="Canal" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="owner" label="Responsable" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="priorite" label="Priorité" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="relance" label="Relance" sort={sort} onSort={onSort} />
+            <th className="m-hide">Prochaine activité</th>
             <th className="m-hide">Tags</th>
             <th>Actions</th>
           </tr>
@@ -194,11 +222,10 @@ export default function ListView({
                     className="lv-check-col"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Sélectionner ${fullName(lead) || 'ce lead'}`}
                       checked={selected.has(lead.id)}
-                      onChange={() => onToggleSelect(lead.id)}
+                      onCheckedChange={() => onToggleSelect(lead.id)}
                     />
                   </td>
                 )}
@@ -230,6 +257,28 @@ export default function ListView({
                       </span>
                     )}
                     onSave={(v) => onInlineSave(lead, 'stage', v)}
+                  />
+                </td>
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  {lead.telephone ? (
+                    <a className="link-blue" href={`tel:${lead.telephone}`}>
+                      {lead.telephone}
+                    </a>
+                  ) : '—'}
+                </td>
+                <td className="m-hide">{lead.ville || '—'}</td>
+                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+                  <InlineEdit
+                    value={lead.facture_hiver ?? ''}
+                    type="number"
+                    disabled={!onInlineSave}
+                    placeholder="+ facture"
+                    display={lead.facture_hiver != null && lead.facture_hiver !== '' ? (
+                      <span>
+                        {Math.round(parseFloat(lead.facture_hiver)).toLocaleString('fr-MA')} MAD
+                      </span>
+                    ) : null}
+                    onSave={(v) => onInlineSave(lead, 'facture_hiver', v === '' ? null : v)}
                   />
                 </td>
                 <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
@@ -272,6 +321,19 @@ export default function ListView({
                     onSave={(v) => onInlineSave(lead, 'relance_date', v)}
                   />
                 </td>
+                <td className="m-hide">
+                  {lead.next_activity ? (
+                    <span
+                      className={lead.next_activity.state === 'overdue'
+                        ? 'lv-relance-late' : undefined}
+                      title={lead.next_activity.summary || undefined}
+                    >
+                      {formatDateFR(lead.next_activity.due_date)}
+                      {lead.next_activity.summary
+                        ? ` · ${lead.next_activity.summary}` : ''}
+                    </span>
+                  ) : <span className="lv-muted">—</span>}
+                </td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
                   <InlineEdit
                     value={lead.tags ?? ''}
@@ -297,79 +359,103 @@ export default function ListView({
                     onSave={(v) => onInlineSave(lead, 'tags', v)}
                   />
                 </td>
-                <td data-label="Actions">
-                  <div className="actions-cell">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onOpenLead(lead)
-                      }}
-                    >
-                      Éditer
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm gen-btn-orange"
-                      disabled={!lead.devis_auto?.pret}
-                      title={lead.devis_auto?.pret
-                        ? 'Devis auto'
-                        : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onAutoQuote(lead)
-                      }}
-                    >
-                      ⚡ Devis auto
-                    </button>
-                    {lead.is_archived ? (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline"
-                        disabled={busyId === lead.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onRestore(lead)
-                        }}
-                      >
-                        Restaurer
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline"
-                        disabled={busyId === lead.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onArchive(lead)
-                        }}
-                      >
-                        Archiver
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        disabled={busyId === lead.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onDelete(lead)
-                        }}
-                      >
-                        Supprimer
-                      </button>
-                    )}
-                  </div>
+                <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
+                  {(() => {
+                    // Actions de ligne dans l'ordre — partagées entre l'affichage
+                    // boutons (desktop) et le menu « ⋯ » (mobile).
+                    const actions = [
+                      {
+                        id: 'edit', label: 'Éditer',
+                        onClick: () => onOpenLead(lead),
+                      },
+                      {
+                        id: 'devis', label: '⚡ Devis auto',
+                        disabled: !lead.devis_auto?.pret,
+                        title: lead.devis_auto?.pret
+                          ? 'Devis auto'
+                          : (lead.devis_auto?.message ?? 'Devis auto indisponible'),
+                        onClick: () => onAutoQuote(lead),
+                      },
+                      lead.is_archived
+                        ? {
+                          id: 'restore', label: 'Restaurer',
+                          disabled: busyId === lead.id,
+                          onClick: () => onRestore(lead),
+                        }
+                        : {
+                          id: 'archive', label: 'Archiver',
+                          disabled: busyId === lead.id,
+                          onClick: () => onArchive(lead),
+                        },
+                    ]
+                    if (canDelete) {
+                      actions.push({
+                        id: 'delete', label: 'Supprimer', destructive: true,
+                        disabled: busyId === lead.id,
+                        onClick: () => onDelete(lead),
+                      })
+                    }
+                    if (isMobile) {
+                      // Mobile : un seul bouton « ⋯ » ouvre le menu d'actions.
+                      return (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton
+                              label="Actions du lead"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                            >
+                              <MoreHorizontal />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            {actions.map((a) => (
+                              <Fragment key={a.id}>
+                                {a.destructive && <DropdownMenuSeparator />}
+                                <DropdownMenuItem
+                                  destructive={a.destructive}
+                                  disabled={a.disabled}
+                                  onSelect={() => a.onClick()}
+                                >
+                                  {a.label}
+                                </DropdownMenuItem>
+                              </Fragment>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )
+                    }
+                    return (
+                      <div className="actions-cell">
+                        {actions.map((a) => (
+                          <Button
+                            key={a.id}
+                            type="button"
+                            size="sm"
+                            variant={a.destructive
+                              ? 'destructive'
+                              : (a.id === 'devis' ? undefined : 'outline')}
+                            className={a.id === 'devis' ? 'gen-btn-orange' : undefined}
+                            disabled={a.disabled}
+                            title={a.title}
+                            onClick={() => a.onClick()}
+                          >
+                            {a.label}
+                          </Button>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </td>
               </tr>
             )
           })}
           {!sorted.length && (
             <tr>
-              <td colSpan={onToggleSelect ? 9 : 8} className="lv-empty">
-                Aucun lead à afficher.
+              <td colSpan={onToggleSelect ? 13 : 12} className="lv-empty">
+                Aucun lead à afficher avec ces filtres.
               </td>
             </tr>
           )}

@@ -1,0 +1,122 @@
+---
+/**
+ * AR — Moroccans abroad / MRE (W67, RTL). Faithful Arabic translation of
+ * /marocains-du-monde ; uses ONLY the positioning already on the site
+ * (WhatsApp-first, remote assessment, Deye Cloud monitoring with client access,
+ * law 82-21 compliance, service area = all of Morocco). No new factual claim,
+ * no invented SLA. The lead WhatsApp text is translated but the leads number
+ * (WHATSAPP_LEADS) and the whatsappLink helper are reused UNCHANGED. Internal
+ * links via localizeNavHref. Shared component (WhatsAppMock) auto-detects
+ * locale. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Picture from '../../components/Picture.astro';
+import WhatsAppMock from '../../components/WhatsAppMock.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const wa = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أنا مغربي·ة بالخارج وأرغب في دراسة تركيبة شمسية لفيلتي بالمغرب.');
+
+const etapes = [
+  { n: '1', body: 'تشخيص في 60 ثانية يمنحك مجالاً أولياً، من على أريكتك في باريس أو مونتريال أو دبي.' },
+  { n: '2', body: 'تتحدّث مباشرة على WhatsApp مع الفريق التقني. صور السطح ترسلها أنت — أو قريب بقي في البلد — ونحن ننسّق الباقي عن بُعد.' },
+  { n: '3', body: 'ننتقل إلى عين المكان للزيارة التقنية والدراسة الكاملة، مجاناً، ثم نسلّمك الثمن. في أي لحظة لا يُشترط حضورك بالمغرب للانطلاق.' },
+];
+---
+
+<Layout
+  title="المغاربة في العالم: تركيبة مُدبَّرة من المغرب، متابَعة من الخارج | Taqinor"
+  description="تعيش بالخارج، وسطحك بالمغرب. تشخيص وتنسيق عبر WhatsApp، زيارة تقنية في عين المكان، ثم إنتاج فيلتك مرئي على Deye Cloud أينما كنت. مطابقة القانون 82-21 مُنجَزة من أجلك، دون تنقّل."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'المغاربة في العالم' }]} />
+
+    <section class="relative isolate mt-6 overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/25"></div>
+      </div>
+      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">المغاربة في العالم · MRE</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-[22ch] [animation-delay:120ms]">
+          هل أنت مغربي·ة بالخارج؟
+        </h1>
+        <p class="v2-lead cine-in mt-6 max-w-2xl text-white/85 [animation-delay:240ms]">
+          سطحك بالمغرب، وأنت في مكان آخر. نتكفّل بتركيبة فيلتك من
+          الدراسة حتى متابعة الإنتاج، وكل شيء يمرّ عبر خيط WhatsApp
+          مع تقني — إنسان يجيب، لا مقسم هاتفي ولا طابور انتظار.
+        </p>
+      </div>
+    </section>
+
+    <!-- عن بُعد، لكن في الميدان -->
+    <section class="border-y border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">كيف يجري الأمر</p>
+          <h2 class="display v2-section-title mt-5 max-w-md text-white">فارق التوقيت لا يوقفنا</h2>
+          <p class="v2-lead mt-5 max-w-md text-lune-soft">
+            يصلك التشخيص على WhatsApp، وتتبادل مع التقني حين يناسبك،
+            بصور السطح، حتى الزيارة في عين المكان. اللحظة الوحيدة التي يلزم فيها
+            أحد بالمغرب هي لفتح الباب — وذلك الأحد ليس
+            بالضرورة أنت.
+          </p>
+          <ol class="mt-8 space-y-3 text-sm text-lune">
+            {etapes.map((e) => (
+              <li class="flex gap-3"><span class="fig lum text-lg">{e.n}.</span>{e.body}</li>
+            ))}
+          </ol>
+          <a href={wa} rel="noopener" class="mt-8 inline-flex items-center gap-2 bg-ok-600 px-6 py-3.5 text-base font-bold text-white transition-opacity hover:opacity-90">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            ابدأ على WhatsApp
+          </a>
+        </div>
+        <div class="v2-rise">
+          <WhatsAppMock />
+        </div>
+      </div>
+    </section>
+
+    <!-- المتابعة عن بُعد + المطابقة -->
+    <section class="px-4 py-20 sm:py-24">
+      <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <h3 class="display text-xl text-white">فيلتك، على شاشتك</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">كل تركيبة تصعد إلى Deye Cloud، مع ولوج الزبون. من التطبيق المحمول، تشاهد ما ينتجه سطحك بالمغرب في الزمن الحقيقي — مفيد للتحقّق، عن بُعد، أن كل شيء يشتغل بينما الفيلا فارغة.</p>
+        </div>
+        <div class="v2-rise" style="--v2-i:1">
+          <h3 class="display text-xl text-white">الملف الإداري، دونك</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">تصريح أو تسوية القانون 82-21: نقرأ حالتك، نحدّد النظام ونجهّز الملف — لا ذهاب وإياب إلى البلد عليك توقّعه. <a href={L('/loi-82-21')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">شاهد الأنظمة →</a></p>
+        </div>
+        <div class="v2-rise" style="--v2-i:2">
+          <h3 class="display text-xl text-white">من مدينة إلى أخرى</h3>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">الدار البيضاء، الرباط، مراكش، طنجة، أكادير — وباقي البلد. أينما كان بيت العائلة، نذهب إليه. <a href={L('/realisations')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">شاهد إنجازاتنا →</a></p>
+        </div>
+      </div>
+      <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
+        <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية السكنية →</a>
+        <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">لماذا تاكينور →</a>
+      </div>
+    </section>
+
+    <CtaBand title="أطلق الدراسة من الخارج — لا تكلّفك شيئاً." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

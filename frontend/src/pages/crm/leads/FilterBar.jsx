@@ -1,14 +1,46 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Search, SlidersHorizontal } from 'lucide-react'
 import {
   EMPTY_FILTERS,
-  CANAL_LABELS,
   PRIORITE_LABELS,
+  STAGE_LABELS,
+  PIPELINE_STAGES,
+  TYPE_INSTALLATION_LABELS,
   tagList,
 } from '../../../features/crm/stages'
+import useCanaux from '../../../features/crm/useCanaux'
+import {
+  Input, Button, Segmented,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../../ui'
+
+// Sentinelle « tous » : Radix Select interdit la valeur chaîne vide, donc on
+// mappe "" (= aucun filtre) vers cette clé interne, transparente côté état.
+const ALL = '__all'
+const toSel = (v) => (v ? v : ALL)
+const fromSel = (v) => (v === ALL ? '' : v)
+
+const MOBILE_QUERY = '(max-width: 768px)'
+
+// Vrai sous 768px — la barre de filtres se replie alors derrière un bouton.
+function useIsMobile() {
+  const [mobile, setMobile] = useState(
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY)
+    const onChange = (e) => setMobile(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return mobile
+}
 
 // Barre de recherche/filtres partagée par les quatre vues (façon Odoo).
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
 export default function FilterBar({ filters, setFilters, leads }) {
+  // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
+  const { options: canalOptions } = useCanaux()
   const owners = useMemo(() => {
     const set = new Set()
     for (const l of leads ?? []) {
@@ -25,111 +57,170 @@ export default function FilterBar({ filters, setFilters, leads }) {
     return [...set].sort((a, b) => a.localeCompare(b, 'fr'))
   }, [leads])
 
-  const set = (key) => (e) => setFilters({ ...filters, [key]: e.target.value })
+  const setKey = (key) => (value) => setFilters({ ...filters, [key]: value })
   const setPerdus = (value) => setFilters({ ...filters, perdus: value })
   const setArchived = (value) => setFilters({ ...filters, archived: value })
 
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
+  const isMobile = useIsMobile()
+  const [open, setOpen] = useState(false)
+  // Sur mobile, on ne déplie les contrôles que si l'utilisateur ouvre le
+  // panneau ; sur desktop, ils sont toujours visibles.
+  const showControls = !isMobile || open
+  // Nombre de filtres actifs (hors recherche libre) — pastille sur le bouton.
+  const activeCount = Object.keys(EMPTY_FILTERS)
+    .filter((k) => k !== 'q' && filters[k] !== EMPTY_FILTERS[k]).length
+
   return (
     <div className="fb-bar">
-      <input
-        className="search-input fb-search"
-        type="search"
-        placeholder="Rechercher nom, téléphone, email…"
-        value={filters.q}
-        onChange={set('q')}
+      <div className="fb-search">
+        <Input
+          type="search"
+          leading={<Search />}
+          placeholder="Rechercher nom, téléphone, email…"
+          value={filters.q}
+          onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+        />
+      </div>
+
+      {isMobile && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <SlidersHorizontal /> Filtres
+          {activeCount > 0 && <span className="count-badge">{activeCount}</span>}
+        </Button>
+      )}
+
+      {!showControls ? null : <>
+      <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
+        <SelectTrigger className="fb-select" aria-label="Filtrer par étape">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Toutes les étapes</SelectItem>
+          {PIPELINE_STAGES.map((k) => (
+            <SelectItem key={k} value={k}>{STAGE_LABELS[k] ?? k}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={toSel(filters.type_installation)}
+        onValueChange={(v) => setKey('type_installation')(fromSel(v))}
+      >
+        <SelectTrigger className="fb-select" aria-label="Filtrer par type d'installation">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les marchés</SelectItem>
+          {Object.entries(TYPE_INSTALLATION_LABELS).map(([k, v]) => (
+            <SelectItem key={k} value={k}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={toSel(filters.canal)} onValueChange={(v) => setKey('canal')(fromSel(v))}>
+        <SelectTrigger className="fb-select" aria-label="Filtrer par canal">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les canaux</SelectItem>
+          {canalOptions.map(({ value, label }) => (
+            <SelectItem key={value} value={value}>{label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={toSel(filters.owner)} onValueChange={(v) => setKey('owner')(fromSel(v))}>
+        <SelectTrigger className="fb-select" aria-label="Filtrer par responsable">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les responsables</SelectItem>
+          {owners.map(o => (
+            <SelectItem key={o} value={o}>{o}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={toSel(filters.priorite)} onValueChange={(v) => setKey('priorite')(fromSel(v))}>
+        <SelectTrigger className="fb-select" aria-label="Filtrer par priorité">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Toutes priorités</SelectItem>
+          {Object.entries(PRIORITE_LABELS).map(([k, v]) => (
+            <SelectItem key={k} value={k}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={toSel(filters.tag)} onValueChange={(v) => setKey('tag')(fromSel(v))}>
+        <SelectTrigger className="fb-select" aria-label="Filtrer par tag">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les tags</SelectItem>
+          {tags.map(t => (
+            <SelectItem key={t} value={t}>{t}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Segmented
+        size="sm"
+        aria-label="Filtre relance"
+        value={filters.relance || ''}
+        onChange={setKey('relance')}
+        options={[
+          { value: '', label: 'Toutes relances' },
+          { value: 'retard', label: 'En retard' },
+          { value: 'semaine', label: 'Cette semaine' },
+        ]}
       />
 
-      <select className="search-input fb-select" value={filters.canal} onChange={set('canal')}
-              aria-label="Filtrer par canal">
-        <option value="">Tous les canaux</option>
-        {Object.entries(CANAL_LABELS).map(([k, v]) => (
-          <option key={k} value={k}>{v}</option>
-        ))}
-      </select>
+      <Segmented
+        size="sm"
+        aria-label="Filtre leads perdus"
+        value={filters.perdus}
+        onChange={setPerdus}
+        options={[
+          { value: 'avec', label: 'Avec perdus' },
+          { value: 'sans', label: 'Sans perdus' },
+          { value: 'seuls', label: 'Perdus seuls' },
+        ]}
+      />
 
-      <select className="search-input fb-select" value={filters.owner} onChange={set('owner')}
-              aria-label="Filtrer par responsable">
-        <option value="">Tous les responsables</option>
-        {owners.map(o => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-
-      <select className="search-input fb-select" value={filters.priorite} onChange={set('priorite')}
-              aria-label="Filtrer par priorité">
-        <option value="">Toutes priorités</option>
-        {Object.entries(PRIORITE_LABELS).map(([k, v]) => (
-          <option key={k} value={k}>{v}</option>
-        ))}
-      </select>
-
-      <select className="search-input fb-select" value={filters.tag} onChange={set('tag')}
-              aria-label="Filtrer par tag">
-        <option value="">Tous les tags</option>
-        {tags.map(t => (
-          <option key={t} value={t}>{t}</option>
-        ))}
-      </select>
-
-      <div className="fb-pills" role="group" aria-label="Filtre leads perdus">
-        <button
-          type="button"
-          className={`fb-pill${filters.perdus === 'avec' ? ' fb-pill-active' : ''}`}
-          onClick={() => setPerdus('avec')}
-        >
-          Avec perdus
-        </button>
-        <button
-          type="button"
-          className={`fb-pill${filters.perdus === 'sans' ? ' fb-pill-active' : ''}`}
-          onClick={() => setPerdus('sans')}
-        >
-          Sans perdus
-        </button>
-        <button
-          type="button"
-          className={`fb-pill${filters.perdus === 'seuls' ? ' fb-pill-active' : ''}`}
-          onClick={() => setPerdus('seuls')}
-        >
-          Perdus seuls
-        </button>
-      </div>
-
-      <div className="fb-pills" role="group" aria-label="Filtre leads archivés">
-        <button
-          type="button"
-          className={`fb-pill${(filters.archived ?? 'actifs') === 'actifs' ? ' fb-pill-active' : ''}`}
-          onClick={() => setArchived('actifs')}
-        >
-          Actifs
-        </button>
-        <button
-          type="button"
-          className={`fb-pill${filters.archived === 'tous' ? ' fb-pill-active' : ''}`}
-          onClick={() => setArchived('tous')}
-        >
-          Tous
-        </button>
-        <button
-          type="button"
-          className={`fb-pill${filters.archived === 'seuls' ? ' fb-pill-active' : ''}`}
-          onClick={() => setArchived('seuls')}
-        >
-          Archivés
-        </button>
-      </div>
+      <Segmented
+        size="sm"
+        aria-label="Filtre leads archivés"
+        value={filters.archived ?? 'actifs'}
+        onChange={setArchived}
+        options={[
+          { value: 'actifs', label: 'Actifs' },
+          { value: 'tous', label: 'Tous' },
+          { value: 'seuls', label: 'Archivés' },
+        ]}
+      />
 
       {isDirty && (
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="sm"
           className="fb-clear"
           onClick={() => setFilters(EMPTY_FILTERS)}
         >
           Effacer les filtres
-        </button>
+        </Button>
       )}
+      </>}
     </div>
   )
 }

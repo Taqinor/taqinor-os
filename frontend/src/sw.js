@@ -23,6 +23,20 @@ self.addEventListener('message', (event) => {
   }
 })
 
+// Prend le contrôle des pages déjà ouvertes dès l'activation. REQUIS POUR LE
+// PUSH iOS : si on appelle pushManager.subscribe() alors que le service worker
+// ne CONTRÔLE pas encore la page (cas typique juste après la 1re installation),
+// iOS accepte l'abonnement dans l'UI mais ne livre jamais les push (bug WebKit
+// connu). clients.claim() garantit que la page est contrôlée avant l'abonnement.
+// Ne ré-ouvre PAS la course de rechargement à froid (C2) : on ne fait TOUJOURS
+// PAS de skipWaiting au démarrage, donc sur une mise à jour le nouveau SW reste
+// en attente jusqu'à fermeture de l'onglet ; et au tout premier install (aucun
+// contrôleur préalable) claim ne déclenche aucun rechargement — le reload n'est
+// armé que par le clic « Actualiser » (updateServiceWorker(true)).
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
 // Précache du shell (liste injectée à la build par vite-plugin-pwa).
 precacheAndRoute(self.__WB_MANIFEST || [])
 
@@ -49,3 +63,50 @@ registerRoute(
     { denylist: [/^\/api\//] },
   ),
 )
+
+// ── N92 — Web push (PWA) ────────────────────────────────────────────────────
+// Affiche une notification système à la réception d'un push, et ouvre le lien
+// associé au clic. NO-OP tant qu'aucun push n'arrive (le serveur n'envoie rien
+// sans clés VAPID configurées). Tout est défensif : un payload malformé ne fait
+// jamais planter le service worker.
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch {
+    // Payload non-JSON : on retombe sur un texte brut comme corps.
+    try { data = { body: event.data ? event.data.text() : '' } } catch { data = {} }
+  }
+  const title = data.title || 'Taqinor OS'
+  const options = {
+    body: data.body || '',
+    icon: '/pwa-192.png',
+    badge: '/pwa-192.png',
+    // Conserve le lien interne pour la navigation au clic.
+    data: { link: data.link || '/' },
+  }
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const link = (event.notification.data && event.notification.data.link) || '/'
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Si une fenêtre de l'app est déjà ouverte, on la focalise et l'envoie
+        // vers le lien ; sinon on ouvre une nouvelle fenêtre.
+        for (const client of clientList) {
+          if ('focus' in client) {
+            client.focus()
+            if ('navigate' in client && link) {
+              try { client.navigate(link) } catch { /* best-effort */ }
+            }
+            return undefined
+          }
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(link)
+        return undefined
+      }),
+  )
+})

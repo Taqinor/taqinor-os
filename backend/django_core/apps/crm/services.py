@@ -18,7 +18,7 @@ import re as _re
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Client, Lead, LeadActivity
+from .models import Canal, Client, Lead, LeadActivity
 
 # Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
 # (couche séparée et permanente — CLAUDE.md règles #2/#4) :
@@ -147,12 +147,19 @@ def default_responsable_for(company):
 # (« on garde la valeur la plus complète », jamais d'écrasement).
 _MERGE_FILL_FIELDS = [
     'prenom', 'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
-    'gps_lat', 'gps_lng', 'facture_hiver', 'facture_ete', 'ete_differente',
-    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'type_installation',
+    'langue_preferee', 'gps_lat', 'gps_lng',
+    'facture_hiver', 'facture_ete', 'ete_differente',
+    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',
+    'type_installation', 'priorite', 'relance_date',
     'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
     'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
     'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_cv', 'pompe_hmt_m',
     'pompe_debit_m3h', 'canal', 'motif_perte', 'note', 'whatsapp_opt_in',
+    # Visite technique (légère) — préservée à la fusion.
+    'visite_prevue_le', 'visite_effectuee', 'visite_notes',
+    # Intake site web (taqinor.ma) — attribution + diagnostic préservés.
+    'bill_range_bucket', 'roof_type', 'roi_band', 'consent_timestamp', 'fbclid',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
 ]
 
 
@@ -261,12 +268,53 @@ def find_duplicate_clusters(company, include_archived=False):
     return clusters, by_id
 
 
+def cluster_match_keys(group):
+    """Clés de rapprochement PARTAGÉES par au moins deux membres d'un cluster
+    (pour expliquer dans l'UI POURQUOI ils sont regroupés) : 'telephone',
+    'email' et/ou 'nom'. Renvoie une liste ordonnée et stable."""
+    out = []
+    checks = (
+        ('telephone', lambda le: normalize_phone(le.telephone)),
+        ('email', lambda le: normalize_email(le.email)),
+        ('nom', lambda le: normalize_name(le.nom, le.prenom, le.societe)),
+    )
+    for label, keyer in checks:
+        seen = {}
+        shared = False
+        for le in group:
+            val = keyer(le)
+            if not val:
+                continue
+            if val in seen:
+                shared = True
+                break
+            seen[val] = True
+        if shared:
+            out.append(label)
+    return out
+
+
 def find_duplicate_leads(lead):
     """Leads probablement en double : même téléphone OU email normalisé, même
     société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
-    phone = normalize_phone(lead.telephone)
-    email = normalize_email(lead.email)
-    qs = Lead.objects.filter(company=lead.company).exclude(pk=lead.pk)
+    return find_duplicates_by_contact(
+        lead.company, phone=lead.telephone, email=lead.email,
+        exclude_pk=lead.pk)
+
+
+def find_duplicates_by_contact(company, *, phone=None, email=None,
+                               exclude_pk=None):
+    """Leads d'une société partageant un téléphone OU un email normalisé avec
+    les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
+    détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
+    n'existe encore (d'où l'absence d'instance). Inclut les archivés."""
+    phone = normalize_phone(phone)
+    email = normalize_email(email)
+    if not phone and not email:
+        return []
+    qs = Lead.objects.filter(company=company)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
     candidates = []
     for other in qs:
         if phone and normalize_phone(other.telephone) == phone:
@@ -298,8 +346,10 @@ def merge_leads(survivor, others, user):
             absorbed.devis.update(lead=survivor)
             # 2) Chantiers liés au lead → survivant (FK SET_NULL, on réassigne).
             try:
-                from apps.installations.models import Installation
-                Installation.objects.filter(lead=absorbed).update(lead=survivor)
+                from apps.installations.selectors import (
+                    update_installation_lead,
+                )
+                update_installation_lead(absorbed, survivor)
             except Exception:
                 pass
             # 3) Activités + pièces jointes génériques → survivant.
@@ -352,14 +402,19 @@ def merge_leads(survivor, others, user):
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:
+    from django.db import IntegrityError, transaction
+
     if lead.client_id:
         return lead.client
 
-    client = None
-    if lead.email:
-        client = Client.objects.filter(
+    def _find_existing():
+        if not lead.email:
+            return None
+        return Client.objects.filter(
             company=lead.company, email__iexact=lead.email,
         ).first()
+
+    client = _find_existing()
 
     if client is None:
         # Séparateur VISIBLE entre rue et ville : un \n disparaît dans les
@@ -367,17 +422,35 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         adresse = lead.adresse or ''
         if lead.ville:
             adresse = ', '.join(p for p in (adresse, lead.ville) if p)
-        client = Client.objects.create(
-            company=lead.company,
-            nom=lead.nom,
-            prenom=lead.prenom,
-            email=lead.email,
-            telephone=(lead.telephone or '')[:20] or None,
-            adresse=adresse or None,
-        )
+        try:
+            # Savepoint : si une création concurrente partageant le même email
+            # a gagné la course, l'unique_together (company, email) lève une
+            # IntegrityError — on la rattrape et on réutilise le client existant
+            # (style get_or_create), au lieu de propager un 500.
+            with transaction.atomic():
+                client = Client.objects.create(
+                    company=lead.company,
+                    nom=lead.nom,
+                    prenom=lead.prenom,
+                    email=lead.email,
+                    telephone=(lead.telephone or '')[:20] or None,
+                    adresse=adresse or None,
+                )
+        except IntegrityError:
+            client = _find_existing()
+            if client is None:
+                raise
 
     lead.client = client
     lead.save(update_fields=['client'])
+    # Trace la résolution/création du client dans le chatter du lead (geste
+    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
+    # (résolution déclenchée par le générateur de devis) → entrée système.
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Client lié : {nom_client}")
     return client
 
 
@@ -393,10 +466,13 @@ def resolve_client_for_lead(lead: Lead) -> Client:
 COLD = 'COLD'  # état de PARKING (pas une régression) — cf. _rang_funnel.
 
 BULK_ACTIONS = {
-    'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_relance',
-    'clear_relance', 'set_perdu', 'unset_perdu', 'archive', 'unarchive',
-    'delete',
+    'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_canal',
+    'set_priorite', 'set_relance', 'clear_relance', 'set_perdu',
+    'unset_perdu', 'archive', 'unarchive', 'delete', 'plan_activity',
 }
+
+# Priorités valides (clés du modèle Lead.Priorite).
+_PRIORITES = {'basse', 'normale', 'haute'}
 # Actions réservées à l'admin (la suppression définitive l'est déjà partout).
 BULK_ADMIN_ONLY = {'delete'}
 
@@ -434,6 +510,47 @@ def _parse_date(value):
     return parse_date(str(value))
 
 
+def _resolve_activity_type(company, type_id, type_nom):
+    """Type d'activité cible pour une planification en masse : par id (société
+    courante) sinon par nom (créé à la volée s'il manque), repli sur « À faire ».
+    """
+    from apps.records.models import ActivityType
+    if type_id not in (None, '', 'null'):
+        atype = ActivityType.objects.filter(id=type_id, company=company).first()
+        if atype is not None:
+            return atype
+    nom = (type_nom or 'À faire').strip() or 'À faire'
+    atype = ActivityType.objects.filter(company=company, nom=nom).first()
+    if atype is None:
+        atype = ActivityType.objects.create(company=company, nom=nom, ordre=50)
+    return atype
+
+
+def coerce_id_list(raw):
+    """Normalise une liste d'ids reçue du client en entiers uniques.
+
+    Accepte ints et chaînes numériques ; déduplique en préservant l'ordre.
+    Lève ValueError sur un élément non entier — la vue le traduit en 400 propre
+    au lieu de laisser un 500 remonter du `id__in` (PostgreSQL refuse un id
+    non numérique). Sert aux endpoints en masse + WhatsApp.
+    """
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("Liste d'identifiants invalide.")
+    out = []
+    seen = set()
+    for item in raw:
+        if isinstance(item, bool):
+            raise ValueError("Identifiant invalide.")
+        try:
+            value = int(item)
+        except (TypeError, ValueError):
+            raise ValueError("Identifiant invalide.")
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -446,6 +563,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
     if op not in BULK_ACTIONS:
         raise ValueError("Action en masse inconnue.")
 
+    lead_ids = coerce_id_list(lead_ids)
     leads = list(
         Lead.objects.filter(company=company, id__in=lead_ids).order_by('id'))
     updated, unchanged, skipped = 0, 0, []
@@ -458,10 +576,28 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
     owner_obj = None
     tag = (params.get('tag') or '').strip() if op in ('add_tag', 'remove_tag') else None
     relance = None
+    target_canal = None
+    target_priorite = None
+    activity_type = None
+    activity_due = None
+    activity_summary = None
     if op == 'set_stage':
         target_stage = params.get('stage')
         if target_stage not in stages.STAGES:
             raise ValueError("Étape cible invalide.")
+    elif op == 'set_canal':
+        target_canal = (params.get('canal') or '').strip()
+        if not target_canal:
+            raise ValueError("Canal cible vide.")
+        # Le canal doit appartenir au référentiel géré (s'il existe).
+        if (Canal.objects.filter(company=company).exists()
+                and not Canal.objects.filter(
+                    company=company, cle=target_canal, archived=False).exists()):
+            raise ValueError("Canal inconnu.")
+    elif op == 'set_priorite':
+        target_priorite = params.get('priorite')
+        if target_priorite not in _PRIORITES:
+            raise ValueError("Priorité invalide.")
     elif op == 'reassign':
         owner_obj = _resolve_owner(company, params.get('owner'))
         if params.get('owner') not in (None, '', 'null') and owner_obj is None:
@@ -472,6 +608,15 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         relance = _parse_date(params.get('relance_date'))
         if relance is None:
             raise ValueError("Date de relance invalide.")
+    elif op == 'plan_activity':
+        activity_due = _parse_date(params.get('due_date'))
+        if activity_due is None:
+            raise ValueError("Date d'échéance invalide.")
+        activity_summary = (params.get('summary') or '').strip()
+        if not activity_summary:
+            raise ValueError("Intitulé de l'activité vide.")
+        activity_type = _resolve_activity_type(
+            company, params.get('activity_type_id'), params.get('type_nom'))
 
     with transaction.atomic():
         for lead in leads:
@@ -517,6 +662,26 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 lead.save(update_fields=['stage'])
                 activity.log_bulk_change(lead, user, 'stage', old, target_stage)
                 # SIGNED_QUOTE_CAPI_HOOK: entrée manuelle en masse dans SIGNED.
+                updated += 1
+
+            elif op == 'set_canal':
+                if lead.canal == target_canal:
+                    unchanged += 1
+                    continue
+                old = lead.canal
+                lead.canal = target_canal
+                lead.save(update_fields=['canal'])
+                activity.log_bulk_change(lead, user, 'canal', old, target_canal)
+                updated += 1
+
+            elif op == 'set_priorite':
+                if (lead.priorite or 'normale') == target_priorite:
+                    unchanged += 1
+                    continue
+                old = lead.priorite
+                lead.priorite = target_priorite
+                lead.save(update_fields=['priorite'])
+                activity.log_bulk_change(lead, user, 'priorite', old, target_priorite)
                 updated += 1
 
             elif op == 'set_relance':
@@ -593,6 +758,24 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 activity.log_bulk_note(
                     lead, user,
                     f"Lead restauré en masse par {getattr(user, 'username', '?')}")
+                updated += 1
+
+            elif op == 'plan_activity':
+                # Crée UNE activité ouverte (records.Activity) par lead, échéance
+                # + intitulé communs, assignée au responsable du lead (repli sur
+                # l'acteur). Aucune dédup : planifier deux fois crée deux rappels.
+                from django.contrib.contenttypes.models import ContentType
+                from apps.records.models import Activity
+                ct = ContentType.objects.get_for_model(lead.__class__)
+                Activity.objects.create(
+                    company=company, content_type=ct, object_id=lead.id,
+                    activity_type=activity_type, summary=activity_summary[:255],
+                    due_date=activity_due,
+                    assigned_to=lead.owner or user, created_by=user)
+                activity.log_bulk_note(
+                    lead, user,
+                    f"Activité « {activity_summary} » planifiée en masse "
+                    f"pour le {activity_due.isoformat()}")
                 updated += 1
 
             elif op == 'delete':

@@ -79,6 +79,17 @@ class Equipement(models.Model):
             models.Index(fields=['company', 'produit']),
             models.Index(fields=['company', 'date_fin_garantie']),
         ]
+        constraints = [
+            # L636 — un n° de série est unique par société. Conditionnel : les
+            # séries vides/NULL sont permises (un appareil peut être saisi sans
+            # série) et n'entrent pas dans la contrainte.
+            models.UniqueConstraint(
+                fields=['company', 'numero_serie'],
+                condition=models.Q(numero_serie__isnull=False)
+                & ~models.Q(numero_serie=''),
+                name='uniq_equipement_serie_par_societe',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.numero_serie or '—'} ({self.produit_id})"
@@ -316,15 +327,17 @@ class ContratMaintenance(models.Model):
         return date(y, mo, day)
 
     def is_due(self, today=None):
-        from datetime import date
-        return self.actif and (today or date.today()) >= self.prochaine_visite()
+        # Bucket « aujourd'hui » sur le fuseau de l'app (Africa/Casablanca) :
+        # un date.today() naïf (UTC) décalait le « dû » d'un jour à minuit.
+        return self.actif and (
+            today or timezone.localdate()) >= self.prochaine_visite()
 
     def renouvellement_du(self, today=None):
         """True si la date de renouvellement est atteinte (contrat à renouveler)."""
-        from datetime import date
         if not self.date_renouvellement:
             return False
-        return self.actif and (today or date.today()) >= self.date_renouvellement
+        return self.actif and (
+            today or timezone.localdate()) >= self.date_renouvellement
 
 
 class PieceConsommee(models.Model):

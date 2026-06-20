@@ -1,4 +1,3 @@
-from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
@@ -41,6 +40,20 @@ class DevisSerializer(serializers.ModelSerializer):
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+    # Contexte « quote-aware » du lead lié (profil énergétique) — lecture seule,
+    # pour un aperçu au survol dans la liste des devis. None si pas de lead.
+    lead_facture_hiver = serializers.SerializerMethodField()
+    lead_type_installation = serializers.SerializerMethodField()
+
+    def get_lead_facture_hiver(self, obj):
+        return str(obj.lead.facture_hiver) if obj.lead_id and \
+            obj.lead.facture_hiver is not None else None
+
+    def get_lead_type_installation(self, obj):
+        if not obj.lead_id:
+            return None
+        return obj.lead.get_type_installation_display() \
+            if obj.lead.type_installation else None
 
     def _display(self, obj):
         if not hasattr(obj, '_display_totals_cache'):
@@ -76,9 +89,15 @@ class DevisSerializer(serializers.ModelSerializer):
     # Référence de la version qui remplace ce devis (T10) — pour le lien
     # « remplacé par » dans l'UI.
     superseded_by_ref = serializers.SerializerMethodField()
+    # Référence du devis parent (version précédente) — pour reconstituer la
+    # chaîne de révisions dans l'UI (panneau historique des versions).
+    version_parent_ref = serializers.SerializerMethodField()
 
     def get_superseded_by_ref(self, obj):
         return obj.superseded_by.reference if obj.superseded_by_id else None
+
+    def get_version_parent_ref(self, obj):
+        return obj.version_parent.reference if obj.version_parent_id else None
 
     def get_is_expired(self, obj):
         from .utils.expiry import is_expired
@@ -93,8 +112,8 @@ class DevisSerializer(serializers.ModelSerializer):
     chantier = serializers.SerializerMethodField()
 
     def get_chantier(self, obj):
-        from apps.installations.models import Installation
-        inst = Installation.objects.filter(devis=obj).first()
+        from apps.installations.selectors import installation_for_devis
+        inst = installation_for_devis(obj)
         if inst is None:
             return None
         return {'id': inst.id, 'reference': inst.reference,
@@ -126,6 +145,11 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # Totaux du BC dérivés du devis lié (un BC reprend les lignes du devis).
+    # Aucun devis → None → l'UI affiche « — ». Affichage seulement.
+    total_ht = serializers.SerializerMethodField()
+    total_tva = serializers.SerializerMethodField()
+    total_ttc = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommande
@@ -135,6 +159,15 @@ class BonCommandeSerializer(serializers.ModelSerializer):
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()
+
+    def get_total_ht(self, obj):
+        return str(obj.devis.total_ht) if obj.devis_id else None
+
+    def get_total_tva(self, obj):
+        return str(obj.devis.total_tva) if obj.devis_id else None
+
+    def get_total_ttc(self, obj):
+        return str(obj.devis.total_ttc) if obj.devis_id else None
 
 
 class LigneFactureSerializer(serializers.ModelSerializer):
@@ -161,6 +194,14 @@ class LigneFactureSerializer(serializers.ModelSerializer):
 
 class PaiementSerializer(serializers.ModelSerializer):
     mode_display = serializers.CharField(source='get_mode_display', read_only=True)
+    # Champs d'affichage (lecture seule) pour la page Encaissements : référence
+    # de la facture, nom du client et auteur de l'encaissement (« par qui »).
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True, default=None)
+    client_nom = serializers.CharField(
+        source='facture.client.nom', read_only=True, default=None)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
 
     class Meta:
         model = Paiement
@@ -180,6 +221,10 @@ class FactureSerializer(serializers.ModelSerializer):
     avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     avoirs = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    # L853 — téléphone du client (lecture seule) : permet de valider/désactiver
+    # le bouton WhatsApp côté front sans aller-retour 400. Jamais en écriture.
+    client_telephone = serializers.CharField(
+        source='client.telephone', read_only=True, default=None)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
@@ -212,11 +257,10 @@ class FactureSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission']
 
     def get_is_overdue(self, obj):
-        return (
-            obj.statut == Facture.Statut.EMISE
-            and obj.date_echeance is not None
-            and obj.date_echeance < timezone.now().date()
-        )
+        # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,
+        # hors payée/annulée) — cohérent avec FactureList, Relances et la
+        # balance âgée, et couvre aussi le statut « En retard ».
+        return obj.jours_retard > 0
 
 
 class FactureWriteSerializer(serializers.ModelSerializer):
@@ -299,4 +343,31 @@ class DevisActivitySerializer(serializers.ModelSerializer):
         model = DevisActivity
         fields = ['id', 'devis', 'kind', 'field', 'field_label',
                   'old_value', 'new_value', 'body', 'user_nom', 'created_at']
+        read_only_fields = fields
+
+
+class FactureActivitySerializer(serializers.ModelSerializer):
+    """Chatter d'une facture — lecture seule côté API."""
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import FactureActivity
+        model = FactureActivity
+        fields = ['id', 'facture', 'kind', 'field', 'field_label',
+                  'old_value', 'new_value', 'body', 'user_nom', 'created_at']
+        read_only_fields = fields
+
+
+class EmailLogSerializer(serializers.ModelSerializer):
+    """Fil des emails (N87/N88) — lecture seule côté API."""
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import EmailLog
+        model = EmailLog
+        fields = ['id', 'direction', 'statut', 'client', 'devis', 'facture',
+                  'to_email', 'from_email', 'sujet', 'corps', 'reference',
+                  'piece_jointe', 'erreur', 'created_at', 'created_by_nom']
         read_only_fields = fields

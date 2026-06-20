@@ -1,0 +1,195 @@
+---
+/**
+ * EN — Case study (W67). One page per real installation. Faithful English
+ * translation of the FR `realisations/[slug].astro`. Data 100% from
+ * `realisations.ts` (untouched): no invented figure. The production card is
+ * OMITTED when measured production is not published (e.g. Nouaceur). Prose
+ * (situation/sizing/result/install/resume/title/description/cityLink/alts) from
+ * `caseStudyBySlug(slug, 'en')`. Internal links via localizeNavHref. FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import Picture from '../../../components/Picture.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { REALISATIONS, CITIES } from '../../../lib/realisations';
+import { caseStudyBySlug } from '../../../lib/caseStudies';
+import { NAP } from '../../../lib/nap';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+export function getStaticPaths() {
+  return REALISATIONS.map((r) => ({ params: { slug: r.slug }, props: { r } }));
+}
+
+const { r } = Astro.props;
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const cs = caseStudyBySlug(r.slug, locale);
+
+// La ville-page correspondante (Casablanca/Rabat/Marrakech/Tanger/Agadir).
+const cityPage = CITIES.find((c) => c.name === r.ville);
+// Forme localisée « in <city> » pour le H1 et le libellé du lien ville exacte.
+const cityIntro = cityPage ? `in ${cityPage.name}` : `in ${r.ville}`;
+const cityLink = cityPage
+  ? { href: `/installation-solaire-${cityPage.slug}`, label: `Solar installation in ${cityPage.name}` }
+  : cs.cityLink;
+const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/résidentiel';
+const segmentLabel = r.segment === 'professionnel' ? 'Business' : 'Residential';
+const ogSlug = r.segment === 'professionnel' ? 'professionnel' : 'residentiel';
+
+const hero = r.photos[0];
+const rest = r.photos.slice(1);
+const heroAlt = cs.alts[hero.name] ?? hero.alt;
+const heroLargest = Math.max(...hero.widths);
+const heroImg = new URL(`/photos/${hero.name}-${heroLargest}.webp`, Astro.site).href;
+
+const equipment = [
+  { label: 'Panels', value: r.panneaux },
+  { label: 'Inverter', value: r.onduleur },
+  { label: 'Storage', value: r.batterie },
+].filter((e) => e.value);
+
+const title = cs.title;
+const description = cs.description;
+
+const articleJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: `Solar installation ${r.kwc} ${cityIntro} — ref. ${r.ref}`,
+  description: cs.resume,
+  image: heroImg,
+  about: { '@type': 'Thing', name: 'Photovoltaic solar installation' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: new URL(Astro.url.pathname, Astro.site).href,
+};
+---
+
+<Layout title={title} description={description} ogSlug={ogSlug}>
+  <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb
+      items={[
+        { label: 'Home', href: L('/') },
+        { label: 'Projects', href: L('/realisations') },
+        { label: `${r.ville} · ${r.kwc}` },
+      ]}
+    />
+
+    <!-- ACT I — the project photo is the light -->
+    <section class="relative isolate mt-6 overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        <Picture name={hero.name} alt={heroAlt} widths={hero.widths} ratio={hero.ratio} sizes="100vw"
+          loading="eager" fetchpriority="high" class="h-full w-full object-cover" />
+        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
+      </div>
+      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Ref. {r.ref} · {r.ville} · {r.date}</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
+          {r.kwc} of solar installation {cityIntro}
+        </h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{cs.resume}</p>
+      </div>
+    </section>
+
+    <!-- Key figures — only what is published -->
+    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">Installed power</dt>
+        </div>
+        {r.production && (
+          <div class="v2-rise" style="--v2-i:1">
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{r.production}</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Measured production — Deye Cloud</dt>
+          </div>
+        )}
+        <div class="v2-rise" style="--v2-i:2">
+          <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">Panels fitted</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:3">
+          <dd class="font-display text-xl font-bold text-white">{r.ville}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
+        </div>
+      </dl>
+    </section>
+
+    <!-- The project narrative: situation, sizing, measured result -->
+    <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">The project, told</p>
+      <h2 class="display v2-section-title mt-5 text-white">Why {r.kwc}, on this roof</h2>
+      <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
+      <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
+      <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
+    </section>
+
+    <!-- The equipment fitted -->
+    <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">The equipment fitted</p>
+        <h2 class="display v2-section-title mt-5 text-white">What is really on the roof</h2>
+        <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
+        <div class="mt-8 border-t-2 border-brass-400/60" data-stagger>
+          {equipment.map((e, i) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
+              <span class="tech-label text-lune-faint">{e.label}</span>
+              <span class="text-right font-display text-base font-bold text-white">{e.value}</span>
+            </div>
+          ))}
+        </div>
+        <p class="mt-5 text-sm text-lune-soft">
+          Tier-1 brands sourced through official distributors in Morocco — local warranties
+          activatable. <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See all the equipment →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- Project gallery -->
+    {rest.length > 0 && (
+      <section class="px-4 py-20 sm:py-24">
+        <div class="mx-auto max-w-6xl">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">From the file</p>
+          <h2 class="display v2-section-title mt-5 text-white">The project, as it is</h2>
+          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger>
+            {rest.map((p, i) => (
+              <figure class="v2-rise cine-card group relative overflow-hidden" style={`--v2-i:${i}`}>
+                <Picture name={p.name} alt={cs.alts[p.name] ?? p.alt} widths={p.widths} ratio={p.ratio} sizes="(min-width: 640px) 50vw, 100vw"
+                  class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- Contextual links -->
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
+        {cityLink && (
+          <a href={L(cityLink.href)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+            {cityLink.label} →
+          </a>
+        )}
+        <a href={L(segmentHref)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+          {segmentLabel} solar →
+        </a>
+        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+          All our projects →
+        </a>
+      </div>
+    </section>
+
+    <CtaBand title={`An assessment like the one in ${r.ville}, for your roof.`} href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

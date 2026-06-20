@@ -55,8 +55,28 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    def _check_tenant(self, serializer):
+        """Tenant safety : le client et le chantier ciblés (FK inscriptibles)
+        doivent appartenir à la société du user — sinon un contrat lierait les
+        enregistrements d'une autre société (et la visite/PDF générés
+        fuiteraient le chantier étranger)."""
+        from rest_framework.exceptions import ValidationError
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        client = serializer.validated_data.get('client')
+        installation = serializer.validated_data.get('installation')
+        if client is not None and client.company_id != cid:
+            raise ValidationError({'client': 'Client inconnu.'})
+        if installation is not None and installation.company_id != cid:
+            raise ValidationError({'installation': 'Chantier inconnu.'})
+
     def perform_create(self, serializer):
+        self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save()
 
     def get_queryset(self):
         qs = super().get_queryset()

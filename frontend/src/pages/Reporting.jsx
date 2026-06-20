@@ -1,85 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchDashboard } from '../features/reporting/store/reportingSlice'
-import reportingApi from '../api/reportingApi'
+import { useNavigate } from 'react-router-dom'
+import {
+  RefreshCw, Wallet, Clock, Users, Package, BarChart3, AlertTriangle, Download,
+} from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
+import { fetchDashboard } from '../features/reporting/store/reportingSlice'
+import reportingApi from '../api/reportingApi'
+import api from '../api/axios'
+import { downloadXlsx } from '../api/importApi'
+import { formatMAD, formatNumber } from '../lib/format'
+import {
+  Button, Card, CardHeader, CardTitle, CardContent, CardDescription,
+  Stat, Badge, StatusPill, Segmented, Skeleton, EmptyState,
+} from '../ui'
 
-// ── Formatage monétaire DH ────────────────────────────────────────────────────
-const dh = (v) =>
-  new Intl.NumberFormat('fr-MA', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(v ?? 0) + ' DH'
+// ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
+const dh = (v) => formatMAD(v, { decimals: 0 }).replace(' MAD', ' DH')
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, icon, color, sub }) {
-  return (
-    <div style={{
-      background: '#fff', borderRadius: 14, padding: '1.25rem 1.5rem',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.07)', display: 'flex',
-      alignItems: 'center', gap: '1rem',
-    }}>
-      <div style={{
-        width: 48, height: 48, borderRadius: 12,
-        background: color + '18',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 22 }}>{icon}</span>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, marginBottom: 2 }}>
-          {label}
-        </div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
-          {value}
-        </div>
-        {sub && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{sub}</div>}
-      </div>
-    </div>
-  )
+// Couleurs de séries pour recharts, tirées des tokens sémantiques (clair/sombre).
+const CHART_INFO = 'var(--color-info)'
+const CHART_PRIMARY = 'var(--color-primary)'
+const CHART_GRID = 'var(--color-border)'
+const CHART_AXIS = 'var(--color-muted-foreground)'
+const CHART_TOOLTIP_STYLE = {
+  borderRadius: 8,
+  fontSize: 12,
+  background: 'var(--color-popover)',
+  border: '1px solid var(--color-border)',
+  color: 'var(--color-popover-foreground)',
 }
 
-// ── Section title ─────────────────────────────────────────────────────────────
-function SectionTitle({ children }) {
-  return (
-    <h3 style={{
-      fontWeight: 700, color: '#1e293b',
-      margin: '0 0 0.75rem', textTransform: 'uppercase',
-      letterSpacing: '0.06em', fontSize: 12,
-    }}>
-      {children}
-    </h3>
-  )
-}
-
-// ── Chart card ────────────────────────────────────────────────────────────────
-function ChartCard({ title, children, minHeight = 260 }) {
-  return (
-    <div style={{
-      background: '#fff', borderRadius: 14, padding: '1.25rem 1.5rem',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.07)', minHeight,
-    }}>
-      <SectionTitle>{title}</SectionTitle>
-      {children}
-    </div>
-  )
-}
-
-// ── Tooltip personnalisé DH ───────────────────────────────────────────────────
+// ── Tooltip recharts thémé via tokens ───────────────────────────────────────
 function TooltipDH({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
-    <div style={{
-      background: '#1e293b', color: '#f1f5f9', borderRadius: 8,
-      padding: '8px 12px', fontSize: 13,
-    }}>
-      <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+    <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-ui-md">
+      <div className="mb-1 font-semibold">{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color ?? '#60a5fa' }}>
+        <div key={i} className="tabular-nums" style={{ color: p.color ?? CHART_INFO }}>
           {p.name ?? 'CA'} : {dh(p.value)}
         </div>
       ))}
@@ -87,395 +49,459 @@ function TooltipDH({ active, payload, label }) {
   )
 }
 
-// ── Barre de conversion ───────────────────────────────────────────────────────
-function ConversionBar({ label, value, max, color }) {
+// ── Barre de conversion (token-themed) ───────────────────────────────────────
+function ConversionBar({ label, value, max, tone }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
   return (
-    <div style={{ marginBottom: '0.75rem' }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        fontSize: 13, color: '#475569', marginBottom: 4,
-      }}>
+    <div className="mb-3">
+      <div className="mb-1 flex items-center justify-between text-sm text-muted-foreground">
         <span>{label}</span>
-        <span style={{ fontWeight: 600, color: '#0f172a' }}>{value} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pct}%)</span></span>
+        <span className="font-semibold tabular-nums text-foreground">
+          {formatNumber(value)} <span className="font-normal text-muted-foreground">({pct}%)</span>
+        </span>
       </div>
-      <div style={{ background: '#f1f5f9', borderRadius: 6, height: 8 }}>
-        <div style={{
-          width: pct + '%', height: '100%', borderRadius: 6,
-          background: color, transition: 'width 0.6s ease',
-        }} />
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={tone}
+          style={{ width: `${pct}%`, height: '100%', borderRadius: 9999, transition: 'width 0.6s ease' }}
+        />
       </div>
     </div>
   )
 }
 
-// ── Page principale ───────────────────────────────────────────────────────────
-// ── Valeur du pipeline (T7) — section auto-chargée (lecture seule) ──────────
-function PipelineSection() {
-  const [p, setP] = useState(null)
-  useEffect(() => {
-    reportingApi.getPipeline().then((r) => setP(r.data)).catch(() => setP(null))
-  }, [])
-  if (!p) return null
-  const cell = { padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }
+// ── Valeur du pipeline (T7) — section auto-chargée (lecture seule) ───────────
+function StageTable({ title, rows, keyField, labelField }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '1.25rem 1.4rem', marginBottom: '1.5rem' }}>
-      <h3 style={{ margin: '0 0 0.25rem' }}>Valeur du pipeline</h3>
-      <p style={{ margin: '0 0 1rem', color: '#64748b', fontSize: 13 }}>
-        Prévision pondérée : <strong>{dh(p.prevision_ponderee)}</strong> ·
-        {' '}Gagnés : <strong>{p.gagnes.count}</strong> ({dh(p.gagnes.valeur)})
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Par étape</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {p.par_etape.map((s) => (
-                <tr key={s.stage}>
-                  <td style={cell}>{s.label}</td>
-                  <td style={{ ...cell, textAlign: 'right', color: '#64748b' }}>{s.count}</td>
-                  <td style={{ ...cell, textAlign: 'right', fontWeight: 600 }}>{dh(s.valeur)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Devis par statut</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {p.devis_par_statut.map((s) => (
-                <tr key={s.statut}>
-                  <td style={cell}>{s.label}</td>
-                  <td style={{ ...cell, textAlign: 'right', color: '#64748b' }}>{s.count}</td>
-                  <td style={{ ...cell, textAlign: 'right', fontWeight: 600 }}>{dh(s.valeur)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {p.perdus_par_motif.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', margin: '12px 0 4px' }}>Pertes par motif</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
-                  {p.perdus_par_motif.map((m) => (
-                    <tr key={m.motif}>
-                      <td style={cell}>{m.motif}</td>
-                      <td style={{ ...cell, textAlign: 'right', color: '#64748b' }}>{m.count}</td>
-                      <td style={{ ...cell, textAlign: 'right' }}>{dh(m.valeur)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
+    <div>
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </div>
+      {/* L878 — table scrollable dans sa carte (pas de scroll horizontal de page sur 375px). */}
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <tbody>
+            {rows.map((s) => (
+              <tr key={s[keyField]}>
+                <td>{s[labelField]}</td>
+                <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(s.count)}</td>
+                <td className="ta-right font-semibold tabular-nums">{dh(s.valeur)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
+  )
+}
+
+function PipelineSection() {
+  const [p, setP] = useState(null)
+  // 'loading' | 'ok' | 'error' — distingue le chargement d'un échec de fetch.
+  const [phase, setPhase] = useState('loading')
+  useEffect(() => {
+    reportingApi.getPipeline()
+      .then((r) => { setP(r.data); setPhase('ok') })
+      .catch(() => { setP(null); setPhase('error') })
+  }, [])
+  if (phase === 'error') {
+    return (
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Valeur du pipeline</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">
+            Valeur du pipeline indisponible
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+  if (!p) return null
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>Valeur du pipeline</CardTitle>
+        <CardDescription>
+          Prévision pondérée : <strong className="text-foreground tabular-nums">{dh(p.prevision_ponderee)}</strong>
+          {' · '}Gagnés : <strong className="text-foreground tabular-nums">{formatNumber(p.gagnes.count)}</strong>{' '}
+          ({dh(p.gagnes.valeur)})
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-5 md:grid-cols-2">
+          <StageTable title="Par étape" rows={p.par_etape} keyField="stage" labelField="label" />
+          <div className="space-y-4">
+            <StageTable title="Devis par statut" rows={p.devis_par_statut} keyField="statut" labelField="label" />
+            {p.perdus_par_motif.length > 0 && (
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pertes par motif
+                </div>
+                {/* L878 — table scrollable dans sa carte (pas de scroll horizontal de page sur 375px). */}
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <tbody>
+                      {p.perdus_par_motif.map((m) => (
+                        <tr key={m.motif}>
+                          <td>{m.motif}</td>
+                          <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(m.count)}</td>
+                          <td className="ta-right tabular-nums">{dh(m.valeur)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Squelette de chargement ──────────────────────────────────────────────────
+function LoadingState() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((unused, i) => (
+          <Card key={i} className="p-4 sm:p-5">
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="mt-3 h-7 w-2/3" />
+            <Skeleton className="mt-2 h-3 w-1/3" />
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 2 }).map((unused, i) => (
+          <Card key={i}>
+            <CardHeader><Skeleton className="h-4 w-1/3" /></CardHeader>
+            <CardContent><Skeleton className="h-52 w-full" /></CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// KPI cliquable : ouvre la liste des enregistrements correspondants au lieu de
+// rester un compteur sans issue.
+function ClickableStat({ to, navigate, ...props }) {
+  return (
+    <Stat
+      {...props}
+      role="button"
+      tabIndex={0}
+      className="cursor-pointer transition-colors hover:border-primary/40"
+      onClick={() => navigate(to)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          navigate(to)
+        }
+      }}
+    />
   )
 }
 
 export function Component() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { data, loading, error } = useSelector((s) => s.reporting)
+
+  // Fenêtre d'affichage du CA mensuel (filtrage CLIENT sur les données déjà
+  // chargées — aucun appel API supplémentaire, comportement inchangé).
+  const [caWindowMonths, setCaWindowMonths] = useState('12')
 
   useEffect(() => {
     dispatch(fetchDashboard())
   }, [dispatch])
 
+  const caWindow = useMemo(() => {
+    if (!data?.ca_mensuel) return []
+    const n = caWindowMonths === 'all' ? data.ca_mensuel.length : Number(caWindowMonths)
+    return data.ca_mensuel.slice(-n)
+  }, [data, caWindowMonths])
+
+  // Export .xlsx (KPIs + créances clients), scopé société côté serveur.
+  const exportDashboard = () => api
+    .get('/reporting/dashboard/', { params: { export: 'xlsx' }, responseType: 'blob' })
+    .then((r) => downloadXlsx(r.data, 'reporting-dashboard.xlsx'))
+    .catch(() => {})
+
   if (loading) {
     return (
-      <div className="page">
-        <div className="page-header"><h2>Reporting & Analytics</h2></div>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem 0' }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-            border: '4px solid #e2e8f0', borderTopColor: '#3b82f6',
-            animation: 'spin 0.8s linear infinite',
-          }} />
+      <div className="ui-root page" style={{ maxWidth: 1200 }}>
+        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
+          <h2>Reporting &amp; Analytics</h2>
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <LoadingState />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="page">
-        <div className="page-header"><h2>Reporting & Analytics</h2></div>
-        <div className="page-error">{error}</div>
+      <div className="ui-root page" style={{ maxWidth: 1200 }}>
+        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
+          <h2>Reporting &amp; Analytics</h2>
+        </div>
+        <EmptyState
+          icon={AlertTriangle}
+          title="Données indisponibles"
+          description={error}
+          action={<Button onClick={() => dispatch(fetchDashboard())}><RefreshCw /> Réessayer</Button>}
+        />
       </div>
     )
   }
 
   if (!data) return null
 
-  const { kpis, ca_mensuel, top_produits, statuts_factures, conversion, stock_alerte, creances } = data
+  const {
+    kpis = {},
+    top_produits = [],
+    statuts_factures = [],
+    conversion = {},
+    stock_alerte = [],
+    creances = [],
+  } = data
+  const caVide = caWindow.every((m) => m.ca === 0)
 
   return (
-    <div className="page" style={{ maxWidth: 1200 }}>
+    <div className="ui-root page" style={{ maxWidth: 1200 }}>
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>Reporting & Analytics</h2>
-        <button
-          className="btn btn-sm btn-outline"
-          onClick={() => dispatch(fetchDashboard())}
-        >
-          Actualiser
-        </button>
+        <h2>Reporting &amp; Analytics</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={exportDashboard}>
+            <Download /> Exporter Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
+            <RefreshCw /> Actualiser
+          </Button>
+        </div>
       </div>
 
       <PipelineSection />
 
       {/* ── KPIs ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '1rem', marginBottom: '1.75rem',
-      }}>
-        <KpiCard
-          label="CA encaissé"
-          value={dh(kpis.ca_paye)}
-          icon="💰"
-          color="#22c55e"
-          sub="Factures payées"
-        />
-        <KpiCard
-          label="En attente de paiement"
-          value={dh(kpis.ca_attente)}
-          icon="⏳"
-          color="#f59e0b"
-          sub="Émises + en retard"
-        />
-        <KpiCard
-          label="Clients actifs"
-          value={kpis.nb_clients}
-          icon="👥"
-          color="#3b82f6"
-          sub="Total base clients"
-        />
-        <KpiCard
-          label="Valeur du stock"
-          value={dh(kpis.valeur_stock)}
-          icon="📦"
-          color="#8b5cf6"
-          sub="Prix vente × quantité"
-        />
+      <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ClickableStat navigate={navigate} to="/ventes/factures?statut=payee" label="CA encaissé" value={dh(kpis.ca_paye)} hint="Factures payées" icon={Wallet} />
+        <ClickableStat navigate={navigate} to="/ventes/factures?statut=en_retard" label="En attente de paiement" value={dh(kpis.ca_attente)} hint="Émises + en retard" icon={Clock} />
+        <ClickableStat navigate={navigate} to="/crm" label="Clients actifs" value={formatNumber(kpis.nb_clients)} hint="Total base clients" icon={Users} />
+        <ClickableStat navigate={navigate} to="/stock" label="Valeur du stock" value={dh(kpis.valeur_stock)} hint="Prix vente × quantité" icon={Package} />
       </div>
 
       {/* ── Graphiques ligne 1 ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))',
-        gap: '1rem', marginBottom: '1rem',
-      }}>
-
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
         {/* CA mensuel */}
-        <ChartCard title="CA mensuel (12 derniers mois)" minHeight={280}>
-          {ca_mensuel.every(m => m.ca === 0) ? (
-            <p style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', paddingTop: '3rem' }}>
-              Aucune facture payée sur les 12 derniers mois.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={ca_mensuel} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="caGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => v >= 1000 ? Math.round(v / 1000) + 'k' : v} />
-                <Tooltip content={<TooltipDH />} />
-                <Area
-                  type="monotone" dataKey="ca" name="CA HT"
-                  stroke="#3b82f6" strokeWidth={2.5}
-                  fill="url(#caGradient)" dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-3">
+            <CardTitle>CA mensuel</CardTitle>
+            <Segmented
+              size="sm"
+              value={caWindowMonths}
+              onChange={setCaWindowMonths}
+              options={[
+                { value: '6', label: '6 mois' },
+                { value: '12', label: '12 mois' },
+                { value: 'all', label: 'Tout' },
+              ]}
+            />
+          </CardHeader>
+          <CardContent>
+            {caVide ? (
+              <EmptyState
+                icon={BarChart3}
+                title="Aucune facture payée"
+                description="Aucune facture payée sur la période sélectionnée."
+                className="border-0 py-8"
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={caWindow} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="caGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={CHART_INFO} stopOpacity={0.2} />
+                      <stop offset="95%" stopColor={CHART_INFO} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="mois" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: CHART_AXIS }}
+                    stroke={CHART_GRID}
+                    tickFormatter={(v) => (v >= 1000 ? Math.round(v / 1000) + 'k' : v)}
+                  />
+                  <Tooltip content={<TooltipDH />} />
+                  <Area
+                    type="monotone" dataKey="ca" name="CA HT"
+                    stroke={CHART_INFO} strokeWidth={2.5}
+                    fill="url(#caGradient)" dot={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Top produits */}
-        <ChartCard title="Top 5 produits vendus (quantité)" minHeight={280}>
-          {top_produits.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', paddingTop: '3rem' }}>
-              Aucune vente enregistrée.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart
-                data={top_produits}
-                layout="vertical"
-                margin={{ top: 4, right: 20, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                <YAxis
-                  dataKey="nom" type="category"
-                  tick={{ fontSize: 11, fill: '#475569' }}
-                  width={100}
-                />
-                <Tooltip
-                  formatter={(v) => [v + ' unités', 'Qté vendue']}
-                  contentStyle={{ borderRadius: 8, fontSize: 13 }}
-                />
-                <Bar dataKey="qte" fill="#6366f1" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
+        <Card>
+          <CardHeader><CardTitle>Top 5 produits vendus (quantité)</CardTitle></CardHeader>
+          <CardContent>
+            {top_produits.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="Aucune vente"
+                description="Aucune vente enregistrée."
+                className="border-0 py-8"
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart
+                  data={top_produits}
+                  layout="vertical"
+                  margin={{ top: 4, right: 20, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
+                  <YAxis
+                    dataKey="nom" type="category"
+                    tick={{ fontSize: 11, fill: CHART_AXIS }}
+                    stroke={CHART_GRID}
+                    width={100}
+                  />
+                  <Tooltip
+                    formatter={(v) => [formatNumber(v) + ' unités', 'Qté vendue']}
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                  />
+                  <Bar dataKey="qte" fill={CHART_PRIMARY} radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── Graphiques ligne 2 ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '1rem', marginBottom: '1rem',
-      }}>
-
+      <div className="mb-4 grid gap-4 lg:grid-cols-3">
         {/* Statuts factures */}
-        <ChartCard title="Répartition des factures" minHeight={260}>
-          {statuts_factures.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', paddingTop: '3rem' }}>
-              Aucune facture.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={statuts_factures}
-                  cx="50%" cy="50%"
-                  innerRadius={55} outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {statuts_factures.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v, n) => [v, n]} contentStyle={{ borderRadius: 8, fontSize: 13 }} />
-                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
+        <Card>
+          <CardHeader><CardTitle>Répartition des factures</CardTitle></CardHeader>
+          <CardContent>
+            {statuts_factures.length === 0 ? (
+              <EmptyState icon={BarChart3} title="Aucune facture" className="border-0 py-8" />
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={statuts_factures}
+                    cx="50%" cy="50%"
+                    innerRadius={55} outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {statuts_factures.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v, n) => [formatNumber(v), n]}
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                  />
+                  <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Conversion */}
-        <ChartCard title="Tunnel de conversion" minHeight={260}>
-          <div style={{ paddingTop: '0.5rem' }}>
-            <ConversionBar
-              label="Devis créés"
-              value={conversion.nb_devis}
-              max={conversion.nb_devis}
-              color="#3b82f6"
-            />
-            <ConversionBar
-              label="Devis acceptés"
-              value={conversion.nb_acceptes}
-              max={conversion.nb_devis}
-              color="#22c55e"
-            />
-            <ConversionBar
-              label="Factures émises"
-              value={conversion.nb_factures}
-              max={conversion.nb_devis}
-              color="#8b5cf6"
-            />
+        <Card>
+          <CardHeader><CardTitle>Tunnel de conversion</CardTitle></CardHeader>
+          <CardContent>
+            <ConversionBar label="Devis créés" value={conversion.nb_devis} max={conversion.nb_devis} tone="bg-info" />
+            <ConversionBar label="Devis acceptés" value={conversion.nb_acceptes} max={conversion.nb_devis} tone="bg-success" />
+            <ConversionBar label="Factures émises" value={conversion.nb_factures} max={conversion.nb_devis} tone="bg-primary" />
             {conversion.nb_devis > 0 && (
-              <div style={{
-                marginTop: '1rem', padding: '0.6rem 0.85rem',
-                background: '#f8fafc', borderRadius: 8,
-                fontSize: 13, color: '#475569',
-              }}>
+              <div className="mt-4 rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
                 Taux de conversion global :{' '}
-                <strong style={{ color: '#0f172a' }}>
+                <strong className="tabular-nums text-foreground">
                   {Math.round((conversion.nb_factures / conversion.nb_devis) * 100)}%
                 </strong>
               </div>
             )}
-          </div>
-        </ChartCard>
+          </CardContent>
+        </Card>
 
         {/* Stock critique */}
-        <ChartCard title={`Stock sous seuil d'alerte (${stock_alerte.length})`} minHeight={260}>
-          {stock_alerte.length === 0 ? (
-            <div style={{ textAlign: 'center', paddingTop: '2rem' }}>
-              <span style={{ fontSize: 28 }}>✅</span>
-              <p style={{ color: '#22c55e', fontSize: 13, marginTop: 8, fontWeight: 600 }}>
-                Tous les stocks sont au-dessus du seuil.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {stock_alerte.map((p, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '0.45rem 0.6rem', borderRadius: 8,
-                  background: p.quantite_stock <= 0 ? '#fef2f2' : '#fffbeb',
-                  border: `1px solid ${p.quantite_stock <= 0 ? '#fecaca' : '#fde68a'}`,
-                }}>
-                  <span style={{ fontSize: 13, color: '#1e293b', fontWeight: 500, flex: 1, minWidth: 0 }}>
-                    {p.nom}
-                  </span>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700,
-                    color: p.quantite_stock <= 0 ? '#dc2626' : '#d97706',
-                    marginLeft: 8,
-                  }}>
-                    {p.quantite_stock <= 0 ? 'Rupture' : `${p.quantite_stock} / ${p.seuil_alerte}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </ChartCard>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-2">
+            <CardTitle>Stock sous seuil d'alerte</CardTitle>
+            <Badge tone={stock_alerte.length > 0 ? 'warning' : 'success'}>{stock_alerte.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {stock_alerte.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="Stocks au-dessus du seuil"
+                description="Tous les stocks sont au-dessus du seuil."
+                className="border-0 py-6"
+              />
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {stock_alerte.map((p, i) => {
+                  const rupture = p.quantite_stock <= 0
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+                        rupture ? 'border-destructive/30 bg-destructive/10' : 'border-warning/30 bg-warning/10'
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">{p.nom}</span>
+                      <StatusPill
+                        tone={rupture ? 'danger' : 'warning'}
+                        dot={false}
+                        label={rupture ? 'Rupture' : `${p.quantite_stock} / ${p.seuil_alerte}`}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── Créances clients ── */}
       {creances.length > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
-          <ChartCard title="Créances clients (factures impayées)" minHeight={0}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <Card className="mb-4">
+          <CardHeader><CardTitle>Créances clients (factures impayées)</CardTitle></CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="data-table">
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
-                    {['Client', 'Nb factures', 'Montant total', 'Retard max'].map(h => (
-                      <th key={h} style={{
-                        padding: '0.5rem 0.75rem', textAlign: 'left',
-                        fontSize: 11, fontWeight: 700, color: '#64748b',
-                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                      }}>{h}</th>
-                    ))}
+                  <tr>
+                    <th>Client</th>
+                    <th className="ta-right">Nb factures</th>
+                    <th className="ta-right">Montant total</th>
+                    <th className="ta-right">Retard max</th>
                   </tr>
                 </thead>
                 <tbody>
                   {creances.map((c, i) => (
-                    <tr key={i} style={{
-                      borderBottom: '1px solid #f8fafc',
-                      background: i % 2 === 0 ? '#fff' : '#fafafa',
-                    }}>
-                      <td style={{ padding: '0.55rem 0.75rem', fontWeight: 500, color: '#1e293b' }}>
-                        {c.client}
-                      </td>
-                      <td style={{ padding: '0.55rem 0.75rem', color: '#475569' }}>
-                        {c.nb_factures}
-                      </td>
-                      <td style={{ padding: '0.55rem 0.75rem', fontWeight: 600, color: '#dc2626' }}>
-                        {dh(c.montant_total)}
-                      </td>
-                      <td style={{ padding: '0.55rem 0.75rem' }}>
+                    <tr key={i}>
+                      <td className="font-medium">{c.client}</td>
+                      <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(c.nb_factures)}</td>
+                      <td className="ta-right font-semibold tabular-nums text-destructive">{dh(c.montant_total)}</td>
+                      <td className="ta-right">
                         {c.jours_retard_max > 0 ? (
-                          <span style={{
-                            background: '#fef2f2', color: '#dc2626',
-                            borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 600,
-                          }}>
-                            {c.jours_retard_max}j
-                          </span>
+                          <StatusPill tone="danger" dot={false} label={`${c.jours_retard_max} j`} />
                         ) : (
-                          <span style={{ color: '#94a3b8' }}>—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                     </tr>
@@ -483,8 +509,8 @@ export function Component() {
                 </tbody>
               </table>
             </div>
-          </ChartCard>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

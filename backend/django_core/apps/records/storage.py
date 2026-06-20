@@ -6,7 +6,7 @@ import uuid
 
 from django.conf import settings
 
-from apps.ventes.utils.minio_client import get_minio_client
+from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 Mo par fichier
 
@@ -18,30 +18,49 @@ _ALLOWED = {
     'image/webp': ('webp', lambda h: h[:4] == b'RIFF' and h[8:12] == b'WEBP'),
 }
 
+# F13 — mémos vocaux : formats audio enregistrés par le navigateur sur le
+# terrain (WebM/Opus, Ogg, MP4/AAC, WAV, MP3). Stockés tels quels via le même
+# pipeline MinIO — aucune nouvelle dépendance, aucun traitement audio.
+_ALLOWED_AUDIO = {
+    'audio/webm': ('webm', lambda h: h[:4] == b'\x1aE\xdf\xa3'),
+    'audio/ogg': ('ogg', lambda h: h[:4] == b'OggS'),
+    'audio/mp4': ('m4a', lambda h: h[4:8] == b'ftyp'),
+    'audio/wav': ('wav', lambda h: h[:4] == b'RIFF' and h[8:12] == b'WAVE'),
+    'audio/mpeg': ('mp3', lambda h: h[:3] == b'ID3' or h[:2] == b'\xff\xfb'),
+}
 
-def _detect(header: bytes):
-    for mime, (ext, test) in _ALLOWED.items():
+
+def _detect(header: bytes, table=None):
+    for mime, (ext, test) in (table or _ALLOWED).items():
         if test(header):
             return mime, ext
     return None, None
 
 
-def store_attachment(file):
+def store_attachment(file, *, audio=False):
     """Valide + téléverse un fichier. Retourne (dict, None) ou (None, message).
 
     dict = {file_key, filename, size, mime}.
+
+    `audio=True` (F13 — mémos vocaux) accepte les formats audio courants au lieu
+    des documents/images : même pipeline MinIO, même limite de taille.
     """
     if file.size > _MAX_BYTES:
         return None, 'Fichier trop volumineux (max 10 Mo).'
 
     header = file.read(12)
     file.seek(0)
-    mime, ext = _detect(header)
+    table = _ALLOWED_AUDIO if audio else _ALLOWED
+    mime, ext = _detect(header, table)
     if mime is None:
+        if audio:
+            return None, ('Format audio non supporté '
+                          '(WebM, Ogg, MP4/M4A, WAV ou MP3 uniquement).')
         return None, 'Format non supporté (PDF, PNG, JPEG ou WebP uniquement).'
 
     key = f'attachments/{uuid.uuid4().hex}.{ext}'
     client = get_minio_client()
+    ensure_uploads_bucket()  # N108 — self-heal a missing bucket before upload
     client.upload_fileobj(
         file, settings.MINIO_BUCKET_UPLOADS, key,
         ExtraArgs={'ContentType': mime})

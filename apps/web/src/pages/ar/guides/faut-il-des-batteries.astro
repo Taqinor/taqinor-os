@@ -1,0 +1,86 @@
+---
+/**
+ * AR — Guide (W67, RTL): Do you need batteries? Faithful Arabic translation of
+ * /guides/faut-il-des-batteries ; no figure, no price, no payback. Internal
+ * links use localizeNavHref (EN/AR if available, else the existing FR page —
+ * never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'هل تحتاج بطاريات لتركيبتك الشمسية؟',
+  description: 'استهلاك ذاتي نهاري أو تخزين: متى تُبرَّر البطاريات في تركيبة شمسية، مشروحاً ببساطة.',
+  about: { '@type': 'Thing', name: 'بطاريات التخزين الشمسي' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="هل تحتاج بطاريات لتركيبتك الشمسية؟ | Taqinor"
+  description="غالباً لا. إن كنت تستهلك أساساً في النهار، فالاستهلاك الذاتي المباشر يُربِح أكثر من أي بطارية؛ التخزين يُبرَّر للّيل أو لاستمرارية الخدمة. كل شيء يتوقّف على الساعة التي يدور فيها عدّادك."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'هل تحتاج بطاريات؟' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">دليل · العتاد</p>
+      <h1 class="display v2-page-title mt-5 text-white">هل تحتاج بطاريات؟</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        الجواب القصير: غالباً لا. إنه السؤال الأكثر تكراراً، وكثيرون يطرحونه مقلوباً — البطارية ليست
+        قلب التركيبة، بل خيار. ما يبرّرها من عدمه هو <em>الساعة</em> التي تستهلك فيها كهرباءك.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">إن كنت تستهلك أساساً في النهار</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        حين يقع جلّ استهلاكك في عزّ النهار، تذهب كهرباء ألواحك مباشرة إلى أجهزتك، في اللحظة التي
+        تُنتَج فيها، دون مرور عبر بطارية. لا خسارة تخزين، ولا عتاد إضافي يُستهلَك: إنه السيناريو
+        الأكثر ربحاً. يناسب البيوت التي تُعاش نهاراً والمواقع المهنية التي يتبع نشاطها الشمس.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">متى يصبح التخزين مفيداً</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        ينقلب الحساب بمجرّد أن تصل ذروة استهلاكك بعد غروب الشمس: هناك، التخزين نهاراً لإعادة
+        الاستخدام مساءً له معنى اقتصادي. الحالة الثانية، استمرارية الخدمة — إبقاء بعض المعدات
+        مُغذّاة أثناء انقطاع. في هاتين الحالتين، تكفّ البطارية عن كونها كماليّة لتصبح بنداً
+        يسترجع كلفته.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">ما يقوله منحنى استهلاكك</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        الجواب إذن ليس في كاطالوݣ، بل في قراءة عدّادك. ننظر في الساعات التي يدور فيها عدّادك أكثر،
+        وهذا المنحنى هو الذي يعيّن — أو لا — بطارية. إضافة تخزين «حتى تطمئن» مُكلفة دون أي مردود إن
+        كان استهلاكك نهارياً؛ الانعكاس الصحيح هو تغطية جلّ الفاتورة بأقل استثمار.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهد العتاد →</a>
+        <a href={L('/guides/onduleur-hybride-ou-reseau')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">عاكس هجين أم شبكة؟ →</a>
+        <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">كل الأدلّة →</a>
+      </div>
+    </article>
+
+    <CtaBand title="للحسم في حالتك بالضبط، أطلِق الدراسة المجانية." href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

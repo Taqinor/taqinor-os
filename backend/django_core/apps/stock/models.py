@@ -1,8 +1,26 @@
+from decimal import Decimal
+
 from django.db import models
 from django.conf import settings
 
 
 class Categorie(models.Model):
+    # Tag de TYPE d'équipement optionnel et additif (L579) : permet de filtrer
+    # un emplacement (slot) d'équipement de chantier par TYPE indépendamment du
+    # libellé free-text de la catégorie (qu'une société peut renommer). Les
+    # catégories existantes restent NON typées (None) → comportement inchangé.
+    class TypeEquipement(models.TextChoices):
+        PANNEAU = 'panneau', 'Panneau'
+        ONDULEUR = 'onduleur', 'Onduleur'
+        BATTERIE = 'batterie', 'Batterie'
+        STRUCTURE = 'structure', 'Structure'
+        CABLE = 'cable', 'Câble'
+        PROTECTION = 'protection', 'Protection'
+        POMPE = 'pompe', 'Pompe'
+        VARIATEUR = 'variateur', 'Variateur'
+        COMPTEUR = 'compteur', 'Compteur'
+        ACCESSOIRE = 'accessoire', 'Accessoire'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -15,6 +33,14 @@ class Categorie(models.Model):
     ordre = models.PositiveSmallIntegerField(
         default=100,
         help_text="Ordre d'affichage délibéré (plus petit = plus haut).")
+    type_equipement = models.CharField(
+        max_length=20,
+        choices=TypeEquipement.choices,
+        null=True,
+        blank=True,
+        help_text="Type d'équipement (optionnel) pour filtrer les slots de "
+                  "chantier par TYPE, quel que soit le libellé de la "
+                  "catégorie. Vide = non typée (comportement historique).")
 
     class Meta:
         verbose_name = "Catégorie"
@@ -254,7 +280,16 @@ class StockEmplacement(models.Model):
     class Meta:
         verbose_name = "Stock par emplacement"
         verbose_name_plural = "Stocks par emplacement"
-        unique_together = [('produit', 'emplacement')]
+        # ERR93 — `company` ajouté à la contrainte d'unicité (convention
+        # company-in-constraint) ; la quantité ventilée ne peut jamais être
+        # négative (CheckConstraint additive, sûre sur les données existantes
+        # car les gardes de transfert plafonnent déjà au stock disponible).
+        unique_together = [('company', 'produit', 'emplacement')]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(quantite__gte=0),
+                name='stockemplacement_quantite_non_negative'),
+        ]
 
     def __str__(self):
         return f'{self.produit_id} @ {self.emplacement_id} = {self.quantite}'
@@ -489,3 +524,206 @@ class LigneBonCommandeFournisseur(models.Model):
     @property
     def total_achat(self):
         return self.quantite * self.prix_achat_unitaire
+
+
+class ReceptionFournisseur(models.Model):
+    """G5 — Réception fournisseur (goods-in / entrée de marchandises).
+
+    Trace une réception (totale ou partielle) des articles d'un bon de commande
+    fournisseur. À la CONFIRMATION (statut « confirmé »), chaque ligne reçue
+    crée un `MouvementStock` ENTREE — exactement comme l'action `recevoir` du
+    BCF, jamais un mécanisme parallèle — et avance le statut du BCF selon ses
+    quantités reçues existantes (`quantite_recue`/`est_entierement_recu`). La
+    confirmation est IDEMPOTENTE : une réception déjà confirmée ne re-crée
+    jamais de mouvement. Numérotation sans trou (préfixe REC). Usage INTERNE.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        CONFIRME = 'confirme', 'Confirmé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='receptions_fournisseur')
+    reference = models.CharField(max_length=50)
+    bon_commande = models.ForeignKey(
+        BonCommandeFournisseur, on_delete=models.PROTECT,
+        related_name='receptions')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    date_reception = models.DateField(null=True, blank=True)
+    note = models.TextField(blank=True, null=True)
+    # Qui a réceptionné la marchandise.
+    recu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='receptions_fournisseur')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='receptions_fournisseur_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réception fournisseur'
+        verbose_name_plural = 'Réceptions fournisseur'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def total_recu(self):
+        """Nombre total d'articles reçus sur cette réception."""
+        return sum((ligne.quantite for ligne in self.lignes.all()), 0)
+
+
+class LigneReceptionFournisseur(models.Model):
+    """Ligne d'une réception fournisseur : la ligne de BCF concernée, le produit
+    et la quantité effectivement reçue lors de cette réception."""
+
+    reception = models.ForeignKey(
+        ReceptionFournisseur, on_delete=models.CASCADE, related_name='lignes')
+    ligne_commande = models.ForeignKey(
+        LigneBonCommandeFournisseur, on_delete=models.PROTECT,
+        related_name='lignes_reception')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT,
+        related_name='lignes_reception_fournisseur')
+    quantite = models.IntegerField()
+
+    class Meta:
+        verbose_name = 'Ligne de réception fournisseur'
+        verbose_name_plural = 'Lignes de réception fournisseur'
+
+    def __str__(self):
+        return f'{self.produit_id} × {self.quantite}'
+
+
+class FactureFournisseur(models.Model):
+    """G5 — Facture fournisseur / comptabilité fournisseur (AP).
+
+    Document d'ACHAT reçu d'un fournisseur, éventuellement rattaché à un bon de
+    commande fournisseur. Porte les montants HT/TVA/TTC et un statut de
+    règlement. Le solde dû = TTC − Σ paiements. Usage INTERNE (les montants
+    d'achat ne sont jamais client-facing).
+    """
+
+    class Statut(models.TextChoices):
+        A_PAYER = 'a_payer', 'À payer'
+        PARTIELLEMENT_PAYEE = 'partiellement_payee', 'Partiellement payée'
+        PAYEE = 'payee', 'Payée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='factures_fournisseur')
+    reference = models.CharField(max_length=50)
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.PROTECT,
+        related_name='factures_fournisseur')
+    bon_commande = models.ForeignKey(
+        BonCommandeFournisseur, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='factures_fournisseur')
+    # Référence du document chez le fournisseur (numéro de sa facture).
+    ref_fournisseur = models.CharField(max_length=100, blank=True, null=True)
+    date_facture = models.DateField(null=True, blank=True)
+    date_echeance = models.DateField(null=True, blank=True)
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    montant_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    montant_ttc = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    statut = models.CharField(
+        max_length=24, choices=Statut.choices, default=Statut.A_PAYER)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='factures_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Facture fournisseur'
+        verbose_name_plural = 'Factures fournisseur'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def total_paye(self):
+        """Somme des paiements enregistrés sur cette facture."""
+        return sum((p.montant for p in self.paiements.all()), Decimal('0'))
+
+    @property
+    def solde_du(self):
+        """Solde dû = TTC − Σ paiements (jamais négatif affiché)."""
+        return (self.montant_ttc or Decimal('0')) - self.total_paye
+
+
+class LigneFactureFournisseur(models.Model):
+    """Ligne (optionnelle) d'une facture fournisseur : désignation libre,
+    quantité et prix d'achat unitaire HT. Permet de ventiler une facture par
+    article. INTERNE."""
+
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_facture_fournisseur')
+    designation = models.CharField(max_length=255)
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1)
+    prix_unitaire_ht = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = 'Ligne de facture fournisseur'
+        verbose_name_plural = 'Lignes de facture fournisseur'
+
+    def __str__(self):
+        return f'{self.designation} × {self.quantite}'
+
+    @property
+    def total_ht(self):
+        return (self.quantite or Decimal('0')) * (
+            self.prix_unitaire_ht or Decimal('0'))
+
+
+class PaiementFournisseur(models.Model):
+    """G5 — Paiement (règlement) d'une facture fournisseur. Chaque paiement
+    réduit le solde dû de la facture. INTERNE."""
+
+    class Mode(models.TextChoices):
+        VIREMENT = 'virement', 'Virement'
+        CHEQUE = 'cheque', 'Chèque'
+        ESPECES = 'especes', 'Espèces'
+        CARTE = 'carte', 'Carte'
+        EFFET = 'effet', 'Effet / traite'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='paiements_fournisseur')
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.CASCADE, related_name='paiements')
+    montant = models.DecimalField(max_digits=14, decimal_places=2)
+    date_paiement = models.DateField(null=True, blank=True)
+    mode = models.CharField(
+        max_length=20, choices=Mode.choices, default=Mode.VIREMENT)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='paiements_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Paiement fournisseur'
+        verbose_name_plural = 'Paiements fournisseur'
+        ordering = ['-date_paiement', '-date_creation']
+
+    def __str__(self):
+        return f'{self.facture_id} — {self.montant}'

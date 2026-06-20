@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Search } from 'lucide-react'
 import {
   EMPTY_FILTERS,
   INSTALLATION_STATUSES,
@@ -6,9 +7,28 @@ import {
   TYPE_LABELS,
   REGIME_8221_LABELS,
 } from '../../features/installations/statuses'
+import {
+  Input,
+  Button,
+  Segmented,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '../../ui'
 
-// Barre de recherche/filtres partagée par les vues (façon Odoo).
+// Barre de recherche/filtres partagée par les vues (façon Odoo), portée sur le
+// système de design (J43) : champ de recherche, sélecteurs accessibles,
+// segments « annulés », bascule Article 33. Comportement de filtrage identique.
 // `items` = liste NON filtrée, pour dériver les techniciens disponibles.
+//
+// Les Select du système de design n'autorisent pas la valeur vide '' ; on
+// utilise donc le sentinelle '__all__' pour « tous », mappé sur '' côté filtre.
+const ALL = '__all__'
+const toSel = (v) => (v ? v : ALL)
+const fromSel = (v) => (v === ALL ? '' : v)
+
 export default function FilterBar({ filters, setFilters, items }) {
   const techniciens = useMemo(() => {
     const set = new Set()
@@ -18,94 +38,113 @@ export default function FilterBar({ filters, setFilters, items }) {
     return [...set].sort((a, b) => a.localeCompare(b, 'fr'))
   }, [items])
 
-  const set = (key) => (e) => setFilters({ ...filters, [key]: e.target.value })
+  const setKey = (key, value) => setFilters({ ...filters, [key]: value })
   const setAnnule = (value) => setFilters({ ...filters, annule: value })
 
-  const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
+  const isDirty = Object.keys(EMPTY_FILTERS).some((k) => filters[k] !== EMPTY_FILTERS[k])
 
   return (
-    <div className="fb-bar">
-      <input
-        className="search-input fb-search"
-        type="search"
-        placeholder="Rechercher référence, client, ville…"
-        value={filters.q}
-        onChange={set('q')}
-      />
-
-      <select className="search-input fb-select" value={filters.statut} onChange={set('statut')}
-              aria-label="Filtrer par statut">
-        <option value="">Tous les statuts</option>
-        {INSTALLATION_STATUSES.map(k => (
-          <option key={k} value={k}>{STATUS_LABELS[k]}</option>
-        ))}
-      </select>
-
-      <select className="search-input fb-select" value={filters.type_installation} onChange={set('type_installation')}
-              aria-label="Filtrer par type d'installation">
-        <option value="">Tous les types</option>
-        {Object.entries(TYPE_LABELS).map(([k, v]) => (
-          <option key={k} value={k}>{v}</option>
-        ))}
-      </select>
-
-      <select className="search-input fb-select" value={filters.technicien} onChange={set('technicien')}
-              aria-label="Filtrer par technicien">
-        <option value="">Tous les techniciens</option>
-        {techniciens.map(t => (
-          <option key={t} value={t}>{t}</option>
-        ))}
-      </select>
-
-      <select className="search-input fb-select" value={filters.regime} onChange={set('regime')}
-              aria-label="Filtrer par régime loi 82-21">
-        <option value="">Tous les régimes</option>
-        {Object.entries(REGIME_8221_LABELS).map(([k, v]) => (
-          <option key={k} value={k}>{v}</option>
-        ))}
-      </select>
-
-      <button
-        type="button"
-        className={`fb-pill${filters.art33 === 'seuls' ? ' fb-pill-active' : ''}`}
-        onClick={() => setFilters({ ...filters, art33: filters.art33 === 'seuls' ? '' : 'seuls' })}
-        title="Régularisation Article 33"
-      >
-        Art. 33
-      </button>
-
-      <div className="fb-pills" role="group" aria-label="Filtre chantiers annulés">
-        <button
-          type="button"
-          className={`fb-pill${filters.annule === 'avec' ? ' fb-pill-active' : ''}`}
-          onClick={() => setAnnule('avec')}
-        >
-          Avec annulés
-        </button>
-        <button
-          type="button"
-          className={`fb-pill${filters.annule === 'sans' ? ' fb-pill-active' : ''}`}
-          onClick={() => setAnnule('sans')}
-        >
-          Sans annulés
-        </button>
-        <button
-          type="button"
-          className={`fb-pill${filters.annule === 'seuls' ? ' fb-pill-active' : ''}`}
-          onClick={() => setAnnule('seuls')}
-        >
-          Annulés seuls
-        </button>
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="min-w-[14rem] flex-1">
+        <Input
+          type="search"
+          leading={<Search />}
+          placeholder="Rechercher référence, client, ville…"
+          value={filters.q}
+          onChange={(e) => setKey('q', e.target.value)}
+          aria-label="Rechercher un chantier"
+        />
       </div>
 
+      <Select value={toSel(filters.statut)} onValueChange={(v) => setKey('statut', fromSel(v))}>
+        <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par statut">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les statuts</SelectItem>
+          {INSTALLATION_STATUSES.map((k) => (
+            <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={toSel(filters.type_installation)}
+        onValueChange={(v) => setKey('type_installation', fromSel(v))}
+      >
+        <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par type d'installation">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les types</SelectItem>
+          {Object.entries(TYPE_LABELS).map(([k, v]) => (
+            <SelectItem key={k} value={k}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={toSel(filters.technicien)} onValueChange={(v) => setKey('technicien', fromSel(v))}>
+        <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par technicien">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les techniciens</SelectItem>
+          {techniciens.map((t) => (
+            <SelectItem key={t} value={t}>{t}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={toSel(filters.regime)} onValueChange={(v) => setKey('regime', fromSel(v))}>
+        <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par régime loi 82-21">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Tous les régimes</SelectItem>
+          {Object.entries(REGIME_8221_LABELS).map(([k, v]) => (
+            <SelectItem key={k} value={k}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Button
+        type="button"
+        size="sm"
+        variant={filters.art33 === 'seuls' ? 'default' : 'outline'}
+        onClick={() => setKey('art33', filters.art33 === 'seuls' ? '' : 'seuls')}
+        title="Régularisation Article 33"
+        aria-pressed={filters.art33 === 'seuls'}
+      >
+        Art. 33
+      </Button>
+
+      <Button
+        type="button"
+        size="sm"
+        variant={filters.mine === 'only' ? 'default' : 'outline'}
+        onClick={() => setKey('mine', filters.mine === 'only' ? '' : 'only')}
+        title="Chantiers dont je suis l'installateur responsable"
+        aria-pressed={filters.mine === 'only'}
+      >
+        Mes chantiers
+      </Button>
+
+      <Segmented
+        size="sm"
+        value={filters.annule}
+        onChange={setAnnule}
+        aria-label="Filtre chantiers annulés"
+        options={[
+          { value: 'avec', label: 'Avec annulés' },
+          { value: 'sans', label: 'Sans annulés' },
+          { value: 'seuls', label: 'Annulés seuls' },
+        ]}
+      />
+
       {isDirty && (
-        <button
-          type="button"
-          className="fb-clear"
-          onClick={() => setFilters(EMPTY_FILTERS)}
-        >
+        <Button type="button" size="sm" variant="ghost" onClick={() => setFilters(EMPTY_FILTERS)}>
           Effacer les filtres
-        </button>
+        </Button>
       )}
     </div>
   )

@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/
+# Modern setuptools so the http-ece sdist (transitive de pywebpush, N109) build.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /app/

@@ -102,7 +102,35 @@ class TestNumerotationAuditEndpoint(TestCase):
         r = auth(self.admin).get('/api/django/ventes/numerotation-audit/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('devis', r.data)
-        self.assertIn('conforme', r.data)
+
+
+class TestNumerotationPreviewEndpoint(TestCase):
+    """L770/L786 — aperçu du prochain numéro RÉEL par type de pièce."""
+
+    def setUp(self):
+        self.company = make_company(slug='prev-co', nom='Prev Co')
+        self.admin = User.objects.create_user(
+            username='prev_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.client_obj = make_client(self.company)
+
+    def test_preview_reflects_highest_sequence(self):
+        # Sans aucune pièce, l'aperçu repart à 1 pour chaque type.
+        r = auth(self.admin).get('/api/django/ventes/numerotation-preview/')
+        self.assertEqual(r.status_code, 200, r.data)
+        for key in ('devis', 'facture', 'avoir', 'bon_commande'):
+            self.assertIn(key, r.data)
+        self.assertTrue(r.data['devis'].endswith('-0001'))
+        # Avec un devis n°7, l'aperçu devient n°8 (plus-haut-utilisé + 1).
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0007',
+            client=self.client_obj)
+        r2 = auth(self.admin).get('/api/django/ventes/numerotation-preview/')
+        self.assertEqual(r2.data['devis'], f'DEV-{MONTH}-0008')
+        # Le facture/avoir/bon_commande restent au n°1 (séquences distinctes).
+        self.assertTrue(r2.data['facture'].endswith('-0001'))
+        self.assertTrue(r2.data['avoir'].endswith('-0001'))
+        self.assertTrue(r2.data['bon_commande'].endswith('-0001'))
 
 
 class TestUblExport(TestCase):

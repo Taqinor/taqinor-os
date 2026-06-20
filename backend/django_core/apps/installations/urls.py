@@ -3,14 +3,18 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     InstallationViewSet, InterventionViewSet, TypeInterventionViewSet,
-    ChecklistEtapeModeleViewSet,
+    ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
+    SafetyChecklistSlotViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'chantiers', InstallationViewSet)
 router.register(r'interventions', InterventionViewSet)
 router.register(r'types-intervention', TypeInterventionViewSet)
+router.register(r'checklist-templates', ChecklistTemplateViewSet)
 router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)
+router.register(r'shotlist-slots', ShotListSlotViewSet)
+router.register(r'consignes-securite', SafetyChecklistSlotViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

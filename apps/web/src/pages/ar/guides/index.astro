@@ -1,0 +1,87 @@
+---
+/**
+ * AR — Guides & resources hub (W67, RTL). Faithful Arabic translation of
+ * /guides ; no new figure or price claim. Card links use localizeNavHref
+ * (EN/AR if available, else the existing FR page — never a dead link). FR
+ * untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const guides = [
+  {
+    href: '/guides/loi-82-21-expliquee',
+    title: 'القانون 82-21 ببساطة',
+    summary: 'تصريح، اتفاق ربط أو ترخيص: الأنظمة الثلاثة للإنتاج الذاتي مفكوكة، مع عتبة 11 kW التي تضع كل الفيلات تقريباً في الجهة الصحيحة.',
+  },
+  {
+    href: '/guides/faut-il-des-batteries',
+    title: 'هل تحتاج بطاريات؟',
+    summary: 'غالباً لا. كل شيء يتوقّف على الساعة التي تستهلك فيها: نُريك متى يُربِح التخزين، ومتى لا يفعل سوى إثقال الفاتورة.',
+  },
+  {
+    href: '/guides/onduleur-hybride-ou-reseau',
+    title: 'عاكس هجين أم عاكس شبكة؟',
+    summary: 'Deye هجين أم Huawei SUN2000 شبكة: كل الاختيار يُختزل في سؤال واحد — هل تخزّن الطاقة، نعم أم لا؟',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'أدلّة وموارد شمسية — Taqinor',
+  hasPart: guides.map((g) => ({ '@type': 'Article', headline: g.title, url: new URL(g.href, Astro.site).href })),
+};
+---
+
+<Layout
+  title="أدلّة شمسية بالمغرب — القانون 82-21، البطاريات، العاكسات | Taqinor"
+  description="ثلاثة أسئلة تتكرّر قبل التوقيع، مُعالَجة دون مصطلحات: أي نظام للقانون 82-21 يعنيك، هل يبرّر ملفّك بطاريات، وما يفصل عاكساً هجيناً عن عاكس شبكة. ما يكفي للقرار عن بيّنة."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">أدلّة وموارد</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">افهم قبل أن توقّع</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          ثلاثة أسئلة تتكرّر في كل تبادلاتنا تقريباً. بدل الإجابة عنها هاتفياً، كتبناها هنا، دون
+          مصطلحات ودون رقم سعر يُلقى في الهواء. ما يكفي للوصول إلى الدراسة والأسئلة الصحيحة حاضرة
+          في الذهن.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
+        {guides.map((g, i) => (
+          <a href={L(g.href)} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <p class="tech-label text-brass-300">دليل</p>
+            <h2 class="display mt-2 text-xl text-white">{g.title}</h2>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{g.summary}</p>
+            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">اقرأ الدليل →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <CtaBand title="حالتك ليست في الأدلّة؟ اعرضها على الدراسة — إنها مجانية." href={L('/contact') + '#simulateur'} />
+
+    <StickyCta />
+  </div>
+</Layout>

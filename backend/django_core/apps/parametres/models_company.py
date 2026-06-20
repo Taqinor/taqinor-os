@@ -48,6 +48,13 @@ class CompanyProfile(models.Model):
         help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
+    # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
+    # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
+    # sont pas renseignés, le PDF facture est strictement identique (les blocs ne
+    # s'affichent que si non-vides). Le RIB ci-dessus complète ce bloc. Ces
+    # valeurs ne touchent JAMAIS le moteur premium des devis (pas de slot dédié).
+    instructions_paiement = models.TextField(blank=True, default='')
+    conditions_generales = models.TextField(blank=True, default='')
     couleur_principale = models.CharField(
         max_length=7, default='#2563EB'
     )
@@ -151,6 +158,41 @@ class CompanyProfile(models.Model):
     referral_enabled = models.BooleanField(default=False)
     referral_reward = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── N105 — Capacité DGI LOCALE (interrupteur maître, défaut OFF) ──
+    # Unique commutateur, par société, qui ARME la capacité DGI locale (export
+    # UBL 2.1 conforme + validateur de conformité), atteignable UNIQUEMENT à la
+    # demande / par programme (commande de gestion ou endpoint gardé). Tant
+    # qu'il est False (défaut), la capacité est TOTALEMENT invisible et ne
+    # change RIEN au comportement actuel : aucune pastille, aucun statut, aucune
+    # colonne de liste, aucune modification du modèle Facture. Posé côté
+    # serveur, jamais lu du corps d'une requête métier. HORS PÉRIMÈTRE (gatés
+    # ailleurs) : transmission Simpl-TVA, signature électronique certifiée.
+    dgi_export_actif = models.BooleanField(default=False)
+
+    # ── Module d'exécution terrain (F9–F20) — interfaces SWAPPABLES ──
+    # Chaque champ NOMME le fournisseur d'une capacité optionnelle. VIDE par
+    # défaut = NO-OP total (aucun identifiant externe, aucun coût) : F9 retombe
+    # sur la saisie manuelle, F14 étiquette « Non transcrit — service non
+    # configuré », F20 ne signale rien. Aucun fournisseur n'est branché par ces
+    # tâches ; renseigner ces champs est une décision opérateur faite ici.
+    ocr_serie_provider = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text="Fournisseur OCR pour l'extraction des n° de série (F9). "
+                  "Vide = saisie manuelle uniquement.")
+    transcription_provider = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text='Fournisseur de transcription des mémos vocaux (F14). '
+                  'Vide = mémos non transcrits.')
+    photo_qa_provider = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text='Fournisseur de contrôle qualité IA des photos (F20). '
+                  'Vide = aucun contrôle.')
+    # F12 — seuil (%) de dépassement de consommation au-delà duquel une
+    # intervention est signalée à la revue. Défaut 10 % ; éditable en Paramètres.
+    overage_seuil_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10'),
+        help_text="Pourcentage de dépassement de consommation déclenchant la "
+                  "revue (F12).")
 
     class Meta:
         verbose_name = 'Profil entreprise'

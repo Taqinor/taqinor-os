@@ -9,13 +9,16 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
+import { BarChart3 } from 'lucide-react'
 import {
   groupLeadsByStage,
   STAGE_COLORS,
-  CANAL_LABELS,
   formatMAD,
 } from '../../../../features/crm/stages'
-import './charts.css'
+import useCanaux from '../../../../features/crm/useCanaux'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
+} from '../../../../ui'
 
 const NAVY = '#0b1f3a'
 const GOLD = '#f5a623'
@@ -36,9 +39,14 @@ function useIsMobile() {
 }
 
 const tooltipFormatter = (value) => [`${value}`, 'Leads']
+const pctFormatter = (value) => [`${value} %`, 'Conversion']
 
-export default function ChartsView({ leads }) {
+export default function ChartsView({
+  leads, totalLeads = null, onClearFilters,
+}) {
   const isMobile = useIsMobile()
+  // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
+  const { labels: canalLabels } = useCanaux()
 
   // Les 6 étapes canoniques, toujours dans l'ordre de l'entonnoir (même vides).
   const stageData = useMemo(() => groupLeadsByStage(leads ?? []), [leads])
@@ -47,26 +55,75 @@ export default function ChartsView({ leads }) {
     [stageData],
   )
 
-  // Comptes par canal, libellés français, canal inconnu/vide → « Non renseigné ».
-  const canalData = useMemo(() => {
+  // Taux de conversion par étape (entonnoir) : part des leads ayant ATTEINT
+  // l'étape e ou au-delà, rapportée au total. Donne un % décroissant le long
+  // de l'entonnoir, indépendant du total des devis.
+  const conversionData = useMemo(() => {
+    const total = (leads ?? []).length
+    if (!total) return stageData.map((col) => ({ ...col, rate: 0 }))
+    let cumulRest = total
+    const out = []
+    for (const col of stageData) {
+      const rate = Math.round((cumulRest / total) * 100)
+      out.push({ key: col.key, label: col.label, rate })
+      cumulRest -= col.count
+    }
+    return out
+  }, [stageData, leads])
+
+  // Comptes par responsable, « Non assigné » pour les leads sans owner_nom.
+  const ownerData = useMemo(() => {
     const counts = new Map()
     for (const l of leads ?? []) {
-      const key = l?.canal && CANAL_LABELS[l.canal] ? l.canal : '__inconnu'
+      const key = l?.owner_nom || '__none'
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return [...counts.entries()]
       .map(([key, count]) => ({
-        label: key === '__inconnu' ? 'Non renseigné' : CANAL_LABELS[key],
+        label: key === '__none' ? 'Non assigné' : key,
         count,
       }))
       .sort((a, b) => b.count - a.count)
   }, [leads])
 
+  // Comptes par canal, libellés français, canal inconnu/vide → « Non renseigné ».
+  const canalData = useMemo(() => {
+    const counts = new Map()
+    for (const l of leads ?? []) {
+      const key = l?.canal && canalLabels[l.canal] ? l.canal : '__inconnu'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([key, count]) => ({
+        label: key === '__inconnu' ? 'Non renseigné' : canalLabels[key],
+        count,
+      }))
+      .sort((a, b) => b.count - a.count)
+  }, [leads, canalLabels])
+
   if (!leads || leads.length === 0) {
+    // Distingue « aucun lead du tout » de « aucun résultat pour ces filtres ».
+    const aucunDuTout = totalLeads != null && totalLeads === 0
+    if (aucunDuTout) {
+      return (
+        <EmptyState
+          icon={BarChart3}
+          title="Aucune donnée à représenter"
+          description="Aucun lead — créez votre premier lead"
+        />
+      )
+    }
     return (
-      <div className="ch-empty">
-        Aucun lead à représenter avec ces filtres.
-      </div>
+      <EmptyState
+        icon={BarChart3}
+        title="Aucune donnée à représenter"
+        description="Aucun résultat pour ces filtres"
+        action={onClearFilters ? (
+          <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
+            Effacer les filtres
+          </Button>
+        ) : null}
+      />
     )
   }
 
@@ -79,12 +136,14 @@ export default function ChartsView({ leads }) {
 
   return (
     <div className="ch-grid">
-      <section className="ch-card">
-        <h3 className="ch-title">Leads par étape</h3>
-        {totalDevis > 0 && (
-          <p className="ch-subtitle">Devis récents : {formatMAD(totalDevis)}</p>
-        )}
-        <div className="ch-chartbox">
+      <Card className="ch-card">
+        <CardHeader>
+          <CardTitle>Leads par étape</CardTitle>
+          {totalDevis > 0 && (
+            <CardDescription>Devis récents : {formatMAD(totalDevis)}</CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="ch-chartbox">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stageData} margin={chartMargin}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -112,12 +171,14 @@ export default function ChartsView({ leads }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="ch-card">
-        <h3 className="ch-title">Leads par canal</h3>
-        <div className="ch-chartbox">
+      <Card className="ch-card">
+        <CardHeader>
+          <CardTitle>Leads par canal</CardTitle>
+        </CardHeader>
+        <CardContent className="ch-chartbox">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={canalData} margin={chartMargin}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -145,8 +206,81 @@ export default function ChartsView({ leads }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
+
+      <Card className="ch-card">
+        <CardHeader>
+          <CardTitle>Leads par responsable</CardTitle>
+        </CardHeader>
+        <CardContent className="ch-chartbox">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={ownerData} margin={chartMargin}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 12, fill: '#475569' }}
+                tickLine={false}
+                {...xAxisProps}
+              />
+              <YAxis
+                allowDecimals={false}
+                width={32}
+                tick={{ fontSize: 12, fill: '#475569' }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip
+                formatter={tooltipFormatter}
+                cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}
+              />
+              <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
+                {ownerData.map((row, i) => (
+                  <Cell key={row.label} fill={i === 0 ? GOLD : NAVY} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="ch-card">
+        <CardHeader>
+          <CardTitle>Taux de conversion par étape</CardTitle>
+          <CardDescription>Part des leads ayant atteint chaque étape</CardDescription>
+        </CardHeader>
+        <CardContent className="ch-chartbox">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={conversionData} margin={chartMargin}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 12, fill: '#475569' }}
+                tickLine={false}
+                {...xAxisProps}
+              />
+              <YAxis
+                allowDecimals={false}
+                width={40}
+                domain={[0, 100]}
+                unit="%"
+                tick={{ fontSize: 12, fill: '#475569' }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip
+                formatter={pctFormatter}
+                cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}
+              />
+              <Bar dataKey="rate" radius={[6, 6, 0, 0]} isAnimationActive={false}>
+                {conversionData.map((col) => (
+                  <Cell key={col.key} fill={STAGE_COLORS[col.key]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   )
 }

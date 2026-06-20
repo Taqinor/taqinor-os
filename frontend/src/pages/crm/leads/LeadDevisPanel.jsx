@@ -6,6 +6,9 @@
    /proposal (CLAUDE.md règle #4). */
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
+import {
+  Download, ExternalLink, Pencil, RotateCw, TriangleAlert, WifiOff, Zap,
+} from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote } from '../../../features/ventes/autoQuote'
@@ -13,6 +16,7 @@ import {
   proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
+import { Button, Input, Spinner, Segmented, Checkbox, EmptyState } from '../../../ui'
 
 // Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
 // sur le bundle que quand on ouvre réellement un aperçu.
@@ -233,25 +237,25 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
               </p>
               <div className="form-group" style={{ maxWidth: 220 }}>
                 <label className="form-label">Remise (%)</label>
-                <input type="number" min="0" max="100" step="any"
-                       className="form-control" value={discount} autoFocus
+                <Input type="number" min="0" max="100" step="any"
+                       value={discount} autoFocus
                        onChange={e => setDiscount(e.target.value)} />
               </div>
               <div className="ldp-actions">
-                <button type="button" className="btn btn-outline" onClick={onClose}>
+                <Button type="button" variant="outline" onClick={onClose}>
                   Annuler
-                </button>
-                <button type="button" className="btn btn-primary"
+                </Button>
+                <Button type="button"
                         onClick={() => { startedRef.current = true; doCreateAuto(discount || '0') }}>
-                  ⚡ Créer le devis
-                </button>
+                  <Zap /> Créer le devis
+                </Button>
               </div>
             </div>
           )}
 
           {phase === 'creating' && (
             <div className="ldp-center">
-              <p className="gen-hint">⏳ Création du devis et dimensionnement automatique…</p>
+              <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
             </div>
           )}
 
@@ -259,11 +263,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             <div className="ldp-center">
               <div className="form-error-box" role="alert">{errorMsg}</div>
               <div className="ldp-actions">
-                <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
-                <button type="button" className="btn btn-primary"
-                        onClick={() => setPhase('edit')}>
+                <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+                <Button type="button" onClick={() => setPhase('edit')}>
                   Ouvrir l'édition complète
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -284,33 +287,35 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             <div className="ldp-preview">
               <div className="ldp-toolbar">
                 <div className="ldp-format">
-                  <label className={`gen-radio${pdfMode === 'full' ? ' selected' : ''}`}>
-                    <input type="radio" name="ldp-pdf" checked={pdfMode === 'full'}
-                           onChange={() => setPdfMode('full')} />
-                    Premium
-                  </label>
-                  <label className={`gen-radio${pdfMode === 'onepage' ? ' selected' : ''}`}>
-                    <input type="radio" name="ldp-pdf" checked={pdfMode === 'onepage'}
-                           onChange={() => setPdfMode('onepage')} />
-                    1 page
-                  </label>
+                  <Segmented
+                    size="sm"
+                    value={pdfMode}
+                    onChange={setPdfMode}
+                    options={[
+                      { value: 'full', label: 'Premium' },
+                      { value: 'onepage', label: '1 page' },
+                    ]}
+                  />
                   {pdfMode === 'full' && (
-                    <label className="pdf-toggle" style={{ marginLeft: 8 }}>
-                      <input type="checkbox" checked={includeEtude}
-                             onChange={e => setIncludeEtude(e.target.checked)} />
+                    <label className="ldp-etude-toggle">
+                      <Checkbox
+                        checked={includeEtude}
+                        onCheckedChange={v => setIncludeEtude(v === true)}
+                      />
                       <span>Inclure l'étude</span>
                     </label>
                   )}
                 </div>
                 <div className="ldp-toolbar-actions">
-                  <button type="button" className="btn btn-outline btn-sm"
+                  <Button type="button" variant="outline" size="sm"
                           onClick={() => setPhase('edit')}>
-                    ✏️ Édition complète
-                  </button>
-                  <button type="button" className="btn btn-primary btn-sm"
-                          onClick={handleDownload} disabled={downloading}>
-                    {downloading ? '…' : '⬇ Télécharger le PDF'}
-                  </button>
+                    <Pencil /> Édition complète
+                  </Button>
+                  <Button type="button" size="sm"
+                          onClick={handleDownload} loading={downloading} disabled={downloading}>
+                    {!downloading && <Download />}
+                    {downloading ? '…' : 'Télécharger le PDF'}
+                  </Button>
                 </div>
               </div>
               <div className="ldp-pdf-area">
@@ -319,58 +324,66 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                 )}
 
                 {previewState === PREVIEW_VIEW.LOADING && (
-                  <p className="gen-hint ldp-pdf-loading">⏳ Chargement de l'aperçu…</p>
+                  <p className="ldp-pdf-loading">
+                    <Spinner /> Chargement de l'aperçu…
+                  </p>
                 )}
 
                 {/* Vrai échec serveur (4xx/5xx) : message clair, distinct du repli. */}
                 {previewState === PREVIEW_VIEW.ERROR && (
-                  <div className="ldp-fallback" role="alert">
-                    <div className="ldp-fallback-icon">⚠️</div>
-                    <p className="ldp-fallback-msg">{serverError}</p>
-                    <div className="ldp-fallback-actions">
-                      <button type="button" className="btn btn-primary"
-                              onClick={() => setPhase('edit')}>
-                        Ouvrir l'édition complète
-                      </button>
-                      <button type="button" className="btn btn-outline"
-                              onClick={reloadPreview}>
-                        Réessayer
-                      </button>
-                    </div>
-                  </div>
+                  <EmptyState
+                    role="alert"
+                    className="ldp-fallback"
+                    icon={TriangleAlert}
+                    title="Aperçu indisponible"
+                    description={serverError}
+                    action={(
+                      <div className="ldp-fallback-actions">
+                        <Button type="button" size="sm" onClick={() => setPhase('edit')}>
+                          Ouvrir l'édition complète
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
+                          <RotateCw /> Réessayer
+                        </Button>
+                      </div>
+                    )}
+                  />
                 )}
 
                 {/* Repli : la récupération des octets a échoué (réseau/timeout).
                     Le rendu PDF.js lui-même n'est pas blocable. */}
                 {previewState === PREVIEW_VIEW.FALLBACK && (
-                  <div className="ldp-fallback">
-                    <div className="ldp-fallback-icon">📶</div>
-                    <p className="ldp-fallback-msg">
-                      Aperçu indisponible — vérifiez votre connexion. Vous pouvez
-                      réessayer ou télécharger le devis directement.
-                    </p>
-                    <div className="ldp-fallback-actions">
-                      <button type="button" className="btn btn-primary"
-                              onClick={handleDownload} disabled={downloading}>
-                        {downloading ? '…' : '⬇ Télécharger le PDF'}
-                      </button>
-                      <button type="button" className="btn btn-outline"
-                              onClick={handleOpenNewTab}>
-                        ↗ Ouvrir dans un nouvel onglet
-                      </button>
-                    </div>
-                    <button type="button" className="ldp-fallback-retry"
-                            onClick={reloadPreview}>
-                      Réessayer l'aperçu
-                    </button>
-                  </div>
+                  <EmptyState
+                    className="ldp-fallback"
+                    icon={WifiOff}
+                    title="Aperçu indisponible"
+                    description="Vérifiez votre connexion. Vous pouvez réessayer ou télécharger le devis directement."
+                    action={(
+                      <div className="ldp-fallback-stack">
+                        <div className="ldp-fallback-actions">
+                          <Button type="button" size="sm"
+                                  onClick={handleDownload} loading={downloading} disabled={downloading}>
+                            {!downloading && <Download />}
+                            {downloading ? '…' : 'Télécharger le PDF'}
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" onClick={handleOpenNewTab}>
+                            <ExternalLink /> Ouvrir dans un nouvel onglet
+                          </Button>
+                        </div>
+                        <Button type="button" variant="link" size="sm"
+                                className="ldp-fallback-retry" onClick={reloadPreview}>
+                          Réessayer l'aperçu
+                        </Button>
+                      </div>
+                    )}
+                  />
                 )}
 
                 {previewState === PREVIEW_VIEW.PDF && (
                   <Suspense
                     fallback={(
-                      <p className="gen-hint ldp-pdf-loading">
-                        ⏳ Chargement de l'aperçu…
+                      <p className="ldp-pdf-loading">
+                        <Spinner /> Chargement de l'aperçu…
                       </p>
                     )}
                   >

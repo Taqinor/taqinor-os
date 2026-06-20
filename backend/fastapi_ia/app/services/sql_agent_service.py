@@ -22,9 +22,16 @@ import asyncio
 import logging
 import re
 import threading
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+import sqlparse
+from sqlparse.sql import Function, Identifier, IdentifierList, Parenthesis
+from sqlparse.tokens import CTE, DDL, DML, Keyword, Punctuation
 
 from langchain.callbacks.base import BaseCallbackHandler
+
+if TYPE_CHECKING:  # eviter un import circulaire au runtime
+    from app.services.action_tools import ActionContext
 
 from app.core.config import (
     CHAT_HISTORY_MAX,
@@ -34,6 +41,7 @@ from app.core.config import (
     GROQ_API_KEY,
     OPENAI_API_KEY,
     REDIS_CHAT_URL,
+    SQL_AGENT_DATABASE_URL,
     SQL_AGENT_MODEL,
     SQL_AGENT_PROVIDER,
 )
@@ -58,6 +66,12 @@ _ALLOWED_TABLES = [
     "parametres_companyprofile",
     "roles_role",
     "ia_ocr_document",
+    # ── N86 — objets apres-vente / chantiers / parc / maintenance (LECTURE) ──
+    "installations_installation",
+    "installations_intervention",
+    "sav_equipement",
+    "sav_ticket",
+    "sav_contratmaintenance",
 ]
 
 # Tables qui possedent une colonne company_id → filtrage obligatoire
@@ -75,7 +89,23 @@ _TABLES_WITH_COMPANY_ID = frozenset([
     "authentication_customuser",
     "parametres_companyprofile",
     "ia_ocr_document",
+    "roles_role",  # ERR2 — porte bien company_id (modele Django roles.Role)
+    # ── N86 — toutes ces tables portent une colonne company_id ──
+    "installations_installation",
+    "installations_intervention",
+    "sav_equipement",
+    "sav_ticket",
+    "sav_contratmaintenance",
 ])
+
+# ERR2 — La table tenant elle-meme : son PK `id` EST le company_id. Une requete
+# qui la lit doit etre contrainte par `id = <company_id>` (pas `company_id`).
+_TENANT_TABLE = "authentication_company"
+
+# ERR2 — Ensemble FERME des tables qu'un appelant peut lire. Toute table de base
+# hors de cet ensemble est rejetee (fail-closed) : pas de fuite via une table
+# non scopee. = tables company_id + la table tenant.
+_TENANT_SCOPED_TABLES = frozenset(_TABLES_WITH_COMPANY_ID | {_TENANT_TABLE})
 
 # Descriptions en francais pour pgvector
 _TABLE_DESCRIPTIONS: dict[str, str] = {
@@ -112,6 +142,39 @@ _TABLE_DESCRIPTIONS: dict[str, str] = {
     "parametres_companyprofile": "Parametres de l'entreprise : logo, couleur, informations legales",
     "roles_role": "Roles et permissions des utilisateurs",
     "ia_ocr_document": "Documents OCR analyses : factures et bons de livraison scannes",
+    # ── N86 — apres-vente / chantiers / parc / maintenance (LECTURE seule) ──
+    "installations_installation": (
+        "Chantiers (installations solaires) : reference, client, devis, statut "
+        "(signe, materiel_commande, planifie, en_cours, installe, receptionne, "
+        "cloture, et statuts herites a_planifier/pose/mise_en_service), "
+        "puissance_installee_kwc, type_installation, dates cles "
+        "(date_pose_prevue, date_reception, date_cloture), parc_actif. "
+        "Utiliser statut='a_planifier' ou 'planifie' pour les chantiers a "
+        "planifier."
+    ),
+    "installations_intervention": (
+        "Interventions terrain rattachees a un chantier (installation_id) : "
+        "type_intervention (pose, raccordement, mise_en_service, controle, "
+        "depannage), statut, date_prevue, date_realisee, technicien. "
+        "Les visites de maintenance sont des interventions de type 'controle'."
+    ),
+    "sav_equipement": (
+        "Parc d'equipements installes : un appareil physique pose chez un "
+        "client (produit_id, numero_serie, installation_id, date_pose). "
+        "date_fin_garantie et date_fin_garantie_production donnent l'expiration "
+        "des garanties — utiliser date_fin_garantie pour savoir quels "
+        "equipements/garanties expirent sur une periode."
+    ),
+    "sav_ticket": (
+        "Tickets SAV (service apres-vente) : reference, client, installation, "
+        "equipement, type (correctif/preventif), statut (nouveau, planifie, "
+        "en_cours, resolu, cloture), priorite, date_ouverture, date_resolution."
+    ),
+    "sav_contratmaintenance": (
+        "Contrats de maintenance preventive : client, installation, "
+        "periodicite (mensuel/trimestriel/semestriel/annuel), date_debut, "
+        "derniere_visite, actif, date_renouvellement."
+    ),
 }
 
 # ── Prompt systeme ────────────────────────────────────────────────────────────
@@ -163,11 +226,261 @@ Factures → ventes_facture + ventes_lignefacture
   - statut_paiement : 'non_paye', 'partiel', 'paye'
   - montant_ttc = montant total TTC
 
+Chantiers (installations) → installations_installation
+  - statut : 'signe', 'materiel_commande', 'planifie', 'en_cours',
+    'installe', 'receptionne', 'cloture' (+ herites : 'a_planifier', 'pose',
+    'mise_en_service'). Chantiers a planifier = statut 'a_planifier' OU 'planifie'.
+  - client_id, devis_id, puissance_installee_kwc, type_installation
+  - dates : date_pose_prevue, date_reception, date_cloture
+
+Interventions terrain → installations_intervention
+  - installation_id = FK vers le chantier
+  - type_intervention : 'pose','raccordement','mise_en_service','controle','depannage'
+  - statut, date_prevue, date_realisee
+
+Parc d'equipements / garanties → sav_equipement
+  - produit_id, numero_serie, installation_id, date_pose
+  - date_fin_garantie / date_fin_garantie_production = expiration des garanties
+    (garanties qui expirent ce trimestre = date_fin_garantie dans la periode)
+
+Tickets SAV → sav_ticket
+  - statut : 'nouveau','planifie','en_cours','resolu','cloture'
+  - type : 'correctif' / 'preventif' ; priorite ; client_id ; installation_id
+
+Contrats de maintenance → sav_contratmaintenance
+  - periodicite, date_debut, derniere_visite, actif
+
 EXEMPLES DE REQUETES CORRECTES :
 - Stock actuel : SELECT nom, quantite FROM stock_produit ORDER BY quantite DESC
 - Ruptures : SELECT nom, quantite FROM stock_produit WHERE quantite <= seuil_alerte
 - CA factures : SELECT SUM(montant_ttc) FROM ventes_facture WHERE statut_paiement='paye'
+- Chantiers a planifier : SELECT reference FROM installations_installation \
+WHERE statut IN ('a_planifier','planifie')
+- Factures en retard : SELECT numero FROM ventes_facture \
+WHERE statut_paiement <> 'paye' AND date_echeance < CURRENT_DATE
+- Garanties qui expirent : SELECT numero_serie, date_fin_garantie \
+FROM sav_equipement WHERE date_fin_garantie BETWEEN CURRENT_DATE AND \
+(CURRENT_DATE + INTERVAL '3 months')
 """
+
+# Instruction ajoutee dynamiquement quand l'appelant n'a PAS la permission
+# 'prix_achat_voir' : interdit de divulguer prix d'achat / marge (CLAUDE.md —
+# le prix_achat est un indicateur generateur, jamais client-facing).
+_MARGIN_RESTRICTION = """\
+
+CONFIDENTIALITE — RESTRICTION PRIX D'ACHAT / MARGE :
+- INTERDIT ABSOLU de retourner, calculer ou mentionner le prix d'achat \
+(prix_achat) ou la marge. Si on te le demande, reponds que tu n'es pas \
+autorise a divulguer ces informations. N'inclus JAMAIS la colonne prix_achat \
+dans une requete ou une reponse.
+"""
+
+# ── Securite : validation single-SELECT + isolation tenant (parser) ───────────
+# ERR1/ERR2 — Le prompt LLM ne suffit pas. On valide CHAQUE requete au niveau du
+# CODE avant execution, avec un parser (sqlparse), et on ECHOUE FERME (rejet) sur
+# tout ce qu'on ne peut pas prouver sur. La requete doit etre EXACTEMENT une (1)
+# instruction SELECT en lecture seule (aucun INSERT/UPDATE/DELETE/DROP/ALTER/
+# CREATE/GRANT/TRUNCATE/COPY/CALL/... ni instructions multiples ni CTE-avec-DML),
+# et chaque table de base referencee doit etre dans l'allowlist scoped-tenant.
+
+
+class SQLSecurityError(Exception):
+    """Levee quand une requete ne peut PAS etre prouvee sure (echec ferme)."""
+
+
+# Mots-cles d'ecriture / DDL / administration interdits n'importe ou dans la
+# requete (le parser categorise deja DML/DDL, mais on double avec une liste de
+# tokens explicites pour les mots non categorises par sqlparse selon la version).
+_FORBIDDEN_KEYWORDS = frozenset({
+    "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE",
+    "GRANT", "REVOKE", "MERGE", "REPLACE", "UPSERT", "CALL", "DO", "EXECUTE",
+    "COPY", "VACUUM", "ANALYZE", "REINDEX", "CLUSTER", "REFRESH", "COMMENT",
+    "SET", "RESET", "LOCK", "PREPARE", "DEALLOCATE", "DECLARE", "FETCH",
+    "MOVE", "LISTEN", "NOTIFY", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT",
+    "INTO",  # SELECT ... INTO cree une table → interdit
+})
+
+
+def _strip_sql_comments(sql: str) -> str:
+    """Retire les commentaires SQL pour empecher de masquer un mot interdit
+    derriere `--` ou `/* */`. sqlparse fournit un formatter dedie."""
+    return sqlparse.format(sql or "", strip_comments=True).strip()
+
+
+def _enforce_single_select(sql: str) -> None:
+    """ERR1 — Rejette tout ce qui n'est pas EXACTEMENT une instruction SELECT en
+    lecture seule. Leve SQLSecurityError sinon (echec ferme).
+
+    Defenses :
+      - une seule instruction (rejet des `;` separant plusieurs requetes) ;
+      - le premier token significatif doit etre SELECT (ou WITH ... SELECT) ;
+      - aucun mot-cle d'ecriture/DDL/admin nulle part (y compris dans les CTE,
+        sous-requetes, UNION) ;
+      - aucune DML/DDL categorisee par le parser.
+    """
+    cleaned = _strip_sql_comments(sql)
+    if not cleaned:
+        raise SQLSecurityError("Requete vide.")
+
+    # Plusieurs instructions ? sqlparse les separe ; on n'en autorise qu'une.
+    statements = [s for s in sqlparse.parse(cleaned) if str(s).strip()]
+    if len(statements) != 1:
+        raise SQLSecurityError(
+            "Une seule instruction SELECT est autorisee (lecture seule)."
+        )
+
+    stmt = statements[0]
+
+    # Type global de l'instruction : doit etre SELECT (sqlparse.get_type()).
+    stmt_type = stmt.get_type()
+    if stmt_type != "SELECT":
+        raise SQLSecurityError(
+            f"Seules les requetes SELECT sont autorisees (recu: {stmt_type})."
+        )
+
+    # Premier token DML doit etre SELECT ; un eventuel WITH (CTE) doit aboutir a
+    # un SELECT et ne contenir aucune DML.
+    saw_select = False
+    for token in stmt.flatten():
+        ttype = token.ttype
+        value = token.value.upper()
+        if ttype in (DML,):
+            if value != "SELECT":
+                raise SQLSecurityError(
+                    f"Instruction de modification interdite: {value}."
+                )
+            saw_select = True
+        elif ttype in (DDL,):
+            raise SQLSecurityError(f"Instruction DDL interdite: {value}.")
+        elif ttype in Keyword and value in _FORBIDDEN_KEYWORDS:
+            raise SQLSecurityError(f"Mot-cle interdit: {value}.")
+        # Un `;` interne (hors fin) signale une seconde instruction masquee.
+        elif ttype in (Punctuation,) and token.value == ";":
+            # Tolere uniquement un `;` final unique (deja retire via rstrip plus
+            # haut dans le flux d'appel) — ici on refuse tout `;` restant.
+            raise SQLSecurityError("Instructions multiples interdites.")
+
+    if not saw_select:
+        raise SQLSecurityError("Aucune instruction SELECT detectee.")
+
+
+def _extract_base_tables(sql: str) -> set[str]:
+    """Extrait l'ensemble des noms de tables de base referencees (FROM/JOIN, y
+    compris dans les sous-requetes, CTE et UNION). Approche parser : on parcourt
+    l'arbre sqlparse et on collecte tout identifiant qui suit FROM/JOIN.
+
+    Fail-closed : on enleve les alias et schemas ; les noms inconnus declenchent
+    un rejet en amont (voir `_assert_tenant_safe`)."""
+    cleaned = _strip_sql_comments(sql)
+    tables: set[str] = set()
+
+    def _name_of(identifier) -> str | None:
+        # Identifier.get_real_name() ignore l'alias ; on retire un eventuel
+        # prefixe de schema (public.stock_produit → stock_produit).
+        real = None
+        try:
+            real = identifier.get_real_name()
+        except Exception:
+            real = None
+        if not real:
+            real = str(identifier).strip().strip('"').split()[0]
+        real = real.split(".")[-1]
+        return real.strip().strip('"').lower() or None
+
+    def _walk(token_list, expecting_table: bool = False):
+        for tok in token_list.tokens:
+            if tok.is_whitespace:
+                continue
+            # Mots-cles FROM / JOIN → le(s) prochain(s) identifiant(s) sont des tables.
+            if tok.ttype in Keyword and tok.value.upper() in (
+                "FROM", "JOIN", "INNER JOIN", "LEFT JOIN", "RIGHT JOIN",
+                "FULL JOIN", "CROSS JOIN", "LEFT OUTER JOIN",
+                "RIGHT OUTER JOIN", "FULL OUTER JOIN",
+            ) or (tok.ttype in Keyword and "JOIN" in tok.value.upper()):
+                expecting_table = True
+                continue
+            # Apres FROM/JOIN : un identifiant simple, une liste, ou une
+            # sous-requete entre parentheses.
+            if expecting_table:
+                if isinstance(tok, IdentifierList):
+                    for ident in tok.get_identifiers():
+                        if isinstance(ident, Parenthesis):
+                            _walk(ident)
+                        elif isinstance(ident, (Identifier, Function)):
+                            # Une sous-requete aliasee est une Parenthesis dans l'Identifier.
+                            paren = next(
+                                (t for t in ident.tokens
+                                 if isinstance(t, Parenthesis)), None)
+                            if paren is not None:
+                                _walk(paren)
+                            else:
+                                n = _name_of(ident)
+                                if n:
+                                    tables.add(n)
+                        else:
+                            n = _name_of(ident)
+                            if n:
+                                tables.add(n)
+                    expecting_table = False
+                    continue
+                if isinstance(tok, Parenthesis):
+                    _walk(tok)
+                    expecting_table = False
+                    continue
+                if isinstance(tok, (Identifier, Function)):
+                    paren = next(
+                        (t for t in tok.tokens
+                         if isinstance(t, Parenthesis)), None)
+                    if paren is not None:
+                        _walk(paren)
+                    else:
+                        n = _name_of(tok)
+                        if n:
+                            tables.add(n)
+                    expecting_table = False
+                    continue
+                # Token suivant inattendu apres FROM → on arrete d'attendre.
+                expecting_table = False
+            # Recurse dans tout conteneur (parentheses, sous-requetes, CTE).
+            if tok.is_group:
+                _walk(tok)
+
+    for stmt in sqlparse.parse(cleaned):
+        _walk(stmt)
+
+    # On retire les noms de CTE (alias internes definis par WITH) : ils ne sont
+    # pas des tables de base et ne portent pas company_id.
+    cte_names = _extract_cte_names(cleaned)
+    return {t for t in tables if t and t not in cte_names}
+
+
+def _extract_cte_names(sql: str) -> set[str]:
+    """Noms des CTE definis par WITH name AS (...) — a ne pas confondre avec des
+    tables de base."""
+    names: set[str] = set()
+    for stmt in sqlparse.parse(sql):
+        in_cte = False
+        for tok in stmt.tokens:
+            if tok.ttype is CTE or (tok.ttype in Keyword
+                                    and tok.value.upper() == "WITH"):
+                in_cte = True
+                continue
+            if not in_cte:
+                continue
+            if isinstance(tok, IdentifierList):
+                for ident in tok.get_identifiers():
+                    if isinstance(ident, Identifier):
+                        nm = ident.get_real_name()
+                        if nm:
+                            names.add(nm.lower())
+            elif isinstance(tok, Identifier):
+                nm = tok.get_real_name()
+                if nm:
+                    names.add(nm.lower())
+            if tok.ttype in DML:  # le SELECT principal commence → fin des CTE
+                break
+    return names
+
 
 # ── Securite : injection company_id ──────────────────────────────────────────
 
@@ -236,21 +549,211 @@ def _inject_company_filter(sql: str, company_id: int) -> str:
     return sql + f" WHERE company_id = {company_id}"
 
 
+# ── ERR2 — Isolation tenant prouvee (fail-closed) ─────────────────────────────
+# Strategie : on N'ESSAIE PAS de reecrire toutes les jointures (trop risque).
+# On REJETTE toute requete qu'on ne peut pas PROUVER correctement scopee :
+#   1. toute table de base hors de l'allowlist tenant -> rejet (pas de table non
+#      scopee comme authentication_company en lecture libre, ni table inconnue) ;
+#   2. la table tenant authentication_company doit etre contrainte par
+#      `id = <company_id>` ;
+#   3. CHAQUE table company_id referencee doit etre contrainte par un predicat
+#      `company_id = <company_id>` litteral. Pour le cas mono-table courant,
+#      `_inject_company_filter` l'ajoute ; des qu'il y a PLUSIEURS tables
+#      company_id (JOIN/UNION/sous-requete multi-tenant), on exige que CHAQUE
+#      occurrence soit explicitement filtree — sinon rejet. Robuste contre
+#      `OR 1=1` (le predicat reste un AND obligatoire ; voir _has_company_predicate).
+
+
+def _count_company_predicates(sql: str, company_id: int) -> int:
+    """Nombre d'occurrences d'un predicat `company_id = <company_id>` (eventuel
+    prefixe d'alias/table). On compte les occurrences pour exiger un predicat
+    par table company_id presente."""
+    pattern = rf"(?:\w+\.)?\bcompany_id\b\s*=\s*{company_id}\b"
+    return len(re.findall(pattern, sql, re.IGNORECASE))
+
+
+def _has_tenant_id_predicate(sql: str, company_id: int) -> bool:
+    """La table tenant est-elle contrainte par `id = <company_id>` (ou
+    `authentication_company.id = N`) ?"""
+    pattern = (
+        rf"(?:authentication_company\.|\b\w+\.)?\bid\b\s*=\s*{company_id}\b"
+    )
+    return bool(re.search(pattern, sql, re.IGNORECASE))
+
+
+def _references_other_tenant(sql: str, company_id: int) -> bool:
+    """True si un predicat `company_id = N` cible une AUTRE societe que celle de
+    l'appelant (defense contre une jointure/UNION vers un autre tenant avec un
+    `company_id = 8` code en dur)."""
+    for m in re.finditer(
+        r"(?:\w+\.)?\bcompany_id\b\s*=\s*(\d+)", sql, re.IGNORECASE
+    ):
+        if int(m.group(1)) != company_id:
+            return True
+    return False
+
+
+def _has_or_operator(sql: str) -> bool:
+    """True si un operateur logique OR apparait n'importe ou dans la requete.
+
+    Le OR est le principal vecteur de contournement du scoping (`... company_id=7
+    OR 1=1`, `OR true`, `OR company_id=8`). Comme on ne peut pas PROUVER qu'un OR
+    ne neutralise pas le filtre tenant, on echoue ferme et on le refuse. Les
+    questions metier utilisent `IN (...)` (vu dans les exemples du prompt) plutot
+    que des OR, donc l'impact fonctionnel est minimal."""
+    for stmt in sqlparse.parse(sql):
+        for tok in stmt.flatten():
+            if tok.ttype in Keyword and tok.value.upper() == "OR":
+                return True
+    return False
+
+
+def _assert_tenant_safe(sql: str, company_id: int) -> None:
+    """Leve SQLSecurityError si la requete n'est pas PROUVABLEMENT scopee au
+    tenant `company_id`. Fail-closed."""
+    if not company_id:
+        # Sans company_id on ne peut RIEN prouver -> refus total (ERR44 garantit
+        # deja un company_id non nul cote endpoint, ceci est une 2e barriere).
+        raise SQLSecurityError("Contexte societe absent : requete refusee.")
+
+    tables = _extract_base_tables(sql)
+    if not tables:
+        # Aucune table identifiee = on ne peut pas prouver le scoping -> refus.
+        raise SQLSecurityError(
+            "Impossible d'identifier les tables : requete refusee."
+        )
+
+    # 1. Toute table hors allowlist tenant -> rejet.
+    unknown = tables - _TENANT_SCOPED_TABLES
+    if unknown:
+        raise SQLSecurityError(
+            "Table non autorisee ou non scopee par societe : "
+            + ", ".join(sorted(unknown))
+        )
+
+    # 2. Aucun predicat ne doit viser une autre societe (JOIN/UNION cross-tenant).
+    if _references_other_tenant(sql, company_id):
+        raise SQLSecurityError(
+            "Reference a une autre societe detectee : requete refusee."
+        )
+
+    # 3. Aucun OR (vecteur de contournement du scoping) — echec ferme.
+    if _has_or_operator(sql):
+        raise SQLSecurityError(
+            "Operateur OR interdit (risque de contournement du filtrage)."
+        )
+
+    # 4. Table tenant -> doit etre contrainte par id = company_id.
+    if _TENANT_TABLE in tables and not _has_tenant_id_predicate(sql, company_id):
+        raise SQLSecurityError(
+            "La table societe doit etre filtree par son identifiant."
+        )
+
+    # 5. Chaque table company_id doit etre filtree. Cas mono-table : un predicat
+    # suffit (injecte si besoin). Multi-table : exiger un predicat par table.
+    company_tables = tables & _TABLES_WITH_COMPANY_ID
+    if company_tables:
+        n_predicates = _count_company_predicates(sql, company_id)
+        if n_predicates < len(company_tables):
+            raise SQLSecurityError(
+                "Chaque table doit etre filtree par company_id "
+                f"(attendu {len(company_tables)}, trouve {n_predicates})."
+            )
+
+
+def _validate_and_secure(sql: str, company_id: int) -> str:
+    """Point d'entree unique de securisation d'une requete generee :
+      ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
+      ERR2 : injecte le filtre company_id (cas mono-table) puis PROUVE que la
+             requete finale est correctement scopee, sinon rejet (fail-closed).
+    Leve SQLSecurityError en cas d'echec — l'appelant renvoie un refus francais
+    a l'agent sans jamais executer la requete."""
+    _enforce_single_select(sql)
+    secured = _inject_company_filter(sql, company_id)
+    _assert_tenant_safe(secured, company_id)
+    return secured
+
+
+# ── Securite : colonnes confidentielles (prix d'achat / marge) ────────────────
+# CLAUDE.md : `Produit.prix_achat` est un indicateur GENERATEUR, jamais
+# client-facing. Le chatbot stock ne doit JAMAIS restituer le prix d'achat ni la
+# marge. Le prompt _MARGIN_RESTRICTION le DECONSEILLE au LLM, mais ce n'est pas
+# une garantie ; ce garde DUR bloque toute requete qui touche ces colonnes quand
+# l'appelant n'a pas la permission `prix_achat_voir`. La valeur n'atteint donc
+# jamais l'agent ni la reponse, quoi que fasse le LLM.
+_FORBIDDEN_COLUMNS = (
+    "prix_achat",
+    "prix_achat_unitaire",
+    "prix_achat_ht",
+    "prix_revendeur",
+    "marge",
+)
+
+# Mot-cle isole (frontiere de mot) pour eviter les faux positifs.
+_FORBIDDEN_RE = re.compile(
+    r"\b(" + "|".join(re.escape(c) for c in _FORBIDDEN_COLUMNS) + r")\b",
+    re.IGNORECASE,
+)
+
+# Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
+# le LLM la verbalise alors proprement, sans jamais voir la donnee.
+_FORBIDDEN_TOOL_REPLY = (
+    "Erreur : acces refuse. La consultation du prix d'achat ou de la marge "
+    "n'est pas autorisee. Reformule la question sans ces informations."
+)
+
+# ERR1/ERR2 — Reponse renvoyee a l'agent quand la requete generee n'est pas une
+# lecture seule prouvee ou n'est pas correctement scopee par societe. La requete
+# n'est JAMAIS executee.
+_UNSAFE_QUERY_REPLY = (
+    "Erreur : requete refusee pour raison de securite. Seules des consultations "
+    "(SELECT) limitees aux donnees de votre entreprise sont autorisees. "
+    "Reformule ta question."
+)
+
+
+def _references_forbidden_column(sql: str) -> bool:
+    """True si la requete reference une colonne confidentielle (prix d'achat /
+    marge). Test purement lexical sur le SQL genere — defense en profondeur."""
+    return bool(_FORBIDDEN_RE.search(sql or ""))
+
+
 # ── Outil SQL securise ────────────────────────────────────────────────────────
 
 
-def _make_secure_query_tool(db, company_id: int):
+def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = False):
     """
-    Retourne un QuerySQLDataBaseTool qui injecte company_id avant execution.
+    Retourne un QuerySQLDataBaseTool qui :
+      1. BLOQUE toute requete touchant le prix d'achat / la marge quand
+         l'appelant n'a pas la permission `prix_achat_voir` (garde DUR, L17) ;
+      2. injecte company_id avant execution.
     Utilise une closure pour eviter les problemes Pydantic avec les attributs prives.
     """
     from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
 
     _cid = company_id  # capture par closure — immune aux reinitialisations Pydantic
+    _allow_price = allow_purchase_price
 
     class _SecureQueryTool(QuerySQLDataBaseTool):
         def _run(self, query: str, run_manager=None) -> str:
-            secured = _inject_company_filter(query, _cid)
+            # Garde confidentialite : refus AVANT toute execution SQL.
+            if not _allow_price and _references_forbidden_column(query):
+                logger.warning(
+                    "SECURITE: requete bloquee (prix_achat/marge non autorise). "
+                    "SQL: %s", (query or "")[:200],
+                )
+                return _FORBIDDEN_TOOL_REPLY
+            # ERR1/ERR2 — Validation au niveau code (single-SELECT en lecture
+            # seule + isolation tenant prouvee). Fail-closed : tout ce qui n'est
+            # pas prouve sur est refuse sans jamais etre execute.
+            try:
+                secured = _validate_and_secure(query, _cid)
+            except SQLSecurityError as exc:
+                logger.warning(
+                    "SECURITE: requete refusee (%s). SQL: %s",
+                    exc, (query or "")[:200],
+                )
+                return _UNSAFE_QUERY_REPLY
             return super()._run(secured, run_manager=run_manager)
 
     return _SecureQueryTool(db=db)
@@ -260,16 +763,22 @@ def _make_secure_query_tool(db, company_id: int):
 
 
 class _SQLCapture(BaseCallbackHandler):
-    """Intercepte les appels a sql_db_query pour capturer le SQL final."""
+    """Intercepte les appels d'outils : capture le SQL final et signale si un
+    outil d'ACTION (ecriture) a ete utilise."""
 
-    def __init__(self) -> None:
+    def __init__(self, action_tool_names: set[str] | None = None) -> None:
         self.queries: list[str] = []
+        self._action_names = action_tool_names or set()
+        self.action_used = False
 
     def on_tool_start(
         self, serialized: dict, input_str: str, **kwargs: Any
     ) -> None:
-        if serialized.get("name") == "sql_db_query":
+        name = serialized.get("name")
+        if name == "sql_db_query":
             self.queries.append(str(input_str))
+        elif name in self._action_names:
+            self.action_used = True
 
 
 # ── Service ───────────────────────────────────────────────────────────────────
@@ -426,7 +935,8 @@ class SQLAgentService:
     # ── Methode principale ────────────────────────────────────────────────
 
     def _run_agent(
-        self, question: str, company_id: int, user_id: int = 0
+        self, question: str, company_id: int, user_id: int = 0,
+        action_ctx: "ActionContext | None" = None,
     ) -> dict[str, Any]:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread)."""
         from langchain_community.utilities import SQLDatabase
@@ -434,6 +944,9 @@ class SQLAgentService:
         from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_core.messages import HumanMessage, AIMessage
+        from app.services.action_tools import (
+            actions_available, build_action_tools,
+        )
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges seulement)
         # On limite volontairement pour eviter que d'anciens resultats incorrects
@@ -448,39 +961,80 @@ class SQLAgentService:
             elif msg.get("role") == "agent":
                 lc_history.append(AIMessage(content=msg["content"]))
 
-        # 2. Tables pertinentes via pgvector
-        relevant_tables = self._get_relevant_tables(question)
+        # 2. Tables pertinentes via pgvector. ERR43 — on RESTREINT a l'allowlist
+        # company-scoped : aucune table hors allowlist n'est jamais exposee aux
+        # outils sql_db_list_tables / sql_db_schema.
+        relevant_tables = [
+            t for t in self._get_relevant_tables(question)
+            if t in _ALLOWED_TABLES
+        ] or list(_ALLOWED_TABLES)
 
-        # 2. SQLDatabase filtre
+        # 2. SQLDatabase filtre.
+        # ERR3 — connexion DEDIEE LECTURE SEULE (SQL_AGENT_DATABASE_URL) : l'agent
+        # ne se connecte jamais avec le role owner. Retombe sur DATABASE_URL si
+        # SQL_AGENT_DB_USER n'est pas defini (non-cassant).
+        # ERR43 — sample_rows_in_table_info=0 : aucune ligne reelle n'est injectee
+        # dans le contexte du LLM (sinon fuite incidente inter-tenant).
         db = SQLDatabase.from_uri(
-            DATABASE_URL,
+            SQL_AGENT_DATABASE_URL,
             include_tables=relevant_tables,
-            sample_rows_in_table_info=2,
+            sample_rows_in_table_info=0,
         )
 
         # 3. LLM
         llm = self._build_llm()
 
+        # L17 — autorisation de voir le prix d'achat / la marge : UNIQUEMENT les
+        # appelants disposant de la permission `prix_achat_voir` (ou superuser).
+        # Sinon le garde DUR de l'outil SQL bloque toute requete confidentielle.
+        allow_price = bool(
+            action_ctx is not None
+            and (
+                action_ctx.is_superuser
+                or "prix_achat_voir" in action_ctx.permissions
+            )
+        )
+
         # 4. Toolkit → remplacement de l'outil sql_db_query par la version securisee
         # On compare par nom d'outil (fiable) et non par classe (nom instable selon version)
         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
         tools = [
-            _make_secure_query_tool(db, company_id)
+            _make_secure_query_tool(db, company_id, allow_price)
             if t.name == "sql_db_query"
             else t
             for t in toolkit.get_tools()
         ]
 
-        # 5. Prompt avec historique
+        # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
+        # a un droit d'ecriture et qu'une URL Django interne est configuree. Un
+        # role lecture seule n'en recoit aucun. Django reste l'autorite finale.
+        # ERR19 — Separation stricte des chemins : le chemin SQL (sql_db_query)
+        # est PUREMENT lecture seule (garde single-SELECT ERR1 — toute DML
+        # injectee via le prompt est refusee AVANT execution) ; les outils
+        # d'action n'executent JAMAIS de SQL, ils relaient un appel REST a Django
+        # qui re-applique scope societe + permissions. Une injection de prompt ne
+        # peut donc ni ecrire en base via SQL, ni atteindre un outil d'action si
+        # l'appelant n'a pas deja le droit d'ecriture cote serveur.
+        action_tool_names: set[str] = set()
+        if actions_available(action_ctx):
+            action_tools = build_action_tools(action_ctx)
+            tools.extend(action_tools)
+            action_tool_names = {t.name for t in action_tools}
+
+        # 5. Prompt avec historique (+ restriction marge si non autorise).
+        # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.
+        system_prompt = _AGENT_PREFIX
+        if not allow_price:
+            system_prompt = system_prompt + _MARGIN_RESTRICTION
         prompt = ChatPromptTemplate.from_messages([
-            ("system", _AGENT_PREFIX),
+            ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
 
-        # 6. Agent + capture SQL
-        capture = _SQLCapture()
+        # 6. Agent + capture SQL/actions
+        capture = _SQLCapture(action_tool_names)
         agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
         executor = AgentExecutor(
             agent=agent,
@@ -500,10 +1054,20 @@ class SQLAgentService:
         # Sauvegarde l'echange dans Redis
         self._save_history(user_id, question, answer)
 
+        # ERR84 — le SQL genere (avec les vrais noms de tables) reste cote
+        # serveur (log de debug uniquement) et n'est JAMAIS renvoye au client :
+        # divulgation de schema. La reponse client porte `sql_query=""`.
+        final_sql = capture.queries[-1] if capture.queries else ""
+        if final_sql:
+            logger.debug("SQL agent — requete finale (serveur): %s", final_sql)
+
         return {
             "answer": answer,
-            "sql_query": capture.queries[-1] if capture.queries else "",
+            "sql_query": "",
             "data": None,
+            # N86 — True si l'agent a effectue une action d'ecriture (le
+            # frontend affiche alors un badge « Action »).
+            "action_performed": capture.action_used,
         }
 
     async def query(
@@ -511,10 +1075,12 @@ class SQLAgentService:
         question: str,
         user_id: int | None = None,
         company_id: int | None = None,
+        action_ctx: "ActionContext | None" = None,
     ) -> dict[str, Any]:
         try:
             return await asyncio.to_thread(
-                self._run_agent, question, company_id or 0, user_id or 0
+                self._run_agent, question, company_id or 0, user_id or 0,
+                action_ctx,
             )
         except RuntimeError as exc:
             return {"answer": str(exc), "sql_query": "", "data": None}

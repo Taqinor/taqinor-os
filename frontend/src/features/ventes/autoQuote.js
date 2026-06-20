@@ -7,11 +7,20 @@
    étude d'autoconsommation). Lit le lead directement (pas d'état React). */
 import { createDevis, addLigneDevis } from './store/ventesSlice'
 import {
-  estimerPanneaux, estimerMois, htFromTtc, optionTotalsTTC,
+  estimerPanneaux, estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
   autoFillLines, computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, DAY_USAGE_DEFAULTS,
 } from './solar'
+
+// ERR107 — Cohérence d'arrondi écran : une ligne est ENREGISTRÉE en HT 2 déc.
+// (htFromTtc), donc le TTC RÉAFFICHÉ d'une ligne est ttcFromHt(htFromTtc(ttc)),
+// qui peut différer du TTC brut saisi d'1 MAD. Pour que le total d'étude affiché
+// à l'écran corresponde exactement à la somme des lignes telles que l'écran les
+// recompose, on aligne d'abord chaque prix_unit_ttc sur ce même aller-retour.
+// (Écran uniquement — le PDF backend recalcule de façon autoritaire.)
+const screenTtc = (r) => ttcFromHt(htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20), r.taux_tva ?? 20)
+const roundTripRowsTtc = (rows) => rows.map((r) => ({ ...r, prix_unit_ttc: screenTtc(r) }))
 
 export const LEAD_TYPE_TO_MODE = {
   residentiel: 'residentiel', commercial: 'industriel',
@@ -47,11 +56,20 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  * @param {object[]} produits     Catalogue stock
  * @param {string}   discountStr  Remise globale en %
  * @param {function} dispatch     Redux dispatch
+ * @param {number}   pumpHours    Heures de pompage/jour (réglage entreprise
+ *                                agricole_pump_hours) ; défaut historique sinon
+ * @param {function} onEtude      Rappel facultatif recevant les chiffres clés de
+ *                                l'étude industrielle (autoconso/éco/payback)
+ *                                AVANT enregistrement — pour les afficher
  */
-export async function createAutoQuote({ lead, produits, discountStr, dispatch, quoteLogic }) {
+export async function createAutoQuote({ lead, produits, discountStr, dispatch,
+                                        quoteLogic, pumpHours, onEtude }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const perTranche = (Number(quoteLogic?.panneauxParTranche) > 0) ? Number(quoteLogic.panneauxParTranche) : 8
+  // Heures de pompage effectives : réglage entreprise (agricole_pump_hours) si
+  // fourni, sinon le défaut marché historique — comme le générateur manuel.
+  const heuresPompage = (Number(pumpHours) > 0) ? Number(pumpHours) : HEURES_POMPAGE_DEFAUT
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   const extra = {}
   let rows
@@ -62,7 +80,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch, q
       structureType: 'acier',
       hmt: lead.pompe_hmt_m != null ? String(lead.pompe_hmt_m) : '',
       debit: lead.pompe_debit_m3h != null ? String(lead.pompe_debit_m3h) : '',
-      heures: String(HEURES_POMPAGE_DEFAUT),
+      heures: String(heuresPompage),
     }
     rows = autoFillPompage(produits, opts)
     if (!rows.some(r => r.produit && parseFloat(r.quantite) > 0)) {
@@ -94,9 +112,18 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch, q
         ? computeEtudeIndustrielle({
             kwp: kwpAuto, consoMensuelleKwh: conso,
             dayUsagePct: DAY_USAGE_DEFAULTS['Industrielle'],
-            totalTtc: optionTotalsTTC(rows, discountStr || '0').totalSans,
+            totalTtc: optionTotalsTTC(roundTripRowsTtc(rows), discountStr || '0').totalSans,
           })
         : null
+      // Surface les chiffres clés (taux d'autoconsommation, économies, payback)
+      // AVANT enregistrement, pour que l'appelant puisse les afficher.
+      if (extra.etude_params && typeof onEtude === 'function') {
+        onEtude({
+          taux_autoconso: extra.etude_params.taux_autoconso,
+          economies_annuelles: extra.etude_params.economies_annuelles,
+          payback: extra.etude_params.payback,
+        })
+      }
     }
   }
   const devis = await dispatch(createDevis({

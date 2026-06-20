@@ -22,9 +22,11 @@ describe('StickyCta — invariants gelés (les liens et la logique d’affichage
   });
 
   it('garde le lien Diagnostic gratuit vers #simulateur', () => {
-    expect(cta).toContain('Diagnostic gratuit');
+    // W67 — libellé et lien localisés (FR inchangé : t('cta.stickyDiag') =
+    // « Diagnostic gratuit », lien vers /contact#simulateur en FR).
+    expect(cta).toContain("t('cta.stickyDiag')");
     expect(cta).toContain('id="sticky-diag"');
-    expect(cta).toContain('/contact#simulateur');
+    expect(cta).toContain("localizeNavHref('/contact', locale) + '#simulateur'");
     // Le script bascule vers l’ancre locale quand le formulaire est sur la page.
     expect(cta).toContain("href = '#simulateur'");
   });

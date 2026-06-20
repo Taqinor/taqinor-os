@@ -14,9 +14,15 @@ export function toNumber(value) {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   // Accepte "1 234,56", "1234.56", "1.234,56", "12 %" (incl. espaces insécables)
-  const cleaned = String(value)
-    .replace(/\s|%|MAD|DH|dh/g, '')
-    .replace(/\.(?=\d{3}(\D|$))/g, '') // points de milliers
+  const stripped = String(value).replace(/\s|%|MAD|DH|dh/g, '')
+  // ERR106 — Un point n'est un séparateur de milliers QUE dans une notation fr
+  // où la virgule joue le rôle de séparateur décimal (ex. "1.234,56"). Sans
+  // virgule, un point est un vrai point décimal : "1.234" reste 1,234 (et ne
+  // devient pas 1234). On ne retire donc les points de milliers que si une
+  // virgule décimale est présente.
+  const cleaned = (stripped.includes(',')
+    ? stripped.replace(/\.(?=\d{3}(\D|$))/g, '') // points de milliers (fr)
+    : stripped)
     .replace(',', '.')
   const n = Number(cleaned)
   return Number.isFinite(n) ? n : null
@@ -138,7 +144,28 @@ export function canonicalPhoneMA(value) {
   return String(value).replace(/[^\d+]/g, '')
 }
 
+/**
+ * Normalise un numéro marocain au format wa.me « 212XXXXXXXXX », ou null si
+ * vide/inexploitable. Miroir exact de `normalize_ma_phone`
+ * (apps/ventes/utils/phone.py) : sert à VALIDER côté front avant d'appeler les
+ * endpoints WhatsApp (un numéro non normalisable → bouton désactivé, pas
+ * d'aller-retour 400).
+ */
+export function normalizeMaPhone(value) {
+  if (!value) return null
+  let digits = String(value).replace(/\D/g, '') // ne garde que les chiffres
+  if (!digits) return null
+  if (digits.startsWith('00')) digits = digits.slice(2) // préfixe international 00
+  let local
+  if (digits.startsWith('212')) local = digits.slice(3)
+  else if (digits.startsWith('0')) local = digits.slice(1)
+  else local = digits
+  local = local.replace(/^0+/, '')
+  if (!local) return null
+  return '212' + local
+}
+
 export default {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
 }

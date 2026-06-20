@@ -210,6 +210,12 @@ const chipClass =
                 class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
                 Effacer
               </button>
+              <!-- Plusieurs zones — fige la zone tracée et démarre un nouveau tracé.
+                   Activé seulement quand la zone active est fermée (cf. script, null-gardé). -->
+              <button type="button" id="rp9-add-area" disabled
+                class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:border-white/25 disabled:bg-transparent disabled:text-lune-faint disabled:opacity-50">
+                + Ajouter une zone
+              </button>
               <!-- Surface tracée — emplacement réservé (hauteur constante, zéro CLS) -->
               <p id="rp9-area" class="ml-auto min-w-0 text-sm text-lune-faint" aria-live="polite">
                 <span>Surface du toit&nbsp;: </span><span id="rp9-area-value" class="fig text-white">—</span>
@@ -392,6 +398,72 @@ const chipClass =
               </div>
             </div>
 
+            <!-- W69 — « PERSONNALISER LA DISPOSITION » : COLLÉE AU PLAN (juste sous la carte
+                 3D), repliée par défaut et dépliable. Déplacer/ajouter/retirer des panneaux sur
+                 la LATTICE valide (cellules déjà validées par l'optimiseur). Le PLAN TACTILE
+                 (touche-panneau → touche-emplacement) est la méthode fiable ; le glissé sur la
+                 3D reste un bonus. Masquée tant qu'aucun plan n'existe. -->
+            <div id="rp9-layout-window" hidden class="border-t border-white/10 bg-nuit-800 p-4">
+              <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+                <p class="tech-label text-brass-300">Personnaliser la disposition</p>
+                <button type="button" id="rp9-layout-toggle" aria-pressed="false"
+                  class="border border-brass-400 bg-brass-400/10 px-4 py-2 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                  Déplacer les panneaux
+                </button>
+              </div>
+              <p class="mt-2 text-xs leading-relaxed text-lune-faint">
+                Activez, puis dans le <strong class="text-lune-soft">plan tactile</strong> ci-dessous
+                touchez un panneau (bleu) puis un emplacement libre (vert) pour l'y déplacer — ou
+                utilisez <strong class="text-lune-soft">+ / −</strong>. Vous pouvez aussi glisser un
+                panneau directement sur la 3D. Les panneaux se calent toujours sur des emplacements
+                valides (jamais hors toit, hors retrait ou sur un obstacle) ; le nombre, la puissance,
+                la production et les économies se recalculent.
+              </p>
+
+              <div id="rp9-layout-panel" hidden class="mt-5 space-y-5">
+                <dl class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+                  <div>
+                    <dd id="rp9-layout-count" class="fig text-lg text-white sm:text-xl">—</dd>
+                    <dt class="tech-label mt-0.5 text-lune-faint">Panneaux posés</dt>
+                  </div>
+                  <div>
+                    <dd id="rp9-layout-kwc" class="fig text-lg text-white sm:text-xl">—</dd>
+                    <dt class="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+                  </div>
+                  <div>
+                    <dd id="rp9-layout-free" class="fig text-lg text-white sm:text-xl">—</dd>
+                    <dt class="tech-label mt-0.5 text-lune-faint">Emplacements libres</dt>
+                  </div>
+                  <div>
+                    <dd id="rp9-layout-cover" class="fig text-lg text-brass-300 sm:text-xl">—</dd>
+                    <dt class="tech-label mt-0.5 text-lune-faint">Couverture besoin</dt>
+                  </div>
+                </dl>
+
+                <!-- Boutons +/− (touch + mouvement réduit, sans glissé fin) -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="tech-label text-lune-faint">Ajouter / retirer</span>
+                  <button type="button" id="rp9-layout-minus" aria-label="Retirer un panneau"
+                    class="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">−</button>
+                  <button type="button" id="rp9-layout-plus" aria-label="Ajouter un panneau"
+                    class="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">+</button>
+                  <button type="button" id="rp9-layout-reset"
+                    class="ml-auto border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                    ↺ Réinitialiser la disposition optimale
+                  </button>
+                </div>
+
+                <!-- Repli tactile : tap-sélection d'un panneau → tap-cible d'un emplacement vide.
+                     Une mini-carte des cellules (occupées / libres) rend l'interaction code-vérifiable
+                     et fonctionne sans glissé fin ni mouvement. -->
+                <div>
+                  <p class="tech-label text-lune-faint">Plan des emplacements (tactile) — touchez un panneau, puis un emplacement libre</p>
+                  <div id="rp9-layout-grid" class="rp9-layout-grid mt-3" role="group" aria-label="Plan des emplacements de panneaux"></div>
+                  <p id="rp9-layout-note" class="mt-2 min-h-[1.25rem] text-xs leading-relaxed text-lune-soft" aria-live="polite"></p>
+                </div>
+              </div>
+            </div>
+
             <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
               Indiquez votre facture, puis cherchez votre adresse pour commencer.
             </p>
@@ -455,6 +527,44 @@ const chipClass =
           </div>
         </div>
 
+        <!-- ZONES — « Plusieurs zones de panneaux ». Chaque zone est dimensionnée par
+             l'optimiseur existant (best-fit) puis ajustable au panneau près ; le total
+             SOMME panneaux / kWc / production / économies sur TOUTES les zones. La 3D et
+             les sous-panneaux (production, conso, disposition) restent liés à la zone
+             ACTIVE. Affichée dès qu'une zone est calculée (script bascule .hidden). -->
+        <div id="rp9-areas-window" hidden class="cine-card mt-6 p-5 sm:p-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="tech-label rule-brass text-brass-300">Total — toutes les zones</p>
+            <p class="text-xs text-lune-faint">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+            <div>
+              <dd id="rp9-areas-total-panels" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Panneaux</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-kwc" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-prod" class="fig text-lg text-white sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Production estimée</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-savings" class="fig text-lg text-brass-300 sm:text-xl">—</dd>
+              <dt class="tech-label mt-0.5 text-lune-faint">Économies estimées</dt>
+            </div>
+          </dl>
+          <!-- Liste des zones (script-rendu) : libellé, panneaux, kWc, « Voir » + suppr.
+               La zone active est mise en évidence. -->
+          <ul id="rp9-areas-list" class="mt-5 space-y-2"></ul>
+          <p class="mt-3 text-xs leading-relaxed text-lune-faint">
+            « + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même
+            facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ;
+            les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
+          </p>
+        </div>
+
         <!-- V4 — OPTIMUM CALCULÉ : le vrai gagnant de la grille fine (production
              PVGIS au GPS exact). Sa PROPRE ligne quand ce n'est pas une config
              standard ; badgée « Recommandé », avec la raison et la source. -->
@@ -479,45 +589,6 @@ const chipClass =
             class="mt-4 border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
             Appliquer cet optimum
           </button>
-        </div>
-
-        <!-- MATRICE complète balayée (FIX 2 V6) : triable, filtrable, optimum badgé -->
-        <div id="rp9-compare-wrap" hidden class="cine-card mt-6 p-0">
-          <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-            <p class="tech-label text-brass-300">Matrice complète des configurations sur CE toit — optimum réel badgé « Recommandé »</p>
-            <label class="flex items-center gap-2 text-xs text-lune-faint">
-              Filtrer
-              <select id="rp9-matrix-filter" class="rp9-filter border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-brass-400">
-                <option value="all">Toutes les orientations</option>
-              </select>
-            </label>
-          </div>
-          <div class="mt-3 overflow-x-auto">
-            <table class="w-full min-w-[640px] text-left text-sm">
-              <thead class="text-lune-faint">
-                <tr class="border-b border-white/10">
-                  <th class="px-5 py-3 font-semibold">Configuration</th>
-                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
-                    <button type="button" data-rp9-sort="placedCount" class="rp9-sort">Panneaux<span class="rp9-sort-arrow"></span></button>
-                  </th>
-                  <th class="px-5 py-3 text-right font-semibold">kWc</th>
-                  <th class="px-5 py-3 text-right font-semibold" aria-sort="descending">
-                    <button type="button" data-rp9-sort="annualKwh" class="rp9-sort">kWh/an<span class="rp9-sort-arrow"></span></button>
-                  </th>
-                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
-                    <button type="button" data-rp9-sort="pctOfTarget" class="rp9-sort">% facture<span class="rp9-sort-arrow"></span></button>
-                  </th>
-                  <th class="px-5 py-3 text-right font-semibold">Économies/an</th>
-                </tr>
-              </thead>
-              <tbody id="rp9-compare" class="text-lune-soft"></tbody>
-            </table>
-          </div>
-          <p class="px-5 pb-5 pt-2 text-xs text-lune-faint">
-            Balayage dense (inclinaison 0→35°, azimut sud ±45° + Est-Ouest, portrait/paysage) noté
-            sur la production PVGIS au GPS exact. Triez par colonne, filtrez par orientation, cliquez
-            une ligne pour la voir en 3D. Chiffres face avant (monoface), pas un devis.
-          </p>
         </div>
 
         <!-- W50 — FENÊTRE « PRODUCTION ESTIMÉE » : Année / Mois / Jour. Reflète le plan
@@ -578,6 +649,171 @@ const chipClass =
             (moyenne du mois) ; cyclez les jours pour une date précise. Les économies sont
             <strong class="text-lune-soft">plafonnées</strong> à l'autoconsommation réellement alignée — jamais
             production × tarif. Chiffres indicatifs, pas un devis.
+          </p>
+        </div>
+
+        <!-- W68 — « AFFINER MA CONSOMMATION » : courbe horaire de conso éditable (glissé
+             + saisie numérique) ET calculateur d'appareils, qui REDÉFINISSENT
+             l'autoconsommation, les économies (plafonnées billMAD), le dimensionnement
+             et la batterie. Masqué tant qu'aucun plan de production n'est calculé.
+             Espace réservé (hauteur fixe du graphe) → zéro saut de mise en page. -->
+        <div id="rp9-cons-window" hidden class="cine-card mt-6 p-5 sm:p-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+            <p class="tech-label rule-brass text-brass-300">Affiner ma consommation</p>
+            <button type="button" id="rp9-cons-toggle" aria-expanded="false"
+              class="border border-brass-400 bg-brass-400/10 px-4 py-2 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+              Affiner ma consommation
+            </button>
+          </div>
+          <p class="mt-2 text-xs leading-relaxed text-lune-faint">
+            Par défaut votre consommation suit une courbe type calée sur votre facture.
+            Affinez-la pour voir l'<strong class="text-lune-soft">autoconsommation</strong>, les
+            <strong class="text-lune-soft">économies</strong> (toujours plafonnées à la facture) et la
+            <strong class="text-lune-soft">batterie</strong> recommandée bouger en direct.
+            Un appareil <strong class="text-lune-soft">déjà compris</strong> ne fait que redessiner la
+            répartition (total inchangé) ; un appareil <strong class="text-lune-soft">en plus</strong>
+            (clim ou voiture neuve) augmente le total, donc le nombre de panneaux et la batterie.
+          </p>
+
+          <div id="rp9-cons-panel" hidden class="mt-5 space-y-6">
+            <!-- Bandeau de synthèse : total conso, autoconso, économies, batterie -->
+            <dl class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+              <div>
+                <dd id="rp9-cons-total" class="fig text-lg text-white sm:text-xl">—</dd>
+                <dt class="tech-label mt-0.5 text-lune-faint">Conso/jour</dt>
+              </div>
+              <div>
+                <dd id="rp9-cons-self" class="fig text-lg text-brass-300 sm:text-xl">—</dd>
+                <dt class="tech-label mt-0.5 text-lune-faint">Autoconsommation</dt>
+              </div>
+              <div>
+                <dd id="rp9-cons-savings" class="fig text-lg text-brass-300 sm:text-xl">—</dd>
+                <dt class="tech-label mt-0.5 text-lune-faint">Économies/an</dt>
+              </div>
+              <div>
+                <dd id="rp9-cons-batt" class="fig text-lg text-white sm:text-xl">—</dd>
+                <dt class="tech-label mt-0.5 text-lune-faint">Batteries</dt>
+              </div>
+            </dl>
+
+            <!-- (A) Édition à la main : barres glissables + saisie numérique -->
+            <div>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="tech-label text-lune-faint">Courbe horaire (kWh) — glissez les barres ou tapez les valeurs</p>
+                <button type="button" id="rp9-cons-recal"
+                  class="border border-white/25 px-3 py-2 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                  Recaler sur ma facture
+                </button>
+              </div>
+              <!-- Graphe SVG de conso (barres glissables) — superpose la production (or pâle).
+                   Hauteur RÉSERVÉE → zéro CLS. -->
+              <div class="rp9-cons-graph-wrap mt-3">
+                <svg id="rp9-cons-graph" viewBox="0 0 480 160" preserveAspectRatio="none"
+                  class="rp9-cons-graph" role="img" aria-label="Courbe de consommation horaire éditable"></svg>
+              </div>
+              <!-- Saisie numérique des 24 heures (obligatoire : mobile + mouvement réduit) -->
+              <details class="mt-3">
+                <summary class="cursor-pointer text-xs font-semibold text-brass-300">Saisie numérique des 24 heures</summary>
+                <div id="rp9-cons-inputs" class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6"></div>
+              </details>
+            </div>
+
+            <!-- (B) Calculateur d'appareils -->
+            <div class="border-t border-white/10 pt-5">
+              <p class="tech-label text-lune-faint">Ajouter un appareil</p>
+              <div class="mt-3 flex flex-wrap items-end gap-3">
+                <label class="block text-sm text-lune-soft">
+                  Appareil
+                  <select id="rp9-appl-kind"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-brass-400"></select>
+                </label>
+                <button type="button" id="rp9-appl-add"
+                  class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                  + Ajouter
+                </button>
+              </div>
+              <!-- Saisie spéciale climatisation (BTU ÷ EER) — visible quand « Climatisation » choisie -->
+              <div id="rp9-appl-ac" hidden class="mt-3 grid grid-cols-2 gap-3 border border-white/10 bg-nuit-900/40 p-3 sm:grid-cols-4">
+                <label class="block text-xs text-lune-soft">
+                  Puissance (BTU)
+                  <select id="rp9-ac-btu" class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400"></select>
+                </label>
+                <label class="block text-xs text-lune-soft">
+                  EER
+                  <input id="rp9-ac-eer" type="text" inputmode="decimal" value="9"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400" />
+                </label>
+                <label class="block text-xs text-lune-soft">
+                  Heures/jour
+                  <input id="rp9-ac-hours" type="text" inputmode="decimal" value="6"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400" />
+                </label>
+                <p id="rp9-ac-watts" class="self-end text-xs text-lune-faint">≈ — W · — kWh/j</p>
+              </div>
+              <!-- Saisie spéciale voiture électrique (kW × h OU km/jour) -->
+              <div id="rp9-appl-ev" hidden class="mt-3 grid grid-cols-2 gap-3 border border-white/10 bg-nuit-900/40 p-3 sm:grid-cols-4">
+                <label class="block text-xs text-lune-soft">
+                  Chargeur (kW)
+                  <select id="rp9-ev-kw" class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400"></select>
+                </label>
+                <label class="block text-xs text-lune-soft">
+                  Heures/jour
+                  <input id="rp9-ev-hours" type="text" inputmode="decimal" value="3"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400" />
+                </label>
+                <label class="block text-xs text-lune-soft">
+                  ou km/jour
+                  <input id="rp9-ev-km" type="text" inputmode="decimal" placeholder="ex. 50"
+                    class="mt-1 block w-full border border-white/15 bg-white/5 px-2 py-2 text-sm text-white outline-none focus:border-brass-400" />
+                </label>
+                <p id="rp9-ev-note" class="self-end text-xs text-lune-faint">Recharger en plein soleil ↑ l'autoconsommation.</p>
+              </div>
+              <p id="rp9-appl-note" class="mt-2 min-h-[1rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
+
+              <!-- Liste des appareils ajoutés (chacun : créneau + « en plus » / « déjà compris » + suppr.) -->
+              <ul id="rp9-appl-list" class="mt-4 space-y-2"></ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- MATRICE complète balayée (FIX 2 V6) : triable, filtrable, optimum badgé.
+             Placée EN BAS (sous la recommandation, la production, la conso et la
+             personnalisation) — c'est une référence détaillée, pas l'info principale. -->
+        <div id="rp9-compare-wrap" hidden class="cine-card mt-6 p-0">
+          <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
+            <p class="tech-label text-brass-300">Matrice complète des configurations sur CE toit — optimum réel badgé « Recommandé »</p>
+            <label class="flex items-center gap-2 text-xs text-lune-faint">
+              Filtrer
+              <select id="rp9-matrix-filter" class="rp9-filter border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-brass-400">
+                <option value="all">Toutes les orientations</option>
+              </select>
+            </label>
+          </div>
+          <div class="mt-3 overflow-x-auto">
+            <table class="w-full min-w-[640px] text-left text-sm">
+              <thead class="text-lune-faint">
+                <tr class="border-b border-white/10">
+                  <th class="px-5 py-3 font-semibold">Configuration</th>
+                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
+                    <button type="button" data-rp9-sort="placedCount" class="rp9-sort">Panneaux<span class="rp9-sort-arrow"></span></button>
+                  </th>
+                  <th class="px-5 py-3 text-right font-semibold">kWc</th>
+                  <th class="px-5 py-3 text-right font-semibold" aria-sort="descending">
+                    <button type="button" data-rp9-sort="annualKwh" class="rp9-sort">kWh/an<span class="rp9-sort-arrow"></span></button>
+                  </th>
+                  <th class="px-5 py-3 text-right font-semibold" aria-sort="none">
+                    <button type="button" data-rp9-sort="pctOfTarget" class="rp9-sort">% facture<span class="rp9-sort-arrow"></span></button>
+                  </th>
+                  <th class="px-5 py-3 text-right font-semibold">Économies/an</th>
+                </tr>
+              </thead>
+              <tbody id="rp9-compare" class="text-lune-soft"></tbody>
+            </table>
+          </div>
+          <p class="px-5 pb-5 pt-2 text-xs text-lune-faint">
+            Balayage dense (inclinaison 0→35°, azimut sud ±45° + Est-Ouest, portrait/paysage) noté
+            sur la production PVGIS au GPS exact. Triez par colonne, filtrez par orientation, cliquez
+            une ligne pour la voir en 3D. Chiffres face avant (monoface), pas un devis.
           </p>
         </div>
 
@@ -653,6 +889,24 @@ const chipClass =
   .rp9-sort-arrow { font-variant-numeric: tabular-nums; }
   .rp9-filter { border-radius: 0; }
 
+  /* Listes déroulantes (<select>) : sur fond sombre, le menu natif s'affichait en
+     blanc sur blanc — illisible tant qu'une ligne n'était pas survolée. `color-scheme:
+     dark` rend le menu natif sombre (Chrome/Firefox/Edge/Safari) ; les couleurs d'option
+     explicites sont un repli pour les navigateurs qui ignorent color-scheme. */
+  #rp9-matrix-filter,
+  #rp9-appl-kind,
+  #rp9-ac-btu,
+  #rp9-ev-kw {
+    color-scheme: dark;
+  }
+  #rp9-matrix-filter option,
+  #rp9-appl-kind option,
+  #rp9-ac-btu option,
+  #rp9-ev-kw option {
+    background-color: #11182b;
+    color: #fff;
+  }
+
   .rp9-compass {
     position: absolute;
     top: 12px;
@@ -699,6 +953,71 @@ const chipClass =
   @media (prefers-reduced-motion: reduce) {
     .rp9-prod-graph * { transition: none !important; animation: none !important; }
   }
+
+  /* W68 — graphe de consommation horaire éditable. Hauteur RÉSERVÉE (zéro CLS). */
+  .rp9-cons-graph-wrap { width: 100%; height: 180px; }
+  .rp9-cons-graph { width: 100%; height: 100%; display: block; touch-action: none; }
+  /* Barres glissables : poignée tactile généreuse, curseur de redimensionnement. */
+  .rp9-cons-bar { cursor: ns-resize; }
+  .rp9-cons-bar:hover, .rp9-cons-bar:focus { fill: var(--color-brass-300, #f3cc66); }
+  @media (prefers-reduced-motion: reduce) {
+    .rp9-cons-graph * { transition: none !important; animation: none !important; }
+  }
+  /* W69 — plan des emplacements (cellules de la lattice valide). Grille auto-fit, zéro CLS. */
+  .rp9-layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+    gap: 5px;
+  }
+  .rp9-layout-cell {
+    aspect-ratio: 1.83 / 1; /* panneau ~2,38 × 1,30 m */
+    border: 1px solid rgb(255 255 255 / 0.18);
+    background: rgb(255 255 255 / 0.04);
+    cursor: pointer;
+    transition: background-color 120ms, border-color 120ms;
+    padding: 0;
+  }
+  .rp9-layout-cell[data-occupied='true'] {
+    background: rgb(127 180 232 / 0.55); /* panneau posé (bleu azur) */
+    border-color: rgb(127 180 232 / 0.8);
+  }
+  .rp9-layout-cell[aria-pressed='true'] {
+    outline: 2px solid var(--color-brass-400, #e8b54a); /* panneau sélectionné */
+    outline-offset: 1px;
+  }
+  /* Survol : cible VALIDE = vert, cible INVALIDE = rouge (occupée). */
+  .rp9-layout-cell[data-occupied='false']:hover,
+  .rp9-layout-cell[data-occupied='false']:focus {
+    background: rgb(74 222 128 / 0.45);
+    border-color: rgb(74 222 128 / 0.9);
+  }
+  .rp9-layout-cell[data-occupied='true']:hover,
+  .rp9-layout-cell[data-occupied='true']:focus {
+    border-color: rgb(248 113 113 / 0.9);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rp9-layout-cell { transition: none; }
+  }
+
+  /* Saisie numérique des 24 heures (mobile-first, jamais de rejet de nombre tapé). */
+  .rp9-cons-hour {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.7rem;
+    color: var(--color-lune-faint, #6f7791);
+  }
+  .rp9-cons-hour input {
+    width: 100%;
+    border: 1px solid rgb(255 255 255 / 0.15);
+    background: rgb(255 255 255 / 0.05);
+    padding: 0.35rem 0.4rem;
+    font-size: 0.8rem;
+    color: #fff;
+    outline: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .rp9-cons-hour input:focus { border-color: var(--color-brass-400, #e8b54a); }
 </style>
 
 <script>

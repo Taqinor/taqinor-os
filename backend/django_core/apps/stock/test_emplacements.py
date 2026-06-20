@@ -22,7 +22,7 @@ from apps.stock.models import (
     Produit, EmplacementStock, StockEmplacement, TransfertStock,
 )
 from apps.stock.services import (
-    ensure_emplacements, stock_breakdown, transfer_stock,
+    ensure_emplacements, stock_breakdown, stock_breakdown_map, transfer_stock,
 )
 
 User = get_user_model()
@@ -68,6 +68,27 @@ class TestSeedAndBreakdown(EmplacementBase):
         self.assertEqual(by_name['Dépôt principal'], 10)
         self.assertEqual(by_name['Camionnette'], 0)
         self.assertEqual(sum(b['quantite'] for b in breakdown), 10)
+
+    def test_breakdown_map_matches_per_product_breakdown(self):
+        # La map en une passe doit donner la MÊME ventilation que stock_breakdown.
+        autre = Produit.objects.create(
+            company=self.company, nom='Onduleur 5kW', sku='OND5',
+            prix_vente=Decimal('200'), quantite_stock=4)
+        ensure_emplacements(self.company)
+        camionnette = EmplacementStock.objects.get(
+            company=self.company, nom='Camionnette')
+        StockEmplacement.objects.create(
+            produit=self.produit, emplacement=camionnette, quantite=3)
+        m = stock_breakdown_map(self.company)
+        for prod in (self.produit, autre):
+            expected = {b['emplacement_id']: b['quantite']
+                        for b in stock_breakdown(prod)}
+            got = {b['emplacement_id']: b['quantite'] for b in m[prod.id]}
+            self.assertEqual(got, expected)
+        # produit avec stock réparti : camionnette = 3, principal = 7
+        by_name = {b['emplacement_nom']: b['quantite'] for b in m[self.produit.id]}
+        self.assertEqual(by_name['Camionnette'], 3)
+        self.assertEqual(by_name['Dépôt principal'], 7)
 
 
 class TestTransfer(EmplacementBase):

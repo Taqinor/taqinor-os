@@ -8,7 +8,8 @@ Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
 from apps.ventes.utils.references import create_with_reference
 from .models import (
-    Installation, ChecklistEtapeModele, ChantierChecklistItem,
+    Installation, ChecklistTemplate, ChecklistEtapeModele,
+    ChantierChecklistItem, StockReservation,
 )
 
 
@@ -40,26 +41,87 @@ DEFAULT_CHECKLIST_ETAPES = [
     ('pv_reception_signe', 'PV de réception signé', False),
 ]
 
+# N74 — nom du template de repli, sélectionné quand aucun template ne
+# correspond au type d'installation du chantier.
+DEFAULT_TEMPLATE_NOM = 'Défaut'
+
+
+def ensure_default_template(company):
+    """N74 — garantit l'existence du template « Défaut » de la société et qu'il
+    porte les étapes de checklist d'aujourd'hui (idempotent, additif).
+
+    Préserve le comportement historique : si la société a déjà des étapes
+    « orphelines » (template=NULL, amorcées avant N74), on les RATTACHE au
+    template « Défaut » plutôt que d'en créer de nouvelles — la checklist d'un
+    chantier reste donc identique. Sinon on amorce les étapes par défaut sous
+    ce template. Renvoie le template « Défaut »."""
+    if company is None:
+        return None
+    # Le « Défaut » canonique est le template PROTÉGÉ (un seul par société).
+    # On le cible par `protege=True` pour ne jamais le confondre avec un
+    # éventuel template utilisateur sans type d'installation.
+    template = ChecklistTemplate.objects.filter(
+        company=company, protege=True).order_by('ordre', 'id').first()
+    if template is None:
+        template = ChecklistTemplate.objects.create(
+            company=company, type_installation=None,
+            nom=DEFAULT_TEMPLATE_NOM, ordre=0, protege=True, actif=True)
+    # Rattache les étapes historiques (sans template) au template « Défaut ».
+    orphelines = ChecklistEtapeModele.objects.filter(
+        company=company, template__isnull=True)
+    if orphelines.exists():
+        orphelines.update(template=template)
+    # Aucune étape sous le Défaut (ni rattachée ni amorcée) → on amorce les
+    # étapes système par défaut. Idempotent : ne touche rien si déjà présent.
+    if not template.etapes.exists():
+        for i, (cle, libelle, capture) in enumerate(DEFAULT_CHECKLIST_ETAPES):
+            ChecklistEtapeModele.objects.get_or_create(
+                company=company, template=template, cle=cle,
+                defaults={'libelle': libelle, 'ordre': i,
+                          'capture_serie': capture, 'protege': True})
+    return template
+
 
 def seed_checklist_etapes(company):
-    """Amorce les étapes de checklist par défaut (idempotent, additif)."""
-    if company is None or ChecklistEtapeModele.objects.filter(company=company).exists():
-        return
-    for i, (cle, libelle, capture) in enumerate(DEFAULT_CHECKLIST_ETAPES):
-        ChecklistEtapeModele.objects.get_or_create(
-            company=company, cle=cle,
-            defaults={'libelle': libelle, 'ordre': i,
-                      'capture_serie': capture, 'protege': True})
+    """Amorce le template « Défaut » et ses étapes par défaut (idempotent,
+    additif). Conservé pour l'amorçage à l'affichage des Paramètres (N4)."""
+    ensure_default_template(company)
+
+
+def template_for_installation(installation):
+    """N74 — template de checklist auto-sélectionné pour un chantier :
+    celui (actif) dont `type_installation` correspond au type du chantier ;
+    sinon le template « Défaut » (actif), sinon n'importe quel « Défaut ».
+
+    Garantit toujours un template « Défaut » avec ses étapes (comportement
+    historique préservé pour un chantier sans type spécifique)."""
+    company = installation.company
+    if company is None:
+        return None
+    default = ensure_default_template(company)
+    type_install = installation.type_installation
+    if type_install:
+        match = ChecklistTemplate.objects.filter(
+            company=company, type_installation=type_install, actif=True
+        ).order_by('ordre', 'id').first()
+        if match is not None:
+            return match
+    return default
 
 
 def ensure_checklist_items(installation):
-    """Matérialise les étapes de checklist d'un chantier depuis les modèles
-    ACTIFS de sa société (création paresseuse, sans doublon). Renvoie la liste
+    """Matérialise les étapes de checklist d'un chantier depuis le template
+    auto-sélectionné par son type d'installation (N74) — création paresseuse,
+    sans doublon. À défaut de template typé, c'est le template « Défaut » (donc
+    les étapes d'aujourd'hui) : comportement préservé. Renvoie la liste
     ordonnée des items du chantier."""
     company = installation.company
-    seed_checklist_etapes(company)
+    template = template_for_installation(installation)
     existing = {it.cle for it in installation.checklist.all()}
-    modeles = ChecklistEtapeModele.objects.filter(company=company, actif=True)
+    modeles = ChecklistEtapeModele.objects.filter(
+        company=company, actif=True)
+    if template is not None:
+        modeles = modeles.filter(template=template)
     for m in modeles:
         if m.cle not in existing:
             ChantierChecklistItem.objects.create(
@@ -179,4 +241,130 @@ def create_installation_from_devis(devis, user, company):
         )
 
     inst = create_with_reference(Installation, 'CHT', company, _create)
+    # N14 — réserve le stock des SKU de la nomenclature gelée (robuste si le
+    # BOM est vide : aucune réservation, aucun plantage).
+    seed_reservations(inst)
     return inst, True
+
+
+# ── N14 — Réservation de stock sur chantier → consommation à « Installé » ─────
+# La réservation ENGAGE le stock (le « disponible » d'un produit en tient
+# compte) sans le décrémenter. Au passage à « Installé » la réservation est
+# CONSOMMÉE (un seul MouvementStock SORTIE par SKU, idempotent). À
+# l'annulation/clôture, la réservation NON consommée est LIBÉRÉE. On RÉUTILISE
+# le mécanisme de mouvement de stock existant (MouvementStock SORTIE).
+
+def _bom_quantities(installation):
+    """Quantités requises par produit (entier ≥ 1) depuis la nomenclature gelée
+    du chantier (`Installation.bom`). Ignore les lignes sans produit catalogue
+    et les quantités nulles/illisibles. Renvoie {produit_id: quantite}."""
+    besoins = {}
+    for ligne in (installation.bom or []):
+        if not isinstance(ligne, dict):
+            continue
+        produit_id = ligne.get('produit_id')
+        if not produit_id:
+            continue
+        try:
+            qte = int(round(float(ligne.get('quantite') or 0)))
+        except (TypeError, ValueError):
+            continue
+        if qte <= 0:
+            continue
+        besoins[produit_id] = besoins.get(produit_id, 0) + qte
+    return besoins
+
+
+def seed_reservations(installation):
+    """N14 — réserve le stock des SKU de la nomenclature gelée du chantier.
+
+    Idempotent et additif : une réservation par (chantier, produit), créée ou
+    mise à jour à la quantité du BOM. Ne touche JAMAIS une réservation déjà
+    CONSOMMÉE (le stock a déjà été décrémenté). Robuste au BOM vide (ne crée
+    rien). Renvoie la liste des réservations actives du chantier."""
+    from apps.stock.selectors import valid_produit_ids
+    company = installation.company
+    besoins = _bom_quantities(installation)
+    valid_ids = valid_produit_ids(company, list(besoins)) if besoins else set()
+    for produit_id, qte in besoins.items():
+        if produit_id not in valid_ids:
+            continue
+        resa, created = StockReservation.objects.get_or_create(
+            installation=installation, produit_id=produit_id,
+            defaults={'company': company, 'quantite': qte})
+        if not created and not resa.consomme:
+            # Réaligne la quantité réservée sur le BOM (réservation non encore
+            # consommée). Une réservation consommée reste figée.
+            changed = []
+            if resa.quantite != qte:
+                resa.quantite = qte
+                changed.append('quantite')
+            if not resa.active:
+                resa.active = True
+                changed.append('active')
+            if resa.company_id is None:
+                resa.company = company
+                changed.append('company')
+            if changed:
+                resa.save(update_fields=changed)
+    return list(installation.reservations.filter(active=True))
+
+
+def consume_reservations(installation, user):
+    """N14 — consomme les réservations du chantier au passage à « Installé ».
+
+    Pour chaque réservation ACTIVE non encore consommée, crée UN MouvementStock
+    SORTIE (mécanisme de stock existant) et décrémente `Produit.quantite_stock`.
+    IDEMPOTENT : le drapeau `consomme` verrouille — repasser par « Installé » ne
+    crée aucun mouvement supplémentaire. Renvoie le nombre de SKU consommés."""
+    from django.db import transaction
+    from django.utils import timezone
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement,
+    )
+
+    consumed = 0
+    with transaction.atomic():
+        reservations = (
+            StockReservation.objects
+            .select_for_update()
+            .filter(installation=installation, active=True, consomme=False)
+            .select_related('produit')
+        )
+        for resa in reservations:
+            if resa.quantite <= 0:
+                # Rien à sortir : on marque consommée pour ne pas la rejouer.
+                resa.consomme = True
+                resa.date_consommation = timezone.now()
+                resa.save(update_fields=['consomme', 'date_consommation'])
+                continue
+            produit = lock_produit(resa.produit_id)
+            qte_avant = produit.quantite_stock
+            # ERR80 — garde plancher : ne pilote jamais le stock en négatif. On
+            # sort au plus le stock en main (borné à zéro), comme la
+            # réconciliation terrain et les pièces SAV.
+            qte_sortie = min(resa.quantite, qte_avant) if qte_avant > 0 else 0
+            qte_apres = qte_avant - qte_sortie
+            record_stock_movement(
+                company=installation.company, produit=produit,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=qte_sortie,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=installation.reference,
+                note=f'Consommation chantier {installation.reference}',
+                created_by=user)
+            resa.consomme = True
+            resa.date_consommation = timezone.now()
+            resa.save(update_fields=['consomme', 'date_consommation'])
+            consumed += 1
+    return consumed
+
+
+def release_reservations(installation):
+    """N14 — libère les réservations NON consommées du chantier (annulation /
+    clôture). Une réservation consommée n'est jamais touchée (le stock a déjà
+    été sorti). Renvoie le nombre de réservations libérées."""
+    return (StockReservation.objects
+            .filter(installation=installation, active=True, consomme=False)
+            .update(active=False))

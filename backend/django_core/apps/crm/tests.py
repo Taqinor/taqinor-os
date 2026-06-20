@@ -692,3 +692,75 @@ class TestManagedLists(TestCase):
         noms = [m['nom'] for m in (resp.data['results'] if 'results' in resp.data else resp.data)]
         self.assertIn('Concurrent', noms)
         self.assertNotIn('Autre société', noms)
+
+
+class TestLeadLanguePreferee(TestCase):
+    """L17 — langue préférée du lead (FR/Darija) : elle persiste et
+    pré-sélectionne la langue du message WhatsApp quand la requête n'en
+    passe aucune (la valeur explicite de la requête reste prioritaire)."""
+
+    def setUp(self):
+        from apps.crm.models import Client as CrmClient
+        from apps.ventes.models import Devis
+        from apps.parametres.models import MessageTemplate
+        self.company = make_company(slug='langpref-co', nom='LangPref Co')
+        self.user = User.objects.create_user(
+            username='langpref_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        # Lead avec langue préférée Darija + un devis pour le lien WhatsApp.
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Bennani',
+            telephone='+212612345678', langue_preferee='darija')
+        self.client_obj = CrmClient.objects.create(
+            company=self.company, nom='Bennani')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-LANG-0001',
+            client=self.client_obj, lead=self.lead, statut='brouillon')
+        # Modèle de message distinct FR vs Darija : permet de détecter quelle
+        # langue le constructeur WhatsApp a utilisée.
+        MessageTemplate.objects.create(
+            company=self.company, cle='devis_unique',
+            corps_fr='FR-MARKER {nom} {reference} {lien}',
+            corps_darija='DARIJA-MARKER {nom} {reference} {lien}')
+
+    def test_langue_preferee_persists_via_api(self):
+        # Création via l'API : la langue préférée est exposée et persiste.
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'Alaoui', 'langue_preferee': 'darija',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['langue_preferee'], 'darija')
+        lead = Lead.objects.get(pk=resp.data['id'])
+        self.assertEqual(lead.langue_preferee, 'darija')
+
+    def test_whatsapp_uses_lead_language_when_none_passed(self):
+        # Aucune langue dans le corps → on retombe sur la langue préférée
+        # (Darija) du lead.
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
+            {'devis_ids': [self.devis.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('DARIJA-MARKER', resp.data['message'])
+        self.assertNotIn('FR-MARKER', resp.data['message'])
+
+    def test_explicit_request_language_wins(self):
+        # Langue explicite dans le corps → elle l'emporte sur la préférence.
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
+            {'devis_ids': [self.devis.id], 'langue': 'fr'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('FR-MARKER', resp.data['message'])
+        self.assertNotIn('DARIJA-MARKER', resp.data['message'])
+
+    def test_whatsapp_falls_back_to_fr_without_preference(self):
+        # Lead sans langue préférée et requête sans langue → défaut FR.
+        self.lead.langue_preferee = None
+        self.lead.save(update_fields=['langue_preferee'])
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
+            {'devis_ids': [self.devis.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('FR-MARKER', resp.data['message'])

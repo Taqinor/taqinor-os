@@ -129,6 +129,9 @@ const iaSlice = createSlice({
           role: 'agent',
           content: action.payload.answer,
           sql_query: action.payload.sql_query,
+          // N86 — l'agent a effectue une action d'ecriture (ticket SAV,
+          // brouillon de bon de commande, visite) : badge cote UI.
+          action_performed: action.payload.action_performed ?? false,
         })
       })
       .addCase(queryAgent.rejected, (state, action) => {

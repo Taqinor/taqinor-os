@@ -67,7 +67,10 @@ PLAN_FINGERPRINT_PREFIX = "Plan fingerprint:"
 GENERATED_PREFIX = "Generated from commit"
 
 # Plan files whose task states feed the plan fingerprint (existing only).
-PLAN_FILES = ("docs/PLAN.md", "docs/PLAN2.md")
+# docs/ERROR_PLAN.md is the bug/error backlog drained by the "work on error
+# plan" command — tracked here exactly like PLAN.md/PLAN2.md so ticking an ERR
+# task moves the plan fingerprint and refreshes CODEMAP §10 the same way.
+PLAN_FILES = ("docs/PLAN.md", "docs/PLAN2.md", "docs/ERROR_PLAN.md")
 
 # A BUILD-QUEUE task as a list item: "- [x] N1 — …", "- [ ] N14 — …",
 # "- [BLOCKED: …] N26 — …", "- [x] **A1 — …".

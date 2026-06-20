@@ -5,17 +5,66 @@
  * tout est construit en HTML/CSS pour rester net et léger.
  * PLACEHOLDER(MERYEM): les messages sont représentatifs — à ajuster si
  * Meryem préfère un échange type différent.
+ *
+ * W67 — i18n : seuls les bulles AFFICHÉES + « WhatsApp direct » + le sous-titre
+ * sont traduits (FR/EN/AR). Le lien WhatsApp pré-rempli reste EN FRANÇAIS (il
+ * atteint l'équipe FR) — l'argument de `whatsappLink(...)` n'est jamais traduit.
+ * Les CHIFFRES (1 800 MAD, 5 à 9 kWc) et les LIEUX (Casablanca) restent
+ * identiques dans toutes les langues. Rendu FR inchangé (branche `fr` = strings
+ * actuels mot pour mot).
  */
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
 
+// Lien pré-rempli : message TOUJOURS en français (il arrive à l'équipe FR).
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.');
 
+const locale = getLocaleFromPath(Astro.url.pathname);
+
+const STR: Record<
+  Locale,
+  { subtitle: string; cta: string; photo: string; msgs: string[] }
+> = {
+  fr: {
+    subtitle: 'répond généralement en quelques minutes',
+    cta: 'WhatsApp direct',
+    photo: '📷 Photo de la toiture',
+    msgs: [
+      'Bonjour, je viens de faire le diagnostic sur taqinor.ma — facture ~1 800 MAD, villa à Casablanca.',
+      'Bonjour ! Merci pour votre diagnostic. Avec ce profil, on part sur 5 à 9 kWc. Quelques photos de votre toiture et je peux affiner avant la visite technique.',
+      'Parfait, belle exposition sud. Je vous propose un passage jeudi pour la visite — l’étude complète est gratuite et sans engagement.',
+    ],
+  },
+  en: {
+    subtitle: 'usually replies within a few minutes',
+    cta: 'WhatsApp direct',
+    photo: '📷 Photo of the roof',
+    msgs: [
+      'Hello, I just did the diagnostic on taqinor.ma — bill ~1 800 MAD, villa in Casablanca.',
+      'Hello! Thanks for your diagnostic. With this profile, we’re looking at 5 à 9 kWc. A few photos of your roof and I can refine before the technical visit.',
+      'Perfect, lovely south exposure. I can come by on Thursday for the visit — the full study is free and with no commitment.',
+    ],
+  },
+  ar: {
+    subtitle: 'يردّ عادةً خلال بضع دقائق',
+    cta: 'WhatsApp مباشر',
+    photo: '📷 صورة للسطح',
+    msgs: [
+      'مرحبًا، أنجزتُ للتوّ التشخيص على taqinor.ma — الفاتورة ~1 800 MAD، فيلا في Casablanca.',
+      'مرحبًا! شكرًا على تشخيصك. مع هذا الملف، نتّجه نحو 5 à 9 kWc. بعض الصور لسطحك وأستطيع الضبط قبل الزيارة التقنية.',
+      'ممتاز، تعرّض جنوبي جميل. أقترح المرور يوم الخميس للزيارة — الدراسة الكاملة مجانية ودون أي التزام.',
+    ],
+  },
+};
+const s = STR[locale] ?? STR.fr;
+
 const exchange = [
-  { from: 'client', text: 'Bonjour, je viens de faire le diagnostic sur taqinor.ma — facture ~1 800 MAD, villa à Casablanca.', time: '09:42' },
-  { from: 'taqinor', text: 'Bonjour ! Merci pour votre diagnostic. Avec ce profil, on part sur 5 à 9 kWc. Quelques photos de votre toiture et je peux affiner avant la visite technique.', time: '09:45' },
-  { from: 'client', text: '📷 Photo de la toiture', photo: true, time: '09:51' },
-  { from: 'taqinor', text: 'Parfait, belle exposition sud. Je vous propose un passage jeudi pour la visite — l’étude complète est gratuite et sans engagement.', time: '09:54' },
+  { from: 'client', text: s.msgs[0], time: '09:42' },
+  { from: 'taqinor', text: s.msgs[1], time: '09:45' },
+  { from: 'client', text: s.photo, photo: true, time: '09:51' },
+  { from: 'taqinor', text: s.msgs[2], time: '09:54' },
 ];
 ---
 
@@ -26,7 +75,7 @@ const exchange = [
       <span class="flex h-9 w-9 items-center justify-center rounded-full bg-brass-400 font-display text-sm font-extrabold text-azur-950" aria-hidden="true">T</span>
       <div class="leading-tight">
         <p class="text-sm font-bold text-white">Taqinor</p>
-        <p class="text-[11px] text-azur-200">répond généralement en quelques minutes</p>
+        <p class="text-[11px] text-azur-200">{s.subtitle}</p>
       </div>
     </div>
     <!-- Fil -->
@@ -50,6 +99,6 @@ const exchange = [
   </div>
   <a href={wa} rel="noopener" class="mt-5 flex items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-    WhatsApp direct
+    {s.cta}
   </a>
 </div>

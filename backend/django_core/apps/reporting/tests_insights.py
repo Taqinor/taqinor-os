@@ -103,6 +103,50 @@ class TestAuditLog(InsightsBase):
         body = b''.join(x.streaming_content) if x.streaming else x.content
         self.assertTrue(body.startswith(b'PK'))
 
+    def test_deep_link_object_ref(self):
+        # N83 (L16) — chaque ligne porte object_type + object_id pour lier vers
+        # la fiche concernée (lead/devis/chantier/ticket).
+        lead = Lead.objects.create(company=self.company, nom='Linkable',
+                                   stage='NEW')
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, kind='note',
+            body='Note', user=self.user)
+        resp = self.api.get(f'{BASE}/audit-log/?type=lead')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertEqual(item['object_type'], 'lead')
+        self.assertEqual(item['object_id'], lead.id)
+
+    def test_field_change_format_consistent(self):
+        # N83 (L16) — un changement de champ du chatter ET un changement de
+        # réglage rendent le MÊME format « champ : ancien → nouveau ».
+        from apps.parametres.models import SettingsAuditLog
+        lead = Lead.objects.create(company=self.company, nom='L2', stage='NEW')
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, kind='modification',
+            field='stage', field_label='Étape', old_value='NEW',
+            new_value='CONTACTED', user=self.user)
+        SettingsAuditLog.objects.create(
+            company=self.company, section='entreprise', field='nom',
+            field_label='Nom', old_value='Ancien', new_value='Nouveau',
+            user=self.user)
+        resp = self.api.get(f'{BASE}/audit-log/')
+        self.assertEqual(resp.status_code, 200)
+        summaries = [it['summary'] for it in resp.data['items']]
+        self.assertIn('Étape : NEW → CONTACTED', summaries)
+        self.assertIn('Nom : Ancien → Nouveau', summaries)
+
+    def test_field_change_empty_values(self):
+        # Valeurs absentes → symbole ∅ identique des deux côtés.
+        from apps.parametres.models import SettingsAuditLog
+        SettingsAuditLog.objects.create(
+            company=self.company, section='entreprise', field='note',
+            field_label='Note', old_value='', new_value='Texte',
+            user=self.user)
+        resp = self.api.get(f'{BASE}/audit-log/?type=parametres')
+        summaries = [it['summary'] for it in resp.data['items']]
+        self.assertIn('Note : ∅ → Texte', summaries)
+
 
 class TestJobCosting(InsightsBase):
     def test_margin_and_scope(self):

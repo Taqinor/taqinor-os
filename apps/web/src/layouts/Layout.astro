@@ -3,6 +3,9 @@ import '../styles/global.css';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import { NAP } from '../lib/nap';
+import { DEFAULT_LOCALE, isLocale, LOCALE_BCP47, LOCALE_DIR, type Locale } from '../i18n/config';
+import { localizePath, stripLocale } from '../i18n/utils';
+import { localesForPath } from '../i18n/pages';
 
 interface Props {
   title: string;
@@ -13,8 +16,26 @@ interface Props {
   preloadHeroPoster?: boolean;
   /** Pages de travail privées : jamais indexées */
   noindex?: boolean;
+  /** Locales réellement disponibles pour CETTE page (hreflang + sélecteur).
+   *  Absent / [fr] → page FR seule : rendu strictement inchangé. */
+  locales?: Locale[];
 }
-const { title, description, ogSlug = 'accueil', preloadHeroPoster = false, noindex = false } = Astro.props;
+const { title, description, ogSlug = 'accueil', preloadHeroPoster = false, noindex = false, locales } = Astro.props;
+
+// Locale courante (FR par défaut à la racine). Le rendu FR reste identique :
+// lang="fr" et aucun attribut dir (ltr implicite) ; hreflang seulement si la
+// page déclare plusieurs locales.
+const lang: Locale = Astro.currentLocale && isLocale(Astro.currentLocale) ? Astro.currentLocale : DEFAULT_LOCALE;
+const dir = LOCALE_DIR[lang];
+const rootPath = stripLocale(Astro.url.pathname);
+// Source unique : si la page ne passe pas `locales` explicitement, on les
+// déduit du registre de disponibilité (src/i18n/pages.ts). Une page FR-seule
+// renvoie ['fr'] → aucune alternate, aucun changement de rendu.
+const pageLocales = locales && locales.length ? locales : localesForPath(rootPath);
+const alternates =
+  pageLocales.length > 1
+    ? pageLocales.map((l) => ({ l, href: new URL(localizePath(rootPath, l), Astro.site).href }))
+    : [];
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL(`/og/${ogSlug}.png`, Astro.site);
@@ -44,7 +65,7 @@ const jsonLd = {
 ---
 
 <!doctype html>
-<html lang="fr">
+<html lang={LOCALE_BCP47[lang]} dir={dir === 'rtl' ? 'rtl' : undefined}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -53,6 +74,10 @@ const jsonLd = {
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, nofollow" />}
     <link rel="canonical" href={canonical.href} />
+    {alternates.map((a) => <link rel="alternate" hreflang={a.l} href={a.href} />)}
+    {alternates.length > 0 && (
+      <link rel="alternate" hreflang="x-default" href={new URL(localizePath(rootPath, DEFAULT_LOCALE), Astro.site).href} />
+    )}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <!-- Pas de preload des fontes : font-display swap suffit, et la bande
@@ -74,7 +99,7 @@ const jsonLd = {
     <meta property="og:image" content={ogImage.href} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:locale" content="fr_MA" />
+    <meta property="og:locale" content={lang === 'en' ? 'en_US' : lang === 'ar' ? 'ar_MA' : 'fr_MA'} />
     <meta name="twitter:card" content="summary_large_image" />
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <script is:inline>

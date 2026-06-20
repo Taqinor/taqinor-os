@@ -18,6 +18,14 @@ class EquipementSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     garantie_etat = serializers.SerializerMethodField()
     garantie_jours_restants = serializers.SerializerMethodField()
+    # L632 — qui/quand : nom du créateur (les dates sont déjà sérialisées).
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+    # L629 — référence du ticket SAV qui a remplacé l'appareil (statut remplacé).
+    remplace_par_ticket_reference = serializers.CharField(
+        source='remplace_par_ticket.reference', read_only=True, default=None)
+    # L624 — nombre de tickets SAV ouverts liés à cet équipement.
+    nb_tickets_ouverts = serializers.SerializerMethodField()
 
     class Meta:
         model = Equipement
@@ -29,6 +37,38 @@ class EquipementSerializer(serializers.ModelSerializer):
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
         ]
+        # L636 — l'unicité (company, numero_serie) est CONDITIONNELLE (séries
+        # vides exclues). On désactive le UniqueTogetherValidator auto de DRF
+        # (qui rendrait numero_serie obligatoire et casserait une série omise)
+        # et on s'appuie sur validate_numero_serie + la contrainte DB.
+        validators = []
+
+    def validate_numero_serie(self, value):
+        """L636 — unicité du n° de série par société (les vides sont permis).
+
+        Filet au niveau serializer en plus de la contrainte d'unicité DB
+        conditionnelle, pour un message FR clair même si la contrainte est
+        absente (collision avec des lignes existantes au déploiement)."""
+        serie = (value or '').strip()
+        if not serie:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return value
+        qs = Equipement.objects.filter(
+            company=company, numero_serie=serie)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Ce numéro de série existe déjà dans votre société.')
+        return value
+
+    def get_nb_tickets_ouverts(self, obj):
+        from .models import Ticket
+        return obj.tickets.filter(
+            statut__in=Ticket.OPEN_STATUTS, annule=False).count()
 
     def get_client_nom(self, obj):
         c = getattr(obj.installation, 'client', None)
@@ -134,6 +174,10 @@ class TicketSerializer(serializers.ModelSerializer):
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
         ]
+        # client peut être déduit côté serveur d'un équipement lié (ticket
+        # ouvert depuis le parc) ; sinon il reste exigé — voir
+        # TicketViewSet.perform_create qui rejette un ticket sans client résolu.
+        extra_kwargs = {'client': {'required': False}}
 
     def get_statut_ordre(self, obj):
         order = list(Ticket.STATUT_ORDER)

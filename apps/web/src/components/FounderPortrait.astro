@@ -1,0 +1,130 @@
+---
+/**
+ * Le fondateur — section de confiance, PHOTO-READY avec repli texte.
+ *
+ * INTÉGRITÉ : aucun crédit inventé. On ne s'appuie QUE sur les faits déjà
+ * publiés sur le site : docteur-ingénieur, 10+ ans de R&D chez Huawei,
+ * Ericsson et STMicroelectronics, et la validation personnelle de chaque
+ * étude/dimensionnement avant toute commande. Le nom (Reda Kasri) n'apparaît
+ * QUE dans la variante portrait ; le repli texte reste anonyme, à l'identique
+ * de l'accueil actuel.
+ *
+ * Pour activer le portrait : déposer le fichier fourni par le fondateur sous
+ * public/photos/ (traité par scripts/process-photos.mjs) puis mettre son nom
+ * de base ci-dessous. null → repli texte uniquement (aucune image inventée).
+ *
+ * W67 — i18n : prose/labels traduits (FR/EN/AR). Les FAITS et le CHIFFRE
+ * restent identiques dans toutes les langues : nom « Reda Kasri », « 10+ ans »,
+ * et la liste de marques « Huawei, Ericsson et STMicroelectronics » ne sont
+ * jamais traduits. Rendu FR inchangé (branche `fr` = strings actuels mot pour
+ * mot ; `localizeNavHref('/à-propos','fr') === '/à-propos'`).
+ */
+const FOUNDER_PHOTO: string | null = null;
+
+import Picture from './Picture.astro';
+import { getLocaleFromPath } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+import type { Locale } from '../i18n/config';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const STR: Record<
+  Locale,
+  {
+    eyebrow: string;
+    title: string;
+    leadBefore: string;
+    leadAfter: string;
+    cta: string;
+    photoAlt: string;
+    caption: string;
+    doctor: string;
+    doctorLabel: string;
+    yearsLabel: string;
+  }
+> = {
+  fr: {
+    eyebrow: 'Le fondateur',
+    title: 'Un docteur-ingénieur valide chaque étude, à la main',
+    leadBefore: 'Le fondateur de Taqinor a passé plus de dix ans en recherche et développement chez',
+    leadAfter:
+      '. Avant toute commande, il relit et valide personnellement le dimensionnement : une étude qui sort d’ici a été défendue par quelqu’un qui répond du chiffre.',
+    cta: 'Le fondateur et sa méthode →',
+    photoAlt: 'Reda Kasri, fondateur et docteur-ingénieur de Taqinor',
+    caption: 'Reda Kasri · fondateur, docteur-ingénieur',
+    doctor: 'Docteur-ingénieur',
+    doctorLabel: 'Chaque étude validée par le fondateur',
+    yearsLabel: 'De R&D chez Huawei, Ericsson, STMicroelectronics',
+  },
+  en: {
+    eyebrow: 'The founder',
+    title: 'A doctor-engineer validates every study, by hand',
+    leadBefore: 'Taqinor’s founder spent more than ten years in research and development at',
+    leadAfter:
+      '. Before any order, he personally reviews and validates the sizing: a study that leaves here has been defended by someone who answers for the numbers.',
+    cta: 'The founder and his method →',
+    photoAlt: 'Reda Kasri, founder and doctor-engineer of Taqinor',
+    caption: 'Reda Kasri · founder, doctor-engineer',
+    doctor: 'Doctor-engineer',
+    doctorLabel: 'Every study validated by the founder',
+    yearsLabel: 'Of R&D at Huawei, Ericsson, STMicroelectronics',
+  },
+  ar: {
+    eyebrow: 'المؤسِّس',
+    title: 'مهندس دكتور يراجع كل دراسة، يدويًا',
+    leadBefore: 'أمضى مؤسِّس Taqinor أكثر من عشر سنوات في البحث والتطوير لدى',
+    leadAfter:
+      '. قبل أي طلب، يراجع شخصيًا أبعاد النظام ويصادق عليها: الدراسة التي تخرج من هنا دافع عنها شخص يتحمّل مسؤولية الأرقام.',
+    cta: 'المؤسِّس ومنهجيته →',
+    photoAlt: 'Reda Kasri، مؤسِّس ومهندس دكتور في Taqinor',
+    caption: 'Reda Kasri · مؤسِّس، مهندس دكتور',
+    doctor: 'مهندس دكتور',
+    doctorLabel: 'كل دراسة يصادق عليها المؤسِّس',
+    yearsLabel: 'من البحث والتطوير لدى Huawei وEricsson وSTMicroelectronics',
+  },
+};
+const s = STR[locale] ?? STR.fr;
+---
+
+<section class="border-t border-white/10 px-4 py-20 sm:py-28">
+  <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+    <div class="v2-rise">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">{s.eyebrow}</p>
+      <h2 class="display v2-section-title mt-5 max-w-md text-white">{s.title}</h2>
+      <p class="v2-lead mt-5 max-w-md text-lune-soft">
+        {s.leadBefore}
+        <strong class="text-white">Huawei, Ericsson et STMicroelectronics</strong>{s.leadAfter}
+      </p>
+      <a href={L('/à-propos')} class="mt-8 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
+        {s.cta}
+      </a>
+    </div>
+    {FOUNDER_PHOTO ? (
+      <figure class="v2-rise">
+        <Picture
+          name={FOUNDER_PHOTO}
+          alt={s.photoAlt}
+          widths={[640, 480]}
+          ratio={4 / 5}
+          sizes="(min-width:1024px) 40vw, 100vw"
+          class="w-full object-cover"
+        />
+        <figcaption class="tech-label mt-3 text-lune-faint">{s.caption}</figcaption>
+      </figure>
+    ) : (
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
+        <div class="v2-rise" style="--v2-i:0">
+          <dd class="font-display text-xl font-bold text-white">{s.doctor}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{s.doctorLabel}</dt>
+        </div>
+        <div class="v2-rise" style="--v2-i:1">
+          <dd class="fig lum whitespace-nowrap text-4xl" data-tally>10+ ans</dd>
+          {/* set:html : préserve « R&D » brut (le `&` serait sinon échappé en
+              &amp; par une expression Astro, divergeant du rendu FR d'origine). */}
+          <dt class="tech-label mt-2 text-lune-faint" set:html={s.yearsLabel}></dt>
+        </div>
+      </dl>
+    )}
+  </div>
+</section>

@@ -6,10 +6,10 @@ from decimal import Decimal
 
 from django.http import HttpResponse
 from rest_framework import status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.crm.models import Client
+from apps.crm.selectors import client_base_qs
 from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import Facture, FollowupLevel
@@ -42,7 +42,20 @@ def _current_level(jours_retard, levels):
     if current is None:
         return None
     return {'ordre': current.ordre, 'nom': current.nom,
-            'delai_jours': current.delai_jours}
+            'delai_jours': current.delai_jours,
+            'message': current.message or ''}
+
+
+def _next_level(jours_retard, levels):
+    """Prochain niveau non encore atteint (seuil strictement supérieur), ou None.
+
+    Sert à proposer une date de prochaine relance (aujourd'hui + son délai).
+    """
+    for lvl in levels:
+        if lvl.delai_jours > jours_retard:
+            return {'ordre': lvl.ordre, 'nom': lvl.nom,
+                    'delai_jours': lvl.delai_jours}
+    return None
 
 
 class FollowupLevelViewSet(viewsets.ModelViewSet):
@@ -62,15 +75,49 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
         company = self.request.user.company if self.request.user.company_id else None
         serializer.save(company=company)
 
+    @action(detail=False, methods=['post'], url_path='seed-defaults')
+    def seed_defaults(self, request):
+        """Crée les niveaux de relance par défaut (J+7 / J+15 / J+30) quand la
+        société n'en a aucun (L768). Idempotent : ne fait rien si des niveaux
+        existent déjà. Réservé à l'admin (mêmes permissions que l'écriture)."""
+        company = request.user.company if request.user.company_id else None
+        if FollowupLevel.objects.filter(company=company).exists():
+            return Response(
+                {'detail': 'Des niveaux de relance existent déjà.'},
+                status=status.HTTP_409_CONFLICT)
+        defaults = [
+            (0, 'Rappel', 7,
+             'Rappel amiable : la facture {reference} est échue. '
+             'Merci de procéder au règlement.'),
+            (1, 'Relance', 15,
+             'Relance : la facture {reference} reste impayée à ce jour.'),
+            (2, 'Mise en demeure', 30,
+             'Mise en demeure : la facture {reference} est en retard de '
+             'paiement. Un règlement immédiat est attendu.'),
+        ]
+        for ordre, nom, delai, message in defaults:
+            FollowupLevel.objects.create(
+                company=company, ordre=ordre, nom=nom,
+                delai_jours=delai, message=message)
+        levels = FollowupLevel.objects.filter(company=company).order_by(
+            'delai_jours')
+        return Response(
+            FollowupLevelSerializer(levels, many=True).data,
+            status=status.HTTP_201_CREATED)
+
 
 def _facture_due_rows(user):
     """Factures ouvertes (dues) de la société, non exclues."""
+    from authentication.scoping import scope_queryset
     qs = _scope(
         Facture.objects.select_related('client').prefetch_related(
             'lignes', 'paiements', 'avoirs'),
         user
     ).exclude(statut__in=['payee', 'annulee', 'brouillon']).filter(
         exclu_relances=False)
+    # Portée de visibilité (Feature F) : relances/balance restreintes aux
+    # factures créées par soi / l'équipe pour un rôle restreint. 'all' → inchangé.
+    qs = scope_queryset(qs, user, ['created_by'])
     return [f for f in qs if f.montant_du > 0]
 
 
@@ -86,10 +133,14 @@ def relances_list(request):
             'id': f.id, 'reference': f.reference,
             'client_id': f.client_id,
             'client_nom': f"{f.client.nom} {f.client.prenom or ''}".strip(),
+            # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
+            # côté front (aucun envoi ici ; affichage/validation seulement).
+            'client_telephone': f.client.telephone if f.client_id else None,
             'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
             'montant_du': _s(f.montant_du),
             'jours_retard': jr,
             'niveau': _current_level(jr, levels),
+            'niveau_suivant': _next_level(jr, levels),
             'prochaine_relance': (f.prochaine_relance.isoformat()
                                   if f.prochaine_relance else None),
             'nb_relances': f.relances.count(),
@@ -131,13 +182,25 @@ def balance_agee(request):
     return Response(out)
 
 
-def _releve_data(client):
-    """Relevé de compte : factures (payé/avoir/dû), paiements, avoirs, soldes."""
+def _releve_data(client, user=None):
+    """Relevé de compte : factures (payé/avoir/dû), paiements, avoirs, soldes.
+
+    ERR73 — applique la portée de visibilité (Feature F) : un rôle restreint ne
+    voit que les factures créées par soi / son équipe, exactement comme la liste
+    des impayés et la balance âgée. L'isolation société tient déjà (le client est
+    scopé) ; on ajoute la portée propriétaire. ``user=None`` (chemin interne) →
+    aucun filtre de portée, comportement historique préservé.
+    """
+    qs = Facture.objects.filter(client=client).exclude(statut='annulee')
+    if user is not None:
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, user, ['created_by'])
     factures = list(
-        Facture.objects.filter(client=client).exclude(statut='annulee')
-        .prefetch_related('lignes', 'paiements', 'avoirs')
+        qs.prefetch_related('lignes', 'paiements', 'avoirs')
         .order_by('date_emission'))
     lignes = []
+    paiements = []
+    avoirs = []
     total_facture = total_paye = total_avoir = total_du = Decimal('0')
     for f in factures:
         paye = f.montant_paye
@@ -154,12 +217,37 @@ def _releve_data(client):
             'total_ttc': _s(f.total_ttc),
             'paye': _s(paye), 'avoirs': _s(avo), 'du': _s(du),
         })
+        # Détail des encaissements (date / mode / montant) par facture.
+        for p in f.paiements.all():
+            paiements.append({
+                'facture': f.reference,
+                'date': (p.date_paiement.isoformat()
+                         if p.date_paiement else None),
+                'mode': p.get_mode_display(),
+                'montant': _s(p.montant),
+            })
+        # Détail des avoirs actifs (date / référence / montant) par facture.
+        for a in f.avoirs.all():
+            if a.statut == 'annulee':
+                continue
+            avoirs.append({
+                'facture': f.reference,
+                'reference': a.reference,
+                'date': (a.date_emission.isoformat()
+                         if a.date_emission else None),
+                'motif': a.motif,
+                'total_ttc': _s(a.total_ttc),
+            })
+    paiements.sort(key=lambda r: r['date'] or '')
+    avoirs.sort(key=lambda r: r['date'] or '')
     return {
         'client': {'id': client.id,
                    'nom': f"{client.nom} {client.prenom or ''}".strip(),
                    'email': client.email, 'telephone': client.telephone,
                    'adresse': client.adresse},
         'lignes': lignes,
+        'paiements': paiements,
+        'avoirs': avoirs,
         'totaux': {
             'facture': _s(total_facture), 'paye': _s(total_paye),
             'avoirs': _s(total_avoir), 'du': _s(total_du),
@@ -170,25 +258,25 @@ def _releve_data(client):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve(request, client_id):
-    client = _scope(Client.objects.all(), request.user).filter(
+    client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
     if client is None:
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
-    return Response(_releve_data(client))
+    return Response(_releve_data(client, request.user))
 
 
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_releve_pdf(request, client_id):
-    client = _scope(Client.objects.all(), request.user).filter(
+    client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
     if client is None:
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     from .utils.pdf import generate_releve_pdf
     try:
-        pdf_bytes = generate_releve_pdf(client, _releve_data(client))
+        pdf_bytes = generate_releve_pdf(client, _releve_data(client, request.user))
     except Exception as exc:
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)

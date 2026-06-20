@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -19,6 +19,18 @@ test('toNumber: nombres, chaînes fr/en, invalides', () => {
   assert.equal(toNumber(null), null)
   assert.equal(toNumber('abc'), null)
   assert.equal(toNumber(NaN), null)
+})
+
+// ERR106 — Sans virgule décimale, un point est un VRAI point décimal : un
+// nombre technique « 1.234 » reste 1,234 et n'est PAS écrasé en 1234. Les
+// points de milliers ne sont retirés que dans la notation fr (virgule présente).
+test('toNumber: décimale « 1.234 » préservée (pas un séparateur de milliers)', () => {
+  assert.equal(toNumber('1.234'), 1.234)
+  assert.equal(toNumber('0.500'), 0.5)
+  assert.equal(toNumber('12.000'), 12) // vraie décimale .000
+  // Notation fr avec virgule : le point RESTE un séparateur de milliers.
+  assert.equal(toNumber('1.234,5'), 1234.5)
+  assert.equal(toNumber('1.234.567,89'), 1234567.89)
 })
 
 test('formatMAD: 2 décimales + suffixe MAD, tiret si invalide', () => {
@@ -64,4 +76,19 @@ test('canonicalPhoneMA: forme de stockage/dédup', () => {
   assert.equal(canonicalPhoneMA('06 12-34 56 78'), '+212612345678')
   assert.equal(canonicalPhoneMA('0712345678'), '+212712345678')
   assert.equal(canonicalPhoneMA(''), '')
+})
+
+// L853 — miroir exact de normalize_ma_phone (apps/ventes/utils/phone.py) :
+// sert à valider/désactiver le bouton WhatsApp côté front.
+test('normalizeMaPhone: format wa.me 212XXXXXXXXX ou null', () => {
+  assert.equal(normalizeMaPhone('0612345678'), '212612345678')
+  assert.equal(normalizeMaPhone('+212612345678'), '212612345678')
+  assert.equal(normalizeMaPhone(' +212 (6) 12-34-56-78 '), '212612345678')
+  assert.equal(normalizeMaPhone('00212612345678'), '212612345678')
+  assert.equal(normalizeMaPhone('612345678'), '212612345678')
+  // vide / non normalisable → null (bouton désactivé)
+  assert.equal(normalizeMaPhone(''), null)
+  assert.equal(normalizeMaPhone(null), null)
+  assert.equal(normalizeMaPhone('   '), null)
+  assert.equal(normalizeMaPhone('abc'), null)
 })

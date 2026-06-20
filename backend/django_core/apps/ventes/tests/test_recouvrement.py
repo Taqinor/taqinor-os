@@ -53,6 +53,22 @@ class TestRecouvrement(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
+    def test_is_overdue_relies_on_jours_retard(self):
+        from apps.ventes.serializers import FactureSerializer
+        data = FactureSerializer(self.facture).data
+        self.assertTrue(data['is_overdue'])
+        self.assertEqual(data['jours_retard'], 45)
+        # Une facture sans échéance (donc jours_retard=0) n'est pas en retard.
+        f2 = Facture.objects.create(
+            company=self.company, reference='FAC-REC-0002',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=f2, produit=self.produit, designation='X',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('20.00'))
+        self.assertFalse(FactureSerializer(f2).data['is_overdue'])
+
     def test_overdue_in_relances_list_with_level(self):
         resp = self.api.get('/api/django/ventes/relances/')
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -60,6 +76,33 @@ class TestRecouvrement(TestCase):
         self.assertEqual(row['jours_retard'], 45)
         # 45 jours → niveau le plus haut atteint (J+30).
         self.assertEqual(row['niveau']['delai_jours'], 30)
+        # Le niveau courant porte sa clé message (pré-remplissage modale).
+        self.assertIn('message', row['niveau'])
+        # 45 j dépasse tous les seuils → pas de niveau suivant proposé.
+        self.assertIsNone(row['niveau_suivant'])
+
+    def test_next_level_suggested_for_mid_overdue(self):
+        # Configure un message sur le niveau courant et une facture à 10 j de
+        # retard : niveau courant = J+7 (avec message), suivant = J+15.
+        lvl7 = FollowupLevel.objects.get(company=self.company, delai_jours=7)
+        lvl7.message = 'Cher client, merci de régulariser.'
+        lvl7.save(update_fields=['message'])
+        from datetime import date, timedelta
+        f2 = Facture.objects.create(
+            company=self.company, reference='FAC-REC-0002',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'),
+            date_echeance=date.today() - timedelta(days=10))
+        LigneFacture.objects.create(
+            facture=f2, produit=self.produit, designation='Onduleur',
+            quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
+            taux_tva=Decimal('20.00'))
+        resp = self.api.get('/api/django/ventes/relances/')
+        row = next(r for r in resp.data if r['id'] == f2.id)
+        self.assertEqual(row['niveau']['delai_jours'], 7)
+        self.assertEqual(row['niveau']['message'],
+                         'Cher client, merci de régulariser.')
+        self.assertEqual(row['niveau_suivant']['delai_jours'], 15)
 
     def test_overdue_in_aged_balance_bucket(self):
         resp = self.api.get('/api/django/ventes/balance-agee/')
@@ -77,6 +120,29 @@ class TestRecouvrement(TestCase):
         self.assertEqual(len(resp.data['lignes']), 1)
         self.assertEqual(resp.data['lignes'][0]['du'], '6000.00')
         self.assertEqual(resp.data['totaux']['du'], '6000.00')
+
+    def test_statement_details_payments_and_avoirs(self):
+        from apps.ventes.models import Avoir, LigneAvoir, Paiement
+        Paiement.objects.create(
+            company=self.company, facture=self.facture,
+            montant=Decimal('1000'), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AVO-REC-1', facture=self.facture,
+            client=self.client_obj, statut='emise', taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Geste', quantite=Decimal('1'),
+            prix_unitaire=Decimal('500'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        resp = self.api.get(
+            f'/api/django/ventes/clients/{self.client_obj.id}/releve/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data['paiements']), 1)
+        self.assertEqual(resp.data['paiements'][0]['montant'], '1000.00')
+        self.assertEqual(resp.data['paiements'][0]['mode'], 'Virement')
+        self.assertEqual(len(resp.data['avoirs']), 1)
+        self.assertEqual(resp.data['avoirs'][0]['reference'], 'AVO-REC-1')
+        self.assertEqual(resp.data['avoirs'][0]['total_ttc'], '600.00')
 
     def test_relancer_logs_and_sets_next(self):
         nxt = (date.today() + timedelta(days=7)).isoformat()
@@ -107,3 +173,36 @@ class TestRecouvrement(TestCase):
         resp = self.api.get('/api/django/ventes/relances/')
         ids = [r['id'] for r in resp.data]
         self.assertNotIn(self.facture.id, ids)
+
+
+class TestSeedDefaultsNiveaux(TestCase):
+    """L768 — création des niveaux de relance par défaut (J+7 / J+15 / J+30)."""
+
+    def setUp(self):
+        self.company = make_company(slug='seed-co', nom='Seed Co')
+        self.admin = User.objects.create_user(
+            username='seed_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+
+    def test_seed_creates_three_default_levels(self):
+        self.assertEqual(
+            FollowupLevel.objects.filter(company=self.company).count(), 0)
+        resp = self.api.post(
+            '/api/django/ventes/niveaux-relance/seed-defaults/')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        delais = sorted(
+            FollowupLevel.objects.filter(company=self.company)
+            .values_list('delai_jours', flat=True))
+        self.assertEqual(delais, [7, 15, 30])
+
+    def test_seed_idempotent_when_levels_exist(self):
+        FollowupLevel.objects.create(
+            company=self.company, ordre=0, nom='Existant', delai_jours=10)
+        resp = self.api.post(
+            '/api/django/ventes/niveaux-relance/seed-defaults/')
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(
+            FollowupLevel.objects.filter(company=self.company).count(), 1)

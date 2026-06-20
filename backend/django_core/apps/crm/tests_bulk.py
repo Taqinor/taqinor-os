@@ -207,3 +207,75 @@ class TestBulkExport(BulkLeadsBase):
         resp = self.api.post(
             '/api/django/crm/leads/export-xlsx/', {'ids': []}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+
+class TestBulkCanalPriorite(BulkLeadsBase):
+    def test_set_canal_en_masse(self):
+        a, b = self.mk(nom='A'), self.mk(nom='B')
+        resp = self.bulk(action='set_canal', ids=[a.id, b.id], canal='reference')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['updated'], 2)
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.canal, 'reference')
+        self.assertEqual(b.canal, 'reference')
+        # Journal « en masse ».
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=a, field='canal', bulk=True).exists())
+
+    def test_set_canal_unknown_when_referential_exists(self):
+        from apps.crm.models import Canal
+        Canal.objects.create(company=self.company, cle='reference',
+                             libelle='Référence')
+        a = self.mk(nom='A')
+        resp = self.bulk(action='set_canal', ids=[a.id], canal='inexistant')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_set_priorite_en_masse(self):
+        a, b = self.mk(nom='A', priorite='normale'), self.mk(nom='B')
+        resp = self.bulk(action='set_priorite', ids=[a.id, b.id], priorite='haute')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['updated'], 2)
+        a.refresh_from_db()
+        self.assertEqual(a.priorite, 'haute')
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=a, field='priorite', bulk=True).exists())
+
+    def test_set_priorite_invalid(self):
+        a = self.mk(nom='A')
+        resp = self.bulk(action='set_priorite', ids=[a.id], priorite='extreme')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+
+class TestBulkPlanActivity(BulkLeadsBase):
+    """L13 — « Planifier une activité » crée une activité ouverte par lead."""
+
+    def test_plan_activity_creates_one_per_lead(self):
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Activity
+        a, b = self.mk(nom='A', owner=self.resp), self.mk(nom='B')
+        resp = self.bulk(
+            action='plan_activity', ids=[a.id, b.id],
+            summary='Appeler demain', due_date='2026-07-01')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['updated'], 2)
+        ct = ContentType.objects.get_for_model(Lead)
+        for lead in (a, b):
+            act = Activity.objects.filter(
+                content_type=ct, object_id=lead.id, done=False).first()
+            self.assertIsNotNone(act)
+            self.assertEqual(act.summary, 'Appeler demain')
+            self.assertEqual(act.due_date.isoformat(), '2026-07-01')
+            self.assertEqual(act.company_id, self.company.id)
+        # Le responsable du lead est l'assigné quand il existe.
+        act_a = Activity.objects.filter(content_type=ct, object_id=a.id).first()
+        self.assertEqual(act_a.assigned_to_id, self.resp.id)
+        # Journal « en masse ».
+        self.assertTrue(LeadActivity.objects.filter(lead=a, bulk=True).exists())
+
+    def test_plan_activity_requires_summary_and_date(self):
+        a = self.mk(nom='A')
+        r1 = self.bulk(action='plan_activity', ids=[a.id], due_date='2026-07-01')
+        self.assertEqual(r1.status_code, 400, r1.data)
+        r2 = self.bulk(action='plan_activity', ids=[a.id], summary='X')
+        self.assertEqual(r2.status_code, 400, r2.data)

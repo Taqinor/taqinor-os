@@ -52,6 +52,11 @@ def _check_magic_bytes(content_type: str, data: bytes) -> bool:
 
 
 def _check_rate_limit(user_id: str) -> None:
+    """Limite l'OCR (payant) a RATE_LIMIT_MAX requetes / heure par utilisateur.
+
+    ERR86 — FAIL CLOSED : si Redis est indisponible, on REFUSE (503) au lieu de
+    laisser passer. Sinon une panne Redis desactiverait silencieusement le
+    plafond et permettrait des appels Zhipu illimites (cout / DoS)."""
     try:
         r = _get_redis()
         key = f"ocr_rate:{user_id}"
@@ -66,15 +71,23 @@ def _check_rate_limit(user_id: str) -> None:
         results = pipe.execute()
 
         count = results[2]
-        if count > RATE_LIMIT_MAX:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Limite atteinte : {RATE_LIMIT_MAX} analyses OCR par heure. Réessayez plus tard.",
-            )
     except HTTPException:
         raise
     except Exception:
-        pass
+        # Redis injoignable -> on ne peut pas garantir le plafond -> on refuse.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Service de limitation temporairement indisponible. "
+                "Réessayez dans quelques instants."
+            ),
+        )
+
+    if count > RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Limite atteinte : {RATE_LIMIT_MAX} analyses OCR par heure. Réessayez plus tard.",
+        )
 
 
 # ── Schémas ───────────────────────────────────────────────────────────────────

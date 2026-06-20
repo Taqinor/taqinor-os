@@ -1,7 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
@@ -41,6 +41,9 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, self.request.user, ['created_by'])
         params = self.request.query_params
         produit = params.get('produit')
         marque = params.get('marque')
@@ -96,7 +99,14 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
-        serializer.save(company=company, created_by=self.request.user)
+        try:
+            serializer.save(company=company, created_by=self.request.user)
+        except IntegrityError:
+            # L636 — filet de course si la contrainte d'unicité DB se déclenche
+            # entre la validation serializer et l'écriture.
+            raise ValidationError(
+                {'numero_serie':
+                 'Ce numéro de série existe déjà dans votre société.'})
         # Calcul des horloges de garantie après la pose des FK.
         inst = serializer.instance
         inst.recompute_garanties()
@@ -105,7 +115,12 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
-        super().perform_update(serializer)
+        try:
+            super().perform_update(serializer)
+        except IntegrityError:
+            raise ValidationError(
+                {'numero_serie':
+                 'Ce numéro de série existe déjà dans votre société.'})
         inst = serializer.instance
         inst.recompute_garanties()
         inst.save(update_fields=[
@@ -133,6 +148,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Portée de visibilité (Feature F) — tickets créés par soi / dont on est
+        # le technicien responsable / ceux de l'équipe. 'all' → inchangé.
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(
+            qs, self.request.user, ['technicien_responsable', 'created_by'])
         params = self.request.query_params
         statut = params.get('statut')
         type_ = params.get('type')
@@ -186,9 +206,32 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
 
+    def _resolve_from_equipement(self, serializer):
+        """Quand un ticket est ouvert depuis le parc (un équipement lié) sans
+        client ni chantier explicite, déduire l'installation et le client de
+        l'équipement — ainsi un ticket créé depuis un équipement porte
+        client + installation + equipement sans sélection manuelle."""
+        equipement = serializer.validated_data.get('equipement')
+        if equipement is None:
+            return
+        installation = getattr(equipement, 'installation', None)
+        if installation is None:
+            return
+        if serializer.validated_data.get('installation') is None:
+            serializer.validated_data['installation'] = installation
+        if serializer.validated_data.get('client') is None:
+            client = getattr(installation, 'client', None)
+            if client is not None:
+                serializer.validated_data['client'] = client
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
+        self._resolve_from_equipement(serializer)
+        # client est optionnel au niveau sérialiseur (peut venir de l'équipement) ;
+        # s'il n'a pas pu être résolu, on rétablit l'exigence ici.
+        if not serializer.validated_data.get('client'):
+            raise ValidationError({'client': 'Ce champ est obligatoire.'})
         date_ouverture = (
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())
@@ -279,7 +322,12 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if request.method == 'GET':
             qs = ticket.pieces.select_related('produit')
             return Response(PieceConsommeeSerializer(qs, many=True).data)
-        from apps.stock.models import Produit, MouvementStock
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+        from apps.stock.services import (
+            mouvement_type_sortie, record_stock_movement,
+        )
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
         except (InvalidOperation, TypeError):
@@ -287,12 +335,21 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if quantite <= 0:
             return Response({'detail': 'Quantité invalide.'}, status=400)
         try:
-            produit = Produit.objects.get(
-                pk=request.data.get('produit'), company=ticket.company)
-        except (Produit.DoesNotExist, ValueError, TypeError):
+            produit = get_produit_or_raise(
+                ticket.company, request.data.get('produit'))
+        except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
         decrement = str(request.data.get('decrement') or '') in (
             '1', 'true', 'True', 'on')
+        if decrement:
+            # ERR80 — garde plancher : ne jamais piloter le stock en négatif.
+            # On bloque le décrément qui dépasserait le stock en main.
+            produit.refresh_from_db()
+            if quantite > produit.quantite_stock:
+                return Response(
+                    {'detail': 'Stock insuffisant : '
+                     f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             piece = PieceConsommee.objects.create(
                 company=ticket.company, ticket=ticket, produit=produit,
@@ -301,17 +358,20 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 produit.refresh_from_db()
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant - quantite
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=ticket.company, produit=produit,
-                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    type_mouvement=mouvement_type_sortie(),
                     quantite=quantite, quantite_avant=qte_avant,
                     quantite_apres=qte_apres, reference=ticket.reference,
                     note=f'Consommation SAV {ticket.reference}',
                     created_by=request.user)
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
                 piece.stock_decremente = True
                 piece.save(update_fields=['stock_decremente'])
+            # L310 — journaliser l'ajout (et le décrément éventuel) à l'Historique.
+            suffixe = ' (stock −)' if decrement else ''
+            activity.log_note(
+                ticket, request.user,
+                f'Pièce {produit.nom} ×{quantite} consommée{suffixe}')
         return Response(
             PieceConsommeeSerializer(piece).data, status=201)
 
@@ -322,7 +382,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         """Retire une pièce du ticket ; si le stock avait été décrémenté, le
         ré-incrémente (MouvementStock ENTRÉE) pour rester cohérent."""
         ticket = self.get_object()
-        from apps.stock.models import MouvementStock
+        from apps.stock.services import (
+            mouvement_type_entree, record_stock_movement,
+        )
         try:
             piece = ticket.pieces.select_related('produit').get(pk=piece_id)
         except (PieceConsommee.DoesNotExist, ValueError):
@@ -333,14 +395,19 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 produit.refresh_from_db()
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + piece.quantite
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=ticket.company, produit=produit,
-                    type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                    type_mouvement=mouvement_type_entree(),
                     quantite=piece.quantite, quantite_avant=qte_avant,
                     quantite_apres=qte_apres, reference=ticket.reference,
                     note=f'Annulation pièce SAV {ticket.reference}',
                     created_by=request.user)
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
+            # L310 — journaliser le retrait (et la ré-incrémentation éventuelle).
+            suffixe = ' (stock +)' if piece.stock_decremente else ''
+            nom = getattr(piece.produit, 'nom', '?')
+            qte = piece.quantite
+            activity.log_note(
+                ticket, request.user,
+                f'Pièce {nom} ×{qte} retirée{suffixe}')
             piece.delete()
         return Response(status=204)

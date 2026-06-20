@@ -25,6 +25,14 @@ export * from './Switch'
 export * from './RadioGroup'
 export * from './Slider'
 export * from './Segmented'
+export * from './Select'
+export * from './Combobox'
+export * from './MultiSelect'
+export * from './DatePicker'
+export * from './TimePicker'
+export * from './FileUpload'
+export * from './Form'
+export * from './useDirtyGuard'
 
 // Overlays
 export * from './Dialog'
@@ -44,3 +52,6 @@ export * from './DefinitionList'
 export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
+
+// Données / listes (Groupe H — moteur DataTable réutilisable)
+export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'

@@ -1,0 +1,141 @@
+---
+/**
+ * EN — Maintenance & monitoring (W67). Faithful translation of
+ * /maintenance-monitoring ; no invented SLA or "within 24h/48h" claim (none is
+ * published). Internal links via localizeNavHref. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const suivi = [
+  {
+    title: 'Deye Cloud monitoring included',
+    body: 'Every installation reports to Deye Cloud: real-time production, daily and monthly history, automatic alerts on faults. You receive your personal access on the mobile app, and you see exactly what the installer sees.',
+  },
+  {
+    title: 'Proactive after-sales',
+    body: 'We keep an eye on the whole installed fleet. A Deye Cloud alert — inverter at fault, production dropping — reaches us before you have noticed anything. We start from the diagnostic, not from your call.',
+  },
+  {
+    title: 'Complete technical file',
+    body: 'The installation leaves with its file: single-line diagrams, cable sizing, the list of protections, the commissioning procedure and access to Deye Cloud monitoring. Enough for another electrician to take over if needed.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  name: 'Maintenance & monitoring',
+  serviceType: 'Maintenance and supervision of solar installations',
+  provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  areaServed: { '@type': 'Country', name: 'Maroc' },
+  description:
+    'Deye Cloud supervision included on every solar installation in Morocco: real-time production, automatic alerts and proactive after-sales, with client access via the mobile app and a complete technical file delivered.',
+};
+---
+
+<Layout
+  title="Solar maintenance & monitoring: Deye Cloud supervision included | Taqinor"
+  description="Every Taqinor installation reports to Deye Cloud — real-time production, history, automatic alerts — with client access on the mobile app. An alert reaches us before you: proactive after-sales, and a complete technical file delivered with the project."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Maintenance & monitoring' }]} />
+
+    <!-- Dark hero -->
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">After the install</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Maintenance &amp; monitoring</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          The day the installation is commissioned, it starts to talk. On Deye Cloud, every Taqinor
+          roof reports its production continuously — yours readable on your phone, ours monitored
+          across the whole fleet. An anomaly triggers an alert; we start from there, before the
+          complaint.
+        </p>
+      </div>
+    </section>
+
+    <!-- What the monitoring includes -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Included with every installation</p>
+        <h2 class="display v2-section-title mt-5 text-white">What the monitoring includes</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          {suivi.map((s, i) => (
+            <div class="v2-rise cine-card p-7" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-white">{s.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mt-10 max-w-xl border-s-4 border-brass-400/60 ps-4 text-sm leading-relaxed text-lune-soft">
+          On the hardware side, the data goes through a WiFi or Ethernet dongle plugged into the
+          inverter; it is what sends every measurement to Deye Cloud. The detail is on the equipment
+          sheet.
+          <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the Deye Cloud monitoring →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- Measured production, not promised (light background) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-azur-600">Figures, read off</p>
+          <h2 class="display v2-section-title mt-5">What the meter says, not the brochure</h2>
+          <p class="v2-lead mt-5 text-encre-soft">
+            The kWh a Taqinor installation shows don't come from a leaflet: Deye Cloud reads them day
+            after day, and that reading is what counts. Our written warranties rest on the same data —
+            the one the meter records, not the one we'd like to announce.
+          </p>
+          <p class="mt-5 text-sm leading-relaxed text-encre-soft">
+            And the dashboard is yours too: your personal access on the mobile app shows you, in real
+            time, what your roof produces — with no intermediary.
+          </p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href={L('/garanties')} class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">See our written warranties</a>
+            <a href={L('/realisations')} class="inline-block border-b-2 border-azur-600 pb-0.5 text-base font-bold text-azur-600 transition-colors hover:text-azur-700">See our projects →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Closing links block -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">To go further</p>
+        <h2 class="display v2-section-title mt-5 text-white">The monitoring, in detail</h2>
+        <p class="mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
+          Monitoring and proactive after-sales only hold because they rest on named hardware and
+          warranties written in black and white. Here they are in detail.
+        </p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties →</a>
+          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment installed →</a>
+          <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">My free assessment →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="A roof that watches itself is prepared from the study onward." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import {
+  Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
+  Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
+  ShieldCheck, ExternalLink, Zap, ChevronRight,
+} from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import { downloadBlob } from '../../utils/downloadBlob'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -20,8 +27,31 @@ import {
   filterTickets,
   sortTickets,
   statusLabel,
-  statusColor,
+  isStatusTransitionAllowed,
+  ticketAgeDays,
+  ticketSlaLevel,
+  statusCounts,
 } from '../../features/sav/ticketStatuses'
+import {
+  TooltipProvider,
+  Button,
+  Badge,
+  StatusPill,
+  Card,
+  EmptyState,
+  Skeleton,
+  Input,
+  Textarea,
+  Checkbox,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Segmented,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Form, FormSection, FormField, FormActions, useDirtyGuard,
+  DataTable,
+  toast,
+} from '../../ui'
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -36,52 +66,136 @@ const formatDateFR = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
+const todayISO = () => new Date().toISOString().slice(0, 10)
 
-function StatutBadge({ statut }) {
-  const c = statusColor(statut)
+// L302/L11 — libellés FR des champs pour transformer une erreur DRF brute
+// ({champ: [raison]}) en message lisible « Échec : {champ} — {raison} », au lieu
+// d'un JSON.stringify illisible.
+const FIELD_LABELS_FR = {
+  statut: 'Statut', type: 'Type', priorite: 'Priorité',
+  description: 'Description', sous_garantie: 'Sous garantie',
+  equipement: 'Équipement', technicien_responsable: 'Technicien responsable',
+  date_resolution: 'Date de résolution', cout: 'Coût',
+  detail: 'Erreur', non_field_errors: 'Erreur', body: 'Note', motif: 'Motif',
+  produit: 'Produit', quantite: 'Quantité',
+}
+function frError(err, fallback = 'Action impossible.') {
+  if (!err) return fallback
+  const data = err?.response?.data ?? err
+  if (typeof data === 'string') return data
+  if (data && typeof data === 'object') {
+    const parts = []
+    for (const [field, raison] of Object.entries(data)) {
+      const label = FIELD_LABELS_FR[field] ?? field
+      const txt = Array.isArray(raison) ? raison.join(' ') : String(raison)
+      parts.push(field === 'detail' || field === 'non_field_errors'
+        ? txt : `Échec : ${label} — ${txt}`)
+    }
+    if (parts.length) return parts.join(' · ')
+  }
+  return fallback
+}
+
+// L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
+const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
+
+// L313 — section repliable (usage terrain/mobile). Utilise <details> natif :
+// ouverte par défaut, le résumé fait office d'en-tête d'accordéon cliquable.
+function CollapsibleSection({ icon: Icon, title, children }) {
   return (
-    <span className="badge" style={{
-      background: `${c}22`, color: c, padding: '2px 8px', borderRadius: 6,
-      fontSize: 12, whiteSpace: 'nowrap',
-    }}>{statusLabel(statut)}</span>
+    <details open className="group flex flex-col gap-3 [&[open]>summary>svg.chevron]:rotate-90">
+      <summary className="flex cursor-pointer list-none items-center gap-2 font-display text-base font-semibold text-foreground">
+        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
+        <span className="flex-1">{title}</span>
+        <ChevronRight className="chevron size-4 rotate-0 text-muted-foreground transition-transform" aria-hidden="true" />
+      </summary>
+      <div className="flex flex-col gap-3 pt-2">{children}</div>
+    </details>
   )
 }
 
+// Statut de ticket → ton StatusPill (cycle de vie ticketStatuses.js : couche
+// indépendante du funnel lead et des statuts de document). La couleur n'est
+// jamais le seul signal — le libellé reste explicite.
+const TICKET_STATUS_TONES = {
+  nouveau: 'neutral',
+  planifie: 'info',
+  en_cours: 'warning',
+  resolu: 'success',
+  cloture: 'success',
+}
+function StatutPill({ statut }) {
+  return <StatusPill tone={TICKET_STATUS_TONES[statut] ?? 'neutral'} label={statusLabel(statut)} />
+}
+
+const GARANTIE_TONES = { oui: 'success', non: 'danger', a_determiner: 'neutral' }
 function GarantieIndicator({ value }) {
-  const color = value === 'oui' ? '#16a34a' : value === 'non' ? '#dc2626' : '#64748b'
   return (
-    <span className="badge" style={{
-      background: `${color}22`, color, padding: '2px 8px', borderRadius: 6, fontSize: 12,
-    }}>Sous garantie : {SOUS_GARANTIE_LABELS[value] ?? value}</span>
+    <Badge tone={GARANTIE_TONES[value] ?? 'neutral'}>
+      Sous garantie : {SOUS_GARANTIE_LABELS[value] ?? value}
+    </Badge>
+  )
+}
+
+const PRIORITE_TONES = { basse: 'neutral', normale: 'info', haute: 'warning', urgente: 'danger' }
+function PrioriteBadge({ value }) {
+  return <Badge tone={PRIORITE_TONES[value] ?? 'neutral'}>{TICKET_PRIORITE_LABELS[value] ?? value}</Badge>
+}
+
+// L298/L6 — badge SLA/âge des tickets ouverts (calculé à la lecture, sans
+// scheduler). Couleur escaladée pour les ouverts en retard. Rien sur les autres.
+function TicketSlaBadge({ ticket }) {
+  const age = ticketAgeDays(ticket)
+  const level = ticketSlaLevel(ticket)
+  if (age == null
+      || !['nouveau', 'planifie', 'en_cours'].includes(ticket?.statut)
+      || ticket?.annule) return null
+  return (
+    <Badge tone={SLA_TONES[level]}>
+      <Clock className="size-3" aria-hidden="true" /> ouvert depuis {age} j
+    </Badge>
   )
 }
 
 function TicketDetail({ ticket, onClose, onSaved }) {
   const dispatch = useDispatch()
+  const allTickets = useSelector((s) => s.tickets.items)
   const id = ticket.id
   const [current, setCurrent] = useState(ticket)
   const F = (k, d = '') => current?.[k] ?? d
 
-  const [fields, setFields] = useState({
-    statut: F('statut', 'nouveau'),
-    type: F('type', 'correctif'),
-    priorite: F('priorite', 'normale'),
-    description: F('description'),
-    sous_garantie: F('sous_garantie', 'a_determiner'),
+  const initialFields = useMemo(() => ({
+    statut: current.statut ?? 'nouveau',
+    type: current.type ?? 'correctif',
+    priorite: current.priorite ?? 'normale',
+    description: current.description ?? '',
+    sous_garantie: current.sous_garantie ?? 'a_determiner',
     equipement: current.equipement ?? '',
     technicien_responsable: current.technicien_responsable ?? '',
-    date_resolution: F('date_resolution'),
-    cout: F('cout'),
-  })
+    date_resolution: current.date_resolution ?? '',
+    cout: current.cout ?? '',
+  }), [current])
+
+  const [fields, setFields] = useState(initialFields)
   const set = (k, v) => setFields((f) => ({ ...f, [k]: v }))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
+  const dirty = useMemo(
+    () => Object.keys(initialFields).some((k) => String(fields[k] ?? '') !== String(initialFields[k] ?? '')),
+    [fields, initialFields],
+  )
+  useDirtyGuard(dirty)
+
   const [equipements, setEquipements] = useState([])
   const [users, setUsers] = useState([])
   const [interventions, setInterventions] = useState([])
-  const [interv, setInterv] = useState({ type_intervention: 'depannage', date_prevue: '', compte_rendu: '' })
+  // L316 — date prévue pré-remplie à aujourd'hui (éditable).
+  const [interv, setInterv] = useState(
+    { type_intervention: 'depannage', date_prevue: todayISO(), compte_rendu: '' })
   const [intervBusy, setIntervBusy] = useState(false)
+  // L303/L11 — surface les échecs autrefois silencieux (note/intervention/pièce).
+  const [actionError, setActionError] = useState(null)
 
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
@@ -92,6 +206,10 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   const [pieceForm, setPieceForm] = useState(
     { produit: '', quantite: '1', decrement: false })
   const [pieceBusy, setPieceBusy] = useState(false)
+  const [annulerOpen, setAnnulerOpen] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [confirmVide, setConfirmVide] = useState(false) // L300 — confirmation motif vide
+
   const loadPieces = () => {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
   }
@@ -126,11 +244,20 @@ function TicketDetail({ ticket, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
+  const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
+
   const save = async () => {
     setSaving(true)
     setSaveError(null)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
+      // L297/L3 — auto-tamponner la date de résolution quand le statut passe à
+      // resolu/cloture et qu'elle est encore vide.
+      let dateResolution = fields.date_resolution
+      if (!dateResolution && ['resolu', 'cloture'].includes(fields.statut)) {
+        dateResolution = todayISO()
+      }
       const data = {
         statut: fields.statut,
         type: fields.type,
@@ -139,15 +266,16 @@ function TicketDetail({ ticket, onClose, onSaved }) {
         sous_garantie: fields.sous_garantie,
         equipement: fields.equipement === '' ? null : fields.equipement,
         technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
-        date_resolution: nullable(fields.date_resolution),
+        date_resolution: nullable(dateResolution),
         cout: nullable(fields.cout),
       }
       const updated = await dispatch(updateTicket({ id, data })).unwrap()
       setCurrent(updated)
       loadHistorique()
+      toast.success('Ticket mis à jour')
       onSaved?.()
     } catch (err) {
-      setSaveError(typeof err === 'object' ? JSON.stringify(err) : String(err))
+      setSaveError(frError(err, 'Échec de la mise à jour.'))
     } finally {
       setSaving(false)
     }
@@ -156,16 +284,18 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   const postNote = async () => {
     const body = noteBody.trim()
     if (!body) return
+    setActionError(null)
     try {
       const r = await savApi.noterTicket(id, body)
       setHistorique((h) => [r.data, ...h])
       setNoteBody('')
-    } catch { /* silencieux */ }
+    } catch (err) { setActionError(frError(err, "Échec de l'ajout de la note.")) }
   }
 
   const addIntervention = async () => {
     if (!interv.type_intervention) return
     setIntervBusy(true)
+    setActionError(null)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
       await installationsApi.createIntervention({
@@ -175,15 +305,30 @@ function TicketDetail({ ticket, onClose, onSaved }) {
         date_prevue: nullable(interv.date_prevue),
         compte_rendu: nullable(interv.compte_rendu),
       })
-      setInterv({ type_intervention: 'depannage', date_prevue: '', compte_rendu: '' })
+      setInterv({ type_intervention: 'depannage', date_prevue: todayISO(), compte_rendu: '' })
       loadInterventions()
       loadHistorique()
-    } catch { /* silencieux */ } finally { setIntervBusy(false) }
+    } catch (err) {
+      setActionError(frError(err, "Échec de l'ajout de l'intervention."))
+    } finally { setIntervBusy(false) }
   }
 
   const addPiece = async () => {
     if (!pieceForm.produit) return
+    // L309/L7 — garde anti-survente : si on décrémente le stock et que la qté
+    // demandée dépasse le stock disponible, avertir avant le POST.
+    if (pieceForm.decrement) {
+      const pr = produits.find((p) => String(p.id) === String(pieceForm.produit))
+      const dispo = Number(pr?.quantite_stock ?? 0)
+      const demande = Number(pieceForm.quantite || '1')
+      if (Number.isFinite(demande) && demande > dispo) {
+        setActionError(
+          `Stock insuffisant : ${dispo} en stock pour ${demande} demandé(s).`)
+        return
+      }
+    }
     setPieceBusy(true)
+    setActionError(null)
     try {
       await savApi.addTicketPiece(id, {
         produit: pieceForm.produit,
@@ -193,334 +338,499 @@ function TicketDetail({ ticket, onClose, onSaved }) {
       setPieceForm({ produit: '', quantite: '1', decrement: false })
       loadPieces()
       loadHistorique()
-    } catch { /* silencieux */ } finally { setPieceBusy(false) }
+    } catch (err) {
+      setActionError(frError(err, "Échec de l'ajout de la pièce."))
+    } finally { setPieceBusy(false) }
   }
   const removePiece = async (pieceId) => {
+    setActionError(null)
     try {
       await savApi.removeTicketPiece(id, pieceId)
       loadPieces()
-    } catch { /* silencieux */ }
+      loadHistorique()
+    } catch (err) { setActionError(frError(err, 'Échec du retrait de la pièce.')) }
   }
 
   const annuler = async () => {
-    const motif = window.prompt("Motif d'annulation du ticket ?")
-    if (motif === null) return
+    setActionError(null)
     try {
       await savApi.annulerTicket(id, motif)
+      setAnnulerOpen(false)
+      setMotif('')
       await reloadAll()
       loadHistorique()
       onSaved?.()
-    } catch { /* silencieux */ }
+    } catch (err) { setActionError(frError(err, "Échec de l'annulation.")) }
   }
   const reactiver = async () => {
+    setActionError(null)
     try {
       await savApi.reactiverTicket(id)
       await reloadAll()
       loadHistorique()
       onSaved?.()
-    } catch { /* silencieux */ }
+    } catch (err) { setActionError(frError(err, 'Échec de la réactivation.')) }
   }
   const telechargerRapport = async () => {
+    // L314/L11 — échec PDF affiché via le bloc d'erreur in-modal standard.
+    setActionError(null)
     try {
       const r = await savApi.rapportPdf(id)
       downloadBlob(r.data, `rapport-intervention-${current.reference || id}.pdf`)
-    } catch {
-      alert('Rapport indisponible.')
+    } catch (err) {
+      setActionError(frError(err, 'Rapport indisponible.'))
     }
   }
 
+  // L308 — options de technicien. Si /users/ renvoie vide (endpoint admin),
+  // on alimente le dropdown depuis les techniciens déjà assignés sur les
+  // tickets (id + nom) afin que les non-admins puissent quand même assigner.
+  const technicienOptions = useMemo(() => {
+    if (users.length) return users.map((u) => ({ id: u.id, label: u.username }))
+    const seen = new Map()
+    for (const t of allTickets ?? []) {
+      if (t.technicien_responsable && t.technicien_nom
+          && !seen.has(String(t.technicien_responsable))) {
+        seen.set(String(t.technicien_responsable),
+          { id: t.technicien_responsable, label: t.technicien_nom })
+      }
+    }
+    // Garder l'assigné courant même s'il n'apparaît pas ailleurs.
+    if (current.technicien_responsable && current.technicien_nom
+        && !seen.has(String(current.technicien_responsable))) {
+      seen.set(String(current.technicien_responsable),
+        { id: current.technicien_responsable, label: current.technicien_nom })
+    }
+    return [...seen.values()]
+  }, [users, allTickets, current.technicien_responsable, current.technicien_nom])
+
   const linkedEquip = equipements.find((e) => String(e.id) === String(fields.equipement))
+  // L307/L1 — quand un équipement est lié et porte une date de fin de garantie,
+  // la garantie effective est CALCULÉE. On la calcule à partir de l'équipement
+  // sélectionné pour griser et remplir le champ manuel à la bonne valeur.
+  const garantieCalculee = useMemo(() => {
+    if (!fields.equipement || !linkedEquip) return null
+    if (!linkedEquip.date_fin_garantie) return null
+    const fin = new Date(`${linkedEquip.date_fin_garantie}T00:00:00`)
+    return new Date() < fin ? 'oui' : 'non'
+  }, [fields.equipement, linkedEquip])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">
+    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+      <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
+        <SheetHeader>
+          <SheetTitle className="flex flex-wrap items-center gap-2">
             Ticket SAV — {current.reference ?? ''}
-            {current.annule && <span className="lead-archived-badge">Annulé</span>}
-          </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
-
-        <div className="modal-body">
-          {current.annule && (
-            <div className="form-error-box" role="alert">
-              <strong>Ticket annulé.</strong>
-              {current.motif_annulation ? ` Motif : ${current.motif_annulation}` : ''}{' '}
-              <button type="button" className="btn btn-sm btn-outline" onClick={reactiver}>Réactiver</button>
-            </div>
+            <StatutPill statut={current.statut} />
+            {current.annule && <Badge tone="danger">Annulé</Badge>}
+            <TicketSlaBadge ticket={current} />
+          </SheetTitle>
+          <SheetDescription>
+            Suivi, équipement, interventions, pièces et historique du ticket.
+          </SheetDescription>
+          {/* L299/L1 — compte-à-rebours de garantie de l'équipement lié. */}
+          {current.equipement_fin_garantie && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ShieldCheck className="size-3.5" aria-hidden="true" />
+              {(() => {
+                const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
+                const jours = Math.round((fin - new Date()) / 86400000)
+                return jours >= 0
+                  ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
+                  : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
+              })()}
+            </span>
           )}
+        </SheetHeader>
 
-          {/* ── Infos ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">🎫 Ticket</span>
-              <span><StatutBadge statut={current.statut} /></span>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Client</label>
-                <input className="form-control" value={current.client_nom ?? '—'} readOnly />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Chantier</label>
-                <input className="form-control" value={current.installation_reference ?? '—'} readOnly />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Ouvert le</label>
-                <input className="form-control" value={formatDateFR(current.date_ouverture)} readOnly />
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Statut</label>
-                <select className="form-select" value={fields.statut}
-                        onChange={(e) => set('statut', e.target.value)}>
-                  {TICKET_STATUSES.map((k) => (
-                    <option key={k} value={k}>{TICKET_STATUS_LABELS[k]}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Type</label>
-                <select className="form-select" value={fields.type}
-                        onChange={(e) => set('type', e.target.value)}>
-                  {TICKET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Priorité</label>
-                <select className="form-select" value={fields.priorite}
-                        onChange={(e) => set('priorite', e.target.value)}>
-                  {TICKET_PRIORITES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Description</label>
-              <textarea className="form-control" rows={2} value={fields.description ?? ''}
-                        onChange={(e) => set('description', e.target.value)} />
-            </div>
+        {current.annule && (
+          <div role="alert"
+               className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <span>
+              <strong>Ticket annulé.</strong>
+              {current.motif_annulation ? ` Motif : ${current.motif_annulation}` : ''}
+            </span>
+            <Button size="sm" variant="outline" onClick={reactiver}>Réactiver</Button>
           </div>
+        )}
+
+        <Form onSubmit={(e) => { e.preventDefault(); save() }} className="gap-6">
+          {/* ── Infos ── */}
+          <FormSection title="Ticket">
+            <FormField label="Client">
+              <Input value={current.client_nom ?? '—'} readOnly />
+            </FormField>
+            <FormField label="Chantier">
+              <div className="flex items-center gap-2">
+                <Input value={current.installation_reference ?? '—'} readOnly />
+                {current.installation && (
+                  // L312 — lien vers la page des chantiers.
+                  <Button asChild variant="ghost" size="sm" title="Ouvrir les chantiers">
+                    <Link to="/chantiers"><ExternalLink /></Link>
+                  </Button>
+                )}
+              </div>
+            </FormField>
+            <FormField label="Ouvert le">
+              <Input value={formatDateFR(current.date_ouverture)} readOnly />
+            </FormField>
+            <FormField label="Statut">
+              <Select value={fields.statut} onValueChange={(v) => set('statut', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TICKET_STATUSES.map((k) => {
+                    // L296 — signaler les sauts hors ordre depuis le statut actuel.
+                    const horsOrdre = !isStatusTransitionAllowed(current.statut, k)
+                    return (
+                      <SelectItem key={k} value={k}>
+                        {TICKET_STATUS_LABELS[k]}{horsOrdre ? ' (saut d’étape)' : ''}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              {statutSautHorsOrdre && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle className="size-3" aria-hidden="true" />
+                  Saut d&apos;étape : passez par les statuts intermédiaires (ex. En cours).
+                </p>
+              )}
+            </FormField>
+            <FormField label="Type">
+              <Select value={fields.type} onValueChange={(v) => set('type', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Priorité">
+              <Select value={fields.priorite} onValueChange={(v) => set('priorite', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TICKET_PRIORITES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Description" fullWidth>
+              <Textarea rows={2} value={fields.description ?? ''}
+                        onChange={(e) => set('description', e.target.value)} />
+            </FormField>
+          </FormSection>
 
           {/* ── Équipement & garantie ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">🔧 Équipement concerné</span>
-              <span><GarantieIndicator value={current.sous_garantie_effectif} /></span>
-            </div>
-            <div className="form-row">
-              <div className="form-group fg-grow">
-                <label className="form-label">Équipement (du chantier)</label>
-                <select className="form-select" value={fields.equipement ?? ''}
-                        onChange={(e) => set('equipement', e.target.value)}>
-                  <option value="">— Aucun (garantie manuelle) —</option>
+          <FormSection title="Équipement concerné"
+                       description="La garantie effective est calculée automatiquement à partir de l'équipement lié.">
+            <FormField label="Équipement (du chantier)" fullWidth>
+              <Select value={fields.equipement ? String(fields.equipement) : '__none'}
+                      onValueChange={(v) => set('equipement', v === '__none' ? '' : v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Aucun (garantie manuelle) —</SelectItem>
                   {equipements.map((e) => (
-                    <option key={e.id} value={e.id}>
+                    <SelectItem key={e.id} value={String(e.id)}>
                       {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Sous garantie (si aucun équipement)</label>
-                <select className="form-select" value={fields.sous_garantie}
-                        onChange={(e) => set('sous_garantie', e.target.value)}
-                        disabled={!!fields.equipement}>
-                  {SOUS_GARANTIE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField
+              label={fields.equipement
+                ? 'Sous garantie (calculée — verrouillée)'
+                : 'Sous garantie (si aucun équipement)'}
+              fullWidth
+            >
+              <Select
+                value={fields.equipement ? (garantieCalculee || fields.sous_garantie) : fields.sous_garantie}
+                onValueChange={(v) => set('sous_garantie', v)}
+                disabled={!!fields.equipement}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SOUS_GARANTIE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+              <GarantieIndicator value={current.sous_garantie_effectif} />
+              {linkedEquip && (
+                <span className="text-xs text-muted-foreground">
+                  {linkedEquip.date_fin_garantie
+                    ? `Fin de garantie de l'équipement : ${formatDateFR(linkedEquip.date_fin_garantie)} — calculée automatiquement.`
+                    : "Garantie de l'équipement non renseignée."}
+                </span>
+              )}
+              {current.equipement && (
+                // L312 — lien vers la page des équipements (parc).
+                <Button asChild variant="ghost" size="sm" title="Ouvrir le parc d'équipements">
+                  <Link to="/equipements"><ExternalLink /> Équipement</Link>
+                </Button>
+              )}
             </div>
-            {linkedEquip && (
-              <p className="gen-hint">
-                {linkedEquip.date_fin_garantie
-                  ? `Fin de garantie de l'équipement : ${formatDateFR(linkedEquip.date_fin_garantie)} — la garantie du ticket est calculée automatiquement.`
-                  : "Garantie de l'équipement non renseignée."}
-              </p>
-            )}
-          </div>
+          </FormSection>
 
           {/* ── Suivi ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">📋 Suivi</span>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Technicien responsable</label>
-                <select className="form-select" value={fields.technicien_responsable ?? ''}
-                        onChange={(e) => set('technicien_responsable', e.target.value)}>
-                  <option value="">— Non assigné —</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Date de résolution</label>
-                <input type="date" className="form-control" value={fields.date_resolution ?? ''}
-                       onChange={(e) => set('date_resolution', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Coût (interne)</label>
-                <input type="number" step="any" className="form-control" value={fields.cout ?? ''}
-                       onChange={(e) => set('cout', e.target.value)} />
-              </div>
-            </div>
-            {saveError && <div className="form-error-box" role="alert">{saveError}</div>}
-          </div>
-
-          {/* ── Interventions ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">🛠️ Interventions</span>
-            </div>
-            {interventions.length === 0 ? (
-              <p className="gen-hint">Aucune intervention rattachée.</p>
-            ) : (
-              <table className="lines-table">
-                <thead>
-                  <tr><th>Type</th><th>Prévue</th><th>Réalisée</th><th>Technicien</th><th>Compte rendu</th></tr>
-                </thead>
-                <tbody>
-                  {interventions.map((iv) => (
-                    <tr key={iv.id}>
-                      <td>{iv.type_intervention_display ?? iv.type_intervention}</td>
-                      <td>{formatDateFR(iv.date_prevue)}</td>
-                      <td>{formatDateFR(iv.date_realisee)}</td>
-                      <td>{iv.technicien_nom ?? '—'}</td>
-                      <td>{iv.compte_rendu ?? '—'}</td>
-                    </tr>
+          <FormSection title="Suivi">
+            <FormField label="Technicien responsable">
+              <Select value={fields.technicien_responsable ? String(fields.technicien_responsable) : '__none'}
+                      onValueChange={(v) => set('technicien_responsable', v === '__none' ? '' : v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Non assigné —</SelectItem>
+                  {technicienOptions.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.label}</SelectItem>
                   ))}
-                </tbody>
-              </table>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Date de résolution">
+              <Input type="date" value={fields.date_resolution ?? ''}
+                     onChange={(e) => set('date_resolution', e.target.value)} />
+            </FormField>
+            <FormField label="Coût (interne)">
+              <Input type="number" step="any" value={fields.cout ?? ''}
+                     onChange={(e) => set('cout', e.target.value)} />
+            </FormField>
+            {saveError && (
+              <div role="alert" className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                <span className="break-all">{saveError}</span>
+              </div>
             )}
-            <div className="form-row" style={{ marginTop: 10 }}>
-              <div className="form-group">
-                <label className="form-label">Type</label>
-                <select className="form-select" value={interv.type_intervention}
-                        onChange={(e) => setInterv((s) => ({ ...s, type_intervention: e.target.value }))}>
-                  {INTERVENTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Date prévue</label>
-                <input type="date" className="form-control" value={interv.date_prevue}
-                       onChange={(e) => setInterv((s) => ({ ...s, date_prevue: e.target.value }))} />
-              </div>
-              <div className="form-group fg-grow">
-                <label className="form-label">Compte rendu</label>
-                <input className="form-control" value={interv.compte_rendu}
-                       onChange={(e) => setInterv((s) => ({ ...s, compte_rendu: e.target.value }))} />
-              </div>
-              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
-                <button type="button" className="btn btn-outline"
-                        disabled={intervBusy || !interv.type_intervention} onClick={addIntervention}>
-                  Ajouter une intervention
-                </button>
-              </div>
-            </div>
-          </div>
+          </FormSection>
+        </Form>
 
-          {/* ── Pièces consommées (N46) ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">🔧 Pièces consommées</span>
-            </div>
-            {pieces.length === 0 && (
-              <p className="gen-hint">Aucune pièce enregistrée.</p>
-            )}
-            {pieces.map((p) => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center',
-                gap: 8, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ flex: 1 }}>
-                  {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''}
-                  {' '}× {p.quantite}
-                  {p.stock_decremente && (
-                    <span className="badge" style={{ marginLeft: 6,
-                      background: '#dbeafe', color: '#1e40af' }}>stock −</span>
-                  )}
+        {/* ── Pièces jointes ── */}
+        <section className="flex flex-col gap-3">
+          <AttachmentsPanel model="sav.ticket" id={id} />
+        </section>
+
+        {/* ── Interventions (L313 — repliable) ── */}
+        <CollapsibleSection icon={Wrench} title="Interventions">
+          {interventions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune intervention rattachée.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {interventions.map((iv) => (
+                <li key={iv.id} className="rounded-lg border border-border bg-card p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{iv.type_intervention_display ?? iv.type_intervention}</span>
+                    <span className="text-xs text-muted-foreground">
+                      Prévue {formatDateFR(iv.date_prevue)} · Réalisée {formatDateFR(iv.date_realisee)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">
+                    {iv.technicien_nom ?? '—'}{iv.compte_rendu ? ` — ${iv.compte_rendu}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Type">
+              <Select value={interv.type_intervention}
+                      onValueChange={(v) => setInterv((s) => ({ ...s, type_intervention: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {INTERVENTION_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Date prévue">
+              <Input type="date" value={interv.date_prevue}
+                     onChange={(e) => setInterv((s) => ({ ...s, date_prevue: e.target.value }))} />
+            </FormField>
+            <FormField label="Compte rendu" fullWidth>
+              <Input value={interv.compte_rendu}
+                     onChange={(e) => setInterv((s) => ({ ...s, compte_rendu: e.target.value }))} />
+            </FormField>
+          </div>
+          <div>
+            <Button type="button" variant="outline" size="sm"
+                    loading={intervBusy} disabled={!interv.type_intervention} onClick={addIntervention}>
+              <Plus /> Ajouter une intervention
+            </Button>
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Pièces consommées (N46) — L313 repliable ── */}
+        <CollapsibleSection icon={Wrench} title="Pièces consommées">
+          {pieces.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune pièce enregistrée.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+              {pieces.map((p) => (
+                <li key={p.id} className="flex items-center gap-2 p-2.5 text-sm">
+                  <span className="flex-1">
+                    {p.produit_nom}{p.produit_marque ? ` — ${p.produit_marque}` : ''} × {p.quantite}
+                    {p.stock_decremente && <Badge tone="info" className="ml-2">stock −</Badge>}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removePiece(p.id)}>
+                    <Trash2 /> Retirer
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="grid items-end gap-3 sm:grid-cols-[2fr_auto_auto]">
+            <FormField label="Produit">
+              <Select value={pieceForm.produit ? String(pieceForm.produit) : '__none'}
+                      onValueChange={(v) => setPieceForm((s) => ({ ...s, produit: v === '__none' ? '' : v }))}>
+                <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Produit —</SelectItem>
+                  {produits.map((pr) => (
+                    <SelectItem key={pr.id} value={String(pr.id)}>
+                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Qté" className="w-24">
+              <Input type="number" min="0" step="any" value={pieceForm.quantite}
+                     onChange={(e) => setPieceForm((s) => ({ ...s, quantite: e.target.value }))} />
+            </FormField>
+            <label className="flex h-[var(--control-h)] items-center gap-2 text-sm">
+              <Checkbox checked={pieceForm.decrement}
+                        onCheckedChange={(v) => setPieceForm((s) => ({ ...s, decrement: !!v }))} />
+              Décrémenter le stock
+            </label>
+          </div>
+          <div>
+            <Button type="button" variant="outline" size="sm"
+                    loading={pieceBusy} disabled={!pieceForm.produit} onClick={addPiece}>
+              <Plus /> Ajouter la pièce
+            </Button>
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Historique (chatter) — L313 repliable ── */}
+        <CollapsibleSection icon={History} title="Historique">
+          <div className="flex gap-2">
+            <Input placeholder="Écrire une note…" value={noteBody}
+                   onChange={(e) => setNoteBody(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
+            <Button type="button" variant="outline" onClick={postNote}>Noter</Button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {historique.length === 0 && <p className="text-sm text-muted-foreground">Aucune activité pour le moment.</p>}
+            {historique.map((a) => (
+              <div key={a.id} className="rounded-lg border border-border bg-card p-2.5 text-sm">
+                {a.kind === 'note' && (
+                  <span className="flex items-start gap-1.5">
+                    <StickyNote className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <span><strong>Note :</strong> {a.body}</span>
+                  </span>
+                )}
+                {a.kind === 'creation' && (
+                  <span className="flex items-start gap-1.5">
+                    <Sparkles className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /> {a.body}
+                  </span>
+                )}
+                {a.kind === 'modification' && (
+                  <span className="flex items-start gap-1.5">
+                    <Pencil className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <span><strong>{a.field_label} :</strong> {a.old_value} → <strong>{a.new_value}</strong></span>
+                  </span>
+                )}
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
                 </span>
-                <button type="button" className="btn btn-sm btn-outline"
-                        onClick={() => removePiece(p.id)}>Retirer</button>
               </div>
             ))}
-            <div className="gen-row" style={{ display: 'flex', gap: 8,
-              flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
-              <div className="form-group" style={{ flex: 2, minWidth: 180 }}>
-                <label className="form-label">Produit</label>
-                <select className="form-control" value={pieceForm.produit}
-                        onChange={(e) => setPieceForm((s) => (
-                          { ...s, produit: e.target.value }))}>
-                  <option value="">— Produit —</option>
-                  {produits.map((pr) => (
-                    <option key={pr.id} value={pr.id}>
-                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group" style={{ width: 90 }}>
-                <label className="form-label">Qté</label>
-                <input className="form-control" type="number" min="0" step="any"
-                       value={pieceForm.quantite}
-                       onChange={(e) => setPieceForm((s) => (
-                         { ...s, quantite: e.target.value }))} />
-              </div>
-              <div className="form-group" style={{ alignSelf: 'center' }}>
-                <label className="form-label" style={{ display: 'flex',
-                  alignItems: 'center', gap: 6 }}>
-                  <input type="checkbox" checked={pieceForm.decrement}
-                         onChange={(e) => setPieceForm((s) => (
-                           { ...s, decrement: e.target.checked }))} />
-                  Décrémenter le stock
-                </label>
-              </div>
-              <div className="form-group" style={{ alignSelf: 'flex-end' }}>
-                <button type="button" className="btn btn-outline"
-                        disabled={pieceBusy || !pieceForm.produit}
-                        onClick={addPiece}>Ajouter la pièce</button>
-              </div>
-            </div>
           </div>
+        </CollapsibleSection>
 
-          {/* ── Historique (chatter) ── */}
-          <div className="form-section">
-            <div className="form-section-header">
-              <span className="form-section-title">🕐 Historique</span>
-            </div>
-            <div className="chatter-note-box">
-              <input className="form-control" placeholder="Écrire une note…"
-                     value={noteBody} onChange={(e) => setNoteBody(e.target.value)}
-                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
-              <button type="button" className="btn btn-outline" onClick={postNote}>Noter</button>
-            </div>
-            <div className="chatter-timeline">
-              {historique.length === 0 && <p className="gen-hint">Aucune activité pour le moment.</p>}
-              {historique.map((a) => (
-                <div key={a.id} className={`chatter-item chatter-${a.kind}`}>
-                  {a.kind === 'note' && <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>}
-                  {a.kind === 'creation' && <span>✨ {a.body}</span>}
-                  {a.kind === 'modification' && (
-                    <span>✏️ <strong>{a.field_label}&nbsp;:</strong> {a.old_value} → <strong>{a.new_value}</strong></span>
-                  )}
-                  <span className="chatter-meta">— par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}</span>
-                </div>
-              ))}
-            </div>
+        {/* L303/L311/L314/L11 — échecs d'action (note/intervention/pièce/PDF)
+            surfacés ici plutôt qu'avalés silencieusement. */}
+        {actionError && (
+          <div role="alert"
+               className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+            <span>{actionError}</span>
           </div>
-        </div>
+        )}
 
-        <div className="modal-footer">
+        <FormActions sticky={false}>
           {!current.annule && (
-            <button type="button" className="btn btn-danger" onClick={annuler}>Annuler le ticket</button>
+            <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
+              <Trash2 /> Annuler le ticket
+            </Button>
           )}
-          <button type="button" className="btn btn-outline" onClick={telechargerRapport}>
-            Rapport d'intervention (PDF)
+          <Button type="button" variant="outline" onClick={telechargerRapport}>
+            <FileText /> Rapport d'intervention (PDF)
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
+        </FormActions>
+
+        <AlertDialog open={annulerOpen} onOpenChange={setAnnulerOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Annuler ce ticket ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Le ticket sera marqué annulé (avec motif). Vous pourrez le réactiver ensuite.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="grid gap-1.5">
+              <label htmlFor="motif-annulation" className="text-sm font-medium">Motif d'annulation</label>
+              <Textarea id="motif-annulation" rows={2} value={motif}
+                        onChange={(e) => { setMotif(e.target.value); setConfirmVide(false) }}
+                        placeholder="Motif (recommandé)…" />
+              {/* L300 — motif vide : demander confirmation au lieu d'accepter en silence. */}
+              {confirmVide && (
+                <p className="flex items-center gap-1 text-xs text-warning">
+                  <AlertTriangle className="size-3" aria-hidden="true" />
+                  Aucun motif saisi. Cliquez de nouveau pour annuler sans motif.
+                </p>
+              )}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setConfirmVide(false)}>Revenir</AlertDialogCancel>
+              <AlertDialogAction onClick={(e) => {
+                if (!motif.trim() && !confirmVide) { e.preventDefault(); setConfirmVide(true); return }
+                annuler()
+              }}>Annuler le ticket</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// L295 — colonne Kanban (un statut) : cartes ticket cliquables, couleur de
+// statut (TICKET_STATUS_COLORS) en bandeau de tête. Ordre funnel garanti par
+// l'appelant (TICKET_STATUSES). Couleur jamais le seul signal — le libellé reste.
+function KanbanColumn({ statut, tickets, onSelect }) {
+  return (
+    <div className="flex w-64 shrink-0 flex-col gap-2">
+      <div className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm font-semibold"
+           style={{ background: `${TICKET_STATUS_COLORS[statut]}1a`, color: TICKET_STATUS_COLORS[statut] }}>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full" style={{ background: TICKET_STATUS_COLORS[statut] }} />
+          {statusLabel(statut)}
+        </span>
+        <span className="rounded-full bg-card px-1.5 text-xs text-muted-foreground">{tickets.length}</span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {tickets.length === 0 && <p className="px-1 text-xs text-muted-foreground">—</p>}
+        {tickets.map((t) => (
+          <button key={t.id} type="button" onClick={() => onSelect(t)}
+                  className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-2.5 text-left text-sm hover:border-primary/40">
+            <span className="flex items-center gap-1.5 font-medium">
+              {t.reference}
+              {t.annule && <Badge tone="danger">Annulé</Badge>}
+            </span>
+            <span className="text-xs text-muted-foreground">{t.client_nom ?? '—'}</span>
+            <span className="flex flex-wrap items-center gap-1">
+              <PrioriteBadge value={t.priorite} />
+              <TicketSlaBadge ticket={t} />
+            </span>
           </button>
-          <button type="button" className="btn btn-outline" onClick={onClose}>Fermer</button>
-          <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
-            {saving ? 'Enregistrement...' : 'Mettre à jour'}
-          </button>
-        </div>
+        ))}
       </div>
     </div>
   )
@@ -528,10 +838,10 @@ function TicketDetail({ ticket, onClose, onSaved }) {
 
 export default function TicketsPage() {
   const dispatch = useDispatch()
-  const { items, loading } = useSelector((s) => s.tickets)
+  const { items, loading, error } = useSelector((s) => s.tickets)
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
-  const [sort, setSort] = useState({ key: 'statut', dir: 'asc' })
   const [selected, setSelected] = useState(null)
+  const [view, setView] = useState('table') // L295 — 'table' | 'kanban'
 
   const reload = () => dispatch(fetchTickets())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -541,96 +851,286 @@ export default function TicketsPage() {
   const technicienOptions = useMemo(
     () => [...new Set(items.map((it) => it.technicien_nom).filter(Boolean))].sort(),
     [items])
+  // L317 — pour l'assignation en lot : techniciens (id+nom) disponibles.
+  const technicienById = useMemo(() => {
+    const m = new Map()
+    for (const it of items) {
+      if (it.technicien_responsable && it.technicien_nom) {
+        m.set(String(it.technicien_responsable), it.technicien_nom)
+      }
+    }
+    return m
+  }, [items])
 
   const rows = useMemo(
-    () => sortTickets(filterTickets(items, filters), sort.key, sort.dir),
-    [items, filters, sort])
+    () => sortTickets(filterTickets(items, filters), 'statut', 'asc'),
+    [items, filters])
 
-  const onSort = (key) =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
-  const arrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '')
+  // L306/L314 — comptes par statut (ordre funnel) sur le jeu filtré.
+  const counts = useMemo(() => statusCounts(rows), [rows])
+
+  const hasFilters = filters.q || filters.statut || filters.type || filters.priorite
+    || filters.technicien || filters.sous_garantie || filters.ouvert !== 'ouverts'
+    || filters.annule || filters.urgent_garantie
+
+  // L317/ERR64 — PATCH en lot (technicien ou statut) sur les tickets
+  // sélectionnés. Le lot n'est pas atomique : on attend TOUTES les requêtes
+  // (allSettled) et on recharge la liste dès qu'au moins une échoue, pour que la
+  // table ne reste pas sur un état périmé, avec un message FR d'échec partiel.
+  const bulkPatch = async (selectedKeys, data, clear) => {
+    const results = await Promise.allSettled(
+      selectedKeys.map((id) => dispatch(updateTicket({ id, data })).unwrap()))
+    const echecs = results.filter((r) => r.status === 'rejected').length
+    if (echecs === 0) {
+      toast.success('Tickets mis à jour')
+      clear?.()
+    } else if (echecs === selectedKeys.length) {
+      toast.error('Mise à jour groupée impossible.')
+    } else {
+      toast.error(`${echecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
+    }
+    // Toujours recharger : certains tickets ont pu changer côté serveur.
+    reload()
+  }
+
+  const columns = useMemo(() => [
+    {
+      id: 'reference',
+      header: 'Référence',
+      width: 150,
+      cell: (_v, row) => (
+        <span className="flex items-center gap-1.5 font-medium">
+          {row.reference}
+          {row.annule && <Badge tone="danger">Annulé</Badge>}
+        </span>
+      ),
+      accessor: (r) => r.reference,
+    },
+    { id: 'client_nom', header: 'Client', width: 160, accessor: (r) => r.client_nom ?? '—' },
+    { id: 'installation_reference', header: 'Chantier', width: 140, accessor: (r) => r.installation_reference ?? '—' },
+    {
+      id: 'statut',
+      header: 'Statut',
+      width: 130,
+      searchable: false,
+      cell: (_v, row) => <StatutPill statut={row.statut} />,
+      exportValue: (row) => statusLabel(row.statut),
+    },
+    {
+      // L298 — colonne SLA/âge (badge escaladé pour les ouverts en retard).
+      id: 'sla',
+      header: 'Âge',
+      width: 130,
+      searchable: false,
+      sortable: false,
+      cell: (_v, row) => <TicketSlaBadge ticket={row} />,
+      exportValue: (row) => {
+        const age = ticketAgeDays(row)
+        return age != null && ['nouveau', 'planifie', 'en_cours'].includes(row.statut) && !row.annule
+          ? `${age} j` : '—'
+      },
+    },
+    { id: 'type', header: 'Type', width: 110, accessor: (r) => r.type_display ?? r.type },
+    {
+      id: 'priorite',
+      header: 'Priorité',
+      width: 110,
+      searchable: false,
+      cell: (_v, row) => <PrioriteBadge value={row.priorite} />,
+      exportValue: (row) => TICKET_PRIORITE_LABELS[row.priorite] ?? row.priorite,
+    },
+    {
+      id: 'garantie',
+      header: 'Garantie',
+      width: 120,
+      searchable: false,
+      accessor: (r) => SOUS_GARANTIE_LABELS[r.sous_garantie_effectif] ?? '—',
+    },
+    { id: 'technicien_nom', header: 'Technicien', width: 140, accessor: (r) => r.technicien_nom ?? '—' },
+  ], [])
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Tickets SAV</h1>
-        <div className="page-subtitle">{rows.length} ticket(s)</div>
-        <button type="button" className="btn btn-sm btn-outline"
-                onClick={() => importApi.exportList('tickets', rows.map(r => r.id))
-                  .then(r => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
-          ⬇ Exporter Excel
-        </button>
-      </div>
+    <TooltipProvider delayDuration={200}>
+      <div className="ui-root flex flex-col gap-5 p-1">
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="font-display text-2xl font-bold tracking-tight">Tickets SAV</h1>
+            <p className="text-sm text-muted-foreground">
+              {rows.length} ticket{rows.length > 1 ? 's' : ''}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* L295 — bascule Table / Kanban. */}
+            <Segmented
+              size="sm"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'table', label: 'Table' },
+                { value: 'kanban', label: 'Kanban' },
+              ]}
+            />
+            <Button variant="outline" size="sm"
+                    onClick={() => importApi.exportList('tickets', rows.map((r) => r.id))
+                      .then((r) => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
+              <Download /> Exporter Excel
+            </Button>
+          </div>
+        </header>
 
-      <div className="filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-        <input className="form-control" placeholder="Rechercher (référence, client, chantier, description)…"
-               value={filters.q} onChange={(e) => setF('q', e.target.value)} style={{ flex: '1 1 220px' }} />
-        <select className="form-select" value={filters.statut} onChange={(e) => setF('statut', e.target.value)}>
-          <option value="">Tous statuts</option>
-          {TICKET_STATUSES.map((k) => <option key={k} value={k}>{TICKET_STATUS_LABELS[k]}</option>)}
-        </select>
-        <select className="form-select" value={filters.type} onChange={(e) => setF('type', e.target.value)}>
-          <option value="">Tous types</option>
-          {TICKET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
-        <select className="form-select" value={filters.priorite} onChange={(e) => setF('priorite', e.target.value)}>
-          <option value="">Toutes priorités</option>
-          {TICKET_PRIORITES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-        </select>
-        <select className="form-select" value={filters.technicien} onChange={(e) => setF('technicien', e.target.value)}>
-          <option value="">Tous techniciens</option>
-          {technicienOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select className="form-select" value={filters.sous_garantie} onChange={(e) => setF('sous_garantie', e.target.value)}>
-          <option value="">Garantie (tous)</option>
-          {SOUS_GARANTIE_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sous garantie : {o.label}</option>)}
-        </select>
-        <select className="form-select" value={filters.ouvert} onChange={(e) => setF('ouvert', e.target.value)}>
-          <option value="ouverts">Ouverts seulement</option>
-          <option value="tous">Tous (incl. clôturés/annulés)</option>
-        </select>
-      </div>
+        {/* L306/L314 — rangée de comptes par statut (ordre funnel). */}
+        {!loading && !error && (
+          <div className="flex flex-wrap gap-2">
+            {counts.map((c) => (
+              <button key={c.key} type="button"
+                      onClick={() => setF('statut', filters.statut === c.key ? '' : c.key)}
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        filters.statut === c.key ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
+                <span className="size-2 rounded-full" style={{ background: TICKET_STATUS_COLORS[c.key] }} />
+                {c.label}
+                <span className="font-semibold">{c.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
-      {loading ? (
-        <p className="gen-hint">Chargement…</p>
-      ) : rows.length === 0 ? (
-        <p className="gen-hint">Aucun ticket. Ouvrez-en un depuis la fiche d'un chantier.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th onClick={() => onSort('reference')} style={{ cursor: 'pointer' }}>Référence{arrow('reference')}</th>
-                <th>Client</th>
-                <th className="m-hide">Chantier</th>
-                <th onClick={() => onSort('statut')} style={{ cursor: 'pointer' }}>Statut{arrow('statut')}</th>
-                <th className="m-hide">Type</th>
-                <th onClick={() => onSort('priorite')} style={{ cursor: 'pointer' }}>Priorité{arrow('priorite')}</th>
-                <th className="m-hide">Garantie</th>
-                <th className="m-hide">Technicien</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((t) => (
-                <tr key={t.id} onClick={() => setSelected(t)} style={{ cursor: 'pointer' }}>
-                  <td>{t.reference}{t.annule && <span className="lead-archived-badge"> Annulé</span>}</td>
-                  <td>{t.client_nom ?? '—'}</td>
-                  <td className="m-hide">{t.installation_reference ?? '—'}</td>
-                  <td><StatutBadge statut={t.statut} /></td>
-                  <td className="m-hide">{t.type_display ?? t.type}</td>
-                  <td>{TICKET_PRIORITE_LABELS[t.priorite] ?? t.priorite}</td>
-                  <td className="m-hide">{SOUS_GARANTIE_LABELS[t.sous_garantie_effectif] ?? '—'}</td>
-                  <td className="m-hide">{t.technicien_nom ?? '—'}</td>
-                </tr>
+        {/* ── Filtres ── */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-[220px] flex-1">
+            <Input placeholder="Rechercher (référence, client, chantier, description)…"
+                   value={filters.q} onChange={(e) => setF('q', e.target.value)} />
+          </div>
+          {/* L305 — puce rapide « urgent & sous garantie ». */}
+          <Button variant={filters.urgent_garantie ? 'default' : 'outline'} size="sm"
+                  onClick={() => setF('urgent_garantie', !filters.urgent_garantie)}>
+            <Zap /> Urgent & sous garantie
+          </Button>
+          <Select value={filters.statut || '__all'}
+                  onValueChange={(v) => setF('statut', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[130px]"><SelectValue placeholder="Tous statuts" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Tous statuts</SelectItem>
+              {TICKET_STATUSES.map((k) => <SelectItem key={k} value={k}>{TICKET_STATUS_LABELS[k]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filters.type || '__all'}
+                  onValueChange={(v) => setF('type', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[120px]"><SelectValue placeholder="Tous types" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Tous types</SelectItem>
+              {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filters.priorite || '__all'}
+                  onValueChange={(v) => setF('priorite', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[130px]"><SelectValue placeholder="Toutes priorités" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Toutes priorités</SelectItem>
+              {TICKET_PRIORITES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filters.technicien || '__all'}
+                  onValueChange={(v) => setF('technicien', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[140px]"><SelectValue placeholder="Tous techniciens" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Tous techniciens</SelectItem>
+              {technicienOptions.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filters.sous_garantie || '__all'}
+                  onValueChange={(v) => setF('sous_garantie', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[150px]"><SelectValue placeholder="Garantie (tous)" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Garantie (tous)</SelectItem>
+              {SOUS_GARANTIE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>Sous garantie : {o.label}</SelectItem>
               ))}
-            </tbody>
-          </table>
+            </SelectContent>
+          </Select>
+          <Select value={filters.ouvert} onValueChange={(v) => setF('ouvert', v)}>
+            <SelectTrigger className="w-auto min-w-[170px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ouverts">Ouverts seulement</SelectItem>
+              <SelectItem value="tous">Tous (incl. clôturés/annulés)</SelectItem>
+            </SelectContent>
+          </Select>
+          {/* L304 — filtre d'annulation (le backend supporte ?annule=only|sans). */}
+          <Select value={filters.annule || '__all'}
+                  onValueChange={(v) => setF('annule', v === '__all' ? '' : v)}>
+            <SelectTrigger className="w-auto min-w-[150px]"><SelectValue placeholder="Annulés (tous)" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Annulés (tous)</SelectItem>
+              <SelectItem value="only">Annulés seulement</SelectItem>
+              <SelectItem value="sans">Sans annulés</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      )}
 
-      {selected && (
-        <TicketDetail ticket={selected} onClose={() => setSelected(null)} onSaved={reload} />
-      )}
-    </div>
+        {loading ? (
+          <Card className="space-y-2 p-4">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+          </Card>
+        ) : error ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Chargement impossible"
+            description="Les tickets n'ont pas pu être chargés. Réessayez."
+            action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
+          />
+        ) : rows.length === 0 ? (
+          // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
+          <EmptyState
+            icon={TicketIcon}
+            title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
+            description={hasFilters
+              ? 'Aucun ticket ne correspond aux filtres.'
+              : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
+            action={hasFilters
+              ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
+              : undefined}
+          />
+        ) : view === 'kanban' ? (
+          // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {TICKET_STATUSES.map((k) => (
+              <KanbanColumn key={k} statut={k}
+                            tickets={rows.filter((r) => r.statut === k)}
+                            onSelect={setSelected} />
+            ))}
+          </div>
+        ) : (
+          <DataTable
+            data={rows}
+            columns={columns}
+            getRowId={(row) => row.id}
+            searchable={false}
+            selectable
+            onRowClick={(row) => setSelected(row)}
+            exportName="tickets"
+            emptyTitle="Aucun ticket"
+            emptyDescription="Aucun ticket ne correspond à votre recherche."
+            bulkActions={(selRows, selKeys, clear) => [
+              // L317 — assignation technicien en lot.
+              ...[...technicienById.entries()].map(([tid, nom]) => ({
+                id: `tech-${tid}`,
+                label: `Assigner à ${nom}`,
+                icon: Wrench,
+                onClick: () => bulkPatch(selKeys, { technicien_responsable: tid }, clear),
+              })),
+              // L317 — changement de statut en lot.
+              ...TICKET_STATUSES.map((k) => ({
+                id: `statut-${k}`,
+                label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
+                onClick: () => bulkPatch(selKeys, { statut: k }, clear),
+              })),
+            ]}
+          />
+        )}
+
+        {selected && (
+          <TicketDetail ticket={selected} onClose={() => setSelected(null)} onSaved={reload} />
+        )}
+      </div>
+    </TooltipProvider>
   )
 }

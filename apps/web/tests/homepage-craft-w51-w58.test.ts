@@ -12,11 +12,19 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { ui } from '../src/i18n/ui';
 
+const uiFr = ui.fr as Record<string, string>;
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const index = read('../src/pages/index.astro');
 const form = read('../src/components/DiagnosticForm.astro');
 const faq = read('../src/components/Faq.astro');
+// W64/W65 — la bande fondateur et la bande de marques sont passées en
+// composants (FounderPortrait / BrandStrip + src/lib/brands.ts) ; les gardes
+// W55/W56 suivent le contenu là où il vit désormais.
+const founderPortrait = read('../src/components/FounderPortrait.astro');
+const brandStrip = read('../src/components/BrandStrip.astro');
+const brandsLib = read('../src/lib/brands.ts');
 
 describe('W54 — plus de double listing des installations', () => {
   it('aucune section ni titre « Fiches chantier » rendu (commentaires exclus)', () => {
@@ -51,34 +59,45 @@ describe('W54 — plus de double listing des installations', () => {
   });
 });
 
-describe('W55 — bande de crédibilité du fondateur', () => {
-  it('nomme le parcours approuvé (docteur-ingénieur + 3 maisons) et lie /à-propos', () => {
-    expect(index).toContain('Le fondateur');
-    expect(index).toContain('docteur-ingénieur');
-    expect(index).toContain('Huawei, Ericsson et STMicroelectronics');
-    expect(index).toContain('href="/à-propos"');
-    // La conviction « chaque étude validée par le fondateur ».
-    expect(index).toContain('Chaque étude validée par le fondateur');
+describe('W55/W64 — bande de crédibilité du fondateur (composant FounderPortrait)', () => {
+  it("l'accueil monte le composant FounderPortrait", () => {
+    expect(index).toContain('<FounderPortrait');
+    expect(index).toContain("import FounderPortrait from '../components/FounderPortrait.astro'");
   });
 
-  it('ne ship AUCUN portrait inventé (bande texte uniquement)', () => {
-    // La section fondateur n'introduit pas de <Picture> de portrait fabriqué.
-    expect(index).not.toContain('name="fondateur"');
-    expect(index).not.toContain('name="founder"');
+  it('nomme le parcours approuvé (docteur-ingénieur + 3 maisons) et lie /à-propos', () => {
+    expect(founderPortrait).toContain('Le fondateur');
+    expect(founderPortrait).toContain('Huawei, Ericsson et STMicroelectronics');
+    // W67 : le lien est désormais localisé via localizeNavHref('/à-propos', locale)
+    // (FR inchangé). On vérifie la cible /à-propos plutôt que href="/à-propos".
+    expect(founderPortrait).toContain('/à-propos');
+    // La conviction « chaque étude validée par le fondateur ».
+    expect(founderPortrait).toContain('Chaque étude validée par le fondateur');
+  });
+
+  it('photo-ready mais ZÉRO portrait inventé tant que le fichier manque (FOUNDER_PHOTO=null)', () => {
+    // Repli texte par défaut : aucune image n'est servie tant que le fondateur
+    // n'a pas déposé son portrait (FOUNDER_PHOTO reste null).
+    expect(founderPortrait).toMatch(/FOUNDER_PHOTO\s*:\s*string\s*\|\s*null\s*=\s*null/);
   });
 });
 
-describe('W56 — bande de marques tier-1', () => {
-  it('nomme les CINQ marques réelles et lie /équipement', () => {
-    expect(index).toContain('Marques tier-1 · distributeurs officiels au Maroc');
-    for (const b of ['Canadian Solar', 'JA Solar', 'Deye', 'Huawei', 'Dyness']) {
-      expect(index, `marque manquante : ${b}`).toContain(b);
+describe('W56/W65 — bande de marques tier-1 (composant BrandStrip + brands.ts)', () => {
+  it("l'accueil monte le composant BrandStrip", () => {
+    expect(index).toContain('<BrandStrip');
+    expect(index).toContain("import BrandStrip from '../components/BrandStrip.astro'");
+    // L'ancien tableau inline `const brands` a disparu (déplacé en lib).
+    expect(index).not.toMatch(/const brands\s*=/);
+  });
+
+  it('nomme les marques réelles (dont Jinko, Huawei, Nexans) et lie /équipement', () => {
+    expect(brandStrip).toContain('Marques tier-1 · distributeurs officiels au Maroc');
+    for (const b of ['Canadian Solar', 'JA Solar', 'Deye', 'Huawei', 'Dyness', 'Jinko', 'Nexans']) {
+      expect(brandsLib, `marque manquante : ${b}`).toContain(b);
     }
-    expect(index).toContain('href="/équipement"');
-    // Exactement cinq marques dans le tableau de données.
-    const m = index.match(/const brands\s*=\s*\[([^\]]*)\]/);
-    expect(m, 'tableau brands introuvable').toBeTruthy();
-    expect(m![1].split(',').filter((s) => s.trim()).length).toBe(5);
+    // W67 : le lien est désormais localisé via localizeNavHref('/équipement', locale)
+    // (FR inchangé : /équipement n'est pas traduit → repli FR, jamais de lien mort).
+    expect(brandStrip).toContain('/équipement');
   });
 });
 
@@ -164,8 +183,10 @@ describe('FROZEN — le comportement du formulaire est inchangé (classes seules
 
   it('les 3 étapes (fieldset data-step) et le texte de soumission sont intacts', () => {
     for (const n of [1, 2, 3]) expect(form).toContain(`data-step="${n}"`);
-    expect(form).toContain('Recevoir mon étude sur WhatsApp');
-    expect(form).toContain('Étape 1 sur 3');
+    // W67 — les libellés visibles du formulaire viennent du dictionnaire (clés
+    // form.*) ; le FR reste byte-identique. On vérifie la source de vérité FR.
+    expect(uiFr['form.submit']).toBe('Recevoir mon étude sur WhatsApp');
+    expect(uiFr['form.progress'].replace('{step}', '1')).toBe('Étape 1 sur 3');
   });
 
   it('le script de progression (bg-azur-600/100) reste piloté tel quel', () => {

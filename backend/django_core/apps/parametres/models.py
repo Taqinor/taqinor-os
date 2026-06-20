@@ -11,10 +11,13 @@ Split SANS migration : ``app_label`` et noms de table inchangés
 from .models_company import CompanyProfile
 from .models_messages import MESSAGE_TEMPLATE_DEFAULTS, MessageTemplate
 from .models_audit import SettingsAuditLog
+from .models_tariff import DEFAULT_RESIDENTIAL_TIERS, TariffSettings
 
 __all__ = [
     'CompanyProfile',
     'MessageTemplate',
     'MESSAGE_TEMPLATE_DEFAULTS',
     'SettingsAuditLog',
+    'TariffSettings',
+    'DEFAULT_RESIDENTIAL_TIERS',
 ]

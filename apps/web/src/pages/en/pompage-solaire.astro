@@ -1,0 +1,199 @@
+---
+/**
+ * EN — Solar pumping (W67). Faithful translation of /pompage-solaire ; a
+ * CAPABILITY page (no invented project/photo/production figure). The only
+ * verified tax point is preserved EXACTLY: VAT exemption for AGRICULTURAL
+ * pumping only — never residential rooftop PV. Internal links via
+ * localizeNavHref. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const contactSim = L('/contact') + '#simulateur';
+
+const etapes = [
+  {
+    k: '01',
+    title: 'Solar capture',
+    body: 'The panels convert sunlight into electricity from sunrise to sunset. The array power is deduced from the volume of water to deliver: we work from the need up to the number of panels, not the other way around.',
+  },
+  {
+    k: '02',
+    title: 'Pumping with the sun',
+    body: 'Direct drive, most often without batteries: the pump runs during the sunlight hours and flows all the more as the radiation is strong. No battery bank to buy, cool or replace every eight years.',
+  },
+  {
+    k: '03',
+    title: 'Storing water, not energy',
+    body: 'The reserve is the basin, not the battery. We pump at midday when the array gives its full power, and irrigate at the hour the crop demands. The water waits in the tank; it does not discharge and does not age.',
+  },
+  {
+    k: '04',
+    title: 'Variable-speed drive control',
+    body: 'The drive modulates the pump speed according to available energy, starts the motor smoothly and cuts it on a fault — dry running, undervoltage, overload. It is this electronics that absorbs passing clouds and the seasons.',
+  },
+];
+
+const variables = [
+  {
+    title: 'Flow rate',
+    body: 'The volume of water to deliver, in m³/h or m³/day. It comes from the crop\'s needs and the area to irrigate; it is the data point that commands all the others.',
+  },
+  {
+    title: 'Total head (HMT)',
+    body: 'The total manometric head: everything the pump must overcome, added up — depth of the water level in the borehole, elevation up to the basin, and friction losses in the pipes. Underestimating the head means underflowing all summer.',
+  },
+  {
+    title: 'Borehole depth',
+    body: 'The well depth and especially the dynamic level — the one the water reaches with the pump running — decide between a submersible pump and a surface pump, and set the array power.',
+  },
+  {
+    title: "Crop's water needs",
+    body: 'The crop type, the area and the season set the target volume. It is the input of the calculation: we start from there, and the rest — pump, drive, number of panels — follows.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  name: 'Solar pumping',
+  serviceType: 'Photovoltaic solar pumping',
+  provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  areaServed: { '@type': 'Country', name: 'Maroc' },
+  description:
+    'Study and sizing of solar pumping systems for agriculture and irrigation in Morocco: pump and photovoltaic array calculated on the real flow rate, head and water needs.',
+};
+---
+
+<Layout
+  title="Agricultural solar pumping in Morocco: flow rate, head, borehole | Taqinor"
+  description="Solar pumping for irrigation: the pump runs with the sun, the water waits in the basin rather than in batteries, and the array is calculated on the flow rate, the head and the borehole level. Agricultural solar pumping is VAT-exempt in Morocco — an advantage specific to agriculture, not to residential PV."
+  ogSlug="accueil"
+>
+  <div class="v2">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Solar pumping' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">New service</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Pump water with the sun, not with diesel</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          For irrigation, solar pumping puts an end to the diesel fill-up: panels drive the pump while
+          the sun gives. The array doesn't come from a catalogue — it is deduced from four
+          measurements taken on your plot: the target flow rate, the head to overcome, the borehole
+          level and the water the crop demands.
+        </p>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">How it works</p>
+        <h2 class="display v2-section-title mt-5 text-white">From sun to field, in four stages</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {etapes.map((e, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl" dir="ltr">{e.k}</p>
+              <h3 class="display mt-2 text-2xl text-white">{e.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{e.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
+          The orders of magnitude depend entirely on your site: until the borehole has been measured,
+          there is a method, not a figure. The array and the drive rest on the same tier-1 brands as
+          our roofs — <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">see the equipment →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- The sizing variables (light background) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Four measurements</p>
+        <h2 class="display v2-section-title mt-5">What decides the sizing</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          An oversized pump wastes panels; a pump that's too tight dries out in mid-July. The right
+          point is found at the intersection of four concrete variables, taken on site before opening
+          any catalogue.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {variables.map((v, i) => (
+            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-azur-700">{v.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{v.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          Give us these four figures and the system draws itself; miss the flow rate or the head, and
+          everything stays guesswork. We prefer to measure. <a href={contactSim} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- Tax advantage: VAT exemption (agricultural pumping only) -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-brass-300">Verified tax advantage</p>
+            <h2 class="display v2-section-title mt-5 text-white">Agricultural pumping, VAT-exempt</h2>
+            <p class="v2-lead mt-5 text-lune-soft">
+              In Morocco, solar-powered water-pumping systems are VAT-exempt — and the exemption covers
+              the whole: the pump as well as the panels that feed it. For a farm, that is so much that
+              doesn't add to the equipment bill, and it brings forward the moment the system has paid
+              for itself in diesel not burned.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">Not to be confused</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              The exemption targets <strong class="text-white">agricultural pumping</strong> — the pump
+              and its array — and <strong class="text-white">it does not extend to residential rooftop
+              photovoltaics</strong>. Solar on a house roof remains subject to VAT: two separate
+              regimes, and we will never promise you to transpose one onto the other.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Links block / business segment -->
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">To go further</p>
+        <h2 class="display v2-section-title mt-5 text-white">Agriculture, a business segment</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Solar pumping is a matter for farmers and professionals, not consumer kits. We measure the
+          borehole, we calculate, we install tier-1 hardware, and the installation leaves with its
+          complete technical file.
+        </p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Request an assessment →</a>
+          <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Business solar →</a>
+          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="A solar pumping project? Start with the free study." href={contactSim} />
+
+    <StickyCta />
+  </div>
+</Layout>

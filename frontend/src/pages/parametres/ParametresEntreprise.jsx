@@ -14,19 +14,39 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
-import './parametres.css'
-import { Ic } from './peComponents'
+import { CheckCircle2, AlertCircle, Save, Search, X } from 'lucide-react'
+import {
+  Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider, Input,
+} from '../../ui'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
+  searchSettings,
 } from './peConstants'
 import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
 import ClientsSection from './ClientsSection'
 import DevisSection from './DevisSection'
+import DocumentsSection from './DocumentsSection'
+import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
+import StatutsSection from './StatutsSection'
+import MonitoringSection from './MonitoringSection'
+import ChecklistSection from './ChecklistSection'
+import KitsSection from './KitsSection'
+import ShotListSection from './ShotListSection'
+import AutomatisationsSection from './AutomatisationsSection'
+import SecuriteTerrainSection from './SecuriteTerrainSection'
 import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
+import EmailSection from './EmailSection'
+import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection from './AvanceSection'
+import SecuriteCompteSection from './SecuriteCompteSection'
+
+// N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
+// Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
+// rester dans le périmètre de ce fichier.
+const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -41,10 +61,18 @@ export default function ParametresEntreprise() {
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')
+  // L790 — recherche de réglage : saute à l'onglet contenant un libellé.
+  const [search, setSearch] = useState('')
+  const searchResults = searchSettings(search)
+  // Liste d'onglets affichée = onglets partagés + l'onglet N96 (sécurité 2FA).
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB]
+  const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
+  const jumpToTab = (key) => { setTab(key); setSearch('') }
 
   const [form, setForm] = useState({
     nom: '', adresse: '', email: '', telephone: '',
     siret: '', tva_intra: '', rib: '', banque: '',
+    instructions_paiement: '', conditions_generales: '',
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
     responsable_defaut_leads: '',
@@ -74,6 +102,8 @@ export default function ParametresEntreprise() {
   const [assignables, setAssignables] = useState([])
   const [niveaux, setNiveaux] = useState([])
   const [niveauxSaved, setNiveauxSaved] = useState(false)
+  // ERR63 — message d'erreur par-ligne de l'enregistrement des niveaux.
+  const [niveauxError, setNiveauxError] = useState('')
   const [tags, setTags] = useState([])
   const [motifs, setMotifs] = useState([])
   const [newTag, setNewTag] = useState('')
@@ -89,10 +119,22 @@ export default function ParametresEntreprise() {
   const [newType, setNewType] = useState('')
   const [newEtape, setNewEtape] = useState('')
   const [newMarque, setNewMarque] = useState('')
+  // L777 — états de chargement par liste de référentiel (spinner pendant fetch).
+  const [refLoading, setRefLoading] = useState({
+    tags: true, motifs: true, canaux: true, typesItv: true,
+  })
+  const setRefDone = (key) =>
+    setRefLoading(p => (p[key] ? { ...p, [key]: false } : p))
+  // L770/L786 — aperçu du prochain numéro RÉEL par type de pièce (serveur).
+  const [numberingNext, setNumberingNext] = useState(null)
+  const loadNumberingPreview = () => ventesApi.numerotationPreview()
+    .then(r => setNumberingNext(r.data)).catch(() => setNumberingNext(null))
   const loadCanaux = () => crmApi.getCanaux()
     .then(r => setCanaux(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('canaux'))
   const loadTypesItv = () => installationsApi.getTypesIntervention()
     .then(r => setTypesItv(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('typesItv'))
   const loadChecklistEtapes = () => installationsApi.getChecklistEtapes()
     .then(r => setChecklistEtapes(r.data.results ?? r.data)).catch(() => {})
   const loadMarques = () => stockApi.getMarques()
@@ -100,24 +142,88 @@ export default function ParametresEntreprise() {
   // Champs personnalisés (T11) — module choisi (lead/client/produit).
   const [cfModule, setCfModule] = useState('lead')
   const [cfDefs, setCfDefs] = useState([])
-  const [newCf, setNewCf] = useState({ libelle: '', type: 'text', options: '' })
+  const [newCf, setNewCf] = useState({
+    libelle: '', type: 'text', options: '', obligatoire: false,
+    visible_liste: false,
+  })
+  // L809 — édition inline d'un champ existant : id en cours + brouillon.
+  const [cfEditId, setCfEditId] = useState(null)
+  const [cfEdit, setCfEdit] = useState(null)
   const loadCfDefs = (mod) => customFieldsApi.getDefs(mod)
     .then(r => setCfDefs(r.data.results ?? r.data)).catch(() => {})
   const slugifyCode = (s) => s.trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
+  // Message d'erreur serveur lisible (detail, ou première erreur de champ FR).
+  const cfErr = (e, fallback) => {
+    const d = e?.response?.data
+    if (!d) return fallback
+    if (typeof d === 'string') return d
+    if (d.detail) return d.detail
+    const first = Object.values(d)[0]
+    return Array.isArray(first) ? first[0] : (first || fallback)
+  }
   const addCf = async () => {
     const libelle = newCf.libelle.trim()
     if (!libelle) return
     try {
       await customFieldsApi.saveDef(null, {
         module: cfModule, code: slugifyCode(libelle), libelle, type: newCf.type,
+        obligatoire: newCf.obligatoire, visible_liste: newCf.visible_liste,
         options: newCf.type === 'choice'
           ? newCf.options.split(',').map(o => o.trim()).filter(Boolean) : null,
       })
-      setNewCf({ libelle: '', type: 'text', options: '' })
+      setNewCf({
+        libelle: '', type: 'text', options: '', obligatoire: false,
+        visible_liste: false,
+      })
       loadCfDefs(cfModule)
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { alert(cfErr(e, 'Ajout impossible.')) }
+  }
+  // L809/L811/L812 — ouvre/ferme l'éditeur inline d'un champ existant.
+  const openCfEdit = (d) => {
+    setCfEditId(d.id)
+    setCfEdit({
+      libelle: d.libelle, type: d.type, obligatoire: !!d.obligatoire,
+      visible_liste: !!d.visible_liste,
+      options: Array.isArray(d.options) ? d.options.join(', ') : '',
+    })
+  }
+  const cancelCfEdit = () => { setCfEditId(null); setCfEdit(null) }
+  const saveCfEdit = async (d) => {
+    const libelle = (cfEdit?.libelle || '').trim()
+    if (!libelle) return
+    try {
+      // Le code (clé JSON) n'est jamais renvoyé : protégé serveur (L814).
+      await customFieldsApi.saveDef(d.id, {
+        libelle, type: cfEdit.type, obligatoire: cfEdit.obligatoire,
+        visible_liste: cfEdit.visible_liste,
+        options: cfEdit.type === 'choice'
+          ? cfEdit.options.split(',').map(o => o.trim()).filter(Boolean) : null,
+      })
+      cancelCfEdit()
+      loadCfDefs(cfModule)
+    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+  }
+  // L810 — bascule actif/inactif sans perdre custom_data.
+  const toggleCfActif = async (d) => {
+    try {
+      await customFieldsApi.saveDef(d.id, { actif: !d.actif })
+      loadCfDefs(cfModule)
+    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+  }
+  // L813 — réordonne le champ d'un cran (haut/bas) et persiste l'ordre.
+  const moveCf = async (d, dir) => {
+    const ordered = [...cfDefs]
+    const i = ordered.findIndex(x => x.id === d.id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ordered.length) return
+    ;[ordered[i], ordered[j]] = [ordered[j], ordered[i]]
+    setCfDefs(ordered)
+    try {
+      await customFieldsApi.reorder(ordered.map(x => x.id))
+      loadCfDefs(cfModule)
+    } catch (e) { alert(cfErr(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
     if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
@@ -132,8 +238,10 @@ export default function ParametresEntreprise() {
   }
   const loadTags = () => crmApi.getTags()
     .then(r => setTags(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('tags'))
   const loadMotifs = () => crmApi.getMotifsPerte()
     .then(r => setMotifs(r.data.results ?? r.data)).catch(() => {})
+    .finally(() => setRefDone('motifs'))
   const loadMessages = () => parametresApi.getMessages()
     .then(r => setMessages(r.data)).catch(() => {})
 
@@ -152,6 +260,7 @@ export default function ParametresEntreprise() {
     loadChecklistEtapes()
     loadMarques()
     loadCfDefs('lead')
+    loadNumberingPreview()
   }, [dispatch])
 
   const addEtape = async () => {
@@ -164,11 +273,33 @@ export default function ParametresEntreprise() {
     } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameEtape = async (et, libelle) => {
-    try { await installationsApi.saveChecklistEtape(et.id, { libelle }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du libellé.
+    try { await installationsApi.saveChecklistEtape(et.id, { libelle }); loadChecklistEtapes() } catch { /* */ }
   }
   const toggleEtapeActif = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); loadChecklistEtapes() }
     catch { /* */ }
+  }
+  // L785 — bascule capture_serie (saisie de n° de série) sur une étape.
+  const toggleEtapeCapture = async (et) => {
+    try {
+      await installationsApi.saveChecklistEtape(et.id, { capture_serie: !et.capture_serie })
+      loadChecklistEtapes()
+    } catch { /* */ }
+  }
+  // L784 — réordonne une étape d'un cran (haut/bas) en échangeant les ordres.
+  const moveEtape = async (et, dir) => {
+    const i = checklistEtapes.findIndex(x => x.id === et.id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= checklistEtapes.length) return
+    const a = checklistEtapes[i]; const b = checklistEtapes[j]
+    try {
+      await Promise.all([
+        installationsApi.saveChecklistEtape(a.id, { ordre: b.ordre }),
+        installationsApi.saveChecklistEtape(b.id, { ordre: a.ordre }),
+      ])
+      loadChecklistEtapes()
+    } catch { /* */ }
   }
   const delEtape = async (et) => {
     if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
@@ -185,12 +316,18 @@ export default function ParametresEntreprise() {
     } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameCanal = async (c, libelle) => {
-    try { await crmApi.saveCanal(c.id, { libelle }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du libellé.
+    try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch { /* */ }
   }
   const delCanal = async (c) => {
     if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
     catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L778 — archiver/réactiver un canal (préserve l'historique des leads).
+  const archiveCanal = async (c) => {
+    try { await crmApi.saveCanal(c.id, { archived: !c.archived }); loadCanaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addType = async () => {
     const libelle = newType.trim()
@@ -201,7 +338,8 @@ export default function ParametresEntreprise() {
     } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameType = async (t, libelle) => {
-    try { await installationsApi.saveTypeIntervention(t.id, { libelle }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du libellé.
+    try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch { /* */ }
   }
   const delType = async (t) => {
     if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
@@ -233,6 +371,19 @@ export default function ParametresEntreprise() {
       alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     }
   }
+  // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
+  const resetMessage = async (m) => {
+    if (!window.confirm(`Réinitialiser le message « ${m.label} » au modèle par défaut ?`)) return
+    try {
+      const r = await parametresApi.saveMessage({ cle: m.cle, reset: true })
+      setMessages(ms => ms.map(x => (x.cle === m.cle
+        ? { ...x, corps_fr: r.data.corps_fr, corps_darija: r.data.corps_darija } : x)))
+      setMsgSavedCle(m.cle)
+      setTimeout(() => setMsgSavedCle(null), 2500)
+    } catch (e) {
+      alert(e?.response?.data?.detail ?? 'Réinitialisation impossible.')
+    }
+  }
 
   const addTag = async () => {
     const nom = newTag.trim()
@@ -240,11 +391,25 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveTag(null, { nom }); setNewTag(''); loadTags() } catch { /* */ }
   }
   const renameTag = async (t, nom) => {
-    try { await crmApi.saveTag(t.id, { nom }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du nom.
+    try { await crmApi.saveTag(t.id, { nom }); loadTags() } catch { /* */ }
+  }
+  // L781 — couleur d'une étiquette (color-picker), persistée immédiatement.
+  const setTagColor = async (t, couleur) => {
+    setTags(ts => ts.map(x => (x.id === t.id ? { ...x, couleur } : x)))
+    try { await crmApi.saveTag(t.id, { couleur }) } catch { /* */ }
   }
   const delTag = async (t) => {
     if (!window.confirm(`Supprimer l'étiquette « ${t.nom} » ?`)) return
-    try { await crmApi.deleteTag(t.id); loadTags() } catch { /* */ }
+    // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
+    // on remonte le message serveur (qui propose l'archivage).
+    try { await crmApi.deleteTag(t.id); loadTags() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L778 — archiver/réactiver une étiquette.
+  const archiveTag = async (t) => {
+    try { await crmApi.saveTag(t.id, { archived: !t.archived }); loadTags() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addMotif = async () => {
     const nom = newMotif.trim()
@@ -252,26 +417,68 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveMotifPerte(null, { nom }); setNewMotif(''); loadMotifs() } catch { /* */ }
   }
   const renameMotif = async (m, nom) => {
-    try { await crmApi.saveMotifPerte(m.id, { nom }) } catch { /* */ }
+    // ERR102 — recharger pour refléter une normalisation serveur du nom.
+    try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch { /* */ }
   }
   const delMotif = async (m) => {
     if (!window.confirm(`Supprimer le motif « ${m.nom} » ?`)) return
-    try { await crmApi.deleteMotifPerte(m.id); loadMotifs() } catch { /* */ }
+    // L779 — bloqué (409) si le motif est utilisé : on remonte le message
+    // serveur (qui propose l'archivage).
+    try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L778 — archiver/réactiver un motif de perte.
+  const archiveMotif = async (m) => {
+    try {
+      await crmApi.saveMotifPerte(m.id, { archived: !m.archived }); loadMotifs()
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
   }
 
   const setNiveau = (id, key, val) =>
     setNiveaux(ns => ns.map(n => (n.id === id ? { ...n, [key]: val } : n)))
 
   const saveNiveaux = async () => {
-    try {
-      await Promise.all(niveaux.map(n => ventesApi.saveNiveauRelance(n.id, {
+    // ERR63 — on ne « swallow » plus les échecs : chaque ligne est tentée
+    // (allSettled, donc une ligne en échec ne rejette pas les autres déjà
+    // enregistrées) et toute défaillance est remontée en français.
+    setNiveauxError('')
+    const results = await Promise.allSettled(
+      niveaux.map(n => ventesApi.saveNiveauRelance(n.id, {
         nom: n.nom, delai_jours: Number(n.delai_jours) || 0,
         ordre: n.ordre, message: n.message || '',
       })))
-      setNiveauxSaved(true)
-      setTimeout(() => setNiveauxSaved(false), 3000)
+    const failed = niveaux.filter((n, i) => results[i].status === 'rejected')
+    loadNiveaux()
+    if (failed.length > 0) {
+      const noms = failed.map(n => `« ${n.nom} »`).join(', ')
+      setNiveauxError(
+        failed.length === niveaux.length
+          ? 'Échec de l’enregistrement des niveaux. Réessayez.'
+          : `Niveau(x) non enregistré(s) : ${noms}. Les autres ont bien été sauvegardés.`)
+      return
+    }
+    setNiveauxSaved(true)
+    setTimeout(() => setNiveauxSaved(false), 3000)
+  }
+  // L767 — ajout/suppression d'un niveau de relance depuis la carte.
+  const addNiveau = async () => {
+    const ordre = niveaux.length
+    try {
+      await ventesApi.saveNiveauRelance(null, {
+        nom: `Niveau ${ordre + 1}`, delai_jours: 7, ordre, message: '',
+      })
       loadNiveaux()
-    } catch { /* silencieux */ }
+    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+  const delNiveau = async (n) => {
+    if (!window.confirm(`Supprimer le niveau « ${n.nom} » ?`)) return
+    try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+  // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) quand il n'y en a pas.
+  const seedNiveaux = async () => {
+    try { await ventesApi.seedNiveauxRelance(); loadNiveaux() }
+    catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
   }
 
   useEffect(() => {
@@ -286,6 +493,8 @@ export default function ParametresEntreprise() {
       tva_intra:         profile.tva_intra         ?? '',
       rib:               profile.rib               ?? '',
       banque:            profile.banque            ?? '',
+      instructions_paiement: profile.instructions_paiement ?? '',
+      conditions_generales:  profile.conditions_generales  ?? '',
       ice:               profile.ice               ?? '',
       identifiant_fiscal: profile.identifiant_fiscal ?? '',
       rc:                profile.rc                ?? '',
@@ -339,8 +548,23 @@ export default function ParametresEntreprise() {
       ...p.doc_numbering,
       [key]: { ...(p.doc_numbering?.[key] || DEFAULT_NUMBERING[key]), [field]: val },
     } }))
-  // Aperçu du prochain numéro (côté écran) selon le préfixe/largeur/période.
+  // Aperçu du prochain numéro (L770/L786). Quand le serveur a renvoyé le vrai
+  // prochain numéro (séquence réelle la plus haute + 1) ET que les réglages de
+  // numérotation N'ONT PAS été modifiés localement (mêmes préfixe/largeur/
+  // période que le profil enregistré), on l'affiche tel quel. Dès que l'utilisateur
+  // édite un de ces réglages, on retombe sur l'aperçu calculé (au n°1) car le
+  // « seau » de numérotation change avec le préfixe/période.
+  const numberingUnchanged = (key) => {
+    const sp = profile?.doc_prefixes?.[key] ?? DEFAULT_PREFIXES[key]
+    const sn = { ...DEFAULT_NUMBERING[key], ...((profile?.doc_numbering || {})[key] || {}) }
+    const fp = form.doc_prefixes?.[key] ?? DEFAULT_PREFIXES[key]
+    const fn = form.doc_numbering?.[key] || DEFAULT_NUMBERING[key]
+    return String(sp) === String(fp)
+      && Number(sn.padding) === Number(fn.padding)
+      && (sn.reset || 'monthly') === (fn.reset || 'monthly')
+  }
   const numberingPreview = (key) => {
+    if (numberingNext?.[key] && numberingUnchanged(key)) return numberingNext[key]
     const px = String(form.doc_prefixes?.[key] || DEFAULT_PREFIXES[key] || key)
     const pad = Math.max(1, Number(form.doc_numbering?.[key]?.padding) || 4)
     const reset = form.doc_numbering?.[key]?.reset || 'monthly'
@@ -354,6 +578,10 @@ export default function ParametresEntreprise() {
 
   const handleSave = (e) => {
     e.preventDefault()
+    // L769 — taux de TVA : on PRÉSERVE la valeur tapée (y compris un 0
+    // délibéré) et on transmet le vide tel quel (le serveur le rejette avec
+    // une erreur claire au lieu d'un re-snap silencieux à 20/10).
+    const keepNum = (v) => (v === '' || v == null ? v : Number(v))
     // Coercition douce : pourcentages en nombres ; FK '' → null.
     const pt = {}
     for (const mode of Object.keys(form.payment_terms || {})) {
@@ -383,8 +611,8 @@ export default function ParametresEntreprise() {
       doc_numbering: dn,
       quote_validity_days: Number(form.quote_validity_days) || 30,
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
-      tva_standard: Number(form.tva_standard) || 20,
-      tva_panneaux: Number(form.tva_panneaux) || 10,
+      tva_standard: keepNum(form.tva_standard),
+      tva_panneaux: keepNum(form.tva_panneaux),
       onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
       productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
       discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
@@ -408,39 +636,24 @@ export default function ParametresEntreprise() {
   const showSave = ['societe', 'leads', 'devis', 'avance'].includes(tab)
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: 12, color: '#64748b' }}>
-      <div style={{ width: 22, height: 22, border: '2.5px solid #e2e8f0', borderTopColor: '#1d4ed8', borderRadius: '50%', animation: 'paramSpin 0.7s linear infinite' }}/>
+    <div className="flex min-h-[200px] items-center justify-center gap-3 text-sm text-muted-foreground">
+      <Spinner className="size-5 text-primary" />
       Chargement…
     </div>
   )
 
+  // Bouton d'enregistrement du profil. Le NOM ACCESSIBLE reste exactement
+  // « Enregistrer » (contrat e2e) : pendant l'envoi le bouton est désactivé et
+  // affiche un spinner, l'état « Enregistré ! » n'apparaît qu'après succès.
   const saveButton = (
-    <button
-      type="submit"
-      disabled={saving}
-      style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        padding: '11px 28px', borderRadius: 10, border: 'none',
-        background: saved
-          ? 'linear-gradient(135deg,#059669,#10b981)'
-          : saving
-            ? '#93c5fd'
-            : `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-        color: '#fff', fontWeight: 700, fontSize: 14,
-        cursor: saving ? 'not-allowed' : 'pointer',
-        boxShadow: saving || saved ? 'none' : `0 4px 16px ${accent}40`,
-        transition: 'background 0.3s, box-shadow 0.3s',
-        alignSelf: 'flex-start',
-      }}
-    >
-      {saving ? (
-        <><div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'paramSpin 0.7s linear infinite' }}/> Enregistrement…</>
-      ) : saved ? (
-        <><Ic size={16} color="#fff" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic> Enregistré !</>
+    <Button type="submit" loading={saving} disabled={saving}
+      variant={saved ? 'success' : 'default'} className="self-start">
+      {saving ? 'Enregistrement…' : saved ? (
+        <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
       ) : (
-        <><Ic size={16} color="#fff"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></Ic> Enregistrer</>
+        <><Save className="size-4" aria-hidden="true" /> Enregistrer</>
       )}
-    </button>
+    </Button>
   )
 
   // Tout l'état + tous les handlers passés tels quels aux sections. Chaque
@@ -450,93 +663,138 @@ export default function ParametresEntreprise() {
     profile, form, set, setForm, accent, uploading, dispatch,
     categories, fournisseurs,
     assignables,
-    niveaux, setNiveau, saveNiveaux, niveauxSaved,
-    tags, newTag, setNewTag, addTag, renameTag, delTag,
-    motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif,
-    messages, setMsgField, saveMessage, msgSavedCle,
-    canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal,
+    niveaux, setNiveau, saveNiveaux, niveauxSaved, niveauxError, addNiveau, delNiveau, seedNiveaux,
+    tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
+    motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
+    messages, setMsgField, saveMessage, resetMessage, msgSavedCle,
+    canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal, archiveCanal,
+    refLoading,
     typesItv, newType, setNewType, addType, renameType, delType,
     checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
+    toggleEtapeCapture, moveEtape,
     marques, newMarque, setNewMarque, addMarque, delMarque,
     cfModule, setCfModule, cfDefs, newCf, setNewCf, addCf, delCf, loadCfDefs,
+    cfEditId, cfEdit, setCfEdit, openCfEdit, cancelCfEdit, saveCfEdit,
+    toggleCfActif, moveCf,
     setPT, setPrefix, setNumbering, numberingPreview,
   }
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+    <TooltipProvider delayDuration={200}>
+      <div className="mx-auto max-w-[1100px] p-6">
 
-      {/* ── Page title ── */}
-      <div style={{ marginBottom: '1.1rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
-          Paramètres de l'entreprise
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-          Ces informations apparaissent dans l'en-tête de vos devis et factures PDF.
-        </p>
-      </div>
-
-      {/* ── Onglets ── */}
-      <div className="pe-tabs" role="tablist">
-        {TABS.map(t => (
-          <button key={t.key} type="button" role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={`pe-tab${tab === t.key ? ' pe-tab--active' : ''}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Toast messages ── */}
-      {saved && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '11px 16px', borderRadius: 10, marginBottom: '1rem',
-          background: '#f0fdf4', border: '1px solid #bbf7d0',
-          animation: 'paramSlideDown 0.3s ease',
-        }}>
-          <Ic size={16} color="#16a34a" sw={2.5}><polyline points="20 6 9 17 4 12"/></Ic>
-          <span style={{ fontSize: 13.5, fontWeight: 500, color: '#166534' }}>Profil enregistré avec succès.</span>
+        {/* ── Titre de page ── */}
+        <div className="mb-4">
+          <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
+            Paramètres de l'entreprise
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ces informations apparaissent dans l'en-tête de vos devis et factures PDF.
+          </p>
         </div>
-      )}
-      {error && !saved && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '11px 16px', borderRadius: 10, marginBottom: '1rem',
-          background: '#fef2f2', border: '1px solid #fecaca',
-        }}>
-          <Ic size={16} color="#dc2626" sw={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Ic>
-          <span style={{ fontSize: 13.5, color: '#b91c1c' }}>{typeof error === 'string' ? error : JSON.stringify(error)}</span>
+
+        {/* ── L790 — recherche de réglage (saute à l'onglet correspondant) ── */}
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher un réglage (ex. « TVA », « ICE », « relance »)…"
+            aria-label="Rechercher un réglage"
+            className="pl-9 pr-9"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')}
+                    aria-label="Effacer la recherche"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          )}
+          {search.trim().length >= 2 && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-ui-md">
+              {searchResults.length === 0 ? (
+                <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun réglage correspondant.</p>
+              ) : (
+                searchResults.slice(0, 8).map(({ tab: rt, hits }) => (
+                  <button key={rt} type="button" onClick={() => jumpToTab(rt)}
+                          className="flex w-full flex-col items-start gap-0.5 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent">
+                    <span className="text-sm font-medium text-foreground">{tabLabel(rt)}</span>
+                    <span className="text-[11px] text-muted-foreground">{hits.slice(0, 4).join(' · ')}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
-            masqués restent dans l'état React, donc Enregistrer sauve tout) ── */}
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+        {/* ── Onglets (primitif Tabs, défilable sur mobile) ── */}
+        <Tabs value={tab} onValueChange={setTab} className="mb-5">
+          <TabsList className="pe-tabs-scroll flex w-full justify-start overflow-x-auto">
+            {allTabs.map(t => (
+              <TabsTrigger key={t.key} value={t.key} className="shrink-0">
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-        {tab === 'societe'  && <SocieteSection {...ctx} />}
-        {tab === 'leads'    && <LeadsSection {...ctx} />}
-        {tab === 'clients'  && <ClientsSection {...ctx} />}
-        {tab === 'devis'    && <DevisSection {...ctx} />}
-        {tab === 'stock'    && <StockSection {...ctx} />}
-        {tab === 'equipe'   && <EquipeSection {...ctx} />}
-        {tab === 'messages' && <MessagesSection {...ctx} />}
-        {tab === 'avance'   && <AvanceSection {...ctx} />}
+        {/* ── Bandeaux de feedback ── */}
+        {saved && (
+          <div className="mb-4 flex animate-pop-in items-center gap-2.5 rounded-lg border border-success/30 bg-success/12 px-4 py-2.5">
+            <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+            <span className="text-sm font-medium text-success">Profil enregistré avec succès.</span>
+          </div>
+        )}
+        {error && !saved && (
+          <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5">
+            <AlertCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+            <span className="text-sm text-destructive">{typeof error === 'string' ? error : JSON.stringify(error)}</span>
+          </div>
+        )}
 
-        {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
-        {showSave && saveButton}
-      </form>
+        {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
+              masqués restent dans l'état React, donc Enregistrer sauve tout).
+              noValidate (ERR28) : la validation HTML5 native (min/max/step) ne
+              doit JAMAIS bloquer/snapper une valeur tapée — la coercition douce
+              se fait en JS dans handleSave. ── */}
+        <form noValidate onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
 
-      <style>{`
-        @keyframes paramSpin     { to { transform: rotate(360deg); } }
-        @keyframes paramSlideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @media (max-width: 768px) {
-          .param-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-    </div>
+          {tab === 'societe'  && <SocieteSection {...ctx} />}
+          {tab === 'leads'    && <LeadsSection {...ctx} />}
+          {tab === 'clients'  && <ClientsSection {...ctx} />}
+          {tab === 'devis'    && <DevisSection {...ctx} />}
+          {/* D2/N60/N67/N26/N59 — section autonome (textes éditables du devis). */}
+          {tab === 'documents' && <DocumentsSection />}
+          {/* N64/N65 — section autonome (barème ONEE + ROI/productible). */}
+          {tab === 'tarification' && <TarificationSection />}
+          {tab === 'stock'    && <StockSection {...ctx} />}
+          {/* N58 — section autonome (charge & enregistre sa propre config). */}
+          {tab === 'statuts'    && <StatutsSection />}
+          {/* N52 — section autonome (seuil de sous-performance + auto-ticket SAV). */}
+          {tab === 'monitoring' && <MonitoringSection />}
+          {/* N74 — éditeur de modèles de checklist par type d'installation. */}
+          {tab === 'checklists' && <ChecklistSection />}
+          {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}
+          {tab === 'kits'       && <KitsSection />}
+          {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}
+          {tab === 'shotlist'   && <ShotListSection />}
+          {/* N72 / N73 — moteur d'automatisations + approbations. */}
+          {tab === 'automatisations' && <AutomatisationsSection />}
+          {/* F18/F12/F14/F20 — consignes de sécurité + seuil dépassement + services swappables. */}
+          {tab === 'securite'   && <SecuriteTerrainSection />}
+          {tab === 'equipe'   && <EquipeSection {...ctx} />}
+          {tab === 'messages' && <MessagesSection {...ctx} />}
+          {/* N87/N88 — état du compte d'envoi email & capture entrante (autonome). */}
+          {tab === 'email'    && <EmailSection />}
+          {/* N89 — clés d'API publiques & webhooks signés (section autonome). */}
+          {tab === 'api'      && <ApiWebhooksSection />}
+          {tab === 'avance'   && <AvanceSection {...ctx} />}
+          {/* N96 — double authentification (2FA, opt-in). Section autonome. */}
+          {tab === 'securite_compte' && <SecuriteCompteSection />}
+
+          {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
+          {showSave && saveButton}
+        </form>
+      </div>
+    </TooltipProvider>
   )
 }

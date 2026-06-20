@@ -159,6 +159,41 @@ class TestPublicDocumentEndpoint(TestCase):
         resp = APIClient().get(f'/api/django/public/document/{link.token}/')
         self.assertEqual(resp.status_code, 404)
 
+    def test_expired_token_returns_clear_french_notice(self):
+        # L854 : l'avis FR invite à demander un lien frais, sans aucune donnée
+        # interne (référence, montants, etc.).
+        link = ShareLink.for_devis(self.devis)
+        link.expires_at = timezone.now() - timedelta(days=1)
+        link.save(update_fields=['expires_at'])
+        resp = APIClient().get(f'/api/django/public/document/{link.token}/')
+        self.assertEqual(resp.status_code, 404)
+        detail = resp.data['detail']
+        self.assertIn('expiré', detail)
+        self.assertIn('TAQINOR', detail)
+        # Aucune fuite de donnée interne dans l'avis.
+        self.assertNotIn(self.devis.reference, detail)
+
+    def test_unknown_token_returns_clear_french_notice(self):
+        resp = APIClient().get('/api/django/public/document/nope-nope/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('expiré', resp.data['detail'])
+
+    @patch('apps.ventes.public_views.download_pdf', return_value=b'%PDF-1.4 x')
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/1/DEV-PUB-1.pdf')
+    def test_pdf_response_carries_noindex_header(self, m_gen, m_dl):
+        # L855 : le PDF public porte X-Robots-Tag: noindex.
+        link = ShareLink.for_devis(self.devis)
+        resp = APIClient().get(f'/api/django/public/document/{link.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('noindex', resp['X-Robots-Tag'])
+
+    def test_error_response_carries_noindex_header(self):
+        # L855 : même les réponses d'erreur publiques restent non-indexables.
+        resp = APIClient().get('/api/django/public/document/nope-nope/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('noindex', resp['X-Robots-Tag'])
+
 
 class TestLeadWhatsAppEndpoint(TestCase):
     def setUp(self):
@@ -317,3 +352,126 @@ class TestMessagesSettingsApi(TestCase):
         resp = self.api.put('/api/django/parametres/messages/', {
             'cle': 'inconnu', 'corps_fr': 'x'}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    # ── L775 — validation des placeholders whitelistés par clé ──
+    def test_unsupported_placeholder_rejected_naming_token(self):
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'facture',
+            'corps_fr': 'Bonjour {nom}, total {montant} : {lien}'},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        # L'erreur FR nomme explicitement le token fautif.
+        self.assertIn('{montant}', resp.data['detail'])
+        # Rien n'a été persisté.
+        self.assertFalse(
+            MessageTemplate.objects.filter(
+                company=self.company, cle='facture').exists())
+
+    def test_unsupported_placeholder_in_darija_rejected(self):
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'facture', 'corps_fr': 'OK {lien}',
+            'corps_darija': 'Salam {foo}'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('{foo}', resp.data['detail'])
+        self.assertIn('Darija', resp.data['detail'])
+
+    def test_placeholder_not_allowed_for_this_key_rejected(self):
+        # {lien} n'est PAS autorisé pour devis_multi_entete.
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'devis_multi_entete',
+            'corps_fr': 'Bonjour {nom}, {n} devis : {lien}'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('{lien}', resp.data['detail'])
+
+    def test_whitelisted_placeholders_accepted(self):
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'facture',
+            'corps_fr': 'Bonjour {civilite} {nom}, facture {reference} : {lien}'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    # ── L776 — réinitialisation au modèle par défaut ──
+    def test_reset_restores_default_and_clears_override(self):
+        from apps.parametres.models import MESSAGE_TEMPLATE_DEFAULTS
+        # Personnalise d'abord les deux langues.
+        self.api.put('/api/django/parametres/messages/', {
+            'cle': 'facture', 'corps_fr': 'FR perso {lien}',
+            'corps_darija': 'DR perso {lien}'}, format='json')
+        # Réinitialise.
+        resp = self.api.put('/api/django/parametres/messages/', {
+            'cle': 'facture', 'reset': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            resp.data['corps_fr'], MESSAGE_TEMPLATE_DEFAULTS['facture'])
+        self.assertEqual(resp.data['corps_darija'], '')
+        # Persistance vérifiée via le listing.
+        again = self.api.get('/api/django/parametres/messages/')
+        fac = next(r for r in again.data if r['cle'] == 'facture')
+        self.assertEqual(fac['corps_fr'], MESSAGE_TEMPLATE_DEFAULTS['facture'])
+        self.assertEqual(fac['corps_darija'], '')
+
+
+class TestWhatsAppChatterLogging(TestCase):
+    """L856 — l'action « Envoyer par WhatsApp » est consignée au chatter de
+    l'enregistrement, acteur et société posés côté serveur."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='wa_log', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Idrissi', prenom='Salma',
+            telephone='0612345678')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Idrissi', telephone='0612345678')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-LOG-1',
+            client=self.client_obj, lead=self.lead)
+        self.facture = Facture.objects.create(
+            company=self.company, reference='FAC-LOG-1',
+            client=self.client_obj)
+
+    def test_lead_devis_whatsapp_writes_note_to_chatter(self):
+        from apps.crm.models import LeadActivity
+        before = LeadActivity.objects.filter(lead=self.lead).count()
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
+            {'devis_ids': [self.devis.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead).count(), before + 1)
+        last = notes.order_by('-created_at').first()
+        self.assertIn('WhatsApp', last.body)
+        self.assertIn('DEV-LOG-1', last.body)
+        # Acteur et société posés côté serveur.
+        self.assertEqual(last.user, self.user)
+        self.assertEqual(last.company, self.company)
+
+    def test_facture_whatsapp_writes_note_to_chatter(self):
+        from apps.ventes.models import FactureActivity
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/whatsapp/',
+            {'modele': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        act = FactureActivity.objects.filter(
+            facture=self.facture, kind=FactureActivity.Kind.NOTE).first()
+        self.assertIsNotNone(act)
+        self.assertIn('WhatsApp', act.body)
+        self.assertIn('FAC-LOG-1', act.body)
+        self.assertEqual(act.user, self.user)
+        self.assertEqual(act.company, self.company)
+
+    def test_facture_relance_whatsapp_notes_reminder(self):
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/whatsapp/',
+            {'modele': 'relance'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        from apps.ventes.models import FactureActivity
+        act = FactureActivity.objects.filter(
+            facture=self.facture, kind=FactureActivity.Kind.NOTE).first()
+        self.assertIsNotNone(act)
+        self.assertIn('rappel', act.body)

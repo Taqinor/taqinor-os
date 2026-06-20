@@ -1,6 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, ChevronDown, Lock } from 'lucide-react'
+import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import {
+  Button, Spinner, Badge,
+  Card, CardHeader, CardTitle,
+  EmptyState, Skeleton,
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Form, FormActions,
+  Label, Input, Checkbox,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 
+// Grille module × action (Feature D/RBAC). La SOURCE des codes est l'endpoint
+// /roles/permissions-disponibles (models.ALL_PERMISSIONS) ; cette table ne sert
+// qu'à GROUPER et ÉTIQUETER les codes connus. Tout code renvoyé par le backend
+// mais absent d'ici est quand même rendu (groupe « Autres », libellé = code) —
+// l'éditeur reste donc synchronisé avec le backend sans tableau en dur.
 const PERMISSION_GROUPS = [
   {
     label: 'Stock',
@@ -10,19 +27,22 @@ const PERMISSION_GROUPS = [
       { code: 'stock_modifier',  label: 'Modifier' },
       { code: 'stock_supprimer', label: 'Supprimer' },
       { code: 'stock_mouvement', label: 'Mouvements' },
+      { code: 'stock_export',    label: 'Exporter' },
     ],
   },
   {
-    label: 'CRM',
+    label: 'CRM (leads & clients)',
     codes: [
       { code: 'crm_voir',      label: 'Voir' },
       { code: 'crm_creer',     label: 'Créer' },
       { code: 'crm_modifier',  label: 'Modifier' },
       { code: 'crm_supprimer', label: 'Supprimer' },
+      { code: 'crm_export',    label: 'Exporter' },
+      { code: 'crm_reassign',  label: 'Réassigner' },
     ],
   },
   {
-    label: 'Ventes',
+    label: 'Ventes (devis/factures/avoirs)',
     codes: [
       { code: 'ventes_voir',      label: 'Voir' },
       { code: 'ventes_creer',     label: 'Créer' },
@@ -30,6 +50,36 @@ const PERMISSION_GROUPS = [
       { code: 'ventes_supprimer', label: 'Supprimer' },
       { code: 'ventes_valider',   label: 'Valider' },
       { code: 'ventes_pdf',       label: 'Générer PDF' },
+      { code: 'ventes_export',    label: 'Exporter' },
+      { code: 'ventes_reassign',  label: 'Réassigner' },
+    ],
+  },
+  {
+    label: 'Chantiers / Installations',
+    codes: [
+      { code: 'installation_voir',    label: 'Voir' },
+      { code: 'installation_gerer',   label: 'Gérer' },
+      { code: 'intervention_gerer',   label: 'Interventions' },
+      { code: 'installation_export',  label: 'Exporter' },
+      { code: 'technicien_assign',    label: 'Assigner techniciens' },
+    ],
+  },
+  {
+    label: 'Après-vente (SAV)',
+    codes: [
+      { code: 'equipement_voir',  label: 'Voir équipements' },
+      { code: 'equipement_gerer', label: 'Gérer équipements' },
+      { code: 'sav_voir',         label: 'Voir tickets' },
+      { code: 'sav_gerer',        label: 'Gérer tickets' },
+      { code: 'sav_export',       label: 'Exporter' },
+      { code: 'sav_reassign',     label: 'Réassigner' },
+    ],
+  },
+  {
+    label: 'Reporting',
+    codes: [
+      { code: 'reporting_voir',   label: 'Voir' },
+      { code: 'reporting_export', label: 'Exporter' },
     ],
   },
   {
@@ -53,35 +103,49 @@ const PERMISSION_GROUPS = [
     ],
   },
   {
-    label: 'Reporting',
+    label: 'Données sensibles',
     codes: [
-      { code: 'reporting_voir', label: 'Voir' },
+      { code: 'prix_achat_voir', label: 'Voir prix d\'achat & marges' },
+    ],
+  },
+  {
+    label: 'Journal d\'activité',
+    codes: [
+      { code: 'journal_activite_voir', label: 'Voir le journal' },
+    ],
+  },
+  {
+    label: 'Visibilité des données',
+    codes: [
+      { code: 'records_scope_equipe', label: 'Limiter à mon équipe' },
+      { code: 'records_scope_sous_arbre', label: 'Limiter à mon sous-arbre' },
     ],
   },
 ]
 
 const EMPTY_FORM = { nom: '', permissions: [] }
 
-const S = {
-  card: { background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' },
-  th: { padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 },
-  td: { padding: '0.75rem 1rem', fontSize: '0.875rem' },
-  badge: (sys) => ({
-    display: 'inline-block',
-    background: sys ? '#eff6ff' : '#f0fdf4',
-    color: sys ? '#1d4ed8' : '#166534',
-    border: `1px solid ${sys ? '#bfdbfe' : '#bbf7d0'}`,
-    borderRadius: '999px', padding: '0.15rem 0.55rem', fontSize: '0.72rem', fontWeight: 600,
-  }),
-  btnPrimary: { background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', padding: '0.5rem 1rem', cursor: 'pointer', fontWeight: 500, fontSize: '0.875rem' },
-  btnDanger: { background: 'transparent', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' },
-  btnGhost: { background: 'transparent', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '6px', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' },
-  input: { border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.45rem 0.75rem', fontSize: '0.875rem', width: '100%' },
-  label: { fontSize: '0.8rem', color: '#64748b', marginBottom: '0.25rem', display: 'block' },
-  section: { marginBottom: '0.5rem' },
-  groupTitle: { fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' },
-  checkRow: { display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.2rem', marginBottom: '0.2rem' },
-  checkLabel: { display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#374151', cursor: 'pointer' },
+// Construit la grille de groupes à partir des codes RÉELS du backend : on garde
+// l'ordre/les libellés connus puis on ajoute un groupe « Autres » pour tout code
+// inattendu, afin que l'éditeur reste fidèle à ALL_PERMISSIONS.
+function buildGroups(availableCodes) {
+  if (!availableCodes || availableCodes.length === 0) return PERMISSION_GROUPS
+  const available = new Set(availableCodes)
+  const seen = new Set()
+  const groups = []
+  for (const g of PERMISSION_GROUPS) {
+    const codes = g.codes.filter(p => available.has(p.code))
+    codes.forEach(p => seen.add(p.code))
+    if (codes.length) groups.push({ label: g.label, codes })
+  }
+  const extras = availableCodes.filter(c => !seen.has(c))
+  if (extras.length) {
+    groups.push({
+      label: 'Autres',
+      codes: extras.map(c => ({ code: c, label: c })),
+    })
+  }
+  return groups
 }
 
 export default function RolesManagement() {
@@ -92,12 +156,30 @@ export default function RolesManagement() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [formError, setFormError] = useState(null)
+  // Catalogue de permissions chargé depuis le backend (source de vérité).
+  const [availableCodes, setAvailableCodes] = useState([])
+  // Ligne « Utilisateurs » dépliée (id du rôle) — tâche RBAC.
+  const [expandedUsers, setExpandedUsers] = useState(null)
+  // Dialogue de réassignation après une suppression bloquée.
+  const [reassign, setReassign] = useState(null) // { role, target }
+
+  const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
+  const viewCodes = useMemo(
+    () => availableCodes.filter(c => c.endsWith('_voir')),
+    [availableCodes],
+  )
 
   const load = async () => {
     setLoading(true)
+    setError(null)
     try {
-      const { data } = await rolesApi.getRoles()
-      setRoles(data.results ?? data)
+      const [rolesRes, permsRes] = await Promise.all([
+        rolesApi.getRoles(),
+        rolesApi.getPermissionsDisponibles(),
+      ])
+      setRoles(rolesRes.data.results ?? rolesRes.data)
+      setAvailableCodes(permsRes.data.permissions ?? [])
     } catch {
       setError('Impossible de charger les rôles.')
     } finally {
@@ -112,12 +194,14 @@ export default function RolesManagement() {
   const openCreate = () => {
     setEditing(null)
     setForm(EMPTY_FORM)
+    setFormError(null)
     setShowForm(true)
   }
 
   const openEdit = (role) => {
     setEditing(role)
     setForm({ nom: role.nom, permissions: [...role.permissions] })
+    setFormError(null)
     setShowForm(true)
   }
 
@@ -125,6 +209,7 @@ export default function RolesManagement() {
     setShowForm(false)
     setEditing(null)
     setForm(EMPTY_FORM)
+    setFormError(null)
   }
 
   const togglePerm = (code) => {
@@ -151,14 +236,54 @@ export default function RolesManagement() {
     }))
   }
 
+  // Préréglage « Lecture seule » : ne coche que les codes *_voir.
+  const applyReadOnly = () => {
+    setForm(f => ({ ...f, permissions: [...viewCodes] }))
+  }
+
+  // Indicateur « modifié » : true si le formulaire diffère du rôle édité.
+  const isDirty = useMemo(() => {
+    if (!editing) return form.nom.trim() !== '' || form.permissions.length > 0
+    const a = [...editing.permissions].sort()
+    const b = [...form.permissions].sort()
+    return editing.nom !== form.nom.trim()
+      || a.length !== b.length
+      || a.some((c, i) => c !== b[i])
+  }, [editing, form])
+
   const handleSave = async (e) => {
     e.preventDefault()
+    setFormError(null)
+    // Garde côté client : nom obligatoire.
+    if (!form.nom.trim()) {
+      setFormError('Le nom du rôle est obligatoire.')
+      return
+    }
+    // Garde côté client : au moins une permission.
+    if (form.permissions.length === 0) {
+      setFormError('Sélectionnez au moins une permission.')
+      return
+    }
+    // Garde côté client : nom dupliqué dans la société (hors rôle édité).
+    const dup = roles.some(r =>
+      r.id !== editing?.id
+      && r.nom.trim().toLowerCase() === form.nom.trim().toLowerCase())
+    if (dup) {
+      setFormError('Un rôle portant ce nom existe déjà.')
+      return
+    }
     setSaving(true)
     try {
+      const payload = { nom: form.nom.trim(), permissions: form.permissions }
       if (editing) {
-        await rolesApi.patchRole(editing.id, form)
+        // Le nom des rôles système est verrouillé : on n'envoie que les perms.
+        if (editing.est_systeme) {
+          await rolesApi.patchRole(editing.id, { permissions: form.permissions })
+        } else {
+          await rolesApi.patchRole(editing.id, payload)
+        }
       } else {
-        await rolesApi.createRole(form)
+        await rolesApi.createRole(payload)
       }
       cancel()
       await load()
@@ -167,165 +292,338 @@ export default function RolesManagement() {
         || err.response?.data?.permissions?.[0]
         || err.response?.data?.detail
         || err.message
-      alert('Erreur : ' + msg)
+      setFormError('Erreur : ' + msg)
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (role) => {
-    if (!confirm(`Supprimer le rôle "${role.nom}" ?`)) return
     try {
       await rolesApi.deleteRole(role.id)
       await load()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
+      // Suppression bloquée car des utilisateurs y sont assignés → proposer la
+      // réassignation dans le même dialogue (perform_destroy → PermissionDenied).
+      // ERR101 — On se base sur users_count seul : le sérialiseur de liste peut
+      // omettre le tableau `users` imbriqué, mais le dialogue doit quand même
+      // s'ouvrir dès qu'il y a au moins un utilisateur.
+      if (role.users_count > 0) {
+        setReassign({ role, target: '' })
+      } else {
+        setError(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
+      }
     }
   }
 
+  // Réassigne tous les utilisateurs du rôle bloqué vers `target`, puis supprime.
+  const handleReassignAndDelete = async () => {
+    const { role, target } = reassign
+    if (!target) return
+    setError(null)
+    try {
+      await Promise.all(
+        (role.users || []).map(u =>
+          api.patch(`/users/${u.id}/`, { role: Number(target) })),
+      )
+      await rolesApi.deleteRole(role.id)
+      setReassign(null)
+      await load()
+    } catch (err) {
+      setError(err.response?.data?.detail
+        || 'Échec de la réassignation des utilisateurs.')
+    }
+  }
+
+  const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
+
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       {/* ── Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Gestion des rôles</h2>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+          <h2 className="font-display text-xl font-semibold tracking-tight">Gestion des rôles</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             Créez des rôles personnalisés avec des permissions précises pour votre entreprise.
           </p>
         </div>
         {!showForm && (
-          <button onClick={openCreate} style={S.btnPrimary}>
-            + Nouveau rôle
-          </button>
+          <Button onClick={openCreate}>
+            <ShieldPlus /> Nouveau rôle
+          </Button>
         )}
       </div>
 
-      {error && <p style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</p>}
+      {error && (
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
-      {/* ── Form ── */}
+      {/* ── Éditeur de rôle ── */}
       {showForm && (
-        <div style={{ ...S.card, padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 600 }}>
-            {editing ? `Modifier : ${editing.nom}` : 'Nouveau rôle'}
-          </h3>
-          <form onSubmit={handleSave}>
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={S.label}>Nom du rôle *</label>
-              <input
-                required
+        <Card className="p-4 sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>
+              {editing ? `Modifier : ${editing.nom}` : 'Nouveau rôle'}
+            </CardTitle>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                {form.permissions.length} permission{form.permissions.length !== 1 ? 's' : ''}
+              </span>
+              {isDirty && <Badge tone="warning">Modifié</Badge>}
+            </div>
+          </div>
+          <Form onSubmit={handleSave} className="gap-5">
+            <div className="flex flex-col gap-1.5 sm:max-w-xs">
+              <Label htmlFor="role-nom" required={!editing?.est_systeme}>Nom du rôle</Label>
+              <Input
+                id="role-nom"
                 value={form.nom}
+                placeholder="ex: Comptable, Magasinier…"
+                disabled={!!editing?.est_systeme}
                 onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
-                placeholder="ex: Comptable, Magasinier..."
-                style={{ ...S.input, maxWidth: '320px' }}
               />
+              {editing?.est_systeme && (
+                <p className="text-xs text-muted-foreground">
+                  Nom verrouillé (rôle système) — les permissions restent éditables.
+                </p>
+              )}
             </div>
 
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ ...S.label, marginBottom: '0.75rem' }}>Permissions</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-                {PERMISSION_GROUPS.map(group => {
-                  const allSelected = group.codes.every(p => form.permissions.includes(p.code))
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Permissions</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={applyReadOnly}
+                >
+                  <Eye /> Lecture seule
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {groups.map(group => {
+                  const codes = group.codes.map(p => p.code)
+                  const allSelected = codes.every(c => form.permissions.includes(c))
                   return (
-                    <div key={group.label} style={{ background: '#f8fafc', borderRadius: '6px', padding: '0.75rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <span style={S.groupTitle}>{group.label}</span>
-                        <button
+                    <Card key={group.label} className="bg-muted/30 shadow-none">
+                      <CardHeader className="flex-row items-center justify-between gap-2 p-3">
+                        <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {group.label}
+                        </CardTitle>
+                        <Button
                           type="button"
-                          onClick={() => allSelected
-                            ? deselectAll(group.codes.map(p => p.code))
-                            : selectAll(group.codes.map(p => p.code))
-                          }
-                          style={{ fontSize: '0.7rem', background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}
+                          variant="link"
+                          size="sm"
+                          className="h-auto shrink-0 p-0 text-xs"
+                          onClick={() => allSelected ? deselectAll(codes) : selectAll(codes)}
                         >
                           {allSelected ? 'Tout décocher' : 'Tout cocher'}
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        </Button>
+                      </CardHeader>
+                      <div className="flex flex-col gap-2 p-3 pt-0">
                         {group.codes.map(p => (
-                          <label key={p.code} style={S.checkLabel}>
-                            <input
-                              type="checkbox"
+                          <label key={p.code} className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
+                            <Checkbox
                               checked={form.permissions.includes(p.code)}
-                              onChange={() => togglePerm(p.code)}
-                              style={{ accentColor: '#3b82f6' }}
+                              onCheckedChange={() => togglePerm(p.code)}
                             />
                             {p.label}
                           </label>
                         ))}
                       </div>
-                    </div>
+                    </Card>
                   )
                 })}
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button type="submit" disabled={saving} style={{ ...S.btnPrimary, background: '#10b981' }}>
-                {saving ? 'Enregistrement...' : (editing ? 'Mettre à jour' : 'Créer le rôle')}
-              </button>
-              <button type="button" onClick={cancel} style={S.btnGhost}>
-                Annuler
-              </button>
-            </div>
-          </form>
-        </div>
+            {formError && (
+              <p role="alert" className="text-sm text-destructive">{formError}</p>
+            )}
+
+            <FormActions sticky={false}>
+              <Button type="button" variant="ghost" onClick={cancel}>Annuler</Button>
+              <Button type="submit" variant="success" loading={saving}>
+                {editing ? 'Mettre à jour' : 'Créer le rôle'}
+              </Button>
+            </FormActions>
+          </Form>
+        </Card>
       )}
 
-      {/* ── Table ── */}
+      {/* ── Liste ── */}
       {loading ? (
-        <p style={{ color: '#64748b' }}>Chargement...</p>
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner /> Chargement…
+          </div>
+          <div className="mt-4 space-y-3">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        </Card>
+      ) : error ? (
+        <EmptyState
+          icon={ShieldCheck}
+          title="Rôles indisponibles"
+          description={error}
+          action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
+        />
+      ) : roles.length === 0 ? (
+        <EmptyState
+          icon={ShieldCheck}
+          title="Aucun rôle défini"
+          description="Créez un rôle personnalisé pour attribuer des permissions précises."
+          action={<Button size="sm" onClick={openCreate}><ShieldPlus /> Nouveau rôle</Button>}
+        />
       ) : (
-        <div style={{ ...S.card, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                <th style={S.th}>Nom</th>
-                <th style={S.th}>Type</th>
-                <th style={S.th}>Permissions</th>
-                <th style={S.th}>Utilisateurs</th>
-                <th style={{ ...S.th, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roles.map((r, i) => (
-                <tr key={r.id} style={{ borderBottom: i < roles.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                  <td style={{ ...S.td, fontWeight: 600 }}>{r.nom}</td>
-                  <td style={S.td}>
-                    <span style={S.badge(r.est_systeme)}>
-                      {r.est_systeme ? 'Système' : 'Personnalisé'}
-                    </span>
-                  </td>
-                  <td style={S.td}>
-                    <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className={th}>Nom</th>
+                  <th className={th}>Type</th>
+                  <th className={th}>Permissions</th>
+                  <th className={th}>Utilisateurs</th>
+                  <th className={`${th} text-right`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roles.map((r) => [
+                  <tr key={r.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
+                    <td className="px-4 py-2.5 font-medium text-foreground">{r.nom}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={r.est_systeme ? 'info' : 'success'}>
+                        {r.est_systeme ? 'Système' : 'Personnalisé'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground">
                       {r.permissions.length} permission{r.permissions.length !== 1 ? 's' : ''}
-                    </span>
-                  </td>
-                  <td style={{ ...S.td, color: '#64748b' }}>{r.users_count}</td>
-                  <td style={{ ...S.td, textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                      <button onClick={() => openEdit(r)} style={S.btnGhost}>
-                        Modifier
-                      </button>
-                      {!r.est_systeme && (
-                        <button onClick={() => handleDelete(r)} style={S.btnDanger}>
-                          Supprimer
-                        </button>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {r.users_count > 0 ? (
+                        <Button
+                          size="sm"
+                          variant="link"
+                          className="h-auto p-0 text-xs"
+                          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
+                        >
+                          {r.users_count} utilisateur{r.users_count !== 1 ? 's' : ''}
+                          <ChevronDown
+                            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
+                          />
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {roles.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
-                    Aucun rôle défini.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
+                          <Pencil /> Modifier
+                        </Button>
+                        {!r.est_systeme && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
+                                <Trash2 /> Supprimer
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {r.users_count > 0
+                                    ? `Le rôle « ${r.nom} » est porté par ${r.users_count} utilisateur(s). `
+                                      + 'Vous devrez les réassigner avant la suppression.'
+                                    : `Le rôle « ${r.nom} » sera définitivement supprimé.`}
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(r)}>
+                                  Supprimer
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
+                    </td>
+                  </tr>,
+                  expandedUsers === r.id ? (
+                    <tr key={`${r.id}-users`} className="border-b border-border/60 bg-muted/20">
+                      <td colSpan={5} className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1.5">
+                          {(r.users || []).map(u => (
+                            <Badge key={u.id} tone="neutral">{u.username}</Badge>
+                          ))}
+                          {(r.users?.length ?? 0) === 0 && (
+                            <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null,
+                ])}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
+
+      {/* ── Dialogue de réassignation (suppression bloquée) ── */}
+      <AlertDialog open={!!reassign} onOpenChange={(o) => { if (!o) setReassign(null) }}>
+        {reassign && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Réassigner avant de supprimer</AlertDialogTitle>
+              <AlertDialogDescription>
+                Le rôle « {reassign.role.nom} » est assigné à {reassign.role.users_count} utilisateur(s).
+                Choisissez un rôle de remplacement pour les réassigner, puis le rôle sera supprimé.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="reassign-target" className="flex items-center gap-1.5">
+                <Lock className="size-3.5" aria-hidden="true" /> Nouveau rôle
+              </Label>
+              <Select
+                value={reassign.target ? String(reassign.target) : undefined}
+                onValueChange={v => setReassign(s => ({ ...s, target: Number(v) }))}
+              >
+                <SelectTrigger id="reassign-target">
+                  <SelectValue placeholder="Choisir un rôle…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.filter(r => r.id !== reassign.role.id).map(r => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {r.nom} {r.est_systeme ? '(Système)' : '(Personnalisé)'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Utilisateurs concernés :{' '}
+                {(reassign.role.users || []).map(u => u.username).join(', ') || '—'}
+              </p>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={!reassign.target}
+                onClick={handleReassignAndDelete}
+              >
+                Réassigner et supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </div>
   )
 }

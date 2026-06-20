@@ -8,6 +8,13 @@ from .views import (
     MeView,
     LogoutView,
     CookieTokenRefreshView,
+    TwoFactorSetupView,
+    TwoFactorEnableView,
+    TwoFactorDisableView,
+    TwoFactorStatusView,
+    SessionListView,
+    SessionRevokeView,
+    ChangePasswordView,
 )
 
 router = DefaultRouter()
@@ -24,5 +31,16 @@ urlpatterns = [
     path('auth/me/', MeView.as_view(), name='auth_me'),
     path('auth/logout/', LogoutView.as_view(), name='auth_logout'),
     path('auth/token/refresh/', CookieTokenRefreshView.as_view(), name='auth_token_refresh'),
+    # Double authentification (2FA TOTP) — opt-in par utilisateur (N96).
+    path('auth/2fa/status/', TwoFactorStatusView.as_view(), name='auth_2fa_status'),
+    path('auth/2fa/setup/', TwoFactorSetupView.as_view(), name='auth_2fa_setup'),
+    path('auth/2fa/enable/', TwoFactorEnableView.as_view(), name='auth_2fa_enable'),
+    path('auth/2fa/disable/', TwoFactorDisableView.as_view(), name='auth_2fa_disable'),
+    # Sessions actives & révocation + rotation du mot de passe (N96).
+    path('auth/sessions/', SessionListView.as_view(), name='auth_sessions'),
+    path('auth/sessions/<int:pk>/revoke/', SessionRevokeView.as_view(),
+         name='auth_session_revoke'),
+    path('auth/change-password/', ChangePasswordView.as_view(),
+         name='auth_change_password'),
     path('', include(router.urls)),
 ]

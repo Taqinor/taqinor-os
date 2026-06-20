@@ -107,3 +107,250 @@ class TestEmployeeAdmin(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn('avatar_url', resp.data)
         self.assertIn('poste', resp.data)
+
+
+class TestRoleAssignmentN103(TestCase):
+    """Régression N103 : un Directeur ET un Administrateur doivent pouvoir
+    lister utilisateurs + rôles et changer FACILEMENT le rôle de n'importe quel
+    utilisateur (persistant, effectif immédiatement), et assigner un superviseur.
+    Le palier limité (Viewer/Commercial) reste bloqué (aucun affaiblissement).
+
+    Cause racine : le palier de menu dérivait du nom + ``est_systeme`` du rôle.
+    Un Directeur/Administrateur réel dont la ligne Role a dérivé (mapping
+    rétroactif laissant ``est_systeme=False``) résolvait au palier limité → 403
+    sur /users/ et /roles/ → l'écran ne chargeait plus → impossible de changer
+    les rôles. Le palier dérive désormais d'abord du signal ``roles_gerer``."""
+
+    def setUp(self):
+        from apps.roles.models import (
+            DIRECTEUR_PERMISSIONS, ADMIN_PERMISSIONS,
+            COMMERCIAL_PERMISSIONS, VIEWER_PERMISSIONS,
+        )
+        self.company = Company.objects.create(nom='N103 Co', slug='n103-co')
+        self.directeur_role = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=list(DIRECTEUR_PERMISSIONS), est_systeme=True)
+        self.admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=list(ADMIN_PERMISSIONS), est_systeme=True)
+        self.commercial_role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=list(COMMERCIAL_PERMISSIONS), est_systeme=True)
+        self.viewer_role = Role.objects.create(
+            company=self.company, nom='Viewer',
+            permissions=list(VIEWER_PERMISSIONS), est_systeme=True)
+
+        # Propriétaire Directeur + un second admin (pour que rétrograder un admin
+        # ne soit jamais bloqué par la garde « dernier propriétaire »).
+        self.directeur = User.objects.create_user(
+            username='dir', password='x', role=self.directeur_role,
+            role_legacy='admin', company=self.company, is_protected=True)
+        self.administrateur = User.objects.create_user(
+            username='adm', password='x', role=self.admin_role,
+            role_legacy='admin', company=self.company)
+        # Cible ordinaire dont on change le rôle.
+        self.employee = User.objects.create_user(
+            username='emp', password='x', role=self.commercial_role,
+            role_legacy='normal', company=self.company)
+
+    def _client_for(self, user):
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    # ── Endpoints atteignables par Directeur ET Administrateur ──────────────
+    def test_directeur_reaches_users_and_roles(self):
+        api = self._client_for(self.directeur)
+        self.assertEqual(api.get('/api/django/users/').status_code, 200)
+        self.assertEqual(api.get('/api/django/roles/').status_code, 200)
+
+    def test_administrateur_reaches_users_and_roles(self):
+        api = self._client_for(self.administrateur)
+        self.assertEqual(api.get('/api/django/users/').status_code, 200)
+        self.assertEqual(api.get('/api/django/roles/').status_code, 200)
+
+    # ── Changement de rôle par Directeur ET Administrateur ──────────────────
+    def test_directeur_can_change_user_role(self):
+        api = self._client_for(self.directeur)
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'role': self.viewer_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.role_id, self.viewer_role.id)
+
+    def test_administrateur_can_change_user_role(self):
+        api = self._client_for(self.administrateur)
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'role': self.viewer_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.role_id, self.viewer_role.id)
+
+    def test_admin_can_promote_user_to_admin_role(self):
+        # Promotion vers un rôle admin : doit passer et réaligner le palier.
+        api = self._client_for(self.directeur)
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'role': self.admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.role_id, self.admin_role.id)
+        self.assertEqual(self.employee.role_legacy, 'admin')
+        self.assertEqual(self.employee.menu_tier, 'admin')
+
+    def test_admin_can_demote_other_admin_role(self):
+        # Rétrograder un admin qui n'est PAS le dernier propriétaire : autorisé.
+        api = self._client_for(self.directeur)
+        resp = api.patch(f'/api/django/users/{self.administrateur.id}/',
+                         {'role': self.commercial_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.administrateur.refresh_from_db()
+        self.assertEqual(self.administrateur.role_id, self.commercial_role.id)
+
+    # ── Cause racine : Directeur dérivé (est_systeme=False) garde l'accès ────
+    def test_drifted_directeur_still_admin_tier_and_reaches_endpoints(self):
+        # Reproduit l'état laissé par le mapping rétroactif : la ligne Role
+        # « Directeur » est restée est_systeme=False.
+        self.directeur_role.est_systeme = False
+        self.directeur_role.save(update_fields=['est_systeme'])
+        self.directeur.refresh_from_db()
+        self.assertEqual(self.directeur.menu_tier, 'admin')
+        api = self._client_for(self.directeur)
+        self.assertEqual(api.get('/api/django/users/').status_code, 200)
+        self.assertEqual(api.get('/api/django/roles/').status_code, 200)
+        # Et il peut toujours changer un rôle.
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'role': self.viewer_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    # ── Assignation du superviseur (Paramètres → Équipe) ────────────────────
+    def test_admin_can_assign_supervisor(self):
+        api = self._client_for(self.directeur)
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'supervisor': self.administrateur.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.supervisor_id, self.administrateur.id)
+        self.assertEqual(resp.data['supervisor'], self.administrateur.id)
+
+    def test_admin_can_clear_supervisor(self):
+        self.employee.supervisor = self.administrateur
+        self.employee.save(update_fields=['supervisor'])
+        api = self._client_for(self.directeur)
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'supervisor': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.employee.refresh_from_db()
+        self.assertIsNone(self.employee.supervisor_id)
+
+    # ── Négatif : le palier limité reste bloqué (aucun affaiblissement) ─────
+    def test_viewer_blocked_from_users_and_roles(self):
+        viewer = User.objects.create_user(
+            username='vw', password='x', role=self.viewer_role,
+            company=self.company)
+        api = self._client_for(viewer)
+        self.assertEqual(api.get('/api/django/users/').status_code, 403)
+        self.assertEqual(api.get('/api/django/roles/').status_code, 403)
+        resp = api.patch(f'/api/django/users/{self.employee.id}/',
+                         {'role': self.admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_commercial_blocked_from_users_and_roles(self):
+        commercial = User.objects.create_user(
+            username='cm', password='x', role=self.commercial_role,
+            company=self.company)
+        api = self._client_for(commercial)
+        self.assertEqual(api.get('/api/django/users/').status_code, 403)
+        self.assertEqual(api.get('/api/django/roles/').status_code, 403)
+
+
+class TestSystemRoleSeedingSelfHealsN103(TestCase):
+    """N103 : le seeding des rôles système est auto-réparateur — une ligne du
+    même nom laissée ``est_systeme=False`` est promue, pour qu'un Directeur/
+    Administrateur ne reste jamais coincé au palier limité."""
+
+    def test_init_roles_promotes_drifted_system_role(self):
+        from django.core.management import call_command
+        company = Company.objects.create(nom='Heal Co', slug='heal-co')
+        # Ligne « Directeur » préexistante, mais est_systeme=False (dérive).
+        drifted = Role.objects.create(
+            company=company, nom='Directeur',
+            permissions=['crm_voir'], est_systeme=False)
+        owner = User.objects.create_user(
+            username='healowner', password='x', role=drifted,
+            role_legacy='admin', company=company, is_protected=True)
+
+        call_command('init_roles')
+
+        drifted.refresh_from_db()
+        self.assertTrue(drifted.est_systeme)
+        self.assertIn('roles_gerer', drifted.permissions)
+        owner.refresh_from_db()
+        self.assertEqual(owner.menu_tier, 'admin')
+
+
+class TestRoleAssignmentGuards(TestCase):
+    """ERR21 : l'assignation d'un ``role`` à un utilisateur est validée — le
+    rôle doit appartenir à l'entreprise de l'assignateur, et seul un
+    administrateur peut octroyer un rôle de palier admin (anti-escalade)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Assign Co', slug='assign-co')
+        self.other = Company.objects.create(nom='Autre Co', slug='autre-assign')
+        self.admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.resp_role = Role.objects.create(
+            company=self.company, nom='Responsable',
+            permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)
+        self.foreign_admin_role = Role.objects.create(
+            company=self.other, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='ra_admin', password='x', role=self.admin_role,
+            role_legacy='admin', company=self.company)
+        # Responsable (palier promu, non-admin) : porte ``users_voir`` donc passe
+        # IsAdminOrResponsableTier, mais n'est PAS admin (pas de roles_gerer).
+        self.resp = User.objects.create_user(
+            username='ra_resp', password='x', role=self.resp_role,
+            role_legacy='responsable', company=self.company)
+        self.target = User.objects.create_user(
+            username='ra_target', password='x', role_legacy='normal',
+            company=self.company)
+
+    def _api(self, user):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_responsable_cannot_grant_admin_role(self):
+        resp = self._api(self.resp).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.target.refresh_from_db()
+        self.assertNotEqual(self.target.role_id, self.admin_role.id)
+
+    def test_admin_can_grant_admin_role(self):
+        resp = self._api(self.admin).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.role_id, self.admin_role.id)
+
+    def test_cannot_assign_foreign_company_role(self):
+        resp = self._api(self.admin).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.foreign_admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.target.refresh_from_db()
+        self.assertNotEqual(self.target.role_id, self.foreign_admin_role.id)
+
+    def test_responsable_can_grant_non_admin_role(self):
+        resp = self._api(self.resp).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.resp_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.role_id, self.resp_role.id)

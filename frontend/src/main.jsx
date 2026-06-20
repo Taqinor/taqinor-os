@@ -7,6 +7,13 @@ import router from './router'
 import PwaPrompts from './features/pwa/PwaPrompts'
 import { ThemeProvider } from './design/ThemeProvider'
 import { initTheme } from './design/theme'
+// Providers UX globaux (lane BEHAVIORS). Toaster + ConfirmProvider +
+// SessionProvider sont indépendants du routeur → montés ici, autour du
+// RouterProvider. (La palette ⌘K et les raccourcis, qui ont besoin du contexte
+// routeur, sont montés DANS le router, cf. router/index.jsx → WithLayout.)
+import { Toaster } from './ui/Toaster'
+import { ConfirmProvider } from './providers/ConfirmProvider'
+import { SessionProvider } from './providers/SessionProvider'
 import './index.css'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
@@ -17,7 +24,12 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
       <ThemeProvider>
-        <RouterProvider router={router} />
+        <ConfirmProvider>
+          <SessionProvider>
+            <RouterProvider router={router} />
+          </SessionProvider>
+        </ConfirmProvider>
+        <Toaster />
         <PwaPrompts />
       </ThemeProvider>
     </Provider>

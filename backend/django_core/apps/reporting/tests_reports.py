@@ -33,9 +33,39 @@ class TestSalesReport(ReportsBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['total_leads'], 2)
         self.assertEqual(len(resp.data['funnel']), 6)
+        self.assertIn('devis_par_statut', resp.data)
         x = self.api.get('/api/django/reporting/reports/sales/?export=xlsx')
         body = b''.join(x.streaming_content) if x.streaming else x.content
         self.assertTrue(body.startswith(b'PK'))
+
+    def test_devis_par_statut_includes_expire_bucket(self):
+        """Un devis envoyé dont la validité est dépassée tombe sous « Expiré »."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='CliDev')
+        Devis.objects.create(
+            company=self.company, reference='DEV-EXP-1', client=client,
+            statut=Devis.Statut.ENVOYE,
+            date_validite=date.today() - timedelta(days=5))
+        resp = self.api.get('/api/django/reporting/reports/sales/')
+        self.assertEqual(resp.status_code, 200)
+        statuts = {d['statut'] for d in resp.data['devis_par_statut']}
+        self.assertIn('expire', statuts)
+
+    def test_period_filter_limits_leads(self):
+        """?from=&to= borne le funnel aux leads créés dans la fenêtre."""
+        from datetime import date, timedelta
+        old = Lead.objects.create(company=self.company, nom='Old', stage='NEW')
+        Lead.objects.filter(pk=old.pk).update(
+            date_creation=date.today() - timedelta(days=400))
+        Lead.objects.create(company=self.company, nom='Recent', stage='NEW')
+        today = date.today().isoformat()
+        recent = (date.today() - timedelta(days=7)).isoformat()
+        resp = self.api.get(
+            f'/api/django/reporting/reports/sales/?from={recent}&to={today}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['total_leads'], 1)
 
 
 class TestStockReport(ReportsBase):
@@ -47,6 +77,23 @@ class TestStockReport(ReportsBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['valorisation_vente'], '10000.00')
         self.assertEqual(resp.data['valorisation_achat'], '6000.00')
+
+    def test_low_stock_excludes_zero_threshold(self):
+        """ERR57 — un produit à seuil_alerte=0 (aucun seuil) n'est PAS signalé
+        bas stock, même à 0 en stock ; un produit avec seuil renseigné l'est."""
+        # seuil 0 → ignoré, même à quantité 0.
+        Produit.objects.create(
+            company=self.company, nom='SansSeuil', sku='Z-0',
+            prix_vente=Decimal('100'), quantite_stock=0, seuil_alerte=0)
+        # seuil renseigné et stock sous le seuil → signalé.
+        Produit.objects.create(
+            company=self.company, nom='AvecSeuil', sku='Z-1',
+            prix_vente=Decimal('100'), quantite_stock=2, seuil_alerte=5)
+        resp = self.api.get('/api/django/reporting/reports/stock/')
+        self.assertEqual(resp.status_code, 200)
+        noms = {p['nom'] for p in resp.data['bas_stock']}
+        self.assertIn('AvecSeuil', noms)
+        self.assertNotIn('SansSeuil', noms)
 
 
 class TestServiceReport(ReportsBase):

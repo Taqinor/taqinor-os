@@ -47,7 +47,7 @@ def export_journal_ventes(company, debut, fin):
     """Construit le classeur .xlsx (journal + résumé TVA) pour [debut, fin[."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
-    from apps.ventes.models import Facture
+    from apps.ventes.models import Avoir, Facture
 
     factures = (Facture.objects
                 .filter(company=company, statut__in=ISSUED_STATUTS,
@@ -59,8 +59,9 @@ def export_journal_ventes(company, debut, fin):
     ws = wb.active
     ws.title = 'Journal des ventes'
     bold = Font(bold=True)
-    headers = ['Facture', 'Date', 'Client', 'ICE client', 'Désignation',
-               'Qté', 'P.U. HT', 'Total HT', 'TVA %', 'Montant TVA', 'Total TTC']
+    headers = ['Facture', 'Date', 'Type', 'Client', 'ICE client',
+               'Désignation', 'Qté', 'P.U. HT', 'Total HT', 'TVA %',
+               'Montant TVA', 'Total TTC']
     ws.append(headers)
     for c in ws[1]:
         c.font = bold
@@ -68,6 +69,7 @@ def export_journal_ventes(company, debut, fin):
     par_taux = {}
     tot_ht = tot_tva = tot_ttc = Decimal('0')
     for f in factures:
+        type_libelle = f.get_type_facture_display()
         for ligne in f.lignes.all():
             ht = _q2(ligne.total_ht)
             taux = Decimal(ligne.taux_tva_effectif or 0)
@@ -76,9 +78,40 @@ def export_journal_ventes(company, debut, fin):
             ws.append([
                 f.reference,
                 f.date_emission.isoformat() if f.date_emission else '',
+                type_libelle,
                 getattr(f.client, 'nom', '') or '',
                 getattr(f.client, 'ice', '') or '',
                 ligne.designation, str(ligne.quantite), str(ligne.prix_unitaire),
+                float(ht), float(taux), float(tva), float(ttc),
+            ])
+            bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+            bucket['ht'] += ht
+            bucket['tva'] += tva
+            tot_ht += ht
+            tot_tva += tva
+            tot_ttc += ttc
+
+    # Avoirs (notes de crédit) émis sur la période : lignes NÉGATIVES pour
+    # réconcilier le CA. Ventilés par taux (10/20) comme les factures, et
+    # déduits du résumé TVA. Les avoirs annulés sont exclus.
+    avoirs = (Avoir.objects
+              .filter(company=company, statut=Avoir.Statut.EMISE,
+                      date_emission__gte=debut, date_emission__lt=fin)
+              .select_related('client', 'facture').prefetch_related('lignes')
+              .order_by('date_emission', 'reference'))
+    for a in avoirs:
+        date_a = a.date_emission.isoformat() if a.date_emission else ''
+        nom = getattr(a.client, 'nom', '') or ''
+        ice = getattr(a.client, 'ice', '') or ''
+        desig = f'Avoir sur {a.facture.reference}' if a.facture_id else 'Avoir'
+        for b in a.tva_par_taux:
+            taux = Decimal(b['taux'] or 0)
+            ht = -_q2(b['base_ht'])
+            tva = -_q2(b['montant'])
+            ttc = _q2(ht + tva)
+            ws.append([
+                a.reference, date_a, 'Avoir', nom, ice,
+                desig, '', '',
                 float(ht), float(taux), float(tva), float(ttc),
             ])
             bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
@@ -108,4 +141,122 @@ def export_journal_ventes(company, debut, fin):
     resp['Content-Disposition'] = (
         f'attachment; filename="journal-ventes-{debut.isoformat()}.xlsx"')
     wb.save(resp)
+    return resp
+
+
+# ── Export comptable DGI (groundwork) : factures VALIDÉES d'une plage from→to ──
+# Ventilation TVA par ligne, ICE client, totaux HT/TVA/TTC. Excel ET CSV.
+# Lecture seule, borné société, AUCUNE transmission. (Distinct du journal :
+# focalisé sur les factures validées, sans avoirs.)
+
+_COMPTA_HEADERS = [
+    'Facture', 'Date', 'Type', 'Client', 'ICE client', 'Désignation',
+    'Qté', 'P.U. HT', 'Total HT', 'TVA %', 'Montant TVA', 'Total TTC',
+]
+
+
+def _compta_rows(company, debut, fin):
+    """Lignes du export comptable + totaux, pour [debut, fin[.
+
+    Renvoie (rows, totals) où rows = liste de listes (ordre _COMPTA_HEADERS)
+    et totals = (tot_ht, tot_tva, tot_ttc) en Decimal.
+    """
+    from apps.ventes.models import Facture
+    factures = (Facture.objects
+                .filter(company=company, statut__in=ISSUED_STATUTS,
+                        date_emission__gte=debut, date_emission__lt=fin)
+                .select_related('client').prefetch_related('lignes')
+                .order_by('date_emission', 'reference'))
+    rows = []
+    tot_ht = tot_tva = tot_ttc = Decimal('0')
+    for f in factures:
+        type_libelle = f.get_type_facture_display()
+        nom = getattr(f.client, 'nom', '') or ''
+        ice = getattr(f.client, 'ice', '') or ''
+        date_f = f.date_emission.isoformat() if f.date_emission else ''
+        lignes = list(f.lignes.all())
+        if lignes:
+            for ligne in lignes:
+                ht = _q2(ligne.total_ht)
+                taux = Decimal(ligne.taux_tva_effectif or 0)
+                tva = _q2(ht * taux / Decimal('100'))
+                ttc = _q2(ht + tva)
+                rows.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    ligne.designation, str(ligne.quantite),
+                    str(ligne.prix_unitaire),
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
+        else:
+            # Facture de tranche sans lignes : montants figés (un seul taux).
+            ht = _q2(f.total_ht)
+            taux = Decimal(f.taux_tva or 0)
+            tva = _q2(f.total_tva)
+            ttc = _q2(f.total_ttc)
+            rows.append([
+                f.reference, date_f, type_libelle, nom, ice,
+                type_libelle or 'Facture', '', '',
+                float(ht), float(taux), float(tva), float(ttc),
+            ])
+            tot_ht += ht
+            tot_tva += tva
+            tot_ttc += ttc
+    return rows, (tot_ht, tot_tva, tot_ttc)
+
+
+def export_comptable_xlsx(company, debut, fin):
+    """Classeur .xlsx : une ligne par ligne de facture validée + ligne TOTAL."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    rows, (tot_ht, tot_tva, tot_ttc) = _compta_rows(company, debut, fin)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Export comptable'
+    bold = Font(bold=True)
+    ws.append(_COMPTA_HEADERS)
+    for c in ws[1]:
+        c.font = bold
+    for r in rows:
+        ws.append(r)
+    ws.append([])
+    total_row = ['TOTAL', '', '', '', '', '', '', '',
+                 float(_q2(tot_ht)), '', float(_q2(tot_tva)), float(_q2(tot_ttc))]
+    ws.append(total_row)
+    for c in ws[ws.max_row]:
+        c.font = bold
+
+    resp = HttpResponse(content_type=(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+    resp['Content-Disposition'] = (
+        f'attachment; filename="export-comptable-{debut.isoformat()}'
+        f'_{fin.isoformat()}.xlsx"')
+    wb.save(resp)
+    return resp
+
+
+def export_comptable_csv(company, debut, fin):
+    """Fichier .csv : mêmes colonnes que l'export .xlsx + ligne TOTAL."""
+    import csv
+    import io
+
+    rows, (tot_ht, tot_tva, tot_ttc) = _compta_rows(company, debut, fin)
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=';')
+    writer.writerow(_COMPTA_HEADERS)
+    for r in rows:
+        writer.writerow(r)
+    writer.writerow([])
+    writer.writerow(['TOTAL', '', '', '', '', '', '', '',
+                     float(_q2(tot_ht)), '', float(_q2(tot_tva)),
+                     float(_q2(tot_ttc))])
+    # BOM pour qu'Excel lise correctement les accents (UTF-8).
+    resp = HttpResponse('﻿' + buf.getvalue(),
+                        content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="export-comptable-{debut.isoformat()}'
+        f'_{fin.isoformat()}.csv"')
     return resp

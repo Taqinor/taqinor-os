@@ -1,50 +1,98 @@
-import { useSelector } from 'react-redux'
-import { useLocation } from 'react-router-dom'
+import { useSelector, useDispatch } from 'react-redux'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Menu, Search, LogOut, User as UserIcon, Settings } from 'lucide-react'
+import {
+  Avatar, AvatarFallback, initials,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from '../../ui'
+import { logoutUser } from '../../features/auth/store/authSlice'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
+import Breadcrumbs from './Breadcrumbs'
+import { titleFor } from './routes.meta'
 
-const PAGE_TITLES = {
-  '/dashboard': 'Dashboard',
-  '/stock': 'Gestion du Stock',
-  '/crm/leads': 'CRM — Pipeline',
-  '/crm': 'CRM — Clients',
-  '/ventes/devis/nouveau': 'Nouveau Devis Solaire',
-  '/ventes/devis': 'Devis',
-  '/ventes/bons-commande': 'Bons de Commande',
-  '/ventes/factures': 'Factures',
-  '/ia/agent': 'Agent IA Conversationnel',
-  '/ia/ocr': 'Traitement OCR',
-  '/reporting': 'Reporting & Analytics',
+// I35 — Déclenche la palette de commandes (⌘K) construite par l'autre lane,
+// qui écoute cet événement exact. On ne construit PAS la palette ici.
+function fireCommandPalette() {
+  try {
+    window.dispatchEvent(new CustomEvent('taqinor:command-palette'))
+  } catch { /* environnement sans window : silencieux */ }
 }
 
 export default function Header({ onMenu }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
   const user = useSelector((state) => state.auth.user)
 
-  const title = Object.entries(PAGE_TITLES).find(([path]) =>
-    location.pathname.startsWith(path)
-  )?.[1] ?? 'ERP Agentique'
+  const title = titleFor(location.pathname)
+  const username = user?.username ?? 'Utilisateur'
+
+  // Le raccourci clavier global ⌘K / Ctrl+K est capté dans GlobalSearch (monté
+  // juste à côté) ; ici on fournit le déclencheur VISIBLE de la palette.
+
+  const handleLogout = async () => {
+    await dispatch(logoutUser())
+    navigate('/login')
+  }
 
   return (
     <header className="header">
-      {/* Hamburger : visible uniquement ≤ 768 px (CSS) */}
-      <button type="button" className="header-menu-btn" onClick={onMenu}
-              aria-label="Ouvrir le menu">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
-             stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="4" y1="6" x2="20" y2="6" />
-          <line x1="4" y1="12" x2="20" y2="12" />
-          <line x1="4" y1="18" x2="20" y2="18" />
-        </svg>
-      </button>
-      <h1 className="header-title">{title}</h1>
-      <GlobalSearch />
-      <div className="header-user">
-        <NotificationBell />
-        <span className="header-user-avatar">
-          {user?.username?.[0]?.toUpperCase() ?? 'U'}
-        </span>
-        <span className="header-user-name">{user?.username ?? 'Utilisateur'}</span>
+      <div className="header-left">
+        {/* Hamburger : visible uniquement ≤ 768 px (CSS) */}
+        <button type="button" className="header-menu-btn" onClick={onMenu}
+                aria-label="Ouvrir le menu">
+          <Menu size={22} aria-hidden="true" />
+        </button>
+        <div className="header-heading">
+          <Breadcrumbs pathname={location.pathname} />
+          {/* Titre de page en élément non-heading : évite la collision de rôle
+              `heading` avec le <h2> de chaque page (les tests e2e ciblent le
+              titre de page par getByRole('heading')). La classe .header-title
+              reste le point d'ancrage des assertions e2e/mobile. */}
+          <div className="header-title">{title}</div>
+        </div>
+      </div>
+
+      <div className="header-right">
+        <GlobalSearch />
+        {/* Déclencheur ⌘K — visible quand la barre de recherche est masquée
+            (mobile) et toujours utilisable comme raccourci palette. */}
+        <button type="button" className="header-cmdk" onClick={fireCommandPalette}
+                aria-label="Recherche et commandes (⌘K)" title="Recherche et commandes (⌘K)">
+          <Search size={16} aria-hidden="true" />
+          <span className="header-cmdk-kbd">⌘K</span>
+        </button>
+
+        <div className="header-user">
+          <NotificationBell />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="header-usermenu-trigger" aria-label="Menu utilisateur">
+                <Avatar className="header-user-avatar-rt">
+                  <AvatarFallback className="text-white">{initials(username) || 'U'}</AvatarFallback>
+                </Avatar>
+                <span className="header-user-name">{username}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="header-usermenu">
+              <DropdownMenuLabel>{username}</DropdownMenuLabel>
+              {user?.email && <div className="header-usermenu-email">{user.email}</div>}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => navigate('/parametres')}>
+                <Settings aria-hidden="true" /> Paramètres
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate('/admin/users')}>
+                <UserIcon aria-hidden="true" /> Utilisateurs
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem destructive onSelect={handleLogout}>
+                <LogOut aria-hidden="true" /> Déconnexion
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   )

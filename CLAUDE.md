@@ -41,6 +41,10 @@ repo yet, the rule still applies to any future integration.
    downstream BonCommande/Facture chains are preserved 1:1 — a separate,
    permanent layer from the `STAGES.py` funnel (rule #2). See
    `docs/quote-engine-swap-map.md`.
+   EDIT-BAN LIFTED (2026-06-20, founder): the premium engine
+   (`generate_devis_premium.py`) may now be edited for fixes — the former
+   "never edit the premium pages" prohibition is removed. `/proposal` stays the
+   only client-facing quote-PDF path and STATUS PRESERVATION above still holds.
 
 5. **Scraper policy.** Scrapers must never run from personal accounts. Any
    scraping with Terms-of-Service risk requires BOTH: (a) a risk file committed
@@ -70,6 +74,29 @@ repo yet, the rule still applies to any future integration.
   models need a `company` FK; new viewsets must filter querysets by
   `request.user.company` and force-assign `company` in `perform_create` —
   never accept it from the request body.
+- **Cross-app boundary — go through `services.py`/`selectors.py`, never another
+  app's `models`/`views`.** Between business-core domain apps
+  (`apps/{crm,ventes,stock,installations,sav}`), all cross-app READS and WRITES
+  route through the TARGET app's `selectors.py` (reads) or `services.py`
+  (writes/orchestration) — or through string-FK references — never by importing
+  its `models`/`views` directly. Add a thin function to the target app's
+  selector/service and call it (keep lazy/function-local imports where they avoid
+  cycles). Same-app imports and imports of foundation apps (roles, records,
+  authentication, core, customfields, parametres, reporting, etc.) are exempt.
+- **Import contracts are CI-enforced (M3).** `backend/django_core/.importlinter`
+  pins the decoupling already achieved and the `lint-imports` step (in the
+  `backend-lint` CI job) fails on a regression: the five core domain *models*
+  must stay mutually decoupled (string FKs only — the M1 win), and the `core`
+  app must stay a base foundation layer (it never imports a domain-core or
+  satellite app). A full no-cycles/strict-layers contract is deferred until the
+  deeper service-layer decoupling lands.
+- **Domain-event layer for cross-app reactions (M6).** `core/events.py` holds a
+  small Django-signal event bus (foundation, depends on nothing). Apps react to
+  another app's state change by subscribing in their `apps.py` `ready()` rather
+  than being called directly — e.g. `ventes` emits `devis_accepted` on quote
+  acceptance and `crm` subscribes (`apps/crm/receivers.py`) to advance the lead
+  stage. Signals fire synchronously, so behaviour is identical to the old direct
+  call.
 - Run tests: `python manage.py test apps` (inside the django_core container or
   with env vars pointing at a local Postgres).
 - Full stack: `docker compose up` (nginx :80, Postgres+pgvector, Redis, MinIO,
@@ -108,8 +135,8 @@ repo yet, the rule still applies to any future integration.
   aligned with `quote_engine/builder.py` (réseau/injection, hybride,
   batterie, panneau) — the PDF option split depends on line designations.
 - **Quote PDFs.** One vendored engine
-  (`apps/ventes/quote_engine/generate_devis_premium.py`, never edit the
-  premium pages) renders all formats, selected via the list's PDF dialog →
+  (`apps/ventes/quote_engine/generate_devis_premium.py`) renders all formats,
+  selected via the list's PDF dialog →
   `generer-pdf` body / `/proposal` query params (whitelist in
   `clean_pdf_options`): premium 'full' = 3 pages, +`include_etude` = 4 pages
   (degrades to 3 without étude data), 'onepage' = 1 page (adaptive density:
@@ -299,6 +326,37 @@ Anything typed after the command is extra detail for that run.
   moves the plan fingerprint, so the `stage-names` check fails otherwise), then
   commit on `dev` and self-merge to `main`. Confirm in one line.
 
+### "work on error plan"
+Identical to `work on the plan` in every respect — same lane partitioning, same
+**up to 8 concurrent worktree subagents in waves of 8**, same
+dynamic-workflow-with-adversarial-review engine (fall back to parallel worktree
+subagents; never a single serial one-task-at-a-time agent), same stop conditions
+(queue drained / usage cap / a genuine stop-and-ask → mark `[BLOCKED: <reason>]`,
+move to GATED, and CONTINUE the rest), same verify-each-task-isn't-already-built
+step (mark `[x] (already present)` when it is), same commit-tick-DONE-LOG per task
+on each lane's own worktree branch, same CODEMAP refresh rules, and the same
+**sync-safe single self-merge `dev` → `main`** (integrate the latest `origin/main`
+first, recompute the structure fingerprint if the structural surface moved, re-run
+the full CI suite once over the whole batch, never force-push) — **with EXACTLY ONE
+difference: it drains `docs/ERROR_PLAN.md`** (the bug/error backlog) instead of
+`docs/PLAN.md` / `docs/PLAN2.md`. Anything typed after the command is extra detail
+for that run.
+- **No lock — same as `work on the plan`.** There is no `.running` lock; only ever
+  one session at a time, and the sync-safe single merge is what keeps `main`
+  collision-free even when an OS-plan, web-plan, or error-plan run lands
+  concurrently. (So there is no `reset the plan lock` to mirror.)
+- **Plan-status wiring.** `docs/ERROR_PLAN.md` is registered in
+  `scripts/codemap_fingerprint.py` (`PLAN_FILES`) exactly like the other plan files,
+  so ticking / adding / removing an `ERR*` task moves the plan fingerprint: refresh
+  §10 "Plan status" of `docs/CODEMAP.md` (paste `--print-plan-status`) and re-run
+  `python scripts/codemap_fingerprint.py --write` in the SAME commit as the tick, or
+  the required `stage-names` CI job fails.
+- **Headless-loop status.** When asked — or at the end of a run — print exactly
+  `PLAN_STATUS: EMPTY` if no unchecked `[ ]` task remains in `docs/ERROR_PLAN.md`,
+  otherwise `PLAN_STATUS: MORE`, so the same headless loop that drives
+  `work on the plan` can drive this command too.
+- Report once, in plain language, including the lane plan.
+
 ### "work on the web plan"
 The website autopilot stays strictly inside `apps/web/**` plus its own
 `docs/WEB_PLAN*` files. Anything typed after the command is extra detail.
@@ -385,3 +443,56 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
 - Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no
   WEB_PLAN2.md), then commit on `dev` and self-merge to `main`. Confirm in one line
   which file you appended to.
+
+### "clean the plans"
+Pure plan-file housekeeping. This command **NEVER builds, edits, or implements any
+task**, never runs a feature/dependency/database/CI change, and makes **no code
+changes** of any kind. It **NEVER changes the wording of a task, its ID, or its
+gating tag**; it **NEVER reorders tasks**; it **NEVER moves a not-done task from one
+queue to another**; it **NEVER decides priorities**. It does exactly one thing: it
+**relocates COMPLETED tasks** out of the active plan files into a single archive,
+leaving every not-done task exactly where — and in the order — it already is.
+- **What counts as DONE.** A task is DONE only if it is **explicitly checked
+  complete** — a `[x]` checkbox or an equivalent explicit "done/shipped" mark.
+  Anything unchecked `[ ]`, `[BLOCKED…]`, `[SKIP]`, gated, or ambiguous is **NOT
+  done** and stays in its active plan file, untouched. **When in doubt, treat a task
+  as NOT done and leave it where it is.**
+- **Move (do not copy) into one archive.** Move every DONE task from **every active
+  plan file** (`docs/PLAN.md`, `docs/PLAN2.md`, `docs/WEB_PLAN.md`, and any other
+  `docs/PLAN*.md`) into **`docs/DONE.md`** (create it if missing), **grouped under a
+  heading per source file** (e.g. `## Archived from PLAN.md`), **preserving each
+  task's original text verbatim** (for a header-format task that is the `###` header
+  **and** its body). After the move, that done task **no longer appears** in the
+  active plan file. If a **DONE LOG / done section** already exists inside a plan
+  file, **fold those entries into `docs/DONE.md` too** (under a per-file heading), so
+  done history lives in one place — keep the DONE LOG **header + scaffolding** in the
+  active file so future runs can still append.
+- **Touch nothing else.** The active plan files keep **all their structure** —
+  headers, HOW TO RUN, STANDING RULES, GATED/MANUAL sections, cross-cutting
+  constraint notes, dividers, and every not-done task — **exactly as written**. Only
+  completed task **lines/blocks** are removed. **Do not delete or reword any rule,
+  header, prose note, or not-done task.** (Emptying a section of its done tasks is
+  fine — the header stays.)
+- **Reconcile — never guess.** Confirm **no task was lost or duplicated**: the count
+  of (done tasks now in `docs/DONE.md`) **plus** (not-done tasks still in the active
+  files) must equal the total task count **before** you started. The strongest check
+  is line-level: every original line must end up in exactly one place (active file or
+  `docs/DONE.md`), none lost, none duplicated, none altered. **If the numbers do not
+  reconcile, STOP and report — do not guess.**
+- **Fingerprint.** Moving done tasks out of `docs/PLAN.md` / `docs/PLAN2.md` changes
+  the **plan-fingerprint surface**, so refresh §10 "Plan status" of
+  `docs/CODEMAP.md` (paste `python scripts/codemap_fingerprint.py
+  --print-plan-status` + its totals/stamp) and re-run
+  `python scripts/codemap_fingerprint.py --write` **in the same commit** — this is a
+  legitimate plan edit, not a code change — then confirm `python
+  scripts/codemap_fingerprint.py --check` and `python scripts/check_stages.py` are
+  green. (`docs/WEB_PLAN.md` is **not** in the plan-fingerprint surface.) If unsure
+  whether re-stamping is correct, STOP and ask rather than forcing it.
+- **Land it.** Commit on `dev`, get the required CI checks green (a docs-only change
+  runs only `stage-names`; the heavy jobs skip), then **self-merge `dev` → `main`
+  exactly once** (one merge commit, no PR, sync-safe per the STANDING RULES). If CI
+  is red, do **not** merge — report what failed and stop.
+- **Report** in plain language only (no diffs, no hashes): per file, **how many done
+  tasks were archived** to `docs/DONE.md` and **how many not-done tasks remain**, and
+  confirm nothing was reordered, reworded, re-prioritized, or built. It never reports
+  code changes because it makes none.

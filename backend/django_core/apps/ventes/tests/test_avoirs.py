@@ -111,6 +111,29 @@ class TestAvoirs(TestCase):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.montant_du, Decimal('0.00'))
 
+    def test_avoir_and_payment_are_logged_in_facture_chatter(self):
+        api = self._api(self.admin)
+        # Encaisser un paiement → consigne une activité « Paiement ».
+        api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/enregistrer-paiement/',
+            {'montant': '100', 'date_paiement': '2026-06-19', 'mode': 'virement'},
+            format='json')
+        # Créer un avoir → consigne une activité « Avoir » (acteur côté serveur).
+        api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Test chatter',
+             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20.00'}]},
+            format='json')
+        resp = api.get(
+            f'/api/django/ventes/factures/{self.facture.id}/historique/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        fields = {a['field'] for a in resp.data}
+        self.assertIn('avoir', fields)
+        self.assertIn('paiement', fields)
+        # L'acteur est posé côté serveur (jamais lu du corps).
+        self.assertTrue(all(a['user_nom'] == 'avo_admin' for a in resp.data))
+
     def test_commerciale_cannot_create_avoir(self):
         api = self._api(self.resp)
         resp = api.post(
@@ -129,3 +152,33 @@ class TestAvoirs(TestCase):
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'x'}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_avoir_exceeding_remaining_rejected(self):
+        # Une ligne d'avoir à 20 000 HT (24 000 TTC) dépasse les 17 000 TTC
+        # créditables de la facture → 400, aucun avoir persisté.
+        api = self._api(self.admin)
+        resp = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Trop gros',
+             'lignes': [{'designation': 'X', 'quantite': '1',
+                         'prix_unitaire': '20000', 'taux_tva': '20'}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('dépasse', resp.data['detail'])
+        self.assertEqual(Avoir.objects.count(), 0)
+
+    def test_second_avoir_capped_by_first(self):
+        # 1er avoir total (17 000 TTC) → plus rien de créditable ; un 2e avoir
+        # partiel est refusé.
+        api = self._api(self.admin)
+        r1 = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'motif': 'Total'}, format='json')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
+            {'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
+            format='json')
+        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(Avoir.objects.count(), 1)

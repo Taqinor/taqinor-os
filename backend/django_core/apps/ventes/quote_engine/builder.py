@@ -138,7 +138,9 @@ def clean_pdf_options(raw) -> dict:
         opts['payment_mode'] = raw['payment_mode']
     try:
         acompte = raw.get('custom_acompte')
-        opts['custom_acompte'] = float(acompte) if acompte not in (None, '') else None
+        # ERR76 — never forward a negative acompte; the engine additionally
+        # clamps it to the order total.
+        opts['custom_acompte'] = max(0.0, float(acompte)) if acompte not in (None, '') else None
     except (TypeError, ValueError):
         opts['custom_acompte'] = None
     return opts
@@ -424,6 +426,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     from apps.ventes.utils.company_settings import payment_terms_for
     payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
 
+    # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
+    # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
+    # applique son littéral historique, donc le PDF reste byte-identique tant que
+    # rien n'est édité. Repli silencieux sur {} si la table n'existe pas encore.
+    doc_texts = {}
+    try:
+        from apps.parametres.models_documents import DocumentTemplates
+        doc_texts = DocumentTemplates.get(
+            company=getattr(devis, "company", None)).as_doc_texts()
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        doc_texts = {}
+
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
     # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
@@ -484,6 +498,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "payment_terms": payment_terms,
         "mode_installation": mode,
         "etude": etude,
+        # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
+        "doc_texts": doc_texts,
+        # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
+        # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
+        # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.
+        "accepte_par_nom": (getattr(devis, "accepte_par_nom", "") or ""),
+        "date_acceptation": (
+            devis.date_acceptation.strftime("%d/%m/%Y")
+            if getattr(devis, "date_acceptation", None) else ""),
     }
     return data
 
@@ -524,11 +547,20 @@ def _ensure_pdf_bucket() -> None:
             logger.warning("Could not ensure MinIO bucket %s: %s", bucket, exc)
 
 
-def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
+def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     """Render the quote PDF for a Devis in the requested format and store it
     in MinIO. pdf_options (see DEFAULT_PDF_OPTIONS) selects the simulator
     format: full 3-page premium (default) or one-page, with the monthly-chart
     and devis-final modifiers. Returns the stored MinIO key.
+
+    ERR74 — ``persist`` controls the ``devis.fichier_pdf`` write. The PDF is
+    always rendered and uploaded to its (deterministic, company-scoped) MinIO
+    key, but on a safe GET path (``/proposal``, public share link) we pass
+    ``persist=False`` so the read does not also write the model row when the
+    column already points at that same key — avoiding a write side-effect on a
+    safe method and a redundant re-persist. With ``persist=True`` (default,
+    used by the Celery generate task) the column is refreshed only when it
+    actually changed.
     """
     from apps.ventes.models import Devis
     from apps.ventes.utils.pdf import _upload_pdf
@@ -555,8 +587,11 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None) -> str:
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)
 
-    devis.fichier_pdf = key
-    devis.save(update_fields=["fichier_pdf"])
+    # Persist the key only when asked AND when it actually changed: a safe GET
+    # (persist=False) never writes; the default path writes once.
+    if persist and devis.fichier_pdf != key:
+        devis.fichier_pdf = key
+        devis.save(update_fields=["fichier_pdf"])
 
     logger.info("Premium quote PDF generated: %s (%d bytes)", key, len(pdf_bytes))
     return key

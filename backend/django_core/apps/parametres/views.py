@@ -13,6 +13,16 @@ from .views_uploads import (
 )
 from .views_messages import messages_endpoint
 from .views_audit import settings_audit_log
+from .views_documents import (
+    get_document_templates,
+    update_document_templates,
+)
+from .views_tariff import (
+    compute_roi,
+    get_productible,
+    get_tariff_settings,
+    update_tariff_settings,
+)
 
 __all__ = [
     'get_profile',
@@ -23,4 +33,10 @@ __all__ = [
     'delete_signature',
     'messages_endpoint',
     'settings_audit_log',
+    'get_document_templates',
+    'update_document_templates',
+    'get_tariff_settings',
+    'update_tariff_settings',
+    'compute_roi',
+    'get_productible',
 ]

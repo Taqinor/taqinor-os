@@ -2,52 +2,113 @@
 /**
  * Sélecteur interactif des 3 régimes de la loi 82-21 (décret 2-25-100).
  * La logique vit dans src/lib/regime.ts (testée unitairement).
+ *
+ * i18n (W67) : locale déduite de l'URL ; les DONNÉES des régimes viennent de
+ * regimesFor(locale) et tous les libellés visibles sont traduits via l'objet
+ * inline {fr,en,ar} ci-dessous. Le FR est repris VERBATIM (rendu FR inchangé).
+ * Les seuils du determineRegime inline restent identiques (source de vérité :
+ * src/lib/regime.ts).
  */
-import { REGIMES } from '../lib/regime';
+import { regimesFor } from '../lib/regime';
+import { getLocaleFromPath } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const regimes = regimesFor(locale);
+const contactHref = localizeNavHref('/contact', locale);
+
+// Libellés visibles, par locale. Le FR est strictement identique à l'original.
+const T = {
+  fr: {
+    diagnostic: 'Diagnostic immédiat',
+    heading: "Quel régime s'applique à votre installation ?",
+    sub: 'Trois questions, réponse immédiate.',
+    power: 'Puissance (kW)',
+    connection: 'Raccordement',
+    gridYes: 'Raccordée au réseau',
+    gridNo: 'Site isolé (non raccordé)',
+    voltage: 'Niveau de tension',
+    voltBT: 'Basse tension (BT)',
+    voltMT: 'Moyenne tension (MT)',
+    voltHT: 'Haute / très haute tension (HT-THT)',
+    applicable: 'Régime applicable',
+    cta: 'Faire vérifier mon dossier',
+  },
+  en: {
+    diagnostic: 'Instant assessment',
+    heading: 'Which regime applies to your installation?',
+    sub: 'Three questions, an immediate answer.',
+    power: 'Power (kW)',
+    connection: 'Connection',
+    gridYes: 'Grid-connected',
+    gridNo: 'Off-grid site (not connected)',
+    voltage: 'Voltage level',
+    voltBT: 'Low voltage (BT)',
+    voltMT: 'Medium voltage (MT)',
+    voltHT: 'High / very high voltage (HT-THT)',
+    applicable: 'Applicable regime',
+    cta: 'Have my file checked',
+  },
+  ar: {
+    diagnostic: 'تشخيص فوري',
+    heading: 'أي نظام ينطبق على تركيبتك؟',
+    sub: 'ثلاثة أسئلة، جواب فوري.',
+    power: 'الاستطاعة (kW)',
+    connection: 'الربط',
+    gridYes: 'موصولة بالشبكة',
+    gridNo: 'موقع معزول (غير موصول)',
+    voltage: 'مستوى الجهد',
+    voltBT: 'الجهد المنخفض (BT)',
+    voltMT: 'الجهد المتوسط (MT)',
+    voltHT: 'الجهد العالي / العالي جداً (HT-THT)',
+    applicable: 'النظام المنطبق',
+    cta: 'تحقّقوا من ملفي',
+  },
+}[locale];
 
 const inputClass =
   'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
 ---
 
 <div class="border border-azur-900/15 bg-blanc-azur p-6 text-encre sm:p-8">
-  <p class="tech-label text-azur-600">Diagnostic immédiat</p>
-  <h2 class="display mt-2 text-2xl">Quel régime s'applique à votre installation ?</h2>
-  <p class="mt-1 text-sm text-encre-soft">Trois questions, réponse immédiate.</p>
+  <p class="tech-label text-azur-600">{T.diagnostic}</p>
+  <h2 class="display mt-2 text-2xl">{T.heading}</h2>
+  <p class="mt-1 text-sm text-encre-soft">{T.sub}</p>
 
   <form id="regime-form" class="mt-7 grid gap-4 sm:grid-cols-3">
     <div>
-      <label for="rg-power" class="mb-1 block text-sm font-semibold">Puissance (kW)</label>
+      <label for="rg-power" class="mb-1 block text-sm font-semibold">{T.power}</label>
       <input id="rg-power" type="number" min="0" step="0.1" value="5" class={inputClass} />
     </div>
     <div>
-      <label for="rg-grid" class="mb-1 block text-sm font-semibold">Raccordement</label>
+      <label for="rg-grid" class="mb-1 block text-sm font-semibold">{T.connection}</label>
       <select id="rg-grid" class={inputClass}>
-        <option value="yes" selected>Raccordée au réseau</option>
-        <option value="no">Site isolé (non raccordé)</option>
+        <option value="yes" selected>{T.gridYes}</option>
+        <option value="no">{T.gridNo}</option>
       </select>
     </div>
     <div>
-      <label for="rg-voltage" class="mb-1 block text-sm font-semibold">Niveau de tension</label>
+      <label for="rg-voltage" class="mb-1 block text-sm font-semibold">{T.voltage}</label>
       <select id="rg-voltage" class={inputClass}>
-        <option value="BT" selected>Basse tension (BT)</option>
-        <option value="MT">Moyenne tension (MT)</option>
-        <option value="HT">Haute / très haute tension (HT-THT)</option>
+        <option value="BT" selected>{T.voltBT}</option>
+        <option value="MT">{T.voltMT}</option>
+        <option value="HT">{T.voltHT}</option>
       </select>
     </div>
   </form>
 
   <div id="regime-result" aria-live="polite" class="mt-7 border-l-4 border-azur-600 bg-blanc p-6 shadow-[0_12px_36px_-16px_rgb(15_28_84/0.3)]">
-    <p class="tech-label text-azur-600">Régime applicable</p>
+    <p class="tech-label text-azur-600">{T.applicable}</p>
     <h3 id="rg-title" class="display mt-2 text-xl"></h3>
     <p id="rg-summary" class="mt-2 text-sm leading-relaxed text-encre-soft"></p>
     <ul id="rg-obligations" class="mt-4 space-y-2 text-sm"></ul>
-    <a href="/contact" class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
-      Faire vérifier mon dossier
+    <a href={contactHref} class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+      {T.cta}
     </a>
   </div>
 </div>
 
-<script define:vars={{ regimes: REGIMES }}>
+<script define:vars={{ regimes }}>
   // determineRegime dupliqué ici volontairement minime — la source de vérité
   // typée et testée est src/lib/regime.ts (mêmes seuils).
   function determineRegime(powerKw, gridConnected, voltage) {

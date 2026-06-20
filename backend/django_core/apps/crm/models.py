@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from .stages import STAGE_CHOICES, NEW
@@ -38,6 +39,18 @@ class Client(models.Model):
     if_fiscal = models.CharField(max_length=30, blank=True, null=True)
     rc = models.CharField(max_length=30, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
+    # Traçabilité (additif) : qui a créé le client (forcé côté serveur) et
+    # date de dernière modification. created_by est nullable (clients importés /
+    # créés depuis un lead sans utilisateur courant) et SET_NULL pour ne jamais
+    # perdre un client si l'utilisateur est supprimé.
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clients_crees',
+    )
+    date_modification = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
     custom_data = models.JSONField(null=True, blank=True)
 
@@ -130,6 +143,14 @@ class Lead(models.Model):
         AVEC = 'avec', 'Avec batterie'
         LES_DEUX = 'les_deux', 'Les deux options'
 
+    # Langue préférée du contact pour les messages (ex. WhatsApp). Nullable :
+    # tant qu'elle n'est pas renseignée, le message retombe sur le FR. Les clés
+    # sont identiques à celles attendues par le constructeur WhatsApp
+    # (apps.ventes.utils.whatsapp : langue ∈ {'fr','darija'}).
+    class LanguePreferee(models.TextChoices):
+        FR = 'fr', 'Français'
+        DARIJA = 'darija', 'Darija'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -166,10 +187,19 @@ class Lead(models.Model):
 
     # ── Contact & localisation (extension CRM solaire 2026-06) ──
     whatsapp = models.CharField(max_length=50, blank=True, null=True)
+    # Langue préférée du contact (FR/Darija) — pré-sélectionne la langue du
+    # message WhatsApp. Nullable : non renseignée → retombe sur le FR.
+    langue_preferee = models.CharField(
+        max_length=10, choices=LanguePreferee.choices, blank=True, null=True)
+    # Bornes géographiques : latitude ∈ [-90, 90], longitude ∈ [-180, 180].
+    # Les validateurs s'appliquent à full_clean()/serializers ; le DecimalField
+    # max_digits=9/decimal_places=6 autorise déjà ±999.999999, d'où ces gardes.
     gps_lat = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True)
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)])
     gps_lng = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True)
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)])
 
     # ── Pipeline / CRM ──
     owner = models.ForeignKey(

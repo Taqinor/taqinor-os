@@ -17,6 +17,9 @@ import VideoChantier from '../components/VideoChantier.astro';
 import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
+import Testimonials from '../components/Testimonials.astro';
+import FounderPortrait from '../components/FounderPortrait.astro';
+import BrandStrip from '../components/BrandStrip.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
@@ -64,10 +67,9 @@ const solutions = [
   { href: '/regularization-article-33', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
 ];
 
-// W56 — Marques tier-1 réellement posées et nommées sur le site (page
-// /équipement). Aucun logo n'existe dans le dépôt : on rend des mots-marques
-// stylés (texte), jamais d'image inventée. Cinq marques, pas une de plus.
-const brands = ['Canadian Solar', 'JA Solar', 'Deye', 'Huawei', 'Dyness'];
+// W65 — Les marques tier-1 vivent désormais dans <BrandStrip> (src/lib/brands.ts) :
+// logos officiels quand un fichier existe (public/brands/), mots-marques stylés
+// en repli. Sept marques confirmées par le fondateur (ajout Jinko, Huawei, Nexans).
 
 // W57 — Le parcours réel, de bout en bout. Faits déjà publiés sur le site
 // (diagnostic 60 s, échange WhatsApp, visite & étude gratuite, pose, mise en
@@ -136,6 +138,16 @@ const solutionIcons: Record<string, string> = {
       </div>
     </section>
 
+    <!-- W63 — Promesse de garantie en tête : engagement vrai et fort, repris de
+         /garanties (25 ans de performance) et du monitoring Deye Cloud mesuré. -->
+    <section class="border-y border-white/10 bg-brass-400/5 px-4 py-6">
+      <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
+        <span class="text-brass-300">25 ans de performance garantie</span>
+        <span class="text-lune-faint" aria-hidden="true">·</span>
+        <span>production mesurée, pas promise — monitoring Deye Cloud sur chaque installation</span>
+      </p>
+    </section>
+
     <!-- Bande de confiance — quatre preuves, révélées en cascade -->
     <section class="border-y border-white/10 px-4 py-16 sm:py-20">
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
@@ -189,38 +201,10 @@ const solutionIcons: Record<string, string> = {
       </dl>
     </section>
 
-    <!-- W55 — Le fondateur : le signal de confiance le plus fort, sorti du
-         statut de micro-pastille. Parcours repris MOT POUR MOT de /à-propos
-         (docteur-ingénieur · 10+ ans R&D Huawei, Ericsson, STMicroelectronics ·
-         chaque étude validée par le fondateur). Aucun portrait : bande texte
-         soignée, pas d'image inventée. -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-28">
-      <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
-        <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Le fondateur</p>
-          <h2 class="display v2-section-title mt-5 max-w-md text-white">Un docteur-ingénieur valide chaque étude, à la main</h2>
-          <p class="v2-lead mt-5 max-w-md text-lune-soft">
-            Le fondateur de Taqinor a passé plus de dix ans en recherche et développement chez
-            <strong class="text-white">Huawei, Ericsson et STMicroelectronics</strong>. Avant toute
-            commande, il relit et valide personnellement le dimensionnement : une étude qui sort
-            d’ici a été défendue par quelqu’un qui répond du chiffre.
-          </p>
-          <a href="/à-propos" class="mt-8 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
-            Le fondateur et sa méthode →
-          </a>
-        </div>
-        <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
-          <div class="v2-rise" style="--v2-i:0">
-            <dd class="font-display text-xl font-bold text-white">Docteur-ingénieur</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Chaque étude validée par le fondateur</dt>
-          </div>
-          <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-4xl" data-tally>10+ ans</dd>
-            <dt class="tech-label mt-2 text-lune-faint">De R&D chez Huawei, Ericsson, STMicroelectronics</dt>
-          </div>
-        </dl>
-      </div>
-    </section>
+    <!-- W55/W64 — Le fondateur : signal de confiance fort, désormais en
+         composant PHOTO-READY (repli texte identique tant que le portrait de
+         Reda Kasri n'est pas déposé sous public/photos/). Aucune image inventée. -->
+    <FounderPortrait />
 
     <!-- ACTE II — Deux métiers : les photos sont la lumière -->
     <section class="px-4 py-20 sm:py-28">
@@ -278,21 +262,10 @@ const solutionIcons: Record<string, string> = {
       </div>
     </section>
 
-    <!-- W56 — Bande de marques tier-1 : mots-marques stylés (aucun logo dans le
-         dépôt), lien vers /équipement. Cinq marques réelles, déjà nommées. -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-28">
-      <div class="mx-auto max-w-6xl text-center">
-        <p class="tech-label v2-kicker rule-brass justify-center text-brass-300">Marques tier-1 · distributeurs officiels au Maroc</p>
-        <ul class="mt-10 flex flex-wrap items-center justify-center gap-x-10 gap-y-6 sm:gap-x-14" data-stagger>
-          {brands.map((b, i) => (
-            <li class="v2-rise" style={`--v2-i:${i}`}>
-              <span class="font-display text-xl font-bold tracking-tight text-lune transition-colors hover:text-white sm:text-2xl">{b}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="/équipement" class="v2-rise mt-10 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">Voir notre équipement →</a>
-      </div>
-    </section>
+    <!-- W56/W65 — Bande de marques tier-1 → composant BrandStrip : logos
+         officiels quand un fichier existe (public/brands/), mots-marques en
+         repli. Sept marques confirmées par le fondateur (+ Jinko, Huawei, Nexans). -->
+    <BrandStrip />
 
     <!-- Galerie-preuve : la lumière vient des photos. W53 — grille à hauteurs
          égales (cartes 4/3 uniformes), plus de masonry décalé ; W54 — chaque
@@ -324,6 +297,11 @@ const solutionIcons: Record<string, string> = {
         <a href="/realisations" class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos réalisations →</a>
       </div>
     </section>
+
+    <!-- W62 — Avis clients : preuve sociale RÉELLE. Vide aujourd'hui (aucun
+         avis inventé) → ne rend rien tant que le fondateur n'ajoute pas de
+         vrais avis dans src/lib/testimonials.ts. -->
+    <Testimonials />
 
     <!-- Comment ça se passe — le parcours complet + l'aperçu WhatsApp.
          W57 — la frise de bout en bout (diagnostic → monitoring) remplace le

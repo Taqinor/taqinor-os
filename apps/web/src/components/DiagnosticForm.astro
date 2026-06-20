@@ -9,11 +9,40 @@
  */
 import { BILL_RANGES } from '../lib/billRange';
 import { ROOF_TYPES } from '../lib/lead';
+import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+import type { Locale } from '../i18n/config';
 
 interface Props {
   heading?: string;
+  /** Locale du formulaire — libellés VISIBLES uniquement. La charge utile, les
+   *  noms de champs, le seuil 1 000 MAD, l'endpoint /api/simulate et le deeplink
+   *  WhatsApp restent identiques dans toutes les langues. Par défaut : déduit de
+   *  l'URL (FR à la racine), ce qui laisse le rendu FR strictement inchangé. */
+  locale?: Locale;
 }
-const { heading = 'Diagnostic solaire — 60 secondes' } = Astro.props;
+const locale: Locale = Astro.props.locale ?? getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+const { heading = t('form.heading') } = Astro.props;
+// Libellés traduits des options — la value reste l'id (jamais traduite), donc
+// la charge utile soumise est identique dans toutes les langues.
+const billLabel = (id: string) => t(`bill.${id}`);
+const roofLabel = (id: string) => t(`roof.${id}`);
+const privacyHref = localizeNavHref('/politique-de-confidentialite', locale);
+// Chaînes d'exécution (mises à jour par le script) — sérialisées en data-i18n.
+const runtimeStrings = JSON.stringify({
+  progress: t('form.progress'),
+  submit: t('form.submit'),
+  submitting: t('form.submitting'),
+  errBill: t('form.err.bill'),
+  errRoof: t('form.err.roof'),
+  errCity: t('form.err.city'),
+  errName: t('form.err.name'),
+  errPhone: t('form.err.phone'),
+  errConsent: t('form.err.consent'),
+  errGeneric: t('form.err.generic'),
+  errNetwork: t('form.err.network'),
+});
 
 // Aide à la saisie : grandes villes/communes — la saisie libre reste acceptée
 const VILLES = [
@@ -39,7 +68,7 @@ const inputClass =
   <div class:list={['mx-auto grid items-start gap-6', Astro.slots.has('aside') ? 'max-w-5xl lg:grid-cols-[1.4fr_1fr]' : 'max-w-2xl']}>
   <div class="cine-card">
     <div class="border-b border-white/10 px-6 py-5 sm:px-8">
-      <p class="tech-label text-brass-300">Diagnostic · sans engagement · aucune donnée vendue</p>
+      <p class="tech-label text-brass-300">{t('form.eyebrow')}</p>
       <h2 class="display mt-2 text-2xl text-white sm:text-3xl">{heading}</h2>
 
       <!-- Indicateur de progression — l'état actif/inactif est piloté par le
@@ -50,66 +79,65 @@ const inputClass =
         <span data-seg="2" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
         <span data-seg="3" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
       </div>
-      <p id="diag-progress" class="tech-label mt-2 text-lune-faint" aria-live="polite">Étape 1 sur 3</p>
+      <p id="diag-progress" class="tech-label mt-2 text-lune-faint" aria-live="polite">{t('form.progress').replace('{step}', '1')}</p>
     </div>
 
-    <form id="lead-form" class="p-6 sm:p-8" novalidate>
+    <form id="lead-form" class="p-6 sm:p-8" novalidate data-i18n={runtimeStrings}>
       <!-- Étape 1 — la question de diagnostic, zéro donnée personnelle -->
       <fieldset data-step="1" class="flex flex-col gap-4 border-0 p-0">
-        <legend class="display mb-1 text-lg text-white">Votre étude commence ici</legend>
+        <legend class="display mb-1 text-lg text-white">{t('form.step1.legend')}</legend>
         <div>
-          <label for="lf-bill" class="mb-1 block text-sm font-semibold text-lune">Facture d'électricité mensuelle *</label>
+          <label for="lf-bill" class="mb-1 block text-sm font-semibold text-lune">{t('form.bill.label')}</label>
           <select id="lf-bill" name="billRange" required class={inputClass}>
-            <option value="" disabled selected>Choisir une tranche…</option>
-            {BILL_RANGES.map((r) => <option value={r.id}>{r.label}</option>)}
+            <option value="" disabled selected>{t('form.bill.placeholder')}</option>
+            {BILL_RANGES.map((r) => <option value={r.id}>{billLabel(r.id)}</option>)}
           </select>
         </div>
         <div>
-          <label for="lf-roof" class="mb-1 block text-sm font-semibold text-lune">Type de toiture *</label>
+          <label for="lf-roof" class="mb-1 block text-sm font-semibold text-lune">{t('form.roof.label')}</label>
           <select id="lf-roof" name="roofType" required class={inputClass}>
-            <option value="" disabled selected>Choisir…</option>
-            {ROOF_TYPES.map((r) => <option value={r.id}>{r.label}</option>)}
+            <option value="" disabled selected>{t('form.roof.placeholder')}</option>
+            {ROOF_TYPES.map((r) => <option value={r.id}>{roofLabel(r.id)}</option>)}
           </select>
         </div>
       </fieldset>
 
       <!-- Étape 2 — localisation + signal préliminaire en direct -->
       <fieldset data-step="2" class="hidden flex-col gap-4 border-0 p-0">
-        <legend class="display mb-1 text-lg text-white">Votre commune</legend>
+        <legend class="display mb-1 text-lg text-white">{t('form.step2.legend')}</legend>
         <div>
-          <label for="lf-city" class="mb-1 block text-sm font-semibold text-lune">Ville / commune *</label>
+          <label for="lf-city" class="mb-1 block text-sm font-semibold text-lune">{t('form.city.label')}</label>
           <input id="lf-city" name="city" required autocomplete="address-level2" list="lf-villes" class={inputClass} />
           <datalist id="lf-villes">
             {VILLES.map((v) => <option value={v} />)}
           </datalist>
         </div>
-        <p id="diag-sun" class="hidden border-l-4 border-brass-400 bg-white/5 py-2.5 pl-4 pr-3 text-sm font-semibold text-brass-300" aria-live="polite"></p>
+        <p id="diag-sun" class="hidden border-s-4 border-brass-400 bg-white/5 py-2.5 pe-3 ps-4 text-sm font-semibold text-brass-300" aria-live="polite"></p>
       </fieldset>
 
       <!-- Étape 3 — identité, cadrée « Recevez votre étude sur WhatsApp » -->
       <fieldset data-step="3" class="hidden flex-col gap-4 border-0 p-0">
-        <legend class="display mb-1 text-lg text-white">Recevez votre étude sur WhatsApp</legend>
+        <legend class="display mb-1 text-lg text-white">{t('form.step3.legend')}</legend>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label for="lf-name" class="mb-1 block text-sm font-semibold text-lune">Nom complet *</label>
+            <label for="lf-name" class="mb-1 block text-sm font-semibold text-lune">{t('form.name.label')}</label>
             <input id="lf-name" name="fullName" required autocomplete="name" class={inputClass} />
           </div>
           <div>
-            <label for="lf-phone" class="mb-1 block text-sm font-semibold text-lune">Téléphone *</label>
-            <input id="lf-phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel"
-              aria-describedby="lf-phone-err" placeholder="06 XX XX XX XX" class={inputClass} />
+            <label for="lf-phone" class="mb-1 block text-sm font-semibold text-lune">{t('form.phone.label')}</label>
+            <input id="lf-phone" name="phone" required type="tel" inputmode="tel" autocomplete="tel" dir="ltr"
+              aria-describedby="lf-phone-err" placeholder={t('form.phone.placeholder')} class={inputClass} />
             <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-300"></p>
           </div>
         </div>
         <label class="flex items-start gap-2 text-sm text-lune">
           <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-brass-400" checked />
-          <span>Je préfère être contacté(e) par WhatsApp</span>
+          <span>{t('form.waOptIn')}</span>
         </label>
         <label class="flex items-start gap-2 text-sm text-lune">
           <input type="checkbox" name="consent" required class="mt-0.5 accent-brass-400" />
           <span>
-            J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
-            demande d'étude solaire. * <a href="/politique-de-confidentialite" target="_blank" rel="noopener" class="text-lune-faint underline underline-offset-2 hover:text-brass-300">Politique de confidentialité</a>
+            {t('form.consent.pre')} <a href={privacyHref} target="_blank" rel="noopener" class="text-lune-faint underline underline-offset-2 hover:text-brass-300">{t('form.consent.link')}</a>
           </span>
         </label>
       </fieldset>
@@ -127,40 +155,39 @@ const inputClass =
       <div class="mt-6 flex items-center justify-between gap-3">
         <button type="button" id="diag-back"
           class="invisible border border-white/20 px-5 py-3 text-sm font-semibold text-lune-soft transition-colors hover:border-white hover:text-white">
-          ← Retour
+          {t('form.back')}
         </button>
         <button type="button" id="diag-next"
           class="bg-azur-600 px-6 py-3.5 text-base font-bold text-white transition-colors hover:bg-azur-700">
-          Continuer →
+          {t('form.next')}
         </button>
         <button type="submit" id="lf-submit"
           class="hidden bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
-          Recevoir mon étude sur WhatsApp
+          {t('form.submit')}
         </button>
       </div>
     </form>
 
     <!-- Extrait d'étude — l'état de résultat -->
     <div id="lf-success" class="hidden p-8">
-      <p class="tech-label rule-brass text-brass-300">Extrait d'étude préliminaire</p>
+      <p class="tech-label rule-brass text-brass-300">{t('form.success.eyebrow')}</p>
       <div class="mt-6 grid gap-8 sm:grid-cols-2">
         <div>
-          <p id="lf-kwc" class="fig lum text-4xl sm:text-5xl"></p>
-          <p class="tech-label mt-2 text-lune-faint">Puissance estimée</p>
+          <p id="lf-kwc" class="fig lum text-4xl sm:text-5xl" dir="ltr"></p>
+          <p class="tech-label mt-2 text-lune-faint">{t('form.success.kwc')}</p>
         </div>
         <div>
-          <p id="lf-roi" class="fig lum text-4xl sm:text-5xl"></p>
-          <p class="tech-label mt-2 text-lune-faint">Retour sur investissement</p>
+          <p id="lf-roi" class="fig lum text-4xl sm:text-5xl" dir="ltr"></p>
+          <p class="tech-label mt-2 text-lune-faint">{t('form.success.roi')}</p>
         </div>
       </div>
       <p class="mt-6 border-t border-white/10 pt-5 text-sm leading-relaxed text-lune-soft">
-        Fourchette préliminaire calculée à partir de votre tranche de facture — le chiffrage
-        précis est établi après visite technique. La suite se passe sur WhatsApp.
+        {t('form.success.note')}
       </p>
       <a id="lf-wa" href="#" rel="noopener"
         class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 sm:w-auto">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-        Recevoir mon étude sur WhatsApp
+        {t('form.submit')}
       </a>
     </div>
   </div>
@@ -174,7 +201,7 @@ const inputClass =
 
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';
-  import { nextStep, progressLabel, sunshineSignal, validateStep, type DiagnosticState } from '../lib/diagnostic';
+  import { nextStep, sunshineSignal, validateStep, type DiagnosticState } from '../lib/diagnostic';
 
   const form = document.getElementById('lead-form') as HTMLFormElement | null;
   const success = document.getElementById('lf-success')!;
@@ -188,6 +215,27 @@ const inputClass =
   const backBtn = document.getElementById('diag-back') as HTMLButtonElement;
   const progressEl = document.getElementById('diag-progress')!;
   const sunEl = document.getElementById('diag-sun')!;
+
+  // Chaînes traduites embarquées par le serveur (libellés VISIBLES uniquement —
+  // jamais la charge utile). Repli sur le FR si l'attribut manque.
+  const I18N = (() => {
+    const fallback = {
+      progress: 'Étape {step} sur 3', submit: 'Recevoir mon étude sur WhatsApp',
+      submitting: 'Calcul en cours…', errBill: 'Choisissez votre tranche de facture',
+      errRoof: 'Choisissez votre type de toiture', errCity: 'Indiquez votre ville ou commune',
+      errName: 'Indiquez votre nom complet', errPhone: 'Numéro de téléphone marocain invalide',
+      errConsent: 'Le consentement est requis pour recevoir votre étude',
+      errGeneric: 'Une erreur est survenue. Réessayez.',
+      errNetwork: 'Connexion impossible. Vérifiez votre réseau et réessayez.',
+    };
+    try { return { ...fallback, ...JSON.parse(form?.dataset.i18n ?? '{}') }; } catch { return fallback; }
+  })();
+  // Traduit un message de validation d'étape (renvoyé en FR par validateStep)
+  // vers la locale courante, via la clé du champ en erreur.
+  const ERR_BY_FIELD: Record<string, string> = {
+    billRange: I18N.errBill, roofType: I18N.errRoof, city: I18N.errCity,
+    fullName: I18N.errName, phone: I18N.errPhone, consent: I18N.errConsent,
+  };
 
   // Reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout)
   const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
@@ -229,7 +277,7 @@ const inputClass =
       seg.classList.toggle('bg-azur-600', on);
       seg.classList.toggle('bg-azur-100', !on);
     });
-    progressEl.textContent = progressLabel(step);
+    progressEl.textContent = I18N.progress.replace('{step}', String(step));
     backBtn.classList.toggle('invisible', step === 1);
     nextBtn.classList.toggle('hidden', step === 3);
     submitBtn.classList.toggle('hidden', step !== 3);
@@ -245,7 +293,10 @@ const inputClass =
     const s = readState();
     const check = validateStep(step as 1 | 2, s);
     if (!check.ok) {
-      errEl.textContent = String(Object.values(check.errors)[0]);
+      // validateStep renvoie le message FR ; on affiche sa version localisée
+      // d'après le champ en erreur (repli sur le message FR si non mappé).
+      const [field, frMsg] = Object.entries(check.errors)[0];
+      errEl.textContent = ERR_BY_FIELD[field] ?? String(frMsg);
       errEl.classList.remove('hidden');
       return;
     }
@@ -276,7 +327,7 @@ const inputClass =
     const fd = new FormData(form);
     const phone = normalizeMoroccanPhone(String(fd.get('phone') ?? ''));
     if (!phone.ok) {
-      phoneErr.textContent = phone.error ?? 'Numéro invalide';
+      phoneErr.textContent = I18N.errPhone;
       phoneErr.classList.remove('hidden');
       return;
     }
@@ -296,7 +347,7 @@ const inputClass =
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Calcul en cours…';
+    submitBtn.textContent = I18N.submitting;
     try {
       const res = await fetch('/api/simulate', {
         method: 'POST',
@@ -305,7 +356,7 @@ const inputClass =
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        const first = data?.errors ? String(Object.values(data.errors)[0]) : 'Une erreur est survenue. Réessayez.';
+        const first = data?.errors ? String(Object.values(data.errors)[0]) : I18N.errGeneric;
         errEl.textContent = first;
         errEl.classList.remove('hidden');
         return;
@@ -323,11 +374,11 @@ const inputClass =
         }, 1800);
       }
     } catch {
-      errEl.textContent = 'Connexion impossible. Vérifiez votre réseau et réessayez.';
+      errEl.textContent = I18N.errNetwork;
       errEl.classList.remove('hidden');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Recevoir mon étude sur WhatsApp';
+      submitBtn.textContent = I18N.submit;
     }
   });
 </script>

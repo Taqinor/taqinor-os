@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error — module JS pur sans déclaration de types (copié dans dist/server au build)
-import { canonicalTarget, CANONICAL_ORIGIN } from '../worker/canonical.mjs';
+import { canonicalTarget, canonicalRedirectStatus, CANONICAL_ORIGIN } from '../worker/canonical.mjs';
 // @ts-expect-error — module JS pur sans déclaration de types (copié dans dist/server au build)
 import { pathRedirect, trailingSlashRedirect } from '../worker/redirects.mjs';
 
@@ -31,6 +31,30 @@ describe('canonicalTarget', () => {
 
   it('expose le bon hôte canonique', () => {
     expect(CANONICAL_ORIGIN).toBe('https://taqinor.ma');
+  });
+});
+
+describe('canonicalRedirectStatus — préserve la méthode/le corps des POST (ERR109)', () => {
+  it('GET/HEAD → 301 (indexable, mis en cache)', () => {
+    expect(canonicalRedirectStatus('GET')).toBe(301);
+    expect(canonicalRedirectStatus('HEAD')).toBe(301);
+    expect(canonicalRedirectStatus()).toBe(301); // défaut = GET
+  });
+
+  it('POST/PUT/PATCH/DELETE → 308 (méthode + corps préservés)', () => {
+    expect(canonicalRedirectStatus('POST')).toBe(308);
+    expect(canonicalRedirectStatus('PUT')).toBe(308);
+    expect(canonicalRedirectStatus('PATCH')).toBe(308);
+    expect(canonicalRedirectStatus('DELETE')).toBe(308);
+  });
+
+  it('un POST /api/simulate sur workers.dev garde un corps livrable (308, pas 301)', () => {
+    // La cible reste la même URL canonique ; seul le statut change pour ne pas
+    // dégrader le POST en GET (ce qui perdrait le lead).
+    expect(canonicalTarget('https://taqinor-web.taqinor.workers.dev/api/simulate')).toBe(
+      'https://taqinor.ma/api/simulate',
+    );
+    expect(canonicalRedirectStatus('POST')).toBe(308);
   });
 });
 

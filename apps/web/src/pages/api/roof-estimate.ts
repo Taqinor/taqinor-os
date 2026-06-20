@@ -37,6 +37,9 @@ export const POST: APIRoute = async ({ request }) => {
   const lon = num(body.lon);
   const kwc = num(body.kwc);
   const orientation = typeof body.orientation === 'string' ? body.orientation : 'inconnu';
+  // Facture annuelle estimée (MAD) : plafonne l'économie modélisée (ERR113).
+  // Facultative — sans elle, le comportement reste celui d'avant.
+  const annualBillMad = num(body.annualBillMad);
 
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) return json({ ok: false, error: 'lat invalide' }, 400);
   if (!Number.isFinite(lon) || lon < -180 || lon > 180) return json({ ok: false, error: 'lon invalide' }, 400);
@@ -45,7 +48,10 @@ export const POST: APIRoute = async ({ request }) => {
   const aspect = orientationToAspect(orientation);
   const pvgis = await fetchPvgisAnnualKwh(lat, lon, kwc, aspect, fetch);
   const annualKwh = pvgis ?? fallbackAnnualKwh(kwc);
-  const savings = annualSavingsBandMad(annualKwh);
+  const savings = annualSavingsBandMad(
+    annualKwh,
+    Number.isFinite(annualBillMad) && annualBillMad > 0 ? { annualBillMad } : {},
+  );
 
   return json({
     ok: true,

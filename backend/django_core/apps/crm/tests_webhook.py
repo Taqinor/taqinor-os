@@ -100,6 +100,11 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(lead.ville, 'Rabat')  # mise à jour, pas de jumeau
         # Les DEUX payloads bruts sont conservés (jamais perdre une trace)
         self.assertEqual(WebsiteLeadPayload.objects.count(), 2)
+        # La mise à jour idempotente est tracée dans le chatter.
+        from apps.crm.models import LeadActivity
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Mis à jour via le site web').exists())
 
     def test_sous_seuil_accepte_et_etiquete(self):
         res = self.post(payload_site(

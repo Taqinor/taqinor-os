@@ -2,16 +2,29 @@
 // N9 — Sur les étapes « capture de série », on peut saisir un produit + n° de
 // série qui crée un équipement du parc. La saisie de série ne bloque JAMAIS
 // la complétion (cocher reste possible sans série).
+// J43 — portée sur le système de design (Progress, Checkbox, Input, Spinner).
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
 import ProduitPicker from '../../components/ProduitPicker'
+import { Progress, Checkbox, Input, Spinner } from '../../ui'
+import { cn } from '../../lib/cn'
+import { formatDate } from '../../lib/format'
 
-export default function ChantierChecklist({ installationId, produits, onChanged }) {
+export default function ChantierChecklist({
+  installationId, produits, series = [], onChanged,
+}) {
   const [items, setItems] = useState([])
   const [completion, setCompletion] = useState(null)
   const [loading, setLoading] = useState(true)
   // Saisies de série en attente, par clé d'étape : { produit, numero_serie }
   const [serie, setSerie] = useState({})
+  // N15 — n° de série déjà présents sur ce chantier (avertissement de doublon).
+  const seriesSet = new Set(series.map((s) => String(s).trim().toLowerCase()))
+  const isDoublon = (v) => {
+    const t = (v || '').trim().toLowerCase()
+    return !!t && seriesSet.has(t)
+  }
 
   const load = () => {
     installationsApi.getChecklist(installationId)
@@ -43,55 +56,71 @@ export default function ChantierChecklist({ installationId, produits, onChanged 
     setSerie((prev) => ({ ...prev, [cle]: { ...(prev[cle] ?? {}), [k]: v } }))
 
   return (
-    <div className="form-section">
-      <div className="form-section-header">
-        <span className="form-section-title">✅ Checklist d'exécution</span>
-        {completion != null && (
-          <span style={{ fontSize: 13, fontWeight: 700, color: completion === 100 ? '#16a34a' : '#475569' }}>
+    <div className="flex flex-col gap-3">
+      {completion != null && (
+        <div className="flex items-center gap-3">
+          <Progress
+            value={completion}
+            tone={completion === 100 ? 'success' : 'primary'}
+            className="flex-1"
+          />
+          <span className={cn(
+            'text-sm font-semibold tabular-nums',
+            completion === 100 ? 'text-success' : 'text-muted-foreground',
+          )}>
             {completion}%
           </span>
-        )}
-      </div>
-      {completion != null && (
-        <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, marginBottom: 10, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${completion}%`,
-                        background: completion === 100 ? '#16a34a' : '#3b82f6' }} />
         </div>
       )}
       {loading ? (
-        <p className="gen-hint">Chargement…</p>
+        <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
       ) : items.length === 0 ? (
-        <p className="gen-hint">Aucune étape (configurez-les dans Paramètres → Chantiers).</p>
+        <p className="text-sm text-muted-foreground">
+          Aucune étape modèle.{' '}
+          <Link to="/parametres" className="font-medium text-primary underline">
+            Configurer les étapes (Paramètres → Chantiers)
+          </Link>
+          .
+        </p>
       ) : (
-        <div>
+        <div className="flex flex-col">
           {items.map((item) => (
-            <div key={item.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={item.fait}
-                       onChange={(e) => toggle(item, e.target.checked)} />
-                <span style={{ textDecoration: item.fait ? 'line-through' : 'none',
-                               color: item.fait ? '#94a3b8' : '#0f172a' }}>
+            <div key={item.id} className="border-b border-border py-2.5 last:border-0">
+              {/* N12 — zones tactiles agrandies pour usage terrain/gants. */}
+              <label className="flex min-h-11 cursor-pointer items-center gap-3">
+                <Checkbox
+                  className="size-6"
+                  checked={!!item.fait}
+                  onCheckedChange={(c) => toggle(item, c === true)}
+                />
+                <span className={cn(
+                  'text-sm',
+                  item.fait ? 'text-muted-foreground line-through' : 'text-foreground',
+                )}>
                   {item.libelle}
                 </span>
-                {item.fait && item.fait_par_nom && (
-                  <span className="gen-hint" style={{ marginLeft: 'auto', fontSize: 11 }}>
-                    par {item.fait_par_nom}
+                {item.fait && (item.fait_par_nom || item.fait_le) && (
+                  <span className="ml-auto text-right text-xs text-muted-foreground">
+                    {item.fait_par_nom ? `par ${item.fait_par_nom}` : ''}
+                    {item.fait_le ? ` le ${formatDate(item.fait_le)}` : ''}
                   </span>
                 )}
               </label>
-              {/* N9 — saisie optionnelle de série sur les étapes concernées. */}
+              {/* N9 — saisie optionnelle de série sur les étapes concernées.
+                  N12 — empilé pleine largeur sur mobile, deux colonnes en sm+. */}
               {item.capture_serie && !item.fait && (
-                <div className="form-row" style={{ marginTop: 6, marginLeft: 24 }}>
-                  <div className="form-group fg-grow">
-                    <ProduitPicker produits={produits ?? []}
-                                   value={serie[item.cle]?.produit ?? ''}
-                                   onChange={(v) => setSerieField(item.cle, 'produit', v)} />
-                  </div>
-                  <div className="form-group">
-                    <input className="form-control" placeholder="N° de série (optionnel)"
-                           value={serie[item.cle]?.numero_serie ?? ''}
-                           onChange={(e) => setSerieField(item.cle, 'numero_serie', e.target.value)} />
-                  </div>
+                <div className="ml-7 mt-1.5 flex flex-col gap-2 sm:grid sm:grid-cols-2">
+                  <ProduitPicker produits={produits ?? []}
+                                 value={serie[item.cle]?.produit ?? ''}
+                                 onChange={(v) => setSerieField(item.cle, 'produit', v)} />
+                  <Input className="w-full" placeholder="N° de série (optionnel)"
+                         value={serie[item.cle]?.numero_serie ?? ''}
+                         onChange={(e) => setSerieField(item.cle, 'numero_serie', e.target.value)} />
+                  {isDoublon(serie[item.cle]?.numero_serie) && (
+                    <span className="text-xs text-destructive sm:col-span-2">
+                      Ce numéro de série existe déjà sur ce chantier.
+                    </span>
+                  )}
                 </div>
               )}
             </div>

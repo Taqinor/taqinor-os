@@ -1,0 +1,137 @@
+---
+/**
+ * Preuve sociale — avis clients RÉELS uniquement.
+ *
+ * INTÉGRITÉ (règle critique) : ce composant ne rend STRICTEMENT que des données
+ * réelles issues de src/lib/testimonials.ts. Tant que `TESTIMONIALS` est vide et
+ * `GOOGLE_RATING` est null, il ne produit AUCUN markup (ni section, ni JSON-LD).
+ * Aucun témoignage, nom, ville, note ou avis n'est jamais inventé côté composant.
+ *
+ * W67 — i18n : seuls l'eyebrow, le titre par défaut et le libellé « avis
+ * Google » sont traduits (FR/EN/AR). La note (GOOGLE_RATING.value) et le nombre
+ * d'avis restent identiques dans toutes les langues. Rendu FR inchangé (branche
+ * `fr` = strings actuels mot pour mot).
+ */
+import {
+  TESTIMONIALS,
+  GOOGLE_RATING,
+  hasTestimonials,
+  hasRating,
+} from '../lib/testimonials';
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
+
+interface Props {
+  heading?: string;
+}
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+
+const STR: Record<Locale, { eyebrow: string; heading: string; reviewsSuffix: string }> = {
+  fr: {
+    eyebrow: 'Avis clients',
+    heading: 'Ils nous ont fait confiance',
+    reviewsSuffix: 'avis Google',
+  },
+  en: {
+    eyebrow: 'Client reviews',
+    heading: 'They trusted us',
+    reviewsSuffix: 'Google reviews',
+  },
+  ar: {
+    eyebrow: 'آراء العملاء',
+    heading: 'وثقوا بنا',
+    reviewsSuffix: 'مراجعة على Google',
+  },
+};
+const s = STR[locale] ?? STR.fr;
+
+const { heading = s.heading } = Astro.props;
+
+// Garde JSON-LD : on n'émet des Review / AggregateRating QUE sur de vraies données.
+const reviews = hasTestimonials()
+  ? TESTIMONIALS.map((t) => ({
+      '@type': 'Review',
+      reviewBody: t.quote,
+      author: { '@type': 'Person', name: t.name },
+      ...(t.date ? { datePublished: t.date } : {}),
+      itemReviewed: { '@type': 'Organization', name: 'Taqinor' },
+    }))
+  : [];
+
+const aggregateRating = hasRating()
+  ? {
+      '@type': 'AggregateRating',
+      ratingValue: GOOGLE_RATING!.value,
+      reviewCount: GOOGLE_RATING!.count,
+      bestRating: 5,
+    }
+  : null;
+
+const jsonLd =
+  hasTestimonials() || hasRating()
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: 'Taqinor',
+        ...(aggregateRating ? { aggregateRating } : {}),
+        ...(reviews.length ? { review: reviews } : {}),
+      }
+    : null;
+---
+
+{(hasTestimonials() || hasRating()) && (
+  <section class="border-t border-white/10 px-4 py-20 sm:py-28">
+    <div class="mx-auto max-w-6xl">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">{s.eyebrow}</p>
+      <h2 class="display v2-section-title mt-5 max-w-xl text-white">{heading}</h2>
+
+      {hasRating() && (
+        <div class="mt-6 flex items-center gap-3 text-brass-300">
+          <span class="flex" aria-hidden="true">
+            {[0, 1, 2, 3, 4].map(() => (
+              <svg
+                class="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M10 1.5l2.47 5.27 5.78.62-4.32 3.9 1.2 5.71L10 14.98l-5.13 2.92 1.2-5.71-4.32-3.9 5.78-.62L10 1.5z" />
+              </svg>
+            ))}
+          </span>
+          {GOOGLE_RATING!.url ? (
+            <a
+              href={GOOGLE_RATING!.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-sm font-semibold text-lune-soft transition-colors hover:text-brass-200"
+            >
+              <span class="font-bold text-white">{GOOGLE_RATING!.value}</span>/5 · {GOOGLE_RATING!.count} {s.reviewsSuffix}
+            </a>
+          ) : (
+            <p class="text-sm font-semibold text-lune-soft">
+              <span class="font-bold text-white">{GOOGLE_RATING!.value}</span>/5 · {GOOGLE_RATING!.count} {s.reviewsSuffix}
+            </p>
+          )}
+        </div>
+      )}
+
+      {hasTestimonials() && (
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {TESTIMONIALS.map((t, i) => (
+            <figure class="cine-card v2-rise flex flex-col p-7" style={`--v2-i:${i % 3}`}>
+              <blockquote class="flex-1 text-lune-soft">“{t.quote}”</blockquote>
+              <figcaption class="mt-6">
+                <span class="block font-bold text-white">{t.name}</span>
+                <span class="tech-label text-brass-300">{t.city} · {t.system}</span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+  </section>
+)}

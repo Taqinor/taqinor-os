@@ -1,0 +1,42 @@
+---
+/**
+ * Sélecteur de langue — n'affiche QUE les locales réellement disponibles pour
+ * la page courante (aucun lien mort). Tant qu'une page n'a pas de traduction,
+ * elle ne passe qu'une seule locale → le sélecteur ne s'affiche pas. Le FR
+ * sans traduction reste donc strictement inchangé.
+ *
+ * Props :
+ *   path    — chemin racine sans préfixe de locale (ex. '/contact')
+ *   current — locale courante
+ *   locales — locales disponibles pour cette page (def. [current])
+ */
+import { LOCALE_LABEL, LOCALE_SHORT, type Locale } from '../i18n/config';
+import { localizePath, useTranslations } from '../i18n/utils';
+
+interface Props {
+  path: string;
+  current: Locale;
+  locales?: Locale[];
+}
+const { path, current, locales = [current] } = Astro.props;
+const t = useTranslations(current);
+const ordered = locales;
+---
+
+{ordered.length > 1 && (
+  <nav class="flex items-center gap-0.5" aria-label={t('lang.label')}>
+    {ordered.map((loc) => (
+      <a
+        href={localizePath(path, loc)}
+        hreflang={loc}
+        lang={loc}
+        aria-current={loc === current ? 'true' : undefined}
+        title={LOCALE_LABEL[loc]}
+        class:list={[
+          'px-1 py-1 text-xs font-bold uppercase leading-none transition-colors',
+          loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
+        ]}
+      >{LOCALE_SHORT[loc]}</a>
+    ))}
+  </nav>
+)}

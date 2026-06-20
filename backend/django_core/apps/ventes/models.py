@@ -1,7 +1,9 @@
 from django.db import models
 from django.conf import settings
-from apps.crm.models import Client
-from apps.stock.models import Produit
+
+# M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
+# imports no sibling app's models at load time (breaks the crm⇄ventes /
+# stock⇄ventes import cycles without any schema change).
 
 
 class Devis(models.Model):
@@ -21,7 +23,7 @@ class Devis(models.Model):
     )
     reference = models.CharField(max_length=50)
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.PROTECT,
         related_name='devis',
     )
@@ -124,12 +126,45 @@ class Devis(models.Model):
 
     @property
     def total_tva(self):
-        # TVA par ligne quand un taux de ligne existe, sinon taux du devis
-        # (anciens devis : toutes lignes NULL → strictement l'ancien calcul).
-        return sum(
-            ligne.total_ht * (ligne.taux_tva_effectif / 100)
-            for ligne in self.lignes.all()
-        )
+        # ERR71 — TVA réconciliée au centime, par panier de taux, EXACTEMENT
+        # comme Facture/échéancier (tva_par_taux) pour que devis et facture
+        # s'accordent au centime sur un devis à taux mixtes (10/20). Mono-taux
+        # (anciens devis : toutes lignes NULL → un seul panier) → formule
+        # d'origine HT×taux, rendu strictement inchangé.
+        from decimal import Decimal
+        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+
+    @property
+    def tva_par_taux(self):
+        """Ventilation TVA par taux (10 % / 20 %), réconciliée au centime.
+
+        Miroir exact de ``Facture.tva_par_taux`` : mono-taux → un panier calculé
+        par la formule d'origine (HT × taux, aucun arrondi par panier → figures
+        historiques strictement identiques) ; taux mixtes → un panier par taux,
+        chaque TVA arrondie au centime, dont la somme est le total TVA.
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        lignes = list(self.lignes.all())
+        buckets = {}
+        for ligne in lignes:
+            # Coercition Decimal du taux : un taux non encore relu de la base
+            # (défaut modèle) peut être un float — on garde des Decimals partout
+            # pour ne jamais mélanger Decimal et float dans le calcul.
+            rate = Decimal(str(ligne.taux_tva_effectif))
+            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
+        if len(buckets) <= 1:
+            rate = next(iter(buckets), Decimal(str(self.taux_tva)))
+            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+            return [{'taux': rate, 'base_ht': base,
+                     'montant': base * rate / Decimal('100')}]
+
+        def q(x):
+            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return [
+            {'taux': rate, 'base_ht': q(buckets[rate]),
+             'montant': q(buckets[rate] * rate / Decimal('100'))}
+            for rate in sorted(buckets)
+        ]
 
     @property
     def total_ttc(self):
@@ -141,7 +176,7 @@ class LigneDevis(models.Model):
         Devis, on_delete=models.CASCADE, related_name='lignes'
     )
     produit = models.ForeignKey(
-        Produit,
+        'stock.Produit',
         on_delete=models.PROTECT,
         related_name='lignes_devis',
     )
@@ -213,6 +248,44 @@ class DevisActivity(models.Model):
         return f"{self.devis_id} {self.kind} {self.field or ''}".strip()
 
 
+class FactureActivity(models.Model):
+    """Chatter d'une facture — même patron que DevisActivity.
+
+    Trace les événements comptables (avoir créé, paiement encaissé) + notes
+    éventuelles. Utilisateur et société posés côté serveur, jamais lus du
+    corps de la requête."""
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='facture_activities')
+    facture = models.ForeignKey(
+        'Facture', on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='facture_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité facture'
+        verbose_name_plural = 'Activités facture'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['facture', '-created_at'],
+                                name='ventes_factact_idx')]
+
+    def __str__(self):
+        return f"{self.facture_id} {self.kind} {self.field or ''}".strip()
+
+
 class BonCommande(models.Model):
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
@@ -236,7 +309,7 @@ class BonCommande(models.Model):
         related_name='bon_commande',
     )
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.PROTECT,
         related_name='bons_commande',
     )
@@ -327,7 +400,7 @@ class Facture(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
     )
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.PROTECT,
         related_name='factures',
     )
@@ -568,7 +641,7 @@ class LigneFacture(models.Model):
         Facture, on_delete=models.CASCADE, related_name='lignes'
     )
     produit = models.ForeignKey(
-        Produit,
+        'stock.Produit',
         on_delete=models.PROTECT,
         related_name='lignes_facture',
     )
@@ -673,7 +746,7 @@ class Avoir(models.Model):
     facture = models.ForeignKey(
         Facture, on_delete=models.PROTECT, related_name='avoirs')
     client = models.ForeignKey(
-        Client, on_delete=models.PROTECT, related_name='avoirs')
+        'crm.Client', on_delete=models.PROTECT, related_name='avoirs')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EMISE)
     motif = models.TextField(blank=True, default='')
@@ -752,7 +825,7 @@ class LigneAvoir(models.Model):
     avoir = models.ForeignKey(
         Avoir, on_delete=models.CASCADE, related_name='lignes')
     produit = models.ForeignKey(
-        Produit, on_delete=models.SET_NULL, null=True, blank=True,
+        'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_avoir')
     designation = models.CharField(max_length=255)
     quantite = models.DecimalField(max_digits=10, decimal_places=2)
@@ -817,6 +890,72 @@ class RelanceLog(models.Model):
 
     def __str__(self):
         return f'Relance {self.facture.reference} — {self.date}'
+
+
+class EmailLog(models.Model):
+    """Journal « chatter » des emails sortants ET entrants liés à un client /
+    document (devis, facture). Additif, scopé société. C'est la trace
+    réutilisée par l'intégration email (N87) et la capture entrante (N88) :
+    on consigne ce qui a été envoyé/reçu sur le fil du client/document. La
+    société et l'utilisateur sont posés côté serveur, jamais lus du corps de
+    la requête.
+
+    Sans clé d'envoi configurée, l'envoi reste un NO-OP (backend console par
+    défaut) mais l'entrée EmailLog est tout de même écrite avec
+    statut=ENVOYE pour garder la trace lisible côté fil."""
+    class Direction(models.TextChoices):
+        SORTANT = 'sortant', 'Sortant'
+        ENTRANT = 'entrant', 'Entrant'
+
+    class Statut(models.TextChoices):
+        ENVOYE = 'envoye', 'Envoyé'
+        ECHEC = 'echec', 'Échec'
+        RECU = 'recu', 'Reçu'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='email_logs')
+    direction = models.CharField(
+        max_length=10, choices=Direction.choices, default=Direction.SORTANT)
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ENVOYE)
+    # Cible du fil : client et/ou document. Tous optionnels — un email entrant
+    # peut n'être rattaché qu'au client si aucune référence document n'est lue.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='email_logs')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='email_logs')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='email_logs')
+    to_email = models.CharField(max_length=254, blank=True, default='')
+    from_email = models.CharField(max_length=254, blank=True, default='')
+    sujet = models.CharField(max_length=300, blank=True, default='')
+    corps = models.TextField(blank=True, default='')
+    # Référence document reconnue dans un message entrant (ex. FAC-…/DEV-…).
+    reference = models.CharField(max_length=80, blank=True, default='')
+    # Nom de la pièce jointe envoyée (PDF), le cas échéant.
+    piece_jointe = models.CharField(max_length=255, blank=True, default='')
+    erreur = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='email_logs')
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Email'
+        indexes = [
+            models.Index(fields=['client', '-created_at'],
+                         name='ventes_emaillog_cli_idx'),
+            models.Index(fields=['facture', '-created_at'],
+                         name='ventes_emaillog_fac_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_direction_display()} {self.to_email or self.from_email}'
 
 
 # ── Liens publics tokenisés (Envoyer par WhatsApp) ───────────────────────────
