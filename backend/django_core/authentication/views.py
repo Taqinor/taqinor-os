@@ -22,22 +22,27 @@ from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 # Les jetons JWT sont posés en cookies ``httpOnly`` (jamais lisibles par JS, ce
 # qui neutralise le vol de jeton par XSS). La protection CSRF des mutations
 # authentifiées par cookie repose sur DEUX barrières complémentaires :
-#   1. ``SameSite=Strict`` — le navigateur n'attache JAMAIS ces cookies à une
-#      requête déclenchée depuis un autre site (origine), ce qui bloque les CSRF
-#      classiques. C'est une INVARIANTE de sécurité : ne JAMAIS l'abaisser à
-#      'Lax'/'None' sans introduire au préalable un jeton CSRF explicite
-#      (double-submit / en-tête X-CSRFToken). Le test
-#      ``tests_csrf.test_auth_cookies_are_samesite_strict`` verrouille cette
-#      valeur pour qu'un relâchement silencieux casse la CI.
+#   1. ``SameSite=Lax`` — le navigateur n'attache PAS ces cookies aux requêtes
+#      cross-site qui changent l'état (POST/PUT/PATCH/DELETE déclenchés depuis un
+#      autre site), ce qui bloque les CSRF classiques. Notre API n'expose AUCUNE
+#      mutation en GET, donc Lax offre la même barrière anti-CSRF que Strict pour
+#      les écritures, tout en envoyant le cookie sur les navigations top-level.
+#      MOTIF DU PASSAGE STRICT→LAX (bug iOS connu) : WebKit n'attache PAS les
+#      cookies ``SameSite=Strict`` à la requête de DÉMARRAGE quand on lance la PWA
+#      depuis l'écran d'accueil (cold-launch). Conséquence avec Strict : l'app
+#      s'ouvrait déconnectée ET le refresh silencieux (cookie ``refresh_token``)
+#      ne partait pas non plus → re-login forcé à chaque ouverture sur iPhone.
+#      Lax corrige ce comportement (le cookie part sur la navigation de lancement)
+#      sans rouvrir de fenêtre CSRF sur les écritures. NE PAS repasser à 'None'
+#      sans un flux de jeton CSRF explicite (double-submit / X-CSRFToken).
 #   2. ``Secure`` en production (cookies HTTPS uniquement) — posé via
 #      ``_COOKIE_SECURE`` ci-dessous, renforcé par ``SESSION/CSRF_COOKIE_SECURE``
 #      et ``SECURE_SSL_REDIRECT`` dans settings/prod.py.
-# Le frontend est servi depuis le même site eTLD+1 que l'API en production, donc
-# 'Strict' n'empêche aucun usage légitime. Si une future intégration tierce
-# cross-site devait poster avec ces cookies, il FAUDRAIT d'abord ajouter un flux
-# de jeton CSRF complet avant d'assouplir SameSite — c'est un changement gardé.
+# Le frontend est servi depuis le même site eTLD+1 que l'API en production. Le
+# test ``tests_hardening.test_auth_cookies_are_samesite_lax_and_httponly``
+# verrouille cette valeur pour qu'un relâchement silencieux casse la CI.
 _COOKIE_SECURE = not settings.DEBUG
-_COOKIE_SAMESITE = 'Strict'
+_COOKIE_SAMESITE = 'Lax'
 _ACCESS_MAX_AGE = int(
     settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
 )

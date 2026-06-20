@@ -23,6 +23,20 @@ self.addEventListener('message', (event) => {
   }
 })
 
+// Prend le contrôle des pages déjà ouvertes dès l'activation. REQUIS POUR LE
+// PUSH iOS : si on appelle pushManager.subscribe() alors que le service worker
+// ne CONTRÔLE pas encore la page (cas typique juste après la 1re installation),
+// iOS accepte l'abonnement dans l'UI mais ne livre jamais les push (bug WebKit
+// connu). clients.claim() garantit que la page est contrôlée avant l'abonnement.
+// Ne ré-ouvre PAS la course de rechargement à froid (C2) : on ne fait TOUJOURS
+// PAS de skipWaiting au démarrage, donc sur une mise à jour le nouveau SW reste
+// en attente jusqu'à fermeture de l'onglet ; et au tout premier install (aucun
+// contrôleur préalable) claim ne déclenche aucun rechargement — le reload n'est
+// armé que par le clic « Actualiser » (updateServiceWorker(true)).
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
 // Précache du shell (liste injectée à la build par vite-plugin-pwa).
 precacheAndRoute(self.__WB_MANIFEST || [])
 
