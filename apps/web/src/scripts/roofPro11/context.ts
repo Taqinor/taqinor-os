@@ -15,6 +15,8 @@ import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { type LiveSolveResult } from '../../lib/estimatorBrainV7';
 import { type PitchedLiveResult } from '../../lib/estimatorBrainV8';
+import { type Recommendation } from '../../lib/estimatorBrainV2';
+import { type MatrixSortKey, type MatrixV6Result } from '../../lib/estimatorBrainV6';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
 import { type LayoutState } from '../../lib/layoutVariability';
 import { type InitOptions, type RoofType, type AreaRecord } from './types';
@@ -61,9 +63,18 @@ export interface Ctx {
   neededPanels: number;
   neededAuto: boolean;
 
+  // — Recommandation/optimum courant + flag « caler sur la reco » (mutable) —
+  rec: Recommendation | null;
+  useRecommended: boolean;
+
   // — Résultats vivants des optimiseurs (mutable) —
   liveResult: LiveSolveResult | null;
   pitchedLiveResult: PitchedLiveResult | null;
+
+  // — V6 MATRICE (toit plat) : balayage complet + tri/filtre (mutable) —
+  matrixResult: MatrixV6Result | null;
+  matrixSort: { key: MatrixSortKey; dir: 'asc' | 'desc' };
+  matrixFilter: string;
 
   // — « Plusieurs zones » —
   /** Liste des enregistrements de zone (mutée en place dans roof-tool-pro11.ts). */

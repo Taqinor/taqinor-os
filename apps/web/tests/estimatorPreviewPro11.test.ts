@@ -94,8 +94,10 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
   it('un comparatif pente (pose × marge) est rendu, l\'optimum badgé', () => {
     expect(script).toContain('function paintPitchedComparison(');
     expect(script).toContain('✓ Recommandé');
-    // la matrice PLATE ne repeint jamais le tableau en mode pente
-    expect(script).toContain("if (roofType !== 'flat' || !rec || !matrixResult) return;");
+    // la matrice PLATE ne repeint jamais le tableau en mode pente — la garde vit
+    // désormais dans roofPro11/matrix.ts (split modulaire), sous forme ctx.*.
+    const matrix = read('../src/scripts/roofPro11/matrix.ts');
+    expect(matrix).toContain("if (ctx.roofType !== 'flat' || !ctx.rec || !ctx.matrixResult) return;");
   });
 });
 

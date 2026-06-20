@@ -76,13 +76,10 @@ import {
   eaveUpSlopeCoord,
   fineGridMatrixV6,
   flushPanelCenterAt,
-  matrixGroupKey,
   pitchedDeckZ,
   pvgisCoarsePairs,
   pvgisMatrixCandidatePairs,
   pvgisRefinePairs,
-  sortMatrix,
-  type MatrixEvalV6,
   type MatrixSortKey,
   type MatrixV6Result,
 } from '../lib/estimatorBrainV6';
@@ -149,6 +146,7 @@ import {
   type CardData,
   type ZoneRenderPlan,
   type AreaRecord,
+  type RenderConfigOpts,
 } from './roofPro11/types';
 import {
   GOLD,
@@ -170,6 +168,7 @@ import { createPrefill } from './roofPro11/prefill';
 import { createZones } from './roofPro11/zones';
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
+import { createMatrix } from './roofPro11/matrix';
 
 let booted = false;
 
@@ -571,6 +570,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
     set neededAuto(v) {
       neededAuto = v;
     },
+    get rec() {
+      return rec;
+    },
+    set rec(v) {
+      rec = v;
+    },
+    get useRecommended() {
+      return useRecommended;
+    },
+    set useRecommended(v) {
+      useRecommended = v;
+    },
     get liveResult() {
       return liveResult;
     },
@@ -582,6 +593,24 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set pitchedLiveResult(v) {
       pitchedLiveResult = v;
+    },
+    get matrixResult() {
+      return matrixResult;
+    },
+    set matrixResult(v) {
+      matrixResult = v;
+    },
+    get matrixSort() {
+      return matrixSort;
+    },
+    set matrixSort(v) {
+      matrixSort = v;
+    },
+    get matrixFilter() {
+      return matrixFilter;
+    },
+    set matrixFilter(v) {
+      matrixFilter = v;
     },
     areas,
     get activeAreaId() {
@@ -793,6 +822,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const updateProductionWindow = prodWindow.updateProductionWindow;
   const prodConfigFromState = prodWindow.prodConfigFromState;
   const syncProductionWindow = prodWindow.syncProductionWindow;
+  // V6 — MATRICE (toit plat). `renderConfig`/`monthlyBill` injectés en wrappers
+  // paresseux (déclarés plus bas, référencés à l'exécution).
+  const matrix = createMatrix(ctx, {
+    renderConfig: (o) => renderConfig(o),
+    monthlyBill: () => monthlyBill(),
+    obstructionRings,
+  });
+  const paintComparison = matrix.paintComparison;
+  const renderMatrixRow = matrix.renderMatrixRow;
+  const highlightRow = matrix.highlightRow;
+  const recomputeMatrix = matrix.recomputeMatrix;
+  const setMatrixSort = matrix.setMatrixSort;
 
   const monthlyBill = (): number => {
     const raw = parseFloat((billEl?.value || '').replace(/\s/g, '').replace(',', '.'));
@@ -1603,20 +1644,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
   }
 
-  interface RenderConfigOpts {
-    pack: PackResult;
-    grid: PanelGrid;
-    family: ConfigFamily;
-    tiltDeg: number;
-    /** Azimut de face réel du pavage (W1) : production à l'aspect correspondant. */
-    azimuthDeg: number;
-    isReco: boolean;
-    title: string;
-    why: string;
-    sourceLabel?: string;
-    rowId: string | null;
-  }
-
   /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
    *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
   function renderConfig(o: RenderConfigOpts) {
@@ -1984,147 +2011,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // FIX 2 : on ne montre plus ~6 configs nommées, mais TOUTES les lignes évaluées par
   // fineGridMatrixV6, avec l'optimum réel épinglé en tête et badgé « Recommandé ».
 
-  /** Clé stable d'une ligne (famille|inclinaison|azimut|pose|marge) — sert d'id de
-   *  ligne (réutilise le highlight existant) et de comparaison au gagnant. */
-  function matrixRowKey(r: MatrixEvalV6): string {
-    return `${r.family}|${r.tiltDeg}|${Math.round(r.azimuthDeg)}|${r.orientation}|${r.margin}`;
-  }
-
-  function isMatrixWinner(r: MatrixEvalV6): boolean {
-    const w = matrixResult?.winner;
-    return !!w && matrixRowKey(r) === matrixRowKey(w);
-  }
-
-  /** Lignes ordonnées selon le tri + filtre courants (vrai regroupement, lisible). */
-  function matrixOrderedRows(): MatrixEvalV6[] {
-    if (!matrixResult) return [];
-    const rows = matrixFilter === 'all' ? matrixResult.rows : matrixResult.rows.filter((r) => matrixGroupKey(r) === matrixFilter);
-    return sortMatrix(rows, matrixSort.key, matrixSort.dir);
-  }
-
-  /** (Re)peuple le menu de filtre par orientation/pose à partir de la matrice. */
-  function syncMatrixFilter() {
-    const sel = $<HTMLSelectElement>('rp9-matrix-filter');
-    if (!sel || !matrixResult) return;
-    const groups = [...new Set(matrixResult.rows.map(matrixGroupKey))].sort();
-    const want = ['all', ...groups];
-    const current = want.join('|');
-    if (sel.dataset.built !== current) {
-      sel.innerHTML =
-        `<option value="all">Toutes les orientations (${matrixResult.rows.length} configs)</option>` +
-        groups.map((g) => `<option value="${g}">${g}</option>`).join('');
-      sel.dataset.built = current;
-    }
-    if (matrixFilter !== 'all' && !groups.includes(matrixFilter)) matrixFilter = 'all';
-    sel.value = matrixFilter;
-  }
-
-  /** Reflète l'en-tête de tri actif (flèche + aria-sort sur la cellule) sur les
-   *  colonnes triables. `data-rp9-sort` vit sur le bouton ; aria-sort sur son <th>. */
-  function syncMatrixSortHeaders() {
-    for (const btn of Array.from(document.querySelectorAll<HTMLElement>('[data-rp9-sort]'))) {
-      const key = btn.dataset.rp9Sort as MatrixSortKey;
-      const active = key === matrixSort.key;
-      btn.dataset.active = active ? 'true' : 'false';
-      const th = btn.closest('th');
-      if (th) th.setAttribute('aria-sort', active ? (matrixSort.dir === 'desc' ? 'descending' : 'ascending') : 'none');
-      const arrow = btn.querySelector('.rp9-sort-arrow');
-      if (arrow) arrow.textContent = active ? (matrixSort.dir === 'desc' ? ' ↓' : ' ↑') : '';
-    }
-  }
-
-  function paintComparison() {
-    // W35 — la matrice plate ne doit JAMAIS repeindre le tableau en mode pente
-    // (le comparatif pente est rendu par paintPitchedComparison).
-    if (roofType !== 'flat' || !rec || !matrixResult) return;
-    const tbody = $('rp9-compare');
-    const wrap = $('rp9-compare-wrap');
-    if (!tbody) return;
-    syncMatrixFilter();
-    syncMatrixSortHeaders();
-    const target = matrixResult.targetAnnualKwh;
-    const winner = matrixResult.winner;
-    // Optimum réel ÉPINGLÉ en tête, puis le reste de la matrice (triée/filtrée).
-    const rest = matrixOrderedRows().filter((r) => !isMatrixWinner(r));
-    const rows = [winner, ...rest];
-    tbody.innerHTML = '';
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      const key = matrixRowKey(r);
-      tr.dataset.id = key;
-      const win = isMatrixWinner(r);
-      const cover = target > 0 ? Math.round(r.pctOfTarget) : 0;
-      const badge = win ? ' <span style="color:var(--color-brass-300)">✓ Recommandé</span>' : '';
-      tr.innerHTML =
-        `<td>${r.label}${badge}</td>` +
-        `<td class="num">${fmt(r.placedCount)}</td>` +
-        `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
-        `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
-        `<td class="num">${cover} %</td>` +
-        `<td class="num">${fmtMad(r.savingsLow)} – ${fmtMad(r.savingsHigh)}</td>`;
-      tr.addEventListener('click', () => renderMatrixRow(r));
-      tbody.appendChild(tr);
-    }
-    if (wrap) wrap.hidden = false;
-    highlightRow(isMatrixWinner(winner) ? matrixRowKey(winner) : null);
-  }
-
-  /** Rend EXACTEMENT cette ligne de la matrice en 3D (azimut span quelconque géré) :
-   *  pavage à l'azimut/marge de la ligne, puis le rendu unifié toit plat. */
-  function renderMatrixRow(r: MatrixEvalV6) {
-    if (!closed || vertices.length < 3) return;
-    useRecommended = false;
-    const ring: LngLat[] = [...vertices];
-    const setbackM = r.margin === 'keep' ? PERIMETER_SETBACK_M : 0;
-    const pack = packConfig(ring, centroidLat, {
-      family: r.family,
-      tiltDeg: r.tiltDeg,
-      azimuthDeg: r.azimuthDeg,
-      obstructions: obstructionRings(),
-      setbackM,
-    });
-    const grid = r.orientation === 'portrait' ? pack.portrait : pack.landscape;
-    renderConfig({
-      pack,
-      grid,
-      family: r.family,
-      tiltDeg: r.tiltDeg,
-      azimuthDeg: pack.azimuthDeg,
-      isReco: isMatrixWinner(r),
-      title: `${r.label}${isMatrixWinner(r) ? '  ·  ✓ recommandé' : ''}`,
-      why: isMatrixWinner(r)
-        ? matrixResult?.optimumRow.reason ?? ''
-        : 'Vous explorez une configuration de la matrice. La ligne « Recommandé » reste le meilleur compromis pour votre facture.',
-      sourceLabel: matrixResult?.yieldSource === 'pvgis' ? '(production affinée via PVGIS au GPS exact)' : '(production estimée — table par latitude)',
-      rowId: matrixRowKey(r),
-    });
-  }
-
-  function highlightRow(id: string | null) {
-    const tbody = $('rp9-compare');
-    if (!tbody) return;
-    for (const tr of Array.from(tbody.querySelectorAll('tr'))) {
-      (tr as HTMLElement).dataset.active = (id != null && (tr as HTMLElement).dataset.id === id) ? 'true' : 'false';
-    }
-  }
-
-  /** Recalcule la matrice (estimation instantanée) et la peint. Le balayage PVGIS au
-   *  GPS exact suit en asynchrone (computeMatrixPvgis). */
-  function recomputeMatrix() {
-    if (!closed || vertices.length < 3 || roofType !== 'flat') return;
-    const ring: LngLat[] = [...vertices];
-    matrixResult = fineGridMatrixV6(ring, centroidLat, monthlyBill(), obstructionRings());
-    paintComparison();
-  }
-
-  // Bascule de tri (clic sur en-tête) : même colonne → inverse le sens, sinon nouvelle
-  // colonne en décroissant. Repeint sans re-balayer (la matrice est déjà calculée).
-  function setMatrixSort(key: MatrixSortKey) {
-    if (roofType !== 'flat') return; // le tri/filtre n'existent qu'en toit plat
-    if (matrixSort.key === key) matrixSort.dir = matrixSort.dir === 'desc' ? 'asc' : 'desc';
-    else matrixSort = { key, dir: 'desc' };
-    paintComparison();
-  }
+  // ═══════════ V6 — MATRICE de comparaison (toit plat) : voir roofPro11/matrix.ts ═══════════
 
   // ═══════════ V3 — Optimum (recherche pleine) + toit en pente (pose affleurante) ═══════════
 

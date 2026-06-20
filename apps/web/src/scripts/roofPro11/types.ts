@@ -103,3 +103,18 @@ export interface ProductionApiResponse {
   typicalDayByMonth: number[][];
   specificDate: SpecificDateProfile | null;
 }
+
+/** Options du rendu UNIFIÉ d'une configuration toit plat (carte + 3D + contrôles). */
+export interface RenderConfigOpts {
+  pack: PackResult;
+  grid: PanelGrid;
+  family: ConfigFamily;
+  tiltDeg: number;
+  /** Azimut de face réel du pavage (W1) : production à l'aspect correspondant. */
+  azimuthDeg: number;
+  isReco: boolean;
+  title: string;
+  why: string;
+  sourceLabel?: string;
+  rowId: string | null;
+}
