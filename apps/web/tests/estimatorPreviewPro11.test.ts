@@ -266,6 +266,38 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
   });
 });
 
+describe('pro-11 — W87 : soleil RÉEL + preuve d\'ombrage inter-rangées + contrôle heure/saison', () => {
+  const scene = read('../src/scripts/roofPro11/scene3d.ts');
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+
+  it('la scène pose un VRAI soleil via sunDirection (latitude + ctx.sunHour/ctx.sunDay), plus de soleil arbitraire', () => {
+    expect(scene).toContain('sunDirection');
+    expect(scene).toContain('sunDirection(lat, ctx.sunDay, ctx.sunHour)');
+    // l'ancien soleil factice (« visée − 45° ») a disparu.
+    expect(scene).not.toContain('pack.azimuthDeg - 45');
+    // l'azimut/élévation du soleil viennent de la vraie position.
+    expect(scene).toContain('realSun.elevationDeg');
+    expect(scene).toContain('realSun.azimuthDeg');
+  });
+
+  it('la page expose un contrôle heure du soleil + une bascule saison (zéro CLS)', () => {
+    expect(page).toContain('id="rp9-sun-hour"');
+    expect(page).toContain('data-sun-season="winter"');
+    expect(page).toContain('data-sun-season="summer"');
+    // défaut visible = hiver (pire cas) pressé.
+    expect(page).toMatch(/data-sun-season="winter"[\s\S]{0,80}aria-pressed="true"/);
+  });
+
+  it('l\'entrée câble le curseur d\'heure et la saison vers ctx.sunHour/ctx.sunDay et re-rend la scène', () => {
+    expect(script).toContain('ctx.sunHour = h');
+    expect(script).toContain('data-sun-season');
+    expect(script).toContain("ctx.sunDay = b.dataset.sunSeason === 'summer' ? 172 : WINTER_SOLSTICE_DAY");
+    // le défaut du jour = solstice d'hiver (pire cas d'ombrage).
+    expect(script).toContain('let sunDay = WINTER_SOLSTICE_DAY');
+  });
+});
+
 describe('pro-11 — W86 : libellé CTA honnête + aria-live sur les résultats', () => {
   const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
 

@@ -19,7 +19,7 @@
  */
 import maplibregl from 'maplibre-gl';
 import * as THREE from 'three';
-import { PANEL2_THICK_M } from '../../lib/roofPro2';
+import { PANEL2_THICK_M, sunDirection } from '../../lib/roofPro2';
 import {
   type PackResult,
   type PanelGrid,
@@ -736,9 +736,20 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // contexte, son toit texturé sur le dessus (détouré au tracé). La photo du toit
     // (surélevée) et le sol viennent de la même imagerie source.
     const roofZ = wallH + 0.5;
-    const latAbs = Math.abs(pack.origin[1]);
-    const dispElevDeg = Math.max(28, (90 - latAbs) * 0.62);
-    const dispAzDeg = pack.azimuthDeg - 45;
+    // W87 — VRAI soleil : position astronomique à la latitude du toit, pour l'heure
+    // solaire (ctx.sunHour) et le jour (ctx.sunDay) choisis. Défaut = midi au solstice
+    // d'hiver (jour 355), où l'élévation rejoint l'élévation de design de l'espacement
+    // anti-ombrage → les rangées se dégagent VISIBLEMENT (l'ombre portée prouve le pas).
+    // Plus de soleil arbitraire (ancien « visée − 45° » + élévation factice) : l'ombre
+    // rendue correspond désormais à une vraie heure. On garde le soleil au moins à 6°
+    // au-dessus de l'horizon pour que la scène reste éclairée si l'utilisateur choisit
+    // une heure proche du lever/coucher (ombres longues mais lisibles, jamais noir).
+    const lat = pack.origin[1];
+    const realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour);
+    const dispElevDeg = Math.max(6, realSun.elevationDeg);
+    // Azimut RÉEL du soleil, ramené dans le repère ENU de la scène (0 = Nord, sens
+    // horaire vers l'Est) — même convention que pack.azimuthDeg.
+    const dispAzDeg = realSun.azimuthDeg;
     const azR = dispAzDeg * DEG2RAD;
     const elR = dispElevDeg * DEG2RAD;
     const dist = span * 2.5;

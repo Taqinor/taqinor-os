@@ -54,7 +54,7 @@ import {
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrainV2';
-import { PERIMETER_SETBACK_M } from '../lib/roofPro2';
+import { PERIMETER_SETBACK_M, WINTER_SOLSTICE_DAY } from '../lib/roofPro2';
 import {
   reoptimize,
   type FlatPins,
@@ -164,6 +164,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const tiltRangeEl = $<HTMLInputElement>('rp9-tilt-range');
   const tiltValueEl = $('rp9-tilt-value');
   const tiltRecoBtn = $<HTMLButtonElement>('rp9-tilt-reco');
+  // W87 — soleil réel : curseur d'heure solaire + bascule saison qui pilotent
+  // ctx.sunHour / ctx.sunDay (la scène 3D positionne un VRAI soleil et son ombre).
+  const sunHourEl = $<HTMLInputElement>('rp9-sun-hour');
+  const sunHourValueEl = $('rp9-sun-hour-value');
   // — Obstacles : le DOM (bouton ajouter/effacer, panneau d'édition, saisies longueur/
   // largeur, +/−, suppr.) est piloté par le module roofPro11/obstaclesUi.ts. —
   // V3 : bouton Optimum, toggle type de toit, et contrôles toit en pente.
@@ -299,6 +303,11 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
   let centroid: LngLat = [0, 0];
   let centroidLat = 33.5;
+  // W87 — heure solaire (0–24) et jour de l'année qui pilotent le VRAI soleil de la
+  // scène 3D. Défaut = midi solaire au solstice d'hiver (jour 355) : le PIRE cas
+  // d'ombrage, où les rangées espacées par l'angle de design se dégagent visiblement.
+  let sunHour = 12;
+  let sunDay = WINTER_SOLSTICE_DAY;
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode; azimuth: AzimuthMode; margin: MarginMode } = {
     family: 'south',
@@ -664,6 +673,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set centroidLat(v) {
       centroidLat = v;
+    },
+    get sunHour() {
+      return sunHour;
+    },
+    set sunHour(v) {
+      sunHour = v;
+    },
+    get sunDay() {
+      return sunDay;
+    },
+    set sunDay(v) {
+      sunDay = v;
     },
     get consMode() {
       return consMode;
@@ -1894,6 +1915,28 @@ export function initRoofToolPro8(opts: InitOptions): void {
     };
     tiltRangeEl.addEventListener('input', onTilt);
   }
+  // W87 — heure du soleil : déplace ctx.sunHour (6–18 h, midi = 12) et re-rend la scène
+  // ACTIVE (renderActive → renderScene repositionne le VRAI soleil + son ombre portée).
+  // Ne touche AUCUN axe de config (la disposition est inchangée), seul le soleil bouge.
+  if (sunHourEl) {
+    sunHourEl.addEventListener('input', () => {
+      const h = Math.round(Number(sunHourEl.value));
+      if (!Number.isFinite(h)) return;
+      ctx.sunHour = h;
+      if (sunHourValueEl) sunHourValueEl.textContent = `${h} h`;
+      renderActive();
+    });
+  }
+  // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172).
+  document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((b) => {
+    b.addEventListener('click', () => {
+      ctx.sunDay = b.dataset.sunSeason === 'summer' ? 172 : WINTER_SOLSTICE_DAY;
+      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
+        o.setAttribute('aria-pressed', String(o === b)),
+      );
+      renderActive();
+    });
+  });
   // W46 — bouton « Recommandé » de l'inclinaison = AFFORDANCE PAR AXE : il LIBÈRE LE
   // SEUL axe inclinaison (retour AUTO) en TENANT tous les autres verrous accumulés, puis
   // re-résout. Il NE doit PAS tout réinitialiser (« Réinitialiser » fait ça). Auparavant

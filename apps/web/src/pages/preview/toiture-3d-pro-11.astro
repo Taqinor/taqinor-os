@@ -354,6 +354,32 @@ const chipClass =
                 <p id="rp9-pitched-note" class="min-h-[1.25rem] text-xs leading-relaxed text-lune-soft" aria-live="polite"></p>
               </div>
 
+              <!-- W87 — Soleil réel : l'ombre portée de la scène 3D suit une VRAIE position
+                   solaire (latitude du toit + heure + saison). Le défaut « midi solstice
+                   d'hiver » est le PIRE cas d'ombrage : à cet angle, les rangées espacées par
+                   la géométrie solaire se dégagent visiblement (la preuve de l'anti-ombrage).
+                   Curseur d'heure solaire + bascule saison. Zéro CLS (hauteur réservée). -->
+              <div id="rp9-sun-controls" class="space-y-3 border border-white/10 bg-nuit-900/40 p-3">
+                <div class="flex items-center gap-3">
+                  <label for="rp9-sun-hour" class="tech-label shrink-0 text-lune-faint">Heure du soleil</label>
+                  <input id="rp9-sun-hour" type="range" min="6" max="18" step="1" value="12"
+                    class="h-2 w-full min-w-0 flex-1 cursor-pointer accent-brass-400"
+                    aria-label="Heure solaire (6 h à 18 h, midi solaire = 12 h)" />
+                  <span id="rp9-sun-hour-value" class="w-12 shrink-0 text-right text-sm font-semibold text-brass-300">12 h</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="tech-label mr-1 text-lune-faint">Saison</span>
+                  <button type="button" data-sun-season="winter" class={chipClass} aria-pressed="true">Hiver (pire cas)</button>
+                  <button type="button" data-sun-season="summer" class={chipClass} aria-pressed="false">Été</button>
+                </div>
+                <p class="text-xs leading-relaxed text-lune-faint">
+                  L'ombre de la 3D suit le vrai soleil à la latitude du toit. Au
+                  <strong class="text-lune-soft">midi du solstice d'hiver</strong> (pire cas),
+                  les rangées se dégagent l'une l'autre — c'est la preuve de l'espacement
+                  anti-ombrage.
+                </p>
+              </div>
+
               <div class="flex flex-wrap items-center gap-2">
                 <span class="tech-label mr-1 text-lune-faint">Obstacles</span>
                 <button type="button" id="rp9-obstacle" class={chipClass}>Ajouter un obstacle (cheminée…)</button>

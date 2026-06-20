@@ -187,6 +187,10 @@ export interface Ctx {
   prodPlaneKey: string;
   /** Latitude du centroïde du tracé (pour le dimensionnement). */
   centroidLat: number;
+  /** W87 — heure solaire (0–24) pilotant le VRAI soleil de la scène 3D (midi = 12). */
+  sunHour: number;
+  /** W87 — jour de l'année (1–365) pour la saison du soleil (solstice d'hiver = 355). */
+  sunDay: number;
 
   // — W69 « Personnaliser la disposition » (lecture pour la fenêtre de production) —
   /** Le mode disposition personnalisée est-il actif ? */

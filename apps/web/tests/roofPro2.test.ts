@@ -8,6 +8,8 @@ import {
   layoutProRows2,
   orientationToAzimuthDeg,
   designSunElevationDeg,
+  sunDirection,
+  WINTER_SOLSTICE_DAY,
   PANEL2_WATT,
 } from '../src/lib/roofPro2';
 import { pointInPolygon, geodesicAreaM2, type LngLat } from '../src/lib/roof';
@@ -40,6 +42,40 @@ describe('designSunElevationDeg — élévation de design (solstice)', () => {
   });
   it('plus la latitude est haute, plus l’élévation de design est basse', () => {
     expect(designSunElevationDeg(45)).toBeLessThan(designSunElevationDeg(20));
+  });
+});
+
+describe('sunDirection — VRAIE position solaire (W87)', () => {
+  it('midi du solstice d’hiver → soleil plein SUD (azimut ≈ 180°)', () => {
+    const s = sunDirection(33.5, WINTER_SOLSTICE_DAY, 12);
+    expect(s.azimuthDeg).toBeCloseTo(180, 0);
+  });
+
+  it('au midi du solstice d’hiver, l’élévation rejoint l’élévation de DESIGN (anti-ombrage)', () => {
+    // C'est le pire cas qui pilote l'espacement des rangées : à cet angle, le soleil de la
+    // scène et le soleil de design coïncident → les rangées espacées se dégagent.
+    const s = sunDirection(33.5, WINTER_SOLSTICE_DAY, 12);
+    expect(s.elevationDeg).toBeCloseTo(designSunElevationDeg(33.5), 1);
+  });
+
+  it('le matin le soleil est à l’EST (azimut < 180°), l’après-midi à l’OUEST (> 180°)', () => {
+    const morning = sunDirection(33.5, WINTER_SOLSTICE_DAY, 9);
+    const afternoon = sunDirection(33.5, WINTER_SOLSTICE_DAY, 15);
+    expect(morning.azimuthDeg).toBeLessThan(180);
+    expect(afternoon.azimuthDeg).toBeGreaterThan(180);
+    // symétrie autour du midi solaire
+    expect(morning.elevationDeg).toBeCloseTo(afternoon.elevationDeg, 3);
+  });
+
+  it('le soleil est plus HAUT à midi en été qu’en hiver', () => {
+    const summer = sunDirection(33.5, 172, 12); // ~21 juin
+    const winter = sunDirection(33.5, WINTER_SOLSTICE_DAY, 12);
+    expect(summer.elevationDeg).toBeGreaterThan(winter.elevationDeg);
+  });
+
+  it('le soleil est sous l’horizon (élévation < 0) en pleine nuit', () => {
+    const night = sunDirection(33.5, WINTER_SOLSTICE_DAY, 0);
+    expect(night.elevationDeg).toBeLessThan(0);
   });
 });
 

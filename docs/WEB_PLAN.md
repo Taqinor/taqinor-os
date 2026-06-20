@@ -329,7 +329,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
 
 **TIER 2 — COMPLETIONS (needed functions — "complete it with needed function"):**
 
-- [ ] **W87 — 3D: real sun + inter-row shadow proof + time/season toggle.** The display sun is pinned at
+- [x] **W87 — 3D: real sun + inter-row shadow proof + time/season toggle.** The display sun is pinned at
   `azimuth − 45°` with an arbitrary elevation, so the rendered shadows bear no relation to a real time
   and never prove the anti-shading row pitch the layout is built on. Drive the sun from a real
   solar-position function of the site latitude + a user hour/season control (reuse
