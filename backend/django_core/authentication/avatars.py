@@ -9,7 +9,7 @@ import uuid
 
 from django.conf import settings
 
-from apps.ventes.utils.minio_client import get_minio_client
+from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
 
 _ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 _MAX_BYTES = 2 * 1024 * 1024
@@ -60,6 +60,7 @@ def store_avatar(file, old_key=''):
     key = f"avatars/{uuid.uuid4().hex}.{ext}"
 
     client = get_minio_client()
+    ensure_uploads_bucket()  # N108 — self-heal a missing bucket before upload
     client.upload_fileobj(
         file,
         settings.MINIO_BUCKET_UPLOADS,

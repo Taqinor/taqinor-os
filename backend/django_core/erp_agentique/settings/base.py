@@ -4,6 +4,7 @@ Base settings - shared across all environments.
 """
 
 import os
+import sys
 import warnings
 from pathlib import Path
 from datetime import timedelta
@@ -311,3 +312,9 @@ SECURE_BROWSER_XSS_FILTER = True
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')
+
+TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
+# N109 — auto-generate a VAPID keypair (persisted DB singleton) in production
+# when no keys are provided via env, so web push works out of the box. OFF under
+# the test runner so the "unconfigured => empty endpoint => no-op" contract holds.
+VAPID_AUTOGENERATE = os.environ.get('VAPID_AUTOGENERATE', '0' if TESTING else '1') == '1'

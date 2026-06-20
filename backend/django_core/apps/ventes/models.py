@@ -1,7 +1,9 @@
 from django.db import models
 from django.conf import settings
-from apps.crm.models import Client
-from apps.stock.models import Produit
+
+# M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
+# imports no sibling app's models at load time (breaks the crm⇄ventes /
+# stock⇄ventes import cycles without any schema change).
 
 
 class Devis(models.Model):
@@ -21,7 +23,7 @@ class Devis(models.Model):
     )
     reference = models.CharField(max_length=50)
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.PROTECT,
         related_name='devis',
     )
@@ -174,7 +176,7 @@ class LigneDevis(models.Model):
         Devis, on_delete=models.CASCADE, related_name='lignes'
     )
     produit = models.ForeignKey(
-        Produit,
+        'stock.Produit',
         on_delete=models.PROTECT,
         related_name='lignes_devis',
     )
@@ -307,7 +309,7 @@ class BonCommande(models.Model):
         related_name='bon_commande',
     )
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.PROTECT,
         related_name='bons_commande',
     )
@@ -398,7 +400,7 @@ class Facture(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
     )
     client = models.ForeignKey(
-        Client,
+        'crm.Client',
         on_delete=models.PROTECT,
         related_name='factures',
     )
@@ -639,7 +641,7 @@ class LigneFacture(models.Model):
         Facture, on_delete=models.CASCADE, related_name='lignes'
     )
     produit = models.ForeignKey(
-        Produit,
+        'stock.Produit',
         on_delete=models.PROTECT,
         related_name='lignes_facture',
     )
@@ -744,7 +746,7 @@ class Avoir(models.Model):
     facture = models.ForeignKey(
         Facture, on_delete=models.PROTECT, related_name='avoirs')
     client = models.ForeignKey(
-        Client, on_delete=models.PROTECT, related_name='avoirs')
+        'crm.Client', on_delete=models.PROTECT, related_name='avoirs')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EMISE)
     motif = models.TextField(blank=True, default='')
@@ -823,7 +825,7 @@ class LigneAvoir(models.Model):
     avoir = models.ForeignKey(
         Avoir, on_delete=models.CASCADE, related_name='lignes')
     produit = models.ForeignKey(
-        Produit, on_delete=models.SET_NULL, null=True, blank=True,
+        'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_avoir')
     designation = models.CharField(max_length=255)
     quantite = models.DecimalField(max_digits=10, decimal_places=2)
@@ -920,7 +922,7 @@ class EmailLog(models.Model):
     # Cible du fil : client et/ou document. Tous optionnels — un email entrant
     # peut n'être rattaché qu'au client si aucune référence document n'est lue.
     client = models.ForeignKey(
-        Client, on_delete=models.CASCADE, null=True, blank=True,
+        'crm.Client', on_delete=models.CASCADE, null=True, blank=True,
         related_name='email_logs')
     devis = models.ForeignKey(
         Devis, on_delete=models.CASCADE, null=True, blank=True,
