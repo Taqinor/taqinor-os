@@ -35,6 +35,13 @@ const installationsApi = {
     : api.post('/installations/checklist-templates/', data),
   deleteChecklistTemplate: (id) => api.delete(`/installations/checklist-templates/${id}/`),
 
+  // Rapport de production énergétique ESTIMÉE (PDF client-facing).
+  // `params` : nb_mois, date_debut, date_fin, production_annuelle_kwh,
+  // rendement, tarif, co2. Réponse en blob PDF.
+  rapportEnergie: (id, params) =>
+    api.get(`/installations/chantiers/${id}/rapport-energie/`,
+      { params, responseType: 'blob' }),
+
   // N13 — besoin matériel (lecture seule) + création d'un BCF brouillon.
   besoinMateriel: (id) => api.get(`/installations/chantiers/${id}/besoin-materiel/`),
   commanderBesoin: (id, fournisseurId) =>

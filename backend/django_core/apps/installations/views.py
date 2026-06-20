@@ -212,6 +212,7 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
             'historique', 'besoin_materiel', 'checklist', 'regime_suggestion',
+            'rapport_energie',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -541,6 +542,46 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             bon, context={'request': request}).data
         data['nb_lignes'] = nb
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='rapport-energie',
+            permission_classes=[IsAnyRole])
+    def rapport_energie(self, request, pk=None):
+        """Rapport de production énergétique ESTIMÉE (PDF client-facing, FR).
+
+        Estimation à partir de la puissance nominale du système (kWc) et
+        d'hypothèses surchargeables (rendement spécifique, tarif, facteur CO₂),
+        ou d'une production annuelle saisie manuellement. AUCune donnée mesurée.
+        Le chantier est résolu via la société de l'utilisateur (404 sinon).
+        Strictement client-facing : aucun prix d'achat. Paramètres de requête :
+        nb_mois, date_debut, date_fin (AAAA-MM-JJ), production_annuelle_kwh,
+        rendement, tarif, co2.
+        """
+        from django.http import HttpResponse
+        from datetime import datetime
+        from . import energy_report
+        inst = self.get_object()
+
+        def _parse_date(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        qp = request.query_params
+        params = {
+            'nb_mois': qp.get('nb_mois'),
+            'date_debut': _parse_date(qp.get('date_debut')),
+            'date_fin': _parse_date(qp.get('date_fin')),
+            'production_annuelle_kwh': qp.get('production_annuelle_kwh'),
+            'rendement_kwh_par_kwc_an': qp.get('rendement'),
+            'tarif_mad_par_kwh': qp.get('tarif'),
+            'co2_kg_par_kwh': qp.get('co2'),
+        }
+        pdf_bytes = energy_report.render_energy_report_pdf(inst, params)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="rapport-production-{inst.reference}.pdf"')
+        return resp
 
 
 class ChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):

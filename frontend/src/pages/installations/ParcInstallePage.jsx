@@ -5,9 +5,10 @@
 // N10 — un clic ouvre la fiche système (InstallationDetail), le hub par actif.
 // J43 — portée sur le système de design (DataTable, Select, Input, Button).
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Search } from 'lucide-react'
+import { Download, Search, FileBarChart } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import MapView from '../../components/MapView'
 import {
   TYPE_LABELS,
@@ -24,6 +25,8 @@ import {
   Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DataTable, StatusPill,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter, Label,
 } from '../../ui'
 
 // N15 — système sans nomenclature gelée (chantier créé sans devis).
@@ -44,11 +47,102 @@ const GARANTIE_MARKER_COLOR = {
   non_renseignee: '#64748b',
 }
 
+// Rapport de production ESTIMÉE — petit modal (période + surcharges optionnelles)
+// qui télécharge le PDF client-facing. Toutes les valeurs sont des estimations :
+// rien n'est mesuré. Les hypothèses laissées vides utilisent les défauts serveur.
+function RapportEnergieModal({ installation, onClose }) {
+  const [form, setForm] = useState({
+    nb_mois: '12', production_annuelle_kwh: '', tarif: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const telecharger = () => {
+    setBusy(true)
+    setError(null)
+    const params = {}
+    if (form.nb_mois) params.nb_mois = form.nb_mois
+    if (form.production_annuelle_kwh) params.production_annuelle_kwh = form.production_annuelle_kwh
+    if (form.tarif) params.tarif = form.tarif
+    installationsApi
+      .rapportEnergie(installation.id, params)
+      .then((r) => {
+        downloadBlob(r.data, `rapport-production-${installation.reference}.pdf`)
+        onClose()
+      })
+      .catch(() => setError('Génération du rapport impossible. Réessayez.'))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rapport de production (estimé)</DialogTitle>
+          <DialogDescription>
+            Estimation à partir de la puissance nominale du système
+            {installation.puissance_installee_kwc
+              ? ` (${installation.puissance_installee_kwc} kWc)` : ''}
+            {' '}et d'hypothèses d'ensoleillement. Aucune donnée mesurée — les
+            résultats sont indicatifs.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rap-mois">Période (nombre de mois)</Label>
+            <Input
+              id="rap-mois" type="number" min="1" step="any"
+              value={form.nb_mois}
+              onChange={(e) => set('nb_mois', e.target.value)}
+              placeholder="12"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rap-prod">
+              Production annuelle (kWh/an) — facultatif
+            </Label>
+            <Input
+              id="rap-prod" type="number" min="0" step="any"
+              value={form.production_annuelle_kwh}
+              onChange={(e) => set('production_annuelle_kwh', e.target.value)}
+              placeholder="Estimée depuis la puissance si vide"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rap-tarif">
+              Tarif électricité (MAD/kWh) — facultatif
+            </Label>
+            <Input
+              id="rap-tarif" type="number" min="0" step="any"
+              value={form.tarif}
+              onChange={(e) => set('tarif', e.target.value)}
+              placeholder="Défaut appliqué si vide"
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Annuler
+          </Button>
+          <Button type="button" onClick={telecharger} disabled={busy}>
+            {busy ? <Spinner /> : <Download />} Télécharger le PDF
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function ParcInstallePage() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
+  const [rapportFor, setRapportFor] = useState(null)
   const [view, setView] = useState('liste')
   const [filters, setFilters] = useState({
     q: '', ville: '', marque: '', band: '', annee: '',
@@ -176,6 +270,20 @@ export default function ParcInstallePage() {
         exportValue: (r) => PARC_GARANTIE_LABELS[r.parc_garantie_etat]?.label ?? '',
       },
       { id: 'technicien_nom', header: 'Installateur', width: 150, accessor: (r) => r.technicien_nom ?? '' },
+      {
+        id: 'actions', header: '', width: 64, searchable: false, sortable: false,
+        exportValue: () => '',
+        cell: (v, r) => (
+          <Button
+            type="button" size="sm" variant="ghost"
+            aria-label="Rapport de production (estimé)"
+            title="Rapport de production (estimé)"
+            onClick={(e) => { e.stopPropagation(); setRapportFor(r) }}
+          >
+            <FileBarChart />
+          </Button>
+        ),
+      },
     ],
     [],
   )
@@ -369,6 +477,10 @@ export default function ParcInstallePage() {
       {selected && (
         <InstallationDetail installation={selected} onClose={() => setSelected(null)}
                             onSaved={() => { reload(); setSelected(null) }} />
+      )}
+
+      {rapportFor && (
+        <RapportEnergieModal installation={rapportFor} onClose={() => setRapportFor(null)} />
       )}
     </div>
   )
