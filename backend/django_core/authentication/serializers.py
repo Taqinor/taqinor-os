@@ -155,6 +155,32 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.role.permissions or []
         return []
 
+    def validate_role(self, value):
+        """Le rôle assigné doit appartenir à l'entreprise de l'assignateur, et
+        seul un administrateur peut octroyer un rôle de palier admin (ERR21).
+
+        Sans ce contrôle, ``UserViewSet`` (ouvert au Responsable promu) acceptait
+        un PK de rôle arbitraire : un manager pouvait assigner le rôle d'un AUTRE
+        tenant, ou le rôle Administrateur local, pour escalader un compte."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None)
+        company = getattr(actor, 'company', None)
+        # Multi-tenant : le rôle doit être de la société de l'assignateur.
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Ce rôle n'appartient pas à votre entreprise.")
+        # Tier : seul un administrateur (roles_gerer/superuser) peut octroyer un
+        # rôle de palier admin. Un Responsable ne peut pas fabriquer un admin.
+        from .models import CustomUser
+        if CustomUser.tier_for_role(value) == CustomUser.ROLE_ADMIN \
+                and actor is not None \
+                and not getattr(actor, 'is_admin_role', False):
+            raise serializers.ValidationError(
+                "Seul un administrateur peut assigner un rôle administrateur.")
+        return value
+
     def validate_supervisor(self, value):
         """Le superviseur doit être dans la même entreprise et jamais soi-même."""
         if value is None:

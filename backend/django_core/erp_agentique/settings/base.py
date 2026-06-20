@@ -182,7 +182,12 @@ REST_FRAMEWORK = {
 
 # Simple JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),
+    # ERR87 — durée de vie courte du jeton d'accès (30 min). Le logout met le
+    # refresh en liste noire mais ne peut pas révoquer un access déjà émis : on
+    # borne donc sa fenêtre de validité. Le rafraîchissement transparent
+    # (CookieTokenRefreshView + ROTATE_REFRESH_TOKENS) renouvelle l'access depuis
+    # le cookie refresh, donc la session utilisateur reste fluide.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,

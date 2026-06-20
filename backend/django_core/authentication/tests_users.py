@@ -287,3 +287,70 @@ class TestSystemRoleSeedingSelfHealsN103(TestCase):
         self.assertIn('roles_gerer', drifted.permissions)
         owner.refresh_from_db()
         self.assertEqual(owner.menu_tier, 'admin')
+
+
+class TestRoleAssignmentGuards(TestCase):
+    """ERR21 : l'assignation d'un ``role`` à un utilisateur est validée — le
+    rôle doit appartenir à l'entreprise de l'assignateur, et seul un
+    administrateur peut octroyer un rôle de palier admin (anti-escalade)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Assign Co', slug='assign-co')
+        self.other = Company.objects.create(nom='Autre Co', slug='autre-assign')
+        self.admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.resp_role = Role.objects.create(
+            company=self.company, nom='Responsable',
+            permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)
+        self.foreign_admin_role = Role.objects.create(
+            company=self.other, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='ra_admin', password='x', role=self.admin_role,
+            role_legacy='admin', company=self.company)
+        # Responsable (palier promu, non-admin) : porte ``users_voir`` donc passe
+        # IsAdminOrResponsableTier, mais n'est PAS admin (pas de roles_gerer).
+        self.resp = User.objects.create_user(
+            username='ra_resp', password='x', role=self.resp_role,
+            role_legacy='responsable', company=self.company)
+        self.target = User.objects.create_user(
+            username='ra_target', password='x', role_legacy='normal',
+            company=self.company)
+
+    def _api(self, user):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_responsable_cannot_grant_admin_role(self):
+        resp = self._api(self.resp).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.target.refresh_from_db()
+        self.assertNotEqual(self.target.role_id, self.admin_role.id)
+
+    def test_admin_can_grant_admin_role(self):
+        resp = self._api(self.admin).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.role_id, self.admin_role.id)
+
+    def test_cannot_assign_foreign_company_role(self):
+        resp = self._api(self.admin).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.foreign_admin_role.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.target.refresh_from_db()
+        self.assertNotEqual(self.target.role_id, self.foreign_admin_role.id)
+
+    def test_responsable_can_grant_non_admin_role(self):
+        resp = self._api(self.resp).patch(
+            f'/api/django/users/{self.target.id}/',
+            {'role': self.resp_role.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.role_id, self.resp_role.id)
