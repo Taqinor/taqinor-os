@@ -26,6 +26,26 @@ export const HOURS_PER_DAY = 24;
  *  6 kWh/jour à décaler du surplus solaire vers le soir. Réglable ici. */
 export const BATTERY_KWH_PER_DAY = 6;
 
+/** Capacité UTILE retenue par batterie (kWh) — alias explicite de la constante
+ *  opérateur, utilisé par le calcul de retour sur investissement (W96). Une batterie
+ *  est dimensionnée pour couvrir ≈ 6 kWh/jour de report soir/nuit ; sa capacité utile
+ *  est donc ≈ 6 kWh. Réglable ici (estimation à confirmer, APPLIANCES_NOTES.md). */
+export const BATTERY_KWH_USABLE = BATTERY_KWH_PER_DAY;
+
+/** Coût INDICATIF d'une batterie ramené au kWh utile (MAD/kWh) — ESTIMATION À
+ *  CONFIRMER (APPLIANCES_NOTES.md). Sert UNIQUEMENT à afficher une fourchette de
+ *  retour sur investissement « indicatif », jamais un chiffre asserté. Fourchette
+ *  basse→haute du marché marocain (lithium LFP, pose comprise). */
+export const BATTERY_COST_PER_KWH_MAD_LOW = 3500;
+export const BATTERY_COST_PER_KWH_MAD_HIGH = 6000;
+
+/** Nombre de jours par mois (année non bissextile) — pour l'intégration annuelle des
+ *  12 jours-types de production. Indexé 0 = janvier … 11 = décembre. Σ = 365. */
+export const DAYS_IN_MONTH: readonly number[] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** Nombre de mois dans une année (taille de `typicalDayByMonth`). */
+export const MONTHS_PER_YEAR = 12;
+
 /** Une courbe horaire = 24 valeurs d'ÉNERGIE (kWh) indexées par l'heure 0–23. */
 export type HourlyCurve = number[];
 
@@ -283,6 +303,75 @@ export function savingsFromHourly(
   return { low: yr.low, high: yr.high, selfDailyKwh: selfDaily, selfAnnualKwh: selfAnnual };
 }
 
+// ═════════════ Intégration ANNUELLE 12 mois (l'honnêteté du chiffre de tête) ═════════════
+
+/**
+ * AUTOCONSOMMATION ANNUELLE (kWh) intégrée sur les 12 MOIS RÉELS, et non extrapolée du
+ * seul mois affiché. Pour chaque mois m on calcule l'autoconsommation journalière du
+ * jour-type de production de CE mois (`typicalDayByMonth[m]`, profil de PUISSANCE kW =
+ * énergie kWh au pas 1 h) face à la même courbe de consommation, puis on la multiplie par
+ * le NOMBRE DE JOURS du mois et on somme. Décembre (peu de soleil) compte donc moins, et
+ * juillet plus — le total ne dépend PLUS du mois sélectionné à l'écran.
+ *
+ * `consumption` : la courbe de conso (24 h). `typicalDayByMonth` : 12 profils de 24 h.
+ * Une entrée mal formée (≠ 12 mois, profil ≠ 24 h) est ignorée prudemment (compte 0)
+ * plutôt que de fabriquer de l'énergie. Renvoie aussi le détail mensuel (kWh/mois).
+ */
+export function annualSelfConsumptionKwh(
+  consumption: HourlyCurve,
+  typicalDayByMonth: HourlyCurve[],
+): { annualKwh: number; perMonthKwh: number[] } {
+  const perMonth = new Array<number>(MONTHS_PER_YEAR).fill(0);
+  if (!Array.isArray(typicalDayByMonth)) return { annualKwh: 0, perMonthKwh: perMonth };
+  let annual = 0;
+  for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+    const prof = typicalDayByMonth[m];
+    const days = DAYS_IN_MONTH[m] ?? 0;
+    if (!Array.isArray(prof) || prof.length !== HOURS_PER_DAY || days <= 0) continue;
+    const selfDaily = selfConsumptionDailyKwh(consumption, prof);
+    const monthKwh = selfDaily * days;
+    perMonth[m] = monthKwh;
+    annual += monthKwh;
+  }
+  return { annualKwh: annual, perMonthKwh: perMonth };
+}
+
+/**
+ * PRODUCTION ANNUELLE (kWh) intégrée sur les 12 mois réels (Σ Σ profil_m × jours_m).
+ * Sert de borne « production effective » au plafond billMAD pour les économies annuelles.
+ */
+export function annualProductionKwh(typicalDayByMonth: HourlyCurve[]): number {
+  if (!Array.isArray(typicalDayByMonth)) return 0;
+  let annual = 0;
+  for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+    const prof = typicalDayByMonth[m];
+    const days = DAYS_IN_MONTH[m] ?? 0;
+    if (!Array.isArray(prof) || prof.length !== HOURS_PER_DAY || days <= 0) continue;
+    let day = 0;
+    for (const p of prof) day += Number.isFinite(p) && p > 0 ? p : 0;
+    annual += day * days;
+  }
+  return annual;
+}
+
+/**
+ * ÉCONOMIES annuelles (MAD) calculées à partir de l'autoconsommation ANNUELLE 12 mois
+ * — la version HONNÊTE de `savingsFromHourly`, invariante au mois affiché. On intègre
+ * l'autoconsommation sur les 12 jours-types × leurs jours réels, puis on plafonne par le
+ * modèle existant `annualSavingsMad` (plafond billMAD — JAMAIS un nouveau tarif). La
+ * cible de conso (`annualConsumptionKwh`) borne aussi l'économie. JAMAIS production × tarif.
+ */
+export function annualSavingsFromMonthly(
+  consumption: HourlyCurve,
+  typicalDayByMonth: HourlyCurve[],
+  annualConsumptionKwh: number,
+  tariff: TariffGrid = REGIE_TARIFF,
+): { low: number; high: number; selfAnnualKwh: number; perMonthSelfKwh: number[] } {
+  const { annualKwh: selfAnnual, perMonthKwh } = annualSelfConsumptionKwh(consumption, typicalDayByMonth);
+  const yr = annualSavingsMad(selfAnnual, Math.max(0, annualConsumptionKwh), tariff);
+  return { low: yr.low, high: yr.high, selfAnnualKwh: selfAnnual, perMonthSelfKwh: perMonthKwh };
+}
+
 // ════════════════════════ Dimensionnement (besoin + batterie) ════════════════════════
 
 /**
@@ -325,6 +414,153 @@ export function batterySizing(
   const storable = Math.max(0, Math.min(nightConsumption, surplus));
   const batteries = storable > 0 ? Math.ceil(storable / BATTERY_KWH_PER_DAY) : 0;
   return { storableDailyKwh: storable, batteries };
+}
+
+/**
+ * Heure de FIN de créneau (exclusive) à partir d'une heure de début et d'une DURÉE en
+ * heures saisie par le client (W84). `endHour = startHour + ceil(hours)`. Une durée ≤ 0
+ * ou non finie occupe au moins 1 h (jamais de division par zéro dans `windowHours`). Une
+ * durée ≥ 24 h couvre toute la journée. Le résultat est passé tel quel à `windowHours`,
+ * qui gère le passage par minuit — on ne normalise donc PAS ici (sinon une durée de 24 h
+ * deviendrait un créneau d'1 h). Ainsi la clim/VE « 3 h » occupe 3 heures, pas 10.
+ */
+export function slotEndHour(startHour: number, hours: number): number {
+  const start = Math.trunc(Number.isFinite(startHour) ? startHour : 0);
+  const h = Number.isFinite(hours) && hours > 0 ? hours : 0;
+  // Au moins 1 h ; on borne à 24 h (créneau plein) pour rester dans la sémantique de
+  // windowHours (longueur 0 → 24 h ; on évite donc d'envoyer exactement +0).
+  const span = Math.min(HOURS_PER_DAY, Math.max(1, Math.ceil(h)));
+  return start + span;
+}
+
+/**
+ * Dimensionnement BATTERIE ANNUEL (W84) — stable d'un mois à l'autre. La version
+ * mensuelle (`batterySizing`) oppose UN seul jour-type de production à la conso et bascule
+ * (ou tombe à 0) selon le mois affiché. Ici on intègre le DÉFICIT du soir sur les 12 mois
+ * réels : pour chaque mois on calcule l'énergie soir/nuit non couvrable par le solaire
+ * direct, bornée par le surplus de CE mois, on en fait une MOYENNE pondérée par les jours,
+ * et on dimensionne au besoin moyen. Aucun chiffre inventé (mêmes règles que la version
+ * journalière, juste moyennées sur l'année).
+ */
+export function annualBatterySizing(
+  consumption: HourlyCurve,
+  typicalDayByMonth: HourlyCurve[],
+  eveningStartHour = 18,
+): { storableDailyKwh: number; batteries: number } {
+  if (!Array.isArray(typicalDayByMonth)) return { storableDailyKwh: 0, batteries: 0 };
+  let weighted = 0;
+  let days = 0;
+  for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+    const prof = typicalDayByMonth[m];
+    const d = DAYS_IN_MONTH[m] ?? 0;
+    if (!Array.isArray(prof) || prof.length !== HOURS_PER_DAY || d <= 0) continue;
+    const { storableDailyKwh } = batterySizing(consumption, prof, eveningStartHour);
+    weighted += storableDailyKwh * d;
+    days += d;
+  }
+  const storable = days > 0 ? weighted / days : 0;
+  const batteries = storable > 0 ? Math.ceil(storable / BATTERY_KWH_PER_DAY) : 0;
+  return { storableDailyKwh: storable, batteries };
+}
+
+// ════════════════════════ Profil SAISONNIER (été ≠ hiver) — W95 ════════════════════════
+
+/** Mois « d'été » (forte conso clim) — indexés 0 = janvier … 11 = décembre. Juin→sept.
+ *  C'est une convention marocaine raisonnable, éditable côté UI si besoin. */
+export const SUMMER_MONTHS: readonly number[] = [5, 6, 7, 8]; // juin, juillet, août, septembre
+
+/** Vrai si le mois (0–11) est compté comme un mois d'été. */
+export function isSummerMonth(month: number): boolean {
+  return SUMMER_MONTHS.includes(((Math.trunc(month) % MONTHS_PER_YEAR) + MONTHS_PER_YEAR) % MONTHS_PER_YEAR);
+}
+
+/**
+ * Construit les 12 courbes de consommation MENSUELLES à partir d'UNE courbe de référence,
+ * en appliquant un facteur d'échelle distinct l'été et l'hiver (toggle `ete_differente`,
+ * W95). `summerFactor`/`winterFactor` multiplient le TOTAL journalier (la forme horaire est
+ * conservée). Facteur ≤ 0 ou non fini → 1 (neutre). Permet de nourrir l'intégrale 12 mois
+ * avec une conso qui monte l'été (clim) et baisse l'hiver — honnêtement, pas inventé : le
+ * client choisit ses facteurs, la forme reste la sienne.
+ */
+export function seasonalConsumptionByMonth(
+  reference: HourlyCurve,
+  summerFactor: number,
+  winterFactor: number,
+): HourlyCurve[] {
+  const sf = Number.isFinite(summerFactor) && summerFactor > 0 ? summerFactor : 1;
+  const wf = Number.isFinite(winterFactor) && winterFactor > 0 ? winterFactor : 1;
+  const out: HourlyCurve[] = [];
+  for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+    const k = isSummerMonth(m) ? sf : wf;
+    out.push(reference.map((v) => (Number.isFinite(v) && v > 0 ? v * k : 0)));
+  }
+  return out;
+}
+
+/**
+ * AUTOCONSOMMATION ANNUELLE 12 mois avec une conso qui VARIE par mois (W95) — version
+ * saisonnière de `annualSelfConsumptionKwh`. Pour chaque mois on oppose la courbe de conso
+ * DE CE MOIS (`consumptionByMonth[m]`) au jour-type de production de ce mois, × les jours
+ * du mois. Un été plus consommateur change donc HONNÊTEMENT l'autoconsommation annuelle.
+ */
+export function annualSelfConsumptionSeasonalKwh(
+  consumptionByMonth: HourlyCurve[],
+  typicalDayByMonth: HourlyCurve[],
+): { annualKwh: number; perMonthKwh: number[] } {
+  const perMonth = new Array<number>(MONTHS_PER_YEAR).fill(0);
+  if (!Array.isArray(consumptionByMonth) || !Array.isArray(typicalDayByMonth)) {
+    return { annualKwh: 0, perMonthKwh: perMonth };
+  }
+  let annual = 0;
+  for (let m = 0; m < MONTHS_PER_YEAR; m++) {
+    const cons = consumptionByMonth[m];
+    const prof = typicalDayByMonth[m];
+    const days = DAYS_IN_MONTH[m] ?? 0;
+    if (
+      !Array.isArray(cons) || cons.length !== HOURS_PER_DAY ||
+      !Array.isArray(prof) || prof.length !== HOURS_PER_DAY || days <= 0
+    ) continue;
+    const monthKwh = selfConsumptionDailyKwh(cons, prof) * days;
+    perMonth[m] = monthKwh;
+    annual += monthKwh;
+  }
+  return { annualKwh: annual, perMonthKwh: perMonth };
+}
+
+// ════════════════════════ Retour sur investissement batterie — W96 ════════════════════════
+
+/**
+ * Coût INDICATIF d'un parc de batteries (MAD) = nb batteries × capacité utile (kWh) ×
+ * coût/kWh. Renvoie une fourchette basse→haute (W96). ESTIMATION À CONFIRMER
+ * (APPLIANCES_NOTES.md) — jamais asserté comme un prix ferme.
+ */
+export function batteryCostRangeMad(batteries: number): { low: number; high: number } {
+  const n = Number.isFinite(batteries) && batteries > 0 ? Math.trunc(batteries) : 0;
+  const kwh = n * BATTERY_KWH_USABLE;
+  return { low: kwh * BATTERY_COST_PER_KWH_MAD_LOW, high: kwh * BATTERY_COST_PER_KWH_MAD_HIGH };
+}
+
+/**
+ * RETOUR SUR INVESTISSEMENT INDICATIF d'une batterie (W96) : fourchette d'années pour
+ * amortir le coût indicatif du parc batterie par l'économie annuelle SUPPLÉMENTAIRE que
+ * la batterie permet (report du soir). On ne FABRIQUE pas d'économie : `annualBatterySavingMad`
+ * doit être l'économie additionnelle réelle (déjà plafonnée au coût évité, jamais
+ * production × tarif). Si l'économie est nulle, le payback est indéfini (`null`) — on
+ * n'invente pas un retour. Fourchette d'années = coût{bas,haut} ÷ économie{haut,bas}.
+ *
+ * Retourne `{ years: { low, high } | null, cost: { low, high } }`. ESTIMATION À CONFIRMER.
+ */
+export function batteryPaybackYears(
+  batteries: number,
+  annualBatterySavingMad: number,
+): { years: { low: number; high: number } | null; cost: { low: number; high: number } } {
+  const cost = batteryCostRangeMad(batteries);
+  const saving = Number.isFinite(annualBatterySavingMad) && annualBatterySavingMad > 0 ? annualBatterySavingMad : 0;
+  if (saving <= 0 || (cost.low <= 0 && cost.high <= 0)) {
+    return { years: null, cost };
+  }
+  // Payback bas = coût bas ÷ économie (le plus court) ; haut = coût haut ÷ économie.
+  return { years: { low: cost.low / saving, high: cost.high / saving }, cost };
 }
 
 // ════════════════════════ Typiques d'appareils (défauts éditables) ════════════════════════
