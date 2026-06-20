@@ -6,7 +6,7 @@ import uuid
 
 from django.conf import settings
 
-from apps.ventes.utils.minio_client import get_minio_client
+from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 Mo par fichier
 
@@ -60,6 +60,7 @@ def store_attachment(file, *, audio=False):
 
     key = f'attachments/{uuid.uuid4().hex}.{ext}'
     client = get_minio_client()
+    ensure_uploads_bucket()  # N108 — self-heal a missing bucket before upload
     client.upload_fileobj(
         file, settings.MINIO_BUCKET_UPLOADS, key,
         ExtraArgs={'ContentType': mime})
