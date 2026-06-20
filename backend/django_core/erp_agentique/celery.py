@@ -14,9 +14,13 @@ app.autodiscover_tasks()
 app.conf.timezone = 'Africa/Casablanca'
 app.conf.enable_utc = False
 
-# Deux jobs planifiés (cf. apps/ventes/scheduled.py) :
-#   - contrôle quotidien des factures en retard (00:30 Casablanca),
-#   - rappels de relance programmés (07:00 Casablanca).
+# Jobs planifiés (toutes les heures sont en Africa/Casablanca) :
+#   - contrôle quotidien des factures en retard (00:30) — apps/ventes/scheduled.py,
+#   - rappels de relance programmés (07:00) — apps/ventes/scheduled.py,
+#   - N76 : récapitulatif quotidien (07:30) et hebdomadaire le lundi (07:30) —
+#     apps/notifications/digests.py,
+#   - N79 : envoi des rapports sauvegardés dus, quotidien (06:00) et
+#     hebdomadaire le lundi (06:00) — apps/reporting/scheduled_reports.py.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -25,5 +29,21 @@ app.conf.beat_schedule = {
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',
         'schedule': crontab(hour=7, minute=0),
+    },
+    'notifications-daily-digest': {
+        'task': 'notifications.daily_digest',
+        'schedule': crontab(hour=7, minute=30),
+    },
+    'notifications-weekly-digest': {
+        'task': 'notifications.weekly_digest',
+        'schedule': crontab(hour=7, minute=30, day_of_week=1),
+    },
+    'reporting-email-saved-reports-daily': {
+        'task': 'reporting.email_saved_reports',
+        'schedule': crontab(hour=6, minute=0),
+    },
+    'reporting-email-saved-reports-weekly': {
+        'task': 'reporting.email_saved_reports',
+        'schedule': crontab(hour=6, minute=0, day_of_week=1),
     },
 }

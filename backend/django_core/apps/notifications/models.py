@@ -29,6 +29,7 @@ class EventType(models.TextChoices):
     STOCK_LOW = 'stock_low', 'Stock bas'
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
+    DIGEST = 'digest', 'Récapitulatif'
 
 
 class Channel(models.TextChoices):

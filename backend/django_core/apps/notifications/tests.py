@@ -202,3 +202,97 @@ class NotificationApiTests(TestCase):
         # Bob garde les défauts (aucune ligne).
         self.assertFalse(
             NotificationPreference.objects.filter(user=self.bob).exists())
+
+
+class DigestTaskTests(TestCase):
+    """N76 — récapitulatifs quotidien & hebdomadaire par société."""
+
+    def setUp(self):
+        self.company = _make_company('DigestCo')
+        # Destinataire « gérant » : on force le rôle legacy admin.
+        self.manager = _make_user(self.company, username='manager')
+        self.manager.role_legacy = 'admin'
+        self.manager.save(update_fields=['role_legacy'])
+
+    def _seed_data(self):
+        """Sème un enregistrement par section pour vérifier le comptage."""
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import ContratMaintenance, Ticket
+        from apps.ventes.models import Devis, Facture
+
+        client = Client.objects.create(company=self.company, nom='Client X')
+        # Chantier à planifier (signé).
+        Installation.objects.create(
+            company=self.company, client=client, reference='CH-1',
+            statut=Installation.Statut.SIGNE)
+        # Devis envoyé (en attente d'acceptation).
+        Devis.objects.create(
+            company=self.company, client=client, reference='DV-1',
+            statut=Devis.Statut.ENVOYE)
+        # Facture en retard.
+        Facture.objects.create(
+            company=self.company, client=client, reference='FA-1',
+            statut=Facture.Statut.EN_RETARD)
+        # SAV ouvert.
+        Ticket.objects.create(
+            company=self.company, client=client, reference='SAV-1',
+            statut=Ticket.Statut.NOUVEAU)
+        # Maintenance due (date de début dans le passé, contrat actif).
+        from datetime import date, timedelta
+        ContratMaintenance.objects.create(
+            company=self.company, client=client,
+            date_debut=date.today() - timedelta(days=400), actif=True)
+
+    def test_daily_digest_produces_notification_with_seeded_data(self):
+        from .digests import daily_digest
+        self._seed_data()
+        emitted = daily_digest()
+        self.assertGreaterEqual(emitted, 1)
+        notif = Notification.objects.filter(
+            recipient=self.manager, event_type=EventType.DIGEST).first()
+        self.assertIsNotNone(notif)
+        self.assertEqual(notif.company, self.company)
+        self.assertIn('quotidien', notif.title.lower())
+        # Le corps liste chaque section ; chaque section sème 1 → compte 1.
+        self.assertIn('Chantiers à planifier : 1', notif.body)
+        self.assertIn('Devis en attente', notif.body)
+        self.assertIn('Paiements en retard : 1', notif.body)
+        self.assertIn('SAV ouverts : 1', notif.body)
+        self.assertIn('Maintenances dues : 1', notif.body)
+
+    def test_weekly_digest_produces_notification(self):
+        from .digests import weekly_digest
+        self._seed_data()
+        emitted = weekly_digest()
+        self.assertGreaterEqual(emitted, 1)
+        notif = Notification.objects.filter(
+            recipient=self.manager, event_type=EventType.DIGEST).first()
+        self.assertIsNotNone(notif)
+        self.assertIn('hebdomadaire', notif.title.lower())
+
+    def test_digest_scoped_per_company(self):
+        """Un manager ne reçoit QUE le résumé de SA société."""
+        from .digests import daily_digest
+        other = _make_company('AutreCo')
+        other_mgr = _make_user(other, username='othermgr')
+        other_mgr.role_legacy = 'admin'
+        other_mgr.save(update_fields=['role_legacy'])
+        self._seed_data()  # données uniquement dans self.company
+        daily_digest()
+        # L'autre société n'a aucune donnée : son résumé est tout à zéro.
+        other_notif = Notification.objects.filter(
+            recipient=other_mgr, event_type=EventType.DIGEST).first()
+        self.assertIsNotNone(other_notif)
+        self.assertIn('Chantiers à planifier : 0', other_notif.body)
+        self.assertNotIn('Chantiers à planifier : 1', other_notif.body)
+
+    def test_digest_noop_without_recipients(self):
+        """Société sans utilisateur → aucune notification, aucune erreur."""
+        from .digests import daily_digest
+        empty = _make_company('VideCo')  # noqa: F841 - société sans user
+        emitted = daily_digest()
+        # Aucune notification pour la société vide ; pas de crash.
+        self.assertEqual(
+            Notification.objects.filter(company=empty).count(), 0)
+        self.assertIsInstance(emitted, int)
