@@ -1,0 +1,228 @@
+from django.db import transaction  # noqa: F401
+from django.http import HttpResponse  # noqa: F401
+from django.utils import timezone  # noqa: F401
+from rest_framework import viewsets, status, filters  # noqa: F401
+from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.response import Response  # noqa: F401
+from apps.stock.services import (  # noqa: F401
+    mouvement_type_sortie, record_stock_movement,
+)
+from ..models import (  # noqa: F401
+    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
+    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
+)
+from ..serializers import (  # noqa: F401
+    DevisSerializer,
+    DevisWriteSerializer,
+    BonCommandeSerializer,
+    LigneDevisSerializer,
+    FactureSerializer,
+    FactureWriteSerializer,
+    LigneFactureSerializer,
+    PaiementSerializer,
+    AvoirSerializer,
+    RelanceLogSerializer,
+    DevisActivitySerializer,
+)
+from authentication.permissions import (  # noqa: F401
+    IsAnyRole,
+    IsResponsableOrAdmin,
+    IsAdminRole,
+)
+from ..utils.references import create_with_reference  # noqa: F401
+from ..utils.company_settings import create_numbered  # noqa: F401
+
+READ_ACTIONS = ['list', 'retrieve']
+WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+from authentication.scoping import scope_queryset  # noqa: E402,F401
+
+
+def _company_qs(qs, user):
+    """Filter queryset to user's company. Superusers without company see all."""
+    if user.company_id:
+        return qs.filter(company=user.company)
+    if user.is_superuser:
+        return qs
+    return qs.none()
+
+# NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
+# (un module par ressource). Comportement et symboles inchangés : le
+# package __init__ ré-exporte toutes les vues publiques.
+
+
+class BonCommandeViewSet(viewsets.ModelViewSet):
+    queryset = BonCommande.objects.select_related('client', 'devis').all()
+    serializer_class = BonCommandeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'client__nom', 'client__email']
+    ordering_fields = [
+        'date_creation', 'date_livraison_prevue', 'statut'
+    ]
+    ordering = ['-date_creation']
+
+    def get_queryset(self):
+        return _company_qs(super().get_queryset(), self.request.user)
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action in WRITE_ACTIONS + [
+            'confirmer', 'marquer_livre', 'annuler', 'creer_facture'
+        ]:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        company = self.request.user.company
+        # ERR13 — client/devis du corps doivent appartenir à la société (refuse
+        # de lier un BC au client/devis d'un autre tenant).
+        if company is not None:
+            client = serializer.validated_data.get('client')
+            devis = serializer.validated_data.get('devis')
+            if client is not None and client.company_id != company.id:
+                raise ValidationError({'client': 'Client inconnu.'})
+            if devis is not None and devis.company_id != company.id:
+                raise ValidationError({'devis': 'Devis inconnu.'})
+        create_numbered(
+            BonCommande, company, 'bon_commande',
+            lambda ref: serializer.save(reference=ref, company=company),
+        )
+
+    @action(detail=True, methods=['post'], url_path='confirmer',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer(self, request, pk=None):
+        bc = self.get_object()
+        if bc.statut != BonCommande.Statut.EN_ATTENTE:
+            return Response(
+                {'detail': 'Seul un BC en attente peut être confirmé.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        bc.statut = BonCommande.Statut.CONFIRME
+        bc.save()
+        return Response(BonCommandeSerializer(bc).data)
+
+    @action(detail=True, methods=['post'], url_path='marquer-livre',
+            permission_classes=[IsResponsableOrAdmin])
+    def marquer_livre(self, request, pk=None):
+        bc = self.get_object()
+        if bc.statut != BonCommande.Statut.CONFIRME:
+            return Response(
+                {'detail': (
+                    'Le BC doit être confirmé avant d\'être livré.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from decimal import Decimal, ROUND_HALF_UP
+        with transaction.atomic():
+            if bc.devis:
+                for ligne in bc.devis.lignes.select_related('produit'):
+                    produit = ligne.produit
+                    produit.refresh_from_db()
+                    # ERR15 — ne PAS tronquer la quantité décimale (int() perdait
+                    # la partie fractionnaire : 3,5 → 3, dérive silencieuse du
+                    # stock sur les lignes au mètre/câble). Le ledger de stock
+                    # est en entiers (IntegerField) : on arrondit au plus proche
+                    # (HALF_UP) au lieu de tronquer, donc 3,5 → 4.
+                    qte = int(Decimal(ligne.quantite).quantize(
+                        Decimal('1'), rounding=ROUND_HALF_UP))
+                    qte_avant = produit.quantite_stock
+                    qte_apres = qte_avant - qte
+                    if qte_apres < 0:
+                        return Response(
+                            {'detail': (
+                                f'Stock insuffisant pour '
+                                f'« {produit.nom} » '
+                                f'(disponible : {qte_avant}, '
+                                f'requis : {qte}).'
+                            )},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    record_stock_movement(
+                        company=bc.company,
+                        produit=produit,
+                        type_mouvement=mouvement_type_sortie(),
+                        quantite=qte,
+                        quantite_avant=qte_avant,
+                        quantite_apres=qte_apres,
+                        reference=bc.reference,
+                        note=f'Livraison BC {bc.reference}',
+                        created_by=request.user,
+                    )
+            bc.statut = BonCommande.Statut.LIVRE
+            bc.save()
+        return Response(BonCommandeSerializer(bc).data)
+
+    @action(detail=True, methods=['post'], url_path='annuler',
+            permission_classes=[IsResponsableOrAdmin])
+    def annuler(self, request, pk=None):
+        bc = self.get_object()
+        if bc.statut == BonCommande.Statut.LIVRE:
+            return Response(
+                {'detail': 'Un BC livré ne peut pas être annulé.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        bc.statut = BonCommande.Statut.ANNULE
+        bc.save()
+        return Response(BonCommandeSerializer(bc).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-facture',
+            permission_classes=[IsResponsableOrAdmin])
+    def creer_facture(self, request, pk=None):
+        bc = self.get_object()
+        if bc.statut not in [
+            BonCommande.Statut.CONFIRME, BonCommande.Statut.LIVRE
+        ]:
+            return Response(
+                {'detail': 'Le BC doit être confirmé ou livré.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if Facture.objects.filter(bon_commande=bc).exists():
+            return Response(
+                {'detail': 'Une facture existe déjà pour ce BC.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        company = request.user.company
+
+        def _create_facture(ref):
+            facture = Facture.objects.create(
+                reference=ref,
+                bon_commande=bc,
+                client=bc.client,
+                statut=Facture.Statut.BROUILLON,
+                created_by=request.user,
+                company=company,
+            )
+            if bc.devis:
+                # ERR16 — n'inclure QUE les lignes de l'option retenue à
+                # l'acceptation (« Sans batterie » / « Avec batterie »), comme
+                # l'échéancier. Sans vraie deuxième option (option unique,
+                # pompage, liste libre), option_lines renvoie TOUTES les lignes
+                # → comportement historique strictement inchangé.
+                from ..utils.options import option_lines
+                for ligne in option_lines(bc.devis):
+                    LigneFacture.objects.create(
+                        facture=facture,
+                        produit=ligne.produit,
+                        designation=ligne.designation,
+                        quantite=ligne.quantite,
+                        prix_unitaire=ligne.prix_unitaire,
+                        remise=ligne.remise,
+                        # Reporte le taux TVA de la ligne de devis (10/20),
+                        # pour que la facture reproduise fidèlement la TVA.
+                        taux_tva=ligne.taux_tva,
+                    )
+            return facture
+
+        # create_with_reference runs _create_facture inside a transaction, so
+        # the facture and its copied lines stay atomic like before.
+        facture = create_numbered(
+            Facture, company, 'facture', _create_facture)
+        return Response(
+            FactureSerializer(facture).data,
+            status=status.HTTP_201_CREATED,
+        )
