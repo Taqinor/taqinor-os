@@ -54,10 +54,11 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
       .filter((f) => importsMaplibre(readFileSync(f, 'utf-8')))
       .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
       .sort();
-    // Les outils (2D + 3D volumes + 3D racks + 3D haute fidélité + estimateur
-    // facture pro-3 + pro-4 cerveau V2 + pro-5 W1), et eux seuls, importent
-    // MapLibre — tous chargés à la demande.
-    expect(offenders).toEqual([
+    // Les outils legacy (2D + 3D volumes + 3D racks + 3D haute fidélité + estimateur
+    // facture pro-3..pro-11) ET tous les modules du builder splitté
+    // `src/scripts/roofPro11/**` — chargés UNIQUEMENT via l'import() dynamique de
+    // roof-tool-pro11.ts — peuvent importer MapLibre. Rien d'autre dans `src` ne doit.
+    const KNOWN_MAPLIBRE = [
       'src/scripts/roof-tool-3d.ts',
       'src/scripts/roof-tool-pro.ts',
       'src/scripts/roof-tool-pro10.ts',
@@ -71,7 +72,11 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
       'src/scripts/roof-tool-pro8.ts',
       'src/scripts/roof-tool-pro9.ts',
       'src/scripts/roof-tool.ts',
-    ]);
+    ];
+    expect(
+      offenders.filter((f) => !f.startsWith('src/scripts/roofPro11/') && !KNOWN_MAPLIBRE.includes(f)),
+    ).toEqual([]);
+    expect(offenders).toContain('src/scripts/roof-tool-pro11.ts');
   });
 
   it('la page charge l’outil par import() dynamique, pas en statique', () => {
@@ -272,7 +277,9 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
       .filter((f) => importsThree(readFileSync(f, 'utf-8')))
       .map((f) => f.replace(srcDir, 'src').replaceAll('\\', '/'))
       .sort();
-    expect(offenders).toEqual([
+    // Idem Three.js : les modules pro legacy ET `src/scripts/roofPro11/**` (builder
+    // splitté, chargé à la demande) peuvent importer three ; rien d'autre dans `src`.
+    const KNOWN_THREE = [
       'src/scripts/roof-tool-pro.ts',
       'src/scripts/roof-tool-pro10.ts',
       'src/scripts/roof-tool-pro11.ts',
@@ -284,7 +291,11 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
       'src/scripts/roof-tool-pro7.ts',
       'src/scripts/roof-tool-pro8.ts',
       'src/scripts/roof-tool-pro9.ts',
-    ]);
+    ];
+    expect(
+      offenders.filter((f) => !f.startsWith('src/scripts/roofPro11/') && !KNOWN_THREE.includes(f)),
+    ).toEqual([]);
+    expect(offenders).toContain('src/scripts/roof-tool-pro11.ts');
   });
 
   it('Three.js est la SEULE dépendance ajoutée (pas de threebox ni @types/three)', () => {
