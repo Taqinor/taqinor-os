@@ -89,7 +89,7 @@ export default function LeadsSection({
             Activer le programme de parrainage
           </label>
           <Field label="Récompense de parrainage par défaut (DH)" htmlFor="pe-referral-reward">
-            <Input id="pe-referral-reward" type="number" min="0" step="any"
+            <Input id="pe-referral-reward" type="number" step="any"
                    name="referral_reward" value={form.referral_reward}
                    onChange={set} />
           </Field>
@@ -115,7 +115,8 @@ export default function LeadsSection({
                        value={t.couleur || '#6b7280'}
                        onChange={e => setTagColor(t, e.target.value)}
                        className="size-8 shrink-0 cursor-pointer rounded-md border border-input bg-card p-[3px]" />
-                <Input className="flex-1" defaultValue={t.nom}
+                {/* ERR102 — re-monte le champ si le serveur normalise le nom. */}
+                <Input key={t.nom} className="flex-1" defaultValue={t.nom}
                        onBlur={e => renameTag(t, e.target.value)} />
                 {/* L780 — compteur d'usage (suppression bloquée si > 0). */}
                 {t.en_usage > 0 && <Badge tone="neutral">{t.en_usage} lead(s)</Badge>}
@@ -151,7 +152,8 @@ export default function LeadsSection({
               <div key={m.id}
                    className={['mb-1.5 flex items-center gap-1.5',
                      m.archived ? 'opacity-50' : ''].join(' ')}>
-                <Input className="flex-1" defaultValue={m.nom}
+                {/* ERR102 — re-monte le champ si le serveur normalise le nom. */}
+                <Input key={m.nom} className="flex-1" defaultValue={m.nom}
                        onBlur={e => renameMotif(m, e.target.value)} />
                 {/* L779 — compteur d'usage (suppression bloquée si > 0). */}
                 {m.en_usage > 0 && <Badge tone="neutral">{m.en_usage} lead(s)</Badge>}
@@ -200,7 +202,8 @@ export default function LeadsSection({
                      c.archived ? 'opacity-50' : ''].join(' ')}>
                 {/* L783 — un canal protégé est en lecture seule avec indice. */}
                 <div className="relative flex-1">
-                  <Input className="w-full" defaultValue={c.libelle}
+                  {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+                  <Input key={c.libelle} className="w-full" defaultValue={c.libelle}
                          readOnly={c.protege}
                          title={c.protege ? 'protégé (webhook site)' : undefined}
                          onBlur={c.protege ? undefined : e => renameCanal(c, e.target.value)} />

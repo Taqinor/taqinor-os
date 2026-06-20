@@ -9,7 +9,7 @@
 // Section autonome : charge ses propres données et s'enregistre seule (sans le
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import outillageApi from '../../api/outillageApi'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -25,13 +25,16 @@ export default function KitsSection() {
   const [outils, setOutils] = useState([])
   const [types, setTypes] = useState([])
   const [loading, setLoading] = useState(true)
+  // ERR62 — un échec de chargement affiche une erreur + Réessayer (pas un état
+  // « vide » trompeur faisant croire qu'aucun kit n'existe).
+  const [loadError, setLoadError] = useState(false)
   const [newKit, setNewKit] = useState('')
   const [newType, setNewType] = useState(NONE)
   const [newItem, setNewItem] = useState({}) // { [kitId]: outilId }
 
   const load = () => outillageApi.getKits()
-    .then((r) => setKits(r.data.results ?? r.data))
-    .catch(() => {})
+    .then((r) => { setKits(r.data.results ?? r.data); setLoadError(false) })
+    .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 
   useEffect(() => {
@@ -129,6 +132,16 @@ export default function KitsSection() {
     </p>
   )
 
+  if (loadError) return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="flex items-center gap-2 text-sm text-destructive">
+        <AlertCircle className="size-4" aria-hidden="true" />
+        Kits d'outillage indisponibles (serveur ?).
+      </p>
+      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
+    </div>
+  )
+
   return (
     <Card>
       <CardContent className="pt-4 sm:pt-5">
@@ -151,7 +164,8 @@ export default function KitsSection() {
             <div key={k.id} className="rounded-lg border border-border p-3">
               {/* En-tête du kit */}
               <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                <Input className={['min-w-[140px] flex-[1_1_140px] font-medium', k.actif ? '' : 'opacity-50'].join(' ')}
+                {/* ERR102 — re-monte le champ si le serveur normalise le nom. */}
+                <Input key={k.nom} className={['min-w-[140px] flex-[1_1_140px] font-medium', k.actif ? '' : 'opacity-50'].join(' ')}
                   defaultValue={k.nom} onBlur={(e) => renameKit(k, e.target.value)} />
                 <div className="w-[200px]">
                   <Select value={k.type_intervention || NONE} onValueChange={(v) => setKitType(k, v)}>

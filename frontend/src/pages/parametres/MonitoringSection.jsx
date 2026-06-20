@@ -5,35 +5,58 @@
 // comportement d'aujourd'hui (bascule DÉSACTIVÉE : rien n'est créé tant qu'on
 // ne l'active pas).
 import { useEffect, useState } from 'react'
-import { Save, CheckCircle2 } from 'lucide-react'
+import { Save, CheckCircle2, AlertCircle } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import { Card, CardContent, Input, Label, Button, Spinner, Switch } from '../../ui'
 import { SectionTitle } from './peComponents'
 
 export default function MonitoringSection() {
   const [settings, setSettings] = useState(null) // null = chargement
+  // ERR62 — distinguer « serveur indisponible » des valeurs par défaut : un
+  // échec de chargement affiche un état d'erreur + Réessayer au lieu de faire
+  // passer les défauts pour les réglages réels.
+  const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // ERR62 — message d'échec d'enregistrement (au lieu d'être avalé).
+  const [saveError, setSaveError] = useState('')
 
-  useEffect(() => {
-    monitoringApi.getSettings()
-      .then((r) => setSettings({
+  const load = () => monitoringApi.getSettings()
+    .then((r) => {
+      setSettings({
         underperf_threshold_pct: r.data?.underperf_threshold_pct ?? 20,
         auto_create_ticket: !!r.data?.auto_create_ticket,
-      }))
-      .catch(() => setSettings({ underperf_threshold_pct: 20, auto_create_ticket: false }))
-  }, [])
+      })
+      setLoadError(false)
+    })
+    .catch(() => setLoadError(true))
+
+  useEffect(() => { load() }, [])
 
   const save = () => {
     setSaving(true)
     setSaved(false)
+    setSaveError('')
     monitoringApi.saveSettings({
       underperf_threshold_pct: settings.underperf_threshold_pct,
       auto_create_ticket: settings.auto_create_ticket,
     })
       .then((r) => { setSettings({ ...settings, ...r.data }); setSaved(true) })
-      .catch(() => {})
+      // ERR62 — sur échec : pas de badge « Enregistré » périmé, message clair.
+      .catch(() => { setSaved(false); setSaveError('Enregistrement impossible. Réessayez.') })
       .finally(() => setSaving(false))
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-start gap-2 py-6">
+        <p className="flex items-center gap-2 text-sm text-destructive">
+          <AlertCircle className="size-4" aria-hidden="true" />
+          Réglages de supervision indisponibles (serveur ?).
+        </p>
+        <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
+      </div>
+    )
   }
 
   if (settings === null) {
@@ -83,6 +106,11 @@ export default function MonitoringSection() {
           {saved && (
             <span className="flex items-center gap-1 text-sm text-emerald-600">
               <CheckCircle2 size={16} /> Enregistré
+            </span>
+          )}
+          {saveError && (
+            <span className="flex items-center gap-1 text-sm text-destructive">
+              <AlertCircle size={16} /> {saveError}
             </span>
           )}
         </div>

@@ -7,7 +7,7 @@
 // Section autonome : charge ses propres données et s'enregistre seule (sans le
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -30,12 +30,15 @@ const slugify = (s) => s.trim().toLowerCase()
 export default function ShotListSection() {
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
+  // ERR62 — un échec de chargement affiche une erreur + Réessayer (pas un état
+  // « vide » trompeur faisant croire qu'aucun créneau n'existe).
+  const [loadError, setLoadError] = useState(false)
   const [newLibelle, setNewLibelle] = useState('')
   const [newPhase, setNewPhase] = useState('avant')
 
   const load = () => installationsApi.getShotlistSlots()
-    .then((r) => setSlots(r.data.results ?? r.data))
-    .catch(() => {})
+    .then((r) => { setSlots(r.data.results ?? r.data); setLoadError(false) })
+    .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
@@ -89,6 +92,16 @@ export default function ShotListSection() {
     </p>
   )
 
+  if (loadError) return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="flex items-center gap-2 text-sm text-destructive">
+        <AlertCircle className="size-4" aria-hidden="true" />
+        Shot list indisponible (serveur ?).
+      </p>
+      <Button type="button" size="sm" variant="outline" onClick={load}>Réessayer</Button>
+    </div>
+  )
+
   return (
     <Card>
       <CardContent className="pt-4 sm:pt-5">
@@ -109,7 +122,8 @@ export default function ShotListSection() {
           )}
           {slots.map((s, i) => (
             <div key={s.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border p-2">
-              <Input className={['min-w-[140px] flex-[1_1_140px]', s.actif ? '' : 'opacity-50'].join(' ')}
+              {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+              <Input key={s.libelle} className={['min-w-[140px] flex-[1_1_140px]', s.actif ? '' : 'opacity-50'].join(' ')}
                 defaultValue={s.libelle} onBlur={(e) => rename(s, e.target.value)} />
               <div className="w-[120px]">
                 <Select value={s.phase} onValueChange={(v) => setPhase(s, v)}>
