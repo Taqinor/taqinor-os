@@ -619,3 +619,41 @@ describe('pro-11 — W78 : cohérence vue/totaux multi-zones (zone comptée touj
     expect(fn).toContain('sceneRoot!.add(deck)');
   });
 });
+
+describe('pro-11 — W79 : la disposition personnalisée survit à une édition d\'obstacle/axe', () => {
+  const script = read('../src/scripts/roof-tool-pro11.ts');
+  const editor = read('../src/scripts/roofPro11/layoutEditor.ts');
+
+  it('recalc() CAPTURE les centres posés AVANT le re-pavage, puis RE-ENTRE la disposition', () => {
+    const fn = script.slice(script.indexOf('function recalc()'), script.indexOf('function recalc()') + 1100);
+    // capture conditionnée au mode disposition, AVANT recompute/pitchedRecompute.
+    expect(fn).toContain('const prevCenters = layoutMode ? occupiedCenters() : null');
+    // re-entrée APRÈS le re-pavage (re-snap sur la nouvelle lattice).
+    expect(fn).toContain('if (prevCenters) reenterCustomLayout(prevCenters)');
+    // l'ordre : la CAPTURE des centres précède la RE-ENTRÉE (capture avant, re-snap après).
+    expect(fn.indexOf('const prevCenters = layoutMode ? occupiedCenters()')).toBeLessThan(
+      fn.indexOf('if (prevCenters) reenterCustomLayout(prevCenters)'),
+    );
+  });
+
+  it('reenterCustomLayout re-snappe via nearestEmptyCell (re-snap, pas wipe) et re-rend tout', () => {
+    expect(editor).toContain('function reenterCustomLayout(');
+    const fn = editor.slice(editor.indexOf('function reenterCustomLayout'));
+    // garde-fou : no-op hors mode disposition ou sans plan.
+    expect(fn).toMatch(/if \(!ctx\.layoutMode \|\| !ctx\.layoutPlan\) return/);
+    // reconstruit l'état sur la NOUVELLE lattice puis remplace l'occupation par les re-snaps.
+    expect(fn).toContain('ensureLayoutState()');
+    expect(fn).toContain('st.occupied.clear()');
+    expect(fn).toContain('nearestEmptyCell(st, c.cx, c.cy)');
+    // readouts à jour : re-rendu de la 3D (panneaux) + de la grille/note.
+    expect(fn).toContain('renderCustomLayout()');
+    expect(fn).toContain('renderLayoutPanel()');
+  });
+
+  it('occupiedCenters expose les centres ENU des cellules posées (pour le re-snap)', () => {
+    expect(editor).toContain('function occupiedCenters(');
+    const fn = editor.slice(editor.indexOf('function occupiedCenters'));
+    expect(fn).toContain('st.occupied.has(c.index)');
+    expect(fn).toContain('cx: c.cx, cy: c.cy');
+  });
+});

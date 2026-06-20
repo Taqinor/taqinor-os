@@ -72,6 +72,12 @@ export interface LayoutEditor {
   screenToENU: (point: maplibregl.Point) => { x: number; y: number } | null;
   renderLayoutPanel: () => void;
   setLayoutMode: (on: boolean) => void;
+  /** W79 — centres ENU des panneaux POSÉS de la disposition courante (avant un recalc qui
+   *  va remplacer la lattice), pour les re-snapper sur la nouvelle lattice ensuite. */
+  occupiedCenters: () => { cx: number; cy: number }[];
+  /** W79 — après un recalc (nouvelle lattice), re-entre la disposition personnalisée en
+   *  re-snappant les centres fournis vers les cellules valides les plus proches. */
+  reenterCustomLayout: (prevCenters: { cx: number; cy: number }[]) => void;
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -185,6 +191,46 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutNoteEl && !layoutNoteEl.textContent) {
       layoutNoteEl.textContent = 'Touchez un panneau (bleu) pour le sélectionner, puis un emplacement libre (vert) pour l’y déplacer. Ou utilisez + / −.';
     }
+  }
+
+  /** W79 — centres ENU des cellules POSÉES de la disposition courante. Capturé AVANT un
+   *  recalc (qui va remplacer la lattice et nuller layoutState) pour pouvoir re-snapper la
+   *  même intention de placement sur la nouvelle lattice. [] si pas de disposition. */
+  function occupiedCenters(): { cx: number; cy: number }[] {
+    const st = ctx.layoutState;
+    if (!st) return [];
+    const out: { cx: number; cy: number }[] = [];
+    for (const c of st.cells) if (st.occupied.has(c.index)) out.push({ cx: c.cx, cy: c.cy });
+    return out;
+  }
+
+  /** W79 — re-entre la disposition PERSONNALISÉE après un recalc (édition/ajout/suppression
+   *  d'obstacle ou changement d'axe pendant que l'éditeur est ouvert). Le recalc a re-pavé
+   *  le toit (nouvelle lattice via renderScene → layoutState nullé) ; sans cela les panneaux
+   *  posés à la main retomberaient silencieusement sur l'optimum et les readouts se
+   *  périmeraient. On reconstruit l'état sur la NOUVELLE lattice puis on re-snappe CHAQUE
+   *  centre précédemment posé vers la cellule VIDE valide la plus proche (nearestEmptyCell) —
+   *  les panneaux survivent (re-snappés, jamais effacés). Si un centre n'a plus de cellule
+   *  valide proche (toit rétréci), le panneau est simplement perdu (honnête : moins de place).
+   *  Puis on re-rend panneaux/grille/note. No-op hors mode disposition ou sans plan. */
+  function reenterCustomLayout(prevCenters: { cx: number; cy: number }[]) {
+    if (!ctx.layoutMode || !ctx.layoutPlan) return;
+    // Reconstruit une lattice fraîche depuis le plan re-pavé, PUIS remplace l'occupation
+    // par les re-snaps (chaque centre → cellule vide valide la plus proche, sans doublon).
+    ensureLayoutState();
+    const st = ctx.layoutState;
+    if (!st) return;
+    st.occupied.clear();
+    for (const c of prevCenters) {
+      const idx = nearestEmptyCell(st, c.cx, c.cy);
+      if (idx >= 0) st.occupied.add(idx);
+    }
+    ctx.layoutSel = null;
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Disposition personnalisée conservée — ${occupiedCount(st)} panneaux re-positionnés après la modification.`;
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
   }
 
   /** Entrée/sortie du mode personnalisation. */
@@ -353,5 +399,5 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderLayoutPanel();
   });
 
-  return { layoutCap, ensureLayoutState, renderCustomLayout, screenToENU, renderLayoutPanel, setLayoutMode };
+  return { layoutCap, ensureLayoutState, renderCustomLayout, screenToENU, renderLayoutPanel, setLayoutMode, occupiedCenters, reenterCustomLayout };
 }

@@ -991,9 +991,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
     renderActive: () => renderActive(),
     isObstacleMode: () => obstacleMode,
   });
-  // Seul `renderLayoutPanel` est appelé depuis l'entrée (injecté dans la fenêtre de
-  // production) ; les autres méthodes du module pilotent son propre câblage interne.
+  // `renderLayoutPanel` est appelé depuis l'entrée (injecté dans la fenêtre de production) ;
+  // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
+  // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
+  // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
+  const occupiedCenters = layoutEditor.occupiedCenters;
+  const reenterCustomLayout = layoutEditor.reenterCustomLayout;
 
   // — Obstacles (zones d'exclusion). `recalc` est déclaré plus bas : injecté en wrapper
   // paresseux. Le module câble lui-même le bouton « ajouter »/« effacer » + l'édition
@@ -1156,8 +1160,17 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   /** Recalcul/rendu selon le type de toit actif (plat = pipeline pro-5 inchangé). */
   function recalc() {
+    // W79 — si l'éditeur de disposition est ouvert, on CAPTURE les centres ENU des panneaux
+    // posés à la main AVANT le recalc : recompute()/pitchedRecompute() re-pavent le toit
+    // (nouvelle lattice via renderScene → layoutState nullé), ce qui sinon ferait retomber
+    // silencieusement la pose personnalisée sur l'optimum et périmerait les readouts.
+    const prevCenters = layoutMode ? occupiedCenters() : null;
     if (roofType === 'pitched') pitchedRecompute();
     else recompute();
+    // W79 — après le re-pavage, on RE-ENTRE la disposition personnalisée : re-snap de chaque
+    // centre capturé vers la cellule valide la plus proche de la NOUVELLE lattice (les
+    // panneaux survivent, re-snappés), puis re-rendu panneaux/grille/note (readouts à jour).
+    if (prevCenters) reenterCustomLayout(prevCenters);
   }
   function renderActive() {
     if (roofType === 'pitched') liveResolvePitched();

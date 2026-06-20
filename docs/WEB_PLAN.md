@@ -272,7 +272,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   multi-zone view — totals and 3D disagree. Capture a `renderPlan` snapshot even at 0 panels, or have
   `appendOtherZones` fall back to drawing the bare ring from `a.vertices`. Accept: every counted zone is
   visible in 3D. File: `roof-tool-pro11.ts`.
-- [ ] **W79 — layout: keep the custom layout coherent after obstacle/config edits.** Editing/adding/
+- [x] **W79 — layout: keep the custom layout coherent after obstacle/config edits.** Editing/adding/
   deleting an obstacle (or changing a config axis) while the layout editor is open calls `recalc()`
   which nulls `layoutState` but never re-enters custom layout — the hand-placed panels silently snap to
   the optimum, the panel shows a stale count, and the `+/−` disabled-state and the note go stale. When
