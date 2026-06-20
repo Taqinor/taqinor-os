@@ -440,3 +440,28 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   still imports `initRoofToolPro8`. The Three.js/MapLibre isolation guards now allow the whole
   `src/scripts/roofPro11/**` prefix. This makes every W71–W97 fix localized to one module so the lanes
   finally run in parallel.
+- 2026-06-20 — W71: hoisted the shared panel/glass/frame/rack/ballast materials + static geometries out of the per-render path in `scene3d.ts` (cached active+dim variants), killing per-drag MeshPhysicalMaterial shader recompiles; disposeScene frees only per-zone meshes, the cache frees on teardown.
+- 2026-06-20 — W72: the needed-panel cap now uses the SAME PVGIS yield as production (optional `perPanelYieldOverride` on `neededPanelsForTarget`, aspect-aware `optimalSouthTiltDeg`); coverage % for the auto-optimum no longer drifts from the displayed yield.
+- 2026-06-20 — W73: `recomputeMatrix` is fed the same PVGIS-backed `yieldFn` as the live solve, so the badged matrix optimum and the recommendation card agree once PVGIS resolves (table-fallback internally consistent).
+- 2026-06-20 — W74: V7/V8 expose a `noViableConfig`/`northFacing` flag and the optimizer renders an honest French "configuration non viable / pan orienté nord" instead of a fabricated 0-panel winner.
+- 2026-06-20 — W77: touch tracing parity — double-tap (touchend ~300 ms) finishes the trace, and a pending single-tap vertex is flushed before the next tap so fast tracing never drops a corner; desktop click/dblclick unchanged.
+- 2026-06-20 — W78: a counted zone with 0 placed panels is now drawn as a bare ring in the 3D multi-zone view (no longer skipped), so totals and the 3D view always agree.
+- 2026-06-20 — W79: with the layout editor open, any recompute re-enters custom layout — occupied panels are re-snapped to the nearest valid cells of the new lattice and the readouts stay live (no silent wipe to the optimum).
+- 2026-06-20 — W80: panels can be dragged to a valid cell on touch in the 3D view (touchstart/move/end mirror of the mouse path, single-finger, dedicated `LAYOUT_GRAB_PX`).
+- 2026-06-20 — W81: obstacle length/width inputs clamp on `change`/`blur` (commit) instead of every keystroke, so typing "0." / "0,7" no longer snaps to 0,5 mid-keystroke; commit-time `clampDim` preserved.
+- 2026-06-20 — W82: annual self-consumption/savings/battery integrate over the 12 real monthly typical-day profiles (bill-capped), so flipping the production month toggle no longer changes annual savings.
+- 2026-06-20 — W83: sizing is reversible (re-derives `max(billNeeded, consNeeded)` each render so removing an appliance shrinks the system); "Recaler" preserves "en plus" energy and a new "Réinitialiser la courbe" restores the computed shape.
+- 2026-06-20 — W84: AC/EV appliance slots use the entered hours (`slotEndHour`) instead of hardcoded windows, and battery sizing uses the 12-month evening deficit so the count is stable across the month toggle.
+- 2026-06-20 — W85: the diagnostic prefill derives `lf-orient` from the winning config (flat family / pitched facing azimuth → nearest ORIENTATIONS id), no longer hardcoded 'sud'; preview still never posts a lead.
+- 2026-06-20 — W86: the preview CTA is honestly labelled "Continuer vers le diagnostic →" (no fake WhatsApp action), and the recommendation/production/zone-total readouts gained `aria-live="polite"`.
+- 2026-06-20 — W87: the 3D sun is driven by a real solar position (`sunDirection(lat, day, hour)`) with a time-of-day/season control; the default winter-noon view proves the spaced rows clear at the design elevation.
+- 2026-06-20 — W88: panels are pickable in 3D (instanceColor + raycast) — hover highlights, click/long-press removes that specific panel via the lattice and recomputes the figures (layout mode only).
+- 2026-06-20 — W89: WebGL context-loss/restore handlers rebuild the renderer on the fresh context so backgrounding a mobile tab no longer permanently blanks the 3D.
+- 2026-06-20 — W90: pitched roofs get triangular gable end-walls so they read as a closed volume instead of a tilted lid floating over a flat box; flat mode unchanged.
+- 2026-06-20 — W91: added MapLibre's native GeolocateControl (no new dep) — "ma position" recenters to zoom 19.
+- 2026-06-20 — W92: trace corners are editable (drag a vertex → re-solve, mouse + touch) and an "Annuler le dernier point" control pops the last vertex during tracing.
+- 2026-06-20 — W93: address search is an autocomplete combobox (up to 5 Morocco suggestions, keyboard-navigable, flies only on selection); the W75 race-guard is preserved.
+- 2026-06-20 — W94: honest brain numbers — a 25-year degradation band (0,5 %/yr), a DC:AC inverter clip that only lowers over-dense E-W arrays (south unchanged), and bifacial gain from the BIFACIAL_GAIN_* constants instead of a magic 5 %.
+- 2026-06-20 — W95: a summer/winter consumption split feeds the 12-month integral and a per-month autoconsommation mini-chart (zero-CLS) renders.
+- 2026-06-20 — W96: an indicative battery payback range shows next to the recommended count (labelled "estimation indicative, pas un devis", capped to honest avoided cost; hidden when there's no honest saving).
+- 2026-06-20 — W97: added runtime/integration coverage (prefill-via-CTA + no-lead-POST, multi-zone totals, graceful degradation, rendered savings ≤ bill ceiling, layout-edit recompute, obstacle clearance) plus an end-to-end "parcours utilisateur complet" test driving the whole session; full suite 69 files / 2397 tests green.
