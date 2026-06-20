@@ -10,11 +10,12 @@
  * extrait référence réellement.
  */
 import { type SvgBox } from '../../lib/productionWindow';
-import { type SpecificDateProfile } from '../../lib/productionEngine';
+import { type SpecificDateProfile, type ScaledProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { type LiveSolveResult } from '../../lib/estimatorBrainV7';
 import { type PitchedLiveResult } from '../../lib/estimatorBrainV8';
+import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
 import { type InitOptions, type RoofType, type AreaRecord } from './types';
 
 /** Références DOM partagées avec les modules extraits (sous-ensemble du DOM du
@@ -74,4 +75,24 @@ export interface Ctx {
   prodMonth: number;
   /** Profil de la date précise (mis à l'échelle) ou null = jour TYPE du mois. */
   prodSpecificDate: SpecificDateProfile | null;
+  /** Production mise à l'échelle (panneaux courants) ou null. */
+  prodScaled: ScaledProduction | null;
+  /** Nombre de panneaux du plan de production courant. */
+  prodPanels: number;
+  /** Latitude du centroïde du tracé (pour le dimensionnement). */
+  centroidLat: number;
+
+  // — W68 « Affiner ma consommation » (mutable) —
+  /** Le panneau « Affiner » est-il ouvert ? */
+  consMode: boolean;
+  /** Courbe horaire (24 h) de consommation effectivement utilisée. */
+  consCurve: HourlyCurve;
+  /** L'utilisateur a-t-il édité la courbe à la main (override) ? */
+  consHandEdited: boolean;
+  /** Appareils ajoutés au calculateur de consommation. */
+  consAppliances: Appliance[];
+  /** Socle journalier (kWh) dérivé de la facture. */
+  consDailyTarget: number;
+  /** Compteur d'appareils « autre » ajoutés. */
+  consApplCounter: number;
 }

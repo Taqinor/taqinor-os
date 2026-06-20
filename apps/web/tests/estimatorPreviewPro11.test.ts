@@ -237,7 +237,6 @@ describe('pro-11 — l\'existant est strictement préservé', () => {
 
 describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma consommation »)', () => {
   const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
-  const script = read('../src/scripts/roof-tool-pro11.ts');
 
   it('la page expose un contrôle « Affiner ma consommation » + le panneau d\'affinage', () => {
     expect(page).toContain('Affiner ma consommation');
@@ -269,26 +268,30 @@ describe('pro-11 — W68 : mode VARIABILITÉ de consommation (« Affiner ma cons
     expect(page).toContain('id="rp9-cons-batt"');
   });
 
+  // Split modulaire : la logique de consommation vit dans roofPro11/consumption.ts.
+  // On vérifie l'intégralité de la surface du builder (jamais dupliquée).
+  const all = pro11Sources();
+
   it('le script branche la logique PURE applianceConsumption (jamais dupliquée)', () => {
-    expect(script).toContain("from '../lib/applianceConsumption'");
-    expect(script).toContain('composeConsumption(');
-    expect(script).toContain('savingsFromHourly(');
-    expect(script).toContain('batterySizing(');
-    expect(script).toContain('rescaleToDaily(');
+    expect(all).toContain("lib/applianceConsumption'");
+    expect(all).toContain('composeConsumption(');
+    expect(all).toContain('savingsFromHourly(');
+    expect(all).toContain('batterySizing(');
+    expect(all).toContain('rescaleToDaily(');
   });
 
   it('les deux voies alimentent le MÊME moteur (économies + sizing existants)', () => {
     // économies via le modèle billMAD existant (annualSavingsMad sous savingsFromHourly),
     // sizing via le besoin existant (neededPanelsForTarget → renderActive).
-    expect(script).toContain('applyConsumptionToSizing');
-    expect(script).toContain('neededPanelsForTarget(');
-    expect(script).toContain('renderActive()');
+    expect(all).toContain('applyConsumptionToSizing');
+    expect(all).toContain('neededPanelsForTarget(');
+    expect(all).toContain('renderActive()');
   });
 
   it('« sur ma facture » vs « déjà compris » + recalage sont câblés', () => {
-    expect(script).toContain('data-appl-toggle'); // bascule onTop / inBill
-    expect(script).toContain("billing === 'onTop'");
-    expect(script).toContain('consHandEdited'); // override manuel suivi
+    expect(all).toContain('data-appl-toggle'); // bascule onTop / inBill
+    expect(all).toContain("billing === 'onTop'");
+    expect(all).toContain('consHandEdited'); // override manuel suivi
   });
 
   it('un fichier de sources d\'appareils existe (typiques éditables, jamais inventés)', () => {
