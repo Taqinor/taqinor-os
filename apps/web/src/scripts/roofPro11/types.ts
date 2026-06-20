@@ -3,6 +3,10 @@
  * Extraits de roof-tool-pro11.ts (split modulaire 2026-06-20) — INCHANGÉS.
  */
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
+import { type PackResult, type PanelGrid, type ConfigFamily } from '../../lib/estimatorBrainV2';
+import { type Obstacle } from '../../lib/obstacles';
+import { type AreaResult } from '../../lib/roofAreas';
+import { type LngLat } from '../../lib/roof';
 
 export interface InitOptions {
   maptilerKey: string;
@@ -37,4 +41,31 @@ export interface CardData {
   savingsLow: number;
   savingsHigh: number;
   why: string;
+}
+
+// ═══════════ « PLUSIEURS ZONES » — enregistrements de zone ═══════════
+// Plan de RE-RENDU d'une zone : tout ce qu'il faut pour redessiner son bâtiment +
+// ses panneaux SANS ré-optimiser. `count` = nombre de panneaux RÉELLEMENT posés.
+export interface ZoneRenderPlan {
+  pack: PackResult;
+  grid: PanelGrid;
+  tiltDeg: number;
+  family: ConfigFamily;
+  flush: boolean;
+  count: number;
+  obstacles: Obstacle[];
+}
+
+export interface AreaRecord {
+  id: string;
+  label: string;
+  vertices: LngLat[];
+  obstacles: Obstacle[];
+  roofType: RoofType;
+  pitchDeg: number;
+  facingAzimuthDeg: number;
+  neededPanels: number;
+  neededAuto: boolean;
+  result: AreaResult | null;
+  renderPlan: ZoneRenderPlan | null;
 }

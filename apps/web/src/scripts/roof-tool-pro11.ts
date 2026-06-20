@@ -109,7 +109,7 @@ import {
   OBSTACLE_STEP_FACTOR,
   type Obstacle,
 } from '../lib/obstacles';
-import { aggregateAreas, areaLabel, emptyResult, type AreaResult } from '../lib/roofAreas';
+import { areaLabel } from '../lib/roofAreas';
 import { buildSatelliteStyle, roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { PANEL_KWC, type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
@@ -180,6 +180,8 @@ import {
   type AzimuthMode,
   type MarginMode,
   type CardData,
+  type ZoneRenderPlan,
+  type AreaRecord,
 } from './roofPro11/types';
 import {
   GOLD,
@@ -198,6 +200,7 @@ import { makeCanadianPanelTexture } from './roofPro11/panelTexture';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
+import { createZones } from './roofPro11/zones';
 
 let booted = false;
 
@@ -474,35 +477,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let prodPlaneKey = '';
   const SVG_BOX: SvgBox = DEFAULT_GRAPH_BOX;
 
-  // — Contexte partagé pont vers les modules extraits (split modulaire). Les champs
-  // d'état mutables sont exposés par accesseur : le code resté dans ce fichier garde
-  // ses `let` bruts, les modules lisent/écrivent via `ctx.*` — comportement INCHANGÉ.
-  const ctx: Ctx = {
-    opts,
-    svgBox: SVG_BOX,
-    get vertices() {
-      return vertices;
-    },
-    set vertices(v) {
-      vertices = v;
-    },
-    get prodMonth() {
-      return prodMonth;
-    },
-    set prodMonth(v) {
-      prodMonth = v;
-    },
-    get prodSpecificDate() {
-      return prodSpecificDate;
-    },
-    set prodSpecificDate(v) {
-      prodSpecificDate = v;
-    },
-  };
-  const graphs = createGraphs(ctx);
-  const prefill = createPrefill(ctx);
-  const prefillLead = prefill.prefillLead;
-
   // ═══════════ W68 — VARIABILITÉ de consommation (« Affiner ma consommation ») ═══════════
   // `consCurve` = courbe horaire de conso (24 kWh) effectivement utilisée pour
   // l'autoconsommation/les économies/la batterie. `consHandEdited` : l'utilisateur a édité
@@ -553,28 +527,6 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // ses panneaux SANS ré-optimiser. Stocké sur la zone ACTIVE à chaque renderScene ;
   // les AUTRES zones sont re-dessinées (subduées) à partir de leur plan, à leur vraie
   // position relative (offset GPS → ENU). `count` = nombre de panneaux RÉELLEMENT posés.
-  interface ZoneRenderPlan {
-    pack: PackResult;
-    grid: PanelGrid;
-    tiltDeg: number;
-    family: ConfigFamily;
-    flush: boolean;
-    count: number;
-    obstacles: Obstacle[];
-  }
-  interface AreaRecord {
-    id: string;
-    label: string;
-    vertices: LngLat[];
-    obstacles: Obstacle[];
-    roofType: RoofType;
-    pitchDeg: number;
-    facingAzimuthDeg: number;
-    neededPanels: number;
-    neededAuto: boolean;
-    result: AreaResult | null;
-    renderPlan: ZoneRenderPlan | null;
-  }
   let areaCounter = 0;
   const newAreaRecord = (): AreaRecord => {
     const id = `area-${++areaCounter}`;
@@ -595,6 +547,112 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const areas: AreaRecord[] = [newAreaRecord()];
   let activeAreaId = areas[0].id;
   const activeArea = (): AreaRecord | undefined => areas.find((a) => a.id === activeAreaId);
+
+  // — Contexte partagé pont vers les modules extraits (split modulaire). Les champs
+  // d'état mutables sont exposés par accesseur : le code resté dans ce fichier garde
+  // ses `let` bruts, les modules lisent/écrivent via `ctx.*` — comportement INCHANGÉ.
+  const ctx: Ctx = {
+    opts,
+    svgBox: SVG_BOX,
+    dom: {
+      addAreaBtn,
+      areasWindowEl,
+      areasListEl,
+      areasTotalPanelsEl,
+      areasTotalKwcEl,
+      areasTotalProdEl,
+      areasTotalSavingsEl,
+    },
+    get vertices() {
+      return vertices;
+    },
+    set vertices(v) {
+      vertices = v;
+    },
+    get closed() {
+      return closed;
+    },
+    set closed(v) {
+      closed = v;
+    },
+    get obstacles() {
+      return obstacles;
+    },
+    set obstacles(v) {
+      obstacles = v;
+    },
+    get roofType() {
+      return roofType;
+    },
+    set roofType(v) {
+      roofType = v;
+    },
+    get pitchDeg() {
+      return pitchDeg;
+    },
+    set pitchDeg(v) {
+      pitchDeg = v;
+    },
+    get facingAzimuthDeg() {
+      return facingAzimuthDeg;
+    },
+    set facingAzimuthDeg(v) {
+      facingAzimuthDeg = v;
+    },
+    get neededPanels() {
+      return neededPanels;
+    },
+    set neededPanels(v) {
+      neededPanels = v;
+    },
+    get neededAuto() {
+      return neededAuto;
+    },
+    set neededAuto(v) {
+      neededAuto = v;
+    },
+    get liveResult() {
+      return liveResult;
+    },
+    set liveResult(v) {
+      liveResult = v;
+    },
+    get pitchedLiveResult() {
+      return pitchedLiveResult;
+    },
+    set pitchedLiveResult(v) {
+      pitchedLiveResult = v;
+    },
+    areas,
+    get activeAreaId() {
+      return activeAreaId;
+    },
+    set activeAreaId(v) {
+      activeAreaId = v;
+    },
+    activeArea,
+    get prodMonth() {
+      return prodMonth;
+    },
+    set prodMonth(v) {
+      prodMonth = v;
+    },
+    get prodSpecificDate() {
+      return prodSpecificDate;
+    },
+    set prodSpecificDate(v) {
+      prodSpecificDate = v;
+    },
+  };
+  const graphs = createGraphs(ctx);
+  const prefill = createPrefill(ctx);
+  const prefillLead = prefill.prefillLead;
+  const zones = createZones(ctx);
+  const liveActiveResult = zones.liveActiveResult;
+  const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
+  const snapshotActiveAreaGeometry = zones.snapshotActiveAreaGeometry;
+  const syncAddAreaButton = zones.syncAddAreaButton;
+  const renderAreasPanel = zones.renderAreasPanel;
 
   const monthlyBill = (): number => {
     const raw = parseFloat((billEl?.value || '').replace(/\s/g, '').replace(',', '.'));
@@ -1817,94 +1875,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     renderAreasPanel();
   }
 
-  // ═══════════ « PLUSIEURS ZONES » — instantané du résultat + panneau de total ═══════════
-
-  /** Résultat VIVANT de la zone active (gagnant de l'optimiseur courant) — plat
-   *  (`liveResult.winner`) ou pente (`pitchedLiveResult.winner`). null si rien de calculé
-   *  ou pose nulle (zone sans panneaux). */
-  function liveActiveResult(): AreaResult | null {
-    if (!closed || vertices.length < 3) return null;
-    if (roofType === 'pitched') {
-      const res = pitchedLiveResult;
-      if (!res || res.northFacing) return null;
-      const w = res.winner;
-      if (w.placedCount <= 0) return null;
-      return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh, savingsLow: w.savingsLow, savingsHigh: w.savingsHigh };
-    }
-    const res = liveResult;
-    if (!res) return null;
-    const w = res.winner;
-    if (w.placedCount <= 0) return null;
-    return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh, savingsLow: w.savingsLow, savingsHigh: w.savingsHigh };
-  }
-
-  /** Écrit l'instantané du résultat vivant dans l'enregistrement de la zone active. */
-  function snapshotActiveAreaResult() {
-    const a = activeArea();
-    if (a) a.result = liveActiveResult();
-  }
-
-  /** Capture la GÉOMÉTRIE + l'état d'édition courants de la zone active dans son
-   *  enregistrement (sans toucher au résultat, géré par le snapshot ci-dessus). */
-  function snapshotActiveAreaGeometry() {
-    const a = activeArea();
-    if (!a) return;
-    a.vertices = [...vertices];
-    a.obstacles = obstacles.map((o) => ({ ...o }));
-    a.roofType = roofType;
-    a.pitchDeg = pitchDeg;
-    a.facingAzimuthDeg = facingAzimuthDeg;
-    a.neededPanels = neededPanels;
-    a.neededAuto = neededAuto;
-  }
-
-  /** Active/désactive le bouton « + Ajouter une zone » : autorisé seulement quand la
-   *  zone active est FERMÉE (un tracé valide existe). */
-  function syncAddAreaButton() {
-    if (addAreaBtn) addAreaBtn.disabled = !closed || vertices.length < 3;
-  }
-
-  /** Rend le panneau « Zones » : total agrégé (zone active = résultat LIVE, pas le snapshot
-   *  potentiellement périmé) + une ligne par zone. Masqué tant qu'aucune zone n'a de résultat. */
-  function renderAreasPanel() {
-    syncAddAreaButton();
-    if (!areasWindowEl) return;
-    const liveActive = liveActiveResult();
-    // Résultats agrégés : la zone active prend son résultat LIVE, les autres leur snapshot.
-    const results = areas.map((a) => (a.id === activeAreaId ? liveActive : a.result));
-    const anyResult = results.some((r) => r != null);
-    areasWindowEl.hidden = !anyResult;
-    if (!anyResult) return;
-    const total = aggregateAreas(results);
-    if (areasTotalPanelsEl) areasTotalPanelsEl.textContent = `${fmt(total.panels)} × 720 W`;
-    if (areasTotalKwcEl) areasTotalKwcEl.textContent = `${total.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`;
-    if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
-    if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—';
-    if (!areasListEl) return;
-    areasListEl.innerHTML = areas
-      .map((a, i) => {
-        const r = a.id === activeAreaId ? liveActive : a.result;
-        const active = a.id === activeAreaId;
-        const panels = r ? fmt(r.panels) : '—';
-        const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc` : 'à tracer';
-        const rowClass = active
-          ? 'border-brass-400 bg-brass-400/10'
-          : 'border-white/10 bg-nuit-900/40';
-        const delBtn =
-          areas.length > 1
-            ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(a.label)}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
-            : '';
-        const viewBtn = active
-          ? `<span class="text-xs font-semibold text-brass-300">● active</span>`
-          : `<button type="button" data-area-select="${a.id}" class="border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">Voir</button>`;
-        return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
-          <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
-          <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}</span>
-          <span class="ml-auto flex items-center gap-2">${viewBtn}${delBtn}</span>
-        </li>`;
-      })
-      .join('');
-  }
+  // ═══════════ « PLUSIEURS ZONES » — instantané + panneau de total : voir roofPro11/zones.ts ═══════════
 
   // ═══════════ W68 — « Affiner ma consommation » : logique de rendu/recompute ═══════════
 
