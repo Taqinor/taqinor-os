@@ -1883,20 +1883,30 @@ export function initRoofToolPro8(opts: InitOptions): void {
 
   /** Met à jour le besoin « panneaux nécessaires » quand des appareils « en plus »
    *  augmentent la conso (taille-au-besoin via le chemin existant). N'agit qu'en mode
-   *  auto (l'utilisateur n'a pas figé le besoin). */
+   *  auto (l'utilisateur n'a pas figé le besoin).
+   *
+   *  GARDE DE RÉ-ENTRANCE (correctif du FIGEAGE) : ce chemin boucle —
+   *  applyConsumptionToSizing → renderActive → liveResolveFlat (qui réécrit `neededPanels`
+   *  depuis la FACTURE, ≠ besoin issu de la conso) → syncProductionWindow → renderProdWindow
+   *  → renderConsumption → applyConsumptionToSizing → … Comme les deux besoins divergent, la
+   *  page bouclait à l'infini dès qu'on ouvrait « Affiner ma consommation ». On garde donc la
+   *  ré-entrance ET on FIGE le besoin issu de la conso (`neededAuto = false`) pour que
+   *  liveResolveFlat ne le rebascule pas — la boucle se termine en un seul cycle. */
+  let inConsSizing = false;
   function applyConsumptionToSizing() {
-    if (!neededAuto) return;
+    if (!neededAuto || inConsSizing) return;
     const dailyTotal = curveTotal(consCurve);
     const annualCons = annualConsumptionFromDaily(dailyTotal);
     if (annualCons <= 0) return;
     const n = neededPanelsForTarget(annualCons, centroidLat);
-    if (n > 0) {
-      const clamped = clampNeeded(n);
-      if (clamped !== neededPanels) {
-        neededPanels = clamped;
-        renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
-      }
-    }
+    if (n <= 0) return;
+    const clamped = clampNeeded(n);
+    if (clamped === neededPanels) return;
+    inConsSizing = true;
+    neededPanels = clamped;
+    neededAuto = false; // besoin issu de la conso → figé (liveResolveFlat ne le réécrit plus)
+    renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
+    inConsSizing = false;
   }
 
   /** Rendu du graphe de conso (barres glissables) + superposition production (or pâle). */
@@ -2092,6 +2102,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     layoutMode = on;
     if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', String(on));
     if (layoutPanelEl) layoutPanelEl.hidden = !on;
+    // Vue de DESSUS pendant le déplacement : à plat (pitch 0), la déprojection écran→toit est
+    // exacte (aucune parallaxe de hauteur), donc glisser un panneau sur la 3D « accroche »
+    // vraiment au bon panneau. On restaure la vue inclinée en sortant.
+    const view = on ? { pitch: 0 } : { pitch: PITCH_VIEW };
+    if (opts.reducedMotion) map.jumpTo(view);
+    else map.easeTo({ ...view, duration: 500, essential: true });
     if (on) {
       layoutState = null; // repart de l'optimum courant
       ensureLayoutState();
