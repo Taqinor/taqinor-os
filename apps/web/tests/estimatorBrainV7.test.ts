@@ -291,3 +291,24 @@ describe('W72 — le PVGIS du gagnant pilote le cap « besoin »', () => {
     expect(res.winner.pctOfTarget).toBeLessThan(125);
   });
 });
+
+// W74 — état honnête « aucune config viable » : un toit trop petit pour loger un seul
+// panneau pose 0/0 ; le « gagnant » n'est qu'un repli de départage, pas un vrai choix.
+// On le signale via `noViableConfig` (et `roofLimited` n'est PLUS vrai dans ce cas).
+describe('W74 — « configuration non viable » sur un toit minuscule', () => {
+  it('toit minuscule (0/0) → noViableConfig=true, roofLimited=false', () => {
+    const res = solveLive(squareRing(1), LAT, BILL, [], {});
+    expect(res.winner.fitCount).toBe(0);
+    expect(res.winner.placedCount).toBe(0);
+    expect(res.winner.annualKwh).toBe(0);
+    expect(res.noViableConfig).toBe(true);
+    // contradiction levée : un toit non viable n'est pas « limité » (faux 0-panneau gagnant).
+    expect(res.roofLimited).toBe(false);
+  });
+
+  it('toit spacieux → noViableConfig=false (config réelle)', () => {
+    const res = solveLive(squareRing(40), LAT, BILL, [], {});
+    expect(res.winner.placedCount).toBeGreaterThan(0);
+    expect(res.noViableConfig).toBe(false);
+  });
+});

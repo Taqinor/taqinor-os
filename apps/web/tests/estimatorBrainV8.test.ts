@@ -212,3 +212,32 @@ describe('V8 — la pose AFFLEURANTE coplanaire est INCHANGÉE (géométrie V3 p
     expect(recorded[135]).toBeGreaterThan(recorded[90]);
   });
 });
+
+// W74 — états honnêtes en pente : un pan orienté NORD (production quasi nulle) et un pan
+// trop petit (0/0) sont DEUX situations distinctes, chacune signalée explicitement —
+// jamais un faux « 0 panneau gagnant » contradictoire (placedCount 0 + roofLimited false).
+describe('W74 — pente : pan nord vs pan non viable, états honnêtes', () => {
+  it('pan orienté NORD → northFacing=true, noViableConfig=false, roofLimited=false', () => {
+    const res = solveLivePitched(squareRing(28), LAT, BILL, PITCH, 0, [], {}); // face 0 = nord
+    expect(res.northFacing).toBe(true);
+    expect(res.winner.placedCount).toBe(0);
+    expect(res.noViableConfig).toBe(false); // pas « trop petit » — orienté nord
+    expect(res.roofLimited).toBe(false); // plus de contradiction placedCount 0 + limité
+  });
+
+  it('pan SUD trop petit (0/0) → noViableConfig=true, northFacing=false', () => {
+    const res = solveLivePitched(squareRing(1), LAT, BILL, PITCH, FACING, [], {});
+    expect(res.winner.fitCount).toBe(0);
+    expect(res.winner.placedCount).toBe(0);
+    expect(res.northFacing).toBe(false);
+    expect(res.noViableConfig).toBe(true);
+    expect(res.roofLimited).toBe(false);
+  });
+
+  it('pan SUD spacieux → northFacing=false, noViableConfig=false (config réelle)', () => {
+    const res = solveLivePitched(squareRing(28), LAT, BILL, PITCH, FACING, [], {});
+    expect(res.winner.placedCount).toBeGreaterThan(0);
+    expect(res.northFacing).toBe(false);
+    expect(res.noViableConfig).toBe(false);
+  });
+});

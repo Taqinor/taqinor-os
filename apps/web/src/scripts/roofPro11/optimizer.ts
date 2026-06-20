@@ -317,9 +317,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const grid = w.layout === 'portrait' ? pack.portrait : pack.landscape;
     renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
     const cov = Math.round(w.pctOfTarget);
-    const why = isReco
-      ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${w.placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
-      : `Vos choix sont tenus, le reste a été re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
+    // W74 — AUCUNE config viable (toit trop petit / contraint à néant) : on n'affiche
+    // PAS un faux « 0 panneau gagnant », mais un message honnête.
+    const why = res.noViableConfig
+      ? `Configuration non viable sur ce toit : aucun panneau ne tient (tracé trop petit ou entièrement occupé par des obstacles). Agrandissez la zone ou retirez des obstacles.`
+      : isReco
+        ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${w.placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
+        : `Vos choix sont tenus, le reste a été re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
     paintCard(
       {
         title: `${liveOrientationLabel(w)} ${w.tiltDeg}° · ${w.layoutLabel}`,
@@ -569,11 +573,15 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renderScene(flushToPack(w.pack), flushGridToPanelGrid(w.grid), w.pack.pitchDeg, 'south', w.placedCount, true);
     const cov = Math.round(w.pctOfTarget);
     const tiltTxt = `${Math.round(ctx.pitchDeg)}°`;
+    // W74 — pan orienté nord (production quasi nulle) ET pan non viable (trop petit /
+    // contraint à néant) ont chacun leur message honnête, distincts d'un faux gagnant.
     const why = res.northFacing
-      ? `Ce pan est orienté nord (face ${facingLabel(ctx.facingAzimuthDeg)}) : aucune pose rentable proposée. Indiquez la vraie face descendante du pan.`
-      : isReco
-        ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
-        : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent la pose/marge optimale.`;
+      ? `Ce pan est orienté nord (face ${facingLabel(ctx.facingAzimuthDeg)}) : production quasi nulle, aucune pose rentable proposée. Indiquez la vraie face descendante du pan.`
+      : res.noViableConfig
+        ? `Configuration non viable sur ce toit : aucun panneau ne tient sur ce pan (trop petit ou entièrement occupé par des obstacles). Agrandissez le pan ou retirez des obstacles.`
+        : isReco
+          ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
+          : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent la pose/marge optimale.`;
     paintCard(
       {
         title: `Toit en pente ~${tiltTxt} · face ${facingLabel(ctx.facingAzimuthDeg)} · ${w.layoutLabel}`,

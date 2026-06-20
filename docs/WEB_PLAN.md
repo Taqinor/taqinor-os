@@ -244,7 +244,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   configs. Feed `recomputeMatrix` the same PVGIS-backed `yieldFn` used by `buildMatrix`, or route only
   through `computeMatrixPvgis`. Accept: badged matrix row == reco card config once PVGIS resolves; no
   transient disagreement on the table fallback. File: `roof-tool-pro11.ts`.
-- [ ] **W74 — brain: explicit "no viable config" + north-facing state.** When every candidate is 0 kWh /
+- [x] **W74 — brain: explicit "no viable config" + north-facing state.** When every candidate is 0 kWh /
   0 panels (roof too small, or all-north pitched pan), `betterLive`/`betterPitched` fall through to
   "fewest panels wins" (arbitrary), and `solveLivePitched` reports `roofLimited:false` with
   `placedCount:0` for a north pan (self-contradictory). Return a flagged `noViableConfig` / expose

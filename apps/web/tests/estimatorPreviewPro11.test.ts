@@ -110,6 +110,15 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
     expect(matrix).toContain('ctx.v4YieldCache.get(v4Key(');
     expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), { yieldFn: matrixYieldFn })');
   });
+
+  it('W74 — l\'optimiseur affiche un message honnête « non viable » / « pan nord »', () => {
+    // l'UI lit les drapeaux res.noViableConfig (plat + pente) et res.northFacing (pente)
+    // pour afficher un message FR honnête au lieu d'un faux « 0 panneau gagnant ».
+    expect(optimizer).toContain('res.noViableConfig');
+    expect(optimizer).toContain('Configuration non viable sur ce toit');
+    expect(optimizer).toContain('res.northFacing');
+    expect(optimizer).toContain('production quasi nulle');
+  });
 });
 
 describe('pro-11 — la pose AFFLEURANTE et la 3D pente restent INCHANGÉES (modèle V6)', () => {

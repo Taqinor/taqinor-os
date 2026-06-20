@@ -208,7 +208,15 @@ export interface PitchedLiveResult {
   pitchDeg: number;
   facingAzimuthDeg: number;
   offSouthDeg: number;
+  /** Pan orienté NORD : production quasi nulle → on ne pose rien (honnêteté). */
   northFacing: boolean;
+  /**
+   * W74 — AUCUNE config viable : tout le balayage pose 0 panneau / 0 kWh (pan trop petit
+   * pour un seul panneau, ou contraint à néant) SANS être un pan nord. Distinct de
+   * `northFacing` : ici le toit est simplement trop petit/contraint. L'UI doit afficher
+   * un message honnête plutôt qu'un faux « 0 panneau gagnant ». Optionnel/rétro-compatible.
+   */
+  noViableConfig: boolean;
   winner: PitchedLiveEval;
   globalWinner: PitchedLiveEval;
   recommended: {
@@ -265,6 +273,9 @@ export function solveLivePitched(
   const { winner, rows } = solvePitchedConstrained(ctx, locks);
   const offSouthDeg = winner.pack.offSouthDeg;
   const northFacing = winner.pack.northFacing;
+  // W74 — pan trop petit / contraint à néant SANS être nord : le gagnant ne loge AUCUN
+  // panneau (fit 0 → 0 kWh). Distinct du pan nord (production quasi nulle par orientation).
+  const noViableConfig = !northFacing && (winner.fitCount <= 0 || winner.annualKwh <= 0);
 
   // Optimum GLOBAL = axes libres, besoin dérivé de la facture (cible de « Réinitialiser »).
   let globalWinner = winner;
@@ -285,6 +296,7 @@ export function solveLivePitched(
     facingAzimuthDeg,
     offSouthDeg,
     northFacing,
+    noViableConfig,
     winner,
     globalWinner,
     recommended: {
@@ -293,6 +305,6 @@ export function solveLivePitched(
       need: neededPanels,
     },
     rows,
-    roofLimited: !northFacing && effectiveNeed > 0 && winner.placedCount < effectiveNeed,
+    roofLimited: !northFacing && !noViableConfig && effectiveNeed > 0 && winner.placedCount < effectiveNeed,
   };
 }

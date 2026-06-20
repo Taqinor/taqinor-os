@@ -306,6 +306,13 @@ export interface LiveSolveResult {
   offSouthDeg: number;
   /** Le toit est-il assez tourné pour que « aligné toit » soit un choix réel ? */
   hasAlignedChoice: boolean;
+  /**
+   * W74 — AUCUNE config viable : tout le balayage pose 0 panneau / 0 kWh (toit trop
+   * petit pour un seul panneau, ou contraint à néant). Le « gagnant » dans ce cas n'est
+   * PAS un choix réel — l'UI doit afficher un message honnête plutôt qu'un faux
+   * « 0 panneau gagnant ». Champ optionnel/rétro-compatible (défaut false).
+   */
+  noViableConfig: boolean;
   /** Gagnant CONTRAINT (axes verrouillés tenus, axes AUTO re-résolus). */
   winner: LiveConfigEval;
   /** Gagnant GLOBAL (tous axes libres, besoin = facture) — l'état « Réinitialiser ». */
@@ -396,6 +403,12 @@ export function solveLive(
     need: neededPanels, // libérer le besoin → couvrir la facture
   };
 
+  // W74 — AUCUNE config viable : le gagnant ne loge AUCUN panneau (fit 0 → 0 kWh). Le
+  // « gagnant » n'est alors qu'un repli de départage (moins de matériel), pas un vrai
+  // choix : on le signale honnêtement pour que l'UI affiche « configuration non viable »
+  // au lieu d'un faux 0-panneau gagnant.
+  const noViableConfig = winner.fitCount <= 0 || winner.annualKwh <= 0;
+
   return {
     target,
     neededPanels,
@@ -403,9 +416,10 @@ export function solveLive(
     roofAlignedAzimuthDeg: roofAz,
     offSouthDeg,
     hasAlignedChoice,
+    noViableConfig,
     winner,
     globalWinner,
     recommended,
-    roofLimited: effectiveNeed > 0 && winner.placedCount < effectiveNeed,
+    roofLimited: !noViableConfig && effectiveNeed > 0 && winner.placedCount < effectiveNeed,
   };
 }
