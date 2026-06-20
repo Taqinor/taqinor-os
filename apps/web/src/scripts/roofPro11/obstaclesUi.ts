@@ -280,14 +280,19 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   });
 
   // — Édition de l'obstacle sélectionné (saisie exacte + boutons + / − + suppr.) —
+  // W81 — on borne (clampDim, snap <0,5 → 0,5) et on recalcule à la VALIDATION
+  // (`change` : blur ou Entrée), JAMAIS à chaque frappe. Sur `input`, écraser un
+  // « 0. » ou un « 0,7 » en cours de saisie le ramenait à 0,5 au milieu de la
+  // frappe et relançait le re-pavage. Aucune saisie n'est rejetée : la valeur
+  // tapée vit librement dans le champ et n'est bornée qu'au commit.
   const parseNum = (s: string): number => parseFloat((s || '').replace(/\s/g, '').replace(',', '.'));
-  obsLengthEl?.addEventListener('input', () => {
+  obsLengthEl?.addEventListener('change', () => {
     if (!ctx.selectedObsId) return;
     const L = parseNum(obsLengthEl.value);
     if (!Number.isFinite(L)) return;
     updateSelected((o) => resizedObstacle(o, L, o.widthM));
   });
-  obsWidthEl?.addEventListener('input', () => {
+  obsWidthEl?.addEventListener('change', () => {
     if (!ctx.selectedObsId) return;
     const w = parseNum(obsWidthEl.value);
     if (!Number.isFinite(w)) return;

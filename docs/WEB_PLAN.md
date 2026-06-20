@@ -285,7 +285,7 @@ lanes. Update the matching `apps/web/*_NOTES.md` when a task changes documented 
   mirroring the mouse path, gated by `layoutMode`, with a dedicated `LAYOUT_GRAB_PX` (don't overload the
   obstacle `OBSTACLE_TAP_PX`). Accept: a panel can be dragged to a valid cell on touch. File:
   `roof-tool-pro11.ts`.
-- [ ] **W81 — obstacles: clamp dimensions on commit, not per keystroke.** The numeric length/width inputs
+- [x] **W81 — obstacles: clamp dimensions on commit, not per keystroke.** The numeric length/width inputs
   fire `clampDim` on every `input`, rewriting "0." / a leading-zero "0.7" to 0.5 mid-keystroke and
   recalc-ing the scene. Clamp on `change`/`blur` (or skip while focused); keep the commit clamp. Accept:
   typing intermediate values no longer snaps the obstacle or fights the user. Files: `roof-tool-pro11.ts`,
