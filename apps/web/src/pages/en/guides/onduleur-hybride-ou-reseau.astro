@@ -1,8 +1,9 @@
 ---
 /**
  * EN — Guide (W67): Hybrid inverter or grid-tied inverter? Faithful translation
- * of /guides/onduleur-hybride-ou-reseau ; no figure beyond the already
- * published ranges (5–30 kW), no price/cost claim. Internal links use
+ * of /guides/onduleur-hybride-ou-reseau, synced to the fact-corrected FR (the
+ * Law 82-21 section: 20% injection cap, 0.18–0.21 buy-back vs 0.90–1.66
+ * purchase). Figures mirror the FR 1:1 — no new claim. Internal links use
  * localizeNavHref (EN/AR if available, else the existing FR page — never a dead
  * link). FR untouched.
  */
@@ -57,26 +58,43 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">The hybrid inverter (Deye)</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Answer "yes" to storage, and you're on a hybrid. The Deye units (single-phase and
-        three-phase, from 5 to 30 kW) drive the panels and a battery at the same time, with
-        built-in CAN BMS management. They make sense when you want to set aside the day's energy to
-        consume it in the evening, or keep the power on during an outage.
+        The hybrid is the inverter that knows how to manage a battery. The Deye units (single-phase
+        and three-phase, from 5 to 30 kW) drive the panels and the storage at once, with built-in
+        CAN BMS management. Their appeal is twofold: shifting energy from the day to the evening, and
+        switching to standalone mode within a few milliseconds during an outage — something a
+        grid-tied inverter never does (for safety, it disconnects automatically the moment the grid
+        drops). That versatility has a cost — you have to add the battery itself — and a storage
+        inverter converts energy with one more step than a plain grid-coupling inverter.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">The grid-tied inverter (Huawei SUN2000)</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Answer "no", and the grid-tied inverter is enough. The Huawei SUN2000 units (string type)
-        are cut out for self-consumption without a battery, from residential to commercial
-        rooftops. It's the option when your consumption is mostly during the day: no storage to pay
-        for energy you already use as the sun goes.
+        The grid-tied inverter does one thing, but does it very well: send solar production to your
+        appliances and the grid, with no storage to amortise. The Huawei SUN2000 units (string type)
+        are built for this direct self-consumption, from homes to commercial rooftops. Less hardware,
+        fewer conversions, fewer things that can fail: it's the simplest, most efficient solution as
+        long as your consumption follows the sun. The downside is well known — no back-up during an
+        outage, and nothing to offer in the evening beyond what the panels produce in that instant.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Why Law 82-21 tips the balance</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        You might think a grid-tied inverter "makes up for it" by selling back all its surplus. Law
+        82-21 says the opposite. Injection is capped at 20% of your annual production, and that
+        surplus is bought back at only 0.18 to 0.21 DH/kWh — whereas you buy that same kWh from the
+        grid at between 0.90 and 1.66 DH/kWh. In other words, the energy you do not consume on site
+        is worth little. That reinforces the logic of both inverters: on a daytime profile, the
+        grid-tied unit already captures most of that value through direct self-consumption; on an
+        evening profile, it's the hybrid that recovers what exporting would barely pay for, by
+        shifting it into your peak hours.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">How we choose</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         The choice of inverter is therefore not the first, it's the last: it follows from the
-        decision on storage, which itself follows from your consumption profile. We work back up the
-        chain in the right order — your bill first, the hardware after — instead of starting from a
-        model decided in advance.
+        decision on storage, which itself follows from your consumption profile and the stability of
+        your grid. We work back up the chain in the right order — your bill and your consumption
+        hours first, the hardware after — instead of starting from a model decided in advance.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Do you need batteries? →</a>

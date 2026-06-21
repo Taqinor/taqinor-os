@@ -50,26 +50,45 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">L’onduleur hybride (Deye)</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Répondez « oui » au stockage, et vous êtes sur un hybride. Les Deye (monophasés et
-        triphasés, de 5 à 30 kW) pilotent en même temps les panneaux et une batterie, gestion CAN
-        BMS intégrée. Ils ont du sens quand vous voulez mettre de côté l’énergie du jour pour la
-        consommer le soir, ou garder le courant pendant une coupure.
+        L’hybride est l’onduleur qui sait gérer une batterie. Les Deye (monophasés et triphasés, de
+        5 à 30 kW) pilotent en même temps les panneaux et le stockage, gestion CAN BMS intégrée. Leur
+        intérêt est double : déplacer l’énergie du jour vers le soir, et basculer en mode autonome en
+        quelques millisecondes lors d’une coupure, ce qu’un onduleur réseau ne fait jamais (par
+        sécurité, il se déconnecte automatiquement quand le réseau tombe). Cette polyvalence a un
+        prix — il faut ajouter la batterie elle-même — et un onduleur de stockage convertit l’énergie
+        avec une étape de plus qu’un simple onduleur de couplage réseau.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">L’onduleur réseau (Huawei SUN2000)</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Répondez « non », et l’onduleur réseau suffit. Les Huawei SUN2000 (de type string) sont
-        taillés pour l’autoconsommation sans batterie, du résidentiel aux toitures tertiaires.
-        C’est l’option quand votre consommation est surtout diurne : pas de stockage à payer pour
-        une énergie que vous utilisez déjà au fil du soleil.
+        L’onduleur réseau fait une seule chose, mais très bien : envoyer la production solaire vers
+        vos appareils et le réseau, sans stockage à amortir. Les Huawei SUN2000 (de type string) sont
+        taillés pour cette autoconsommation directe, du résidentiel aux toitures tertiaires. Moins de
+        matériel, moins de conversions, moins de pannes possibles : c’est la solution la plus simple
+        et la plus efficace tant que votre consommation suit le soleil. Le revers est connu — pas de
+        secours pendant une coupure, et rien à offrir le soir au-delà de ce que produisent les
+        panneaux à l’instant T.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Pourquoi la loi 82-21 pèse dans la balance</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        On pourrait croire qu’un onduleur réseau « se rattrape » en revendant tout le surplus. La loi
+        82-21 dit l’inverse. L’injection est plafonnée à 20 % de votre production annuelle, et ce
+        surplus n’est racheté que 0,18 à 0,21 DH/kWh — quand vous rachetez ce même kWh au réseau entre
+        0,90 et 1,66 DH/kWh. Autrement dit, l’énergie que vous ne consommez pas sur place a peu de
+        valeur. Cela renforce la logique des deux onduleurs : sur un profil diurne, le réseau capte
+        déjà l’essentiel de cette valeur en autoconsommation directe ; sur un profil du soir, c’est
+        l’hybride qui récupère ce que l’export ne paierait quasiment pas, en le décalant vers vos
+        heures de pointe.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Comment on choisit</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Le choix de l’onduleur n’est donc pas le premier, c’est le dernier : il découle de la
-        décision sur le stockage, qui découle elle-même de votre profil de consommation. On remonte
-        la chaîne dans le bon sens — votre facture d’abord, le matériel ensuite — au lieu de partir
-        d’un modèle décidé à l’avance.
+        décision sur le stockage, qui découle elle-même de votre profil de consommation et de la
+        stabilité de votre réseau. On remonte la chaîne dans le bon sens — votre facture et vos
+        heures de consommation d’abord, le matériel ensuite — au lieu de partir d’un modèle décidé à
+        l’avance.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Faut-il des batteries ? →</a>

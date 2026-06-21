@@ -1,9 +1,10 @@
 ---
 /**
  * EN — Guide (W67): Do you need batteries? Faithful translation of
- * /guides/faut-il-des-batteries ; no figure, no price, no payback. Internal
- * links use localizeNavHref (EN/AR if available, else the existing FR page —
- * never a dead link). FR untouched.
+ * /guides/faut-il-des-batteries, synced to the fact-corrected FR (LFP cost,
+ * buy-back vs purchase spread, payback). Figures mirror the FR 1:1 — no new
+ * claim. Internal links use localizeNavHref (EN/AR if available, else the
+ * existing FR page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
 import V2Enhance from '../../../components/V2Enhance.astro';
@@ -70,13 +71,43 @@ const jsonLd = {
         pays for itself.
       </p>
 
+      <h2 class="display v2-section-title mt-12 text-white">What a battery costs, and what a stored kWh is worth</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        "Often no" is not a cautious posture, it's a conclusion you can put figures on. On the
+        Moroccan market, an LFP battery — the chemistry we recommend for our climate — sits at
+        around 3,000 to 4,000 DH per kWh of installed capacity. A bank of 10 usable kWh therefore
+        comes to roughly 30,000 to 40,000 DH, on top of the panels and the hybrid inverter. That
+        item is only justified if it saves you more than it costs.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        And that is exactly where the trade-off is decided. Under Law 82-21, the surplus you send
+        back to the grid is bought from you at 0.18 to 0.21 DH/kWh, whereas you <em>buy</em> that
+        same kWh back at between 0.90 and 1.66 DH/kWh depending on your bracket. A kWh you consume
+        at home — directly during the day, or stored for the evening — is therefore worth four to
+        nine times an exported kWh. A battery only carries value when it shifts your consumption
+        from the day to the evening: on a home that is already daytime, there is almost nothing to
+        shift, and the storage pays out without earning its keep.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">How long before it pays for itself</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        In concrete terms, a well-sized residential installation pays back in 5 to 7 years without
+        storage. Adding a battery stretches that by 1 to 3 years, depending on your profile and the
+        capacity chosen. For genuine night-time consumption, that extra cost is recovered and the
+        battery comes out ahead; for a home that lives by day, it simply adds up with nothing in
+        return. The good news is that the hardware keeps pace: an LFP cell lasts about 6,000 cycles,
+        warrantied 10 years at no less than 70% of its capacity — enough longevity to pay off
+        storage that is <em>correctly</em> sized, never to make a bank oversized "for peace of mind"
+        worthwhile.
+      </p>
+
       <h2 class="display v2-section-title mt-12 text-white">What your consumption curve says</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         The answer is therefore not in a catalogue, it's in your meter reading. We look at the
         hours when your meter turns the most, and it's that curve that points to — or away from —
-        a battery. Adding storage "just to be safe" costs a lot and returns nothing if your
-        consumption is daytime; the right reflex is to cover most of the bill for the least
-        money invested.
+        a battery. Adding storage "just to be safe" ties up tens of thousands of dirhams and
+        returns nothing if your consumption is daytime; the right reflex is to cover most of the
+        bill for the least money invested.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>

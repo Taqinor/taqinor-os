@@ -1,9 +1,12 @@
 ---
 /**
  * Guide (W6) — Loi 82-21 expliquée simplement. Reprend en langage clair le
- * contenu de regime.ts et de la page loi-82-21. AUCUN chiffre hors des seuils
- * de la loi elle-même (11 kW, 5 MW) et de la date (9 juin 2026). Pas de
- * claim tarif/coût.
+ * contenu de regime.ts et de la page loi-82-21. Seuils alignés 1:1 sur
+ * regime.ts / loi-82-21.astro / la FAQ : < 11 kW BT (déclaration), jusqu'à
+ * 5 MW (accord de raccordement), >= 5 MW (autorisation) ; décret 2-25-100 en
+ * vigueur le 9 juin 2026 ; Article 33 = fenêtre de 18 mois. Autorités citées
+ * (gestionnaire de réseau / ONEE / régies / ANRE) déjà établies ailleurs sur
+ * le site (regime.ts, estimatorBrain, blog). Pas de tarif/coût.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -34,7 +37,7 @@ const regimes = [
   {
     n: '02',
     title: 'Accord de raccordement',
-    body: 'Au-dessus du seuil de déclaration et jusqu’à 5 MW, dès que l’on injecte sur le réseau en basse ou moyenne tension, il faut décrocher un accord de raccordement auprès du gestionnaire avant de démarrer. C’est le terrain habituel des sites professionnels.',
+    body: 'Au-dessus du seuil de déclaration et jusqu’à 5 MW, dès que l’on injecte sur le réseau en basse ou moyenne tension, il faut décrocher un accord de raccordement auprès du gestionnaire de réseau avant de démarrer — l’ONEE dans la plupart des régions, ou la régie locale là où il y en a une (Lydec à Casablanca, Redal à Rabat, Amendis à Tanger). C’est le terrain habituel des sites professionnels.',
   },
   {
     n: '03',
@@ -81,10 +84,13 @@ const regimes = [
 
       <h2 class="display v2-section-title mt-14 text-white">Et si mon installation existe déjà ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        La loi n’oublie pas les installations posées avant elle : son Article 33 ouvre, depuis le
-        9 juin 2026, une fenêtre de 18 mois pour les mettre en règle. Le calcul est binaire — une
-        installation régularisée dans ce délai est juridiquement à l’abri ; une installation
-        laissée hors des clous reste en situation irrégulière, avec ce que cela suppose de risques.
+        La loi n’oublie pas les installations posées avant elle. Son Article 33 ouvre, depuis le
+        9 juin 2026, une fenêtre de 18 mois pour les mettre en règle : c’est le délai dont vous
+        disposez pour déposer le dossier qui manque — déclaration, accord de raccordement ou
+        autorisation, selon le régime qui vous concerne ci-dessus. Régularisée dans ce délai, une
+        installation existante rejoint le cadre légal comme une neuve. Passé la fenêtre, elle reste
+        en situation irrégulière au regard de la loi 82-21, avec les sanctions que cela suppose. Il
+        n’y a donc rien à gagner à attendre, et la démarche se lance dès aujourd’hui.
       </p>
       <div class="mt-8 flex flex-wrap gap-3">
         <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identifier mon régime en 3 questions →</a>

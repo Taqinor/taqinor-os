@@ -41,35 +41,35 @@ const jsonLd = {
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Garder l'électricité pendant les coupures</h1>
       <p class="v2-lead mt-6 text-lune-soft">
-        Avoir des panneaux solaires sur le toit ne garantit pas de garder le courant en cas de
-        coupure. Tout dépend du type d'onduleur et de la présence ou non d'une batterie. Ce guide
-        explique comment fonctionne le <strong>secours EPS</strong> d'un onduleur hybride —
-        et démonte l'idée reçue qui fait le plus de mal : croire que « secours » est synonyme
-        de « off-grid ».
+        La scène est familière : l'ONEE coupe en pleine journée, le soleil tape sur le toit, et
+        pourtant tout s'éteint chez vous comme chez les voisins. Beaucoup de propriétaires
+        découvrent à ce moment-là que leurs panneaux ne servent à rien pendant une panne. Ce
+        guide explique pourquoi, et ce qu'il faut ajouter — un onduleur hybride, une batterie,
+        des sorties <strong>EPS</strong> — pour que la prochaine coupure ne vous laisse pas dans
+        le noir.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Pourquoi un on-grid standard s'éteint pendant une panne</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Soleil au-dessus du toit, maison éteinte : que se passe-t-il ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Un onduleur on-grid classique est conçu pour injecter de l'électricité <em>en phase</em>
-        avec le réseau. Dès que le réseau disparaît, l'onduleur se coupe automatiquement — c'est
-        une obligation légale et de sécurité appelée <strong>anti-îlotage</strong> : il ne doit
-        jamais continuer à produire sur un réseau déclaré hors tension, pour protéger les
-        techniciens qui interviennent sur les lignes. Résultat : si le réseau tombe, vos panneaux
-        s'arrêtent avec lui, même en plein soleil. Pour garder le courant pendant une coupure, il
-        faut un onduleur hybride avec une sortie de secours dédiée.
+        avec le réseau. Dès que le réseau disparaît, il se coupe automatiquement. Cette obligation
+        légale et de sécurité s'appelle l'<strong>anti-îlotage</strong> : l'onduleur ne doit jamais
+        continuer à produire sur une ligne déclarée hors tension, sous peine de mettre en danger
+        les techniciens qui interviennent dessus. C'est pour cela que vos panneaux s'arrêtent avec
+        le réseau, même en plein soleil. Pour garder le courant pendant une coupure, il faut un
+        onduleur hybride doté d'une sortie de secours dédiée.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Secours ≠ off-grid : le mythe le plus courant</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Garder le courant n'est pas devenir autonome</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        La confusion est fréquente : beaucoup pensent que « tenir pendant une coupure » signifie
-        être entièrement autonome du réseau — un système off-grid capable d'alimenter toute la
-        maison indéfiniment. C'est faux. Le mode secours d'un onduleur hybride, c'est une
+        Beaucoup pensent que « tenir pendant une coupure » revient à se passer entièrement du
+        réseau, comme un système off-grid qui alimenterait toute la maison indéfiniment. Ce
+        n'est pas ce que fait le mode secours d'un onduleur hybride. Il crée une
         <strong>île électrique limitée</strong> : seuls les circuits branchés sur les
         <em>sorties EPS</em> (Emergency Power Supply) restent alimentés, et uniquement tant que
-        la batterie contient de l'énergie. Ce n'est pas un remplacement complet du réseau ; c'est
-        la garantie que le réfrigérateur, les lumières essentielles ou le routeur Wi-Fi restent
-        actifs pendant l'interruption. La nuance est fondamentale pour dimensionner correctement
-        ce dont vous avez besoin.
+        la batterie contient de l'énergie. L'objectif n'est pas de remplacer le réseau, mais de
+        garder en vie le réfrigérateur, les lumières essentielles ou le routeur Wi-Fi le temps
+        de l'interruption. Cette nuance change tout au moment de dimensionner l'installation.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Les sorties EPS : circuits de secours de l'onduleur hybride</h2>
@@ -88,8 +88,8 @@ const jsonLd = {
       <p class="v2-lead mt-5 text-lune-soft">
         Les onduleurs Deye de la série SG (monophasé SG03LP1, triphasé SG04LP3) intègrent le
         mode secours nativement, sans boîtier externe. Quand le réseau tombe, la bascule vers
-        les sorties EPS est <strong>≈ quasi-instantanée (~4–10 ms, type UPS)</strong> — un
-        délai si court que la plupart des appareils électroniques sensibles ne s'en aperçoivent
+        les sorties EPS est <strong>≈ quasi-instantanée (~4–10 ms, type UPS)</strong>. Ce délai
+        est si court que la plupart des appareils électroniques sensibles ne s'en aperçoivent
         pas, à condition qu'ils soient branchés sur les circuits EPS. La batterie utilisée est
         basse tension 48 V LFP, et l'onduleur propose six fenêtres TOU (Time of Use)
         configurables pour charger la batterie sur les heures creuses et maximiser l'autonomie
@@ -101,27 +101,27 @@ const jsonLd = {
         peuvent endommager les équipements électroniques ou interrompre des processus sensibles.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Huawei SUN2000 + Backup Box : efficace, mais avec une nuance de bascule</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Huawei SUN2000 + Backup Box : un boîtier séparé à prévoir</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         La gamme Huawei SUN2000 (L1 monophasé, M1 triphasé) associée aux batteries LUNA2000
         offre une excellente intégration et un monitoring avancé. Pour la fonction secours,
         Huawei requiert un équipement séparé : la <strong>Backup Box</strong>. Une fois
-        installée, elle prend en charge les circuits de secours avec une bascule en
-        <strong>moins de 3 secondes</strong> — une interruption brève mais perceptible, qui
-        suffit cependant pour la majorité des usages domestiques (lumières, appareils en veille,
-        réfrigérateur).
+        installée, elle prend en charge les circuits de secours avec une bascule
+        <strong>très rapide</strong>, bien assez pour la majorité des usages domestiques
+        (lumières, appareils en veille, réfrigérateur). La vraie différence avec Deye n'est pas
+        la vitesse mais le fait qu'un boîtier supplémentaire soit nécessaire.
       </p>
       <p class="v2-lead mt-4 text-lune-soft">
-        Point important à retenir : le modèle <strong>SUN2000 M0 triphasé ne gère aucune
-        fonction de secours</strong>, quelle que soit la configuration. Si la continuité
-        d'alimentation est un critère, il faut impérativement choisir le M1 ou se tourner
-        vers une autre gamme.
+        Un point à vérifier au moment du choix : selon le modèle et le firmware, le
+        <strong>SUN2000 M0 triphasé peut ne pas proposer de fonction de secours</strong>. Si la
+        continuité d'alimentation compte pour vous, confirmez la compatibilité backup de la
+        référence exacte, ou orientez-vous vers le M1 ou une autre gamme.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Hybride sans batterie : le « battery-ready »</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Il est tout à fait possible d'installer un onduleur hybride sans batterie dans un premier
-        temps — c'est ce qu'on appelle une configuration <em>battery-ready</em>. L'onduleur
+        temps. C'est ce qu'on appelle une configuration <em>battery-ready</em>. L'onduleur
         fonctionne alors comme un on-grid classique : il produit, autoconsomme et, si la loi
         82-21 le permet, injecte un surplus sur le réseau. La différence, c'est qu'il est
         dimensionné pour accueillir des batteries plus tard, sans tout recâbler. En revanche,

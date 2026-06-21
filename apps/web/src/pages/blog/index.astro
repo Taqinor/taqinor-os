@@ -17,7 +17,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 
 const posts = (
-  await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft : true))
+  await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft && data.pubDate.getTime() <= Date.now() : true))
 ).sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
 
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });

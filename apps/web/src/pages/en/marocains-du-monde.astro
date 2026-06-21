@@ -28,8 +28,8 @@ const contactSim = L('/contact') + '#simulateur';
 const wa = whatsappLink(WHATSAPP_LEADS, 'Hello, I am a Moroccan living abroad and I would like to study a solar installation for my villa in Morocco.');
 
 const etapes = [
-  { n: '1', body: 'A 60-second assessment gives you a first range, from your sofa in Paris, Montreal or Dubai.' },
-  { n: '2', body: 'You talk live on WhatsApp with the technical team. The roof photos are yours to send — or a relative back home sends them; we orchestrate the rest remotely.' },
+  { n: '1', body: 'A 60-second assessment gives you a first range, wherever you live and whatever the time difference.' },
+  { n: '2', body: 'You talk live on WhatsApp with the technical team. The roof photos are yours to send — or a relative back home sends them; we handle the rest remotely.' },
   { n: '3', body: 'We come on site for the technical visit and the full study, free of charge, then hand you the quote. At no point is your presence in Morocco required to get started.' },
 ];
 ---
@@ -88,6 +88,56 @@ const etapes = [
         </div>
         <div class="v2-rise">
           <WhatsAppMock />
+        </div>
+      </div>
+    </section>
+
+    <!-- The real worries when you order from far away -->
+    <section class="border-b border-white/10 px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">What holds you back, unspoken</p>
+        <h2 class="display v2-section-title mt-5 max-w-2xl text-white">Three fears nobody says out loud</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Entrusting a project you can't watch over yourself, paying a large sum from another
+          country, touching the house that carries a family story: these hesitations are
+          legitimate. Here is how we take them seriously, without empty promises.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:0">
+            <p class="tech-label text-brass-300">Trust</p>
+            <h3 class="display mt-2 text-xl text-white">&ldquo;I won't be there to check&rdquo;</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              It's the most common worry, and the most justified. Our answer isn't a speech, it's
+              safeguards: a written, itemised quote before a single dirham changes hands, payment
+              staged against the progress of the work rather than all up front, and the freedom for
+              you to appoint someone close — a brother, a cousin, a trusted neighbour — to come and
+              witness the install in your place. You only settle the balance once production is read
+              off Deye Cloud.
+            </p>
+          </div>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:1">
+            <p class="tech-label text-brass-300">Payment</p>
+            <h3 class="display mt-2 text-xl text-white">&ldquo;How do I pay from abroad?&rdquo;</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              The quote is drawn up in dirhams, the real cost of the work in Morocco — you know
+              exactly what you're committing to, with no hidden conversion. Many of our clients abroad
+              then think in euros or Canadian dollars depending on the exchange rate of the moment,
+              and rely on a dirham account opened here or on the person who represents them back home.
+              We stay transparent about the amounts and their schedule; we don't play the role of a
+              bank and never touch your currency exchange.
+            </p>
+          </div>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:2">
+            <p class="tech-label text-brass-300">The house</p>
+            <h3 class="display mt-2 text-xl text-white">&ldquo;It's my parents' house&rdquo;</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              A villa back home isn't just a roof: it's often the one where the family gathers in
+              summer, the one that took years to build, sometimes the one of a parent who is no longer
+              there. We work on it with that respect. Careful fixings, clean cabling, nothing that
+              spoils the façade — and the assurance that when you come back from holiday you find an
+              improved home, not a job to redo.
+            </p>
+          </div>
         </div>
       </div>
     </section>

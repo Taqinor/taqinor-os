@@ -3,16 +3,18 @@ title: "Rentabilité et retour sur investissement du solaire par ville marocaine
 description: "Payback 5–7 ans, production par ville et tarifs ONEE : tout ce qu'il faut savoir sur la rentabilité du solaire au Maroc."
 pubDate: 2026-06-21
 tags: ["rentabilité", "ROI", "production", "villes"]
-author: "Taqinor"
+author: "Reda Kasri"
 ogSlug: "residentiel"
 draft: false
 ---
 
+Quand un client me demande si « le solaire est rentable chez lui », ma première question n'est pas le prix. C'est : dans quelle ville, et quelle est votre tranche ONEE ? Ces deux paramètres pèsent souvent plus que la marque des panneaux. Voici comment je raisonne, avec les chiffres que j'ai sous la main.
+
 ## Production solaire par ville : combien de kWh par kWc installé ?
 
-La rentabilité d'une installation photovoltaïque dépend d'abord du **rendement de site** — exprimé en kWh produits par kWc installé et par an (PVOUT). Ce chiffre varie selon l'ensoleillement local, l'inclinaison des panneaux et les pertes système (câblage, onduleur, poussière…).
+Tout commence par le **rendement de site**, c'est-à-dire le nombre de kWh produits par kWc installé et par an (on l'appelle PVOUT). Il dépend de l'ensoleillement local, de l'inclinaison des panneaux et des pertes système : câblage, onduleur, poussière sur le verre.
 
-Le tableau ci-dessous présente des fourchettes **estimées** calculées à partir des données PVGIS, Global Solar Atlas et Solargis, avec un taux de perte système de ~14 % et une orientation plein sud. Le seul point **confirmé** avec précision est Marrakech (étude MDPI Resources 2024, GTI mesuré).
+Le tableau ci-dessous donne des fourchettes **estimées**, calculées à partir des données PVGIS, Global Solar Atlas et Solargis, avec un taux de perte système d'environ 14 % et une orientation plein sud. Une seule valeur est **confirmée** avec précision : Marrakech (étude MDPI Resources 2024, GTI mesuré).
 
 | Ville | PVOUT estimé (kWh/kWc/an) | Inclinaison optimale (plein sud) | Fiabilité |
 |---|---|---|---|
@@ -58,7 +60,7 @@ C'est le point clé que beaucoup de consommateurs ignorent :
 
 **Exemple concret :** un foyer qui consomme 250 kWh en juillet ne paie pas les 100 premiers kWh à 0,90 DH puis les suivants à 1,07, 1,18… Il paie les 250 kWh *entiers* au tarif 201–300 kWh, soit environ 1,45 DH/kWh (une tolérance de 10 kWh par tranche atténue les dépassements de justesse).
 
-**Ce que le solaire supprime, c'est précisément ce tarif marginal élevé appliqué à la totalité de la facture.** Un foyer en tranche 301–500 kWh qui réduit sa consommation réseau de 200 kWh par mois grâce au solaire économise ces 200 kWh au tarif *marginal* de 1,45 DH — et non au tarif moyen apparent de sa facture précédente. C'est pourquoi la rentabilité est meilleure pour les gros consommateurs.
+Ce que le solaire supprime, c'est précisément ce tarif marginal élevé appliqué à la totalité de la facture. Prenez un foyer en tranche 301–500 kWh qui retire 200 kWh par mois du réseau grâce à ses panneaux : il économise ces 200 kWh au tarif *marginal* de 1,45 DH, et non au tarif moyen apparent de son ancienne facture. C'est toute la raison pour laquelle la rentabilité grimpe chez les gros consommateurs, et c'est aussi ce que je vérifie en premier sur une facture avant de chiffrer quoi que ce soit.
 
 ---
 

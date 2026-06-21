@@ -1,9 +1,10 @@
 ---
 /**
  * AR — Guide (W67, RTL): Do you need batteries? Faithful Arabic translation of
- * /guides/faut-il-des-batteries ; no figure, no price, no payback. Internal
- * links use localizeNavHref (EN/AR if available, else the existing FR page —
- * never a dead link). FR untouched.
+ * /guides/faut-il-des-batteries, including the figures the FR added (LFP cost,
+ * surplus buy-back vs grid tariff under loi 82-21, payback, LFP cycles/warranty).
+ * Internal links use localizeNavHref (EN/AR if available, else the existing FR
+ * page — never a dead link). FR untouched.
  */
 import Layout from '../../../layouts/Layout.astro';
 import V2Enhance from '../../../components/V2Enhance.astro';
@@ -64,6 +65,31 @@ const jsonLd = {
         الاستخدام مساءً له معنى اقتصادي. الحالة الثانية، استمرارية الخدمة — إبقاء بعض المعدات
         مُغذّاة أثناء انقطاع. في هاتين الحالتين، تكفّ البطارية عن كونها كماليّة لتصبح بنداً
         يسترجع كلفته.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">كم تكلّف البطارية، وكم يساوي kWh مخزَّن</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        «غالباً لا» ليست تحفّظاً، بل خلاصة تُحسَب بالأرقام. في السوق المغربية، تتراوح كلفة
+        بطارية LFP — وهي الكيمياء الموصى بها لمناخنا — حوالي 3 000 إلى 4 000 درهم لكل kWh من السعة
+        المُركّبة. وعليه، تمثّل مجموعة بسعة مفيدة قدرها 10 kWh نحو 30 000 إلى 40 000 درهم، فوق ثمن
+        الألواح والعاكس الهجين. هذا البند لا يُبرَّر إلا إن وفّر لك أكثر ممّا يكلّفك.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        وهنا بالضبط يُحسَم الأمر. منذ القانون 82-21، يُشترى منك الفائض الذي تعيده إلى الشبكة بـ
+        0,18 إلى 0,21 درهم/kWh، بينما <em>تشتري</em> أنت نفس الـ kWh بين 0,90 و1,66 درهم/kWh حسب
+        شطرك. ومن ثَمّ فإن kWh تستهلكه عندك — مباشرة نهاراً، أو مخزَّناً للمساء — يساوي ما بين أربعة
+        وتسعة أضعاف kWh مُصدَّر. للبطارية قيمة فقط حين تنقل استهلاكك من النهار إلى المساء: أمّا بيت
+        نهاري أصلاً، فلا يكاد يوجد فيه ما يُنقَل، فيؤدّي التخزين ثمنه دون مردود.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">كم تستغرق حتى تسترجع كلفتها</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        عملياً، تركيبة سكنية مُحسَنة الحجم تسترجع كلفتها في 5 إلى 7 سنوات دون تخزين. إضافة بطارية
+        تطيل هذا الأجل بـ 1 إلى 3 سنوات، حسب ملفّك والسعة المختارة. لاستهلاك ليلي حقيقي، تُسترجَع
+        هذه الزيادة وتنتهي البطارية رابحة؛ أمّا لبيت يُعاش نهاراً، فتُضاف دون مقابل. والخبر الطيّب
+        أن العتاد يساعد على ذلك: بطارية LFP تصمد لنحو 6 000 دورة، مضمونة 10 سنوات عند 70 % على الأقل من
+        سعتها — عمرٌ يكفي لاسترجاع كلفة تخزين <em>مضبوط</em> الحجم، لا لتربيح مجموعة مُبالَغ في
+        حجمها «احتياطاً».
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">ما يقوله منحنى استهلاكك</h2>
