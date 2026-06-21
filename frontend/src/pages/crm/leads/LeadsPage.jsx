@@ -22,11 +22,12 @@ import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
+import CarteView from './views/CarteView'  // FG37
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
+const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte']  // FG37
 
 // Vues enregistrées (N79, LOCAL uniquement) : nom → { filters, view }.
 function loadSavedViews() {
@@ -460,6 +461,13 @@ export default function LeadsPage() {
             {...viewProps}
             totalLeads={leads.length}
             onClearFilters={() => setFilters(EMPTY_FILTERS)}
+          />
+        )}
+        {/* FG37 — Vue carte : leads par GPS, colorés par étape */}
+        {view === 'carte' && (
+          <CarteView
+            leads={filtered}
+            onOpenLead={onOpenLead}
           />
         )}
       </div>

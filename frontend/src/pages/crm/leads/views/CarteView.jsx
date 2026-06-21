@@ -1,0 +1,137 @@
+/**
+ * FG37 — Lead pipeline map view (CarteView).
+ *
+ * 5ème vue du pipeline CRM. Affiche les leads filtrés qui ont des coordonnées
+ * GPS (gps_lat/gps_lng) sur une carte Leaflet/OpenStreetMap :
+ *   - Épingle colorée par étape (couleurs STAGE_COLORS).
+ *   - Clic → ouvre la fiche complète du lead via onOpenLead.
+ *   - Les leads sans GPS sont listés dans un bandeau sous la carte (0 GPS).
+ *
+ * Réutilise le composant MapView (N85 / src/components/MapView.jsx) qui pilote
+ * Leaflet de façon impérative, sans react-leaflet.
+ */
+import { useMemo, useState } from 'react'
+import MapView, { escapeHtml } from '../../../../components/MapView'
+import { STAGE_COLORS, STAGE_LABELS } from '../../../../features/crm/stages'
+
+// Couleur de l'épingle selon l'étape (fallback gris).
+function pinColor(stage) {
+  return STAGE_COLORS[stage] ?? '#94a3b8'
+}
+
+// HTML du popup Leaflet (tous les champs sont échappés).
+function buildPopupHtml(lead) {
+  const stage = escapeHtml(STAGE_LABELS[lead.stage] ?? lead.stage ?? '—')
+  const tel = lead.telephone ? `<br><span style="color:#6b7280">${escapeHtml(lead.telephone)}</span>` : ''
+  return `<br><em style="font-size:0.85em;color:#6b7280">${stage}</em>${tel}`
+}
+
+export default function CarteView({ leads = [], onOpenLead }) {
+  const [hoveredId, setHoveredId] = useState(null)
+
+  // Séparer les leads avec et sans GPS.
+  const { withGps, withoutGps } = useMemo(() => {
+    const withGps = []
+    const withoutGps = []
+    for (const lead of leads) {
+      const lat = parseFloat(lead.gps_lat)
+      const lng = parseFloat(lead.gps_lng)
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        withGps.push({ lead, lat, lng })
+      } else {
+        withoutGps.push(lead)
+      }
+    }
+    return { withGps, withoutGps }
+  }, [leads])
+
+  // Construire les marqueurs pour MapView.
+  const markers = useMemo(
+    () =>
+      withGps.map(({ lead, lat, lng }) => ({
+        id: lead.id,
+        lat,
+        lng,
+        label: [lead.nom, lead.prenom].filter(Boolean).join(' ') || `Lead #${lead.id}`,
+        color: pinColor(lead.stage),
+        popupHtml: buildPopupHtml(lead),
+        _lead: lead,
+      })),
+    [withGps],
+  )
+
+  const handleMarkerClick = (marker) => {
+    if (onOpenLead) onOpenLead(marker._lead)
+  }
+
+  return (
+    <div className="carte-view">
+      {/* Légende des étapes */}
+      <div className="carte-legend" role="list" aria-label="Légende des étapes">
+        {Object.entries(STAGE_COLORS).map(([key, color]) => (
+          <span key={key} className="carte-legend-item" role="listitem">
+            <span
+              className="carte-legend-dot"
+              style={{ background: color }}
+              aria-hidden="true"
+            />
+            <span className="carte-legend-label">
+              {STAGE_LABELS[key] ?? key}
+            </span>
+          </span>
+        ))}
+        <span className="carte-legend-item carte-legend-total" role="listitem">
+          <strong>{withGps.length}</strong> / {leads.length} avec GPS
+        </span>
+      </div>
+
+      {/* Carte Leaflet */}
+      {withGps.length > 0 ? (
+        <MapView
+          markers={markers}
+          onMarkerClick={handleMarkerClick}
+          height="65vh"
+          fitToMarkers
+        />
+      ) : (
+        <div className="carte-no-gps" role="status" aria-live="polite">
+          <p>
+            Aucun lead dans cette sélection n'a de coordonnées GPS.
+            Renseignez <em>gps_lat</em> / <em>gps_lng</em> dans la fiche lead pour le voir ici.
+          </p>
+        </div>
+      )}
+
+      {/* Bandeau des leads sans GPS */}
+      {withoutGps.length > 0 && (
+        <details className="carte-no-gps-list">
+          <summary>
+            {withoutGps.length} lead{withoutGps.length > 1 ? 's' : ''} sans GPS (non affiché{withoutGps.length > 1 ? 's' : ''})
+          </summary>
+          <ul>
+            {withoutGps.map((lead) => (
+              <li key={lead.id}>
+                <button
+                  type="button"
+                  className="carte-no-gps-btn"
+                  onClick={() => onOpenLead?.(lead)}
+                  onMouseEnter={() => setHoveredId(lead.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  aria-current={hoveredId === lead.id}
+                >
+                  {[lead.nom, lead.prenom].filter(Boolean).join(' ') || `Lead #${lead.id}`}
+                  {lead.stage && (
+                    <span
+                      className="carte-no-gps-stage"
+                      style={{ background: pinColor(lead.stage) }}
+                    />
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  )
+}

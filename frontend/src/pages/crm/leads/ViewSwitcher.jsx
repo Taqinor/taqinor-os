@@ -1,4 +1,4 @@
-// Sélecteur de vue façon Odoo : groupe de 4 boutons-icônes joints.
+// Sélecteur de vue façon Odoo : groupe de 5 boutons-icônes joints (FG37 + Carte).
 const ICON = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
 
 const KanbanIcon = () => (
@@ -35,11 +35,20 @@ const ChartIcon = () => (
   </svg>
 )
 
+// FG37 — Icône carte (épingle de localisation).
+const MapIcon = () => (
+  <svg {...ICON}>
+    <path d="M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7z" />
+    <circle cx="12" cy="9" r="2.5" />
+  </svg>
+)
+
 const VIEWS = [
   { key: 'kanban', label: 'Vue kanban', Icon: KanbanIcon },
   { key: 'liste', label: 'Vue liste', Icon: ListIcon },
   { key: 'calendrier', label: 'Vue calendrier', Icon: CalendarIcon },
   { key: 'graphique', label: 'Vue graphique', Icon: ChartIcon },
+  { key: 'carte', label: 'Vue carte', Icon: MapIcon },  // FG37
 ]
 
 export default function ViewSwitcher({ view, setView }) {
