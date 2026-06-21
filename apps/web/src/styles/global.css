@@ -377,6 +377,36 @@ summary:focus-visible {
   background:
     radial-gradient(60% 130% at 50% 100%, rgb(232 181 74 / 0.16), transparent 70%),
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+  position: relative;
+  overflow: hidden;
+}
+
+/* W208 — Slow shimmer on .seam-lumiere : un reflet qui glisse horizontalement
+   sur la couture, très lent (8 s), gate prefers-reduced-motion.
+   Implémenté en pseudo-élément pour ne pas perturber le background gradient
+   existant. Zéro CLS : position absolute + pointer-events none. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes seamShimmer {
+    0%   { transform: translateX(-120%); }
+    100% { transform: translateX(120%); }
+  }
+
+  .seam-lumiere::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Bande diagonale lumineuse translucide */
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgb(232 181 74 / 0.18) 48%,
+      rgb(255 255 255 / 0.10) 52%,
+      transparent 70%
+    );
+    animation: seamShimmer 8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    pointer-events: none;
+    will-change: transform;
+  }
 }
 
 /* W207 — .reveal and .emerge were defined here but had zero usages across all
@@ -654,4 +684,94 @@ summary:focus-visible {
       var(--color-nuit-800) 0%,
       var(--color-nuit) 60%
     );
+}
+
+/* ─── W214 — RTL Arabic layout corrections ──────────────────────────────────
+   Comprehensive [dir="rtl"] block for Arabic pages. Approach:
+   - Prefer logical CSS properties (border-inline-start, padding-inline-start)
+     so the browser handles LTR/RTL automatically where supported.
+   - Where Tailwind utility classes use physical (border-l-*, pl-*) these
+     overrides flip the decoration to the right side in RTL.
+   - Two-column asymmetric hero grids (lg:grid-cols-[1.1fr_1fr] etc.) are
+     mirrored: the text column, which is first in DOM order, should appear on
+     the RIGHT in RTL, which the browser grid already handles correctly when
+     `direction: rtl` is set on the element — no column swap needed for pure
+     CSS grid. The accent rail (border-l-2 + pl-*) needs the physical flip.
+   - .tech-label uppercase + letter-spacing is suppressed for Arabic since
+     uppercase/wide-tracking is semantically wrong for Arabic script. */
+
+/* — Tech-label: disable uppercase and wide tracking for Arabic ------------- */
+[dir="rtl"] .tech-label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* — Accent rails: flip border-l-* → border-r-* and pl-* → pr-* ----------- */
+/* These target the brass rail pattern used on figures / stats grids.
+   Uses `:where()` to keep specificity low so page-level classes can still win. */
+[dir="rtl"] :where(.border-l-2) {
+  border-left: none;
+  border-inline-start: 2px solid;  /* logical: becomes border-right in RTL */
+}
+
+/* Padding-inline-start for common rail classes (Tailwind physical utilities) */
+[dir="rtl"] :where(.pl-6) {
+  padding-left: 0;
+  padding-inline-start: 1.5rem;
+}
+[dir="rtl"] :where(.pl-10) {
+  padding-left: 0;
+  padding-inline-start: 2.5rem;
+}
+
+/* — .rule-brass : the brass rule + diamond appear before the text.
+   In LTR: diamond on left, rule left, text right.
+   In RTL: reverse the order so diamond + rule appear on the right. */
+[dir="rtl"] .rule-brass {
+  flex-direction: row-reverse;
+  /* ::before (rule) and ::after (diamond) keep their content but swap sides */
+}
+[dir="rtl"] .rule-brass::after {
+  order: 1;   /* diamond: move to the logical end (right) */
+}
+[dir="rtl"] .rule-brass::before {
+  order: 2;   /* rule: after diamond */
+}
+
+/* — Blockquote border (testimonial cards): flip to inline-start ------------ */
+[dir="rtl"] blockquote {
+  border-left: none;
+  padding-left: 0;
+  border-inline-start: 3px solid var(--color-brass-400);
+  padding-inline-start: 1rem;
+}
+
+/* — Timeline / journey dots: the ::before accent bar (top-left of each step)
+   should appear on the right in RTL. The step uses border-t-2 + a pseudo
+   absolute bar on the left (left:0). We flip it to the right. */
+[dir="rtl"] :where(li[class*="border-t"]) > :where(span[aria-hidden="true"][class*="left-0"]) {
+  left: auto;
+  right: 0;
+}
+
+/* — Spec-row alignment: in LTR spec tables, values left-align in their column.
+   In RTL they should right-align to match reading direction. */
+[dir="rtl"] :where(.grid[class*="grid-cols"]) > :where(span, div) {
+  text-align: start;
+}
+
+/* — Two-column hero grid: asymmetric ratios like [1.1fr_1fr], [1fr_1.1fr].
+   In RTL the DOM-first text column is already placed on the right by the
+   browser when direction:rtl is inherited by the grid. However, images in
+   the second column that use physical classes for object-position (e.g.
+   object-[65%_40%]) won't auto-flip — these are acceptable as-is since
+   object-position is purely cosmetic cropping.
+   No column swap is required: grid + rtl handles it. */
+
+/* — seam-lumiere shimmer: the shimmer animates translateX from left to right.
+   In RTL we reverse the direction so it reads naturally. */
+@media (prefers-reduced-motion: no-preference) {
+  [dir="rtl"] .seam-lumiere::after {
+    animation-direction: reverse;
+  }
 }

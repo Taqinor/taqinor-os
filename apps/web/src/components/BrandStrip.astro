@@ -88,6 +88,12 @@ const { heading = s.heading } = Astro.props;
    * W183 — grayscale → couleur au hover, reduced-motion safe.
    * Les logos SVG/PNG passent de niveaux-de-gris à leur couleur d'origine.
    * Les word-marks passent de lune (gris bleuté) à blanc pur.
+   *
+   * W208 — hover lift sur .brand-item : légère élévation (translateY -2px) +
+   * légère hausse de luminosité, gated derrière prefers-reduced-motion.
+   * Coordonné avec le grayscale→color : les deux effets se déclenchent ensemble
+   * sur hover/focus, sans conflit (transform sur .brand-item, filter sur
+   * .brand-logo enfant — éléments distincts, pas de double-transform).
    */
   .brand-logo {
     filter: grayscale(1);
@@ -107,6 +113,18 @@ const { heading = s.heading } = Astro.props;
   .brand-item:hover .brand-wordmark,
   .brand-item:focus-within .brand-wordmark {
     color: #d6dbe9; /* --color-lune → blanc sur hover */
+  }
+
+  /* W208 — lift + brightness sur .brand-item (reduced-motion safe) */
+  @media (prefers-reduced-motion: no-preference) {
+    .brand-item {
+      transition: transform 280ms ease, filter 280ms ease;
+    }
+    .brand-item:hover,
+    .brand-item:focus-within {
+      transform: translateY(-2px);
+      filter: brightness(1.1);
+    }
   }
 
   /* prefers-reduced-motion : pas de transition, passage direct */
