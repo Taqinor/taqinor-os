@@ -52,6 +52,44 @@ def _resolve_company():
     return Company.objects.order_by('pk').first()
 
 
+def _clean_roof_point(raw):
+    """Normalise un pin de toiture en {'lat': float, 'lng': float} ou None.
+
+    Accepte {lat,lng} ou {latitude,longitude} ; rejette silencieusement tout
+    point hors bornes ([-90,90] / [-180,180]) ou non numérique."""
+    if not isinstance(raw, dict):
+        return None
+    lat = raw.get('lat', raw.get('latitude'))
+    lng = raw.get('lng', raw.get('lon', raw.get('longitude')))
+    try:
+        lat, lng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    return {'lat': lat, 'lng': lng}
+
+
+def _clean_roof_outline(raw):
+    """Normalise un contour rough optionnel en liste de [lat, lng], ou None.
+
+    Le client n'est PAS obligé de dessiner : un contour absent/vide → None."""
+    if not isinstance(raw, list) or not raw:
+        return None
+    out = []
+    for pt in raw:
+        if isinstance(pt, dict):
+            p = _clean_roof_point(pt)
+            if p:
+                out.append([p['lat'], p['lng']])
+        elif isinstance(pt, (list, tuple)) and len(pt) == 2:
+            try:
+                out.append([float(pt[0]), float(pt[1])])
+            except (TypeError, ValueError):
+                continue
+    return out or None
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band') or {}
@@ -79,6 +117,22 @@ def _map_payload_to_fields(data: dict) -> dict:
     for key in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'):
         value = utm.get(key) or data.get(key)
         fields[key] = str(value).strip()[:300] if value else None
+    # Q2 — pin de toiture (+ contour optionnel) pointé par le client. On
+    # n'accepte qu'un point {lat, lng} numérique valide ; tout le reste est
+    # ignoré (jamais d'erreur). roofOutline est un polygone rough optionnel.
+    point = _clean_roof_point(data.get('roofPoint') or data.get('roof_point'))
+    if point is not None:
+        fields['roof_point'] = point
+    outline = _clean_roof_outline(
+        data.get('roofOutline') or data.get('roof_outline'))
+    if outline is not None:
+        fields['roof_outline'] = outline
+    bill_kwh = data.get('billKwh') or data.get('bill_kwh')
+    if bill_kwh not in (None, ''):
+        try:
+            fields['bill_kwh'] = float(bill_kwh)
+        except (TypeError, ValueError):
+            pass
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
     # Sous le seuil (ne devrait pas arriver — le site filtre) : étiqueté.

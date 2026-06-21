@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -298,6 +300,21 @@ class Lead(models.Model):
     # Type de toiture TEL QU'ÉMIS par le site (villa/hangar/toit_plat/autre) —
     # volontairement distinct de type_toiture (taxonomie technique CRM).
     roof_type = models.CharField(max_length=30, blank=True, null=True)
+    # ── Q2 — Toiture 3D : pin + contour BRUTS du client (additif, optionnels) ──
+    # Le client POINTE simplement son bâtiment (il n'est PAS obligé de dessiner) :
+    # roof_point = {lat, lng} de l'épingle ; roof_outline = polygone rough
+    # OPTIONNEL [[lat,lng], …], le plus souvent vide. Distinct du layout
+    # FINALISÉ (panneaux placés) qui vit sur Devis.roof_layout et seul atteint la
+    # proposition. bill_kwh = conso mensuelle estimée (kWh) saisie au diagnostic.
+    roof_point = models.JSONField(null=True, blank=True)
+    roof_outline = models.JSONField(null=True, blank=True)
+    bill_kwh = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    # Jeton imprévisible par lead pour le lien de hand-off Meriem (conception
+    # privée) ET, en aval, la proposition web tokenisée. Toujours posé côté
+    # serveur, jamais lu d'un corps de requête.
+    token = models.UUIDField(default=uuid.uuid4, editable=False,
+                             unique=True, db_index=True)
     # Bande ROI préliminaire affichée au prospect (ex. « 5 à 9 kWc · 4 à 6 ans »)
     roi_band = models.CharField(max_length=200, blank=True, null=True)
     whatsapp_opt_in = models.BooleanField(null=True, blank=True)
