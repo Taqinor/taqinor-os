@@ -1,0 +1,62 @@
+"""Modèles du module Gestion de flotte (`apps.flotte`).
+
+Squelette multi-société (FLOTTE1) enrichi des premiers actifs roulants :
+
+* ``Vehicule`` (FLOTTE2) — véhicules immatriculés du parc (immatriculation,
+  marque, modèle, énergie, kilométrage, valeur, statut).
+
+Tout est multi-société : chaque modèle porte un FK ``company`` posé côté serveur
+(jamais lu du corps de requête). Module entièrement additif — aucun comportement
+existant n'est modifié.
+"""
+from django.db import models
+
+
+# ── FLOTTE2 — Véhicules immatriculés ───────────────────────────────────────
+
+class Vehicule(models.Model):
+    """Un véhicule immatriculé du parc de la société."""
+
+    class Energie(models.TextChoices):
+        DIESEL = 'diesel', 'Diesel'
+        ESSENCE = 'essence', 'Essence'
+        ELECTRIQUE = 'electrique', 'Électrique'
+        HYBRIDE = 'hybride', 'Hybride'
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        MAINTENANCE = 'maintenance', 'En maintenance'
+        REFORME = 'reforme', 'Réformé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='vehicules',
+        verbose_name='Société',
+    )
+    immatriculation = models.CharField(
+        max_length=30, verbose_name='Immatriculation')
+    marque = models.CharField(max_length=80, blank=True, verbose_name='Marque')
+    modele = models.CharField(max_length=80, blank=True, verbose_name='Modèle')
+    energie = models.CharField(
+        max_length=20, choices=Energie.choices, default=Energie.DIESEL,
+        verbose_name='Énergie')
+    kilometrage = models.PositiveIntegerField(
+        default=0, verbose_name='Kilométrage')
+    valeur = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Valeur (MAD)')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Véhicule'
+        verbose_name_plural = 'Véhicules'
+        unique_together = [('company', 'immatriculation')]
+        ordering = ['immatriculation']
+
+    def __str__(self):
+        return f'{self.immatriculation} — {self.marque} {self.modele}'.strip()
