@@ -319,6 +319,17 @@ const chipClass =
                   <button type="button" data-margin="keep" class={chipClass} aria-pressed="true">Garder la marge<span class="rp9-reco-badge" hidden> ✓ Recommandé</span></button>
                   <button type="button" data-margin="remove" class={chipClass} aria-pressed="false">Pleine rive<span class="rp9-reco-badge" hidden> ✓ Recommandé</span></button>
                 </div>
+                <!-- W109 — COMMUN — débord panneaux autorisé : combien (m) un panneau peut
+                     déborder de la rive, rails restant sur le toit (fréquent en pente). 0 par
+                     défaut → calepinage inchangé. Change la CAPACITÉ géométrique seulement :
+                     le nombre posé reste plafonné au besoin (facture). step="any" → jamais de snap. -->
+                <div class="flex flex-wrap items-center gap-2">
+                  <label for="rp9-overhang-input" class="tech-label mr-1 text-lune-faint">Débord panneaux autorisé (m)</label>
+                  <input id="rp9-overhang-input" type="number" inputmode="decimal" step="any" min="0"
+                    value="0" autocomplete="off"
+                    class="fig h-9 w-20 border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                  <span class="text-xs text-lune-faint">rails sur le toit · capacité seule, jamais au-delà du besoin</span>
+                </div>
               </div><!-- /rp9-flat-controls -->
 
               <!-- Contrôles TOIT EN PENTE / TUILES (masqués en mode plat). La pente
@@ -361,12 +372,29 @@ const chipClass =
                   <button type="button" data-facing="90" class={chipClass} aria-pressed="false">Est</button>
                   <button type="button" data-facing="270" class={chipClass} aria-pressed="false">Ouest</button>
                 </div>
+                <!-- W106 — note : la face d'un pan adjacent à une autre zone est AUTO-orientée
+                     vers la faîtière commune ; un clic « Face du pan » la corrige (par zone). -->
+                <p id="rp9-facing-note" class="min-h-[1rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
+                <!-- Correction FINE du sens de la pente : les 5 boutons cardinaux ne
+                     couvrent ni les directions intermédiaires ni le nord. Ce curseur
+                     0–359° règle la VRAIE face descendante du pan, par zone, quand le
+                     choix automatique (W106) est faux. Hauteur réservée (zéro CLS), saisie
+                     libre (step="any") — aucun nombre tapé n'est rejeté. -->
+                <div class="flex items-center gap-3">
+                  <label for="rp9-facing-range" class="tech-label shrink-0 text-lune-faint">Sens de la pente — vers où le toit descend (corriger si besoin)</label>
+                  <input id="rp9-facing-range" type="range" min="0" max="359" step="any" value="180"
+                    class="h-2 w-full min-w-0 flex-1 cursor-pointer accent-brass-400"
+                    aria-label="Sens de la pente du toit en degrés (0 = nord, 90 = est, 180 = sud, 270 = ouest)" />
+                  <span id="rp9-facing-value" class="min-h-[1.25rem] w-28 shrink-0 text-right text-sm font-semibold text-brass-300" aria-live="polite">Sud · 180°</span>
+                </div>
                 <p class="border border-white/10 bg-nuit-900/40 p-3 text-xs leading-relaxed text-lune-faint">
                   Pose affleurante (panneaux à plat sur les tuiles, sans rangées espacées).
                   <span class="text-lune-soft">Inclinaison = pente du toit · Azimut = face du pan</span>
-                  — <strong class="text-white">imposés par la toiture</strong>, non modifiables.
-                  La production vient de PVGIS à ces valeurs réelles. La pente est saisie
-                  (non mesurable sur l'imagerie satellite marocaine).
+                  — imposés par la toiture. <strong class="text-white">Vous pouvez corriger ici le
+                  sens de la pente</strong> (vers où le toit descend) si le choix automatique est
+                  faux : le curseur règle n'importe quelle direction (0–359°) et re-calcule la pose
+                  en direct, par zone. La production vient de PVGIS à ces valeurs réelles. La pente
+                  est saisie (non mesurable sur l'imagerie satellite marocaine).
                 </p>
                 <p id="rp9-pitched-note" class="min-h-[1.25rem] text-xs leading-relaxed text-lune-soft" aria-live="polite"></p>
               </div>
@@ -575,6 +603,14 @@ const chipClass =
             </button>
           </div>
         </div>
+
+        <!-- W110 + diagnostic « une page » (pro-11) : le formulaire est RELOCALISÉ ICI,
+             directement sous le résultat/CTA, et passé en mode UNE PAGE (singleStep) — le
+             visiteur ne tape que Nom/Téléphone/Adresse, le reste (facture/toit/surface/
+             orientation/kWc) est pré-rempli par le simulateur. « Continuer vers le diagnostic »
+             y défile (id #simulateur) — JAMAIS de lead posté par le simulateur (garde W85/W97).
+             Le composant partagé et tout son flux lead restent intacts. -->
+        <DiagnosticFormEnriched heading="Recevez votre étude détaillée" singleStep={true} />
 
         <!-- ZONES — « Plusieurs zones de panneaux ». Chaque zone est dimensionnée par
              l'optimiseur existant (best-fit) puis ajustable au panneau près ; le total
@@ -921,8 +957,6 @@ const chipClass =
         </p>
       </div>
     </section>
-
-    <DiagnosticFormEnriched heading="Recevez votre étude détaillée" />
   </div>
 </Layout>
 

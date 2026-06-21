@@ -127,6 +127,8 @@ interface PitchedCtx {
   target: number;
   effectiveNeed: number;
   obstructions: LngLat[][];
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
+  overhangM: number;
   tariff: TariffGrid;
   yieldFn: PitchedYieldFn | undefined;
   packCache: Map<string, FlushPack>;
@@ -134,12 +136,14 @@ interface PitchedCtx {
 
 function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: PitchedMarginAxis): PitchedLiveEval {
   const setbackM = margin === 'keep' ? PERIMETER_SETBACK_M : 0;
-  const key = String(Math.round(setbackM * 1000));
+  // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
+  // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
+  const key = `${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}`;
   let pack = ctx.packCache.get(key);
   if (!pack) {
     pack = packFlushPlane(
       { ring: ctx.ring, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, obstructions: ctx.obstructions },
-      { setbackM },
+      { setbackM, overhangM: ctx.overhangM },
     );
     ctx.packCache.set(key, pack);
   }
@@ -199,6 +203,8 @@ export interface PitchedSolveOptions {
   city?: string;
   /** Rendement spécifique PVGIS (kWh/kWc/an) du plan (pente, face), pose 'building'. */
   yieldFn?: PitchedYieldFn;
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
+  overhangM?: number;
 }
 
 export interface PitchedLiveResult {
@@ -208,6 +214,13 @@ export interface PitchedLiveResult {
   pitchDeg: number;
   facingAzimuthDeg: number;
   offSouthDeg: number;
+  /**
+   * Aire VRAIE du pan (m²) = projetée / cos(pente) — relais du pack gagnant. Un toit
+   * en pente paraît plus petit vu du ciel ; on expose ici sa surface réelle de versant.
+   */
+  slopeAreaM2: number;
+  /** Aire VRAIE utile du pan (m²) = utile projetée / cos(pente) — relais du pack gagnant. */
+  usableSlopeAreaM2: number;
   /** Pan orienté NORD : production quasi nulle → on ne pose rien (honnêteté). */
   northFacing: boolean;
   /**
@@ -265,6 +278,7 @@ export function solveLivePitched(
     target,
     effectiveNeed,
     obstructions,
+    overhangM: Math.max(0, options.overhangM ?? 0),
     tariff,
     yieldFn: options.yieldFn,
     packCache: new Map<string, FlushPack>(),
@@ -272,6 +286,8 @@ export function solveLivePitched(
 
   const { winner, rows } = solvePitchedConstrained(ctx, locks);
   const offSouthDeg = winner.pack.offSouthDeg;
+  const slopeAreaM2 = winner.pack.slopeAreaM2;
+  const usableSlopeAreaM2 = winner.pack.usableSlopeAreaM2;
   const northFacing = winner.pack.northFacing;
   // W74 — pan trop petit / contraint à néant SANS être nord : le gagnant ne loge AUCUN
   // panneau (fit 0 → 0 kWh). Distinct du pan nord (production quasi nulle par orientation).
@@ -295,6 +311,8 @@ export function solveLivePitched(
     pitchDeg,
     facingAzimuthDeg,
     offSouthDeg,
+    slopeAreaM2,
+    usableSlopeAreaM2,
     northFacing,
     noViableConfig,
     winner,

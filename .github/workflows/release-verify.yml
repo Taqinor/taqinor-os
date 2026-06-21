@@ -1,0 +1,340 @@
+name: Release verify (full suite)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PALIER 3 — la « grosse » vérification, volontairement DÉCOUPLÉE du gate par-merge.
+#
+# Le gate par-merge (ci.yml) reste rapide : lint + logique pure + tests d'intégration
+# + un smoke e2e. Ce workflow-ci rassemble TOUT ce qui est lent/coûteux/flaky :
+#   • suite Django COMPLÈTE, y compris les tests étiquetés `pdf`/`slow` (rendu
+#     WeasyPrint, golden PDF…),
+#   • matrice e2e Playwright COMPLÈTE (toutes les specs, desktop + mobile),
+#   • régression VISUELLE (captures de référence, non bloquante au départ),
+#   • site vitrine : type-check + vitest + build + Lighthouse.
+#
+# Déclenchement : MANUEL (bouton « Run workflow ») + filet NIGHTLY. On lance
+# `work on the plan` 2–3 fois (chaque merge passe le gate rapide), puis on tire
+# ce workflow UNE fois « à la toute fin » avant de livrer. Il NE garde PAS `main`
+# (non requis) — c'est une vérif d'ampleur, pas le gate de merge.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+  schedule:
+    # Filet de sécurité nightly — 03:00 UTC, pour que rien ne pourrisse en silence.
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: release-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Suite Django COMPLÈTE (inclut pdf/slow) ────────────────────────────────
+  backend-full:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install WeasyPrint system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+      - name: Install Python dependencies
+        working-directory: backend/django_core
+        run: pip install -r requirements.txt
+      - name: Start MinIO + create buckets
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=erp_admin \
+            -e MINIO_ROOT_PASSWORD=erp_minio_password \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live; then
+              echo "MinIO prêt"; break
+            fi
+            echo "Attente MinIO ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
+          done
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
+            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+            mc mb -p local/erp-pdf local/erp-uploads"
+      - name: Run FULL Django test suite (incl. pdf/slow)
+        working-directory: backend/django_core
+        run: python manage.py test apps authentication -v 2
+
+  # ── Front : logique pure (node:test) + composants/UX (Vitest) ──────────────
+  frontend-full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Lint frontend (eslint)
+        working-directory: frontend
+        run: npm run lint
+      - name: Frontend unit tests (node:test — auto-discovered)
+        working-directory: frontend
+        run: node --test "src/**/*.test.mjs"
+      - name: Frontend component + a11y tests (Vitest)
+        working-directory: frontend
+        run: npm run test:unit
+
+  # ── Matrice e2e COMPLÈTE + régression visuelle (bootstrap, non bloquante) ──
+  e2e-full:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install WeasyPrint system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+      - name: Install Python dependencies
+        working-directory: backend/django_core
+        run: pip install -r requirements.txt
+      - name: Start MinIO + create buckets
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=erp_admin \
+            -e MINIO_ROOT_PASSWORD=erp_minio_password \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live; then
+              echo "MinIO prêt"; break
+            fi
+            echo "Attente MinIO ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
+          done
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
+            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+            mc mb -p local/erp-pdf local/erp-uploads"
+      - name: Migrate + seed throwaway demo data
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright browser (chromium)
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Build frontend (no service worker for E2E)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      - name: Start Django + run FULL e2e matrix (desktop + mobile)
+        working-directory: backend/django_core
+        run: |
+          gunicorn erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+              echo "Django prêt (HTTP $code)"; break
+            fi
+            echo "Attente Django ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+          cd ../../frontend
+          # Toutes les specs SAUF les captures visuelles (qui ont leur propre étape).
+          npx playwright test --grep-invert @visual
+      - name: Visual regression (bootstrap baselines — non bloquant)
+        # Au 1er run il n'y a pas de baseline → --update-snapshots les génère ;
+        # elles sont uploadées ci-dessous pour que le fondateur les relise et les
+        # commit (alors la comparaison devient un vrai garde-fou). continue-on-error
+        # car ce palier ne garde pas `main`.
+        continue-on-error: true
+        working-directory: frontend
+        run: npx playwright test --grep @visual --update-snapshots
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-full
+          path: frontend/playwright-report
+          retention-days: 14
+      - name: Upload visual baselines (à relire + commiter)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: frontend/e2e/**/*-snapshots/**
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ── Site vitrine : type-check + vitest + build + Lighthouse ────────────────
+  web-full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install apps/web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Type-check apps/web (tsc)
+        working-directory: apps/web
+        run: npm run check
+      - name: apps/web unit tests (vitest)
+        working-directory: apps/web
+        run: npm test
+      - name: Build marketing site (astro build)
+        working-directory: apps/web
+        run: npm run build
+      - name: Lighthouse (perf/SEO/a11y — non bloquant)
+        continue-on-error: true
+        working-directory: apps/web
+        run: |
+          npm run preview -- --port 4321 &
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:4321/ >/dev/null; then echo "preview prêt"; break; fi
+            sleep 2
+          done
+          npx lighthouse http://localhost:4321/ \
+            --quiet --chrome-flags="--headless --no-sandbox" \
+            --output=html --output-path=./lighthouse-report.html || true
+      - name: Upload Lighthouse report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: apps/web/lighthouse-report.html
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ── Service IA (FastAPI) : sécurité agent NL→SQL, JWT, OCR, garde-marge ─────
+  # Dépendances lourdes (langchain/torch) → palier 3 plutôt que par-merge. Les
+  # suites se sautent proprement si une dépendance manque ; avec les requirements
+  # complètes installées, elles s'exécutent réellement.
+  fastapi-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install FastAPI service dependencies
+        working-directory: backend/fastapi_ia
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run FastAPI test suite (NL→SQL security / JWT / OCR / margin guard)
+        working-directory: backend/fastapi_ia
+        run: python -m unittest discover -s tests -v

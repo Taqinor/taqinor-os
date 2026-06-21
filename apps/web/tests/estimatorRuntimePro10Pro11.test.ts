@@ -96,8 +96,8 @@ function squareCorners(side: number, lng0 = -7.62, lat0 = 33.59): [number, numbe
   ];
 }
 
-const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width'];
-const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range'];
+const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width', 'rp9-overhang-input'];
+const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range', 'rp9-facing-range'];
 const ID_BUTTONS = [
   'rp9-finish', 'rp9-clear', 'rp9-undo-point', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
   'rp9-obstacle', 'rp9-obstacle-clear', 'rp9-obs-delete', 'rp9-obs-plus', 'rp9-obs-minus',
@@ -113,7 +113,9 @@ const ID_GENERIC = [
   'rp9-area-value', 'rp9-need-note', 'rp9-tilt-value', 'rp9-obs-edit', 'rp9-obs-dims',
   'rp9-optimum-note', 'rp9-optimum-card', 'rp9-optimum-label', 'rp9-optimum-source', 'rp9-optimum-kwc',
   'rp9-optimum-panels', 'rp9-optimum-prod', 'rp9-optimum-cover', 'rp9-optimum-why',
-  'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note',
+  'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note', 'rp9-facing-note',
+  // Correction fine du sens de la pente (curseur + lecture vivante).
+  'rp9-facing-value',
   'rp9-reco-title', 'rp9-reco-kwc', 'rp9-reco-panels', 'rp9-reco-prod', 'rp9-reco-cover',
   'rp9-reco-savings', 'rp9-reco-why', 'rp9-reco-bifacial', 'rp9-results', 'rp9-maxline', 'rp9-compare-wrap',
   // W50 — fenêtre de production (conteneur, scope, labels, headline, graphe, source, économies).
@@ -173,6 +175,11 @@ function setupDom() {
   for (const id of ID_RANGES) {
     const r = el('input', id) as HTMLInputElement;
     r.type = 'range';
+    // jsdom clampe à [min,max] (défaut 0–100) : on pose des bornes assez larges
+    // (sens de la pente 0–359°) pour que les valeurs de test ne soient pas écrêtées.
+    r.min = '0';
+    r.max = '359';
+    r.step = 'any';
     root.appendChild(r);
   }
   for (const id of ID_BUTTONS) root.appendChild(el('button', id));
@@ -231,6 +238,11 @@ function setupDom() {
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
   const diag = el('details', 'diag') as HTMLDetailsElement;
   diag.appendChild(el('input', 'lf-area'));
+  // W110 — coordonnées client surfacées en haut (le composant relocalisé) : Nom / Téléphone /
+  // Ville. prefillLead les reporte quand fournis, et remplit la ville depuis rp9-address.
+  diag.appendChild(el('input', 'lf-name'));
+  diag.appendChild(el('input', 'lf-phone'));
+  diag.appendChild(el('input', 'lf-city'));
   const orient = el('select', 'lf-orient') as HTMLSelectElement;
   for (const id of ['sud', 'sud-est', 'sud-ouest', 'est', 'ouest']) {
     const o = document.createElement('option');
@@ -240,6 +252,23 @@ function setupDom() {
   diag.appendChild(orient);
   diag.appendChild(el('input', 'lf-kwc-est'));
   root.appendChild(diag);
+  // Champs OBLIGATOIRES du diagnostic « une page » (pro-11) que prefillLead pré-remplit
+  // depuis le simulateur : adresse (texte), tranche de facture + type de toiture (selects).
+  root.appendChild(el('input', 'lf-city'));
+  const billSel = el('select', 'lf-bill') as HTMLSelectElement;
+  for (const id of ['lt800', '800-1000', '1000-1500', '1500-3000', '3000-5000', '5000-10000', 'gt10000']) {
+    const o = document.createElement('option');
+    o.value = id;
+    billSel.appendChild(o);
+  }
+  root.appendChild(billSel);
+  const roofSel = el('select', 'lf-roof') as HTMLSelectElement;
+  for (const id of ['villa', 'hangar', 'toit_plat', 'autre']) {
+    const o = document.createElement('option');
+    o.value = id;
+    roofSel.appendChild(o);
+  }
+  root.appendChild(roofSel);
   root.appendChild(el('div', 'simulateur'));
   document.body.appendChild(root);
 }
@@ -403,6 +432,153 @@ describe('runtime W35 (toit en pente) — l\'optimiseur pente se déclenche', ()
     // rebascule plat : les orientations re-apparaissent (rien cassé)
     document.querySelector<HTMLButtonElement>('[data-rooftype="flat"]')!.click();
     expect((document.getElementById('rp9-flat-only') as HTMLElement).hidden).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// CORRECTION FINE DU SENS DE LA PENTE (curseur #rp9-facing-range 0–359°). Le visiteur
+// peut régler n'importe quelle direction descendante (y compris intermédiaire/nord), la
+// pose pente se re-résout en direct, la lecture (#rp9-facing-value) suit, et la direction
+// est persistée PAR ZONE (snapshot/restore de facingAzimuthDeg).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime — correction fine du sens de la pente (curseur facing)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const setFacing = (deg: number) => {
+    const r = document.getElementById('rp9-facing-range') as HTMLInputElement;
+    r.value = String(deg);
+    r.dispatchEvent(new window.Event('input', { bubbles: true }));
+  };
+
+  it('régler une direction intermédiaire (160°) met à jour la lecture et re-résout sans casser', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    expect(() => setFacing(160)).not.toThrow();
+    // la lecture montre le nom cardinal + les degrés (jamais rejeté)
+    expect(txt('rp9-facing-value')).toMatch(/Sud.*·.*160°/);
+    // la carte pente reste remplie après re-résolution
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
+    expect(txt('rp9-reco-title')).toMatch(/pente/i);
+  });
+
+  it('le curseur accepte une direction NORD (0°) — impossible via les 5 boutons cardinaux', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    setFacing(0);
+    expect(txt('rp9-facing-value')).toMatch(/Nord.*·.*0°/);
+  });
+
+  it('cliquer un bouton « Face du pan » synchronise le curseur + la lecture', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-facing="90"]')!.click(); // Est
+    const r = document.getElementById('rp9-facing-range') as HTMLInputElement;
+    expect(Number(r.value)).toBe(90);
+    expect(txt('rp9-facing-value')).toMatch(/Est.*·.*90°/);
+  });
+
+  it('la direction est PERSISTÉE PAR ZONE : chaque zone retrouve son propre sens de pente', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    setFacing(135); // zone 1 → sud-est
+    // + Ajouter une zone, tracer la 2ᵉ, lui donner une autre direction
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    traceRoof(fakeMaps[0], 16);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    setFacing(225); // zone 2 → sud-ouest
+    expect(txt('rp9-facing-value')).toMatch(/225°/);
+    // revenir à la zone 1 (1er bouton « Voir » de la liste) : le curseur + la lecture
+    // doivent retrouver SON sens de pente (135°), pas celui de la zone 2.
+    const firstSelect = document.querySelector<HTMLButtonElement>('#rp9-areas-list [data-area-select]');
+    expect(firstSelect).not.toBeNull();
+    firstSelect!.click();
+    const r = document.getElementById('rp9-facing-range') as HTMLInputElement;
+    expect(Number(r.value)).toBe(135);
+    expect(txt('rp9-facing-value')).toMatch(/135°/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// DIAGNOSTIC « UNE PAGE » (pro-11) — le CTA pré-remplit AUSSI adresse + tranche de facture
+// + type de toiture (selects OBLIGATOIRES), et l'aire d'un toit en pente est corrigée du
+// cos de la pente (projetée / cos(pente)). Toujours aucun POST de lead.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime — prefill une page : adresse + facture + toit + aire cos-pente', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const lf = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value;
+
+  it('toit plat : le CTA pré-remplit adresse + billRange (bucket) + roofType (toit_plat), aire = projetée', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    (document.getElementById('rp9-address') as HTMLInputElement).value = '12 rue de Casablanca';
+    setBill('1500'); // 1500 → tranche '1500-3000'
+    traceRoof(fakeMaps[0], 16);
+    const areaProjected = Number(lf('lf-area')) || 0; // pas encore prérempli (lu après clic)
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    expect(lf('lf-city')).toBe('12 rue de Casablanca');
+    expect(lf('lf-bill')).toBe('1500-3000');
+    expect(lf('lf-roof')).toBe('toit_plat');
+    // aire d'un carré de 16 m ≈ 256 m² (plat : pas de correction)
+    expect(Number(lf('lf-area'))).toBeGreaterThan(180);
+    expect(Number(lf('lf-area'))).toBeLessThan(340);
+    void areaProjected;
+  });
+
+  it('toit en pente 45° : l\'aire pré-remplie est PLUS GRANDE que la projetée (cos-pente) + roofType villa', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    // relève l'aire projetée AVANT bascule pente (CTA plat câblé)
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    const flatArea = Number(lf('lf-area'));
+    // bascule pente, force 45° via le curseur de pente fin
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    const pitchR = document.getElementById('rp9-pitch-range') as HTMLInputElement;
+    pitchR.value = '45';
+    pitchR.dispatchEvent(new window.Event('input', { bubbles: true }));
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    const slopeArea = Number(lf('lf-area'));
+    // projetée / cos(45°) ≈ projetée × 1.414 → strictement plus grande
+    expect(slopeArea).toBeGreaterThan(flatArea);
+    expect(lf('lf-roof')).toBe('villa');
+    // aucune route lead/simulation appelée
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      expect(String(c[0])).not.toContain('/api/preview-lead');
+      expect(String(c[0])).not.toContain('/api/simulate');
+    }
   });
 });
 
@@ -1200,6 +1376,37 @@ describe('runtime W97 §1 — prefill via le CTA + aucun POST de lead', () => {
       expect(url).not.toContain('/api/preview-lead');
       expect(url).not.toContain('/api/simulate');
     }
+  });
+
+  it('W110 — le CTA remplit lf-city depuis l\'adresse géocodée (rp9-address) sans POST', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    // simule une adresse géocodée déjà présente dans le champ de recherche
+    (document.getElementById('rp9-address') as HTMLInputElement).value = 'Casablanca, Maroc';
+    traceRoof(fakeMaps[0], 16);
+    const cta = document.getElementById('rp9-cta') as HTMLButtonElement;
+    cta.click(); // → prefillLead(d) : handoff, JAMAIS un POST
+    // W110 — la ville du diagnostic est pré-remplie depuis l'adresse géocodée (champ vide).
+    expect(lf('lf-city')).toBe('Casablanca, Maroc');
+    // toujours aucun POST de lead/simulation
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      const url = String(c[0]);
+      expect(url).not.toContain('/api/preview-lead');
+      expect(url).not.toContain('/api/simulate');
+    }
+  });
+
+  it('W110 — une ville DÉJÀ saisie n\'est pas écrasée par l\'adresse géocodée', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    (document.getElementById('rp9-address') as HTMLInputElement).value = 'Casablanca, Maroc';
+    (document.getElementById('lf-city') as HTMLInputElement).value = 'Rabat';
+    traceRoof(fakeMaps[0], 16);
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    expect(lf('lf-city')).toBe('Rabat'); // saisie utilisateur préservée
   });
 
   it('toit plat Est-Ouest verrouillé : l\'orientation pré-remplie reste « sud » (W85)', async () => {

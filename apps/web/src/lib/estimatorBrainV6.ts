@@ -395,12 +395,14 @@ function evalMatrixConfig(
   target: number,
   obstructions: LngLat[][],
   defaultSetbackM: number,
+  overhangM: number,
   tariff: TariffGrid,
   yieldFn: YieldFn | undefined,
   cache: Map<string, PackResult>,
 ): MatrixEvalV6 {
   const setbackM = cfg.margin === 'keep' ? defaultSetbackM : 0;
-  const key = `${cfg.family}|${cfg.tiltDeg}|${Math.round(cfg.azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}`;
+  // W109 — overhangM dans la clé (sinon collision entre overhangs) ; 0 → clé/pavage inchangés.
+  const key = `${cfg.family}|${cfg.tiltDeg}|${Math.round(cfg.azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(overhangM * 1000)}`;
   let pack = cache.get(key);
   if (!pack) {
     pack = packConfig(ring, latitudeDeg, {
@@ -409,6 +411,7 @@ function evalMatrixConfig(
       azimuthDeg: cfg.azimuthDeg,
       obstructions,
       setbackM,
+      overhangM,
     });
     cache.set(key, pack);
   }
@@ -471,6 +474,8 @@ export interface MatrixV6Options {
   yieldFn?: YieldFn;
   /** Ouvre l'axe aligné-toit même si le toit est ~plein-sud (tests/cohérence). */
   forceAligned?: boolean;
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
+  overhangM?: number;
 }
 
 export interface MatrixV6Result {
@@ -509,6 +514,7 @@ export function fineGridMatrixV6(
   const roofAz = roofDominantAzimuthDeg(ring);
   const offSouthDeg = ((roofAz - 180 + 540) % 360) - 180;
   const setback = PERIMETER_SETBACK_M;
+  const overhang = Math.max(0, options.overhangM ?? 0); // W109 — défaut 0 → balayage inchangé
   const southTilts = matrixTiltGrid(latitudeDeg);
   const orientations: AxisOrient[] = ['portrait', 'landscape'];
   const margins: AxisMargin[] = ['keep', 'remove'];
@@ -524,7 +530,7 @@ export function fineGridMatrixV6(
   let anyPvgis = false;
 
   const consider = (cfg: MatrixCfg) => {
-    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, tariff, options.yieldFn, cache);
+    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache);
     rows.push(e);
     if (e.yieldSource === 'pvgis') anyPvgis = true;
     if (!winner || betterMatrixV6(e, winner)) winner = e;
