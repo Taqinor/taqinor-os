@@ -176,11 +176,41 @@ body {
   text-shadow: 0 0 26px rgb(232 181 74 / 0.35);
 }
 
-/* Carte braise : surface à peine éclairée sur la nuit */
+/* ─── W157 / W203 — Carte braise : surface glass sur nuit, hover lift ──────
+   W157 : fond légèrement plus opaque, reflet en filet de haut, bord chaud.
+   W203 : hover lift + border brass gated derrière prefers-reduced-motion.
+   .cine-card-link : modificateur pour carte cliquable (cursor pointer). */
 .cine-card {
-  background: rgb(255 255 255 / 0.04);
-  border: 1px solid rgb(255 255 255 / 0.09);
-  box-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.8);
+  background:
+    /* reflet subtil en filet en haut de carte */
+    linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 0.07) 0px,
+      rgb(255 255 255 / 0.07) 1px,
+      transparent 1px
+    ),
+    rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 24px 60px -30px rgb(0 0 0 / 0.8);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.cine-card-link {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cine-card:hover,
+  .cine-card-link:hover {
+    border-color: rgb(232 181 74 / 0.30);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.14),
+      0 8px 24px -8px rgb(232 181 74 / 0.18),
+      0 32px 72px -24px rgb(0 0 0 / 0.75);
+    transform: translateY(-3px);
+  }
 }
 
 /* CTA doré qui irradie au survol */
