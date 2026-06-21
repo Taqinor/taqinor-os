@@ -18,7 +18,7 @@ class KbArticle(models.Model):
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
-        related_name='kb_articles',
+        related_name='kb_app_articles',
         verbose_name='Société',
     )
     titre = models.CharField(max_length=255, verbose_name='Titre')
@@ -34,7 +34,7 @@ class KbArticle(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True, blank=True,
-        related_name='kb_articles',
+        related_name='kb_app_articles',
         verbose_name='Auteur',
     )
     date_creation = models.DateTimeField(

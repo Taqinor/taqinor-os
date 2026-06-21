@@ -72,7 +72,7 @@ class Migration(migrations.Migration):
                     "company",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="kb_articles",
+                        related_name="kb_app_articles",
                         to="authentication.company",
                         verbose_name="Société",
                     ),
@@ -83,7 +83,7 @@ class Migration(migrations.Migration):
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="kb_articles",
+                        related_name="kb_app_articles",
                         to=settings.AUTH_USER_MODEL,
                         verbose_name="Auteur",
                     ),
