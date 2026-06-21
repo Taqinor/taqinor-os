@@ -1,7 +1,13 @@
+from datetime import timedelta
+
 from rest_framework import serializers
 from django.utils import timezone
 
-from .models import Equipement, Ticket, TicketActivity, PieceConsommee
+from .models import (
+    Equipement, Ticket, TicketActivity, PieceConsommee,
+    SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
+    TicketChecklistItem, WarrantyClaim, KbArticle,
+)
 
 # Fenêtre « garantie expirant bientôt » (jours).
 EXPIRING_SOON_DAYS = 90
@@ -26,6 +32,8 @@ class EquipementSerializer(serializers.ModelSerializer):
         source='remplace_par_ticket.reference', read_only=True, default=None)
     # L624 — nombre de tickets SAV ouverts liés à cet équipement.
     nb_tickets_ouverts = serializers.SerializerMethodField()
+    # FG90 — nombre de tickets correctifs sur les 12 derniers mois (citron).
+    nb_tickets_12m = serializers.SerializerMethodField()
 
     class Meta:
         model = Equipement
@@ -33,7 +41,7 @@ class EquipementSerializer(serializers.ModelSerializer):
         # company / dates de garantie / created_by posés côté serveur — jamais
         # depuis le corps. Les dates de garantie sont CALCULÉES (read-only).
         read_only_fields = [
-            'company', 'created_by',
+            'company', 'created_by', 'equipement_token',
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
         ]
@@ -66,9 +74,16 @@ class EquipementSerializer(serializers.ModelSerializer):
         return value
 
     def get_nb_tickets_ouverts(self, obj):
-        from .models import Ticket
         return obj.tickets.filter(
             statut__in=Ticket.OPEN_STATUTS, annule=False).count()
+
+    def get_nb_tickets_12m(self, obj):
+        """FG90 — compte les tickets correctifs des 12 derniers mois."""
+        since = timezone.localdate() - timedelta(days=365)
+        return obj.tickets.filter(
+            type=Ticket.Type.CORRECTIF,
+            date_creation__date__gte=since,
+        ).count()
 
     def get_client_nom(self, obj):
         c = getattr(obj.installation, 'client', None)
@@ -142,6 +157,20 @@ class TicketInterventionSerializer(serializers.Serializer):
         return getattr(obj.technicien, 'username', None)
 
 
+class TicketChecklistItemSerializer(serializers.ModelSerializer):
+    """FG82 — Item de checklist sur un ticket (coché/non coché)."""
+    coche_par_nom = serializers.CharField(
+        source='coche_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = TicketChecklistItem
+        fields = [
+            'id', 'cle', 'libelle', 'ordre', 'coche', 'note',
+            'coche_par_nom', 'date_coche',
+        ]
+        read_only_fields = ['cle', 'libelle', 'ordre', 'coche_par_nom', 'date_coche']
+
+
 class TicketSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -165,6 +194,10 @@ class TicketSerializer(serializers.ModelSerializer):
     sous_garantie_effectif_display = serializers.SerializerMethodField()
     interventions = TicketInterventionSerializer(many=True, read_only=True)
     nb_interventions = serializers.SerializerMethodField()
+    # FG81 — SLA : drapeaux calculés en lecture.
+    sla_breach = serializers.BooleanField(read_only=True)
+    sla_due_at = serializers.DateField(read_only=True)
+    date_premiere_reponse = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -173,6 +206,7 @@ class TicketSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
+            'sla_breach', 'sla_due_at', 'date_premiere_reponse',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -204,3 +238,69 @@ class TicketSerializer(serializers.ModelSerializer):
 
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
+
+
+# ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
+
+class SavSlaSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavSlaSettings
+        fields = [
+            'id', 'sla_response_days', 'sla_resolution_days',
+            'sla_par_priorite', 'sla_breach_enabled', 'date_modification',
+        ]
+        read_only_fields = ['date_modification']
+
+
+# ── FG82 — Checklist templates ────────────────────────────────────────────────
+
+class MaintenanceChecklistItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MaintenanceChecklistItem
+        fields = ['id', 'cle', 'libelle', 'ordre', 'actif']
+        read_only_fields = ['id']
+
+
+class MaintenanceChecklistTemplateSerializer(serializers.ModelSerializer):
+    items = MaintenanceChecklistItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = MaintenanceChecklistTemplate
+        fields = ['id', 'nom', 'actif', 'protege', 'items']
+        read_only_fields = ['id']
+
+
+# ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
+
+class WarrantyClaimSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    resolution_display = serializers.CharField(
+        source='get_resolution_display', read_only=True)
+    equipement_serie = serializers.CharField(
+        source='equipement.numero_serie', read_only=True, default=None)
+    equipement_produit = serializers.CharField(
+        source='equipement.produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = WarrantyClaim
+        fields = '__all__'
+        read_only_fields = [
+            'company', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+
+# ── FG87 — Base de connaissances ──────────────────────────────────────────────
+
+class KbArticleSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = KbArticle
+        fields = '__all__'
+        read_only_fields = [
+            'company', 'created_by', 'date_creation', 'date_modification',
+        ]

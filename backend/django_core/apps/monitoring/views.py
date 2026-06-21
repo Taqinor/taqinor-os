@@ -16,6 +16,14 @@ API monitoring (N50/N51/N52).
 Toutes les vues filtrent par société (TenantMixin) et posent `company` côté
 serveur ; jamais lue du corps.
 """
+import csv
+import io
+from datetime import timedelta
+
+from django.db.models import Sum
+from django.db.models.functions import TruncMonth
+from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -81,6 +89,75 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'ratio_pct': evald['ratio_pct'],
             'ticket': evald['ticket'].id if evald.get('ticket') else None,
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='history',
+            permission_classes=[IsAnyRole])
+    def history(self, request, pk=None):
+        """FG84 — Historique de production mensuelle agrégée avec expected vs actual.
+
+        Renvoie les relevés agrégés par mois + production attendue (basée sur
+        expected_annual_kwh). Format : JSON (défaut) ou CSV (?format=csv).
+        Fenêtre : ?months=12 (défaut) jusqu'à 60.
+
+        Chaque point : { month, actual_kwh, expected_kwh, ratio_pct }.
+        Le ratio_pct < (100 - seuil) indique une sous-performance.
+        """
+        config = self.get_object()
+        months = min(int(request.query_params.get('months', 12)), 60)
+        since = timezone.localdate() - timedelta(days=months * 31)
+
+        # Agrégation mensuelle.
+        qs = (ProductionReading.objects
+              .filter(
+                  company=request.user.company,
+                  installation=config.installation,
+                  date__gte=since)
+              .annotate(month=TruncMonth('date'))
+              .values('month')
+              .annotate(actual_kwh=Sum('energy_kwh'))
+              .order_by('month'))
+
+        # Production attendue mensuelle (kWh/mois ≈ annual / 12).
+        expected_annual = config.expected_annual_kwh
+        expected_monthly = (
+            float(expected_annual) / 12 if expected_annual else None)
+
+        rows = []
+        for row in qs:
+            actual = float(row['actual_kwh'])
+            ratio_pct = None
+            if expected_monthly and expected_monthly > 0:
+                ratio_pct = round(actual / expected_monthly * 100, 1)
+            rows.append({
+                'month': row['month'].strftime('%Y-%m'),
+                'actual_kwh': round(actual, 2),
+                'expected_kwh': (
+                    round(expected_monthly, 2) if expected_monthly else None),
+                'ratio_pct': ratio_pct,
+            })
+
+        # CSV export — utilise `export=csv` (pas `format=` pour éviter le conflit
+        # avec le mécanisme de suffixe de rendu de DRF).
+        if request.query_params.get('export') == 'csv':
+            buf = io.StringIO()
+            writer = csv.DictWriter(
+                buf, fieldnames=['month', 'actual_kwh', 'expected_kwh', 'ratio_pct'])
+            writer.writeheader()
+            writer.writerows(rows)
+            resp = StreamingHttpResponse(
+                iter([buf.getvalue()]),
+                content_type='text/csv; charset=utf-8')
+            fname = f'production-{config.installation_id}-{months}m.csv'
+            resp['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return resp
+
+        return Response({
+            'installation': config.installation_id,
+            'months': months,
+            'expected_annual_kwh': (
+                float(expected_annual) if expected_annual else None),
+            'data': rows,
+        })
 
 
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
