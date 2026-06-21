@@ -6,6 +6,7 @@ Les changements sont journalisés (audit logger).
 """
 import logging
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from django.db import models
 
 logger = logging.getLogger('stock.audit')
 
@@ -804,3 +805,506 @@ def mouvement_type_entree():
     """Valeur enum ENTREE (sans importer le modèle côté appelant)."""
     from .models import MouvementStock
     return MouvementStock.TypeMouvement.ENTREE
+
+
+# ── FG54 — Réapprovisionnement auto ──────────────────────────────────────────
+
+def produits_a_reapprovisionner(company):
+    """Retourne les produits dont le stock est <= seuil_alerte, groupés par
+    fournisseur le moins cher (PrixFournisseur). INTERNE.
+
+    Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
+    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat}.
+    """
+    from .models import Produit, PrixFournisseur
+
+    qs = (Produit.objects
+          .filter(company=company, is_archived=False)
+          .exclude(seuil_alerte=0)
+          .filter(quantite_stock__lte=models.F('seuil_alerte'))
+          .prefetch_related('prix_fournisseurs__fournisseur'))
+
+    result = []
+    for p in qs:
+        # Fournisseur le moins cher parmi les prix enregistrés.
+        best = (PrixFournisseur.objects
+                .filter(company=company, produit=p)
+                .select_related('fournisseur')
+                .order_by('prix_achat')
+                .first())
+        qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        result.append({
+            'produit_id': p.id,
+            'nom': p.nom,
+            'sku': p.sku,
+            'quantite_stock': p.quantite_stock,
+            'seuil_alerte': p.seuil_alerte,
+            'quantite_suggere': qte_suggere,
+            'fournisseur_id': best.fournisseur_id if best else None,
+            'fournisseur_nom': best.fournisseur.nom if best else None,
+            'prix_achat': str(best.prix_achat) if best else None,
+        })
+    return result
+
+
+def generer_bcf_reappro(company, user, fournisseur_id):
+    """Génère un BCF BROUILLON pour tous les produits sous seuil, chez le
+    fournisseur donné (ou les moins chers si non précisé). Renvoie
+    {bon_commande_id, reference, nb_lignes}. Lève ValueError si rien à faire."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur, Fournisseur
+
+    besoins = produits_a_reapprovisionner(company)
+    if fournisseur_id:
+        fournisseur = Fournisseur.objects.filter(
+            id=fournisseur_id, company=company).first()
+        if not fournisseur:
+            raise ValueError("Fournisseur introuvable.")
+        lignes = [(b['produit_id'], b['quantite_suggere'], b['prix_achat'])
+                  for b in besoins]
+    else:
+        # Filtre sur les besoins qui ont un fournisseur
+        fournisseur_id_premier = next(
+            (b['fournisseur_id'] for b in besoins if b['fournisseur_id']), None)
+        if not fournisseur_id_premier:
+            raise ValueError("Aucun fournisseur associé aux produits à réapprovisionner.")
+        fournisseur = Fournisseur.objects.get(id=fournisseur_id_premier, company=company)
+        lignes = [(b['produit_id'], b['quantite_suggere'], b['prix_achat'])
+                  for b in besoins if b['fournisseur_id'] == fournisseur_id_premier]
+
+    if not lignes:
+        raise ValueError("Aucun produit à réapprovisionner.")
+
+    from .models import Produit
+    lignes_produits = [
+        (Produit.objects.get(id=pid, company=company), qte, prix)
+        for pid, qte, prix in lignes
+    ]
+
+    created_bon = {}
+
+    def _save(ref):
+        bon = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            note='Réapprovisionnement automatique (stock < seuil)',
+            created_by=user)
+        for produit, qte, prix in lignes_produits:
+            from decimal import Decimal
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=bon, produit=produit,
+                quantite=qte,
+                prix_achat_unitaire=Decimal(prix) if prix else Decimal('0'))
+        created_bon['bon'] = bon
+        return bon
+
+    create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+    bon = created_bon['bon']
+    return {'bon_commande_id': bon.id, 'reference': bon.reference,
+            'nb_lignes': len(lignes_produits)}
+
+
+# ── FG55 — PDF facture fournisseur ────────────────────────────────────────────
+
+def generate_facture_fournisseur_pdf(facture):
+    """Génère le PDF d'une facture fournisseur (INTERNE). Utilise WeasyPrint."""
+    from apps.ventes.utils.pdf import _company_context, _render_html, _html_to_pdf
+    context = _company_context(company=facture.company)
+    context['facture'] = facture
+    context['fournisseur'] = facture.fournisseur
+    context['lignes'] = list(facture.lignes.select_related('produit').all())
+    context['paiements'] = list(facture.paiements.all())
+    context['solde_du'] = facture.solde_du
+    context['total_paye'] = facture.total_paye
+    html = _render_html('facture_fournisseur.html', context)
+    return _html_to_pdf(html)
+
+
+# ── FG56 — Facturer une réception ────────────────────────────────────────────
+
+def facturer_reception(company, user, reception):
+    """Crée une FactureFournisseur à partir d'une réception confirmée.
+
+    Construit les lignes HT à partir de LigneReceptionFournisseur ×
+    prix_achat_unitaire de la ligne BCF, calcule HT/TVA/TTC (TVA 20 %).
+    Lance ValueError si déjà facturée ou si la réception n'est pas confirmée.
+    """
+    from decimal import Decimal
+    from apps.ventes.utils.references import create_with_reference
+    from .models import FactureFournisseur, LigneFactureFournisseur
+
+    if reception.statut != 'confirme':
+        raise ValueError("Seule une réception confirmée peut être facturée.")
+
+    # Garde idempotence : si une FF porte déjà ce bon de commande et la même
+    # réception (on lie via note), on refuse.
+    if FactureFournisseur.objects.filter(
+            company=company,
+            bon_commande=reception.bon_commande,
+            note__startswith=f'Facture réception {reception.reference}').exists():
+        raise ValueError(
+            f"Cette réception ({reception.reference}) est déjà facturée.")
+
+    taux_tva = Decimal('20')
+    montant_ht = Decimal('0')
+    lignes_data = []
+    for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
+        pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
+        total = Decimal(str(ligne.quantite)) * pu
+        montant_ht += total
+        lignes_data.append((ligne.produit.nom if ligne.produit else 'Produit',
+                            ligne.quantite, pu))
+
+    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(Decimal('0.01'))
+    montant_ttc = montant_ht + montant_tva
+
+    created = {}
+
+    def _save(ref):
+        ff = FactureFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=reception.bon_commande.fournisseur,
+            bon_commande=reception.bon_commande,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            statut=FactureFournisseur.Statut.A_PAYER,
+            note=f'Facture réception {reception.reference}',
+            created_by=user)
+        for designation, qte, pu in lignes_data:
+            LigneFactureFournisseur.objects.create(
+                facture=ff, designation=designation,
+                quantite=qte, prix_unitaire_ht=pu)
+        created['ff'] = ff
+        return ff
+
+    create_with_reference(FactureFournisseur, 'FF', company, _save)
+    return created['ff']
+
+
+# ── FG57 — Rotation / dead-stock ─────────────────────────────────────────────
+
+def rotation_report(company, jours=180):
+    """Rapport de rotation des produits (dead-stock / immobile).
+
+    Retourne une liste de dicts avec : produit_id, nom, sku, quantite_stock,
+    valeur_stock (prix_achat × qte, INTERNE), derniere_sortie (date ou null),
+    jours_sans_mouvement (int ou null), bucket ('actif'|'ralenti'|'immobile').
+    Admin-only ; prix d'achat interne jamais client-facing.
+    """
+    from django.utils import timezone
+    from .models import Produit, MouvementStock
+
+    today = timezone.now().date()
+    produits = (Produit.objects
+                .filter(company=company, is_archived=False, quantite_stock__gt=0)
+                .only('id', 'nom', 'sku', 'quantite_stock', 'prix_achat'))
+
+    result = []
+    for p in produits:
+        derniere = (MouvementStock.objects
+                    .filter(company=company, produit=p,
+                            type_mouvement='sortie')
+                    .order_by('-date')
+                    .values_list('date', flat=True)
+                    .first())
+        jours_sans = None
+        if derniere:
+            jours_sans = (today - derniere.date()).days
+
+        if derniere is None:
+            bucket = 'immobile'
+        elif jours_sans > jours:
+            bucket = 'ralenti'
+        else:
+            bucket = 'actif'
+
+        result.append({
+            'produit_id': p.id,
+            'nom': p.nom,
+            'sku': p.sku,
+            'quantite_stock': p.quantite_stock,
+            'valeur_stock': str(p.prix_achat * p.quantite_stock),
+            'derniere_sortie': derniere.date().isoformat() if derniere else None,
+            'jours_sans_mouvement': jours_sans,
+            'bucket': bucket,
+        })
+    # Trier : immobiles en premier, puis ralentis, puis actifs
+    order = {'immobile': 0, 'ralenti': 1, 'actif': 2}
+    result.sort(key=lambda x: (order[x['bucket']],
+                                -(x['jours_sans_mouvement'] or 999999)))
+    return result
+
+
+# ── FG60 — Export xlsx mouvements ─────────────────────────────────────────────
+
+def export_mouvements_xlsx(company, qs):
+    """Export Excel de la liste filtrée des mouvements de stock (INTERNE).
+    Prix d'achat jamais inclus."""
+    from apps.crm.exports import build_xlsx_response
+    headers = ['Référence', 'Type', 'Produit', 'Quantité',
+               'Avant', 'Après', 'Note', 'Créé par', 'Date']
+    rows = []
+    for m in qs.select_related('produit', 'created_by'):
+        rows.append([
+            m.reference or '',
+            m.get_type_mouvement_display(),
+            m.produit.nom,
+            m.quantite,
+            m.quantite_avant,
+            m.quantite_apres,
+            m.note or '',
+            m.created_by.username if m.created_by else '',
+            m.date.strftime('%d/%m/%Y %H:%M') if m.date else '',
+        ])
+    return build_xlsx_response('mouvements-stock.xlsx', headers, rows,
+                               sheet_title='Mouvements')
+
+
+# ── FG58 — Comparaison fournisseurs ───────────────────────────────────────────
+
+def comparer_fournisseurs(company, produit):
+    """Retourne la liste des prix multi-fournisseurs d'un produit, triée du
+    moins cher au plus cher. INTERNE — prix d'achat jamais client-facing."""
+    from .models import PrixFournisseur
+    qs = (PrixFournisseur.objects
+          .filter(company=company, produit=produit)
+          .select_related('fournisseur')
+          .order_by('prix_achat'))
+    return [
+        {
+            'fournisseur_id': pf.fournisseur_id,
+            'fournisseur_nom': pf.fournisseur.nom,
+            'prix_achat': str(pf.prix_achat),
+            'date_dernier_achat': pf.date_dernier_achat.isoformat()
+            if pf.date_dernier_achat else None,
+        }
+        for pf in qs
+    ]
+
+
+# ── FG59 — Scorecard performance fournisseur ─────────────────────────────────
+
+def supplier_performance(company, fournisseur):
+    """Scorecard performance fournisseur : délai moyen, taux de remplissage,
+    taux de retour, dépenses totales. INTERNE."""
+    from decimal import Decimal
+    from .models import BonCommandeFournisseur, RetourFournisseur, PrixFournisseur
+
+    bons = (BonCommandeFournisseur.objects
+            .filter(company=company, fournisseur=fournisseur)
+            .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+            .prefetch_related('receptions', 'lignes'))
+
+    nb_bons = bons.count()
+    total_achats = Decimal('0')
+    lead_times = []
+    fill_rates = []
+
+    for bc in bons:
+        # Dépense totale HT (prix d'achat interne)
+        total_achats += bc.total_achat or Decimal('0')
+
+        # Délai de livraison = date_reception - date_commande (en jours)
+        if bc.date_commande:
+            for rec in bc.receptions.filter(statut='confirme'):
+                if rec.date_reception:
+                    delta = (rec.date_reception - bc.date_commande).days
+                    if delta >= 0:
+                        lead_times.append(delta)
+
+        # Taux de remplissage = qte reçue / qte commandée
+        total_cmd = sum(l.quantite for l in bc.lignes.all())
+        total_recu = sum(l.quantite_recue for l in bc.lignes.all())
+        if total_cmd > 0:
+            fill_rates.append(total_recu / total_cmd * 100)
+
+    # Taux de retour
+    nb_retours = RetourFournisseur.objects.filter(
+        company=company, fournisseur=fournisseur,
+        statut='valide').count()
+
+    return {
+        'fournisseur_id': fournisseur.id,
+        'fournisseur_nom': fournisseur.nom,
+        'nb_bons': nb_bons,
+        'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
+        'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
+        'nb_retours': nb_retours,
+        'return_rate_pct': round(nb_retours / nb_bons * 100, 1) if nb_bons else None,
+        'total_achats_ht': str(total_achats),
+    }
+
+
+# ── FG62 — Réapprovisionnement par emplacement ───────────────────────────────
+
+def suggestions_reappro_emplacement(company):
+    """Retourne les lignes StockEmplacement dont la quantité < seuil_min,
+    avec une suggestion de transfert depuis le dépôt principal.
+    INTERNE — admin uniquement."""
+    from .models import StockEmplacement, EmplacementStock
+    from django.db.models import Q
+
+    qs = (StockEmplacement.objects
+          .filter(company=company)
+          .filter(seuil_min__isnull=False)
+          .filter(quantite__lt=models.F('seuil_min'))
+          .select_related('produit', 'emplacement'))
+
+    principal = EmplacementStock.objects.filter(
+        company=company, is_principal=True).first()
+
+    result = []
+    for se in qs:
+        qte_a_transferer = (se.seuil_min or 0) - se.quantite
+        result.append({
+            'produit_id': se.produit_id,
+            'produit_nom': se.produit.nom,
+            'emplacement_id': se.emplacement_id,
+            'emplacement_nom': se.emplacement.nom,
+            'quantite_actuelle': se.quantite,
+            'seuil_min': se.seuil_min,
+            'seuil_max': se.seuil_max,
+            'qte_suggere_transfert': qte_a_transferer,
+            'source_id': principal.id if principal else None,
+            'source_nom': principal.nom if principal else None,
+        })
+    return result
+
+
+# ── FG63 — Session d'inventaire ───────────────────────────────────────────────
+
+def valider_inventaire_session(session, user):
+    """Valide une session d'inventaire : émet les ajustements de stock pour
+    chaque ligne en écart. Idempotent : une session déjà validée lève ValueError.
+    Retourne {ajustes, inchanges}."""
+    from django.db import transaction
+    from .models import MouvementStock, InventaireSession
+
+    if session.statut == InventaireSession.Statut.VALIDE:
+        raise ValueError("Cette session d'inventaire est déjà validée.")
+    if session.statut == InventaireSession.Statut.ANNULE:
+        raise ValueError("Cette session d'inventaire est annulée.")
+
+    ajustes, inchanges = 0, 0
+
+    with transaction.atomic():
+        for ligne in session.lignes.select_related('produit').all():
+            ecart = ligne.quantite_comptee - ligne.quantite_theorique
+            if ecart == 0:
+                inchanges += 1
+                continue
+
+            # Ajustement : on pose la nouvelle valeur directement.
+            produit = ligne.produit
+            # Verrou anti-concurrence
+            from .models import Produit
+            produit = Produit.objects.select_for_update().get(pk=produit.pk)
+            qte_avant = produit.quantite_stock
+            qte_apres = ligne.quantite_comptee  # on remplace par le comptage
+
+            MouvementStock.objects.create(
+                company=session.company,
+                produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+                quantite=abs(ecart),
+                quantite_avant=qte_avant,
+                quantite_apres=qte_apres,
+                reference=session.reference,
+                note=f'Inventaire {session.reference} — écart {ecart:+d}',
+                created_by=user)
+
+            produit.quantite_stock = qte_apres
+            produit.save(update_fields=['quantite_stock'])
+            ajustes += 1
+
+        session.statut = InventaireSession.Statut.VALIDE
+        session.save(update_fields=['statut'])
+
+    return {'ajustes': ajustes, 'inchanges': inchanges}
+
+
+# ── FG64 — Rapport expiry ─────────────────────────────────────────────────────
+
+def produits_expirant_bientot(company, jours=90):
+    """Retourne les produits dont au moins une ligne de réception a une
+    date_peremption dans les `jours` prochains. Admin-only, INTERNE."""
+    from django.utils import timezone
+    import datetime
+    from .models import LigneReceptionFournisseur
+
+    today = timezone.now().date()
+    limite = today + datetime.timedelta(days=jours)
+
+    qs = (LigneReceptionFournisseur.objects
+          .filter(
+              reception__company=company,
+              date_peremption__isnull=False,
+              date_peremption__lte=limite,
+              date_peremption__gte=today)
+          .select_related('produit', 'reception'))
+
+    # Déduplique par produit (garde la date de péremption la plus proche)
+    seen = {}
+    for ligne in qs.order_by('date_peremption'):
+        pid = ligne.produit_id
+        if pid not in seen:
+            seen[pid] = {
+                'produit_id': pid,
+                'produit_nom': ligne.produit.nom,
+                'date_peremption': ligne.date_peremption.isoformat(),
+                'numero_lot': ligne.numero_lot,
+                'quantite': ligne.quantite,
+                'reception_ref': ligne.reception.reference,
+                'jours_restants': (ligne.date_peremption - today).days,
+            }
+    return list(seen.values())
+
+
+# ── FG65 — Prévisions de demande ─────────────────────────────────────────────
+
+def previsions_reappro(company, nb_mois=6):
+    """Calcule la consommation mensuelle moyenne par SKU (SORTIE sur les
+    `nb_mois` derniers mois) et propose une quantité de réapprovisionnement.
+    Retourne une liste de dicts par produit avec sortie > 0. Admin-only."""
+    from django.utils import timezone
+    import datetime
+    from .models import MouvementStock, Produit
+
+    today = timezone.now().date()
+    debut = today - datetime.timedelta(days=30 * nb_mois)
+
+    # Agréger les sorties par produit
+    from django.db.models import Sum
+    sorties = (MouvementStock.objects
+               .filter(company=company, type_mouvement='sortie',
+                       date__date__gte=debut)
+               .values('produit_id')
+               .annotate(total=Sum('quantite')))
+
+    sorties_map = {s['produit_id']: s['total'] for s in sorties}
+    if not sorties_map:
+        return []
+
+    produits = Produit.objects.filter(
+        company=company, id__in=list(sorties_map.keys()),
+        is_archived=False).only('id', 'nom', 'sku', 'quantite_stock',
+                                'seuil_alerte', 'quantite_reappro_cible')
+    result = []
+    for p in produits:
+        total_sorties = sorties_map[p.id]
+        conso_moy = total_sorties / nb_mois  # par mois
+        # Quantité suggérée = conso 2 mois (stock de sécurité) ou cible si définie
+        qte_suggeree = (p.quantite_reappro_cible
+                        if p.quantite_reappro_cible
+                        else max(round(conso_moy * 2), p.seuil_alerte * 2 if p.seuil_alerte else 1))
+        result.append({
+            'produit_id': p.id,
+            'nom': p.nom,
+            'sku': p.sku,
+            'total_sorties': total_sorties,
+            'consommation_mensuelle_moy': round(conso_moy, 2),
+            'quantite_stock': p.quantite_stock,
+            'quantite_suggeree': qte_suggeree,
+        })
+    result.sort(key=lambda x: -x['consommation_mensuelle_moy'])
+    return result

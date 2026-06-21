@@ -173,6 +173,15 @@ class Produit(models.Model):
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
     custom_data = models.JSONField(null=True, blank=True)
 
+    # ── FG54 — Réapprovisionnement auto ──────────────────────────────────────
+    # Quantité cible à recomander quand le stock passe sous seuil_alerte.
+    # Si non renseignée, la suggestion de réappro propose seuil_alerte × 2
+    # (comportement conservateur par défaut). INTERNE — jamais client-facing.
+    quantite_reappro_cible = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Quantité cible à commander lors d\'un réapprovisionnement '
+                  '(facultatif ; défaut = seuil_alerte × 2).')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
@@ -276,6 +285,17 @@ class StockEmplacement(models.Model):
     emplacement = models.ForeignKey(
         EmplacementStock, on_delete=models.CASCADE, related_name='stocks')
     quantite = models.IntegerField(default=0)
+
+    # ── FG62 — Seuils min/max par emplacement ────────────────────────────
+    # Permettent de signaler qu'un emplacement non-principal (ex: camionnette)
+    # est sous son seuil propre, indépendamment du seuil global du produit.
+    # Optionnels : null = pas de seuil défini sur cet emplacement.
+    seuil_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Seuil minimum de stock pour cet emplacement (optionnel).')
+    seuil_max = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Seuil maximum de stock pour cet emplacement (optionnel).')
 
     class Meta:
         verbose_name = "Stock par emplacement"
@@ -593,6 +613,24 @@ class LigneReceptionFournisseur(models.Model):
         related_name='lignes_reception_fournisseur')
     quantite = models.IntegerField()
 
+    # ── FG61 — Numéros de série à la réception ────────────────────────────
+    # Sériaux capturés à l'entrée en stock (pour réconciliation avec
+    # sav.Equipement lors de l'installation). Optionnel ; liste de chaînes.
+    numeros_serie = models.JSONField(
+        null=True, blank=True,
+        help_text='Numéros de série reçus lors de cette ligne (liste de '
+                  'chaînes). Optionnel ; aucune série = null.')
+
+    # ── FG64 — Traçabilité lot / date de péremption ───────────────────────
+    # Batteries, produits d'étanchéité, etc. Optionnel : un produit sans
+    # date de péremption n'apparaît jamais dans le rapport d'expiry.
+    numero_lot = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text='Numéro de lot ou batch (optionnel).')
+    date_peremption = models.DateField(
+        null=True, blank=True,
+        help_text='Date de péremption / fin de vie (optionnel).')
+
     class Meta:
         verbose_name = 'Ligne de réception fournisseur'
         verbose_name_plural = 'Lignes de réception fournisseur'
@@ -727,3 +765,70 @@ class PaiementFournisseur(models.Model):
 
     def __str__(self):
         return f'{self.facture_id} — {self.montant}'
+
+
+# ── FG63 — Session d'inventaire (comptage physique en brouillon) ──────────────
+
+class InventaireSession(models.Model):
+    """FG63 — Session de comptage physique du stock.
+
+    Remplace l'action `inventaire` "one-shot" par un workflow draft / valider :
+    le comptage est enregistré en mode brouillon (pouvant être corrigé) puis
+    validé en une seule passe qui émet les ajustements (AJUSTEMENT) uniquement
+    pour les lignes dont la quantité comptée diffère de la quantité théorique.
+    La validation est IDEMPOTENTE : une session déjà validée ne peut pas être
+    re-validée. INTERNE — admin uniquement.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='inventaire_sessions')
+    reference = models.CharField(max_length=50)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    motif = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='inventaire_sessions')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Session d\'inventaire'
+        verbose_name_plural = 'Sessions d\'inventaire'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+
+class LigneInventaire(models.Model):
+    """Ligne d'une session d'inventaire : produit, quantité théorique
+    (tirée du stock au moment de la création) et quantité comptée physiquement.
+    L'écart est calculé lors de la validation de la session."""
+    session = models.ForeignKey(
+        InventaireSession, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT,
+        related_name='lignes_inventaire')
+    quantite_theorique = models.IntegerField(
+        help_text='Stock théorique au moment du comptage (snapshot).')
+    quantite_comptee = models.IntegerField(
+        help_text='Quantité réellement comptée physiquement.')
+
+    class Meta:
+        verbose_name = 'Ligne d\'inventaire'
+        verbose_name_plural = 'Lignes d\'inventaire'
+
+    def __str__(self):
+        return f'{self.produit_id}: théo={self.quantite_theorique} compté={self.quantite_comptee}'
+
+    @property
+    def ecart(self):
+        return self.quantite_comptee - self.quantite_theorique

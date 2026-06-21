@@ -53,7 +53,7 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
     ordering = ['-date']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_mouvement')()]
@@ -66,10 +66,35 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         if user.company_id:
             # Direct company filter + produit__company belt-and-braces guard
             # against cross-tenant produit references slipping in.
-            return qs.filter(company=user.company, produit__company=user.company)
-        if user.is_superuser:
-            return qs
-        return qs.none()
+            qs = qs.filter(company=user.company, produit__company=user.company)
+        elif user.is_superuser:
+            pass
+        else:
+            return qs.none()
+        # FG60 — Filtres supplémentaires
+        params = self.request.query_params
+        type_mv = params.get('type_mouvement')
+        if type_mv:
+            qs = qs.filter(type_mouvement=type_mv)
+        produit_id = params.get('produit')
+        if produit_id:
+            qs = qs.filter(produit_id=produit_id)
+        date_min = params.get('date_min')
+        if date_min:
+            qs = qs.filter(date__date__gte=date_min)
+        date_max = params.get('date_max')
+        if date_max:
+            qs = qs.filter(date__date__lte=date_max)
+        return qs
+
+    @action(detail=False, methods=['post'], url_path='export-xlsx',
+            permission_classes=[IsAnyRole])
+    def export_xlsx(self, request):
+        """FG60 — Export Excel de la liste des mouvements de stock (INTERNE).
+        Prix d'achat jamais inclus."""
+        from ..services import export_mouvements_xlsx
+        qs = self.filter_queryset(self.get_queryset())
+        return export_mouvements_xlsx(request.user.company, qs)
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import PermissionDenied, ValidationError

@@ -68,3 +68,12 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 nb_bons_commande_annot=Count('bons_commande', distinct=True),
             )
         return qs
+
+    @action(detail=True, methods=['get'], url_path='performance',
+            permission_classes=[IsAdminRole])
+    def performance(self, request, *args, **kwargs):
+        """FG59 — Scorecard performance fournisseur : délai moyen, taux de
+        remplissage, taux de retour, dépenses totales. Admin-only. INTERNE."""
+        from ..services import supplier_performance
+        fournisseur = self.get_object()
+        return Response(supplier_performance(request.user.company, fournisseur))

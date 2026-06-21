@@ -104,6 +104,19 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         total_du = sum((Decimal(f['solde_du']) for f in data), Decimal('0'))
         return Response({'results': data, 'total_du': str(total_du)})
 
+    @action(detail=True, methods=['get'], url_path='pdf',
+            permission_classes=[IsResponsableOrAdmin])
+    def pdf(self, request, pk=None):
+        """FG55 — PDF facture fournisseur (INTERNE — montre les prix d'achat).
+        Jamais un document client."""
+        from ..services import generate_facture_fournisseur_pdf
+        facture = self.get_object()
+        pdf_bytes = generate_facture_fournisseur_pdf(facture)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="{facture.reference}.pdf"')
+        return response
+
     @action(detail=True, methods=['get', 'post'], url_path='paiements')
     def paiements(self, request, pk=None):
         """GET : liste des paiements de la facture. POST : enregistre un

@@ -241,6 +241,76 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             'inline; filename="etiquettes-produits.pdf"')
         return response
 
+    @action(detail=False, methods=['get'], url_path='a-reapprovisionner',
+            permission_classes=[IsAnyRole])
+    def a_reapprovisionner(self, request):
+        """FG54 — Liste des produits dont le stock est <= seuil_alerte,
+        avec fournisseur le moins cher et quantité suggérée. INTERNE."""
+        from ..services import produits_a_reapprovisionner
+        return Response(produits_a_reapprovisionner(request.user.company))
+
+    @action(detail=False, methods=['post'], url_path='generer-bcf-reappro',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_bcf_reappro(self, request):
+        """FG54 — Génère un BCF BROUILLON pour tous les produits sous seuil.
+        Réutilise create_with_reference('BCF'). INTERNE."""
+        from ..services import generer_bcf_reappro
+        fournisseur_id = request.data.get('fournisseur_id')
+        try:
+            result = generer_bcf_reappro(
+                company=request.user.company,
+                user=request.user,
+                fournisseur_id=fournisseur_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(result, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='rotation',
+            permission_classes=[IsAdminRole])
+    def rotation(self, request):
+        """FG57 — Rapport de rotation / dead-stock (admin). Indique le dernier
+        mouvement SORTIE, les jours sans mouvement, et le bucket de rotation."""
+        from ..services import rotation_report
+        try:
+            jours = int(request.query_params.get('jours', 180))
+        except (TypeError, ValueError):
+            jours = 180
+        return Response(rotation_report(request.user.company, jours=jours))
+
+    @action(detail=True, methods=['get'], url_path='comparer-fournisseurs',
+            permission_classes=[IsAdminRole])
+    def comparer_fournisseurs(self, request, *args, **kwargs):
+        """FG58 — Comparaison des prix multi-fournisseurs d'un produit (admin).
+        Trié du moins cher au plus cher. INTERNE."""
+        from ..services import comparer_fournisseurs
+        produit = self.get_object()
+        return Response(comparer_fournisseurs(request.user.company, produit))
+
+    @action(detail=False, methods=['get'], url_path='expirant-bientot',
+            permission_classes=[IsAdminRole])
+    def expirant_bientot(self, request):
+        """FG64 — Rapport des produits expirant bientôt (admin). Paramètre
+        ?jours=90 (défaut 90 jours). INTERNE."""
+        from ..services import produits_expirant_bientot
+        try:
+            jours = int(request.query_params.get('jours', 90))
+        except (TypeError, ValueError):
+            jours = 90
+        return Response(produits_expirant_bientot(request.user.company, jours=jours))
+
+    @action(detail=False, methods=['get'], url_path='previsions-reappro',
+            permission_classes=[IsAdminRole])
+    def previsions_reappro(self, request):
+        """FG65 — Prévisions de réapprovisionnement basées sur la consommation
+        historique (SORTIE) des `nb_mois` derniers mois. Admin-only. INTERNE."""
+        from ..services import previsions_reappro
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
+
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
     def resolve(self, request):
