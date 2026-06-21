@@ -126,7 +126,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
+      - name: Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)
+        run: python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia
       - run: pip install flake8 import-linter==2.11
       - name: Lint backend (flake8)
         run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations
@@ -176,7 +178,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
       - name: Install WeasyPrint system dependencies
         run: |
           sudo apt-get update
@@ -256,7 +258,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
       - name: Check pipeline stage names against STAGES.py
         run: python scripts/check_stages.py
       - name: Check CODEMAP structural fingerprint
@@ -335,7 +337,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

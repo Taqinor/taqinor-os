@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
       - name: Install WeasyPrint system dependencies
         run: |
           sudo apt-get update
@@ -161,7 +161,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -329,7 +329,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
       - name: Install FastAPI service dependencies
         working-directory: backend/fastapi_ia
         run: |
