@@ -127,8 +127,12 @@ tout seul aux nouveaux modèles.
 
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
-  installations, SAV, reporting) — à écrire avec l'app lancée pour des sélecteurs
-  fiables, puis promouvoir les plus critiques dans le smoke.
+  installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,
+  installations,sav,reporting}.spec.js`, en `test.fixme` → visibles comme TODO
+  sans casser la suite). Pour les remplir : `bash scripts/e2e-local.sh` (monte la
+  pile en une commande), puis `npx playwright codegen http://localhost:4173/<route>`
+  pour des sélecteurs FIABLES ; enlever `.fixme`, garder le test autonome, puis
+  promouvoir les plus critiques dans le smoke.
 * Garde-fous de règles (#3 Meta `PAUSED`, #4 `/proposal` seul chemin PDF devis) —
   à étoffer au palier 1/2 quand le code correspondant atterrit.
 * Régression visuelle : commiter les baselines générées par `release-verify` pour
