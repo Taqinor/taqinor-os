@@ -1055,13 +1055,13 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Structural / highest-impact —**
 
-- [ ] W148 — **Restore the dark→light "salle blanche" diagnostic climax.** The page
+- [x] W148 — **Restore the dark→light "salle blanche" diagnostic climax.** The page
   now runs one flat navy tone top-to-bottom; the lit final act was removed, so the
   scroll never "arrives." Bring back an illuminated diagnostic act (or a dramatically
   brighter glass-lifted card on a luminous gradient) and wire up the unused
   `.seam-lumiere`. Files: `apps/web/src/components/DiagnosticForm.astro`,
   `apps/web/src/styles/global.css`.
-- [ ] W149 — **Make the hero CTA own the first 3 seconds.** Shorten "Recevez votre
+- [x] W149 — **Make the hero CTA own the first 3 seconds.** Shorten "Recevez votre
   étude sur WhatsApp", give the button a persistent golden halo (the `.glow` resting
   state barely glows today) and a larger size/weight so it's unmistakably the focal
   point. Files: `apps/web/src/pages/index.astro`, `apps/web/src/styles/global.css`.
@@ -1085,25 +1085,25 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Homepage & hero —**
 
-- [ ] W154 — **Richer art-directed hero scrim** (layered radial vignette + text-side
+- [x] W154 — **Richer art-directed hero scrim** (layered radial vignette + text-side
   darkening) so the golden headline always reads over busy photos. Files: `apps/web/src/pages/index.astro`.
 - [ ] W155 — **Portrait-crop hero `<source>` for phones.** One 16:9 landscape is center-punched
   on tall screens; add `media="(orientation: portrait)"` with a vertical crop. Files:
   `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/components/Picture.astro`.
-- [ ] W156 — **Consistent monumental `.fig .lum` trust-band figures** (the four-up row mixes
+- [x] W156 — **Consistent monumental `.fig .lum` trust-band figures** (the four-up row mixes
   one golden `text-4xl` with three plain white `text-xl`). Files: `apps/web/src/pages/index.astro`.
 - [x] W157 — **Lift `.cine-card`** from near-invisible (`bg-white/0.04`) with faint glass
   blur, a top-edge highlight, and a warm brass hover. Files: `apps/web/src/styles/global.css`.
-- [ ] W158 — **Refine section seams** — replace stacked hard `border-y border-white/10`
+- [x] W158 — **Refine section seams** — replace stacked hard `border-y border-white/10`
   hairlines with occasional gradient/glow transitions. Files: `apps/web/src/pages/index.astro`,
   `apps/web/src/styles/global.css`.
-- [ ] W159 — **Vary the repeated eyebrow treatment** (`tech-label + rule-brass` used ~9×
+- [x] W159 — **Vary the repeated eyebrow treatment** (`tech-label + rule-brass` used ~9×
   down the homepage → wallpaper). Files: `apps/web/src/pages/index.astro`.
 - [x] W160 — **Refine the Article 33 ribbon** so it reads as a premium announcement, not an
   admin bar above the hero. Files: `apps/web/src/components/Article33Ribbon.astro`.
-- [ ] W161 — **Add a hero scroll affordance** (subtle animated chevron / peeking next-section
+- [x] W161 — **Add a hero scroll affordance** (subtle animated chevron / peeking next-section
   edge). Files: `apps/web/src/pages/index.astro`.
-- [ ] W162 — **Warm the austere "L'argument en chiffres" stat column** (faint brass backing /
+- [x] W162 — **Warm the austere "L'argument en chiffres" stat column** (faint brass backing /
   baseline glow). Files: `apps/web/src/pages/index.astro`.
 
 **— Navigation chrome —**
@@ -1223,7 +1223,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   have no hover at all). Files: `apps/web/src/styles/global.css` (`.cine-card`) + card wrappers.
 - [ ] W204 — **Hover arrow nudge on gallery/CTA links** (`group-hover:translate-x-1`). Files:
   `apps/web/src/pages/index.astro`, `nos-solutions.astro`, `realisations/index.astro`.
-- [ ] W205 — **Lead with a count-up on the first above-the-fold figure** (the protagonist number
+- [x] W205 — **Lead with a count-up on the first above-the-fold figure** (the protagonist number
   is static text). Files: `apps/web/src/pages/index.astro`.
 - [x] W206 — **Extract a `cine-in` stagger token** (literal `animation-delay:120/240/360ms`
   repeated across ~40 hero blocks). Files: `apps/web/src/styles/global.css` + heroes.
@@ -1475,3 +1475,12 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W190: estimate result card elevated (cine-card+glow, brass seam, .fig/.fig-lg/.lum value vs .tech-label); computed numbers + deeplink unchanged.
 - 2026-06-21 — W191: submitting spinner + aria-busy + reduced-motion-safe result fade-in; shared @keyframes spin/.spinner in global.css; submit/fetch/threshold logic unchanged.
 - 2026-06-21 — W194: stronger error/validation styling (aria-invalid highlight), higher placeholder contrast, visible focus rings; validation logic unchanged.
+- 2026-06-21 — W148: restored the dark→light "salle blanche" climax — .seam-lumiere + .diag-lumiere lifted card around the diagnostic; form mechanics untouched.
+- 2026-06-21 — W149: hero CTA shortened to "Estimer mon installation →" with a stronger .glow-hero halo + larger size; href unchanged.
+- 2026-06-21 — W154: hero scrim switched to the canonical layered .hero-scrim.
+- 2026-06-21 — W156: trust-band four-up figures unified to monumental .fig .fig-lg .lum + .tech-label labels.
+- 2026-06-21 — W158: hard border hairlines replaced with .seam-soft gradient transitions on homepage seams.
+- 2026-06-21 — W159: varied the repeated eyebrow treatment (section-index prefixes / plain label variants).
+- 2026-06-21 — W161: hero scroll-affordance chevron (bounce gated to no-preference, static under reduced-motion).
+- 2026-06-21 — W162: warmed the "L'argument en chiffres" stat column with a faint brass radial backing.
+- 2026-06-21 — W205: first above-the-fold figure now count-ups (existing countup.ts, width locked → zero CLS, final value instantly under reduced-motion).
