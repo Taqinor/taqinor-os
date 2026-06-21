@@ -10,7 +10,7 @@ import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
 import {
-  DataTable, Badge, Button, Segmented, StatusPill,
+  DataTable, Badge, Button, Segmented,
   Skeleton, SkeletonTableRow, EmptyState,
 } from '../../ui'
 import { useConfirmDialog, toast } from '../../ui/confirm'
