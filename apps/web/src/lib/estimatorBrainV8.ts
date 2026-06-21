@@ -208,6 +208,13 @@ export interface PitchedLiveResult {
   pitchDeg: number;
   facingAzimuthDeg: number;
   offSouthDeg: number;
+  /**
+   * Aire VRAIE du pan (m²) = projetée / cos(pente) — relais du pack gagnant. Un toit
+   * en pente paraît plus petit vu du ciel ; on expose ici sa surface réelle de versant.
+   */
+  slopeAreaM2: number;
+  /** Aire VRAIE utile du pan (m²) = utile projetée / cos(pente) — relais du pack gagnant. */
+  usableSlopeAreaM2: number;
   /** Pan orienté NORD : production quasi nulle → on ne pose rien (honnêteté). */
   northFacing: boolean;
   /**
@@ -272,6 +279,8 @@ export function solveLivePitched(
 
   const { winner, rows } = solvePitchedConstrained(ctx, locks);
   const offSouthDeg = winner.pack.offSouthDeg;
+  const slopeAreaM2 = winner.pack.slopeAreaM2;
+  const usableSlopeAreaM2 = winner.pack.usableSlopeAreaM2;
   const northFacing = winner.pack.northFacing;
   // W74 — pan trop petit / contraint à néant SANS être nord : le gagnant ne loge AUCUN
   // panneau (fit 0 → 0 kWh). Distinct du pan nord (production quasi nulle par orientation).
@@ -295,6 +304,8 @@ export function solveLivePitched(
     pitchDeg,
     facingAzimuthDeg,
     offSouthDeg,
+    slopeAreaM2,
+    usableSlopeAreaM2,
     northFacing,
     noViableConfig,
     winner,
