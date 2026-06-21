@@ -9,6 +9,7 @@ import reportingReducer from '../features/reporting/store/reportingSlice'
 import installationsReducer from '../features/installations/store/installationsSlice'
 import equipementsReducer from '../features/sav/store/equipementsSlice'
 import ticketsReducer from '../features/sav/store/ticketsSlice'
+import messagingReducer from '../features/messaging/store/messagingSlice'
 
 const appReducer = combineReducers({
   auth: authReducer,
@@ -21,6 +22,7 @@ const appReducer = combineReducers({
   installations: installationsReducer,
   equipements: equipementsReducer,
   tickets: ticketsReducer,
+  messaging: messagingReducer,
 })
 
 // Clés localStorage strictement liées à l'authentification à purger au logout.

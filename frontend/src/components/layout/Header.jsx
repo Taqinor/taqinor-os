@@ -9,6 +9,7 @@ import {
 import { logoutUser } from '../../features/auth/store/authSlice'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
+import ChatBell from './ChatBell'
 import Breadcrumbs from './Breadcrumbs'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
@@ -68,6 +69,7 @@ export default function Header({ onMenu }) {
 
         <div className="header-user">
           <ThemeToggle />
+          <ChatBell />
           <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
