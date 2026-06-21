@@ -127,7 +127,7 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--motion-base) var(--ease-out);
   overflow: hidden;
 }
 
@@ -199,7 +199,7 @@ textarea:focus-visible,
   border-radius: 6px;
   display: flex;
   align-items: center;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--motion-base), background var(--motion-base);
   flex-shrink: 0;
 }
 .sidebar-toggle:hover { color: #f1f5f9; background: #1e293b; }
@@ -322,7 +322,7 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background var(--motion-base), color var(--motion-base), border-color var(--motion-base);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -508,7 +508,7 @@ textarea:focus-visible,
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 8px;
-  transition: background 0.15s;
+  transition: background var(--motion-base);
 }
 .header-usermenu-trigger:hover { background: #f1f5f9; }
 
@@ -644,7 +644,7 @@ textarea:focus-visible,
   cursor: pointer;
   border: 1px solid transparent;
   text-decoration: none;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  transition: background var(--motion-base), border-color var(--motion-base), box-shadow var(--motion-base), transform var(--motion-fast);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -820,7 +820,7 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--motion-base), color var(--motion-base);
 }
 .modal-close:hover { background: #f1f5f9; color: #1e293b; }
 
@@ -915,7 +915,7 @@ textarea:focus-visible,
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--motion-base), color var(--motion-base);
 }
 .lead-devis-badge:hover {
   background: var(--cat-navy);
@@ -992,7 +992,7 @@ textarea:focus-visible,
   background: #ffffff;
   width: 100%;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
   outline: none;
 }
 
@@ -1112,7 +1112,7 @@ textarea.form-control {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--motion-base), color var(--motion-base);
 }
 .btn-icon-danger:hover { background: #fee2e2; color: #ef4444; }
 
@@ -1170,7 +1170,7 @@ textarea.form-control {
   background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;
   width: 220px;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
   font-family: inherit;
 }
 
@@ -1256,7 +1256,7 @@ textarea.form-control {
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color var(--motion-base), border-color var(--motion-base);
   white-space: nowrap;
   font-family: inherit;
 }
@@ -1523,7 +1523,7 @@ textarea.form-control {
   border-radius: 10px;
   padding: 9px 14px;
   margin-bottom: 5px;
-  transition: border-color 0.12s, box-shadow 0.12s;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .cat-row:hover {
   border-color: rgba(245, 166, 35, 0.55);
@@ -1774,7 +1774,7 @@ textarea.form-control {
     cursor: pointer;
     color: #64748b;
     text-decoration: none;
-    transition: color 0.12s;
+    transition: color var(--motion-fast);
   }
   .bottom-tab.active { color: #1d4ed8; }
   .bottom-tab-label {
@@ -1794,7 +1794,7 @@ textarea.form-control {
     width: 264px;
     min-height: 100dvh;
     transform: translateX(-105%);
-    transition: transform 0.25s ease;
+    transition: transform var(--motion-slow) ease;
     box-shadow: 8px 0 28px rgba(15, 23, 42, 0.35);
     /* Le tiroir occupe tout l'écran : on dégage l'encoche (haut), l'indicateur
        d'accueil (bas) et l'inset gauche (paysage) — marque + déconnexion
@@ -2077,7 +2077,7 @@ textarea.form-control {
   color: #475569;
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   text-align: left;
 }
 
@@ -2097,7 +2097,7 @@ textarea.form-control {
   display: flex;
   gap: 0.65rem;
   align-items: flex-start;
-  animation: msgIn 0.18s ease;
+  animation: msgIn var(--motion-base) var(--ease-out);
 }
 
 @keyframes msgIn {
@@ -2237,7 +2237,7 @@ textarea.form-control {
   color: #1e293b;
   background: #ffffff;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
 }
 
 .agent-input:focus {
@@ -2262,7 +2262,7 @@ textarea.form-control {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  transition: background var(--motion-base), transform var(--motion-fast), box-shadow var(--motion-base);
 }
 
 .agent-send-btn:hover:not(:disabled) {
@@ -2348,7 +2348,7 @@ textarea.form-control {
   font-size: 0.85rem;
   cursor: pointer;
   background: #fff;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--motion-base), background var(--motion-base);
 }
 
 .gen-radio.selected {
@@ -3134,7 +3134,7 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   box-shadow: -16px 0 48px rgba(0, 0, 0, 0.25);
-  animation: ldpIn 0.18s ease-out;
+  animation: ldpIn var(--motion-base) var(--ease-out);
 }
 
 @keyframes ldpIn {
@@ -3467,7 +3467,7 @@ textarea.form-control {
   border-right: 1px solid var(--border, #e2e8f0);
   color: var(--foreground, #0b1f3a);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 
 .vs-btn:last-child {
@@ -3667,7 +3667,7 @@ textarea.form-control {
   color: var(--foreground, #0b1f3a);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
 .cal-chip:hover {
@@ -3836,7 +3836,7 @@ textarea.form-control {
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius, 10px);
   border-top: 3px solid var(--kb-accent, var(--primary, #0b1f3a));
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
 /* Colonne survolée pendant un drag : halo net + fond teinté couleur d'étape,
@@ -3946,7 +3946,7 @@ textarea.form-control {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+  transition: box-shadow var(--motion-base) ease, transform var(--motion-base) ease, border-color var(--motion-base) ease;
 }
 
 .kb-card:hover {
@@ -3971,7 +3971,7 @@ textarea.form-control {
   border-radius: 999px;
   background: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 45%, transparent);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-base) ease;
   pointer-events: none;
 }
 
@@ -4043,7 +4043,7 @@ textarea.form-control {
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--motion-base) ease, color var(--motion-base) ease, border-color var(--motion-base) ease;
 }
 
 .kb-flash:hover:not(:disabled) {
@@ -4645,7 +4645,7 @@ textarea.form-control {
   color: var(--foreground, #1e293b);
   white-space: nowrap;
   font-size: inherit;
-  transition: background 0.12s;
+  transition: background var(--motion-fast);
 }
 
 .lp-saved-view-apply:hover {
@@ -4661,7 +4661,7 @@ textarea.form-control {
   color: var(--muted-foreground, #64748b);
   font-size: 0.7rem;
   line-height: 1;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--motion-fast), color var(--motion-fast);
 }
 
 .lp-saved-view-del:hover {
