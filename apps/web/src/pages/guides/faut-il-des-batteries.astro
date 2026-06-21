@@ -1,7 +1,8 @@
 ---
 /**
  * Guide (W6) — Faut-il des batteries ? Développe en langage clair l'unique
- * réponse FAQ déjà publiée. AUCUN chiffre, AUCUN prix, AUCUN payback.
+ * réponse FAQ déjà publiée, désormais étayée par les chiffres déjà publiés
+ * ailleurs sur le site (coût LFP, écart rachat/tarif, allongement du payback).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -63,13 +64,41 @@ const jsonLd = {
         rembourse.
       </p>
 
+      <h2 class="display v2-section-title mt-12 text-white">Ce qu’une batterie coûte, et ce qu’un kWh stocké vaut</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        « Souvent non » n’est pas une posture prudente, c’est une conclusion qui se chiffre. Sur le
+        marché marocain, une batterie LFP — la chimie recommandée pour nos climats — se situe autour
+        de 3 000 à 4 000 DH par kWh de capacité installée. Un parc de 10 kWh utiles représente donc
+        de l’ordre de 30 000 à 40 000 DH, en plus des panneaux et de l’onduleur hybride. Ce poste ne
+        se justifie que s’il vous fait économiser plus qu’il ne vous coûte.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Or c’est précisément là que se joue l’arbitrage. Depuis la loi 82-21, le surplus que vous
+        renvoyez au réseau vous est racheté 0,18 à 0,21 DH/kWh, quand vous <em>achetez</em> ce même
+        kWh entre 0,90 et 1,66 DH/kWh selon votre tranche. Un kWh consommé chez vous — directement
+        en journée, ou stocké pour le soir — vaut donc quatre à neuf fois un kWh exporté. La batterie
+        a de la valeur uniquement quand elle déplace votre consommation du jour vers le soir : sur une
+        maison déjà diurne, il n’y a presque rien à déplacer, et le stockage paie sans rapporter.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Combien de temps avant qu’elle se rembourse</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Concrètement, une installation résidentielle bien dimensionnée s’amortit en 5 à 7 ans sans
+        stockage. Ajouter une batterie allonge ce délai de 1 à 3 ans, selon votre profil et la
+        capacité retenue. Pour une consommation nocturne réelle, ce surcoût se récupère et la batterie
+        finit gagnante ; pour une maison qui vit le jour, il s’ajoute sans contrepartie. La bonne
+        nouvelle, c’est que le matériel suit : une LFP tient environ 6 000 cycles, garantie 10 ans à
+        au moins 70 % de sa capacité — assez de longévité pour amortir un stockage <em>justement</em>
+        dimensionné, jamais pour rentabiliser un parc surdimensionné « par sécurité ».
+      </p>
+
       <h2 class="display v2-section-title mt-12 text-white">Ce que dit votre courbe de consommation</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         La réponse n’est donc pas dans un catalogue, elle est dans votre relevé. Nous regardons à
         quelles heures votre compteur tourne le plus, et c’est cette courbe qui désigne — ou non —
-        une batterie. Ajouter du stockage « pour être tranquille » coûte cher sans rien rapporter
-        si votre consommation est diurne ; le bon réflexe, c’est de couvrir l’essentiel de la
-        facture au moindre euro investi.
+        une batterie. Ajouter du stockage « pour être tranquille » immobilise des dizaines de
+        milliers de dirhams sans rien rapporter si votre consommation est diurne ; le bon réflexe,
+        c’est de couvrir l’essentiel de la facture au moindre dirham investi.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>

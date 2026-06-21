@@ -3,14 +3,14 @@ title: "Recharger sa voiture électrique au solaire : combien ça coûte vraimen
 description: "Essence vs VE sur réseau vs VE sur solaire au Maroc : comparaison chiffrée du coût par 100 km avec hypothèses détaillées, juin 2026."
 pubDate: 2026-06-21
 tags: ["voiture électrique", "recharge", "solaire", "coût"]
-author: "Taqinor"
+author: "Reda Kasri"
 ogSlug: "accueil"
 draft: false
 ---
 
 ## Ce que vous coûte vraiment chaque 100 km
 
-Avant de parler de panneaux, il faut poser les chiffres sur la table. Le tableau ci-dessous compare trois situations avec les hypothèses affichées en clair — vous pouvez les ajuster à votre cas.
+On me demande souvent si recharger une électrique au solaire « vaut le coup ». Plutôt que de répondre par une intuition, je pose les chiffres. Le tableau ci-dessous compare trois situations, avec toutes les hypothèses affichées en clair pour que vous puissiez les ajuster à votre cas. Aucun calcul n'est caché.
 
 | Énergie | Calcul | Coût / 100 km |
 |---|---|---|
@@ -91,9 +91,9 @@ Ces avantages sont inscrits dans les lois de finances (depuis 2014/2017) et cons
 
 ## Et l'infrastructure de recharge publique ?
 
-Le réseau se développe : le Maroc compte aujourd'hui **~632 bornes publiques** dont **~142 à charge rapide** (jusqu'à 150 kW). L'objectif annoncé est **2 500 stations fin 2026** et ~5 000 à l'horizon 2028. Le corridor phare est la **A1/A3 Casablanca–Rabat–Tanger** (TotalEnergies + ADM), avec des points ONEE dans les villes et centres commerciaux.
+Le réseau de bornes publiques se développe, mais il reste limité et inégalement réparti. On voit apparaître des points de charge rapide le long des grands axes — le corridor autoroutier Casablanca–Rabat–Tanger (TotalEnergies, ADM) en est l'exemple le plus visible — ainsi que des bornes dans certaines villes et centres commerciaux. Je préfère ne pas avancer de comptage précis : les chiffres qui circulent sont rarement sourcés et bougent vite.
 
-Pour les trajets quotidiens, la recharge à domicile reste néanmoins la plus pratique et la moins chère — c'est là que le solaire joue tout son rôle.
+Pour un usage quotidien, de toute façon, c'est la recharge à domicile qui reste la plus pratique et la moins chère. Et c'est là que le solaire prend tout son sens.
 
 ---
 

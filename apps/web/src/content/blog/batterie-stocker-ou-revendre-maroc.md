@@ -3,18 +3,18 @@ title: "Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommati
 description: "Export limité à 20 % racheté 0,18–0,21 DH/kWh : pourquoi un kWh stocké vaut bien plus qu'un kWh exporté au Maroc."
 pubDate: 2026-06-21
 tags: ["batterie", "autoconsommation", "stockage", "économie"]
-author: "Taqinor"
+author: "Reda Kasri"
 ogSlug: "equipement"
 draft: false
 ---
 
-## Stocker ou exporter : une question d'arithmétique simple
+## Faut-il stocker son surplus, ou le revendre ?
 
-Depuis l'entrée en vigueur du décret 2-25-100 le 9 juin 2026, la loi 82-21 fixe les règles du jeu pour les particuliers qui produisent leur propre électricité solaire. Le principe est net : vous pouvez injecter votre surplus sur le réseau, mais seulement jusqu'à **20 % de votre production annuelle**, et ce surplus est racheté par l'ONEE à **0,18 DH/kWh (heures creuses) et 0,21 DH/kWh (heures de pointe)** (source : ANRE Décision 04/26, Médias24, LesEco).
+C'est la question que me posent presque tous les clients tentés par une batterie. La réponse tient dans deux chiffres qui s'affrontent. Depuis l'entrée en vigueur du décret 2-25-100, le 9 juin 2026, la loi 82-21 encadre l'autoproduction des particuliers. Vous pouvez injecter votre surplus sur le réseau, mais dans la limite de **20 % de votre production annuelle**, et ce surplus est racheté par l'ONEE à **0,18 DH/kWh en heures creuses et 0,21 DH/kWh en heures de pointe** (source : ANRE Décision 04/26, Médias24, LesEco).
 
-En face, le prix de l'électricité que vous *achetez* au réseau oscille entre **0,90 et 1,66 DH/kWh** selon votre tranche de consommation (grille ONEE BT en vigueur). L'écart est massif : un kWh que vous produisez et consommez vous-même vaut de **4 à 9 fois plus** qu'un kWh que vous exportez.
+Or l'électricité que vous *achetez* au réseau, elle, vous coûte entre **0,90 et 1,66 DH/kWh** selon votre tranche de consommation (grille ONEE BT en vigueur). L'écart est énorme : un kWh produit et consommé chez vous vaut de **4 à 9 fois plus** qu'un kWh exporté.
 
-La conclusion économique s'impose avant même de parler de batterie : au Maroc, **l'export n'est pas une stratégie rentable**. C'est une soupape pour les 20 % de surplus que vous n'arrivez pas à consommer ou à stocker.
+La conclusion tombe avant même qu'on parle de matériel. Au Maroc, exporter n'est pas une stratégie rentable. C'est une soupape pour les 20 % de surplus que vous ne parvenez ni à consommer ni à stocker.
 
 ---
 
@@ -87,4 +87,4 @@ Pour comparer les technologies et les marques disponibles au Maroc — dont Dyne
 
 ---
 
-*Données réglementaires : Loi 82-21 / Décret 2-25-100 (B.O. 9 mars 2026) / ANRE Décision 04/26. Tarifs ONEE BT en vigueur. Prix batteries : fourchette indicative marché général LFP 2026. Pour un chiffrage adapté à votre installation, demandez un diagnostic.*
+*Données réglementaires : Loi 82-21 / Décret 2-25-100, en vigueur depuis le 9 juin 2026 / ANRE Décision 04/26. Tarifs ONEE BT en vigueur. Prix batteries : fourchette indicative marché général LFP 2026. Pour un chiffrage adapté à votre installation, demandez un diagnostic.*

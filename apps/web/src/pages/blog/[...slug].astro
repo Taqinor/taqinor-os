@@ -52,7 +52,7 @@ const blogPosting = {
   datePublished: data.pubDate.toISOString(),
   ...(data.updatedDate ? { dateModified: data.updatedDate.toISOString() } : {}),
   ...(data.tags.length ? { keywords: data.tags.join(', ') } : {}),
-  author: { '@type': 'Organization', name: data.author || NAP.name, url: NAP.url },
+  author: { '@type': 'Person', name: data.author || NAP.name },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
@@ -84,6 +84,7 @@ const breadcrumbLd = {
     <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-brass-300">
         Blog · {dateFmt.format(data.pubDate)}
+        {data.author && <> · par {data.author}</>}
         {data.updatedDate && <> · mis à jour le {dateFmt.format(data.updatedDate)}</>}
       </p>
       <h1 class="display v2-page-title mt-5 text-white">{data.title}</h1>

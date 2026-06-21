@@ -40,14 +40,66 @@ const jsonLd = {
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Batterie solaire : LFP vs GEL/plomb (et NMC)</h1>
       <p class="v2-lead mt-6 text-lune-soft">
-        Quand on parle de stockage solaire, trois chimies reviennent : le lithium fer phosphate
-        (LFP, ou LiFePO4), le plomb-acide — sous sa forme la plus courante pour le solaire, le gel —
-        et le lithium nickel-manganèse-cobalt (NMC). Sur le papier, les trois stockent de l'énergie ;
-        en pratique, les différences de durée de vie, de rendement et de comportement à la chaleur
-        sont considérables. Voici ce qui distingue chaque chimie, en chiffres sourcés et sans jargon.
+        Pour un stockage solaire résidentiel sous le climat marocain, nous installons du lithium
+        fer phosphate (LFP, ou LiFePO4). C'est la conclusion, pas le suspense. Le plomb-acide gel
+        coûte moins cher au moment de l'achat et le lithium nickel-manganèse-cobalt (NMC) affiche
+        de beaux chiffres de densité, mais aucun des deux ne tient la comparaison une fois qu'on
+        regarde la durée de vie, l'énergie réellement disponible et le comportement à la chaleur.
+        Le reste de ce guide montre pourquoi, chimie par chimie.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">LFP vs plomb/GEL : la durée de vie est sans appel</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Les trois chimies côte à côte</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Avant le détail, le tableau ci-dessous résume ce qui sépare les trois technologies sur les
+        critères qui pèsent vraiment dans une maison. Les chiffres sont des fourchettes de marché ;
+        les valeurs Dyness sont celles des batteries LFP que nous posons.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
+          <thead>
+            <tr class="border-b border-white/20 text-white">
+              <th class="py-3 pr-4 font-bold"></th>
+              <th class="py-3 pr-4 font-bold">Plomb / GEL</th>
+              <th class="py-3 pr-4 font-bold">LFP (LiFePO4)</th>
+              <th class="py-3 font-bold">NMC</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Cycles</td>
+              <td class="py-3 pr-4">500 à 1 000</td>
+              <td class="py-3 pr-4">3 000 à 6 000</td>
+              <td class="py-3">2 000 à 4 000</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Durée de vie</td>
+              <td class="py-3 pr-4">3 à 7 ans</td>
+              <td class="py-3 pr-4">10 à 15 ans</td>
+              <td class="py-3">8 à 12 ans</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Décharge utile</td>
+              <td class="py-3 pr-4">50 %</td>
+              <td class="py-3 pr-4">80 à 90 %</td>
+              <td class="py-3">80 à 90 %</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Rendement</td>
+              <td class="py-3 pr-4">80 à 85 %</td>
+              <td class="py-3 pr-4">92 à 98 %</td>
+              <td class="py-3">92 à 96 %</td>
+            </tr>
+            <tr>
+              <td class="py-3 pr-4 font-bold text-white">Sécurité thermique</td>
+              <td class="py-3 pr-4">Bonne</td>
+              <td class="py-3 pr-4">Excellente</td>
+              <td class="py-3">Sensible à l'emballement</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="display v2-section-title mt-12 text-white">Combien d'années avant de la remplacer</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Un accumulateur plomb-acide gel tient typiquement entre <strong class="text-white">500 et 1 000 cycles complets</strong>,
         ce qui correspond à une durée de vie utile de <strong class="text-white">3 à 7 ans</strong>
@@ -59,78 +111,73 @@ const jsonLd = {
       </p>
       <p class="v2-lead mt-5 text-lune-soft">
         Pour un usage typique d'un cycle par jour, le budget de cycles LFP dépasse les 10 ans de
-        vie calendaire — c'est souvent le vieillissement lié au temps et à la chaleur qui limitera
-        la batterie avant que le compteur de cycles ne soit épuisé.
+        vie calendaire. C'est souvent le vieillissement lié au temps et à la chaleur qui finit par
+        limiter la batterie avant que le compteur de cycles ne soit épuisé.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Profondeur de décharge : deux fois plus d'énergie vraiment utilisable</h2>
+      <h2 class="display v2-section-title mt-12 text-white">L'énergie que vous récupérez vraiment</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Le plomb-acide gel ne doit pas être déchargé au-delà de <strong class="text-white">50 %</strong>
         de sa capacité nominale sans raccourcir significativement sa durée de vie. En pratique, une
         batterie gel de 10 kWh n'offre que 5 kWh d'énergie réellement utilisable. Le LFP autorise
         une profondeur de décharge utile de <strong class="text-white">80 à 90 %</strong> : cette
         même batterie de 10 kWh en LFP livre 8 à 9 kWh. À capacité nominale identique, le LFP
-        est donc presque deux fois plus exploitable — et la comparaison de prix doit toujours se
-        faire sur la capacité utile, pas sur le chiffre nominal.
+        est donc presque deux fois plus exploitable. C'est pour cela qu'une comparaison de prix
+        honnête se fait toujours sur la capacité utile, jamais sur le chiffre nominal affiché sur
+        l'étiquette.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Rendement : des pertes de 15 à 20 % en moins avec le LFP</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Les pertes à la charge et à la décharge</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Le rendement aller-retour du plomb-acide gel se situe entre <strong class="text-white">80 et 85 %</strong> :
         sur 100 kWh de solaire envoyés dans la batterie, 15 à 20 kWh se dissipent en chaleur lors
         de la charge puis de la décharge. Le LFP affiche un rendement de <strong class="text-white">92 à 98 %</strong>,
         réduisant ces pertes à 2 à 8 kWh. Sur une installation qui cyclerait 5 kWh par jour pendant
-        dix ans, c'est une différence qui se chiffre en milliers de kilowattheures récupérés.
+        dix ans, on parle de milliers de kilowattheures récupérés plutôt que perdus.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Tolérance à la chaleur : un avantage décisif au Maroc</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Pourquoi la chaleur change tout au Maroc</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         La chaleur est l'ennemi numéro un des batteries. La règle généralement admise est qu'une
-        hausse de 10 °C double à peu près le vieillissement — et pour les batteries plomb, ce
-        phénomène est particulièrement brutal. Un local technique non climatisé peut facilement
-        atteindre 40 à 50 °C en été à Marrakech, Agadir ou Meknès, ce qui réduit la durée de
-        vie du plomb de moitié ou plus.
+        hausse de 10 °C double à peu près le vieillissement, et le plomb encaisse particulièrement
+        mal ce phénomène. Un local technique non climatisé monte sans difficulté à 40 ou 50 °C en
+        été à Marrakech, Agadir ou Meknès, ce qui ampute la durée de vie du plomb de moitié, parfois
+        davantage.
       </p>
       <p class="v2-lead mt-5 text-lune-soft">
-        Le LFP supporte mieux les hautes températures : la plage de décharge des batteries Dyness
-        que nous installons va jusqu'à 55 °C pour les modèles adaptés aux environnements chauds.
-        La préconisation reste d'installer la batterie dans un espace ventilé et à l'abri du
-        rayonnement direct, mais la marge de tolérance thermique du LFP est nettement supérieure.
-        C'est l'une des raisons pour lesquelles le LFP s'est imposé comme la référence du
-        stockage solaire résidentiel dans les pays chauds.
+        Le LFP supporte mieux ces conditions : la plage de décharge des batteries Dyness que nous
+        installons va jusqu'à 55 °C pour les modèles adaptés aux environnements chauds. La
+        préconisation reste d'installer la batterie dans un espace ventilé et à l'abri du
+        rayonnement direct, mais la marge thermique du LFP est nettement supérieure. C'est l'une
+        des raisons pour lesquelles cette chimie s'est imposée comme la référence du stockage
+        résidentiel dans les pays chauds.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">LFP vs NMC : une question de sécurité fondamentale</h2>
+      <h2 class="display v2-section-title mt-12 text-white">LFP face au NMC : la question de la sécurité</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Le NMC (nickel-manganèse-cobalt) rivalise avec le LFP sur le rendement (92 à 96 %) et
         la profondeur de décharge (80 à 90 %), mais diffère radicalement sur la sécurité thermique.
-        Tout part de la chimie de la cathode : dans un NMC, l'oxyde de métal en couches se
+        Tout part de la chimie de la cathode. Dans un NMC, l'oxyde de métal en couches se
         décompose à partir d'environ 150 à 210 °C et libère de l'oxygène, ce qui peut alimenter
         un emballement thermique. Dans un LFP, les liaisons phosphore-oxygène de la structure
-        olivine résistent à la décomposition — la cathode ne libère pas d'oxygène, et le seuil
-        d'emballement thermique est repoussé nettement plus loin.
+        olivine résistent à la décomposition : la cathode ne libère pas d'oxygène, et le seuil
+        d'emballement thermique est repoussé bien plus loin.
       </p>
       <p class="v2-lead mt-5 text-lune-soft">
-        En termes pratiques : les incidents de batterie impliquant un feu concernent très
-        majoritairement des chimies NMC ou NCA. Pour un stockage fixe installé dans un local
-        technique d'habitation, le LFP est la référence de sécurité pour le résidentiel — ce
-        n'est pas un argument commercial, c'est la conclusion des études indépendantes sur les
-        mécanismes de défaillance de chaque chimie.
+        Concrètement, les incidents de batterie impliquant un feu concernent très
+        majoritairement des chimies NMC ou NCA. Pour un stockage fixe logé dans un local
+        technique d'habitation, le LFP reste la chimie la plus sûre du résidentiel. Ce n'est pas
+        un slogan commercial : c'est ce que concluent les études indépendantes sur les mécanismes
+        de défaillance de chaque chimie.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Ce que ça signifie concrètement pour votre installation</h2>
-      <p class="v2-lead mt-5 text-lune-soft">
-        Le plomb-acide gel a longtemps dominé le marché du hors-réseau parce qu'il était bon
-        marché à l'achat. Ce n'est plus un argument suffisant dès lors que l'on calcule le coût
-        par kWh livré sur toute la durée de vie : avec une capacité utile double et une durée de
-        vie triple à quadruple, le LFP s'avère économiquement supérieur dans la quasi-totalité
-        des scénarios de stockage connecté.
-      </p>
-      <p class="v2-lead mt-5 text-lune-soft">
-        Le NMC reste présent dans certains véhicules électriques et systèmes portables où la
-        densité énergétique prime. Pour du stockage solaire fixe en résidentiel ou en tertiaire,
-        le LFP est aujourd'hui la chimie recommandée : meilleure sécurité, meilleure durabilité
-        en climat chaud, garanties constructeur plus longues, et coût par kWh utile compétitif.
+      <p class="v2-lead mt-10 text-lune-soft">
+        Le NMC garde sa place dans les véhicules électriques et les systèmes portables, là où la
+        densité énergétique prime sur tout le reste. Pour une batterie fixe accrochée au mur d'une
+        maison ou d'un local technique, le calcul penche vers le LFP : il vit plus longtemps,
+        livre plus d'énergie par kWh acheté, supporte la chaleur marocaine et porte des garanties
+        constructeur plus longues. Le gel reste une option d'entrée de gamme, mais dès qu'on
+        ramène son prix au kWh réellement livré sur toute sa vie, l'écart se referme vite.
       </p>
 
       <div class="mt-10 flex flex-wrap gap-3">
@@ -141,7 +188,7 @@ const jsonLd = {
       </div>
     </article>
 
-    <CtaBand title="Pour dimensionner votre stockage selon votre situation réelle, lancez l'étude gratuite." href="/contact#simulateur" />
+    <CtaBand title="Vous hésitez sur la chimie ou la capacité ? On dimensionne le stockage sur votre situation réelle, gratuitement." href="/contact#simulateur" />
 
     <StickyCta />
   </div>

@@ -19,11 +19,11 @@ import Faq from '../components/Faq.astro';
 // Faits matériel — identiques à la page Équipement (réf. BAT), source publiée.
 const specs = [
   { item: 'Chimie lithium-fer-phosphate (LFP)', detail: 'Dyness DL5.0C / DL5.0C PRO' },
-  { item: 'Durée de vie', detail: '6 000+ cycles à 90 % de profondeur de décharge (DoD)' },
+  { item: 'Durée de vie', detail: '6 000 cycles à 90 % de profondeur de décharge' },
   { item: 'Capacité modulaire', detail: 'Modules de 5 kWh extensibles : 5 à 15 kWh et plus' },
   { item: 'Communication', detail: 'CAN BMS native avec les onduleurs hybrides Deye' },
   { item: 'Certifications', detail: 'CE · IEC 62619 · UN38.3' },
-  { item: 'Garantie', detail: '10 ans' },
+  { item: 'Garantie', detail: '10 ans, capacité conservée ≥ 70 %' },
 ];
 
 // Cas d'usage — strictement le raisonnement du guide « Faut-il des batteries ? ».
@@ -56,7 +56,7 @@ const faqItems = [
   },
   {
     q: "Quelle est la durée de vie d'une batterie LFP ?",
-    a: "Une batterie lithium-fer-phosphate (LFP) comme les Dyness que nous posons encaisse 6 000 cycles ou plus à 90 % de profondeur de décharge, avec une garantie de 10 ans. À raison d'un cycle par jour, cela représente plus de 16 ans de cycles. En pratique, c'est souvent le vieillissement calendaire — environ 1 à 2 % de perte de capacité par an même au repos — qui fixe la durée de vie réelle, soit 12 à 15 ans dans les conditions marocaines. Pour préserver cette longévité : installez-la à l'ombre, ventilée, entre 15 et 35 °C.",
+    a: "Sur le papier, une Dyness LFP tient 6 000 cycles à 90 % de profondeur de décharge, garantie 10 ans avec ≥ 70 % de capacité conservée. Comptez un cycle par jour : les 6 000 cycles couvrent à eux seuls plus de seize ans. Mais une batterie vieillit aussi à l'arrêt — environ 1 à 2 % de capacité perdue par an, même quand on ne s'en sert pas. C'est ce vieillissement calendaire qui finit le plus souvent par décider, et qui ramène la durée utile réelle à 12-15 ans sous le climat marocain. Le bon réflexe pour grappiller ces années : une batterie à l'ombre, ventilée, qui reste entre 15 et 35 °C.",
   },
   {
     q: "Quelle taille de batterie choisir ? (5–10 kWh, 10–20 kWh ou 20 kWh+)",
@@ -85,7 +85,7 @@ const jsonLd = {
 
 <Layout
   title="Batteries solaires Dyness LFP au Maroc : 6 000 cycles, 90 % DoD | Taqinor"
-  description="Stockage solaire au Maroc : batteries Dyness lithium-fer-phosphate, plus de 6 000 cycles à 90 % de profondeur de décharge, modules de 5 kWh extensibles, dialogue CAN BMS natif avec les onduleurs hybrides Deye, garantie 10 ans. Reste à savoir si votre profil de consommation justifie une batterie — souvent, en journée, non."
+  description="Stockage solaire au Maroc : batteries Dyness lithium-fer-phosphate, plus de 6 000 cycles à 90 % de profondeur de décharge, modules de 5 kWh extensibles, dialogue CAN BMS natif avec les onduleurs hybrides Deye, garantie 10 ans. La vraie question reste votre profil de consommation : si vous consommez surtout en journée, la batterie attend souvent son tour."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -101,10 +101,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Stockage d'énergie</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Batteries &amp; stockage</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Une batterie LFP Dyness encaisse plus de 6 000 cycles à 90 % de profondeur de décharge —
-          de quoi durer des années. Encore faut-il qu'elle serve. La vraie question n'est pas
-          quelle batterie, mais <em>quand</em> vous consommez : en journée, le surcoût d'un parc de
-          stockage est rarement le meilleur placement.
+          Une batterie LFP Dyness encaisse 6 000 cycles à 90 % de profondeur de décharge ; elle
+          durera. La question qui décide n'est pourtant pas <em>laquelle</em> mais <em>quand</em>
+          vous consommez. Si l'essentiel de votre courant part en journée, ce que vous payez pour
+          stocker, vous le payez surtout pour rien.
         </p>
       </div>
     </section>
@@ -124,9 +124,10 @@ const jsonLd = {
           ))}
         </div>
         <p class="mt-8 max-w-2xl border-l-4 border-brass-400 pl-4 text-sm leading-relaxed text-lune-soft">
-          Vendre une batterie est facile ; dire qu'elle est inutile l'est moins. Nous lisons d'abord
-          la courbe de votre consommation, heure par heure : c'est elle qui dit si le stockage paie,
-          et combien de kWh suffisent. Ajouter du matériel n'est jamais l'objectif.
+          Notre intérêt commercial serait de vous en vendre une. On préfère commencer par lire
+          votre courbe de consommation heure par heure : c'est elle qui tranche si le stockage se
+          rentabilise et, le cas échéant, combien de kWh suffisent vraiment. Bien souvent, la
+          réponse honnête tient en deux mots — pas maintenant.
           <a href="/guides/faut-il-des-batteries" class="border-b-2 border-brass-400 pb-0.5 font-bold text-brass-300 transition-colors hover:text-brass-200">Lire le guide complet →</a>
         </p>
       </div>
@@ -154,8 +155,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          Les modules s'empilent par tranches de 5 kWh : on cale la capacité sur le creux du soir
-          à couvrir, ni plus ni moins. La taille suit le besoin chiffré, pas un palier commercial.
+          Les modules s'empilent par tranches de 5 kWh. Concrètement, on mesure le creux que votre
+          consommation laisse après le coucher du soleil et on empile juste assez de modules pour le
+          combler : c'est ce chiffre qui fixe la capacité, jamais un palier de catalogue.
           <a href="/équipement" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir tout le matériel posé →</a>
         </p>
 

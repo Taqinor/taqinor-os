@@ -3,14 +3,16 @@ title: "Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le
 description: "Gamme Dyness LFP, ≥6 000 cycles, 10 ans de garantie — et le vrai différenciateur secours entre Deye SG (≈4–10 ms) et Huawei SUN2000 (< 3 s)."
 pubDate: 2026-06-21
 tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
-author: "Taqinor"
+author: "Reda Kasri"
 ogSlug: "equipement"
 draft: false
 ---
 
+Sur le terrain, le choix d'une batterie se joue rarement sur la capacité affichée. Il se joue sur deux détails qu'on oublie en showroom : comment la chimie vieillit sous la chaleur marocaine, et ce qui se passe exactement à l'instant où l'ONEE coupe le courant. Je passe sur ces deux points avec la gamme que j'installe le plus, Dyness, puis je tranche le débat onduleur entre Deye et Huawei.
+
 ## La gamme Dyness LFP
 
-Dyness propose une gamme entièrement en chimie **LiFePO4 (LFP)** — la référence pour le stockage résidentiel au Maroc : bonne tenue à la chaleur, sécurité élevée (pas de dégagement d'oxygène en cas d'emballement), et durée de vie bien supérieure au gel ou à l'AGM.
+Toute la gamme Dyness est en chimie **LiFePO4 (LFP)**, devenue la référence du stockage résidentiel au Maroc : elle encaisse bien la chaleur, reste sûre (aucun dégagement d'oxygène en cas d'emballement) et dure nettement plus longtemps que le gel ou l'AGM.
 
 Tous les modèles partagent le même socle : **≥ 6 000 cycles** et une **garantie 10 ans à 70 % de rétention de capacité**.
 
@@ -89,13 +91,15 @@ Le **Dyness PowerDepot H5B** est équipé d'un **chauffage intégré** qui préc
 
 ---
 
-## En résumé : comment choisir ?
+## Comment je tranche, selon le cas
 
-- Si le **secours sans interruption perceptible** est critique (équipements médicaux, télétravail, congélateur) → **Deye SG-series** avec batterie Dyness basse tension
-- Si vous privilégiez un **écosystème intégré avec supervision cloud poussée** et que 3 secondes de coupure sont acceptables → **Huawei SUN2000 L1/M1 + LUNA2000 + Backup Box**
-- Pour les **petits systèmes** (entrée de gamme, maison secondaire) → Dyness **B4850** (2,4 kWh)
-- Pour les **installations en montagne** ou zones à gel hivernal → Dyness **PowerDepot H5B** (chauffage intégré, −20 °C)
-- Pour maximiser la capacité dans un espace réduit → **PowerBrick** (14,34 kWh, ≥ 8 000 cycles)
+Voici la grille de décision que j'utilise en rendez-vous :
+
+- Secours sans coupure perceptible indispensable (équipements médicaux, télétravail, congélateur) : **Deye SG-series** avec batterie Dyness basse tension.
+- Priorité à un écosystème intégré et à une supervision cloud poussée, 3 secondes de coupure tolérées : **Huawei SUN2000 L1/M1 + LUNA2000 + Backup Box**.
+- Petit système (entrée de gamme, maison secondaire) : Dyness **B4850** (2,4 kWh).
+- Installation en montagne ou zone à gel hivernal : Dyness **PowerDepot H5B** (chauffage intégré, −20 °C).
+- Capacité maximale dans un espace réduit : **PowerBrick** (14,34 kWh, ≥ 8 000 cycles).
 
 Pour connaître la taille d'installation adaptée à votre consommation, consultez notre guide [Lithium ou gel — quelle chimie choisir ?](/guides/batterie-lithium-ou-gel) et notre article [Stocker ou revendre : quel arbitrage avec la loi 82-21 ?](/blog/batterie-stocker-ou-revendre-maroc).
 
