@@ -43,9 +43,12 @@ def build(ctx) -> str:
         gar = (it.get("garantie") or "").strip()
         bits = [b for b in (desc, (f"Garantie {gar}" if gar else "")) if b]
         sub = f'<div class="a3-rd">{" · ".join(bits)}</div>' if bits else ""
+        # NB: build nested HTML in a var — a backslash inside an f-string
+        # expression is a SyntaxError on Python 3.11 (the prod runtime).
+        marque_html = f'<div class="a3-rm">{marque}</div>' if marque else ""
         rows.append(
             f'<tr><td class="a3-td-d"><div class="a3-rn">{it.get("designation","")}</div>'
-            f'{f"<div class=\"a3-rm\">{marque}</div>" if marque else ""}{sub}</td>'
+            f'{marque_html}{sub}</td>'
             f'<td class="a3-td-q">{q_txt}</td>'
             f'<td class="a3-td-n">{fmt(pu)}</td>'
             f'<td class="a3-td-n">{fmt(tot)}</td></tr>')
