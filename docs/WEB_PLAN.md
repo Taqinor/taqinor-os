@@ -1087,7 +1087,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - [x] W154 — **Richer art-directed hero scrim** (layered radial vignette + text-side
   darkening) so the golden headline always reads over busy photos. Files: `apps/web/src/pages/index.astro`.
-- [ ] W155 — **Portrait-crop hero `<source>` for phones.** One 16:9 landscape is center-punched
+- [x] W155 — **Portrait-crop hero `<source>` for phones.** One 16:9 landscape is center-punched
   on tall screens; add `media="(orientation: portrait)"` with a vertical crop. Files:
   `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/components/Picture.astro`.
 - [x] W156 — **Consistent monumental `.fig .lum` trust-band figures** (the four-up row mixes
@@ -1154,7 +1154,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   full-size today). Files: `apps/web/src/pages/realisations/index.astro`, `apps/web/src/pages/realisations/[slug].astro`.
 - [x] W179 — **Standardize one hover-zoom token** across all clickable photo cards (inconsistent
   `1.02`/`1.04`/none). Files: `apps/web/src/components/VideoChantier.astro` + gallery pages.
-- [ ] W180 — **Fix mixed aspect-ratio crop vs declared `ratio`** (silent crop + slightly wrong
+- [x] W180 — **Fix mixed aspect-ratio crop vs declared `ratio`** (silent crop + slightly wrong
   anti-CLS height). Files: `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`.
 - [x] W181 — **Add `object-position` focal-point control to `Picture.astro`** (everything is
   center-cropped). Files: `apps/web/src/components/Picture.astro`, `apps/web/src/lib/realisations.ts`.
@@ -1212,7 +1212,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   the protagonist" identity carries into prose. Files: new component + guides/blog.
 - [x] W200 — **Branded list markers + table styling + mobile reflow; shared `RelatedLinks`
   component** for the duplicated internal-link chip rows. Files: shared prose style + new component + content pages.
-- [ ] W201 — **Standardize 2–3 sanctioned hero archetypes** so segment/service/city/guide heroes
+- [x] W201 — **Standardize 2–3 sanctioned hero archetypes** so segment/service/city/guide heroes
   stop drifting. Files: `installation-solaire-[city].astro` + a short design note.
 
 **— Motion & micro-interactions —**
@@ -1221,7 +1221,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   add `scroll-padding-top`. Files: `apps/web/src/styles/global.css`.
 - [x] W203 — **Card-level hover (lift/border) on content + product cards** (many clickable cards
   have no hover at all). Files: `apps/web/src/styles/global.css` (`.cine-card`) + card wrappers.
-- [ ] W204 — **Hover arrow nudge on gallery/CTA links** (`group-hover:translate-x-1`). Files:
+- [x] W204 — **Hover arrow nudge on gallery/CTA links** (`group-hover:translate-x-1`). Files:
   `apps/web/src/pages/index.astro`, `nos-solutions.astro`, `realisations/index.astro`.
 - [x] W205 — **Lead with a count-up on the first above-the-fold figure** (the protagonist number
   is static text). Files: `apps/web/src/pages/index.astro`.
@@ -1241,7 +1241,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Mobile & responsive —**
 
-- [ ] W211 — **Verify no 320px horizontal overflow from wide `whitespace-nowrap` figures**
+- [x] W211 — **Verify no 320px horizontal overflow from wide `whitespace-nowrap` figures**
   (`43,48 kWc`, `60–90 %`). Files: `index.astro`, `installation-solaire-[city].astro`, `realisations/[slug].astro` (+ mirrors).
 - [x] W212 — **Add a middle breakpoint to the 3-col équipement comparison grid** (cramped in the
   md→lg band). Files: `apps/web/src/pages/équipement.astro` (+ `en/`/`ar/` twins).
@@ -1489,3 +1489,8 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W185: Layout gains optional ogImage/ogImageAlt props; realisations/[slug] passes each case's real hero webp + French alt as its per-case OG/Twitter image.
 - 2026-06-21 — W215: preload archivo-latin.woff2 for the LCP <h1> + metric-matched Archivo/Hanken size-adjust fallbacks to cut font-swap CLS.
 - 2026-06-21 — W220: count-up width reserved (tabular-nums + min-width + exported reserveWidth() lock) to prevent micro-CLS.
+- 2026-06-21 — W155: portrait-orientation hero source/crop for tall phones (Picture portraitPosition prop; homepage + realisation heroes); existing callers unchanged.
+- 2026-06-21 — W180: corrected mismatched declared aspect-ratios vs actual crops (homepage feature + realisations/city cards) for accurate anti-CLS height.
+- 2026-06-21 — W204: reduced-motion-safe hover arrow nudge on gallery/CTA "→" links (index, nos-solutions, realisations index).
+- 2026-06-21 — W211: removed whitespace-nowrap from wide figures (kWc/%/years) on homepage + city + realisation pages (+ en/ar twins) → no 320px overflow.
+- 2026-06-21 — W201: documented 3 sanctioned hero archetypes (top-of-file note) and kept installation-solaire-[city] on archetype B.
