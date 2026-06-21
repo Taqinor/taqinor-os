@@ -1077,9 +1077,13 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   a golden hairline/seam top edge, and real column hierarchy. Files: `apps/web/src/components/Footer.astro`.
 - [ ] W153 — **Ship the founder portrait.** `FounderPortrait.astro` is hardcoded
   `FOUNDER_PHOTO = null`, so the doctor-engineer trust section renders with no face — the
-  highest-ROI human/premium cue. The component is already wired for a 4:5 `Picture`.
-  *(ASSET-BLOCKED: needs the founder's portrait file; skip until provided.)* Files:
-  `apps/web/src/components/FounderPortrait.astro`, `apps/web/public/photos/`.
+  highest-ROI human/premium cue. The component is already wired for a 4:5 `Picture`; the
+  pipeline expects the raw file in `apps/web/photos-raw/` + a `PHOTOS` entry in
+  `scripts/process-photos.mjs` (out base name, ratio 4/5), then `FOUNDER_PHOTO` set to it.
+  *(ASSET-BLOCKED 2026-06-21: the founder pasted the portrait inline in chat, but no image
+  FILE was attached — nothing on disk to process. Still needs the actual photo file uploaded
+  as an attachment.)* Files: `apps/web/src/components/FounderPortrait.astro`,
+  `apps/web/photos-raw/`, `apps/web/scripts/process-photos.mjs`, `apps/web/public/photos/`.
 
 **— Homepage & hero —**
 
@@ -1119,7 +1123,10 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W167 — **LanguageSwitcher discoverability + ≥44px tap target** (currently `text-xs`, ~24px).
   Files: `apps/web/src/components/LanguageSwitcher.astro`.
 - [ ] W168 — **Logo sun-mark glow + elevate the ZelligeDivider motif** (currently ~18px, nearly
-  invisible). Files: `apps/web/src/components/Logo.astro`, `apps/web/src/components/ZelligeDivider.astro`.
+  invisible). *(Asset available 2026-06-21: official TAQINOR logo pack — main/inverted/monochrome
+  SVGs — at `apps/web/public/brand/`; use it instead of the hand-coded inline mark if it reads
+  better.)* Files: `apps/web/src/components/Logo.astro`, `apps/web/src/components/ZelligeDivider.astro`,
+  `apps/web/public/brand/`.
 
 **— Design system & consistency —**
 
@@ -1165,8 +1172,11 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   "Cinéma du chantier" claim (keep the hero ungraded for LCP). Files: `apps/web/scripts/` or scoped
   `apps/web/src/styles/v3-photo-motion.css`.
 - [ ] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
-  Dyness, Nexans) to replace the text word-mark fallback. *(ASSET-BLOCKED: needs official monochrome
-  SVGs; skip until provided.)* Files: `apps/web/public/brands/`, `apps/web/src/lib/brands.ts`.
+  Dyness, Nexans) to replace the text word-mark fallback. These are THIRD-PARTY *manufacturer*
+  logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(ASSET-BLOCKED
+  2026-06-21: the founder supplied the TAQINOR logo pack (now at `apps/web/public/brand/`), which
+  does NOT satisfy this task — it has no manufacturer logos. Still needs the 7 official monochrome
+  manufacturer SVGs.)* Files: `apps/web/public/brands/`, `apps/web/src/lib/brands.ts`.
 
 **— Forms & interactive widgets (visual-only; lead mechanics untouched) —**
 
@@ -1251,7 +1261,10 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
   the dark canvas + scrollbar/autofill) + a `::selection` brass color. Files: `apps/web/src/styles/global.css`.
 - [ ] W218 — **Complete the favicon/app-icon set** (ico, 180×180 apple-touch, 512 maskable) +
-  `site.webmanifest` + `theme-color`. Files: `apps/web/public/`, `apps/web/src/layouts/Layout.astro`.
+  `site.webmanifest` + `theme-color`. *(Asset available 2026-06-21: source favicon + app-icon PNGs
+  (64/128/256/512px) + `taqinor_favicon.svg` from the official logo pack at `apps/web/public/brand/`;
+  derive the icon set from these rather than the placeholder `public/favicon.svg`.)* Files:
+  `apps/web/public/`, `apps/web/public/brand/`, `apps/web/src/layouts/Layout.astro`.
 - [ ] W219 — **Complete the Twitter/X card** (`twitter:title/description/image`) + `og:image:alt/type`.
   Files: `apps/web/src/layouts/Layout.astro`.
 - [ ] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
