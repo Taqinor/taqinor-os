@@ -1,0 +1,76 @@
+---
+/**
+ * KeyFigure.astro — chiffre clé mis en scène dans le corps d'un article.
+ *
+ * Identité « les chiffres sont le protagoniste » : grand chiffre doré (.fig
+ * + .lum) avec étiquette tech-label et description courte optionnelle.
+ * Pas d'animation inline — respecte prefers-reduced-motion par défaut.
+ *
+ * Usage :
+ *   <KeyFigure value="6 000" unit="cycles" label="Durée de vie LFP">
+ *     Garantie 10 ans à 70 % de capacité.
+ *   </KeyFigure>
+ */
+interface Props {
+  value: string;
+  unit?: string;
+  label: string;
+}
+
+const { value, unit, label } = Astro.props;
+---
+
+<figure class="key-figure" aria-label={`${label} : ${value}${unit ? ' ' + unit : ''}`}>
+  <p class="key-figure__kicker tech-label">{label}</p>
+  <p class="key-figure__value fig lum" aria-hidden="true">
+    {value}
+    {unit && <span class="key-figure__unit">{unit}</span>}
+  </p>
+  {
+    Astro.slots.has('default') && (
+      <figcaption class="key-figure__caption">
+        <slot />
+      </figcaption>
+    )
+  }
+</figure>
+
+<style>
+  .key-figure {
+    margin: 2rem 0;
+    padding: 1.25rem 1.5rem;
+    background: rgb(255 255 255 / 0.03);
+    border: 1px solid rgb(255 255 255 / 0.08);
+    border-left: 3px solid var(--color-brass-400, #e8b54a);
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .key-figure__kicker {
+    color: var(--color-lune-faint, #8d96b4);
+    margin: 0;
+  }
+
+  .key-figure__value {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin: 0.25rem 0 0;
+  }
+
+  .key-figure__unit {
+    font-size: 0.45em;
+    font-weight: 600;
+    font-stretch: 100%;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+    color: var(--color-brass-400, #e8b54a);
+    margin-left: 0.25em;
+  }
+
+  .key-figure__caption {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+</style>

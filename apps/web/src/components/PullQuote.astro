@@ -1,0 +1,63 @@
+---
+/**
+ * PullQuote.astro — citation extraite (pull-quote) en prose longue.
+ *
+ * Identité « les chiffres sont le protagoniste » :
+ *   trait laiton + texte plus grand, lecture dramatique dans l'article.
+ *
+ * Usage : <PullQuote>Texte mis en valeur</PullQuote>
+ * Optionnel : <PullQuote author="Nom">Texte</PullQuote>
+ */
+interface Props {
+  author?: string;
+}
+
+const { author } = Astro.props;
+---
+
+<blockquote class="pull-quote" role="note">
+  <p class="pull-quote__text"><slot /></p>
+  {author && <footer class="pull-quote__footer">— {author}</footer>}
+</blockquote>
+
+<style>
+  .pull-quote {
+    position: relative;
+    margin: 2.5rem 0;
+    padding: 0 0 0 1.5rem;
+    border: none;
+    border-left: 4px solid var(--color-brass-400, #e8b54a);
+  }
+
+  /* Diamant zellige au dessus du trait */
+  .pull-quote::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 50%;
+    transform: translateY(-50%) rotate(45deg);
+    width: 6px;
+    height: 6px;
+    background: var(--color-brass-300, #f3cc66);
+  }
+
+  .pull-quote__text {
+    font-family: var(--font-display, inherit);
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-stretch: 108%;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    color: var(--color-lune, #d6dbe9);
+    margin: 0;
+    font-style: normal;
+  }
+
+  .pull-quote__footer {
+    margin-top: 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-brass-400, #e8b54a);
+    letter-spacing: 0.04em;
+  }
+</style>
