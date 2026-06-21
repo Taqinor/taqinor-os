@@ -670,3 +670,93 @@ class TestTags(TestCase):
         data = res.data['results'] if 'results' in res.data else res.data
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['nom'], 'Solar VIP')
+
+
+class TestAttachmentsAll(TestCase):
+    """FG10 — Centre de pièces jointes de la société (GET records/attachments/all/)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='AttAll Co', slug='attall-co')
+        self.user = User.objects.create_user(
+            username='attall_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead AttAll')
+        self.api = auth(self.user)
+
+    def _make_att(self, filename, mime='application/pdf', phase=''):
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(Lead)
+        return Attachment.objects.create(
+            company=self.company, content_type=ct, object_id=self.lead.id,
+            uploaded_by=self.user, file_key=f'attachments/{filename}',
+            filename=filename, size=1, mime=mime, phase=phase)
+
+    def test_all_returns_company_attachments(self):
+        """L'endpoint retourne toutes les pièces jointes de la société."""
+        self._make_att('doc1.pdf')
+        self._make_att('doc2.pdf')
+        res = self.api.get('/api/django/records/attachments/all/')
+        self.assertEqual(res.status_code, 200, res.data)
+        count = res.data.get('count', len(res.data))
+        self.assertEqual(count, 2)
+
+    def test_mime_filter(self):
+        """Filtre ?mime= filtre exactement sur le type MIME."""
+        self._make_att('img.png', mime='image/png')
+        self._make_att('doc.pdf', mime='application/pdf')
+        res = self.api.get('/api/django/records/attachments/all/?mime=image/png')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'img.png')
+
+    def test_mime_like_filter(self):
+        """Filtre ?mime_like=image filtre tous les types image/*."""
+        self._make_att('img.png', mime='image/png')
+        self._make_att('img2.jpg', mime='image/jpeg')
+        self._make_att('doc.pdf', mime='application/pdf')
+        res = self.api.get('/api/django/records/attachments/all/?mime_like=image')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 2)
+
+    def test_phase_filter(self):
+        """Filtre ?phase= filtre sur la phase (avant/pendant/apres)."""
+        self._make_att('avant.pdf', phase='avant')
+        self._make_att('apres.pdf', phase='apres')
+        self._make_att('sans_phase.pdf', phase='')
+        res = self.api.get('/api/django/records/attachments/all/?phase=avant')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'avant.pdf')
+
+    def test_model_filter(self):
+        """Filtre ?model= filtre sur le content_type."""
+        from apps.crm.models import Client
+        from django.contrib.contenttypes.models import ContentType
+        self._make_att('lead.pdf')
+        # PJ sur un Client.
+        cli = Client.objects.create(company=self.company, nom='Cli All')
+        ct_cli = ContentType.objects.get_for_model(Client)
+        Attachment.objects.create(
+            company=self.company, content_type=ct_cli, object_id=cli.id,
+            uploaded_by=self.user, file_key='attachments/cli.pdf',
+            filename='cli.pdf', size=1, mime='application/pdf')
+        res = self.api.get('/api/django/records/attachments/all/?model=crm.lead')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'lead.pdf')
+
+    def test_cross_company_isolation(self):
+        """Les pièces jointes d'une autre société ne sont jamais retournées."""
+        from django.contrib.contenttypes.models import ContentType
+        other = Company.objects.create(nom='Other All', slug='other-all')
+        other_lead = Lead.objects.create(company=other, nom='Lead Other')
+        ct = ContentType.objects.get_for_model(Lead)
+        Attachment.objects.create(
+            company=other, content_type=ct, object_id=other_lead.id,
+            uploaded_by=None, file_key='attachments/other.pdf',
+            filename='other.pdf', size=1, mime='application/pdf')
+        self._make_att('mine.pdf')
+        res = self.api.get('/api/django/records/attachments/all/')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'mine.pdf')

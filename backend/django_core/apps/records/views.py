@@ -439,6 +439,69 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
 
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
+def attachments_all(request):
+    """FG10 — Centre de pièces jointes de la société.
+
+    Retourne TOUTES les pièces jointes de la société (scopé TenantMixin),
+    paginées, avec filtres optionnels :
+      - mime      : filtre exact sur le type MIME (ex. 'application/pdf')
+      - mime_like : filtre icontains sur le type MIME (ex. 'image' → tous les
+                    types image/*)
+      - phase     : 'avant' / 'pendant' / 'apres' / '' (sans phase)
+      - model     : ex. 'crm.lead' (filtre sur content_type)
+      - since     : date ISO 8601 (created_at >= since)
+
+    Résultats triés du plus récent au plus ancien. Paginés à 50 par page."""
+    from rest_framework.pagination import PageNumberPagination
+
+    qs = _scoped(
+        Attachment.objects.select_related('uploaded_by', 'content_type'),
+        request.user
+    ).order_by('-created_at', '-id')
+
+    p = request.query_params
+    mime = p.get('mime')
+    if mime:
+        qs = qs.filter(mime=mime)
+    mime_like = p.get('mime_like')
+    if mime_like:
+        qs = qs.filter(mime__icontains=mime_like)
+    phase = p.get('phase')
+    if phase is not None:
+        qs = qs.filter(phase=phase)
+    model = p.get('model')
+    if model:
+        try:
+            app_label, model_name = str(model).lower().split('.', 1)
+            from django.contrib.contenttypes.models import ContentType
+            ct = ContentType.objects.get(app_label=app_label, model=model_name)
+            qs = qs.filter(content_type=ct)
+        except (ValueError, ContentType.DoesNotExist):
+            qs = qs.none()
+    since = p.get('since')
+    if since:
+        try:
+            from django.utils.dateparse import parse_datetime, parse_date
+            from django.utils import timezone as tz
+            dt = parse_datetime(since)
+            if dt is None:
+                d = parse_date(since)
+                if d:
+                    dt = tz.datetime(d.year, d.month, d.day, tzinfo=tz.utc)
+            if dt:
+                qs = qs.filter(created_at__gte=dt)
+        except Exception:
+            pass
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 50
+    page = paginator.paginate_queryset(qs, request)
+    ser = AttachmentSerializer(page, many=True)
+    return paginator.get_paginated_response(ser.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
 def attachments_count(request):
     """Compteur de pièces jointes pour un enregistrement (badge trombone)."""
     model = request.query_params.get('model')

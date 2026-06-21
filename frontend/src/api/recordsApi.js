@@ -31,6 +31,10 @@ const recordsApi = {
   updateComment: (id, body) => api.patch(`/records/comments/${id}/`, { body }),
   deleteComment: (id) => api.delete(`/records/comments/${id}/`),
 
+  // FG10 — Centre de pièces jointes société (toutes, paginées).
+  getAllAttachments: (params) =>
+    api.get('/records/attachments/all/', { params }),
+
   // ── Pièces jointes ──
   getAttachments: (model, id) =>
     api.get('/records/attachments/', { params: { model, id } }),
