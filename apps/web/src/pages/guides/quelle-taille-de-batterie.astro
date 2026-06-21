@@ -10,6 +10,7 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -36,7 +37,7 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Quelle taille de batterie ?' }]} />
 
-    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Quelle taille de batterie pour ma maison ?</h1>
       <p class="v2-lead mt-6 text-lune-soft">
@@ -165,12 +166,12 @@ const jsonLd = {
         qu'un relevé de consommation heure par heure permet de caler précisément.
       </p>
 
-      <div class="mt-10 flex flex-wrap gap-3">
-        <a href="/guides/batterie-lithium-ou-gel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Lithium ou gel : laquelle choisir ? →</a>
-        <a href="/batteries-stockage" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Notre gamme de batteries →</a>
-        <a href="/guides/loi-82-21-expliquee" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">La loi 82-21 expliquée →</a>
-        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
-      </div>
+      <RelatedLinks links={[
+        { href: '/guides/batterie-lithium-ou-gel', label: 'Lithium ou gel : laquelle choisir ?' },
+        { href: '/batteries-stockage', label: 'Notre gamme de batteries' },
+        { href: '/guides/loi-82-21-expliquee', label: 'La loi 82-21 expliquée' },
+        { href: '/guides', label: 'Tous les guides' },
+      ]} />
     </article>
 
     <CtaBand title="Votre maison ne ressemble pas à celle de l'exemple ? Envoyez-nous vos relevés, on cale la capacité sur votre vrai profil." href="/contact#simulateur" />
