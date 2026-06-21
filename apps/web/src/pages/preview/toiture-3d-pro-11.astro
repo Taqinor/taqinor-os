@@ -590,6 +590,13 @@ const chipClass =
           </div>
         </div>
 
+        <!-- W110 — FLUX EN UNE PAGE : le diagnostic (Nom / Téléphone / Adresse + champs
+             étude) est RELOCALISÉ ICI, directement sous le résultat, au lieu d'une section
+             séparée tout en bas. Le « Continuer vers le diagnostic » pré-remplit ces champs
+             (Nom/Téléphone/Adresse + surface/orientation/kWc) et y défile — JAMAIS de lead
+             posté (garde W85/W97). Le composant partagé et tout son flux lead sont intacts. -->
+        <DiagnosticFormEnriched heading="Recevez votre étude détaillée" />
+
         <!-- ZONES — « Plusieurs zones de panneaux ». Chaque zone est dimensionnée par
              l'optimiseur existant (best-fit) puis ajustable au panneau près ; le total
              SOMME panneaux / kWc / production / économies sur TOUTES les zones. La 3D et
@@ -935,8 +942,6 @@ const chipClass =
         </p>
       </div>
     </section>
-
-    <DiagnosticFormEnriched heading="Recevez votre étude détaillée" />
   </div>
 </Layout>
 
