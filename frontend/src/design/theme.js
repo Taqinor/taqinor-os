@@ -106,3 +106,39 @@ export function initTheme() {
   applyTheme(getStoredTheme())
   applyDensity(getStoredDensity())
 }
+
+/* ============================================================================
+   F121 — Échelle typographique + chiffres tabulaires (zéro barré)
+   ----------------------------------------------------------------------------
+   Miroir JS des tokens `--text-*` de tokens.css : sept paliers documentés
+   (taille rem / interligne / letter-spacing négatif croissant). Sert de source
+   unique aux composants qui veulent l'échelle en JS et est vérifié par le test
+   contre tokens.css. `FORMAT_FEATURES` regroupe les réglages OpenType utilisés
+   sur tout contexte monétaire / quantité / référence (tabular + zéro barré).
+   ========================================================================== */
+
+/** Paliers de l'échelle typographique (rem, interligne sans unité, em). */
+export const TEXT_SCALE = {
+  display: { size: '3rem', lineHeight: '1.05', letterSpacing: '-0.03em' },
+  h1: { size: '2.25rem', lineHeight: '1.1', letterSpacing: '-0.025em' },
+  h2: { size: '1.75rem', lineHeight: '1.2', letterSpacing: '-0.02em' },
+  h3: { size: '1.375rem', lineHeight: '1.3', letterSpacing: '-0.015em' },
+  body: { size: '1rem', lineHeight: '1.55', letterSpacing: '0em' },
+  small: { size: '0.875rem', lineHeight: '1.45', letterSpacing: '0.005em' },
+  caption: { size: '0.75rem', lineHeight: '1.4', letterSpacing: '0.02em' },
+}
+
+/** Réglages OpenType pour montants/quantités/références (= `.tabular-nums`). */
+export const FORMAT_FEATURES = Object.freeze({
+  fontVariantNumeric: 'tabular-nums slashed-zero',
+  fontFeatureSettings: "'tnum' 1, 'zero' 1",
+})
+
+/**
+ * Style en ligne React pour tout nombre tabulaire (montant, quantité,
+ * référence) : chiffres à chasse fixe + zéro barré. À étaler sur un <td>,
+ * une cellule de KPI ou un total. Renvoie une copie de FORMAT_FEATURES.
+ */
+export function tabularNumStyle() {
+  return { ...FORMAT_FEATURES }
+}
