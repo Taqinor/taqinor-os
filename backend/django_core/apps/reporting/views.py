@@ -20,6 +20,59 @@ def _co(user):
     return None
 
 
+# ── FG92 — comparaison périodique ─────────────────────────────────────────────
+def _prior_period(start, end):
+    """Retourne (prev_start, prev_end) décalé d'un mois ou d'un an.
+
+    Si start/end sont None, on calcule la fenêtre du mois courant vs le mois
+    précédent (compare='prev') ou le même mois l'an passé (compare='yoy').
+    """
+    today = date.today()
+    if start is None or end is None:
+        # Par défaut : mois courant
+        start = today.replace(day=1)
+        end = today
+    span = (end - start).days + 1
+    return start - timedelta(days=span), end - timedelta(days=span)
+
+
+def _yoy_period(start, end):
+    """Même fenêtre, un an avant."""
+    today = date.today()
+    if start is None or end is None:
+        start = today.replace(day=1)
+        end = today
+    try:
+        prev_start = start.replace(year=start.year - 1)
+    except ValueError:
+        prev_start = start - timedelta(days=366)
+    try:
+        prev_end = end.replace(year=end.year - 1)
+    except ValueError:
+        prev_end = end - timedelta(days=366)
+    return prev_start, prev_end
+
+
+def _compare_kpi(current, previous):
+    """Retourne {current, previous, delta_pct} pour un KPI numérique."""
+    delta = None
+    if previous and float(previous) != 0:
+        delta = round((float(current) - float(previous)) / float(previous) * 100, 1)
+    return {
+        'current': float(current),
+        'previous': float(previous),
+        'delta_pct': delta,
+    }
+
+
+def _qdate(value):
+    """Parse une date au format ISO, ou None."""
+    try:
+        return date.fromisoformat((value or '').strip())
+    except (ValueError, TypeError):
+        return None
+
+
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def dashboard(request):
@@ -170,6 +223,51 @@ def dashboard(request):
         return build_xlsx_response(
             'reporting-dashboard.xlsx', headers, rows, sheet_title='Reporting')
 
+    # ── FG92 — comparaison période (?compare=prev|yoy) ───────────────────────
+    compare = request.query_params.get('compare')
+    comparison = None
+    if compare in ('prev', 'yoy'):
+        from_param = _qdate(request.query_params.get('from'))
+        to_param = _qdate(request.query_params.get('to'))
+        if compare == 'prev':
+            p_start, p_end = _prior_period(from_param, to_param)
+        else:
+            p_start, p_end = _yoy_period(from_param, to_param)
+        prev_fqs = factures_qs.filter(
+            date_emission__gte=p_start,
+            date_emission__lte=p_end)
+        prev_ca = _ca_factures(prev_fqs.filter(statut=Facture.Statut.PAYEE))
+        prev_leads = 0
+        try:
+            from apps.crm.models import Lead
+            prev_leads = Lead.objects.filter(
+                **co, date_creation__date__gte=p_start,
+                date_creation__date__lte=p_end).count()
+        except Exception:
+            pass
+        from apps.crm.models import Lead
+        curr_from = _qdate(request.query_params.get('from'))
+        curr_to = _qdate(request.query_params.get('to'))
+        curr_fqs_f = factures_qs
+        if curr_from:
+            curr_fqs_f = curr_fqs_f.filter(date_emission__gte=curr_from)
+        if curr_to:
+            curr_fqs_f = curr_fqs_f.filter(date_emission__lte=curr_to)
+        curr_ca = _ca_factures(curr_fqs_f.filter(statut=Facture.Statut.PAYEE))
+        curr_leads = Lead.objects.filter(**co)
+        if curr_from:
+            curr_leads = curr_leads.filter(date_creation__date__gte=curr_from)
+        if curr_to:
+            curr_leads = curr_leads.filter(date_creation__date__lte=curr_to)
+        curr_leads_count = curr_leads.count()
+        comparison = {
+            'period': compare,
+            'prev_start': p_start.isoformat(),
+            'prev_end': p_end.isoformat(),
+            'ca_paye': _compare_kpi(curr_ca, prev_ca),
+            'nb_leads': _compare_kpi(curr_leads_count, prev_leads),
+        }
+
     return Response({
         'kpis': {
             'ca_paye': float(ca_paye),
@@ -197,6 +295,7 @@ def dashboard(request):
         },
         'stock_alerte': stock_alerte_list,
         'creances': creances_list,
+        'comparison': comparison,
     })
 
 

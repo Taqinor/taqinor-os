@@ -48,6 +48,39 @@ def _period(request):
             _qdate(request.query_params.get('to')))
 
 
+# ── FG92 — comparaison périodique ─────────────────────────────────────────────
+def _prior_window(start, end):
+    """Décale la fenêtre d'un écart équivalent (MoM)."""
+    today = date.today()
+    s = start or today.replace(day=1)
+    e = end or today
+    span = (e - s).days + 1
+    return s - timedelta(days=span), e - timedelta(days=span)
+
+
+def _yoy_window(start, end):
+    """Même fenêtre, un an avant."""
+    today = date.today()
+    s = start or today.replace(day=1)
+    e = end or today
+    try:
+        ps = s.replace(year=s.year - 1)
+    except ValueError:
+        ps = s - timedelta(days=366)
+    try:
+        pe = e.replace(year=e.year - 1)
+    except ValueError:
+        pe = e - timedelta(days=366)
+    return ps, pe
+
+
+def _compare_kpi(current, previous):
+    """Retourne {current, previous, delta_pct}."""
+    c, p = float(current), float(previous)
+    delta = round((c - p) / p * 100, 1) if p else None
+    return {'current': c, 'previous': p, 'delta_pct': delta}
+
+
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sales_report(request):
@@ -107,11 +140,37 @@ def sales_report(request):
                     ['Étape', 'Leads'], rows, 'Ventes')
     if x:
         return x
+
+    # FG92 — comparaison périodique (?compare=prev|yoy)
+    comparison = None
+    compare = request.query_params.get('compare')
+    if compare in ('prev', 'yoy'):
+        if compare == 'prev':
+            p_start, p_end = _prior_window(start, end)
+        else:
+            p_start, p_end = _yoy_window(start, end)
+        prev_leads = Lead.objects.filter(**co, is_archived=False)
+        if p_start:
+            prev_leads = prev_leads.filter(date_creation__date__gte=p_start)
+        if p_end:
+            prev_leads = prev_leads.filter(date_creation__date__lte=p_end)
+        prev_total = prev_leads.count()
+        prev_signed = prev_leads.filter(stage='SIGNED').count()
+        curr_signed = leads.filter(stage='SIGNED').count()
+        comparison = {
+            'period': compare,
+            'prev_start': p_start.isoformat() if p_start else None,
+            'prev_end': p_end.isoformat() if p_end else None,
+            'total_leads': _compare_kpi(total, prev_total),
+            'leads_signes': _compare_kpi(curr_signed, prev_signed),
+        }
+
     return Response({
         'funnel': funnel, 'total_leads': total,
         'par_responsable': par_responsable, 'par_canal': par_canal,
         'perdus_par_motif': perdus,
         'devis_par_statut': devis_par_statut,
+        'comparison': comparison,
     })
 
 
