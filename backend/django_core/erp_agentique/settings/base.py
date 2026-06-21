@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'apps.installations',
     'apps.sav',
     'apps.outillage',
+    'apps.ged',
     'apps.records',
     'apps.customfields',
     'apps.documents',
@@ -86,6 +87,9 @@ INSTALLED_APPS = [
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
+    # FLOTTE1 — Gestion de flotte (véhicules immatriculés + engins roulants).
+    # Module interne multi-société, entièrement additif.
+    'apps.flotte',
     # AG1 — Catalogue d'actions agentiques (déclarées en code, aucun modèle).
     # Expose ce que l'agent peut proposer au caller, filtré par permission +
     # société. Métadonnées seulement ; l'exécution re-vérifie côté endpoint.

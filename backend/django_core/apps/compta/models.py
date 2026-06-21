@@ -10,6 +10,10 @@ Socle d'une comptabilité en partie double conforme au CGNC marocain
   GARANTIES équilibrées (Σ débit = Σ crédit) au niveau ``clean()``.
 * ``CompteTresorerie`` (FG121) — référentiel des comptes bancaires & caisses,
   rattaché à un compte comptable de classe 5.
+* ``ExerciceComptable`` / ``PeriodeComptable`` (FG115) — exercice fiscal et
+  période (mois ou exercice) VERROUILLABLE : une fois clôturée, les écritures et
+  les factures dont la date tombe dedans deviennent IMMUABLES (audit). Les
+  écritures (et leurs lignes) sont protégées au niveau ``save()``/``delete()``.
 
 Tout est multi-société : chaque modèle porte un FK ``company`` posé côté serveur
 (jamais lu du corps de requête). Aucun comportement existant n'est modifié — ce
@@ -272,6 +276,31 @@ class EcritureComptable(models.Model):
                 f"Σ débit ({debit}) ≠ Σ crédit ({credit})."
             )
 
+    # ── FG115 — Immutabilité d'une écriture en période verrouillée ─────────
+    def _verifier_periode_ouverte(self):
+        """Refuse toute écriture dont la date tombe dans une période clôturée.
+
+        Garde-fou d'audit : tant qu'une ``PeriodeComptable`` couvre
+        ``date_ecriture`` et est ``verrouillee``, on ne peut ni créer, ni
+        modifier, ni supprimer cette écriture. Lève ``ValidationError``.
+        """
+        if self.company_id is None or self.date_ecriture is None:
+            return
+        if PeriodeComptable.date_verrouillee(self.company_id, self.date_ecriture):
+            raise ValidationError(
+                "Période comptable clôturée : l'écriture du "
+                f"{self.date_ecriture} est verrouillée et ne peut plus être "
+                "modifiée."
+            )
+
+    def save(self, *args, **kwargs):
+        self._verifier_periode_ouverte()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._verifier_periode_ouverte()
+        return super().delete(*args, **kwargs)
+
 
 class LigneEcriture(models.Model):
     """Ligne d'une écriture : un compte mouvementé au débit OU au crédit.
@@ -339,6 +368,27 @@ class LigneEcriture(models.Model):
                 "Les montants débit/crédit doivent être positifs."
             )
 
+    # ── FG115 — Immutabilité d'une ligne en période verrouillée ────────────
+    def _verifier_periode_ouverte(self):
+        """Refuse de toucher une ligne dont l'écriture est en période close."""
+        if self.company_id is None:
+            return
+        d = getattr(self.ecriture, 'date_ecriture', None)
+        if d is not None and PeriodeComptable.date_verrouillee(
+                self.company_id, d):
+            raise ValidationError(
+                "Période comptable clôturée : cette ligne d'écriture est "
+                "verrouillée et ne peut plus être modifiée."
+            )
+
+    def save(self, *args, **kwargs):
+        self._verifier_periode_ouverte()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._verifier_periode_ouverte()
+        return super().delete(*args, **kwargs)
+
 
 # ── FG121 / COMPTA23 — Référentiel comptes bancaires & caisses ─────────────
 
@@ -394,3 +444,146 @@ class CompteTresorerie(models.Model):
 
     def __str__(self):
         return f'{self.get_type_compte_display()} — {self.libelle}'
+
+
+# ── FG115 / FG117 — Exercice comptable (année fiscale) ─────────────────────
+
+class ExerciceComptable(models.Model):
+    """Exercice fiscal d'une société (généralement l'année civile).
+
+    Sert de cadre à la clôture (FG115) et à la réouverture / report des
+    à-nouveaux (FG117). Un exercice ``cloture`` est définitivement figé ; on
+    ouvre l'exercice suivant et on y reporte les soldes de bilan.
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='exercices_comptables',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Début')
+    date_fin = models.DateField(verbose_name='Fin')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.OUVERT, verbose_name='Statut')
+    # Trace de la réouverture / report (FG117) : l'écriture d'à-nouveaux créée.
+    an_reporte = models.BooleanField(
+        default=False, verbose_name='À-nouveaux reportés')
+    date_cloture = models.DateTimeField(
+        null=True, blank=True, verbose_name='Clôturé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Exercice comptable'
+        verbose_name_plural = 'Exercices comptables'
+        ordering = ['-date_debut']
+        unique_together = [('company', 'date_debut', 'date_fin')]
+
+    def __str__(self):
+        return self.libelle or f'Exercice {self.date_debut}–{self.date_fin}'
+
+    def clean(self):
+        super().clean()
+        if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+
+    @property
+    def est_cloture(self):
+        return self.statut == self.Statut.CLOTURE
+
+
+# ── FG115 — Période comptable verrouillable (clôture & immutabilité) ────────
+
+class PeriodeComptable(models.Model):
+    """Période comptable (mois ou exercice) que l'on peut figer pour l'audit.
+
+    Tant qu'elle est ``verrouillee``, toute écriture (et facture) dont la date
+    tombe dans l'intervalle ``[date_debut ; date_fin]`` devient IMMUABLE : la
+    création/modification/suppression est refusée au niveau ``save()`` du
+    modèle ``EcritureComptable``/``LigneEcriture`` et par la couche service
+    pour les factures (FG115).
+    """
+    class Type(models.TextChoices):
+        MOIS = 'mois', 'Mois'
+        EXERCICE = 'exercice', 'Exercice'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='periodes_comptables',
+        verbose_name='Société',
+    )
+    exercice = models.ForeignKey(
+        ExerciceComptable,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='periodes',
+        verbose_name='Exercice',
+    )
+    type_periode = models.CharField(
+        max_length=10, choices=Type.choices,
+        default=Type.MOIS, verbose_name='Type de période')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Début')
+    date_fin = models.DateField(verbose_name='Fin')
+    verrouillee = models.BooleanField(
+        default=False, verbose_name='Verrouillée')
+    date_verrouillage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Verrouillée le')
+    verrouillee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='periodes_verrouillees',
+        verbose_name='Verrouillée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Période comptable'
+        verbose_name_plural = 'Périodes comptables'
+        ordering = ['-date_debut']
+        unique_together = [('company', 'date_debut', 'date_fin')]
+
+    def __str__(self):
+        etat = 'verrouillée' if self.verrouillee else 'ouverte'
+        return f'{self.libelle or self.date_debut} ({etat})'
+
+    def clean(self):
+        super().clean()
+        if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+
+    def contient(self, une_date):
+        """Vrai si ``une_date`` (date) tombe dans l'intervalle de la période."""
+        return self.date_debut <= une_date <= self.date_fin
+
+    @classmethod
+    def date_verrouillee(cls, company_id, une_date):
+        """Vrai si une période VERROUILLÉE de la société couvre ``une_date``.
+
+        Point d'appui de l'immutabilité (FG115) : une seule requête, scopée
+        société, qui répond « cette date est-elle figée ? ». ``une_date`` peut
+        être une ``date`` ou un ``datetime`` (on prend sa partie date).
+        """
+        if une_date is None or company_id is None:
+            return False
+        if isinstance(une_date, str):
+            return False
+        # ``datetime`` est une sous-classe de ``date`` : on prend sa partie date.
+        d = une_date.date() if hasattr(une_date, 'hour') else une_date
+        return cls.objects.filter(
+            company_id=company_id, verrouillee=True,
+            date_debut__lte=d, date_fin__gte=d,
+        ).exists()

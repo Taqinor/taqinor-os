@@ -9,6 +9,8 @@ from .models import (
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
     SafetyCheckItem,
     TypeInterventionPlan,
+    JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
+    ReunionChantier,
 )
 
 
@@ -589,3 +591,80 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
         ]
         # company posée côté serveur.
         read_only_fields = []
+
+
+# ── FG293 — Jalons & phases de projet ────────────────────────────────────────
+
+class JalonProjetSerializer(serializers.ModelSerializer):
+    """FG293 — jalon/phase de projet d'un chantier (dates cible & réelle)."""
+    phase_display = serializers.CharField(
+        source='get_phase_display', read_only=True, default=None)
+
+    class Meta:
+        model = JalonProjet
+        fields = [
+            'id', 'installation', 'phase', 'phase_display', 'libelle', 'ordre',
+            'date_cible', 'date_reelle', 'atteint', 'notes',
+            'date_creation', 'date_modification',
+        ]
+        # company posée côté serveur ; jamais lue du corps.
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+# ── FG296 — Modèles de projet (templates de chantier-type) ───────────────────
+
+class ModeleProjetJalonSerializer(serializers.ModelSerializer):
+    phase_display = serializers.CharField(
+        source='get_phase_display', read_only=True, default=None)
+
+    class Meta:
+        model = ModeleProjetJalon
+        fields = [
+            'id', 'phase', 'phase_display', 'libelle', 'ordre', 'offset_jours',
+        ]
+
+
+class ModeleProjetBomLigneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ModeleProjetBomLigne
+        fields = ['id', 'produit', 'designation', 'quantite', 'ordre']
+
+
+class ModeleProjetSerializer(serializers.ModelSerializer):
+    """FG296 — modèle de projet (chantier-type) + ses jalons/BoM type imbriqués
+    en lecture. La société est posée côté serveur, jamais lue du corps."""
+    jalons = ModeleProjetJalonSerializer(many=True, read_only=True)
+    bom_lignes = ModeleProjetBomLigneSerializer(many=True, read_only=True)
+    type_installation_display = serializers.CharField(
+        source='get_type_installation_display', read_only=True, default=None)
+
+    class Meta:
+        model = ModeleProjet
+        fields = [
+            'id', 'nom', 'type_installation', 'type_installation_display',
+            'description', 'actif', 'jalons', 'bom_lignes',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+# ── FG298 — Comptes-rendus de réunion de chantier ────────────────────────────
+
+class ReunionChantierSerializer(serializers.ModelSerializer):
+    """FG298 — compte-rendu de réunion de chantier. `redige_par` et company
+    posés côté serveur (jamais lus du corps)."""
+    redige_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReunionChantier
+        fields = [
+            'id', 'installation', 'titre', 'date_reunion', 'ordre_du_jour',
+            'presents', 'decisions', 'actions', 'redige_par', 'redige_par_nom',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'redige_par', 'date_creation', 'date_modification',
+        ]
+
+    def get_redige_par_nom(self, obj):
+        return getattr(obj.redige_par, 'username', None)

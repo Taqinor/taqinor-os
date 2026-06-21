@@ -36,6 +36,7 @@ urlpatterns = [
     path('api/django/installations/', include('apps.installations.urls')),
     path('api/django/sav/', include('apps.sav.urls')),
     path('api/django/outillage/', include('apps.outillage.urls')),
+    path('api/django/ged/', include('apps.ged.urls')),
     path('api/django/records/', include('apps.records.urls')),
     path('api/django/imports/', include('apps.dataimport.urls')),
     path('api/django/custom-fields/', include('apps.customfields.urls')),
@@ -52,6 +53,8 @@ urlpatterns = [
     path('api/django/publicapi/', include('apps.publicapi.urls')),
     # FG107-FG121 — Comptabilité générale (interne, admin/responsable).
     path('api/django/compta/', include('apps.compta.urls')),
+    # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
+    path('api/django/flotte/', include('apps.flotte.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('api/django/agent/', include('apps.agent.urls')),
     # Group S — Messagerie interne d'équipe (« Discuss »).
