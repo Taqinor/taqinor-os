@@ -458,6 +458,8 @@ SYSTEME_PREFIX = 'SYSTEME'
 # F23 — jeton d'intervention : scanner une étiquette chantier/matériel résout
 # vers l'intervention concernée, réutilisant ce même encodeur + résolveur.
 INTERVENTION_PREFIX = 'INTERV'
+# FG85 — jeton d'équipement SAV : EQUIP:<equipement_id>
+EQUIP_PREFIX = 'EQUIP'
 
 
 def produit_token(produit_id) -> str:
@@ -470,6 +472,10 @@ def systeme_token(installation_id) -> str:
 
 def intervention_token(intervention_id) -> str:
     return f'{INTERVENTION_PREFIX}:{intervention_id}'
+
+
+def equip_token(equipement_id) -> str:
+    return f'{EQUIP_PREFIX}:{equipement_id}'
 
 
 def _esc(value) -> str:

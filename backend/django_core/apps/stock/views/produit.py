@@ -324,6 +324,38 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 'route': '/interventions',
             })
 
+        if prefix == labels.EQUIP_PREFIX:
+            # FG85 — résolution LECTURE SEULE vers un équipement SAV, scopé société.
+            # Import paresseux, aucune écriture.
+            from apps.sav.models import Equipement, Ticket
+            equip = Equipement.objects.select_related(
+                'produit', 'installation', 'installation__client',
+            ).filter(company=request.user.company, id=obj_id).first()
+            if equip is None:
+                return Response(
+                    {'detail': 'Équipement introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            produit_nom = equip.produit.nom if equip.produit_id else '—'
+            client_nom = ''
+            if equip.installation_id and equip.installation.client_id:
+                c = equip.installation.client
+                client_nom = f'{c.nom} {c.prenom or ""}'.strip()
+            nb_tickets_ouverts = equip.tickets.filter(
+                statut__in=Ticket.OPEN_STATUTS, annule=False).count()
+            return Response({
+                'type': 'equipement',
+                'id': equip.id,
+                'label': produit_nom,
+                'serie': equip.numero_serie or '',
+                'statut': equip.statut,
+                'date_fin_garantie': (
+                    equip.date_fin_garantie.isoformat()
+                    if equip.date_fin_garantie else None),
+                'client': client_nom,
+                'nb_tickets_ouverts': nb_tickets_ouverts,
+                'route': '/sav/equipements',
+            })
+
         return Response(
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)

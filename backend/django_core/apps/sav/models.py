@@ -19,6 +19,15 @@ Deux objets de première classe, queryables, accrochés au chantier
 Le ticket sait si l'équipement qu'il concerne est sous garantie : quand un
 équipement est lié, `sous_garantie_calcule` compare la date du jour à sa fin
 de garantie ; sinon, la valeur manuelle (oui/non/à déterminer) est utilisée.
+
+FG81 — SLA par ticket : horloge de première réponse + délai cible par société
+(SavSlaSettings) + drapeaux sla_breach / sla_due_at calculés.
+FG82 — Checklist de visite de maintenance (MaintenanceChecklistTemplate /
+        Item) + TicketChecklistItem par ticket.
+FG83 — Réclamation garantie fournisseur (WarrantyClaim, flux RMA).
+FG85 — Jeton QR EQUIP:<id> sur Equipement + action étiquettes.
+FG87 — Base de connaissances SAV (KbArticle).
+FG90 — nb_tickets_12m (équipement « citron ») — computed, pas de colonne DB.
 """
 from django.conf import settings
 from django.db import models
@@ -26,6 +35,99 @@ from django.utils import timezone
 
 from .services import add_months
 
+
+# ── FG81 — Réglages SLA par société ──────────────────────────────────────────
+
+class SavSlaSettings(models.Model):
+    """Délais SLA par société pour les tickets SAV (FG81).
+
+    `sla_response_days` — délai de première réponse en jours calendaires
+    (défaut 1). `sla_resolution_days` — délai de résolution cible (défaut 7).
+    `sla_par_priorite` JSON optionnel : {"urgente": {"response": 0,
+    "resolution": 1}, "haute": {...}} pour affiner par priorité.
+
+    `sla_breach_enabled` : tant que False, aucune notification n'est émise —
+    comportement d'aujourd'hui inchangé.
+    """
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='sav_sla_settings')
+    sla_response_days = models.PositiveIntegerField(default=1)
+    sla_resolution_days = models.PositiveIntegerField(default=7)
+    sla_par_priorite = models.JSONField(null=True, blank=True)
+    sla_breach_enabled = models.BooleanField(default=False)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réglage SLA SAV'
+        verbose_name_plural = 'Réglages SLA SAV'
+
+    def __str__(self):
+        return f'SLA SAV (société {self.company_id})'
+
+    @classmethod
+    def get(cls, company):
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj
+
+    def days_for(self, priorite):
+        """Renvoie (response_days, resolution_days) pour une priorité donnée."""
+        par = self.sla_par_priorite or {}
+        p = par.get(priorite, {})
+        return (
+            p.get('response', self.sla_response_days),
+            p.get('resolution', self.sla_resolution_days),
+        )
+
+
+# ── FG82 — Checklist de visite de maintenance ─────────────────────────────────
+
+class MaintenanceChecklistTemplate(models.Model):
+    """Modèle de checklist pour les visites de maintenance préventive (FG82).
+
+    Configurable dans Paramètres ; un modèle « Défaut » est semé
+    automatiquement. Additif — aucune migration destructive.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='maintenance_checklist_templates')
+    nom = models.CharField(max_length=120)
+    actif = models.BooleanField(default=True)
+    protege = models.BooleanField(default=False)  # Template système protégé.
+
+    class Meta:
+        ordering = ['nom']
+        verbose_name = 'Modèle de checklist maintenance'
+        verbose_name_plural = 'Modèles de checklist maintenance'
+
+    def __str__(self):
+        return self.nom
+
+
+class MaintenanceChecklistItem(models.Model):
+    """Étape d'un modèle de checklist de maintenance (FG82)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='maintenance_checklist_items')
+    template = models.ForeignKey(
+        MaintenanceChecklistTemplate, on_delete=models.CASCADE,
+        related_name='items')
+    cle = models.CharField(max_length=60)
+    libelle = models.CharField(max_length=180)
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'template', 'cle')]
+        verbose_name = 'Étape de checklist maintenance'
+        verbose_name_plural = 'Étapes de checklist maintenance'
+
+    def __str__(self):
+        return self.libelle
+
+
+# ── Modèle Équipement ──────────────────────────────────────────────────────────
 
 class Equipement(models.Model):
     class Statut(models.TextChoices):
@@ -43,6 +145,11 @@ class Equipement(models.Model):
         'stock.Produit', on_delete=models.PROTECT, related_name='equipements',
     )
     numero_serie = models.CharField(max_length=120, blank=True, null=True)
+    # FG85 — jeton QR stable encodé sur l'étiquette (EQUIP:<id>).
+    # Calculé à la création, jamais modifié.
+    equipement_token = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text="Jeton QR pour le scan de l'équipement (EQUIP:<id>).")
     # Le chantier auquel l'appareil appartient (objet pivot de l'après-vente).
     installation = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
@@ -110,6 +217,15 @@ class Equipement(models.Model):
             if (self.date_pose and gpm) else None
         )
 
+    def set_token(self):
+        """FG85 — pose le jeton EQUIP:<id> après la première sauvegarde."""
+        token = f'EQUIP:{self.pk}'
+        if self.equipement_token != token:
+            self.equipement_token = token
+            self.save(update_fields=['equipement_token'])
+
+
+# ── Modèle Ticket ─────────────────────────────────────────────────────────────
 
 class Ticket(models.Model):
     class Statut(models.TextChoices):
@@ -193,6 +309,17 @@ class Ticket(models.Model):
     annule = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
 
+    # ── FG81 — SLA (horloge de première réponse + drapeaux) ──────────────────
+    # date_premiere_reponse : posée manuellement (ou via action) quand
+    # l'équipe contacte le client pour la première fois. NULL = pas encore.
+    date_premiere_reponse = models.DateTimeField(null=True, blank=True)
+    # Échéance cible pour la RÉSOLUTION (calculée à la création depuis le SLA
+    # société). NULL quand le réglage SLA n'est pas activé.
+    sla_due_at = models.DateField(null=True, blank=True)
+    # True quand sla_due_at est dépassé et le ticket toujours ouvert.
+    # Mis à jour par le scan journalier + à chaque changement de statut.
+    sla_breach = models.BooleanField(default=False)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='tickets_crees',
@@ -207,6 +334,7 @@ class Ticket(models.Model):
         unique_together = [('company', 'reference')]
         indexes = [
             models.Index(fields=['company', 'statut']),
+            models.Index(fields=['company', 'sla_breach']),
         ]
 
     def __str__(self):
@@ -226,6 +354,49 @@ class Ticket(models.Model):
             return (self.SousGarantie.OUI if today < eq.date_fin_garantie
                     else self.SousGarantie.NON)
         return self.sous_garantie
+
+    def recompute_sla_breach(self):
+        """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert."""
+        if not self.sla_due_at:
+            self.sla_breach = False
+            return
+        if self.statut not in self.OPEN_STATUTS or self.annule:
+            self.sla_breach = False
+            return
+        self.sla_breach = timezone.localdate() > self.sla_due_at
+
+
+# ── FG82 — Checklist par ticket ───────────────────────────────────────────────
+
+class TicketChecklistItem(models.Model):
+    """Item de checklist de maintenance coché sur un ticket (FG82).
+
+    Rendu dans le PDF de rapport d'intervention (maintenance). Miroir de
+    l'Item du template, mais copié au niveau du ticket pour historisation."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_checklist_items')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='checklist_items')
+    # Clé de l'étape (depuis le template, pour identification stable).
+    cle = models.CharField(max_length=60)
+    libelle = models.CharField(max_length=180)
+    ordre = models.PositiveIntegerField(default=0)
+    coche = models.BooleanField(default=False)
+    note = models.TextField(blank=True, default='')
+    coche_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_coche = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['ordre', 'cle']
+        unique_together = [('ticket', 'cle')]
+        verbose_name = 'Item checklist ticket'
+        verbose_name_plural = 'Items checklist ticket'
+
+    def __str__(self):
+        return f'{self.libelle} (ticket {self.ticket_id})'
 
 
 class TicketActivity(models.Model):
@@ -263,6 +434,124 @@ class TicketActivity(models.Model):
 
     def __str__(self):
         return f"{self.ticket_id} {self.kind} {self.field or ''}".strip()
+
+
+# ── FG83 — Réclamation garantie fournisseur (RMA) ─────────────────────────────
+
+class WarrantyClaim(models.Model):
+    """Réclamation garantie fournisseur (flux RMA) pour un équipement défaillant
+    sous garantie (FG83).
+
+    Permet de tracer les échanges avec le fournisseur (Huawei / VEICHI /
+    fabricant panneaux) depuis le signalement jusqu'à la résolution
+    (remplacement ou avoir). Le fournisseur est lu via stock.selectors (jamais
+    un import direct du modèle stock).
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        ENVOYE = 'envoye', 'Envoyé au fournisseur'
+        EN_ATTENTE = 'en_attente', 'En attente de retour'
+        RESOLU = 'resolu', 'Résolu'
+        REFUSE = 'refuse', 'Refusé'
+
+    class Resolution(models.TextChoices):
+        REMPLACEMENT = 'remplacement', 'Remplacement'
+        AVOIR = 'avoir', 'Avoir'
+        REPARATION = 'reparation', 'Réparation'
+        REFUSE = 'refuse', 'Refusé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='warranty_claims')
+    equipement = models.ForeignKey(
+        Equipement, on_delete=models.PROTECT, related_name='warranty_claims')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='warranty_claims')
+    # Fournisseur — référence par ID (stock.Fournisseur) lu via selectors.
+    # Stocké comme IntegerField pour ne pas importer le modèle stock.
+    fournisseur_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID du fournisseur stock (sav.selectors.get_fournisseur).')
+    fournisseur_nom_cache = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Nom du fournisseur mis en cache (dénormalisation lecture).')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.OUVERT)
+    # Référence RMA attribuée par le fournisseur.
+    rma_ref = models.CharField(max_length=80, blank=True, default='')
+    date_signalement = models.DateField(null=True, blank=True)
+    date_envoi_fournisseur = models.DateField(null=True, blank=True)
+    date_resolution = models.DateField(null=True, blank=True)
+    resolution = models.CharField(
+        max_length=15, choices=Resolution.choices, blank=True, default='')
+    # Coût récupéré (avoir ou remplacement valorisé). Interne — jamais client.
+    cout_recupere = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    description = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réclamation garantie fournisseur'
+        verbose_name_plural = 'Réclamations garantie fournisseur'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'statut']),
+            models.Index(fields=['company', 'equipement']),
+        ]
+
+    def __str__(self):
+        return f'RMA #{self.pk} — {self.equipement_id} ({self.statut})'
+
+
+# ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
+
+class KbArticle(models.Model):
+    """Article de la base de connaissances SAV (FG87).
+
+    Les résolutions d'intervention évaporent comme du texte libre dans le
+    chatter. KbArticle capitalise les playbooks de résolution : codes erreur
+    onduleur, pannes de strings, problèmes terrain récurrents.
+
+    Cherchable par texte libre + filtrable par produit/catégorie (aide à
+    trouver le bon article depuis un ticket lié à un équipement précis).
+    Aucun prix d'achat ni information sensible n'y figure.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='kb_articles')
+    titre = models.CharField(max_length=200)
+    corps = models.TextField()
+    # Tags libres (liste JSON) — ex. ["onduleur", "E07", "Huawei"].
+    tags = models.JSONField(default=list, blank=True)
+    # Produit optionnel (lien vers le catalogue pour filtrage depuis ticket).
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='kb_articles')
+    # Catégorie libre (ex. "Onduleur", "Câblage", "Pompage").
+    categorie = models.CharField(max_length=80, blank=True, default='')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Article KB SAV'
+        verbose_name_plural = 'Articles KB SAV'
+        ordering = ['-date_modification']
+        indexes = [
+            models.Index(fields=['company', 'actif']),
+            models.Index(fields=['company', 'produit']),
+        ]
+
+    def __str__(self):
+        return self.titre
 
 
 class ContratMaintenance(models.Model):
