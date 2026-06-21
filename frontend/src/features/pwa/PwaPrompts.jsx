@@ -121,31 +121,34 @@ function InstallBanner() {
 
 function UpdateToast() {
   const {
-    needRefresh: [needRefresh, setNeedRefresh],
+    needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     immediate: true,
     onRegisteredSW(_url, reg) {
-      // Vérifie périodiquement une nouvelle version (toutes les heures).
-      if (reg) setInterval(() => reg.update(), 60 * 60 * 1000)
+      if (!reg) return
+      const check = () => { reg.update().catch(() => {}) }
+      // Vérifie une nouvelle version régulièrement ET au retour au premier plan
+      // (reprise de l'app / de l'onglet) — important sur mobile où la PWA reste
+      // ouverte longtemps et ne re-vérifiait jamais.
+      setInterval(check, 15 * 60 * 1000)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check()
+      })
     },
   })
 
-  if (!needRefresh) return null
+  // MISE À JOUR AUTOMATIQUE : dès qu'une nouvelle version est prête (un SW est
+  // « en attente »), on l'applique sans rien demander (skipWaiting + un seul
+  // rechargement). Plus besoin de se déconnecter/reconnecter pour récupérer la
+  // dernière version. Ne se déclenche QU'À une vraie mise à jour — au tout
+  // premier chargement aucun SW n'est en attente —, donc pas de course de
+  // rechargement à froid (le défaut « prompt » d'origine visait justement ça).
+  useEffect(() => {
+    if (needRefresh) updateServiceWorker(true)
+  }, [needRefresh, updateServiceWorker])
 
-  return (
-    <div style={{ ...bannerStyle, bottom: 'auto', top: 'calc(12px + env(safe-area-inset-top))' }} role="alert">
-      <div style={{ flex: 1, fontSize: 14 }}>
-        Nouvelle version disponible.
-      </div>
-      <button type="button" style={primaryBtn}
-              onClick={() => updateServiceWorker(true)}>
-        Actualiser
-      </button>
-      <button type="button" style={ghostBtn} aria-label="Plus tard"
-              onClick={() => setNeedRefresh(false)}>✕</button>
-    </div>
-  )
+  return null
 }
 
 export default function PwaPrompts() {
