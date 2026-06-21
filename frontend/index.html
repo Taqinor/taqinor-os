@@ -39,6 +39,22 @@
     <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/apple-splash-1284x2778.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/apple-splash-1179x2556.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/apple-splash-1290x2796.png" />
+
+    <!-- Finitions iOS « app installée » (M157). Style en ligne (chargé avant le
+         CSS de l'app) pour que le comportement de défilement soit correct dès la
+         toute première peinture, y compris hors connexion sur la page offline :
+         • overscroll-behavior: contain → coupe le « rubber-band » qui débordait
+           jusqu'au fond de page et le tirer-pour-rafraîchir parasite en mode
+           plein écran (standalone) ;
+         • -webkit-overflow-scrolling: touch → défilement inertiel natif iOS.
+         Additif et non destructif : ne fixe que ces deux propriétés sur la
+         racine, le reste de la mise en page vient de src/index.css. -->
+    <style>
+      html, body {
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
