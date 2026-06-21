@@ -34,6 +34,29 @@ def _maybe_xlsx(request, filename, headers, rows, title):
     return None
 
 
+# FG95 — export PDF branded (WeasyPrint + Jinja2)
+def _maybe_pdf(request, pdf_title, sections, pdf_filename, period_label=''):
+    """Retourne un HttpResponse PDF si ?export=pdf, sinon None.
+
+    Jamais de prix d'achat dans les sections transmises ici.
+    """
+    if request.query_params.get('export') != 'pdf':
+        return None
+    from apps.parametres.models import CompanyProfile
+    from apps.reporting.report_pdf import render_report_pdf, pdf_response
+    try:
+        profile = CompanyProfile.get(company=request.user.company)
+    except Exception:
+        profile = None
+    pdf_bytes = render_report_pdf(
+        title=pdf_title,
+        sections=sections,
+        company_profile=profile,
+        period_label=period_label,
+    )
+    return pdf_response(pdf_bytes, filename=pdf_filename)
+
+
 def _qdate(value):
     """Parse une date ?from=/?to= au format ISO (AAAA-MM-JJ), ou None."""
     try:
@@ -141,6 +164,33 @@ def sales_report(request):
     if x:
         return x
 
+    # FG95 — export PDF branded
+    period_label = ''
+    if start or end:
+        _s = start.isoformat() if start else '…'
+        _e = end.isoformat() if end else "aujourd'hui"
+        period_label = f"{_s} → {_e}"
+    p = _maybe_pdf(
+        request, 'Rapport Ventes',
+        sections=[
+            {'title': 'Funnel pipeline',
+             'kv': [{'label': 'Leads total', 'value': str(total)}],
+             'table': {'headers': ['Étape', 'Leads'], 'rows': rows}},
+            {'title': 'Par canal',
+             'kv': None,
+             'table': {'headers': ['Canal', 'Leads'],
+                       'rows': [[c['canal'] or '—', c['count']] for c in par_canal]}},
+            {'title': 'Pertes par motif',
+             'kv': None,
+             'table': {'headers': ['Motif', 'Leads perdus'],
+                       'rows': [[p['motif_perte'] or '—', p['count']] for p in perdus]}},
+        ],
+        pdf_filename='rapport-ventes.pdf',
+        period_label=period_label,
+    )
+    if p:
+        return p
+
     # FG92 — comparaison périodique (?compare=prev|yoy)
     comparison = None
     compare = request.query_params.get('compare')
@@ -217,6 +267,28 @@ def stock_report(request):
                     ['Catégorie', 'Articles', 'Valeur vente HT'], rows, 'Stock')
     if x:
         return x
+
+    # FG95 — export PDF branded (valorisation achat JAMAIS dans le PDF client)
+    p = _maybe_pdf(
+        request, 'Rapport Stock',
+        sections=[
+            {'title': 'Valorisation par catégorie',
+             'kv': [{'label': 'Valeur vente totale (HT)',
+                     'value': f'{val_vente:,.0f} MAD'}],
+             'table': {'headers': ['Catégorie', 'Articles', 'Valeur vente HT (MAD)'],
+                       'rows': rows}},
+            {'title': 'Articles en bas stock',
+             'kv': None,
+             'table': {'headers': ['Nom', 'SKU', 'Quantité', 'Seuil alerte'],
+                       'rows': [[b['nom'], b['sku'] or '—',
+                                 b['quantite_stock'], b['seuil_alerte']]
+                                for b in bas_stock]}},
+        ],
+        pdf_filename='rapport-stock.pdf',
+    )
+    if p:
+        return p
+
     return Response({
         'valorisation_vente': str(val_vente),
         'valorisation_achat': str(val_achat),  # interne, non client-facing
@@ -273,6 +345,32 @@ def service_report(request):
                     ['Statut chantier', 'Nombre'], rows, 'Service')
     if x:
         return x
+
+    # FG95 — export PDF branded
+    p = _maybe_pdf(
+        request, 'Rapport Service',
+        sections=[
+            {'title': 'Chantiers par statut',
+             'kv': None,
+             'table': {'headers': ['Statut', 'Nombre'], 'rows': rows}},
+            {'title': 'Interventions par technicien',
+             'kv': None,
+             'table': {'headers': ['Technicien', 'Interventions'],
+                       'rows': [[i['technicien__username'] or '—', i['count']]
+                                for i in interventions_tech]}},
+            {'title': 'Tickets par statut',
+             'kv': [{'label': 'Tickets ouverts', 'value': str(tickets_ouverts)},
+                    {'label': 'Tickets résolus', 'value': str(tickets_resolus)},
+                    {'label': 'Garanties expirant ≤90 j',
+                     'value': str(garanties)}],
+             'table': {'headers': ['Statut ticket', 'Nombre'],
+                       'rows': [[t['statut'], t['count']] for t in tickets_statut]}},
+        ],
+        pdf_filename='rapport-service.pdf',
+    )
+    if p:
+        return p
+
     return Response({
         'chantiers_par_statut': chantiers_statut,
         'interventions_par_technicien': interventions_tech,

@@ -153,3 +153,70 @@ class TestPeriodComparison(ReportsBase):
         self.assertIsNotNone(c)
         self.assertIn('ca_paye', c)
         self.assertIn('nb_leads', c)
+
+
+class TestPDFExport(ReportsBase):
+    """FG95 — ?export=pdf rend un PDF branded sans prix d'achat."""
+
+    def _patch_weasyprint(self):
+        """Remplace WeasyPrint par un stub retournant un PDF minimal valide."""
+        import unittest.mock as mock
+        # Stub PDF minimal (en-tête PDF).
+        stub_pdf = b'%PDF-1.4 fake'
+
+        patcher = mock.patch(
+            'weasyprint.HTML',
+            return_value=mock.MagicMock(write_pdf=mock.MagicMock(return_value=stub_pdf)),
+        )
+        return patcher
+
+    def test_sales_export_pdf_returns_pdf_content_type(self):
+        """?export=pdf sur le rapport ventes retourne application/pdf."""
+        with self._patch_weasyprint():
+            resp = self.api.get('/api/django/reporting/reports/sales/?export=pdf')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('rapport-ventes.pdf', resp['Content-Disposition'])
+
+    def test_stock_export_pdf_returns_pdf_content_type(self):
+        """?export=pdf sur le rapport stock retourne application/pdf."""
+        with self._patch_weasyprint():
+            resp = self.api.get('/api/django/reporting/reports/stock/?export=pdf')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_service_export_pdf_returns_pdf_content_type(self):
+        """?export=pdf sur le rapport service retourne application/pdf."""
+        with self._patch_weasyprint():
+            resp = self.api.get('/api/django/reporting/reports/service/?export=pdf')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_stock_pdf_does_not_contain_buy_price(self):
+        """Le HTML généré pour le rapport stock n'expose jamais le prix d'achat."""
+        from decimal import Decimal
+        from apps.stock.models import Produit
+        import unittest.mock as mock
+
+        Produit.objects.create(
+            company=self.company, nom='PanneauTest', sku='FG95-T',
+            prix_vente=Decimal('5000'), prix_achat=Decimal('3000'),
+            quantite_stock=2)
+
+        captured_html = {}
+
+        class FakeHTML:
+            def __init__(self, string=None, **kw):
+                captured_html['html'] = string
+
+            def write_pdf(self):
+                return b'%PDF-1.4 fake'
+
+        with mock.patch('weasyprint.HTML', FakeHTML):
+            resp = self.api.get('/api/django/reporting/reports/stock/?export=pdf')
+
+        self.assertEqual(resp.status_code, 200)
+        html = captured_html.get('html', '')
+        # prix_achat (3000) ne doit jamais apparaître dans la sortie PDF
+        self.assertNotIn('3000', html,
+                         'Le prix d\'achat est apparu dans le HTML du PDF stock')
