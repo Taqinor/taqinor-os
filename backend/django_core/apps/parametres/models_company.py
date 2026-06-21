@@ -193,6 +193,14 @@ class CompanyProfile(models.Model):
         max_digits=5, decimal_places=2, default=Decimal('10'),
         help_text="Pourcentage de dépassement de consommation déclenchant la "
                   "revue (F12).")
+    # FG28 — Délai SLA de première prise de contact (heures). Un lead NEW ou
+    # site_web non contacté au-delà de ce délai est signalé en rouge (badge
+    # kanban + filtre « Non contactés > Xh »). Défaut 24 h. 0 = désactivé.
+    lead_sla_hours = models.PositiveIntegerField(
+        default=24,
+        help_text='Délai maximum (en heures) avant première prise de contact '
+                  'sur un nouveau lead. 0 = SLA désactivé.'
+    )
 
     class Meta:
         verbose_name = 'Profil entreprise'
