@@ -2,14 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { Pencil, FileText, Trash2, Upload, Plus, FilePlus } from 'lucide-react'
-import { fetchClients, deleteClient } from '../../features/crm/store/crmSlice'
+import { fetchClients, deleteClient, updateClient } from '../../features/crm/store/crmSlice'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
-import { DataTable, Badge, Button, Spinner, Segmented } from '../../ui'
+import {
+  DataTable, Badge, Button, Segmented, StatusPill,
+  Skeleton, SkeletonTableRow, EmptyState,
+} from '../../ui'
+import { useConfirmDialog, toast } from '../../ui/confirm'
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import ClientTypeToggle from './ClientTypeToggle'
 import { useSavedViews } from '../../hooks/useSavedViews'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
@@ -31,6 +37,9 @@ export default function ClientList() {
   const navigate = useNavigate()
   const { clients, loading, error } = useSelector(s => s.crm)
   const role = useSelector(s => s.auth.role)
+  const { confirmDelete } = useConfirmDialog()
+  // Squelette différé : on n'affiche le chargement que s'il dure (anti-flash).
+  const { showSkeleton } = useDelayedLoading(loading)
 
   const [showForm, setShowForm]     = useState(false)
   const [editClient, setEditClient] = useState(null)
@@ -67,19 +76,24 @@ export default function ClientList() {
     try {
       const res = await ventesApi.getClientRelevePdf(c.id)
       openPdfBlob(res.data, `Releve_${c.nom}.pdf`)
-    } catch { alert('Relevé indisponible.') }
+    } catch { toast.error('Relevé indisponible.') }
   }
 
   const handleDelete = async (c) => {
     const fullName = [c.nom, c.prenom].filter(Boolean).join(' ')
-    if (!window.confirm(`Supprimer le client « ${fullName} » ?`)) return
+    const ok = await confirmDelete({
+      title: `Supprimer le client « ${fullName} » ?`,
+      description: 'Cette action est irréversible.',
+    })
+    if (!ok) return
     setDeletingId(c.id)
     try {
       await dispatch(deleteClient(c.id)).unwrap()
+      toast.success('Client supprimé.')
     } catch (err) {
       // Message serveur en clair (ex. client protégé par ses devis) —
       // jamais de JSON brut ni d'échec silencieux.
-      alert(err?.detail
+      toast.error(err?.detail
         ?? 'Suppression impossible — réessayez ou contactez l\'administrateur.')
     } finally {
       setDeletingId(null)
@@ -93,18 +107,23 @@ export default function ClientList() {
     const supprimables = rows.filter((c) => (c.devis_count ?? 0) === 0)
     const proteges = rows.length - supprimables.length
     if (!supprimables.length) {
-      alert('Aucun client supprimable : tous les clients sélectionnés ont des '
-        + 'devis liés (protégés).')
+      toast.error('Aucun client supprimable : tous les clients sélectionnés ont '
+        + 'des devis liés (protégés).')
       return
     }
-    const msg = proteges > 0
-      ? `Supprimer ${supprimables.length} client(s) sans devis ? `
-        + `${proteges} client(s) avec devis seront ignorés (protégés).`
-      : `Supprimer ${supprimables.length} client(s) sélectionné(s) ?`
-    if (!window.confirm(msg)) return
+    const description = proteges > 0
+      ? `${proteges} client(s) avec devis seront ignorés (protégés).`
+      : 'Cette action est irréversible.'
+    const ok = await confirmDelete({
+      title: `Supprimer ${supprimables.length} client(s) sans devis ?`,
+      description,
+    })
+    if (!ok) return
+    let done = 0
     for (const c of supprimables) {
-      try { await dispatch(deleteClient(c.id)).unwrap() } catch { /* ignoré */ }
+      try { await dispatch(deleteClient(c.id)).unwrap(); done += 1 } catch { /* ignoré */ }
     }
+    toast.success(`${done} client(s) supprimé(s).`)
     clear?.()
   }
 
@@ -119,8 +138,14 @@ export default function ClientList() {
       a.href = url; a.download = 'clients.xlsx'
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch { /* ignore */ }
+    } catch { toast.error('Export indisponible — réessayez.') }
   }
+
+  // L151 — bascule optimiste du type de client (Particulier ↔ Entreprise),
+  // seul « statut » persisté du client. Passe par le thunk updateClient
+  // existant ; rollback automatique si le PATCH échoue.
+  const saveType = (c, next) =>
+    dispatch(updateClient({ id: c.id, data: { type_client: next } })).unwrap()
 
   const columns = useMemo(() => [
     {
@@ -132,9 +157,8 @@ export default function ClientList() {
       cell: (value, c) => (
         <span className="flex flex-wrap items-center gap-1.5">
           <span className="font-medium">{value || '—'}</span>
-          {isEntreprise(c)
-            ? <Badge tone="info">Entreprise</Badge>
-            : <Badge tone="neutral">Particulier</Badge>}
+          {/* L151 — type éditable en place avec enregistrement optimiste. */}
+          <ClientTypeToggle client={c} onSave={(next) => saveType(c, next)} />
           {isEntreprise(c) && !c.ice && (
             <Badge tone="warning" title="Identifiant ICE manquant sur un client B2B">
               ICE manquant
@@ -241,6 +265,7 @@ export default function ClientList() {
       ),
       exportValue: (c) => (c.date_creation ? formatDateFR(c.date_creation) : ''),
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [])
 
   const rowActions = (c) => {
@@ -266,17 +291,6 @@ export default function ClientList() {
       })
     }
     return actions
-  }
-
-  if (loading) {
-    return <p className="page-loading"><Spinner /> Chargement des clients…</p>
-  }
-  if (error) {
-    return (
-      <p className="page-error">
-        Impossible de charger les clients. Vérifiez votre connexion puis réessayez.
-      </p>
-    )
   }
 
   return (
@@ -307,16 +321,39 @@ export default function ClientList() {
                      onDone={() => dispatch(fetchClients())} />
       )}
 
-      {clients.length === 0 ? (
+      {error ? (
+        // État erreur explicite + réessai (jamais d'objet brut ni de page blanche).
+        <EmptyState
+          title="Impossible de charger les clients"
+          description="Vérifiez votre connexion puis réessayez."
+          action={(
+            <Button variant="outline" onClick={() => dispatch(fetchClients())}>
+              Réessayer
+            </Button>
+          )}
+        />
+      ) : loading && clients.length === 0 ? (
+        // Chargement : squelette de table différé (anti-flash via useDelayedLoading).
+        showSkeleton ? (
+          <div className="mt-3 space-y-2" aria-busy="true" aria-label="Chargement des clients">
+            <Skeleton className="h-9 w-full" />
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonTableRow key={i} columns={7} />
+            ))}
+          </div>
+        ) : null
+      ) : clients.length === 0 ? (
         // État vide actionnable : un bouton principal câblé à la création.
-        <div className="empty-state-block" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-          <p style={{ marginBottom: '1rem' }}>
-            Aucun client pour le moment. Créez votre premier client pour démarrer.
-          </p>
-          <Button onClick={openNew}>
-            <Plus /> Nouveau client
-          </Button>
-        </div>
+        <EmptyState
+          icon={Plus}
+          title="Aucun client pour le moment"
+          description="Créez votre premier client pour démarrer."
+          action={(
+            <Button onClick={openNew}>
+              <Plus /> Nouveau client
+            </Button>
+          )}
+        />
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
