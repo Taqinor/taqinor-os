@@ -21,14 +21,36 @@ REGLES DE SECURITE (CLAUDE.md) :
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
+import re
+import secrets
+import time
 from typing import Any, Optional
 
 import httpx
 
-from app.core.config import DJANGO_INTERNAL_URL
+from app.core.config import (
+    ACTION_PROPOSAL_SECRET,
+    ACTION_PROPOSAL_TTL,
+    DJANGO_INTERNAL_URL,
+    REDIS_PROPOSAL_URL,
+)
 
 logger = logging.getLogger(__name__)
+
+# AG2 — Niveaux de risque du catalogue Django (apps/agent/registry.py). Les
+# actions `internal` s'executent au vol ; `outward`/`irreversible` passent par
+# une proposition signee a confirmer.
+RISK_INTERNAL = "internal"
+RISK_OUTWARD = "outward"
+RISK_IRREVERSIBLE = "irreversible"
+_RISK_NEEDS_CONFIRM = frozenset({RISK_OUTWARD, RISK_IRREVERSIBLE})
+
+# Chemin du catalogue d'actions Django (AG1).
+_CATALOGUE_PATH = "/api/django/agent/actions/"
 
 # Roles « legacy » autorises a ecrire (cf. authentication.role_legacy + le
 # precedent de ocr.py). Un role lecture seule (« normal ») n'ecrit jamais.
@@ -94,34 +116,59 @@ class ActionContext:
 def actions_available(ctx: Optional["ActionContext"]) -> bool:
     """Les outils d'action sont-ils exploitables pour ce contexte ?
 
-    Conditions : une URL Django interne configuree (sinon degradation
-    gracieuse), un jeton present, et un droit d'ecriture.
+    AG2 — Conditions minimales : une URL Django interne configuree (sinon
+    degradation gracieuse) et un jeton present. C'est le CATALOGUE Django
+    (filtre par permission + societe cote serveur) qui decide ensuite QUELLES
+    actions l'appelant peut voir/executer ; un appelant sans aucune action
+    autorisee recevra simplement une liste d'outils vide. On ne pre-filtre donc
+    plus sur les anciennes permissions d'ecriture codees en dur (qui excluaient
+    a tort des actions de lecture comme « lister les leads »).
     """
     if not DJANGO_INTERNAL_URL:
         return False
     if ctx is None or not ctx.token:
         return False
-    return ctx.can_act_at_all
+    return True
 
 
 # ── Client Django interne ─────────────────────────────────────────────────────
 
 
-def _django_post(ctx: ActionContext, path: str, payload: dict) -> dict[str, Any]:
-    """POST authentifie vers l'API Django interne. Retourne un dict normalise
-    {ok, status, data|error}. Ne leve jamais : les erreurs sont renvoyees comme
-    texte a l'agent."""
+def _django_call(
+    ctx: ActionContext,
+    path: str,
+    method: str = "POST",
+    payload: dict | None = None,
+) -> dict[str, Any]:
+    """Appel authentifie vers l'API Django interne, methode au choix.
+
+    AG2 — relais generique : relaie le JWT de l'appelant (Authorization: Bearer)
+    a l'endpoint nomme par le catalogue, en GET/POST/PATCH/PUT/DELETE. Django
+    reste l'autorite finale (scope societe + permissions). Retourne un dict
+    normalise {ok, status, data|error}. Ne leve jamais : les erreurs sont
+    renvoyees comme texte a l'agent.
+    """
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
+    verb = (method or "POST").upper()
     headers = {
         "Authorization": f"Bearer {ctx.token}",
-        "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    body = payload or {}
+    request_kwargs: dict[str, Any] = {"headers": headers}
+    # GET/DELETE : pas de corps JSON (les parametres voyagent dans l'URL ou en
+    # query). POST/PATCH/PUT : corps JSON.
+    if verb in ("POST", "PATCH", "PUT"):
+        headers["Content-Type"] = "application/json"
+        request_kwargs["json"] = body
+    elif body:
+        # GET avec parametres residuels -> query string.
+        request_kwargs["params"] = body
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = client.post(url, json=payload, headers=headers)
+            resp = client.request(verb, url, **request_kwargs)
     except Exception as exc:  # pragma: no cover - reseau
-        logger.warning("Appel Django interne echoue (%s): %s", path, exc)
+        logger.warning("Appel Django interne echoue (%s %s): %s", verb, path, exc)
         return {"ok": False, "status": 0,
                 "error": "Service indisponible. Reessayez plus tard."}
 
@@ -130,6 +177,24 @@ def _django_post(ctx: ActionContext, path: str, payload: dict) -> dict[str, Any]
         data = resp.json()
     except Exception:
         data = {}
+    if ok:
+        return {"ok": True, "status": resp.status_code, "data": data}
+
+    return _normalize_error(resp, data)
+
+
+def _django_post(ctx: ActionContext, path: str, payload: dict) -> dict[str, Any]:
+    """POST authentifie vers l'API Django interne (compat actions legacy).
+
+    Conserve pour les trois actions historiques (ticket SAV, BC, visite) et
+    leurs tests ; delegue au relais generique `_django_call`.
+    """
+    return _django_call(ctx, path, method="POST", payload=payload)
+
+
+def _normalize_error(resp, data) -> dict[str, Any]:
+    """Construit un message d'erreur lisible et masque les internes."""
+    ok = 200 <= resp.status_code < 300
     if ok:
         return {"ok": True, "status": resp.status_code, "data": data}
 
@@ -259,80 +324,445 @@ def schedule_maintenance_visit(
             f"chantier {installation_id}.")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# AG2 — Outils PILOTES PAR LE CATALOGUE (registry-driven) + propose→confirm
+# ══════════════════════════════════════════════════════════════════════════════
+# Plutot que trois outils codes en dur, on construit les outils dynamiquement a
+# partir du catalogue Django (GET /api/django/agent/actions/). Chaque entree
+# devient un StructuredTool dont la description et les entrees proviennent de
+# l'entree. Les actions `internal` s'executent au vol (relais JWT) ; les actions
+# `outward`/`irreversible` ne s'executent PAS : elles renvoient une proposition
+# signee, stockee en Redis avec un TTL court, a confirmer via l'endpoint /confirm.
+
+
+# ── Recuperation du catalogue ─────────────────────────────────────────────────
+
+
+def fetch_catalogue(ctx: ActionContext) -> list[dict[str, Any]]:
+    """Recupere le sous-ensemble du catalogue que l'appelant peut executer.
+
+    Relaie le JWT a Django (GET /agent/actions/) qui filtre par permission +
+    societe. Retourne la liste des dicts d'action ; [] si indisponible ou si
+    aucune URL Django n'est configuree (degradation gracieuse, jamais d'erreur).
+    """
+    if not DJANGO_INTERNAL_URL or ctx is None or not ctx.token:
+        return []
+    res = _django_call(ctx, _CATALOGUE_PATH, method="GET")
+    if not res.get("ok"):
+        logger.warning("Catalogue d'actions indisponible: %s",
+                       res.get("error"))
+        return []
+    data = res.get("data") or {}
+    actions = data.get("actions") if isinstance(data, dict) else None
+    return [a for a in (actions or []) if isinstance(a, dict) and a.get("key")]
+
+
+def _catalogue_by_key(ctx: ActionContext) -> dict[str, dict[str, Any]]:
+    """Catalogue indexe par `key` pour la (re)validation."""
+    return {a["key"]: a for a in fetch_catalogue(ctx)}
+
+
+# ── Validation des entrees contre le JSON-Schema d'une entree ─────────────────
+# Validation volontairement legere et FAIL-CLOSED : on n'accepte que les cles
+# declarees dans `properties`, on exige les `required`, et on verifie un type de
+# base. Toute cle hors catalogue est rejetee — c'est la garantie « off-catalogue
+# inputs are rejected ».
+
+_JSON_TYPE_CHECK = {
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "string": lambda v: isinstance(v, str),
+    "boolean": lambda v: isinstance(v, bool),
+    "array": lambda v: isinstance(v, list),
+    "object": lambda v: isinstance(v, dict),
+}
+
+
+class ActionValidationError(Exception):
+    """Levee quand des entrees ne respectent pas le JSON-Schema de l'action."""
+
+
+def validate_inputs(schema: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    """Valide `inputs` contre `schema` (JSON-Schema simplifie). Renvoie un dict
+    NORMALISE ne contenant QUE les cles declarees. Leve ActionValidationError si
+    une cle est inconnue, un `required` manque, ou un type est incorrect."""
+    if not isinstance(inputs, dict):
+        raise ActionValidationError("Les entrees doivent etre un objet.")
+    schema = schema or {}
+    properties = schema.get("properties") or {}
+    required = schema.get("required") or []
+
+    # Cles hors catalogue -> rejet (fail-closed).
+    unknown = set(inputs) - set(properties)
+    if unknown:
+        raise ActionValidationError(
+            "Entrees non autorisees : " + ", ".join(sorted(unknown))
+        )
+
+    cleaned: dict[str, Any] = {}
+    for name, spec in properties.items():
+        if name not in inputs:
+            continue
+        value = inputs[name]
+        if value is None:
+            continue
+        expected = (spec or {}).get("type")
+        checker = _JSON_TYPE_CHECK.get(expected)
+        # int passe pour un champ number ; on tolere une string numerique pour
+        # un champ integer/number (le LLM renvoie parfois "12").
+        if checker and not checker(value):
+            coerced = _coerce(value, expected)
+            if coerced is None:
+                raise ActionValidationError(
+                    f"Champ '{name}' : type {expected} attendu."
+                )
+            value = coerced
+        cleaned[name] = value
+
+    missing = [r for r in required if cleaned.get(r) in (None, "")]
+    if missing:
+        raise ActionValidationError(
+            "Champs requis manquants : " + ", ".join(missing)
+        )
+    return cleaned
+
+
+def _coerce(value: Any, expected: str) -> Any:
+    """Tente une coercition douce (string numerique -> int/number)."""
+    try:
+        if expected == "integer" and isinstance(value, str) and value.strip().lstrip("-").isdigit():
+            return int(value)
+        if expected == "number" and isinstance(value, str):
+            return float(value)
+    except (ValueError, TypeError):
+        return None
+    return None
+
+
+# ── Construction de l'URL cible (templates de chemin) ─────────────────────────
+
+_PATH_PARAM_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _build_path(endpoint: str, inputs: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Substitue les parametres de chemin templates (ex. `/devis/{id}/proposal/`)
+    par leur valeur dans `inputs`. Renvoie (chemin_resolu, entrees_restantes).
+
+    Les cles consommees par le chemin sont retirees du corps : elles ne doivent
+    pas etre renvoyees aussi dans le payload JSON. Leve ActionValidationError si
+    un parametre de chemin n'a pas de valeur fournie."""
+    consumed: set[str] = set()
+
+    def _sub(match):
+        name = match.group(1)
+        if name not in inputs or inputs[name] in (None, ""):
+            raise ActionValidationError(
+                f"Parametre de chemin manquant : {name}"
+            )
+        consumed.add(name)
+        # quote minimal : les ids sont numeriques ; on encode tout de meme.
+        from urllib.parse import quote
+        return quote(str(inputs[name]), safe="")
+
+    resolved = _PATH_PARAM_RE.sub(_sub, endpoint or "")
+    remaining = {k: v for k, v in inputs.items() if k not in consumed}
+    return resolved, remaining
+
+
+# ── Stash signe des propositions (Redis, TTL court) ───────────────────────────
+
+
+def _proposal_redis():
+    """Client Redis pour les propositions (db 2). None si Redis absent."""
+    try:
+        import redis as redis_lib
+    except Exception:  # pragma: no cover - redis non installe
+        return None
+    try:
+        return redis_lib.from_url(REDIS_PROPOSAL_URL, decode_responses=True)
+    except Exception as exc:  # pragma: no cover - reseau
+        logger.warning("Redis propositions indisponible: %s", exc)
+        return None
+
+
+def _proposal_key(token: str) -> str:
+    return f"agent_proposal:{token}"
+
+
+def _sign(blob: str) -> str:
+    """Signature HMAC-SHA256 hexadecimale d'une charge serialisee."""
+    secret = (ACTION_PROPOSAL_SECRET or "").encode("utf-8")
+    return hmac.new(secret, blob.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _stash_proposal(
+    ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+    human_preview: str,
+) -> Optional[str]:
+    """Stocke une proposition SIGNEE en Redis sous un jeton aleatoire avec un
+    TTL court. La signature couvre {action_key, inputs, company_id} : une
+    proposition alteree (cle/entrees/societe) echoue a la verification au
+    moment de /confirm. Renvoie le jeton, ou None si Redis indisponible."""
+    r = _proposal_redis()
+    if r is None:
+        return None
+    token = secrets.token_urlsafe(24)
+    record = {
+        "action_key": action["key"],
+        "inputs": inputs,
+        "company_id": ctx.company_id,
+        "human_preview": human_preview,
+        "ts": int(time.time()),
+    }
+    # On signe la charge canonique (cles triees) sans la signature elle-meme.
+    payload = json.dumps(record, sort_keys=True, ensure_ascii=False)
+    record["sig"] = _sign(payload)
+    try:
+        r.set(_proposal_key(token), json.dumps(record, ensure_ascii=False),
+              ex=ACTION_PROPOSAL_TTL)
+    except Exception as exc:  # pragma: no cover - reseau
+        logger.warning("Stash proposition echoue: %s", exc)
+        return None
+    return token
+
+
+def _load_proposal(token: str) -> Optional[dict[str, Any]]:
+    """Charge et VERIFIE la signature d'une proposition stashee. Renvoie le
+    record (sans `sig`) si la signature est valide, sinon None (tampered /
+    expire / absent)."""
+    r = _proposal_redis()
+    if r is None:
+        return None
+    try:
+        raw = r.get(_proposal_key(token))
+    except Exception as exc:  # pragma: no cover - reseau
+        logger.warning("Lecture proposition echouee: %s", exc)
+        return None
+    if not raw:
+        return None
+    try:
+        record = json.loads(raw)
+    except Exception:
+        return None
+    sig = record.pop("sig", None)
+    if not sig:
+        return None
+    payload = json.dumps(record, sort_keys=True, ensure_ascii=False)
+    # Comparaison a temps constant contre la falsification.
+    if not hmac.compare_digest(sig, _sign(payload)):
+        logger.warning("Signature de proposition invalide (token rejete).")
+        return None
+    return record
+
+
+def _discard_proposal(token: str) -> None:
+    """Supprime une proposition (usage unique apres confirmation)."""
+    r = _proposal_redis()
+    if r is None:
+        return
+    try:
+        r.delete(_proposal_key(token))
+    except Exception:  # pragma: no cover - reseau
+        pass
+
+
+# ── Execution d'une action du catalogue ───────────────────────────────────────
+
+
+def _human_preview(action: dict[str, Any], inputs: dict[str, Any]) -> str:
+    """Texte court montre a l'utilisateur avant confirmation."""
+    summary = action.get("confirm_summary") or action.get("label") or action["key"]
+    if inputs:
+        parts = ", ".join(f"{k}={v}" for k, v in sorted(inputs.items()))
+        return f"{summary} ({parts})"
+    return summary
+
+
+def _execute_catalogue_action(
+    ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
+) -> dict[str, Any]:
+    """Relaie l'appel a l'endpoint du catalogue avec le JWT. `inputs` sont deja
+    valides. Renvoie le dict normalise de `_django_call`."""
+    path, body = _build_path(action.get("endpoint", ""), inputs)
+    return _django_call(ctx, path, method=action.get("method", "POST"),
+                        payload=body)
+
+
+def run_catalogue_action(
+    ctx: ActionContext, action: dict[str, Any], raw_inputs: dict[str, Any],
+) -> str:
+    """Point d'entree appele par chaque outil dynamique.
+
+    - Valide les entrees contre le JSON-Schema de l'entree (fail-closed).
+    - `internal` -> execute au vol via relais JWT.
+    - `outward`/`irreversible` -> stash signe + renvoie une proposition JSON
+      `{action_key, inputs, human_preview, confirm_token}` ; n'execute PAS.
+    """
+    try:
+        inputs = validate_inputs(action.get("inputs") or {}, raw_inputs)
+    except ActionValidationError as exc:
+        return f"Action refusee : {exc}"
+
+    risk = action.get("risk", RISK_INTERNAL)
+    if risk in _RISK_NEEDS_CONFIRM:
+        preview = _human_preview(action, inputs)
+        token = _stash_proposal(ctx, action, inputs, preview)
+        proposal = {
+            "type": "proposal",
+            "action_key": action["key"],
+            "inputs": inputs,
+            "human_preview": preview,
+            "confirm_token": token,
+        }
+        if token is None:
+            # Sans Redis on ne peut pas stasher : on renvoie tout de meme la
+            # proposition (non confirmable) pour ne pas executer a l'aveugle.
+            proposal["confirm_token"] = None
+            proposal["note"] = (
+                "Confirmation requise mais le stockage est indisponible."
+            )
+        return json.dumps(proposal, ensure_ascii=False)
+
+    # Action interne -> execution immediate.
+    res = _execute_catalogue_action(ctx, action, inputs)
+    if not res.get("ok"):
+        return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
+    return json.dumps(
+        {"type": "result", "action_key": action["key"],
+         "ok": True, "data": res.get("data")},
+        ensure_ascii=False,
+    )
+
+
+def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
+    """Rejoue une proposition stashee par jeton, APRES re-validation.
+
+    Etapes de securite :
+      1. charge la proposition et VERIFIE sa signature (rejet si alteree) ;
+      2. exige que la societe du jeton == societe de l'appelant ;
+      3. RE-RECUPERE le catalogue de l'appelant et exige que l'action y figure
+         (l'appelant a toujours le droit de l'executer) ;
+      4. RE-VALIDE les entrees contre le JSON-Schema courant du catalogue
+         (rejet des cles hors catalogue) ;
+      5. relaie l'appel a Django (qui re-tranche permission + societe) ;
+      6. consomme le jeton (usage unique).
+    Renvoie {ok, ...}. Ne leve pas pour les refus metier (renvoie ok=False)."""
+    record = _load_proposal(token)
+    if record is None:
+        return {"ok": False, "error": "Proposition introuvable, expiree ou alteree."}
+
+    if int(record.get("company_id") or 0) != ctx.company_id:
+        # Defense en profondeur : un jeton ne vaut que pour SA societe.
+        return {"ok": False, "error": "Proposition non valable pour cette societe."}
+
+    action_key = record.get("action_key")
+    catalogue = _catalogue_by_key(ctx)
+    action = catalogue.get(action_key)
+    if action is None:
+        return {"ok": False,
+                "error": "Action non autorisee ou indisponible pour ce compte."}
+
+    # Re-validation des entrees contre le catalogue COURANT (fail-closed).
+    try:
+        inputs = validate_inputs(action.get("inputs") or {}, record.get("inputs") or {})
+    except ActionValidationError as exc:
+        return {"ok": False, "error": f"Entrees invalides : {exc}"}
+
+    res = _execute_catalogue_action(ctx, action, inputs)
+    _discard_proposal(token)  # usage unique, quel que soit le resultat
+    if not res.get("ok"):
+        return {"ok": False, "status": res.get("status"),
+                "error": res.get("error", "L'action a echoue.")}
+    return {"ok": True, "action_key": action_key, "data": res.get("data")}
+
+
 # ── Fabrique d'outils LangChain ───────────────────────────────────────────────
 
 
-def build_action_tools(ctx: ActionContext) -> list:
-    """Construit la liste d'outils LangChain d'action lies au contexte appelant.
+# Type JSON-Schema -> annotation Python pour le modele pydantic genere.
+_PY_TYPE = {
+    "integer": int,
+    "number": float,
+    "string": str,
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+}
 
-    Chaque outil capture `ctx` par closure : l'agent ne fournit jamais la
-    societe ni le jeton — ils viennent toujours du serveur.
+
+def _tool_name_for(action: dict[str, Any]) -> str:
+    """Nom d'outil LangChain valide derive de la cle catalogue
+    (ex. `ventes.devis.create` -> `ventes_devis_create`)."""
+    return re.sub(r"[^0-9a-zA-Z_]", "_", action["key"])
+
+
+def _args_model_for(action: dict[str, Any]):
+    """Construit un modele pydantic `args_schema` a partir du JSON-Schema
+    `inputs` de l'entree catalogue."""
+    from pydantic import create_model
+
+    schema = action.get("inputs") or {}
+    properties = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+
+    fields: dict[str, Any] = {}
+    for name, spec in properties.items():
+        spec = spec or {}
+        py_type = _PY_TYPE.get(spec.get("type"), str)
+        desc = spec.get("description", "")
+        if name in required:
+            fields[name] = (py_type, _pyd_field(..., desc))
+        else:
+            fields[name] = (Optional[py_type], _pyd_field(None, desc))
+
+    model_name = f"Args_{_tool_name_for(action)}"
+    if not fields:
+        return create_model(model_name)
+    return create_model(model_name, **fields)
+
+
+def _pyd_field(default, description):
+    from pydantic import Field
+    return Field(default, description=description or "")
+
+
+def build_action_tools(ctx: ActionContext) -> list:
+    """Construit dynamiquement la liste d'outils LangChain a partir du CATALOGUE
+    Django (AG2). Chaque entree que l'appelant a le droit d'executer devient un
+    StructuredTool dont le nom/description/entrees viennent de l'entree.
+
+    L'outil capture `ctx` par closure : l'agent ne fournit jamais la societe ni
+    le jeton — ils viennent toujours du serveur. L'execution / la proposition
+    est deleguee a `run_catalogue_action` (internal => execute ; outward /
+    irreversible => proposition signee a confirmer).
     """
     from langchain_core.tools import StructuredTool
-    from pydantic import BaseModel, Field
-
-    class OuvrirTicketArgs(BaseModel):
-        client_id: int = Field(..., description="Identifiant du client concerne.")
-        description: str = Field(..., description="Description du probleme SAV.")
-        installation_id: Optional[int] = Field(
-            None, description="Chantier concerne (optionnel).")
-        priorite: str = Field(
-            "normale",
-            description="basse, normale, haute ou urgente.")
-        type_ticket: str = Field(
-            "correctif", description="correctif ou preventif.")
-
-    class BrouillonBCArgs(BaseModel):
-        installation_id: int = Field(
-            ..., description="Chantier dont on commande les manques.")
-        fournisseur_id: Optional[int] = Field(
-            None, description="Fournisseur (optionnel).")
-
-    class PlanifierVisiteArgs(BaseModel):
-        installation_id: int = Field(..., description="Chantier a visiter.")
-        date_prevue: str = Field(
-            ..., description="Date prevue au format AAAA-MM-JJ.")
-        technicien_id: Optional[int] = Field(
-            None, description="Technicien assigne (optionnel).")
 
     tools = []
+    for action in fetch_catalogue(ctx):
+        try:
+            args_model = _args_model_for(action)
+        except Exception as exc:  # pragma: no cover - schema malforme
+            logger.warning("Schema d'action invalide (%s): %s",
+                           action.get("key"), exc)
+            continue
 
-    if ctx.can_write(_TICKET_PERMS):
-        tools.append(StructuredTool.from_function(
-            name="ouvrir_ticket_sav",
-            description=(
-                "Ouvre un nouveau ticket SAV (service apres-vente) pour un "
-                "client. A utiliser quand l'utilisateur demande de creer/ouvrir "
-                "un ticket ou de signaler une panne."
-            ),
-            args_schema=OuvrirTicketArgs,
-            func=lambda **kw: open_sav_ticket(ctx, **kw),
-        ))
+        description = action.get("description") or action.get("label") or action["key"]
+        if action.get("risk") in _RISK_NEEDS_CONFIRM:
+            description = (
+                description
+                + " ATTENTION : action sensible — elle n'est PAS executee "
+                "directement ; l'outil renvoie une PROPOSITION a confirmer."
+            )
 
-    if ctx.can_write(_BC_PERMS):
-        tools.append(StructuredTool.from_function(
-            name="brouillon_bon_commande_chantier",
-            description=(
-                "Cree un bon de commande fournisseur BROUILLON pour les "
-                "manques de materiel d'un chantier. A utiliser quand "
-                "l'utilisateur demande de commander le materiel manquant d'un "
-                "chantier."
-            ),
-            args_schema=BrouillonBCArgs,
-            func=lambda **kw: draft_bon_commande_for_chantier(ctx, **kw),
-        ))
+        def _make_func(act):
+            return lambda **kw: run_catalogue_action(ctx, act, kw)
 
-    if ctx.can_write(_VISITE_PERMS):
         tools.append(StructuredTool.from_function(
-            name="planifier_visite_maintenance",
-            description=(
-                "Planifie une visite de maintenance (intervention de controle) "
-                "sur un chantier a une date donnee. A utiliser quand "
-                "l'utilisateur demande de planifier/programmer une visite ou "
-                "une maintenance."
-            ),
-            args_schema=PlanifierVisiteArgs,
-            func=lambda **kw: schedule_maintenance_visit(ctx, **kw),
+            name=_tool_name_for(action),
+            description=description,
+            args_schema=args_model,
+            func=_make_func(action),
         ))
 
     return tools

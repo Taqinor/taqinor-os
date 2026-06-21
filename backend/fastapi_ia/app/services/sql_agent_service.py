@@ -1106,6 +1106,21 @@ class SQLAgentService:
                 "data": None,
             }
 
+    async def confirm_action(
+        self, action_ctx: "ActionContext", token: str,
+    ) -> dict[str, Any]:
+        """AG2 — Rejoue une proposition d'action stashee, par jeton.
+
+        Delegue a `action_tools.confirm_proposal` (re-validation contre le
+        catalogue + relais JWT). Execute dans un thread car l'appel Django et
+        Redis sont synchrones."""
+        from app.services.action_tools import confirm_proposal
+        try:
+            return await asyncio.to_thread(confirm_proposal, action_ctx, token)
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.error("Confirmation d'action échouée: %s", exc)
+            return {"ok": False, "error": "La confirmation a échoué."}
+
     async def get_schema_summary(self) -> dict[str, Any]:
         return {
             "tables": [
