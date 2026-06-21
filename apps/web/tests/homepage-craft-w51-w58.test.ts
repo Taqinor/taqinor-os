@@ -10,7 +10,7 @@
 //   W51 — DiagnosticForm + Faq sont passés au système sombre (navy+or) ;
 //   FROZEN — les invariants de comportement du formulaire restent intacts.
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ui } from '../src/i18n/ui';
 
@@ -75,10 +75,22 @@ describe('W55/W64 — bande de crédibilité du fondateur (composant FounderPort
     expect(founderPortrait).toContain('Chaque étude validée par le fondateur');
   });
 
-  it('photo-ready mais ZÉRO portrait inventé tant que le fichier manque (FOUNDER_PHOTO=null)', () => {
-    // Repli texte par défaut : aucune image n'est servie tant que le fondateur
-    // n'a pas déposé son portrait (FOUNDER_PHOTO reste null).
-    expect(founderPortrait).toMatch(/FOUNDER_PHOTO\s*:\s*string\s*\|\s*null\s*=\s*null/);
+  it('portrait fondateur RÉEL servi — FOUNDER_PHOTO pointe un fichier présent (W153, zéro portrait inventé)', () => {
+    // W153 (2026-06-21) : le fondateur a fourni son portrait. FOUNDER_PHOTO nomme
+    // désormais une base réelle ET chaque dérivé référencé existe sur disque —
+    // la garde « aucune image inventée » devient « aucune référence fantôme » :
+    // soit null (repli texte), soit un nom dont les fichiers existent vraiment.
+    const m = founderPortrait.match(/FOUNDER_PHOTO\s*:\s*string\s*\|\s*null\s*=\s*(?:null|'([^']+)')/);
+    expect(m, 'déclaration FOUNDER_PHOTO introuvable').not.toBeNull();
+    const base = m![1];
+    if (base) {
+      for (const w of [640, 480]) {
+        for (const ext of ['avif', 'webp']) {
+          const p = fileURLToPath(new URL(`../public/photos/${base}-${w}.${ext}`, import.meta.url));
+          expect(existsSync(p), `dérivé portrait manquant : ${base}-${w}.${ext}`).toBe(true);
+        }
+      }
+    }
   });
 });
 

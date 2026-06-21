@@ -1,7 +1,8 @@
-// Garde-fou du composant fondateur : photo-ready, mais repli texte par défaut,
-// sans crédit ni image inventés.
+// Garde-fou du composant fondateur : le portrait réel est servi (W153), la
+// branche de repli texte reste présente, et aucune image n'est référencée sans
+// que ses dérivés existent (zéro crédit ni image inventés / fantômes).
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const founder = readFileSync(
@@ -10,8 +11,20 @@ const founder = readFileSync(
 );
 
 describe('FounderPortrait', () => {
-  it('expédie le repli texte par défaut : FOUNDER_PHOTO vaut null (aucune image inventée)', () => {
-    expect(founder).toMatch(/const FOUNDER_PHOTO\s*:\s*string \| null\s*=\s*null\s*;/);
+  it('expédie le portrait RÉEL : FOUNDER_PHOTO nomme une base dont les dérivés existent (W153)', () => {
+    // null (repli texte) reste autorisé ; mais si un nom est posé, chaque dérivé
+    // référencé doit exister sur disque — garde anti-référence fantôme.
+    const m = founder.match(/const FOUNDER_PHOTO\s*:\s*string \| null\s*=\s*(?:null|'([^']+)')\s*;/);
+    expect(m, 'déclaration FOUNDER_PHOTO introuvable').not.toBeNull();
+    const base = m![1];
+    if (base) {
+      for (const w of [640, 480]) {
+        for (const ext of ['avif', 'webp']) {
+          const p = fileURLToPath(new URL(`../public/photos/${base}-${w}.${ext}`, import.meta.url));
+          expect(existsSync(p), `dérivé portrait manquant : ${base}-${w}.${ext}`).toBe(true);
+        }
+      }
+    }
   });
 
   it('contient le repli texte (10+ ans · Huawei) ET une branche Picture pour le portrait', () => {

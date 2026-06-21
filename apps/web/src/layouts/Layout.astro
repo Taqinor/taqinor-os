@@ -79,6 +79,8 @@ const jsonLd = {
       <link rel="alternate" hreflang="x-default" href={new URL(localizePath(rootPath, DEFAULT_LOCALE), Astro.site).href} />
     )}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="alternate" type="application/rss+xml" title="Taqinor — Blog" href="/rss.xml" />
     <!-- Pas de preload des fontes : font-display swap suffit, et la bande
