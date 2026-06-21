@@ -56,7 +56,7 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie produit 12 ans · performance 25 ans',
     datasheet:
       'https://static.csisolar.com/wp-content/uploads/2022/12/12090125/CS-Datasheet-TOPBiHiKu7-TOPCon_CS7N-TB-AG_v1.62C3_EN.pdf',
-    pdf: null,
+    pdf: '/fiches/canadian-solar-710.pdf',
   },
   {
     slug: 'jinko-710',
@@ -72,8 +72,11 @@ export const FICHES: Fiche[] = [
       'Conforme IEC 61215 et IEC 61730',
     ],
     garantie: 'Garantie produit 12 ans · performance 25 ans',
-    datasheet: 'https://www.jinkosolar.com/en/site/tigerneo',
-    pdf: null,
+    // Datasheet officielle Tiger Neo 66HL5-BDV 710-735 Wc (CDN Jinko global) —
+    // self-hostée ci-dessous ; la page produit /en/site/tigerneo n'est pas un PDF.
+    datasheet:
+      'https://jinkosolarcdn.shwebspace.com/uploads/JKM710-735N-66HL5-BDV-Z4-EN.pdf',
+    pdf: '/fiches/jinko-710.pdf',
   },
   {
     slug: 'onduleur-huawei-reseau',
@@ -91,7 +94,7 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 10 ans',
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/apac/datasheet/SUN2000-5-10KTL-M0-M1.pdf',
-    pdf: null,
+    pdf: '/fiches/onduleur-huawei-reseau.pdf',
   },
   {
     slug: 'onduleur-deye-hybride',
@@ -109,7 +112,7 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 10 ans',
     datasheet:
       'https://www.deyeinverter.com/deyeinverter/2024/10/21/datasheet_sun-5-12k-sg04lp3_241021_en.pdf',
-    pdf: null,
+    pdf: '/fiches/onduleur-deye-hybride.pdf',
   },
   {
     slug: 'batterie-dyness',
@@ -127,7 +130,7 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 10 ans',
     datasheet:
       'https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf',
-    pdf: null,
+    pdf: '/fiches/batterie-dyness.pdf',
   },
   {
     slug: 'smart-meter-huawei',
@@ -145,7 +148,7 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 2 ans',
     datasheet:
       'https://solar.huawei.com/~/media/Solar/attachment/pdf/es/datasheet/SmartPowerSensor.pdf',
-    pdf: null,
+    pdf: '/fiches/smart-meter-huawei.pdf',
   },
   {
     slug: 'wifi-dongle-huawei',
@@ -163,7 +166,7 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 2 ans',
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/mea/datasheet/SmartDongle-WLAN-FE.pdf',
-    pdf: null,
+    pdf: '/fiches/wifi-dongle-huawei.pdf',
   },
 ];
 

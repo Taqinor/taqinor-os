@@ -1,0 +1,143 @@
+---
+/**
+ * Guide (W123) — Entretien, nettoyage et durée de vie des panneaux au Maroc.
+ * Chiffres : faits généraux uniquement (dégradation ~0,5 %/an, ~84,8 % à 25 ans
+ * tirés de la garantie publiée §8 CONTENT_SEO_NOTES.md ; coefficient thermique
+ * ~0,3–0,5 %/°C au-dessus de 25 °C = fait de physique des semi-conducteurs).
+ * Aucun prix inventé, aucun chiffre de marché.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Entretien, nettoyage et durée de vie des panneaux solaires au Maroc',
+  description: 'Cadence de nettoyage adaptée au contexte marocain (poussière, sable, pluie), effet de la chaleur sur la production, durée de vie réelle et garantie à 25 ans : tout ce qu\'il faut savoir pour préserver ses panneaux.',
+  about: { '@type': 'Thing', name: 'Entretien panneaux solaires Maroc' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Entretien et durée de vie des panneaux solaires au Maroc | Taqinor"
+  description="Quelle cadence de nettoyage au Maroc ? Comment la chaleur affecte-t-elle la production ? Quelle durée de vie réelle ? Réponses claires, adaptées au contexte marocain."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Entretien et durée de vie des panneaux' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Entretien</p>
+      <h1 class="display v2-page-title mt-5 text-white">Entretien et durée de vie des panneaux au Maroc</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Un panneau solaire ne demande presque rien — mais « presque » varie beaucoup selon l'endroit
+        où vous vivez. Au Maroc, la poussière et le sable constituent la principale perte silencieuse
+        sur une installation, bien avant tout défaut technique. Comprendre ce qui use réellement un
+        panneau, c'est savoir où concentrer son attention pour que l'installation reste au niveau de
+        sa garantie sur toute sa durée de vie.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Le nettoyage : la seule maintenance courante qui compte</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un panneau sale produit moins. Le voile de poussière ou de sable qui se dépose sur la surface
+        vitrée crée une ombre diffuse permanente : en zone aride ou semi-aride, une couche accumulée
+        sur quelques semaines peut amputer la production de plusieurs points de pourcentage. La perte
+        est progressive, invisible au quotidien, et s'installe sans alarme.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La bonne cadence dépend de votre environnement local. Dans les zones proches des grands axes
+        routiers, des champs agricoles ou du Sahara, un nettoyage toutes les quatre à six semaines
+        est raisonnable en été. Sur le littoral atlantique ou méditerranéen, où la pluie est plus
+        fréquente une bonne partie de l'année, on peut s'en tenir à deux ou trois nettoyages par
+        saison sèche. L'idéal reste d'observer : un panneau manifestement couvert de poussière mérite
+        d'être nettoyé.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">La pluie, meilleure alliée de l'auto-nettoyage</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Bonne nouvelle : la surface vitrée d'un panneau moderne est légèrement anti-reflets et peu
+        adhérente à la poussière sèche. Une pluie franche — quelques millimètres suffisent — remplace
+        un nettoyage manuel complet. C'est pourquoi le suivi de la production après les premières
+        pluies d'automne révèle souvent un rebond mesurable.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ce qui reste après la pluie, en revanche, est plus tenace : les dépôts calcaires liés à l'eau
+        dure (fréquente dans plusieurs régions marocaines), les traces d'oiseaux, ou la boue séchée en
+        bordure de panneau. Ces résidus appellent un nettoyage ciblé à l'eau claire et à un chiffon
+        doux — jamais d'éponge abrasive, jamais de produit chimique agressif qui attaquerait le
+        revêtement anti-reflets.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">La chaleur et son effet sur la production</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        C'est un paradoxe que beaucoup ne connaissent pas : les panneaux solaires produisent de
+        l'électricité à partir de la lumière, mais la chaleur, elle, les pénalise. Les cellules en
+        silicium cristallin perdent en rendement lorsque leur température dépasse 25 °C — environ
+        0,3 à 0,5 % de production en moins par degré supplémentaire. Un panneau exposé à 60 °C par
+        une journée d'été marocaine travaille donc sur une base notablement réduite par rapport à ses
+        conditions de test.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ce phénomène est inhérent à la physique des semi-conducteurs, il ne disparaît pas et ne s'évite
+        pas totalement. Ce qu'on peut faire, c'est ne pas l'aggraver : une installation bien ventilée
+        — avec un espace libre entre le panneau et la toiture — permet à la chaleur de se dissiper
+        partiellement par convection naturelle. À l'inverse, un panneau posé à plat sur une toiture en
+        tôle noire retient la chaleur et perd davantage. C'est un détail de pose qui compte sur 25 ans.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Durée de vie réelle et dégradation garantie</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les panneaux solaires durent. La garantie produit standard du marché s'étend aujourd'hui sur
+        25 ans et garantit qu'à cette échéance le panneau produit encore au moins environ 84,8 % de
+        sa puissance initiale — soit une dégradation de l'ordre de 0,5 % par an, régulière et
+        prévisible. La durée de vie physique effective peut dépasser 30 ans si l'installation a été
+        bien posée et sommairement entretenue.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ce qui vieillit réellement n'est pas la cellule en silicium, mais ce qui l'entoure : le film
+        encapsulant peut jaunir sous l'UV s'il est de mauvaise qualité, le cadre aluminium peut se
+        corroder en zone côtière si l'anodisation est insuffisante, et les connecteurs exposés à
+        l'humidité peuvent oxyder. Les marques sérieuses investissent dans la qualité de ces matériaux
+        — c'est une raison concrète de ne pas choisir un panneau sur le seul critère du prix affiché.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        L'onduleur suit un calendrier de vie différent : il contient des composants électroniques
+        actifs et une durée de vie typique de 10 à 15 ans. Un remplacement ou une maintenance de
+        l'onduleur à mi-vie de l'installation est à prévoir — c'est le seul poste de maintenance
+        significatif en dehors du nettoyage des panneaux.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Ce que révèle le suivi de production</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le meilleur outil de maintenance est la courbe de production. Une installation dont la
+        production chute brutalement indique un problème — ombre accidentelle, défaut de connexion,
+        onduleur en alarme — pas une dégradation progressive. Une installation qui baisse doucement
+        d'année en année, sans anomalie, suit la dégradation normale garantie. Savoir lire ces deux
+        signaux différemment évite de s'alarmer à tort et de manquer le vrai problème.
+      </p>
+
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/orientation-inclinaison-ombrage" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Orientation, inclinaison, ombrage →</a>
+        <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Les garanties en détail →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Vous voulez savoir ce que vaut votre toiture ? Lancez le diagnostic gratuit." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

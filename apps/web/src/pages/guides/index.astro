@@ -1,9 +1,10 @@
 ---
 /**
- * Hub Guides & ressources (W6). Explique des sujets DÉJÀ documentés sur le
- * site, en langage clair. AUCUN chiffre nouveau, AUCUN claim tarif/coût (la
- * base tarifaire du site est alignée séparément). Calendrier éditorial et
- * articles tarif/coût en attente (copie Meryem + alignement tarifaire).
+ * Hub Guides & ressources. Explique des sujets DÉJÀ documentés sur le site, en
+ * langage clair. Regroupé par thème (W129) : Solaire, Batteries, Voiture
+ * électrique. Les chiffres de marché vivent dans les articles datés du /blog ;
+ * ces guides restent des explications de méthode/concept (pas de prix lancé en
+ * l'air). hasPart du CollectionPage = l'ensemble des guides listés.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -12,35 +13,96 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 
-const guides = [
+const groups = [
   {
-    href: '/guides/loi-82-21-expliquee',
-    title: 'Loi 82-21 expliquée simplement',
-    summary: 'Déclaration, accord de raccordement ou autorisation : les trois régimes de l’autoproduction démêlés, avec le seuil de 11 kW qui range presque toutes les villas du bon côté.',
+    theme: 'Solaire',
+    guides: [
+      {
+        href: '/guides/combien-de-panneaux-pour-ma-maison',
+        title: 'Combien de panneaux et quelle puissance (kWc) ?',
+        summary: 'La méthode pour passer de votre facture au nombre de panneaux : kWh annuels, kWc, surface de toit. De quoi comprendre le dimensionnement avant l’étude.',
+      },
+      {
+        href: '/guides/on-grid-off-grid-ou-hybride',
+        title: 'On-grid, off-grid ou hybride ?',
+        summary: 'Quel type de système pour quel besoin — et pourquoi un système raccordé au réseau se coupe pendant une panne (anti-îlotage), sauf à passer en hybride avec batterie.',
+      },
+      {
+        href: '/guides/orientation-inclinaison-ombrage',
+        title: 'Orientation, inclinaison et ombrage',
+        summary: 'Plein sud, est-ouest, angle d’inclinaison et impact disproportionné de l’ombre sur un toit marocain : comment tirer le maximum de production.',
+      },
+      {
+        href: '/guides/entretien-et-duree-de-vie-des-panneaux',
+        title: 'Entretien et durée de vie des panneaux',
+        summary: 'Poussière et sable au Maroc, nettoyage, chaleur, dégradation : combien de temps durent vraiment des panneaux et comment préserver leur production.',
+      },
+      {
+        href: '/guides/monocristallin-ou-polycristallin',
+        title: 'Monocristallin ou polycristallin ? String ou micro-onduleurs ?',
+        summary: 'Le choix du matériel sans jargon : type de panneau et type d’onduleur, et ce que chacun change concrètement sur une toiture.',
+      },
+      {
+        href: '/guides/loi-82-21-expliquee',
+        title: 'Loi 82-21 expliquée simplement',
+        summary: 'Déclaration, accord de raccordement ou autorisation : les trois régimes de l’autoproduction démêlés, avec le seuil de 11 kW qui range presque toutes les villas du bon côté.',
+      },
+      {
+        href: '/guides/onduleur-hybride-ou-reseau',
+        title: 'Onduleur hybride ou onduleur réseau ?',
+        summary: 'Deye hybride ou Huawei SUN2000 réseau : tout le choix se résume à une question — stockez-vous l’énergie, oui ou non ?',
+      },
+    ],
   },
   {
-    href: '/guides/faut-il-des-batteries',
-    title: 'Faut-il des batteries ?',
-    summary: 'Souvent non. Tout dépend de l’heure à laquelle vous consommez : on vous montre quand le stockage paie, et quand il ne fait qu’alourdir la facture.',
+    theme: 'Batteries',
+    guides: [
+      {
+        href: '/guides/faut-il-des-batteries',
+        title: 'Faut-il des batteries ?',
+        summary: 'Souvent non. Tout dépend de l’heure à laquelle vous consommez : on vous montre quand le stockage paie, et quand il ne fait qu’alourdir la facture.',
+      },
+      {
+        href: '/guides/batterie-lithium-ou-gel',
+        title: 'Lithium LiFePO4 (LFP) vs GEL/plomb (et NMC)',
+        summary: 'Pourquoi le LFP s’impose au Maroc : durée de vie, profondeur de décharge, rendement, tenue à la chaleur et sécurité face au NMC.',
+      },
+      {
+        href: '/guides/quelle-taille-de-batterie',
+        title: 'Quelle taille de batterie (kWh) ? Stocker ou revendre ?',
+        summary: 'Les paliers de dimensionnement, le kWh utile vs nominal, et pourquoi au Maroc stocker pour le soir rapporte bien plus qu’exporter son surplus.',
+      },
+      {
+        href: '/guides/electricite-pendant-les-coupures',
+        title: 'Garder l’électricité pendant les coupures',
+        summary: 'Secours ≠ off-grid : sorties EPS, onduleur hybride et batterie, et pourquoi un système réseau standard s’éteint pendant une panne.',
+      },
+    ],
   },
   {
-    href: '/guides/onduleur-hybride-ou-reseau',
-    title: 'Onduleur hybride ou onduleur réseau ?',
-    summary: 'Deye hybride ou Huawei SUN2000 réseau : tout le choix se résume à une question — stockez-vous l’énergie, oui ou non ?',
+    theme: 'Voiture électrique',
+    guides: [
+      {
+        href: '/recharge-voiture-electrique-solaire',
+        title: 'Recharger sa voiture électrique au solaire',
+        summary: 'Combien de panneaux pour vos kilomètres, 7/11/22 kW et mono vs triphasé, recharge sur le surplus solaire : le guide complet de la recharge VE au Maroc.',
+      },
+    ],
   },
 ];
 
+const allGuides = groups.flatMap((g) => g.guides);
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'CollectionPage',
   name: 'Guides & ressources solaires — Taqinor',
-  hasPart: guides.map((g) => ({ '@type': 'Article', headline: g.title, url: new URL(g.href, Astro.site).href })),
+  hasPart: allGuides.map((g) => ({ '@type': 'Article', headline: g.title, url: new URL(g.href, Astro.site).href })),
 };
 ---
 
 <Layout
-  title="Guides solaires au Maroc — loi 82-21, batteries, onduleurs | Taqinor"
-  description="Trois questions qui reviennent avant de signer, traitées sans jargon : quel régime loi 82-21 vous concerne, si votre profil justifie des batteries, et ce qui sépare un onduleur hybride d’un onduleur réseau. De quoi décider en connaissance de cause."
+  title="Guides solaires au Maroc — dimensionnement, batteries, onduleurs, VE | Taqinor"
+  description="Tous nos guides pour décider en connaissance de cause : combien de panneaux et quelle puissance, on-grid/off-grid/hybride, orientation et ombrage, entretien, choix du matériel, batteries (LFP, taille, secours) et recharge de voiture électrique au solaire."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -55,22 +117,29 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Guides & ressources</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Comprendre avant de signer</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Trois questions reviennent dans presque tous nos échanges. Plutôt que d’y répondre au
-          téléphone, nous les avons écrites ici, sans jargon et sans chiffre de prix lancé en
-          l’air. De quoi arriver à l’étude avec les bonnes questions déjà en tête.
+          Les questions qui reviennent dans presque tous nos échanges, écrites ici sans jargon et
+          sans chiffre de prix lancé en l’air — du solaire aux batteries jusqu’à la recharge de
+          votre voiture électrique. De quoi arriver à l’étude avec les bonnes questions en tête.
         </p>
       </div>
     </section>
 
     <section class="px-4 pb-24 sm:pb-32">
-      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
-        {guides.map((g, i) => (
-          <a href={g.href} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
-            <p class="tech-label text-brass-300">Guide</p>
-            <h2 class="display mt-2 text-xl text-white">{g.title}</h2>
-            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{g.summary}</p>
-            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Lire le guide →</span>
-          </a>
+      <div class="mx-auto max-w-6xl space-y-16">
+        {groups.map((group) => (
+          <div>
+            <h2 class="display rule-brass text-2xl text-white">{group.theme}</h2>
+            <div class="mt-6 grid gap-6 md:grid-cols-3" data-stagger>
+              {group.guides.map((g, i) => (
+                <a href={g.href} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+                  <p class="tech-label text-brass-300">{group.theme === 'Voiture électrique' ? 'Pilier' : 'Guide'}</p>
+                  <h3 class="display mt-2 text-xl text-white">{g.title}</h3>
+                  <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{g.summary}</p>
+                  <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Lire le guide →</span>
+                </a>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>

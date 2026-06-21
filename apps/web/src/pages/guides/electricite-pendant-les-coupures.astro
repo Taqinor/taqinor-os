@@ -1,0 +1,155 @@
+---
+/**
+ * Guide (W128) — Garder l'électricité pendant les coupures : EPS, onduleur hybride et batterie.
+ * Mythe clé : secours ≠ off-grid. Sorties EPS / comportement de bascule Deye / Huawei.
+ * Figures issues de CONTENT_SEO_NOTES.md §7 (hybrides / EPS).
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Garder l\'électricité pendant les coupures : EPS, onduleur hybride et batterie',
+  description: 'Coupure de courant et solaire : comment fonctionnent les sorties EPS d\'un onduleur hybride (Deye, Huawei), le mythe du "off-grid" expliqué, et pourquoi un on-grid standard s\'éteint toujours pendant une panne.',
+  about: { '@type': 'Thing', name: 'Secours électrique solaire EPS onduleur hybride' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Garder l'électricité pendant les coupures : EPS, onduleur hybride et batterie | Taqinor"
+  description="Coupure de courant et solaire : comment fonctionnent les sorties EPS d'un onduleur hybride (Deye, Huawei), pourquoi le secours n'est pas du off-grid, et pourquoi un on-grid standard s'éteint toujours pendant une panne."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Électricité pendant les coupures' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
+      <h1 class="display v2-page-title mt-5 text-white">Garder l'électricité pendant les coupures</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Avoir des panneaux solaires sur le toit ne garantit pas de garder le courant en cas de
+        coupure. Tout dépend du type d'onduleur et de la présence ou non d'une batterie. Ce guide
+        explique comment fonctionne le <strong>secours EPS</strong> d'un onduleur hybride —
+        et démonte l'idée reçue qui fait le plus de mal : croire que « secours » est synonyme
+        de « off-grid ».
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Pourquoi un on-grid standard s'éteint pendant une panne</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un onduleur on-grid classique est conçu pour injecter de l'électricité <em>en phase</em>
+        avec le réseau. Dès que le réseau disparaît, l'onduleur se coupe automatiquement — c'est
+        une obligation légale et de sécurité appelée <strong>anti-îlotage</strong> : il ne doit
+        jamais continuer à produire sur un réseau déclaré hors tension, pour protéger les
+        techniciens qui interviennent sur les lignes. Résultat : si le réseau tombe, vos panneaux
+        s'arrêtent avec lui, même en plein soleil. Pour garder le courant pendant une coupure, il
+        faut un onduleur hybride avec une sortie de secours dédiée.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Secours ≠ off-grid : le mythe le plus courant</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La confusion est fréquente : beaucoup pensent que « tenir pendant une coupure » signifie
+        être entièrement autonome du réseau — un système off-grid capable d'alimenter toute la
+        maison indéfiniment. C'est faux. Le mode secours d'un onduleur hybride, c'est une
+        <strong>île électrique limitée</strong> : seuls les circuits branchés sur les
+        <em>sorties EPS</em> (Emergency Power Supply) restent alimentés, et uniquement tant que
+        la batterie contient de l'énergie. Ce n'est pas un remplacement complet du réseau ; c'est
+        la garantie que le réfrigérateur, les lumières essentielles ou le routeur Wi-Fi restent
+        actifs pendant l'interruption. La nuance est fondamentale pour dimensionner correctement
+        ce dont vous avez besoin.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Les sorties EPS : circuits de secours de l'onduleur hybride</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un onduleur hybride possède deux types de sorties : les sorties <em>réseau</em> normales,
+        et les sorties <strong>EPS</strong> réservées au secours. Lors de l'installation, un
+        électricien câble sur ces sorties EPS uniquement les circuits prioritaires — éclairage
+        de secours, réfrigérateur, box internet, éventuellement une pompe ou un chauffe-eau selon
+        la capacité de la batterie. Le reste de la maison suit le réseau et s'éteint normalement
+        pendant la coupure. Cette séparation est volontaire : elle protège l'onduleur de
+        surcharges et permet à la batterie de tenir plus longtemps sur les usages vraiment
+        essentiels.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Deye SG-series : bascule quasi-instantanée sans boîtier supplémentaire</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les onduleurs Deye de la série SG (monophasé SG03LP1, triphasé SG04LP3) intègrent le
+        mode secours nativement, sans boîtier externe. Quand le réseau tombe, la bascule vers
+        les sorties EPS est <strong>≈ quasi-instantanée (~4–10 ms, type UPS)</strong> — un
+        délai si court que la plupart des appareils électroniques sensibles ne s'en aperçoivent
+        pas, à condition qu'ils soient branchés sur les circuits EPS. La batterie utilisée est
+        basse tension 48 V LFP, et l'onduleur propose six fenêtres TOU (Time of Use)
+        configurables pour charger la batterie sur les heures creuses et maximiser l'autonomie
+        disponible la nuit ou en cas de coupure prolongée.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        Ce fonctionnement en mode UPS (onduleur sans interruption) est l'un des principaux
+        atouts de cette gamme dans le contexte marocain, où les micro-coupures et les délestages
+        peuvent endommager les équipements électroniques ou interrompre des processus sensibles.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Huawei SUN2000 + Backup Box : efficace, mais avec une nuance de bascule</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La gamme Huawei SUN2000 (L1 monophasé, M1 triphasé) associée aux batteries LUNA2000
+        offre une excellente intégration et un monitoring avancé. Pour la fonction secours,
+        Huawei requiert un équipement séparé : la <strong>Backup Box</strong>. Une fois
+        installée, elle prend en charge les circuits de secours avec une bascule en
+        <strong>moins de 3 secondes</strong> — une interruption brève mais perceptible, qui
+        suffit cependant pour la majorité des usages domestiques (lumières, appareils en veille,
+        réfrigérateur).
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        Point important à retenir : le modèle <strong>SUN2000 M0 triphasé ne gère aucune
+        fonction de secours</strong>, quelle que soit la configuration. Si la continuité
+        d'alimentation est un critère, il faut impérativement choisir le M1 ou se tourner
+        vers une autre gamme.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Hybride sans batterie : le « battery-ready »</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Il est tout à fait possible d'installer un onduleur hybride sans batterie dans un premier
+        temps — c'est ce qu'on appelle une configuration <em>battery-ready</em>. L'onduleur
+        fonctionne alors comme un on-grid classique : il produit, autoconsomme et, si la loi
+        82-21 le permet, injecte un surplus sur le réseau. La différence, c'est qu'il est
+        dimensionné pour accueillir des batteries plus tard, sans tout recâbler. En revanche,
+        sans batterie, il n'y a pas de secours EPS possible : les sorties de secours n'ont pas
+        d'énergie à distribuer si le réseau tombe. Le secours ne devient opérationnel qu'au
+        moment où une batterie est connectée.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Ce qui détermine la durée du secours : la batterie</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La bascule EPS ne dure que ce que la batterie permet. Pour des usages essentiels
+        (éclairage LED, réfrigérateur, box internet), une batterie de 5 à 10 kWh peut couvrir
+        plusieurs heures à une nuit complète selon la consommation réelle des circuits raccordés.
+        Si les panneaux produisent pendant la coupure (coupure de jour), l'onduleur hybride
+        peut recharger la batterie en temps réel et prolonger le secours presque indéfiniment
+        tant que le soleil brille. C'est là que le système hybride montre tout son intérêt
+        par rapport à un simple groupe électrogène.
+      </p>
+
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/on-grid-off-grid-ou-hybride" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">On-grid, off-grid ou hybride ? →</a>
+        <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Faut-il des batteries ? →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Votre installation doit tenir pendant les coupures ? Lancez l'étude gratuite." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>
