@@ -11,6 +11,7 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -37,7 +38,7 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Onduleur hybride ou réseau ?' }]} />
 
-    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Onduleur hybride ou onduleur réseau ?</h1>
       <p class="v2-lead mt-6 text-lune-soft">
@@ -90,11 +91,11 @@ const jsonLd = {
         heures de consommation d’abord, le matériel ensuite — au lieu de partir d’un modèle décidé à
         l’avance.
       </p>
-      <div class="mt-10 flex flex-wrap gap-3">
-        <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Faut-il des batteries ? →</a>
-        <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>
-        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
-      </div>
+      <RelatedLinks links={[
+        { href: "/guides/faut-il-des-batteries", label: "Faut-il des batteries ?" },
+        { href: "/équipement", label: "Voir l’équipement" },
+        { href: "/guides", label: "Tous les guides" },
+      ]} />
     </article>
 
     <CtaBand title="On tranche hybride ou réseau dans l’étude — et elle est gratuite." href="/contact#simulateur" />

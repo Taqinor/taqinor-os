@@ -1,0 +1,258 @@
+/*
+ * TAQINOR — prose.css
+ * Hiérarchie typographique partagée pour articles guides + blog.
+ *
+ * Usage : importer ce fichier dans les templates longs (guides/*.astro,
+ * blog/[...slug].astro). Appliquer .prose sur le conteneur de l'article ;
+ * .prose-lead sur le paragraphe d'introduction.
+ *
+ * Conteneur de lecture : max-w-[68ch] (W196) — mesure optimale 65–70 ch.
+ * Les niveaux de titres s'appuient sur les tokens du design system :
+ *   --font-display / --font-sans / --color-lune / --color-lune-soft /
+ *   --color-brass-* / --color-azur-* / --color-nuit.
+ *
+ * Accessibilité : prefers-reduced-motion respecté (aucune animation ici).
+ * CLS zéro : pas de layout shift (seules des couleurs, polices, espacements).
+ */
+
+/* ---- Conteneur de lecture ------------------------------------------- */
+
+.prose {
+  max-width: 68ch;
+}
+
+/* ---- Paragraphe "lead" — chapeau d'introduction -------------------- */
+
+.prose-lead {
+  font-size: 1.125rem; /* 18 px */
+  line-height: 1.8;
+  color: var(--color-lune-soft, #adb5cd);
+}
+
+/* ---- Corps de l'article --------------------------------------------- */
+
+.prose p {
+  margin-top: 1.25rem;
+  line-height: 1.75;
+  color: var(--color-lune-soft, #adb5cd);
+}
+
+.prose p:first-child {
+  margin-top: 0;
+}
+
+/* ---- Titres ---------------------------------------------------------- */
+
+.prose h2 {
+  margin-top: 3rem;
+  font-family: var(--font-display, inherit);
+  font-weight: 800;
+  font-stretch: 112%;
+  letter-spacing: -0.012em;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  color: #fff;
+  scroll-margin-top: 5rem; /* compense le header fixe (W197) */
+}
+
+.prose h3 {
+  margin-top: 2rem;
+  font-family: var(--font-display, inherit);
+  font-weight: 800;
+  font-stretch: 112%;
+  letter-spacing: -0.01em;
+  font-size: 1.2rem;
+  line-height: 1.25;
+  color: #fff;
+  scroll-margin-top: 5rem;
+}
+
+.prose h4 {
+  margin-top: 1.5rem;
+  font-family: var(--font-sans, inherit);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-lune, #d6dbe9);
+  scroll-margin-top: 5rem;
+}
+
+/* ---- Listes ---------------------------------------------------------- */
+
+.prose ul,
+.prose ol {
+  margin-top: 1.25rem;
+  padding-left: 0;
+  color: var(--color-lune-soft, #adb5cd);
+  line-height: 1.75;
+  list-style: none;
+}
+
+.prose ul li,
+.prose ol li {
+  position: relative;
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+}
+
+/* Marqueur zellige : losange laiton pour les listes non-ordonnées */
+.prose ul li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1.5px solid var(--color-brass-400, #e8b54a);
+  transform: rotate(45deg);
+  flex: none;
+}
+
+/* Numéros laiton pour les listes ordonnées */
+.prose ol {
+  counter-reset: prose-ol;
+}
+.prose ol li {
+  counter-increment: prose-ol;
+}
+.prose ol li::before {
+  content: counter(prose-ol) '.';
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-display, inherit);
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--color-brass-400, #e8b54a);
+}
+
+/* ---- Liens ----------------------------------------------------------- */
+
+.prose a {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-color: var(--color-brass-400, #e8b54a);
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.prose a:hover {
+  color: var(--color-brass-300, #f3cc66);
+  text-decoration-color: var(--color-brass-300, #f3cc66);
+}
+
+/* ---- Emphases -------------------------------------------------------- */
+
+.prose strong {
+  color: var(--color-lune, #d6dbe9);
+  font-weight: 700;
+}
+
+.prose em {
+  font-style: italic;
+  color: var(--color-lune, #d6dbe9);
+}
+
+/* ---- Citation (blockquote) ------------------------------------------ */
+
+.prose blockquote {
+  margin-top: 1.75rem;
+  margin-left: 0;
+  border-left: 3px solid var(--color-brass-400, #e8b54a);
+  padding: 0.75rem 1rem;
+  background: rgb(255 255 255 / 0.03);
+  color: var(--color-lune-soft, #adb5cd);
+  font-style: italic;
+}
+
+.prose blockquote p {
+  margin-top: 0;
+  color: inherit;
+}
+
+/* ---- Code ------------------------------------------------------------ */
+
+.prose code {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  background: rgb(255 255 255 / 0.08);
+  border-radius: 3px;
+  color: var(--color-lune, #d6dbe9);
+}
+
+.prose pre {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: rgb(255 255 255 / 0.05);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  overflow-x: auto;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+
+/* ---- Tables — mobile-reflow (W200) ---------------------------------- */
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--color-lune-soft, #adb5cd);
+}
+
+.prose thead th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-family: var(--font-display, inherit);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-brass-300, #f3cc66);
+  border-bottom: 2px solid var(--color-brass-600, #8f6a0e);
+}
+
+.prose tbody td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  vertical-align: top;
+}
+
+.prose tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Reflow mobile : scroll horizontal si tableau déborde */
+.prose .table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---- Ligne horizontale ----------------------------------------------- */
+
+.prose hr {
+  margin-top: 2.5rem;
+  border: none;
+  border-top: 1px solid rgb(255 255 255 / 0.12);
+}
+
+/* ---- Figure / image -------------------------------------------------- */
+
+.prose figure {
+  margin-top: 2rem;
+}
+
+.prose figure img {
+  width: 100%;
+  display: block;
+}
+
+.prose figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-lune-faint, #8d96b4);
+  font-style: italic;
+}
