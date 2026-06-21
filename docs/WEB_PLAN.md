@@ -442,6 +442,94 @@ zero layout shift, reduced-motion respected.**
 
 ---
 
+### W105–W111 — 3D BUILDER: MULTI-ZONE PITCH CONNECTION, PANEL OVERHANG & CONTACT CAPTURE (founder request, 2026-06-21)
+
+Founder report on the canonical builder (`/preview/toiture-3d-pro-11` + `apps/web/src/scripts/roof-tool-pro11.ts`
+and its `roofPro11/` modules): adding a 2nd zone now works, but **two CONNECTED zones on a non-flat (pitched)
+roof don't join correctly** — both pans default to the same south face (`facingAzimuthDeg = 180`) so each tilts
+the same way instead of meeting at a shared ridge; the builder should **infer each pan's facing from the shared
+edge automatically AND let the user correct it per zone**. Also wanted: panels that can **overhang the roof edge
+by a user-specified amount** (the metal mounting rails stay on the roof, the panels cantilever out — common on
+tilted roofs); and a **place in the simulator for the client to enter name / phone / address — kept at the TOP
+of the page in one single flow, NOT a separate form the user must scroll down to**. Same constraints
+as W70–W104: stay strictly inside `apps/web/**`; **the live lead form + its entire data flow stay byte-for-byte
+unchanged** (the preview only PREFILLS the diagnostic, never posts a lead — the W85/W97 guard); **all preview
+routes stay private** (noindex, not in nav, sitemap-excluded, unlinked); **no new npm/paid dependency**; **no
+invented numbers** (overhang changes only geometric CAPACITY, never the bill-derived needed-panel cap; savings
+never exceed avoidable bill cost); **inputs never reject typed numbers** (`step="any"`, no snap); **zero CLS,
+reduced-motion respected, keyboard + touch + screen-reader paths**. **Verify each item against the live code first**
+and mark `[x] (already present)` if already done. Lanes: the pure-lib tasks (W105 adjacency, W108 packing) are
+self-contained worktree lanes with their own unit tests; the wiring/render/UI tasks (W106, W107, W109, W110) all
+write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so they run as ONE sequenced lane.
+
+- [ ] **W105 — geometry: zone adjacency + auto facing inference (pure lib).** Today each zone keeps its own
+  `facingAzimuthDeg`, but a newly-added pitched zone defaults to 180 (south), so two connected pans both tilt
+  south. Add a PURE, unit-tested helper (new `apps/web/src/lib/roofAdjacency.ts`) that, given the traced rings
+  (lng/lat) of the zones, finds the SHARED/closest edge between two adjacent zones and infers a coherent
+  `facingAzimuthDeg` for a pitched zone relative to its neighbour: a two-pan **gable** → the pans face AWAY from
+  the shared ridge (opposite azimuths, normal to the shared edge); a **continuation / mono-pente** → the same
+  down-slope direction. Return `{ facingAzimuthDeg, connected: boolean, sharedEdge }` plus a confidence so the
+  caller falls back to south when no edge is shared. No DOM/Three/map deps. Accept: gable + mono-pente fixtures
+  infer the right opposite/equal facings; disjoint zones report `connected:false` and leave the facing to the user.
+  Files: `apps/web/src/lib/roofAdjacency.ts`, `apps/web/tests/roofAdjacency.test.ts`.
+- [ ] **W106 — 3D: auto-apply the inferred facing on zone add + per-zone manual correction.** Wire W105 into
+  `roof-tool-pro11.ts`: when a pitched zone's trace closes (or `+ Ajouter une zone` makes one adjacent to an
+  existing pan), set its `facingAzimuthDeg` from the inferred value instead of the hardcoded 180 default — so
+  connected pans auto-orient to meet at the ridge. Keep the existing "Face du pan" buttons (`data-facing`) + the
+  fine azimuth as a **manual override that wins** and is **per-zone** (selecting a zone shows/edits ITS facing;
+  the override persists in the area record via the existing `snapshotActiveAreaGeometry`/restore path), and show a
+  one-line note when the facing was auto-inferred vs hand-set. Accept: adding a connected pitched pan auto-faces
+  it coherently; the user can override any zone's facing and switching zones reflects the right value. Files:
+  `roof-tool-pro11.ts`, `toiture-3d-pro-11.astro` (note/control wiring), `roofPro11/zones.ts` if needed.
+- [ ] **W107 — 3D: render connected pitched pans meeting at the shared ridge.** In `roofPro11/scene3d.ts` the
+  other zones are drawn from their own `renderPlan`, each deck + gable skirt referenced to its OWN eave
+  (`eaveUpSlopeCoord`), so two connected pans float as separate tilted lids ("each tilted to one side"). Use the
+  W105 adjacency to reference adjacent pitched pans to a COMMON ridge line at the shared edge (matched ridge
+  height, eave on the outer edges) so they read as one connected roof; flat zones and disjoint zones unchanged.
+  Accept: two connected pitched zones render as a single coherent gable/slope meeting at the ridge, not two
+  independent lids. Files: `roofPro11/scene3d.ts`, `roof-tool-pro11.ts` wiring.
+- [ ] **W108 — packing: user-specified panel overhang past the roof edge (pure lib).** Add an `overhangM` option
+  to `packConfig`/`packCells` (`estimatorBrainV2.ts`) and the pitched packers (`estimatorBrainV6/V7/V8.ts` as
+  wired) so a panel is retained when its footprint stays within `setbackM` of the edge OR extends at most
+  `overhangM` BEYOND it (rails on-roof, panel cantilevers out) — i.e. the corner-test floor becomes `-overhangM`.
+  Keep the honesty footprint bound honest: expand `usableAreaM2` by the allowed overhang ring (so the bound
+  reflects the rail-supported area, never a fabricated capacity). Default `overhangM = 0` → byte-identical to
+  today. Pure → unit tests. Accept: with `overhangM>0` panels may slightly exceed the ring, count rises only by
+  the geometric room gained, the footprint bound still holds, and `0` is unchanged. Files: `estimatorBrainV2.ts`,
+  `estimatorBrainV6/V7/V8.ts` (as wired), `roofPro2.ts` if shared, `apps/web/tests/*`.
+- [ ] **W109 — 3D: overhang control + render.** Add a "Débord panneaux autorisé (m)" numeric input (`step="any"`,
+  default 0, beside the marge/retrait control) and thread it into the solve (flat + pitched) so panels can extend
+  past the eave/rake — most useful on tilted roofs. Render the overhanging panels correctly in the 3D scene (panel
+  cantilevered over the edge on its rails). Honesty: overhang changes only geometric capacity, never the
+  bill-derived needed-panel cap (never overfill past the need). Accept: raising the débord lets a few more panels
+  place at the edges and they render hanging over the eave; the bill cap and the savings ceiling are unchanged.
+  Files: `toiture-3d-pro-11.astro`, `roof-tool-pro11.ts`, `roofPro11/scene3d.ts`, `roofPro11/optimizer.ts` /
+  `roofPro11/obstaclesUi.ts` wiring as needed.
+- [ ] **W110 — simulator: ONE-page flow with client contact capture (Nom / Téléphone / Adresse) at the TOP.**
+  Today `/preview/toiture-3d-pro-11` puts the 3D builder at the top and a SEPARATE diagnostic form
+  (`DiagnosticFormEnriched`, `#simulateur`) far BELOW that the user must scroll to — and the simulator has nowhere
+  to enter name/phone/address. Make the whole experience ONE top-down page: add Nom, Téléphone and Adresse inputs
+  INLINE with the simulator's result/CTA block at the top, and **remove the separate diagnostic section currently
+  rendered BELOW on this preview page**, consolidating everything into the single top flow (trace → result →
+  name/phone/address → continue, all in one place, nothing essential below). Reuse the existing form plumbing by
+  relocating/embedding `DiagnosticFormEnriched` inline near the results — its submit / WhatsApp deeplink / consent
+  / webhook / CAPI stay **byte-for-byte unchanged** (do NOT edit the shared component or the live data flow) — or
+  keep it prefill-only and wire the new Nom/Téléphone/Adresse into `lf-name`/`lf-phone`/`lf-city` (+ the geocoded
+  `rp9-address`) via `roofPro11/prefill.ts` (which already prefills `lf-area`/`lf-orient`/`lf-kwc-est`), surfacing
+  the form inline at the top. STRICT: the simulator's own prefill code still posts NO lead (the W85/W97 guard);
+  the shared `DiagnosticFormEnriched.astro` component and the live lead data flow are untouched; the preview stays
+  private (noindex, not in nav, sitemap-excluded, unlinked). Accept: the whole flow is one page at the top with no
+  separate form below; Nom/Téléphone/Adresse are captured up top; the live form/data flow is unchanged. Files:
+  `toiture-3d-pro-11.astro`, `roofPro11/prefill.ts`, `roof-tool-pro11.ts` wiring.
+- [ ] **W111 — tests: lock in multi-zone facing, overhang honesty & contact prefill.** Add coverage: W105 facing
+  inference (gable opposite, mono-pente equal, disjoint → user); W108 overhang packing (count grows only by the
+  geometric room, footprint bound holds, `overhangM=0` unchanged, savings ≤ bill ceiling); W110 contact prefill
+  writes `lf-name`/`lf-phone`/`lf-city` AND the preview still never calls `fetch`/POSTs a lead (extend the existing
+  no-lead-POST runtime test). Accept: new tests fail before W105–W110 and pass after; full `apps/web` vitest suite
+  green. Files: `apps/web/tests/*.ts` (+ new files as needed).
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
