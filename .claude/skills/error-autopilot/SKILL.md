@@ -32,6 +32,15 @@ because you run unattended. Obey every `CLAUDE.md` non-negotiable rule always.
 
 ## STEP 0 — Preflight, baseline & kill switch (every run)
 
+You may be launched by a cloud Routine (fresh clone) or a local Desktop
+scheduled task (your working copy) — behave identically either way.
+
+**Preconditions (safe abort, make no changes if any fails):** you are inside a
+git checkout of `taqinor/taqinor-os`; the primary working tree has no *unrelated*
+uncommitted changes (if it does, stop and report — never fold a human's
+in-progress edits into the run); and `git`/the shell are usable. If a
+precondition fails, print one line saying why and end without writing anything.
+
 1. Read `docs/error-autopilot.config.yml`.
 2. **If `enabled: false` → STOP immediately.** Make NO file change, NO commit,
    NO merge. Print exactly `ERROR_AUTOPILOT: DISABLED (config flag off)` and end.

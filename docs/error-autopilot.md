@@ -33,14 +33,41 @@ the confidence floor, and the per-run item cap are all tunable in
 `docs/error-autopilot.config.yml`. Nothing is filed unless it's reproduced
 red→green with no regression (zero-false-positive bar).
 
-## Wire up the schedule (one-time, ~2 min)
+## Wire up the schedule
 
-The midday trigger is a **Claude Code Routine** (runs in Anthropic's cloud on
-your Claude subscription — no API key, no extra billing). Routines can't be
-created from inside a web session, so do this from a **terminal** Claude Code
-session or the web UI:
+Two supported ways to fire the skill daily at noon. The skill behaves the same
+either way (it reads STEP 0's kill switch first); the difference is *where* it
+runs and *which* checkout it sees.
 
-**From a terminal (`/schedule`):**
+### Path A — Desktop scheduled task (local; runs against `C:\dev\taqinor-os`)
+
+This is the path set up as **`daily-error-autopilot`**. It runs on your machine
+while the Claude desktop app is open, against your **local working copy**, so:
+
+- **The skill must exist in that local checkout.** It lives on `main` once this
+  change is merged — make sure `C:\dev\taqinor-os` is on `main` and pulled
+  (`git checkout main && git pull`). If the file is missing when the task fires,
+  the run reports "skill not created yet" and does nothing (by design).
+- **Pre-approve tools once:** in the Scheduled sidebar click **Run now** the
+  first time and approve git/shell on the repo, so future noon runs don't pause
+  on permission prompts.
+- **Only fires while the app is open.** If the app is closed at noon, it runs on
+  next launch. (Use Path B if you need it to run with the laptop closed.)
+- **Self-merge needs local push rights** to `origin` (your normal git auth).
+- **Deeper analyzers need network + tooling** locally (Python with
+  Postgres/MinIO for backend tests, Node for frontend/web, and the transient
+  analyzers semgrep/bandit/pip-audit/osv-scanner). Anything it can't run that
+  day it skips for that surface and notes in the report — it never guesses.
+
+The few-minutes-after-noon start (e.g. 12:08) is normal scheduler jitter and is
+harmless for a daily sweep.
+
+### Path B — Cloud Routine (runs in Anthropic's cloud, even with the laptop closed)
+
+A **Claude Code Routine** runs on your Claude subscription (no API key, no extra
+billing) and clones the repo fresh each run, so it always sees `main`. Create it
+from a **terminal** Claude Code session or the web UI (not from inside a web
+session):
 
 ```
 /schedule daily at 12:00, run the error-autopilot skill defined in .claude/skills/error-autopilot/SKILL.md on the taqinor/taqinor-os repo
@@ -50,41 +77,37 @@ Then confirm these routine settings (the form / `/schedule update` walks them):
 
 - **Prompt:** `Run the error-autopilot skill (.claude/skills/error-autopilot/SKILL.md). Read its STEP 0 kill switch first.`
 - **Repository:** `taqinor/taqinor-os`.
-- **Permissions → "Allow unrestricted branch pushes": ON** for this repo. The
-  run self-merges `dev` → `main`, so without this it can only push `claude/*`
-  branches and the merge step can't complete.
-- **Environment:** one whose setup can run the test suites the verification step
-  needs — backend tests need Postgres **and** MinIO, like CI; web/frontend need
-  node. Reuse the same environment your "work on the plan" runs use. The default
-  **Trusted** network access reaches the package registries, so the transient
-  analyzers (semgrep/bandit/pip-audit/osv-scanner…) install fine; if a scanner
-  needs another host, widen the environment's allowed domains. Analyzers are used
-  for detection only and are never committed to the project's manifests.
-- **Model:** the strongest available (the run orchestrates many lanes + an
-  adversarial reviewer).
+- **Permissions → "Allow unrestricted branch pushes": ON** — the run self-merges
+  `dev` → `main`, so without this it can only push `claude/*` branches.
+- **Environment:** one whose setup can run the suites — backend tests need
+  Postgres **and** MinIO like CI; web/frontend need node. Reuse the environment
+  your "work on the plan" runs use. The default **Trusted** network reaches the
+  package registries, so the transient analyzers install fine; widen allowed
+  domains if a scanner needs another host. Analyzers are detection-only and are
+  never committed to the project's manifests.
+- **Model:** the strongest available (it orchestrates many lanes + a reviewer).
 
-**From the web UI:** create the same routine at
-<https://claude.ai/code/routines> → **New routine** → schedule trigger **daily
-12:00**.
+Web UI alternative: <https://claude.ai/code/routines> → **New routine** →
+schedule trigger **daily 12:00**.
 
 ## Change the firing time
 
-The time lives on the routine, not in the repo. Either:
+- **Desktop task:** edit the schedule in the Scheduled sidebar (its cron is
+  `0 12 * * *` for noon).
+- **Cloud routine:** `/schedule update` (e.g. "change error-autopilot to 09:00")
+  or <https://claude.ai/code/routines>. Times are local (Africa/Casablanca);
+  minimum interval 1 hour; a few-minute stagger is normal.
 
-- terminal: `/schedule update` (e.g. "change error-autopilot to 09:00"), or
-- web UI: <https://claude.ai/code/routines> → the routine → edit the schedule.
-
-Times are entered in your local zone (Africa/Casablanca) and run at that
-wall-clock time. Minimum interval is 1 hour; a few-minute stagger is normal.
-(The `schedule_note` in the config file is a human reminder only — editing it
-does **not** change when the routine fires.)
+The `schedule_note` in the config file is a human reminder only — editing it does
+**not** change when anything fires.
 
 ## Turn it on / off
 
-Two independent switches — either one off stops the run:
+Switches — **any one** off stops the run:
 
-1. **Routine toggle** — <https://claude.ai/code/routines> → the routine →
-   **Repeats** toggle (pause/resume). Paused keeps the config but never fires.
+1. **Scheduler toggle** — pause the Desktop task in the Scheduled sidebar, or
+   the cloud routine's **Repeats** toggle. Paused keeps the config but never
+   fires.
 2. **Committed kill switch** — set `enabled: false` in
    `docs/error-autopilot.config.yml` and commit. On its next run the skill reads
    this first and exits immediately with `ERROR_AUTOPILOT: DISABLED`, making no
@@ -92,7 +115,8 @@ Two independent switches — either one off stops the run:
 
 ## Run it now (without waiting for noon)
 
-On the routine's page click **Run now**, or from a terminal `/schedule run`.
+Desktop task: **Run now** in the Scheduled sidebar. Cloud routine: **Run now** on
+its page, or `/schedule run` from a terminal.
 
 ## Safety
 
@@ -103,6 +127,6 @@ On the routine's page click **Run now**, or from a terminal `/schedule run`.
   branch protection, exactly like a normal run — the autopilot never loosens or
   bypasses it and never force-pushes. A run that verifies nothing makes no
   commit and no merge.
-- Routine runs draw down your normal subscription usage and count against the
-  daily routine-run allowance; a green run status means it started cleanly, not
-  that it filed items — open the session/run to see what it did.
+- Runs draw down your normal Claude usage (cloud routines also count against the
+  daily routine-run allowance). A green/finished run status means it started
+  cleanly, not that it filed items — open the session/run to see what it did.
