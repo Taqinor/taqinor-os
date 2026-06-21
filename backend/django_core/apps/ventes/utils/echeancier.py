@@ -41,8 +41,26 @@ def _q(amount) -> Decimal:
 def schedule_for_devis(devis):
     """Liste ordonnée [(clé, pourcentage)] selon le mode du devis.
 
-    Lit l'échéancier éditable de la société (Paramètres → Devis) ; repli sur
-    PAYMENT_TERMS_BY_MODE si non configuré (comportement historique)."""
+    Si le devis porte un ``echeancier`` JSON personnalisé (FG46), il prend le
+    dessus et est converti en liste de (libelle, pct_or_montant) avec les clés
+    canoniques. La dernière tranche est toujours recalculée comme « reste »
+    dans ``next_tranche`` — le pourcentage ici est indicatif.
+
+    Sinon, lit l'échéancier éditable de la société (Paramètres → Devis) ;
+    repli sur PAYMENT_TERMS_BY_MODE si non configuré (comportement historique).
+    """
+    custom = getattr(devis, 'echeancier', None)
+    if custom:
+        try:
+            entries = list(custom)
+            if entries:
+                return [
+                    (e.get('type', f'tranche_{i}'), float(e.get('pct_or_montant', 0)))
+                    for i, e in enumerate(entries)
+                ]
+        except (TypeError, AttributeError):
+            pass  # écheancier malformé → repli sur le défaut
+
     from apps.ventes.utils.company_settings import payment_terms_for
     mode = devis.mode_installation or 'residentiel'
     terms = payment_terms_for(getattr(devis, 'company', None), mode)
@@ -67,6 +85,22 @@ def blended_tva_pct(devis) -> Decimal:
     if ht <= 0:
         return Decimal(str(devis.taux_tva))
     return _q(Decimal(str(opt['tva'])) / ht * 100)
+
+
+def _tranche_label(key, devis, index):
+    """Libellé d'une tranche : extrait du custom écheancier ou depuis TRANCHE_LABELS."""
+    custom = getattr(devis, 'echeancier', None)
+    if custom:
+        try:
+            return list(custom)[index].get('libelle') or TRANCHE_LABELS.get(key, key)
+        except (IndexError, TypeError):
+            pass
+    return TRANCHE_LABELS.get(key, key.capitalize())
+
+
+def _tranche_type(key):
+    """Type Facture d'une tranche : depuis TRANCHE_TYPE ou INTERMEDIAIRE par défaut."""
+    return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
 
 
 def next_tranche(devis):
@@ -108,8 +142,8 @@ def next_tranche(devis):
 
     return {
         'key': key,
-        'label': TRANCHE_LABELS[key],
-        'type': TRANCHE_TYPE[key],
+        'label': _tranche_label(key, devis, index),
+        'type': _tranche_type(key),
         'pourcentage': Decimal(str(pct)),
         'ht': ht,
         'tva': tva,
