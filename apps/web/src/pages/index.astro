@@ -258,9 +258,13 @@ const solutionIcons: Record<string, string> = {
               <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">Voir le résidentiel →</span>
             </div>
           </a>
+          {/* W180 — ratio corrigé : l'image est rendue en aspect-[4/3] par le CSS ; le
+              ratio intrinsèque déclaré doit correspondre (4/3) pour que width/height
+              attrs réservent la bonne hauteur et évitent tout CLS. L'ancienne valeur
+              16/9 sous-estimait la hauteur réservée sur certains navigateurs. */}
           <a href="/professionnel" class="v2-rise group relative block overflow-hidden" style="--v2-i:1">
             <Picture name="industriel-couchant" alt="Chantier solaire industriel Taqinor au couchant, double rangée de panneaux"
-              widths={[2000, 1280, 768, 480]} ratio={16 / 9} sizes="(min-width: 768px) 50vw, 100vw"
+              widths={[2000, 1280, 768, 480]} ratio={4 / 3} sizes="(min-width: 768px) 50vw, 100vw"
               class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
               <p class="tech-label text-brass-300">Industriels · hôtels · cliniques</p>

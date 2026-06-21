@@ -140,7 +140,8 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
           <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
             {inCity.map((r, i) => (
               <a href={L(`/realisations/${r!.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
-                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={r!.photos[0].ratio}
+                {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS (anti-CLS). */}
+                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
                   sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
                 <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
                   <span class="fig block text-2xl text-white">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>

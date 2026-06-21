@@ -84,11 +84,15 @@ const galleryItems = REALISATIONS.map((r) => ({
               data-lightbox-label={`${r.ville} · ${r.kwc} · ${r.date}`}
               aria-label={`Agrandir la photo : ${r.photos[0].alt}`}
             >
+              {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS : les photos
+                  proviennent de ratio variés (16/9, 4/3, 1:1) mais sont toutes
+                  recadrées en 3/2 par le CSS. Le ratio déclaré doit correspondre
+                  pour que width/height attrs réservent la bonne hauteur (anti-CLS). */}
               <Picture
                 name={r.photos[0].name}
                 alt={r.photos[0].alt}
                 widths={r.photos[0].widths}
-                ratio={r.photos[0].ratio}
+                ratio={3 / 2}
                 sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                 style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
                 class="photo-card-img aspect-[3/2] w-full object-cover"
