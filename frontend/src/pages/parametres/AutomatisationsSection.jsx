@@ -1,4 +1,4 @@
-// N72 / N73 — Onglet « Automatisations » de la page Paramètres.
+// N72 / N73 / FG3 — Onglet « Automatisations » de la page Paramètres.
 //
 // Moteur sans code « si ceci → alors cela » sur les ÉVÉNEMENTS PROPRES de l'app
 // (changement d'étape lead, devis accepté, statut chantier, facture en retard,
@@ -10,7 +10,7 @@
 // Section autonome : charge ses propres données et s'enregistre seule (sans le
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, RefreshCw } from 'lucide-react'
+import { Plus, Trash2, RefreshCw, Wand2 } from 'lucide-react'
 import automationApi from '../../api/automationApi'
 import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
@@ -55,11 +55,20 @@ function safeParse(text) {
   try { return JSON.parse(t) } catch { return null }
 }
 
+// FG3 — formatte la config JSON pour affichage dans le textarea.
+function toJson(obj) {
+  if (!obj || !Object.keys(obj).length) return ''
+  try { return JSON.stringify(obj, null, 2) } catch { return '' }
+}
+
 export default function AutomatisationsSection() {
   const [rules, setRules] = useState([])
   const [runs, setRuns] = useState([])
   const [approvals, setApprovals] = useState([])
   const [loading, setLoading] = useState(true)
+  // FG3 — modèles prédéfinis.
+  const [templates, setTemplates] = useState([])
+  const [showTemplates, setShowTemplates] = useState(false)
   // Brouillon de nouvelle règle.
   const [draft, setDraft] = useState({
     nom: '', trigger_type: 'lead_stage_change', trigger_config: '',
@@ -77,7 +86,25 @@ export default function AutomatisationsSection() {
   useEffect(() => {
     Promise.all([loadRules(), loadRuns(), loadApprovals()])
       .finally(() => setLoading(false))
+    // FG3 — charge les modèles au montage (best-effort).
+    automationApi.getTemplates()
+      .then((r) => setTemplates(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
   }, [])
+
+  // FG3 — préremplir le formulaire depuis un modèle.
+  const applyTemplate = (tpl) => {
+    setDraft({
+      nom: tpl.nom,
+      trigger_type: tpl.trigger_type,
+      trigger_config: toJson(tpl.trigger_config),
+      action_type: tpl.action_type,
+      action_config: toJson(tpl.action_config),
+      requires_approval: Boolean(tpl.requires_approval),
+      approval_threshold: '',
+    })
+    setShowTemplates(false)
+  }
 
   const addRule = async () => {
     const nom = draft.nom.trim()
@@ -183,6 +210,34 @@ export default function AutomatisationsSection() {
               </div>
             ))}
           </div>
+
+          {/* ── FG3 : Créer depuis un modèle ── */}
+          {templates.length > 0 && (
+            <div className="mt-2">
+              <Button type="button" size="sm" variant="outline"
+                onClick={() => setShowTemplates((v) => !v)}>
+                <Wand2 className="size-4" aria-hidden="true" />
+                Créer depuis un modèle
+              </Button>
+              {showTemplates && (
+                <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2">
+                  <p className="mb-1.5 text-xs text-muted-foreground">
+                    Sélectionnez un modèle pour préremplir le formulaire :
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {templates.map((tpl) => (
+                      <button key={tpl.id} type="button"
+                        className="group flex flex-col items-start rounded-md border border-border bg-background px-3 py-2 text-left hover:border-primary hover:bg-primary/5 transition-colors"
+                        onClick={() => applyTemplate(tpl)}>
+                        <span className="text-sm font-medium group-hover:text-primary">{tpl.nom}</span>
+                        <span className="text-xs text-muted-foreground">{tpl.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Ajout d'une règle ── */}
           <div className="mt-3 rounded-lg border border-dashed border-border p-3">

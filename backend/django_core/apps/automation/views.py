@@ -11,7 +11,7 @@ côté serveur, jamais lus du corps de requête.
 from django.utils import timezone
 
 from rest_framework import filters, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -129,3 +129,20 @@ class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         approval.decided_at = timezone.now()
         approval.save(update_fields=['status', 'decided_by', 'decided_at'])
         return Response(self.get_serializer(approval).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FG3 — Bibliothèque de modèles d'automatisation (presets sans-code).
+# GET uniquement ; lecture tout rôle ; pas de modification.
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def automation_templates(request):
+    """Liste les modèles d'automatisation prédéfinis (presets pour le UI).
+
+    Retourne une liste statique de presets. Le frontend peut s'en servir pour
+    préremplir le formulaire de création de règle (« Créer depuis un modèle »).
+    Aucune règle n'est créée ici : c'est une aide à la saisie, pas une action
+    automatique. Lecture seule, tout rôle authentifié."""
+    from .templates import AUTOMATION_TEMPLATES
+    return Response(AUTOMATION_TEMPLATES)
