@@ -38,6 +38,21 @@
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* W215 — Métrique de repli pour Archivo : Arial Bold comme police système
+   la plus proche sur Windows/Mac/Linux. size-adjust ≈ 104 % compense la
+   différence de corps entre Arial Bold étendu et Archivo 800. Les
+   ajustements ascent/descent/line-gap gardent l'interligne visuel stable
+   pendant le swap → CLS du titre LCP minimisé. */
+@font-face {
+  font-family: 'Archivo Fallback';
+  src: local('Arial Bold'), local('Arial');
+  size-adjust: 104%;
+  ascent-override: 92%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
 @font-face {
   font-family: 'Hanken Grotesk';
   font-style: normal;
@@ -59,9 +74,21 @@
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* W215 — Métrique de repli pour Hanken Grotesk : Arial Regular. */
+@font-face {
+  font-family: 'Hanken Fallback';
+  src: local('Arial');
+  size-adjust: 101%;
+  ascent-override: 94%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
+
 @theme {
-  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Archivo', 'Hanken Grotesk', sans-serif;
+  /* W215 — les polices de repli métriques ('Hanken Fallback', 'Archivo Fallback')
+     sont insérées juste avant les génériques système pour minimiser le CLS au swap. */
+  --font-sans: 'Hanken Grotesk', 'Hanken Fallback', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', 'Archivo Fallback', 'Hanken Grotesk', 'Hanken Fallback', sans-serif;
 
   /* Blanc architectural — l'acte final éclairé (« salle blanche ») */
   --color-blanc: #ffffff;
@@ -103,6 +130,35 @@
   --color-alert-50: #faeeea;
   /* Alerte sur nuit — assez claire pour le plein soleil (≈7:1) */
   --color-alert-300: #f4a18a;
+}
+
+/* ─── W216 — Lien d'évitement « Aller au contenu » ─────────────────────────
+   Visuellement masqué jusqu'au focus clavier (clip-path hors-écran) ; au focus,
+   il surgit en haut-gauche avec le traitement brass du site. ZÉRO CLS :
+   le lien est retiré du flux normal (position: fixed) dès le départ, donc
+   il ne réserve aucune place et n'affecte pas le layout. */
+.skip-link {
+  position: fixed;
+  top: -100%;
+  left: 1rem;
+  z-index: 10000;
+  padding: 0.5rem 1.25rem;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-nuit);
+  background: var(--color-brass-300);
+  border: 2px solid var(--color-brass-400);
+  border-radius: 4px;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus-visible {
+  top: 1rem;
+  /* Override le focus-visible global pour que le ring reste visible
+     sur fond brass : outline noir fin suffit ici. */
+  outline: 2px solid var(--color-nuit);
+  outline-offset: 2px;
 }
 
 html {
