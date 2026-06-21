@@ -297,11 +297,13 @@ const solutionIcons: Record<string, string> = {
               <p class="tech-label mt-5 text-brass-300">{s.tag}</p>
               <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
               <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-              <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Découvrir →</span>
+              {/* W204 — nudge flèche : inline-block + translate-x gated motion-safe */}
+              <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
             </a>
           ))}
         </div>
-        <a href="/nos-solutions" class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions →</a>
+        {/* W204 — nudge flèche : group sur le lien, arrow dans un span */}
+        <a href="/nos-solutions" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
       </div>
     </section>
 
@@ -338,7 +340,8 @@ const solutionIcons: Record<string, string> = {
             </a>
           ))}
         </div>
-        <a href="/realisations" class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos réalisations →</a>
+        {/* W204 — nudge flèche sur le lien galerie */}
+        <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
       </div>
     </section>
 

@@ -103,12 +103,12 @@ const galleryItems = REALISATIONS.map((r) => ({
                 detail={r.panneaux}
               />
             </button>
-            <!-- Lien vers l'étude de cas sous la photo -->
+            <!-- W204 — lien étude de cas avec nudge flèche (group + motion-safe) -->
             <a
               href={`/realisations/${r.slug}`}
-              class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300"
+              class="group mt-2 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300"
             >
-              Voir l'étude de cas →
+              Voir l'étude de cas <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
             </a>
           </div>
         ))}
