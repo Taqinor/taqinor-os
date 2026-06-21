@@ -623,14 +623,21 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
 > **CONSTRAINTS — every task in this block.** Stay strictly inside `apps/web/**`. **All new
 > user-facing text in French** (code/identifiers English); EN/AR mirrors are a deliberate FR-first
 > follow-up — do NOT register new FR-only routes in `src/i18n/pages.ts` (so the language switcher
-> correctly hides on them), and do NOT block on translating them. **No invented facts or numbers**
-> — every figure must trace to data ALREADY published on the site (existing FAQ orders-of-magnitude,
-> `/garanties` warranty %, `/loi-82-21`, `/regularization-article-33`, the equipment pages) or to a
-> general physics/regulatory fact; any price (MAD/kWc, payback, ONEE/régie tariff, buyback c/kWh,
-> borne/battery price) that is NOT already on the site is written **qualitatively** (method, orders
-> of magnitude) with a `<!-- PENDING(Reda): confirm <fact> -->` placeholder — **never fabricate a
-> figure** (this mirrors the existing guides, which carry "AUCUN chiffre nouveau, AUCUN claim
-> tarif/coût"). **`/faq` stays the SOLE `FAQPage` JSON-LD owner** (W98 invariant): any other page
+> correctly hides on them), and do NOT block on translating them. **Numbers come from the cited
+> research doc, not from thin air.** A founder-authorized, source-cited evidence base lives at
+> [`apps/web/CONTENT_SEO_NOTES.md`](../apps/web/CONTENT_SEO_NOTES.md) (loi 82-21 regimes/20 %-cap/
+> 0,18–0,21 DH buyback, ONEE tranches, irradiation kWh/kWc by city, sizing, install-price ranges,
+> EV economics, battery chemistry/Dyness specs, inverter backup behaviour) — each figure tagged
+> PUBLISH-SAFE or VERIFY-FIRST with a confidence + source. Use it as follows: (a) **STABLE** physics/
+> spec figures (irradiation, optimal tilt, ~0,5 %/yr degradation, LFP cycle life/DoD/efficiency, EV
+> ~15 kWh/100 km, panels-per-EV) may go in the **evergreen guides** with their source; (b)
+> **VOLATILE** market/regulatory figures (MAD prices, ONEE tranches, buyback rate, fuel prices)
+> belong in the **dated blog posts** (W132–W139) and are *linked* from the guides, never hardcoded
+> into an undated page; (c) anything tagged **VERIFY-FIRST** is published as a labelled range
+> (« fourchette indicative 2026 » / « à confirmer ») — never as hard single-point fact; (d)
+> **Taqinor's OWN quoted prices/products stay founder-confirmed** (use a `<!-- PENDING(Reda) -->`
+> placeholder only for the firm's internal figures, not for the cited market context). **Never
+> fabricate or over-precision a number.** **`/faq` stays the SOLE `FAQPage` JSON-LD owner** (W98 invariant): any other page
 > that renders a visual FAQ MUST reuse the `Faq` component with `schema={false}`. New guide/landing
 > pages carry **`Article` (or `Service`) + `BreadcrumbList`** JSON-LD and a self-referencing
 > canonical, matching the existing guide pages. The **live lead form + its whole data flow** (1 000
@@ -769,6 +776,118 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
 
 ---
 
+### W132–W139 — DATED BLOG (Astro content collection) + data-driven cornerstone posts (founder-authorized architecture, 2026-06-21)
+
+<!-- lane: apps/web -->
+
+*The founder green-lit the architecture change for a real **blog** (was gated WG4). This adds a
+**dated, numbers-and-market editorial layer** that is deliberately DISTINCT from the evergreen
+`/guides` (concept explainers) to avoid keyword cannibalization: guides answer "comment ça marche"
+forever; blog posts are **dated, chiffrés, sourced** market/regulatory/analysis pieces that signal
+freshness and get refreshed. The blog is where the **VOLATILE** figures from
+[`apps/web/CONTENT_SEO_NOTES.md`](../apps/web/CONTENT_SEO_NOTES.md) live (prices, tariffs, buyback,
+fuel) — published as cited, dated, labelled ranges.*
+
+> **CONSTRAINTS (whole block).** Same standing rules as W119–W131 (strictly `apps/web/**`, FR,
+> live lead form untouched, previews untouched, Lighthouse 97–100, zero CLS, one h1, alt text).
+> **No new npm/paid dependency:** the blog uses **core Astro content collections** (`glob` loader +
+> Zod schema — already in Astro 6, no package) and a **hand-rolled `/rss.xml` endpoint** (no
+> `@astrojs/rss`). Numbers trace to `CONTENT_SEO_NOTES.md` with their source + the PUBLISH-SAFE /
+> VERIFY-FIRST discipline (cited ranges, « à confirmer » on evolving figures, `PENDING(Reda)` only
+> for Taqinor's own quoted prices). **Drafts never ship:** a `draft: true` post is excluded from the
+> build output, the index, the sitemap and the RSS feed. Posts are FR-only for now (not in the
+> i18n registry). Cross-link blog ↔ guides ↔ service pages so intent is clear and link equity flows.
+> **Lanes:** W132 builds the architecture (collection config + routes + RSS + nav) → it MUST land
+> before the posts; W133–W138 are independent Markdown files (parallel once W132 exists); W139
+> (tests) sequences last. (All in the `apps/web` lane → built in listed order.)
+
+- [ ] W132 — **Blog architecture (content collection + routes + RSS + nav), dependency-free.** Add a
+  `blog` content collection: `apps/web/src/content.config.ts` defining `defineCollection({ loader:
+  glob({ pattern: '**/*.md', base: './src/content/blog' }), schema })` with a Zod schema
+  (`title`, `description`, `pubDate`, optional `updatedDate`, `tags: string[]`, `author` default
+  "Taqinor", optional `ogSlug`, `draft` default false). Build `apps/web/src/pages/blog/index.astro`
+  (lists published posts newest-first, drafts excluded, same `v2`/Layout design as `/guides`,
+  Breadcrumb, CtaBand, StickyCta, `Blog` or `CollectionPage` JSON-LD) and
+  `apps/web/src/pages/blog/[...slug].astro` (renders the Markdown via the content `render()` API
+  with `BlogPosting` + `BreadcrumbList` JSON-LD, self-referencing canonical, real `og` image from an
+  existing `/og/*.png` via `ogSlug` fallback, prose styling matching the guide pages, prev/next +
+  related links). Add a hand-rolled `apps/web/src/pages/rss.xml.ts` endpoint emitting valid RSS 2.0
+  for published posts (no `@astrojs/rss`), and a `<link rel="alternate" type="application/rss+xml">`
+  in `Layout`. Add a **"Blog"** entry to the Ressources dropdown in `Header.astro` (FR nav; the
+  `/blog` route auto-enters the sitemap). Ship ONE seed post (or W133) so the routes render. Accept:
+  `/blog` and a post route render with valid `BlogPosting` JSON-LD + one canonical, `/rss.xml`
+  validates, a `draft:true` post is absent from index/sitemap/RSS, no new dependency, Lighthouse
+  held. Files: `apps/web/src/content.config.ts`, `apps/web/src/pages/blog/index.astro`,
+  `apps/web/src/pages/blog/[...slug].astro`, `apps/web/src/pages/rss.xml.ts`,
+  `apps/web/src/layouts/Layout.astro` (RSS link), `apps/web/src/components/Header.astro` (nav),
+  `apps/web/src/content/blog/` (seed).
+
+- [ ] W133 — **Post: « Combien coûte une installation solaire au Maroc en 2026 ? » (cost pillar).**
+  Markdown post using `CONTENT_SEO_NOTES.md` §5: turnkey **fourchettes indicatives** by size
+  (3 kWc ~28–42 k, 5 kWc ~45–65 k, 10 kWc ~85–120 k MAD) and **~10 000–14 000 DH/kWc** turnkey —
+  explicitly debunk the "4 700 DH/kWc" anchor as kit-only; equipment ranges, roof surcharges, the
+  battery add-on (+22–60 k), and the **TVA nuance** (panneaux nus exonérés sans déduction vs pose
+  clé-en-main à 20 % avec déduction; onduleurs droits de douane 17,5 %→2,5 %). Every figure labelled
+  « indicatif 2026 » with its source; Taqinor's real quote → CTA to the diagnostic, not a hard price.
+  Cross-link the sizing guide (W121) + ROI post (W134). Accept: dated post renders with cited ranges,
+  no false precision, `BlogPosting` schema. File: `apps/web/src/content/blog/prix-installation-solaire-maroc-2026.md`.
+
+- [ ] W134 — **Post: « Rentabilité et retour sur investissement du solaire par ville marocaine ».**
+  Uses `CONTENT_SEO_NOTES.md` §3+§2: the **kWh/kWc/yr by city** table (Casablanca 1 500–1 600,
+  Marrakech ~1 779, Ouarzazate ~1 850–1 950, etc., cited PVGIS/Solargis), the **"sélective" tranche
+  mechanism** (above 150 kWh/mo you pay the high marginal rate on everything — what solar removes),
+  and the **5–7 yr payback** consensus. Flag the evolving top-tranche rates as « à vérifier sur une
+  facture récente ». Cross-link the cost pillar (W133) + loi 82-21 post (W135). Accept: cited
+  city/yield table + payback, freshness-flagged tariffs. File:
+  `apps/web/src/content/blog/rentabilite-solaire-par-ville-maroc.md`.
+
+- [ ] W135 — **Post: « Loi 82-21 : ce qui change depuis le 9 juin 2026 (autoproduction, plafond
+  20 %, rachat 0,18–0,21 DH) ».** Regulatory deep-dive from `CONTENT_SEO_NOTES.md` §1: the three
+  regimes + thresholds (≤11 kW déclaration / 11 kW–5 MW accord / >5 MW autorisation), the **9 June
+  2026** entry into force, the **20 % surplus cap**, the **net-billing (not net-metering)** fact and
+  the **0,18–0,21 DH buyback ≪ retail** consequence (self-consumption is where the value is). Penalties
+  + Article 33 18-month window included but explicitly VERIFY-FIRST (« à confirmer sur le texte
+  officiel »). Complements the existing `/guides/loi-82-21-expliquee` (this one is dated + numeric).
+  Accept: accurate cited regulatory post with the honest self-consumption conclusion. File:
+  `apps/web/src/content/blog/loi-82-21-autoproduction-2026.md`.
+
+- [ ] W136 — **Post: « Recharger sa voiture électrique au solaire : combien ça coûte vraiment au
+  Maroc ? »** Economics piece from `CONTENT_SEO_NOTES.md` §6: the **cost-per-100 km** comparison —
+  petrol ~93 MAD vs EV-on-grid ~23 MAD (¼) vs EV-on-solar ~0–13 MAD — **with the assumptions stated
+  inline** (petrol 6,5 L/100 km, essence 14,27 MAD/L mid-Jun-2026, EV 15 kWh/100 km +10 %, grid
+  ~1,40 DH/kWh marginal), the **panels-per-EV (~2–4 × 550 W)** rule, and **7 kW monophasé vs 11/22 kW
+  triphasé**. Fuel price date-stamped + flagged biweekly. This is the dated companion to the W120 EV
+  service page (link both ways). Accept: cited, assumption-transparent EV-vs-petrol economics. File:
+  `apps/web/src/content/blog/recharger-voiture-electrique-solaire-cout-maroc.md`.
+
+- [ ] W137 — **Post: « Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au
+  Maroc ».** From `CONTENT_SEO_NOTES.md` §1+§7: with export capped at 20 % and bought back at
+  0,18–0,21 DH while you buy at 0,90–1,66 DH, a **stored-and-self-used kWh beats an exported one**;
+  the **order of value** (consommer en journée → stocker le soir → exporter les 20 %), generic LFP
+  **~3 000–4 000 DH/kWh** (VERIFY-FIRST; the 12 400 DH/kWh outlier explicitly excluded), battery
+  payback +1–3 yr. Cross-link battery sizing guide (W127) + Dyness post (W138). Accept: the Morocco
+  store-vs-sell economics, honestly framed, cited ranges. File:
+  `apps/web/src/content/blog/batterie-stocker-ou-revendre-maroc.md`.
+
+- [ ] W138 — **Post: « Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le
+  secours ».** Product/spec deep-dive from `CONTENT_SEO_NOTES.md` §7: the **Dyness LFP lineup** (B4850
+  2,4 kWh, PowerDepot H5B 5,12 kWh w/ built-in heating, Tower T7/T10/T14, PowerBrick 14,34 kWh — LFP,
+  ≥6 000 cycles, 10-yr/70 % warranty) and the **backup differentiator** — **Deye SG-series near-seamless
+  ~4–10 ms UPS, no extra box, 48 V LFP, 6 TOU windows** vs **Huawei SUN2000 + Backup Box (<3 s
+  changeover, three-phase M0 = no backup)** — plus the LFP lifespan/heat facts (10–15 yr, +10 °C ≈
+  halves life, never charge <0 °C). Mark the VERIFY-FIRST spec conflicts (efficiency %, H5B 7-vs-10-yr).
+  Complements the chemistry guide (W126). Accept: accurate cited product/backup post. File:
+  `apps/web/src/content/blog/batterie-lfp-dyness-deye-huawei.md`.
+
+- [ ] W139 — **Tests for the blog.** Add `apps/web` Vitest coverage: the blog collection schema parses
+  the seed posts; `/rss.xml` emits valid RSS 2.0 (well-formed XML, item count = published posts);
+  a `draft:true` fixture post is **excluded** from the index, the sitemap and RSS; each post route has
+  exactly one self-referencing canonical and carries `BlogPosting` + `BreadcrumbList` JSON-LD and NO
+  second `FAQPage`; `/blog` is present in the sitemap and `/preview/*` still absent. Accept: new
+  assertions pass, full suite green, Lighthouse held. Files: `apps/web/tests/*.ts` (+ new files).
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
@@ -779,13 +898,10 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   (W11), not gated. Délégataire (Lydec/Redal/Amendis) exact grids still await a real bill per
   city — those numbers remain gated until then.
 - **WG3 — Any new paid API or npm dependency** beyond PVGIS / what `apps/web` already ships.
-- **WG4 — A true dated/Markdown blog (Astro content collection).** W119–W131 expand the existing
-  `/guides` library (the site's established content-hub pattern) — no new architecture. A real
-  *blog* with dated posts, author bylines, tags and a Markdown/MDX content collection is a
-  **structural addition** (new `src/content/` collection + config + index/pagination + `Blog`/
-  `Article` schema), so it's a founder decision: do you want a periodic blog on top of the
-  evergreen guides, and if so under `/blog` or folded into `/guides` with dates? Until decided,
-  new long-form content ships as guides (W121–W128).
+- **WG4 — A true dated/Markdown blog (Astro content collection). — [RESOLVED 2026-06-21 → see
+  W132–W139 in BUILD QUEUE]** The founder authorized the architecture change. The blog ships as a
+  core Astro content collection under `/blog` (dated, tagged, RSS), kept editorially distinct from
+  the evergreen `/guides`, with no new npm dependency — now active build tasks W132–W139, not gated.
 
 ---
 
