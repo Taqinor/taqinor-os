@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# Error-Autopilot configuration
+# ---------------------------------------------------------------------------
+# Read at the START of every run by .claude/skills/error-autopilot/SKILL.md
+# (the daily "scan -> verify a fix actually works -> file a tested correction
+# item" autopilot). Operator guide: docs/error-autopilot.md
+#
+# KILL SWITCH. Set `enabled: false` and commit to stop the autopilot from
+# doing anything on its next run. When disabled the skill makes NO changes,
+# NO commit, NO merge -- it prints a one-line "disabled" status and exits.
+# This is independent of (and additional to) the Claude Routine's own
+# pause/resume toggle, so you have two ways to turn it off.
+enabled: true
+
+# FIRING TIME is NOT set here. It lives on the Claude Routine that runs this
+# skill (Claude Code on the web "Routines"). Change it with `/schedule update`
+# or at https://claude.ai/code/routines. The value below is a human note only
+# and has no effect on when the routine fires.
+schedule_note: "daily 12:00 Africa/Casablanca (midday)"
+
+# Maximum number of concurrent worktree lanes, passed to
+# `python scripts/plan_lanes.py --max-lanes`. Raise as high as the session
+# can sustain.
+max_lanes: 8
+
+# What each area triages into. The two areas never overlap: OS = the whole
+# repo EXCEPT apps/web; web = apps/web only. Do not change unless the repo
+# layout changes.
+targets:
+  os:
+    error_plan: docs/ERROR_PLAN.md       # in the CODEMAP plan fingerprint
+    id_prefix: ERR
+    includes:
+      - backend/                          # Django (django_core) + FastAPI (fastapi_ia)
+      - frontend/                         # React/Vite OS app
+    excludes:
+      - apps/web/                         # belongs to the web area below
+  web:
+    error_plan: docs/WEB_ERROR_PLAN.md   # NOT in the fingerprint (mirrors WEB_PLAN.md)
+    id_prefix: WEBERR
+    includes:
+      - apps/web/                         # Astro marketing site + preview lab
+
+# Founder's choice (2026-06-21): append the verified correction items and
+# self-merge dev -> main exactly once at the end of the run, like
+# "work on the plan". The autopilot only ever writes the two error-plan
+# files (and CODEMAP §10 for the OS one) -- it does NOT land the code fixes
+# themselves; those are drained later by "work on error plan".
+output: self-merge-to-main
