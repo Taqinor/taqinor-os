@@ -58,8 +58,10 @@ const VILLES = [
 // classes) et script INCHANGÉS.
 // W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
 // py-3 + text-base + border ≈ 46 px ; placeholder contrast raised to lune-soft.
+// W194 — focus ring boosted to /60 opacity for clear visibility; placeholder
+// bumped to lune-soft (≈8:1 on nuit). aria-invalid styling via <style> below.
 const inputClass =
-  'w-full min-h-[44px] border border-white/15 bg-nuit-800 px-3 py-3 text-base text-white placeholder:text-lune-soft outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+  'w-full min-h-[44px] border border-white/15 bg-nuit-800 px-3 py-3 text-base text-white placeholder:text-lune-soft outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/60';
 ---
 
 <!-- ACTE FINAL — le diagnostic, dans la nuit éclairée d'or (W51). La couture
@@ -210,6 +212,21 @@ const inputClass =
   )}
   </div>
 </section>
+
+<!-- W194 — validation / error / placeholder / focus-ring styles (Astro-scoped). -->
+<style>
+  /* Champs invalides (aria-invalid posé par le JS de validation) */
+  input[aria-invalid="true"],
+  select[aria-invalid="true"] {
+    border-color: var(--color-alert-300);
+    box-shadow: 0 0 0 2px rgb(244 161 138 / 0.25);
+  }
+  /* Message d'erreur global — plus visible (border pleine, fond plus opaque) */
+  #lf-err:not(.hidden) {
+    border-color: var(--color-alert-300);
+    background-color: rgb(244 161 138 / 0.15);
+  }
+</style>
 
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';

@@ -67,8 +67,9 @@ const T = {
 }[locale];
 
 // W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
+// W194 — focus ring boosted to /50 opacity for clear keyboard visibility.
 const inputClass =
-  'w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
+  'w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50 placeholder:text-encre-faint';
 ---
 
 <div class="border border-azur-900/15 bg-blanc-azur p-6 text-encre sm:p-8">
