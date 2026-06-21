@@ -12,14 +12,27 @@ import { fetchDashboard } from '../features/reporting/store/reportingSlice'
 import reportingApi from '../api/reportingApi'
 import api from '../api/axios'
 import { downloadXlsx } from '../api/importApi'
-import { formatMAD, formatNumber } from '../lib/format'
+import { formatMAD, formatNumber, formatPercent, toNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardContent, CardDescription,
   Stat, Badge, StatusPill, Segmented, Skeleton, EmptyState,
 } from '../ui'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
+// K149 — toutes les figures passent par les utilitaires F19 (Intl fr-MA / MAD).
 const dh = (v) => formatMAD(v, { decimals: 0 }).replace(' MAD', ' DH')
+
+// K149 — Montant COMPACT pour les tuiles KPI (« 1,2 M DH », « 320 k DH »).
+// Notation compacte fr-MA + suffixe DH ; tiret cadratin si valeur invalide.
+const dhCompact = (v) => {
+  const n = toNumber(v)
+  if (n === null) return '—'
+  const body = new Intl.NumberFormat('fr-MA', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(n)
+  return `${body} DH`
+}
 
 // Couleurs de séries pour recharts, tirées des tokens sémantiques (clair/sombre).
 const CHART_INFO = 'var(--color-info)'
@@ -57,7 +70,8 @@ function ConversionBar({ label, value, max, tone }) {
       <div className="mb-1 flex items-center justify-between text-sm text-muted-foreground">
         <span>{label}</span>
         <span className="font-semibold tabular-nums text-foreground">
-          {formatNumber(value)} <span className="font-normal text-muted-foreground">({pct}%)</span>
+          {formatNumber(value)}{' '}
+          <span className="font-normal text-muted-foreground">({formatPercent(pct)})</span>
         </span>
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -288,10 +302,10 @@ export function Component() {
 
       {/* ── KPIs ── */}
       <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ClickableStat navigate={navigate} to="/ventes/factures?statut=payee" label="CA encaissé" value={dh(kpis.ca_paye)} hint="Factures payées" icon={Wallet} />
-        <ClickableStat navigate={navigate} to="/ventes/factures?statut=en_retard" label="En attente de paiement" value={dh(kpis.ca_attente)} hint="Émises + en retard" icon={Clock} />
+        <ClickableStat navigate={navigate} to="/ventes/factures?statut=payee" label="CA encaissé" value={dhCompact(kpis.ca_paye)} hint="Factures payées" icon={Wallet} />
+        <ClickableStat navigate={navigate} to="/ventes/factures?statut=en_retard" label="En attente de paiement" value={dhCompact(kpis.ca_attente)} hint="Émises + en retard" icon={Clock} />
         <ClickableStat navigate={navigate} to="/crm" label="Clients actifs" value={formatNumber(kpis.nb_clients)} hint="Total base clients" icon={Users} />
-        <ClickableStat navigate={navigate} to="/stock" label="Valeur du stock" value={dh(kpis.valeur_stock)} hint="Prix vente × quantité" icon={Package} />
+        <ClickableStat navigate={navigate} to="/stock" label="Valeur du stock" value={dhCompact(kpis.valeur_stock)} hint="Prix vente × quantité" icon={Package} />
       </div>
 
       {/* ── Graphiques ligne 1 ── */}
@@ -429,7 +443,7 @@ export function Component() {
               <div className="mt-4 rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
                 Taux de conversion global :{' '}
                 <strong className="tabular-nums text-foreground">
-                  {Math.round((conversion.nb_factures / conversion.nb_devis) * 100)}%
+                  {formatPercent(Math.round((conversion.nb_factures / conversion.nb_devis) * 100))}
                 </strong>
               </div>
             )}
