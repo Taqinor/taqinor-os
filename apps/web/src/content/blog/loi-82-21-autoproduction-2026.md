@@ -13,8 +13,9 @@ draft: false
 Pendant des années, j'ai dû répondre la même chose aux clients qui me parlaient de
 revendre leur surplus : « la loi existe, mais elle n'est pas applicable ». La loi 82-21
 était sur le papier depuis 2022 et restait lettre morte, faute de textes d'application.
-Ce n'est plus le cas. Le **Décret 2-25-100** a comblé ce vide et la **Décision ANRE 04/26**
-a fixé les tarifs de rachat du surplus. Le dispositif est **en vigueur depuis le 9 juin 2026**.
+Ce n'est plus le cas. Le **Décret 2-25-100**, publié au Bulletin Officiel le **9 mars 2026**,
+a comblé ce vide et la **décision de l'ANRE** a fixé les tarifs de rachat du surplus. Le dispositif
+est **en vigueur depuis le 9 juin 2026**.
 
 Autrement dit, ce n'est plus une promesse pour plus tard. Les règles s'appliquent
 aujourd'hui, aux installations neuves comme à celles déjà posées.
@@ -73,7 +74,7 @@ Le Maroc a choisi le **net-billing**, pas le net-metering. La distinction est fo
 - **Net-billing** (système marocain) : le surplus injecté est **racheté à un tarif
   réglementé**, fixé par l'ANRE, nettement inférieur au prix de détail.
 
-Le tarif de rachat fixé par la Décision ANRE 04/26 est :
+Le tarif de rachat fixé par l'ANRE est :
 - **0,21 DH/kWh** en heure de pointe
 - **0,18 DH/kWh** en heure creuse
 

@@ -20,7 +20,7 @@ import { NAP } from '../../lib/nap';
 
 export async function getStaticPaths() {
   const posts = (
-    await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft : true))
+    await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft && data.pubDate.getTime() <= Date.now() : true))
   ).sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
 
   return posts.map((post, i) => ({
