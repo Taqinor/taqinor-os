@@ -82,10 +82,10 @@ const sanctions = [
       </ul>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">التسوية في 5 مراحل</h2>
-      <ol class="mt-8 border-l-2 border-brass-400/60" data-stagger>
+      <ol class="mt-8 border-l-2 border-brass-400/60 ar-timeline" data-stagger>
         {steps.map((s, i) => (
           <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
-            <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+            <span class="fig ar-timeline-step absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
             <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
           </li>
@@ -146,6 +146,27 @@ const sanctions = [
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /*
+   * W214 — RTL structural fix: timeline dots.
+   * The global [dir="rtl"] block flips border-l-2 → border-inline-start and
+   * pl-8 → padding-inline-start. But the absolute step-circle uses physical
+   * `left: -1.25rem` which must be flipped to `right: -1.25rem` in RTL.
+   * `.ar-timeline` scopes this to this page only, so the FR template is safe.
+   */
+  [dir="rtl"] .ar-timeline {
+    /* border-inline-start already handled by global [dir="rtl"] :where(.border-l-2) */
+  }
+  [dir="rtl"] .ar-timeline > li {
+    padding-left: 0;
+    padding-inline-start: 2rem; /* pl-8 = 2rem */
+  }
+  [dir="rtl"] .ar-timeline .ar-timeline-step {
+    left: auto;
+    right: -1.25rem; /* mirrors -left-5 */
+  }
+</style>
 
 <script>
   import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
