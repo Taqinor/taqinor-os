@@ -1,59 +1,65 @@
-import test from 'node:test'
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { setTimeout as delay } from 'node:timers/promises'
 import { debounce } from './debounce.js'
 
-/* O66 — Tests de l'anti-rebond (timing + appel trailing). */
+/* O66 — Anti-rebond. Timers DÉTERMINISTES via `mock.timers` (node:test) : on
+   avance le temps virtuellement (tick) au lieu d'attendre de vrais délais, ce qui
+   supprime toute flakiness sous charge CI tout en testant le comportement réel. */
 
-test('debounce: ne déclenche qu une fois après la pause (trailing)', async () => {
+test('debounce: ne déclenche qu une fois après la pause (trailing)', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const calls = []
   const d = debounce((v) => calls.push(v), 30)
   d('a')
   d('b')
   d('c')
-  // Avant l'échéance : aucun appel.
+  assert.deepEqual(calls, []) // avant l'échéance : rien
+  t.mock.timers.tick(29)
   assert.deepEqual(calls, [])
-  await delay(60)
-  // Un seul appel, avec les derniers arguments.
+  t.mock.timers.tick(1) // échéance franchie → un seul appel, derniers args
   assert.deepEqual(calls, ['c'])
 })
 
-test('debounce: chaque appel reporte l échéance', async () => {
+test('debounce: chaque appel reporte l échéance', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const calls = []
   const d = debounce((v) => calls.push(v), 40)
   d('x')
-  await delay(25) // < 40ms → pas encore déclenché
+  t.mock.timers.tick(25) // < 40ms → pas encore
   assert.deepEqual(calls, [])
-  d('y') // reporte l'échéance de 40ms supplémentaires
-  await delay(25) // 25ms après le 2e appel → toujours rien
+  d('y') // reporte de 40ms
+  t.mock.timers.tick(25) // 25ms après le 2e appel → toujours rien
   assert.deepEqual(calls, [])
-  await delay(40) // assez pour franchir l'échéance
+  t.mock.timers.tick(15) // franchit l'échéance reportée
   assert.deepEqual(calls, ['y'])
 })
 
-test('debounce: appels espacés déclenchent à chaque fois', async () => {
+test('debounce: appels espacés déclenchent à chaque fois', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const calls = []
   const d = debounce((v) => calls.push(v), 20)
   d('1')
-  await delay(50)
+  t.mock.timers.tick(20)
   d('2')
-  await delay(50)
+  t.mock.timers.tick(20)
   assert.deepEqual(calls, ['1', '2'])
 })
 
-test('debounce: cancel() annule l appel en attente', async () => {
+test('debounce: cancel() annule l appel en attente', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const calls = []
   const d = debounce((v) => calls.push(v), 30)
   d('a')
   d.cancel()
-  await delay(60)
+  t.mock.timers.tick(60)
   assert.deepEqual(calls, [])
 })
 
-test('debounce: transmet tous les arguments', async () => {
+test('debounce: transmet tous les arguments', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const seen = []
   const d = debounce((a, b, c) => seen.push([a, b, c]), 15)
   d(1, 2, 3)
-  await delay(40)
+  t.mock.timers.tick(15)
   assert.deepEqual(seen, [[1, 2, 3]])
 })

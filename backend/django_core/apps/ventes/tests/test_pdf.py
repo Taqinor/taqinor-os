@@ -9,7 +9,7 @@ import base64
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Client
@@ -104,6 +104,7 @@ def make_facture(user, client, produit):
 
 # ── Unit tests — pdf utils ────────────────────────────────────────────────────
 
+@tag('pdf')  # rendu WeasyPrint — lourd → palier release-verify (exclu par-merge)
 class TestPdfRender(TestCase):
     """Test HTML rendering and WeasyPrint conversion in isolation."""
 

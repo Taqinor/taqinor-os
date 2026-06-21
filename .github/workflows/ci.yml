@@ -204,9 +204,12 @@ jobs:
           docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
-      - name: Run Django test suite
+      # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
+      # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
+      # (manuel + nightly), pour un retour rapide sur chaque merge.
+      - name: Run Django test suite (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
-        run: python manage.py test apps authentication -v 2
+        run: python manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
 
   frontend-lint:
     needs: changes
@@ -225,9 +228,16 @@ jobs:
       - name: Lint frontend (eslint)
         working-directory: frontend
         run: npm run lint
-      - name: Frontend unit tests (solar math parity + catalogue)
+      # Logique pure (sizing solaire, parité catalogue, utils…) : node:test, AUTO-
+      # DÉCOUVERTE via glob — tout nouveau *.test.mjs tourne sans liste à tenir.
+      - name: Frontend unit tests (node:test — pure logic, auto-discovered)
         working-directory: frontend
-        run: node --test "src/features/ventes/solar.test.mjs" "src/features/ventes/previewPdf.test.mjs" "src/features/stock/catalogue.test.mjs" "src/api/origin.test.mjs" "src/features/crm/stages.test.mjs" "src/features/crm/bulk.test.mjs" "src/features/installations/statuses.test.mjs" "src/pages/reporting/archiveDocs.test.mjs" "src/pages/reporting/reporting.layout.test.mjs" "src/features/stock/procurement.test.mjs" "src/features/stock/emplacements.test.mjs" "src/components/layout/menu.layout.test.mjs" "src/lib/format.test.mjs" "src/design/theme.test.mjs" "src/ui/datatable/datatable.test.mjs" "src/ui/date-utils.test.mjs" "src/ui/file-utils.test.mjs" "src/ui/form-utils.test.mjs" "src/features/stock/labels.test.mjs"
+        run: node --test "src/**/*.test.mjs"
+      # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
+      # exécutée par Vitest (fichiers *.test.jsx, jsdom).
+      - name: Frontend component + a11y tests (Vitest + Testing Library + axe)
+        working-directory: frontend
+        run: npm run test:unit
 
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
@@ -382,7 +392,11 @@ jobs:
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
           cd ../../frontend
-          npx playwright test
+          # Palier « smoke » par-merge : parcours critiques uniquement (lead →
+          # devis → PDF, et santé des pages). Le projet `setup` se connecte via la
+          # dépendance Playwright. La MATRICE e2e complète (toutes les specs +
+          # mobile) tourne dans release-verify.yml (manuel + nightly).
+          npx playwright test --project=chromium devis.spec.js health.spec.js
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
