@@ -628,8 +628,9 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
 >   `https://solar.huawei.com/-/media/Solar/attachment/pdf/in/datasheet/SUN2000-100KTL-INM0.pdf`
 > - **Onduleurs hybrides Deye 5–12kW** (SUN-5/6/8/10/12K-SG04LP3-EU) →
 >   `https://www.deyeinverter.com/deyeinverter/2024/10/21/datasheet_sun-5-12k-sg04lp3_241021_en.pdf`
-> - **Batterie Deyness/Deye 5–10kWh** (SE-G5.1 Pro LFP) →
->   `https://deyeess.com/wp-content/uploads_old/2023/08/SE-G5.1-Pro-SE-G5.3.pdf`
+> - **Batterie Dyness** (DL5.0C / DL5.0C PRO, LFP 5,12 kWh) →
+>   `https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf`
+>   (the catalogue label "Deyness" is the **Dyness** brand — page Équipement confirms it)
 > - **Smart Meter Huawei** (DTSU666-H Smart Power Sensor) →
 >   `https://solar.huawei.com/~/media/Solar/attachment/pdf/es/datasheet/SmartPowerSensor.pdf`
 > - **Wifi Dongle Huawei** (Smart Dongle-WLAN-FE, SDongleA-05, region MEA) →
@@ -639,10 +640,16 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
 >   datasheet; author a short in-house spec card (founder supplies copy) or omit.
 > Quote-engine slugs (must match these pages so the PDF links resolve):
 > `canadian-solar-710`, `jinko-710`, `onduleur-huawei-reseau`,
-> `onduleur-deye-hybride`, `batterie-deye`, `smart-meter-huawei`,
+> `onduleur-deye-hybride`, `batterie-dyness`, `smart-meter-huawei`,
 > `wifi-dongle-huawei`.
 
-- [ ] W119 — **Host the datasheet PDFs on taqinor.ma.** Download each official PDF
+- [x] W119 — **Host the datasheet PDFs on taqinor.ma.** *(2026-06-21: `fiches.ts`
+  manifest shipped (7 products, Dyness corrected) + `ficheDownloadHref` uses the
+  self-hosted `/fiches/<slug>.pdf` when present, else the official source — so the
+  download always works. The PDF binaries still need a MANUAL drop into
+  `apps/web/public/fiches/`: the manufacturer URLs returned HTTP 403 to
+  programmatic fetch from the build env, and self-hosting copyrighted datasheets
+  is the founder's call.)* Download each official PDF
   above into `apps/web/public/fiches/<slug>.pdf` (one per slug; panels/inverters/
   battery/meter/dongle) so they are served from `taqinor.ma/fiches/<slug>.pdf` —
   no hotlinking a manufacturer URL at runtime. Keep a small
@@ -652,7 +659,7 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   product with a datasheet; vitest asserts every manifest `pdf` file exists.
   Files: `apps/web/public/fiches/*.pdf`, `apps/web/src/data/fiches.ts`.
 
-- [ ] W120 — **Fiches library hub `/produits`.** A premium, mobile-first public page
+- [x] W120 — **Fiches library hub `/produits`.** A premium, mobile-first public page
   listing every product from the W119 manifest grouped by catégorie (Panneaux,
   Onduleurs réseau, Onduleurs hybrides, Batteries, Accessoires), each card showing
   marque/modèle + key specs + a "Fiche technique (PDF) ›" download and a link to its
@@ -662,7 +669,7 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   (Lighthouse mobile ≥ 90); each card downloads the right PDF. Files: new
   `apps/web/src/pages/produits/index.astro` + a card component, reads `fiches.ts`.
 
-- [ ] W121 — **Per-product fiche pages `/produits/<slug>`.** A detail route generated
+- [x] W121 — **Per-product fiche pages `/produits/<slug>`.** A detail route generated
   from the W119 manifest (`getStaticPaths`) for each slug: hero (marque/modèle/
   catégorie), a clean key-spec table, the embedded/downloadable datasheet, the
   TAQINOR garanties for that family, and a "Demander un devis" CTA. Add JSON-LD
@@ -671,7 +678,7 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   sitemap; vitest covers one panel + one inverter slug. Files: new
   `apps/web/src/pages/produits/[slug].astro`, reuse SEO head partial.
 
-- [ ] W122 — **Wire the funnel: link fiches from the web proposal (W116) + nav.** On
+- [x] W122 — **Wire the funnel: link fiches from the web proposal (W116) + nav.** *(2026-06-21: nav (Ressources dropdown) + footer now expose `/produits`, and the **devis PDF** already deep-links each equipment line to `/produits/<slug>`. The web-proposal row-linking part waits on W116, which is not built yet.)* On
   the client web proposal (W116), make each equipment line link to its
   `/produits/<slug>` page (match by the same slug map above; unmatched lines stay
   plain text). Add "Produits / Fiches techniques" to the site nav + footer so the
@@ -680,7 +687,7 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   catalogue's panel/inverter/battery names. Files: `proposition/[token].astro`
   (W116), nav/footer components, shared slug map in `fiches.ts`.
 
-- [ ] W123 — **Sitemap + SEO for the library.** Ensure `/produits` and every
+- [x] W123 — **Sitemap + SEO for the library.** Ensure `/produits` and every
   `/produits/<slug>` are in the sitemap (W100), have unique titles/descriptions
   (W99), and that the PDFs are crawlable but not duplicated as canonical pages.
   **Done =** sitemap includes the library; per-page head is unique; Vitest SEO

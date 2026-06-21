@@ -1,0 +1,77 @@
+---
+/**
+ * /produits — Bibliothèque des FICHES TECHNIQUES (W120).
+ *
+ * Destination des liens « fiche technique » du devis premium : chaque
+ * équipement du devis renvoie ici (ou vers /produits/<slug>). Contenu vérifié,
+ * spec détaillée déléguée au PDF constructeur officiel (lib/fiches.ts).
+ */
+import Layout from '../../layouts/Layout.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { fichesByCategorie, ficheDownloadHref } from '../../lib/fiches';
+
+const groups = fichesByCategorie();
+---
+
+<Layout
+  title="Fiches techniques du matériel posé — panneaux, onduleurs, batteries | Taqinor"
+  description="Les fiches techniques officielles du matériel que nous posons : panneaux Canadian Solar et Jinko, onduleurs Huawei et Deye, batteries Dyness, comptage et supervision Huawei. Spécifications constructeur, à télécharger."
+  ogSlug="equipement"
+>
+  <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Fiches techniques' }]} />
+
+  <section class="px-4 py-20 text-white sm:py-24">
+    <div class="mx-auto max-w-6xl">
+      <p class="tech-label text-brass-300">Documentation · matériel réellement posé</p>
+      <h1 class="display mt-5 max-w-3xl text-4xl sm:text-5xl">Fiches techniques</h1>
+      <p class="mt-6 max-w-2xl text-white/85">
+        Chaque équipement de nos installations — et de votre devis — renvoie ici, vers sa
+        fiche technique. Les chiffres détaillés viennent de la fiche constructeur officielle ;
+        nous ne réécrivons aucune spécification à la main.
+      </p>
+    </div>
+  </section>
+
+  {groups.map((g) => (
+    <section class="mx-auto max-w-6xl px-4 pb-4">
+      <h2 class="tech-label mb-5 text-brass-300">{g.categorie}</h2>
+      <div class="grid gap-6 pb-10 md:grid-cols-2 lg:grid-cols-3">
+        {g.fiches.map((f) => (
+          <article class="flex flex-col border border-white/10 bg-white/[0.02]">
+            <div class="flex items-center justify-between border-b-2 border-brass-400/70 px-5 py-3">
+              <span class="tech-label text-brass-300">{f.marque}</span>
+              <span class="h-1.5 w-1.5 rotate-45 border border-brass-400" aria-hidden="true"></span>
+            </div>
+            <div class="flex flex-1 flex-col p-5">
+              <h3 class="display text-lg text-white">{f.nom}</h3>
+              <p class="mt-1 text-xs text-lune-faint">{f.modele}</p>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{f.resume}</p>
+              <ul class="mt-4 space-y-2 text-sm text-lune">
+                {f.faits.map((p) => (
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{p}</span></li>
+                ))}
+              </ul>
+              <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4">
+                <a href={`/produits/${f.slug}`} class="text-sm font-bold text-white transition-colors hover:text-brass-300">Détails &rsaquo;</a>
+                <a href={ficheDownloadHref(f)} target="_blank" rel="noopener" class="text-sm font-semibold text-brass-300 transition-colors hover:text-brass-200">Fiche technique (PDF) &rsaquo;</a>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  ))}
+
+  <section class="mx-auto max-w-6xl px-4 pb-16">
+    <p class="max-w-2xl border-l-4 border-brass-400 pl-4 text-sm leading-relaxed text-lune-soft">
+      Le matériel n'est jamais choisi d'avance : la puissance, la présence ou non d'une batterie,
+      le mono ou le triphasé sortent des chiffres de votre toiture. Pour le raisonnement derrière
+      chaque marque, voyez <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
+    </p>
+  </section>
+
+  <CtaBand title="Le bon matériel, c'est celui que l'étude justifie." seam={false} />
+  <StickyCta />
+</Layout>

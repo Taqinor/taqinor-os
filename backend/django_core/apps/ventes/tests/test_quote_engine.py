@@ -1285,7 +1285,7 @@ class TestResidentialRenderer(TestCase):
         own lines (structures, socles, installation…) stay plain text."""
         html, _ = self._html_and_doc()
         for slug in ('canadian-solar-710', 'onduleur-huawei-reseau',
-                     'onduleur-deye-hybride', 'batterie-deye',
+                     'onduleur-deye-hybride', 'batterie-dyness',
                      'smart-meter-huawei', 'wifi-dongle-huawei'):
             self.assertIn(f'/produits/{slug}', html)
         # an own-component line is not turned into a datasheet link
@@ -1301,7 +1301,7 @@ class TestResidentialRenderer(TestCase):
         self.assertEqual(theme.fiche_slug('Onduleur réseau Huawei 10kW'),
                          'onduleur-huawei-reseau')
         self.assertEqual(theme.fiche_slug('Batterie Deyness 10 kWh'),
-                         'batterie-deye')
+                         'batterie-dyness')
         self.assertEqual(theme.fiche_slug('Structures acier'), '')
         self.assertEqual(theme.fiche_slug('Installation'), '')
 

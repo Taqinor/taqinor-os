@@ -168,7 +168,7 @@ def fiche_slug(designation, marque="") -> str:
             return "onduleur-huawei-reseau"
         return "onduleur-huawei-reseau"
     if "batterie" in blob or "battery" in blob:
-        return "batterie-deye"
+        return "batterie-dyness"
     if "smart meter" in blob or "compteur" in blob:
         return "smart-meter-huawei"
     if "dongle" in blob or "wifi" in blob:

@@ -1,0 +1,97 @@
+---
+/**
+ * /produits/<slug> — Fiche technique d'un produit (W121).
+ *
+ * Généré depuis lib/fiches.ts (getStaticPaths). Affiche les faits VÉRIFIÉS +
+ * le lien vers la fiche constructeur officielle (source faisant foi pour le
+ * détail) ; JSON-LD Product. Cible directe des liens du devis premium.
+ */
+import Layout from '../../layouts/Layout.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { FICHES, ficheDownloadHref, type Fiche } from '../../lib/fiches';
+
+export function getStaticPaths() {
+  return FICHES.map((f) => ({ params: { slug: f.slug }, props: { fiche: f } }));
+}
+
+interface Props {
+  fiche: Fiche;
+}
+const { fiche } = Astro.props as Props;
+const downloadHref = ficheDownloadHref(fiche);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: fiche.nom,
+  category: fiche.categorie,
+  brand: { '@type': 'Brand', name: fiche.marque },
+  model: fiche.modele,
+  url: new URL(`/produits/${fiche.slug}`, Astro.site).href,
+};
+---
+
+<Layout
+  title={`${fiche.nom} — fiche technique | Taqinor`}
+  description={`${fiche.nom} (${fiche.modele}) : ${fiche.resume} Fiche technique constructeur officielle à télécharger.`}
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+  <Breadcrumb
+    items={[
+      { label: 'Accueil', href: '/' },
+      { label: 'Fiches techniques', href: '/produits' },
+      { label: fiche.nom },
+    ]}
+  />
+
+  <section class="px-4 py-16 text-white sm:py-20">
+    <div class="mx-auto max-w-3xl">
+      <p class="tech-label text-brass-300">{fiche.categorie} · {fiche.marque}</p>
+      <h1 class="display mt-4 text-3xl sm:text-4xl">{fiche.nom}</h1>
+      <p class="mt-2 text-sm text-lune-faint">{fiche.modele}</p>
+      <p class="mt-5 max-w-2xl text-white/85">{fiche.resume}</p>
+
+      <div class="mt-8 border-t-2 border-brass-400/70">
+        <h2 class="tech-label mt-5 text-brass-300">Caractéristiques vérifiées</h2>
+        <ul class="mt-4 divide-y divide-white/10">
+          {fiche.faits.map((p) => (
+            <li class="flex gap-3 py-3 text-sm text-lune">
+              <span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span>
+              <span>{p}</span>
+            </li>
+          ))}
+          <li class="flex items-baseline justify-between gap-4 py-3 text-sm">
+            <span class="text-lune-soft">Garantie</span>
+            <span class="font-semibold text-white">{fiche.garantie}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a
+          href={downloadHref}
+          target="_blank"
+          rel="noopener"
+          class="inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Fiche technique officielle (PDF)
+        </a>
+        <a href="/contact" class="border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">Demander un devis &rarr;</a>
+      </div>
+
+      <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+        Les spécifications détaillées font foi dans la fiche constructeur officielle liée ci-dessus.
+        Le raisonnement derrière chaque marque est expliqué sur
+        <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
+      </p>
+    </div>
+  </section>
+
+  <CtaBand title="Le bon matériel, c'est celui que l'étude justifie." seam={false} />
+  <StickyCta />
+</Layout>
