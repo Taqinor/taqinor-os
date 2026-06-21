@@ -77,6 +77,10 @@ class ChecklistEtapeModele(models.Model):
     libelle = models.CharField(max_length=120)
     ordre = models.PositiveIntegerField(default=0)
     capture_serie = models.BooleanField(default=False)
+    # FG76 — une photo est REQUISE pour valider cette étape (gate identique à
+    # F8 pour les créneaux de la shot list d'intervention). Défaut False : les
+    # étapes existantes ne sont pas bloquées rétroactivement.
+    photo_obligatoire = models.BooleanField(default=False)
     actif = models.BooleanField(default=True)
     protege = models.BooleanField(default=False)
 
@@ -156,6 +160,9 @@ class ChantierChecklistItem(models.Model):
     libelle = models.CharField(max_length=120)
     ordre = models.PositiveIntegerField(default=0)
     capture_serie = models.BooleanField(default=False)
+    # FG76 — copié depuis l'étape modèle ; gate le passage fait=True tant qu'une
+    # photo de phase n'est pas disponible (miroir du comportement F8/shot list).
+    photo_obligatoire = models.BooleanField(default=False)
     fait = models.BooleanField(default=False)
     fait_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
