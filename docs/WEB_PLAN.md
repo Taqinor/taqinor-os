@@ -1169,7 +1169,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [x] W186 — **Optional duotone/grade pass on non-hero photos** so the imagery matches the
   "Cinéma du chantier" claim (keep the hero ungraded for LCP). Files: `apps/web/scripts/` or scoped
   `apps/web/src/styles/v3-photo-motion.css`.
-- [ ] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
+- [BLOCKED: founder must drop 6 official brand SVGs or widen the network egress allowlist] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
   Dyness, Nexans) to replace the text word-mark fallback. These are THIRD-PARTY *manufacturer*
   logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(BLOCKED 2026-06-21:
   net-sourcing attempted but this environment's network egress is ALLOWLISTED — only npm-type hosts
@@ -1248,7 +1248,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— RTL / Arabic —**
 
-- [ ] W213 — **Mirror the ~90 directional `→` arrows across `ar/*`** (direction-aware glyph or
+- [x] W213 — **Mirror the ~90 directional `→` arrows across `ar/*`** (direction-aware glyph or
   SVG flipped via `rtl:-scale-x-100`). Files: `apps/web/src/pages/ar/**`.
 - [x] W214 — **Add a global `[dir="rtl"]` stylesheet** (accent rails, timeline dots, blockquote
   borders, spec-row alignment), flip the asymmetric two-column hero grids, and guard `tech-label`
@@ -1497,3 +1497,5 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W208: reduced-motion-gated slow shimmer on .seam-lumiere (RTL-aware) + subtle brand-logo lift and testimonial-card hover.
 - 2026-06-21 — W186: subtle .photo-grade duotone utility in v3-photo-motion.css for non-hero photos (hero/LCP excluded; opt-in, documented).
 - 2026-06-21 — W214: comprehensive [dir="rtl"] block in global.css (tech-label tracking off, logical-property border/padding flips, rule-brass reorder, blockquote, grids, shimmer direction) + one scoped ar timeline fix.
+- 2026-06-21 — W213: RTL-mirrored 88 directional → arrows across 22 ar/* pages (Tailwind rtl:-scale-x-100 wrapper); non-directional/comment arrows left alone; text/hrefs unchanged.
+- 2026-06-21 — W187 BLOCKED: 6 of 7 third-party manufacturer brand SVGs unobtainable (network egress allowlist blocks the open web; only Huawei in a reachable npm set). Needs founder to drop the 6 official monochrome SVGs or widen the allowlist. Moved to GATED.
