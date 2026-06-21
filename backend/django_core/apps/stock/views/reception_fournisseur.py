@@ -115,3 +115,23 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         reception.statut = ReceptionFournisseur.Statut.ANNULE
         reception.save(update_fields=['statut'])
         return Response(self.get_serializer(reception).data)
+
+    @action(detail=True, methods=['post'], url_path='facturer',
+            permission_classes=[IsResponsableOrAdmin])
+    def facturer(self, request, pk=None):
+        """FG56 — Crée une FactureFournisseur à partir de cette réception
+        confirmée. Calcule HT/TVA/TTC depuis les lignes BCF. INTERNE."""
+        from ..services import facturer_reception
+        reception = self.get_object()
+        try:
+            facture = facturer_reception(
+                company=request.user.company,
+                user=request.user,
+                reception=reception)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            FactureFournisseurSerializer(
+                facture, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)

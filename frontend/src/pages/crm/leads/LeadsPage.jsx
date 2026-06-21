@@ -10,6 +10,7 @@ import {
 } from '../../../features/crm/bulk'
 import { Button, IconButton, Spinner } from '../../../ui'
 import { errorMessageFrom } from '../../../lib/toast'
+import { useSavedViews } from '../../../hooks/useSavedViews'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
 import FilterBar from './FilterBar'
@@ -17,26 +18,19 @@ import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
+import LeadExpressModal from './LeadExpressModal'
 import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
+import CarteView from './views/CarteView'  // FG37
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique']
+const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte']  // FG37
 
-// Vues enregistrées (N79, LOCAL uniquement) : nom → { filters, view }.
-function loadSavedViews() {
-  try {
-    const raw = localStorage.getItem(SAVED_VIEWS_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+// loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
 // Filtres persistés en localStorage : on fusionne avec EMPTY_FILTERS pour
 // tolérer un schéma plus ancien (clés manquantes/en trop ignorées).
@@ -87,28 +81,17 @@ export default function LeadsPage() {
   }, [filters])
   const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
 
-  // Vues enregistrées nommées (combinaison filtres + vue), LOCALES (sans email).
-  const [savedViews, setSavedViews] = useState(loadSavedViews)
-  useEffect(() => {
-    try {
-      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(savedViews))
-    } catch { /* stockage indisponible */ }
-  }, [savedViews])
+  // Vues enregistrées nommées (FG11 — useSavedViews hook).
+  const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
   const saveCurrentView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    const trimmed = (name || '').trim()
-    if (!trimmed) return
-    setSavedViews((vs) => [
-      ...vs.filter((v) => v.name !== trimmed),
-      { name: trimmed, filters, view },
-    ])
+    saveView(name, { filters, view })
   }
   const applySavedView = (v) => {
-    setFilters({ ...EMPTY_FILTERS, ...(v.filters || {}) })
-    if (VALID_VIEWS.includes(v.view)) setView(v.view)
+    setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
+    const savedView = v.state?.view ?? v.view
+    if (VALID_VIEWS.includes(savedView)) setView(savedView)
   }
-  const deleteSavedView = (name) =>
-    setSavedViews((vs) => vs.filter((v) => v.name !== name))
 
   // Formulaire lead (création / édition).
   const [showForm, setShowForm] = useState(false)
@@ -127,6 +110,8 @@ export default function LeadsPage() {
   useEffect(() => { refreshDoublonsCount() }, [])
   // Import CSV/XLSX (T9).
   const [showImport, setShowImport] = useState(false)
+  // FG35 — Lead express quick capture modal.
+  const [showExpressModal, setShowExpressModal] = useState(false)
 
   // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
   const exportFiltered = async () => {
@@ -363,6 +348,11 @@ export default function LeadsPage() {
         </h2>
         <div className="page-header-actions lp-header-actions">
           <Button onClick={openNew}>+ Nouveau lead</Button>
+          <Button
+            variant="outline"
+            title="Saisie express : nom + téléphone + canal"
+            onClick={() => setShowExpressModal(true)}
+          >⚡ Express</Button>
           <Button variant="outline" onClick={() => setShowDoublons(true)}>
             🔀 Doublons
             {doublonsCount > 0 && (
@@ -454,6 +444,13 @@ export default function LeadsPage() {
             onClearFilters={() => setFilters(EMPTY_FILTERS)}
           />
         )}
+        {/* FG37 — Vue carte : leads par GPS, colorés par étape */}
+        {view === 'carte' && (
+          <CarteView
+            leads={filtered}
+            onOpenLead={onOpenLead}
+          />
+        )}
       </div>
 
       {(showForm || deepLead) && (
@@ -486,6 +483,14 @@ export default function LeadsPage() {
           lead={signeLead}
           onClose={() => { setSigneLead(null); refetch() }}
           onConfirmed={() => { setSigneLead(null); refetch() }}
+        />
+      )}
+
+      {/* FG35 — Lead express quick capture */}
+      {showExpressModal && (
+        <LeadExpressModal
+          onClose={() => setShowExpressModal(false)}
+          onSaved={() => { setShowExpressModal(false); refetch() }}
         />
       )}
     </div>

@@ -7,8 +7,8 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .models import EventType, Notification, NotificationPreference
-from .services import merged_preferences, notify
+from .models import EventType, Notification, NotificationPreference, NotificationRoutingRule
+from .services import merged_preferences, notify, notify_many, resolve_recipients
 
 User = get_user_model()
 
@@ -486,3 +486,296 @@ class WebPushTests(TestCase):
         from .services import resolve_vapid_keys
         self.assertEqual(resolve_vapid_keys(), ('', ''))
         self.assertEqual(VapidKeyPair.objects.count(), 0)
+
+
+class SweepTaskTests(TestCase):
+    """FG1 — Balayages quotidiens des EventTypes morts."""
+
+    def setUp(self):
+        from authentication.models import Company, CustomUser
+        self.company = Company.objects.create(nom='SweepCo')
+        self.manager = CustomUser.objects.create_user(
+            username='sweepmgr', password='x',
+            company=self.company, role_legacy='admin')
+
+    def test_sweep_daily_noop_without_data(self):
+        """Sans données → 0 notifications, aucune erreur."""
+        from .sweeps import sweep_daily
+        result = sweep_daily()
+        self.assertIsInstance(result, int)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_sweep_warranty_expiring_emits_for_in_service_equipment(self):
+        """Un équipement EN SERVICE dont la garantie expire dans 30 jours
+        → notification WARRANTY_EXPIRING émise vers le manager."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from .sweeps import _sweep_warranty_expiring
+
+        client = Client.objects.create(company=self.company, nom='ClientTest')
+        chantier = Installation.objects.create(
+            company=self.company, client=client,
+            reference='CH-SW-1', statut=Installation.Statut.CLOTURE)
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur SW', prix_vente=0)
+        Equipement.objects.create(
+            company=self.company, produit=produit, installation=chantier,
+            statut=Equipement.Statut.EN_SERVICE,
+            date_fin_garantie=date.today() + timedelta(days=30))
+
+        count = _sweep_warranty_expiring(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager, event_type=EventType.WARRANTY_EXPIRING).first()
+        self.assertIsNotNone(n)
+        self.assertIn('30 jours', n.body)
+
+    def test_sweep_warranty_ignores_expired_or_far_equipment(self):
+        """Équipement dont la garantie est déjà expirée → pas de notification."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from .sweeps import _sweep_warranty_expiring
+
+        client = Client.objects.create(company=self.company, nom='ClientOld')
+        chantier = Installation.objects.create(
+            company=self.company, client=client, reference='CH-SW-2',
+            statut=Installation.Statut.CLOTURE)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau SW', prix_vente=0)
+        # Garantie déjà expirée (hier).
+        Equipement.objects.create(
+            company=self.company, produit=produit, installation=chantier,
+            statut=Equipement.Statut.EN_SERVICE,
+            date_fin_garantie=date.today() - timedelta(days=1))
+        count = _sweep_warranty_expiring(self.company)
+        self.assertEqual(count, 0)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_sweep_maintenance_due_emits_for_due_contrat(self):
+        """Contrat de maintenance dont is_due() vrai → MAINTENANCE_DUE émise."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.sav.models import ContratMaintenance
+        from .sweeps import _sweep_maintenance_due
+
+        client = Client.objects.create(company=self.company, nom='ClientM')
+        # date_debut très ancienne (400 jours) → is_due() doit renvoyer True.
+        ContratMaintenance.objects.create(
+            company=self.company, client=client,
+            date_debut=date.today() - timedelta(days=400), actif=True,
+            periodicite='annuel')
+
+        count = _sweep_maintenance_due(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager,
+            event_type=EventType.MAINTENANCE_DUE).first()
+        self.assertIsNotNone(n)
+        self.assertIn('ClientM', n.body)
+
+    def test_sweep_sav_breaching_emits_for_old_open_ticket(self):
+        """Ticket ouvert depuis 10 jours → SAV_TICKET_BREACHING émis."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.sav.models import Ticket
+        from .sweeps import _sweep_sav_breaching
+
+        client = Client.objects.create(company=self.company, nom='ClientSAV')
+        Ticket.objects.create(
+            company=self.company, client=client, reference='T-SW-1',
+            statut=Ticket.Statut.NOUVEAU,
+            date_ouverture=date.today() - timedelta(days=10))
+
+        count = _sweep_sav_breaching(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager,
+            event_type=EventType.SAV_TICKET_BREACHING).first()
+        self.assertIsNotNone(n)
+        self.assertIn('T-SW-1', n.body)
+
+    def test_sweep_chantier_due_emits_for_upcoming_chantier(self):
+        """Chantier signé avec date_pose_prevue dans 5 jours → CHANTIER_DUE."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from .sweeps import _sweep_chantier_due
+
+        client = Client.objects.create(company=self.company, nom='ClientCH')
+        Installation.objects.create(
+            company=self.company, client=client, reference='CH-SW-DUE',
+            statut=Installation.Statut.SIGNE,
+            date_pose_prevue=date.today() + timedelta(days=5))
+
+        count = _sweep_chantier_due(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager,
+            event_type=EventType.CHANTIER_DUE).first()
+        self.assertIsNotNone(n)
+        self.assertIn('5 jours', n.body)
+
+    def test_sweep_scoped_per_company(self):
+        """Les notifications d'une sweep ne sortent pas vers une autre société."""
+        from datetime import date, timedelta
+        from authentication.models import Company, CustomUser
+        from apps.crm.models import Client
+        from apps.sav.models import Ticket
+        from .sweeps import _sweep_sav_breaching
+
+        other_co = Company.objects.create(nom='AutreCo')
+        CustomUser.objects.create_user(
+            username='other_sweepmgr', password='x',
+            company=other_co, role_legacy='admin')
+
+        # Ticket de l'AUTRE société.
+        other_client = Client.objects.create(company=other_co, nom='OtherClient')
+        Ticket.objects.create(
+            company=other_co, client=other_client, reference='T-OTHER',
+            statut=Ticket.Statut.NOUVEAU,
+            date_ouverture=date.today() - timedelta(days=10))
+
+        # Sweep pour self.company : ne touche pas l'autre société.
+        count = _sweep_sav_breaching(self.company)
+        self.assertEqual(count, 0)
+        # Aucune notification pour notre manager.
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.manager,
+                event_type=EventType.SAV_TICKET_BREACHING).count(), 0)
+
+
+class RoutingRuleTests(TestCase):
+    """FG4 — Règles de routage des notifications."""
+
+    def setUp(self):
+        self.company = _make_company('RoutingCo')
+        # Un manager (admin) et un responsable.
+        self.admin = _make_user(self.company, username='admin_r')
+        self.admin.role_legacy = 'admin'
+        self.admin.save(update_fields=['role_legacy'])
+        self.resp = _make_user(self.company, username='resp_r')
+        self.resp.role_legacy = 'responsable'
+        self.resp.save(update_fields=['role_legacy'])
+        self.normal = _make_user(self.company, username='normal_r')
+        # self.normal garde role_legacy='normal' (défaut)
+
+    def test_resolve_recipients_default_returns_managers(self):
+        """Sans règle configurée → admins + responsables (comportement historique)."""
+        recipients = list(resolve_recipients(self.company, EventType.FACTURE_OVERDUE))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertIn(self.resp.pk, pks)
+        self.assertNotIn(self.normal.pk, pks)
+
+    def test_resolve_recipients_with_role_rule(self):
+        """Règle ciblant le rôle 'admin' → seuls les admins."""
+        NotificationRoutingRule.objects.create(
+            company=self.company,
+            event_type=EventType.FACTURE_OVERDUE,
+            target_role='admin')
+        recipients = list(resolve_recipients(self.company, EventType.FACTURE_OVERDUE))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertNotIn(self.resp.pk, pks)
+        self.assertNotIn(self.normal.pk, pks)
+
+    def test_resolve_recipients_with_user_rule(self):
+        """Règle ciblant un utilisateur précis → uniquement cet utilisateur."""
+        NotificationRoutingRule.objects.create(
+            company=self.company,
+            event_type=EventType.STOCK_LOW,
+            target_user=self.normal)
+        recipients = list(resolve_recipients(self.company, EventType.STOCK_LOW))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.normal.pk, pks)
+        self.assertNotIn(self.admin.pk, pks)
+
+    def test_disabled_rule_is_ignored(self):
+        """Une règle désactivée n'est pas consultée → retour aux défauts."""
+        NotificationRoutingRule.objects.create(
+            company=self.company,
+            event_type=EventType.CHANTIER_DUE,
+            target_role='admin', enabled=False)
+        recipients = list(resolve_recipients(self.company, EventType.CHANTIER_DUE))
+        # Règle désactivée → comportement par défaut : admins + responsables.
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertIn(self.resp.pk, pks)
+
+    def test_resolve_recipients_scoped_per_company(self):
+        """Les règles d'une société n'affectent pas une autre."""
+        other = _make_company('OtherRoutingCo')
+        other_admin = _make_user(other, username='other_admin_r')
+        other_admin.role_legacy = 'admin'
+        other_admin.save(update_fields=['role_legacy'])
+        # Règle pour other : cibler uniquement other_admin.
+        NotificationRoutingRule.objects.create(
+            company=other,
+            event_type=EventType.FACTURE_OVERDUE,
+            target_role='admin')
+        # Pour self.company, aucune règle → défaut.
+        recipients = list(resolve_recipients(self.company, EventType.FACTURE_OVERDUE))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertNotIn(other_admin.pk, pks)
+
+    def test_notify_many_delivers_to_all_recipients(self):
+        """notify_many() émet une notification vers chaque utilisateur fourni."""
+        recipients = [self.admin, self.resp]
+        created = notify_many(
+            recipients, EventType.STOCK_LOW,
+            'Stock bas', 'Un produit est sous le seuil.',
+            company=self.company)
+        self.assertEqual(len(created), 2)
+        pks_notified = {n.recipient_id for n in created}
+        self.assertIn(self.admin.pk, pks_notified)
+        self.assertIn(self.resp.pk, pks_notified)
+
+    def test_routing_rule_api_crud(self):
+        """L'API CRUD des règles de routage est accessible à l'admin."""
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        # Création.
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE, 'target_role': 'admin'},
+            format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        rule_id = res.data['id']
+        self.assertEqual(
+            NotificationRoutingRule.objects.get(pk=rule_id).company, self.company)
+        # Liste.
+        res = api.get('/api/django/notifications/routing-rules/')
+        self.assertEqual(res.status_code, 200)
+        results = res.data['results'] if 'results' in res.data else res.data
+        self.assertEqual(len(results), 1)
+        # Suppression.
+        res = api.delete(f'/api/django/notifications/routing-rules/{rule_id}/')
+        self.assertEqual(res.status_code, 204)
+
+    def test_routing_rule_api_normal_user_cannot_write(self):
+        """Un utilisateur normal ne peut pas créer de règle de routage."""
+        api = APIClient()
+        api.force_authenticate(self.normal)
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE, 'target_role': 'admin'},
+            format='json')
+        self.assertEqual(res.status_code, 403)
+
+    def test_routing_rule_requires_role_or_user(self):
+        """Créer une règle sans target_role ni target_user renvoie 400."""
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE},
+            format='json')
+        self.assertEqual(res.status_code, 400)

@@ -50,6 +50,8 @@ urlpatterns = [
     path('api/public/', include('apps.publicapi.public_urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres).
     path('api/django/publicapi/', include('apps.publicapi.urls')),
+    # FG107-FG121 — Comptabilité générale (interne, admin/responsable).
+    path('api/django/compta/', include('apps.compta.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

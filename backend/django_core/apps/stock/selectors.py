@@ -50,3 +50,12 @@ def valid_produit_ids(company, ids):
         Produit.objects.filter(id__in=list(ids), company=company)
         .values_list('id', flat=True)
     )
+
+
+def get_fournisseur_by_id(company, fournisseur_id):
+    """FG83 — Renvoie un Fournisseur scopé société par son id, ou None.
+    Point d'accès cross-app : SAV utilise ce sélecteur pour ne pas importer
+    directement apps.stock.models.Fournisseur."""
+    from .models import Fournisseur
+    return Fournisseur.objects.filter(
+        id=fournisseur_id, company=company).first()

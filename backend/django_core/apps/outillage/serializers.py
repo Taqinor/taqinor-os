@@ -9,15 +9,34 @@ class OutillageSerializer(serializers.ModelSerializer):
     emplacement_nom = serializers.CharField(
         source='emplacement.nom', read_only=True, default=None)
 
+    # FG80 — badge « à calibrer » : intervalle > 0 ET date dépassée.
+    a_calibrer = serializers.SerializerMethodField()
+
     class Meta:
         model = Outillage
         fields = [
             'id', 'nom', 'categorie', 'asset_tag', 'numero_serie',
             'emplacement', 'emplacement_nom', 'statut', 'statut_display',
-            'date_achat', 'note', 'date_creation', 'date_modification',
+            'date_achat', 'note',
+            # FG80 — suivi calibration.
+            'date_derniere_calibration', 'intervalle_calibration_mois',
+            'date_prochaine_calibration', 'a_calibrer',
+            'date_creation', 'date_modification',
         ]
         # company posée côté serveur — jamais lue du corps de requête.
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = ['date_creation', 'date_modification',
+                            'date_prochaine_calibration']
+
+    def get_a_calibrer(self, obj):
+        """FG80 — True si une calibration est due (date passée ou pas encore faite
+        alors que l'intervalle est défini)."""
+        if not obj.intervalle_calibration_mois:
+            return False
+        if obj.date_prochaine_calibration is None:
+            # Intervalle défini mais jamais calibré → à calibrer.
+            return True
+        import datetime
+        return obj.date_prochaine_calibration <= datetime.date.today()
 
     def validate_emplacement(self, value):
         # Un emplacement ne peut appartenir qu'à la société de l'utilisateur.

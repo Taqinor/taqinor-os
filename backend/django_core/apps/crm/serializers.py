@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from .models import Client, Lead, LeadActivity, Parrainage
+from .models import Client, Lead, LeadActivity, MessageTemplate, Parrainage
 from .devis_auto import champs_manquants, message_manquants
+from .scoring import compute_score, score_label
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
@@ -10,7 +11,7 @@ class LeadActivitySerializer(serializers.ModelSerializer):
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
-            'body', 'bulk', 'user_nom', 'created_at',
+            'body', 'outcome', 'bulk', 'user_nom', 'created_at',
         ]
 
     def get_user_nom(self, obj):
@@ -94,6 +95,11 @@ class LeadSerializer(serializers.ModelSerializer):
     owner_avatar = serializers.SerializerMethodField()
     devis_auto = serializers.SerializerMethodField()
     next_activity = serializers.SerializerMethodField()
+    # FG27 — Score de qualité du lead (lecture seule, calculé à la volée).
+    score = serializers.SerializerMethodField()
+    score_label = serializers.SerializerMethodField()
+    # FG29 — Âge dans l'étape courante (jours depuis le dernier changement d'étape).
+    stage_since_days = serializers.SerializerMethodField()
 
     @staticmethod
     def _canonical_phone(value):
@@ -157,6 +163,44 @@ class LeadSerializer(serializers.ModelSerializer):
             return None
         from authentication.avatars import presign_avatar
         return presign_avatar(getattr(obj.owner, 'avatar_key', ''))
+
+    # FG27 — Score de qualité (lecture seule)
+    def get_score(self, obj):
+        return compute_score(obj)
+
+    def get_score_label(self, obj):
+        return score_label(compute_score(obj))
+
+    # FG29 — Âge dans l'étape courante
+    def get_stage_since_days(self, obj):
+        """Nombre de jours depuis le dernier changement d'étape de ce lead.
+
+        Source : dernière entrée LeadActivity de type MODIFICATION sur le champ
+        'stage'. Si aucune → âge depuis la création du lead (première entrée).
+        Renvoie None si indétectable.
+        """
+        try:
+            from django.utils import timezone
+            from .models import LeadActivity
+            last_change = (
+                LeadActivity.objects
+                .filter(lead=obj, kind=LeadActivity.Kind.MODIFICATION, field='stage')
+                .order_by('-created_at')
+                .first()
+            )
+            if last_change:
+                ref = last_change.created_at
+            else:
+                ref = obj.date_creation
+            if ref is None:
+                return None
+            now = timezone.now()
+            if hasattr(ref, 'tzinfo') and ref.tzinfo is None:
+                from django.utils.timezone import make_aware
+                ref = make_aware(ref)
+            return (now - ref).days
+        except Exception:
+            return None
 
     def validate_owner(self, value):
         # Le responsable assigné doit appartenir à la même société.
@@ -224,6 +268,7 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'company', 'external_system', 'external_id', 'client',
             'is_archived', 'archived_by', 'archived_at',
+            'first_contacted_at',  # FG28 — posé server-side uniquement
         ]
 
     def get_client_nom(self, obj):
@@ -372,3 +417,19 @@ class ParrainageSerializer(serializers.ModelSerializer):
         if value and not self._same_company(value):
             raise serializers.ValidationError('Lead inconnu.')
         return value
+
+
+# FG36 — Modèles de messages WhatsApp/SMS ─────────────────────────────────────
+
+class MessageTemplateSerializer(serializers.ModelSerializer):
+    """Modèle de message CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin."""
+    langue_display = serializers.CharField(
+        source='get_langue_display', read_only=True)
+
+    class Meta:
+        model = MessageTemplate
+        fields = [
+            'id', 'nom', 'langue', 'langue_display', 'corps',
+            'archived', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']

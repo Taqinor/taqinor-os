@@ -115,3 +115,74 @@ def pipeline(request):
                                key=lambda kv: -kv[1]['count'])
         ],
     })
+
+
+# FG29 — Vélocité du funnel (jours moyens par étape) ─────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def funnel_velocity(request):
+    """Temps moyen de séjour par étape du pipeline (FG29).
+
+    Calcule, pour chaque étape de l'historique chatter, le délai moyen entre
+    l'entrée dans l'étape et la sortie (basé sur LeadActivity stage changes).
+    Inclut aussi les leads actuellement dans chaque étape (stalled).
+    """
+    co = _co_filter(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    from apps.crm.models import Lead, LeadActivity
+
+    # Pour chaque lead, reconstituer la séquence de changements d'étape
+    leads = Lead.objects.filter(**co, is_archived=False)
+    stage_dwell = {key: [] for key in stage_mod.STAGES}
+    stalled = {key: 0 for key in stage_mod.STAGES}
+
+    for lead in leads:
+        changes = list(
+            LeadActivity.objects
+            .filter(lead=lead, kind=LeadActivity.Kind.MODIFICATION, field='stage')
+            .order_by('created_at')
+        )
+        # Ajouter l'entrée depuis la création (étape initiale = NEW)
+        events = [(lead.date_creation, 'NEW')]
+        for ch in changes:
+            try:
+                # Retrouver la clé depuis le label
+                key = next(
+                    (k for k, v in stage_mod.STAGE_LABELS.items() if v == ch.new_value),
+                    ch.new_value
+                )
+                events.append((ch.created_at, key))
+            except Exception:
+                continue
+        # Calculer les durées entre événements consécutifs
+        for i in range(len(events) - 1):
+            t_in, stage = events[i]
+            t_out, _ = events[i + 1]
+            if stage in stage_dwell and t_in and t_out:
+                try:
+                    days = (t_out - t_in).total_seconds() / 86400
+                    if 0 <= days <= 730:  # ignore les valeurs aberrantes
+                        stage_dwell[stage].append(days)
+                except Exception:
+                    pass
+        # Lead actuellement dans son étape (comptage stalled)
+        current_stage = lead.stage
+        if current_stage in stalled:
+            stalled[current_stage] += 1
+
+    result = []
+    for key in stage_mod.STAGES:
+        dwells = stage_dwell[key]
+        avg_days = round(sum(dwells) / len(dwells), 1) if dwells else None
+        result.append({
+            'stage': key,
+            'label': stage_mod.STAGE_LABELS.get(key, key),
+            'avg_days': avg_days,
+            'sample_count': len(dwells),
+            'currently_in_stage': stalled[key],
+        })
+
+    return Response({'velocity': result})

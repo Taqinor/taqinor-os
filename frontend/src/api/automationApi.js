@@ -18,6 +18,9 @@ const automationApi = {
   getApprovals: (params) => api.get('/automation/approvals/', { params }),
   approve: (id) => api.post(`/automation/approvals/${id}/approve/`),
   reject: (id) => api.post(`/automation/approvals/${id}/reject/`),
+
+  // ── FG3 : bibliothèque de modèles prédéfinis ──
+  getTemplates: () => api.get('/automation/templates/'),
 }
 
 export default automationApi

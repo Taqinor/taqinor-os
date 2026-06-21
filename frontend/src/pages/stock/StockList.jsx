@@ -38,6 +38,9 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { MoreHorizontal } from 'lucide-react'
+import { useSavedViews } from '../../hooks/useSavedViews'
+
+const SL_SAVED_VIEWS_KEY = 'taqinor.stock.produits.savedViews'
 
 const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -694,6 +697,22 @@ export default function StockList() {
   const [emplacementsList, setEmplacementsList]   = useState([])
   const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
   const [showArchived, setShowArchived]   = useState(false)
+  // Vues enregistrées (FG11).
+  const { savedViews: stockSavedViews, saveView: saveStockView, deleteView: deleteStockView } = useSavedViews(SL_SAVED_VIEWS_KEY)
+  const saveCurrentStockView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    saveStockView(name, { search, activeCat, filterMarque, filterEmplacement, filterLow, filterNoPrice, filterNoSku })
+  }
+  const applyStockView = (v) => {
+    const s = v.state || {}
+    if (s.search !== undefined) setSearch(s.search)
+    if (s.activeCat !== undefined) setActiveCat(s.activeCat)
+    if (s.filterMarque !== undefined) setFilterMarque(s.filterMarque)
+    if (s.filterEmplacement !== undefined) setFilterEmplacement(s.filterEmplacement)
+    if (s.filterLow !== undefined) setFilterLow(s.filterLow)
+    if (s.filterNoPrice !== undefined) setFilterNoPrice(s.filterNoPrice)
+    if (s.filterNoSku !== undefined) setFilterNoSku(s.filterNoSku)
+  }
   const [archiveNotif, setArchiveNotif]   = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting]           = useState(false)
@@ -1170,6 +1189,24 @@ export default function StockList() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <div className="lp-saved-views mt-1">
+            <button type="button" className="lp-saved-view-apply text-xs" onClick={saveCurrentStockView}>
+              ⭐ Enregistrer cette vue
+            </button>
+            {stockSavedViews.map((v) => (
+              <span key={v.name} className="lp-saved-view-chip">
+                <button type="button" className="lp-saved-view-apply"
+                        onClick={() => applyStockView(v)} title="Appliquer cette vue">
+                  {v.name}
+                </button>
+                <button type="button" className="lp-saved-view-del"
+                        onClick={() => deleteStockView(v.name)}
+                        aria-label={`Supprimer la vue ${v.name}`}>
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
           <button type="button"
                   className={`mt-1 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${!activeCat && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
                   onClick={() => { setActiveCat(''); setSearch('') }}>

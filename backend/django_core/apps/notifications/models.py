@@ -155,6 +155,63 @@ class PushSubscription(models.Model):
         }
 
 
+class NotificationRoutingRule(models.Model):
+    """FG4 — Règle de routage des notifications configurable par l'admin.
+
+    Détermine QUELS utilisateurs reçoivent les notifications d'un type
+    d'événement donné. Deux modes :
+      - `target_role` (ex. 'admin', 'responsable') : tous les utilisateurs
+        actifs de la société ayant ce rôle legacy reçoivent la notification.
+      - `target_user` : un utilisateur précis de la société.
+
+    Absence de règle = comportement actuel préservé (la fonction `notify()`
+    utilise `_is_manager` comme avant). ADDITIF : sans règle configurée, rien
+    ne change. Multi-tenant : chaque règle appartient à UNE société.
+    """
+
+    ROLE_CHOICES = [
+        ('admin', 'Administrateur'),
+        ('responsable', 'Responsable'),
+        ('normal', 'Utilisateur normal'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='notification_routing_rules')
+    event_type = models.CharField(
+        max_length=40, choices=EventType.choices,
+        verbose_name='Type d\'événement')
+    # Ciblage par rôle OU par utilisateur (au moins l'un des deux doit être renseigné).
+    target_role = models.CharField(
+        max_length=20, choices=ROLE_CHOICES,
+        null=True, blank=True, verbose_name='Rôle cible')
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='notification_routing_rules',
+        verbose_name='Utilisateur cible')
+    enabled = models.BooleanField(default=True, verbose_name='Actif')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Règle de routage des notifications'
+        verbose_name_plural = 'Règles de routage des notifications'
+        ordering = ['event_type', 'id']
+        indexes = [
+            models.Index(fields=['company', 'event_type', 'enabled']),
+        ]
+
+    def __str__(self):
+        if self.target_user_id:
+            return f'{self.get_event_type_display()} → user:{self.target_user_id}'
+        return f'{self.get_event_type_display()} → role:{self.target_role}'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.target_role and not self.target_user_id:
+            raise ValidationError(
+                'Une règle de routage doit cibler soit un rôle, soit un utilisateur.')
+
+
 class VapidKeyPair(models.Model):
     """N109 — Paire de clés VAPID auto-générée, persistée en singleton global.
 

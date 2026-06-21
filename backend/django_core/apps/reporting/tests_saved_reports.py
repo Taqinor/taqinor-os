@@ -64,6 +64,24 @@ class SavedReportModelTests(TestCase):
         self.assertEqual(
             sr.recipient_list(), ['a@b.com', 'c@d.com', 'e@f.com', 'g@h.com'])
 
+    def test_pinned_field_default_false_and_writable(self):
+        """FG91 — pinned est exposé dans l'API, défaut False, mis à jour via PATCH."""
+        res = self.api.post('/api/django/reporting/saved-reports/', {
+            'name': 'Épinglé', 'target_kind': 'sales', 'schedule': 'none',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertFalse(res.data['pinned'])
+        sr_id = res.data['id']
+        # PATCH pinned=True
+        r2 = self.api.patch(
+            f'/api/django/reporting/saved-reports/{sr_id}/',
+            {'pinned': True}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertTrue(r2.data['pinned'])
+        # Vérifier en base
+        sr = SavedReport.objects.get(id=sr_id)
+        self.assertTrue(sr.pinned)
+
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')

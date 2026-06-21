@@ -1,0 +1,83 @@
+/* FG7 — ChatterWidget */
+.chatter-widget { display: flex; flex-direction: column; gap: 8px; }
+.chatter-header { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; }
+.chatter-list { display: flex; flex-direction: column; gap: 6px; min-height: 32px; }
+.chatter-empty { font-size: 0.82rem; color: #94a3b8; text-align: center; padding: 8px 0; }
+.chatter-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 0.85rem; }
+.chatter-meta { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px; }
+.chatter-author { font-weight: 600; color: #475569; }
+.chatter-date { flex: 1; }
+.chatter-delete { background: none; border: none; cursor: pointer; color: #e2e8f0; padding: 0; display: flex; transition: color 0.15s; }
+.chatter-delete:hover { color: #ef4444; }
+.chatter-body { line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.chatter-body .mention { color: #3b82f6; font-weight: 600; }
+.chatter-form { display: flex; gap: 6px; align-items: flex-end; }
+.chatter-textarea { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; font-size: 0.85rem; resize: vertical; font-family: inherit; line-height: 1.45; background: #fff; }
+.chatter-textarea:focus { outline: none; border-color: #3b82f6; }
+.chatter-submit { background: #3b82f6; color: #fff; border: none; border-radius: 8px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+.chatter-submit:hover:not(:disabled) { background: #2563eb; }
+.chatter-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* FG9 — TagChipInput */
+.tag-chip-input { display: flex; flex-direction: column; gap: 6px; }
+.tag-chip-header { display: flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 600; color: #475569; }
+.tag-chip-area { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid; border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
+.tag-chip-remove { background: none; border: none; cursor: pointer; display: flex; align-items: center; padding: 0; opacity: 0.5; transition: opacity 0.15s; }
+.tag-chip-remove:hover { opacity: 1; }
+.tag-chip-input-wrap { position: relative; }
+.tag-chip-search { border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 8px; font-size: 0.82rem; width: 120px; background: #fff; font-family: inherit; }
+.tag-chip-search:focus { outline: none; border-color: #3b82f6; }
+.tag-chip-dropdown { position: absolute; top: calc(100% + 3px); left: 0; min-width: 160px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); z-index: 50; padding: 4px; }
+.tag-chip-option { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: 6px 8px; border-radius: 5px; font-size: 0.82rem; color: #1e293b; }
+.tag-chip-option:hover { background: #f1f5f9; }
+.tag-chip-create { color: #3b82f6; font-style: italic; }
+.tag-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tag-chip-empty { padding: 6px 8px; font-size: 0.78rem; color: #94a3b8; }
+
+/* FG8 — ActivityFeedWidget */
+.activity-feed-widget { display: flex; flex-direction: column; gap: 10px; }
+.activity-feed-header { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 2px; }
+.activity-feed-placeholder { font-size: 0.82rem; color: #94a3b8; text-align: center; padding: 10px 0; }
+.activity-feed-error { color: #ef4444; }
+.activity-feed-bucket { display: flex; flex-direction: column; gap: 4px; }
+.activity-feed-bucket-header { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+.activity-feed-count { margin-left: auto; background: #f1f5f9; border-radius: 999px; padding: 1px 6px; font-size: 0.7rem; color: #64748b; }
+.activity-feed-rows { display: flex; flex-direction: column; gap: 2px; }
+.activity-feed-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid #f1f5f9; border-radius: 6px; background: #fff; font-size: 0.82rem; }
+.activity-feed-type { font-size: 0.72rem; color: #94a3b8; flex-shrink: 0; }
+.activity-feed-body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.activity-feed-summary { font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-feed-target { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-feed-date { font-size: 0.72rem; color: #94a3b8; flex-shrink: 0; }
+.activity-feed-more { font-size: 0.72rem; color: #94a3b8; padding: 2px 8px; }
+
+/* Panneaux Activités + Pièces jointes (style Odoo, sobres). */
+.act-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.act-count { font-size: 0.85rem; font-weight: 600; color: #475569; }
+
+.act-form { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.act-form-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+
+.act-list, .att-list { display: flex; flex-direction: column; gap: 6px; }
+
+.act-item, .att-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid #eef2f7; border-radius: 8px; background: #fff;
+  font-size: 0.85rem;
+}
+.act-item-done { opacity: 0.65; }
+.act-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.act-body { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
+.act-meta, .att-meta { font-size: 0.72rem; color: #94a3b8; }
+.act-actions { display: flex; align-items: center; gap: 6px; }
+.act-done-sep { font-size: 0.72rem; text-transform: uppercase; color: #94a3b8; margin: 8px 0 2px; letter-spacing: 0.5px; }
+
+.att-name { flex: 1; color: #1d4ed8; text-decoration: none; font-weight: 600; }
+.att-name:hover { text-decoration: underline; }
+
+/* Pastille horloge d'activité sur les cartes kanban. */
+.kb-act-clock { display: inline-flex; align-items: center; font-size: 0.72rem; gap: 3px; }
+.kb-act-clock.overdue { color: #dc2626; }
+.kb-act-clock.today { color: #d97706; }
+.kb-act-clock.upcoming { color: #16a34a; }

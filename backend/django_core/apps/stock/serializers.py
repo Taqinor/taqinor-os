@@ -6,6 +6,7 @@ from .models import (
     RetourFournisseur, LigneRetourFournisseur,
     ReceptionFournisseur, LigneReceptionFournisseur,
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
+    InventaireSession, LigneInventaire,
 )
 
 
@@ -465,6 +466,10 @@ class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'ligne_commande', 'produit', 'produit_nom', 'produit_sku',
             'quantite',
+            # FG61 — numéros de série à la réception
+            'numeros_serie',
+            # FG64 — traçabilité lot / péremption
+            'numero_lot', 'date_peremption',
         ]
         # produit est dérivé de la ligne de commande côté serveur.
         read_only_fields = ['produit']
@@ -651,4 +656,56 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             for ligne in lignes_data:
                 LigneFactureFournisseur.objects.create(
                     facture=instance, **ligne)
+        return instance
+
+
+# ── FG63 — Session d'inventaire ───────────────────────────────────────────────
+
+class LigneInventaireSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    ecart = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = LigneInventaire
+        fields = [
+            'id', 'produit', 'produit_nom',
+            'quantite_theorique', 'quantite_comptee', 'ecart',
+        ]
+
+
+class InventaireSessionSerializer(serializers.ModelSerializer):
+    lignes = LigneInventaireSerializer(many=True, required=False)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True)
+
+    class Meta:
+        model = InventaireSession
+        fields = [
+            'id', 'reference', 'statut', 'statut_display', 'motif',
+            'created_by', 'created_by_username',
+            'date_creation', 'date_mise_a_jour', 'lignes',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_mise_a_jour',
+        ]
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes', [])
+        session = InventaireSession.objects.create(**validated_data)
+        for ligne in lignes_data:
+            LigneInventaire.objects.create(session=session, **ligne)
+        return session
+
+    def update(self, instance, validated_data):
+        lignes_data = validated_data.pop('lignes', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if lignes_data is not None:
+            instance.lignes.all().delete()
+            for ligne in lignes_data:
+                LigneInventaire.objects.create(session=instance, **ligne)
         return instance

@@ -65,6 +65,13 @@ class Devis(models.Model):
     date_acceptation = models.DateField(null=True, blank=True)
     accepte_par_nom = models.CharField(max_length=150, blank=True, default='')
 
+    # ── Refus explicite (FG44) — additif. Date + motif de refus capturés lors
+    # de l'action « refuser » (symétrique à « accepter »). Le chatter est mis à
+    # jour et, si le devis est lié à un lead, l'événement devis_refused est
+    # émis via core/events.py pour que le CRM puisse marquer le lead perdu.
+    date_refus = models.DateField(null=True, blank=True)
+    motif_refus = models.CharField(max_length=255, blank=True, default='')
+
     # ── Option retenue à l'acceptation (A1) — additif. Pour un devis à deux
     # options (« Sans batterie » / « Avec batterie »), enregistre laquelle le
     # client a choisie ; vide pour un devis à option unique. Cette valeur est
@@ -90,6 +97,31 @@ class Devis(models.Model):
     # Paramètres d'étude/simulation stockés avec le devis (kWc, production,
     # autoconsommation/couverture, économies, payback, pompe CV/HMT/débit…).
     etude_params = models.JSONField(blank=True, null=True)
+    # ── Échéancier personnalisé (FG46) — additif, tout optionnel ──
+    # Liste ordonnée de tranches : [{libelle, type, pct_or_montant}].
+    # « type » = 'acompte'|'intermediaire'|'solde'.
+    # « pct_or_montant » : float ≥ 0. Si tous les types ont un pct, la somme
+    # doit avoisiner 100 (±0.1). La dernière tranche est toujours recalculée
+    # en « reste » pour que la somme des factures égale le total TTC du devis
+    # au centime près. Vide = comportement historique 3 tranches.
+    echeancier = models.JSONField(
+        blank=True, null=True,
+        verbose_name='Échéancier personnalisé',
+        help_text='Liste ordonnée de tranches [{libelle, type, pct_or_montant}].'
+                  ' Vide = 3 tranches par défaut.',
+    )
+    # Acompte persisté séparément pour accès rapide (PDF, dashboard, synthèse).
+    # La valeur mémorisée au moment de la sauvegarde — pas recalculée en live.
+    acompte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Acompte (%)',
+        help_text='Pourcentage de la première tranche. Persiste la valeur choisie.',
+    )
+    acompte_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Acompte (MAD TTC)',
+        help_text='Montant TTC de la première tranche. Calculé ou saisi.',
+    )
     prix_cible_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     # ── Révisions / versionnage (T10) — additif. Un devis envoyé peut être
@@ -110,6 +142,9 @@ class Devis(models.Model):
         'self', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='remplace')
     is_active = models.BooleanField(default=True)
+    # FG100 — champs personnalisés (additif, jamais destructif).
+    # Les définitions viennent de apps.customfields (module='devis').
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Devis'

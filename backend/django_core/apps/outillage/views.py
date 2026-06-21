@@ -1,4 +1,8 @@
-from rest_framework import viewsets, filters
+import datetime
+
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, IsAdminRole
@@ -41,6 +45,8 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
+        if self.action in ['calibrer']:
+            return [IsResponsableOrAdmin()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -52,7 +58,60 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         emplacement = params.get('emplacement')
         if emplacement:
             qs = qs.filter(emplacement_id=emplacement)
+        # FG80 — filtre « à calibrer » : intervalle > 0 ET date_prochaine <= aujourd'hui.
+        a_calibrer = params.get('a_calibrer')
+        if a_calibrer in ('1', 'true', 'True'):
+            today = datetime.date.today()
+            qs = qs.filter(
+                intervalle_calibration_mois__gt=0,
+                date_prochaine_calibration__lte=today)
         return qs
+
+    # ── FG80 — enregistrement d'une calibration ──────────────────────────────
+    @action(detail=True, methods=['post'], url_path='calibrer',
+            permission_classes=[IsResponsableOrAdmin])
+    def calibrer(self, request, pk=None):
+        """FG80 — enregistre une calibration / inspection sur l'outil et recalcule
+        `date_prochaine_calibration`. Corps : {"date_calibration": "YYYY-MM-DD"}
+        (défaut = aujourd'hui). Émet une notification si la prochaine date est
+        dépassée à la sauvegarde."""
+        outil = self.get_object()
+        date_str = request.data.get('date_calibration')
+        try:
+            date_cal = (datetime.date.fromisoformat(date_str)
+                        if date_str else datetime.date.today())
+        except (ValueError, TypeError):
+            return Response({'date_calibration': 'Date invalide (YYYY-MM-DD).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        outil.date_derniere_calibration = date_cal
+        # Recalcul de la prochaine date.
+        if outil.intervalle_calibration_mois:
+            # Ajoute n mois (approximation : 30.44 jours / mois).
+            days = int(outil.intervalle_calibration_mois * 30.44)
+            outil.date_prochaine_calibration = (
+                date_cal + datetime.timedelta(days=days))
+        else:
+            outil.date_prochaine_calibration = None
+        outil.save(update_fields=[
+            'date_derniere_calibration', 'date_prochaine_calibration'])
+        # Notification si l'outil sera de nouveau à calibrer dans moins d'un mois.
+        if (outil.date_prochaine_calibration and
+                outil.date_prochaine_calibration
+                <= datetime.date.today() + datetime.timedelta(days=30)):
+            try:
+                from apps.notifications.services import notify
+                # Notifie l'utilisateur courant (responsable qui a enregistré).
+                notify(
+                    user=request.user,
+                    event_type='outillage_calibration_proche',
+                    title=f"Calibration proche : {outil.nom}",
+                    body=(f"Prochaine calibration le "
+                          f"{outil.date_prochaine_calibration}."),
+                    company=outil.company,
+                )
+            except Exception:
+                pass  # La notification est un bonus — ne fait jamais échouer la vue.
+        return Response(OutillageSerializer(outil).data)
 
 
 class KitOutillageViewSet(TenantMixin, viewsets.ModelViewSet):

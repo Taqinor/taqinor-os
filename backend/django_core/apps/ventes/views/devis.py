@@ -79,7 +79,7 @@ class DevisViewSet(viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture', 'reviser', 'accepter', 'noter',
+            'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -264,6 +264,61 @@ class DevisViewSet(viewsets.ModelViewSet):
                       if scenario == 'Avec batterie'
                       else Devis.OptionAcceptee.SANS_BATTERIE)
         return option, None
+
+    @action(detail=True, methods=['post'], url_path='refuser',
+            permission_classes=[IsResponsableOrAdmin])
+    def refuser(self, request, pk=None):
+        """FG44 — marque le devis « refusé » avec date + motif + chatter.
+
+        Symétrique à « accepter » : consigne le refus dans l'historique du devis.
+        Body optionnel :
+          - ``motif``  : raison du refus (libre, max 255 caractères)
+          - ``date``   : date ISO AAAA-MM-JJ (défaut = aujourd'hui)
+          - ``marquer_lead_perdu`` : true → émet devis_refused → CRM marque
+                                     le lead associé perdu (si lead_id présent)
+        """
+        from datetime import date as _date
+        from .. import activity
+        from core.events import devis_refused
+
+        devis = self.get_object()
+        if devis.statut not in (
+            Devis.Statut.BROUILLON, Devis.Statut.ENVOYE,
+        ):
+            return Response(
+                {'detail': (
+                    'Seul un devis en cours (brouillon ou envoyé) peut être '
+                    f'refusé ; statut actuel : '
+                    f'« {devis.get_statut_display()} ».'
+                )},
+                status=status.HTTP_409_CONFLICT,
+            )
+        motif = (request.data.get('motif') or '').strip()[:255]
+        date_str = (request.data.get('date') or '').strip()
+        try:
+            date_ref = _date.fromisoformat(date_str) if date_str \
+                else timezone.now().date()
+        except ValueError:
+            return Response({'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        marquer_lead_perdu = bool(
+            request.data.get('marquer_lead_perdu', False))
+
+        devis.statut = Devis.Statut.REFUSE
+        devis.date_refus = date_ref
+        devis.motif_refus = motif
+        devis.save(update_fields=['statut', 'date_refus', 'motif_refus'])
+        activity.log_devis_refusal(devis, request.user, motif, date_ref)
+
+        # M6 — événement découplé : ventes émet, crm réagit
+        # (marque le lead perdu si demandé et lead_id présent).
+        devis_refused.send(
+            sender=Devis, devis=devis, user=request.user,
+            motif_refus=motif,
+            marquer_lead_perdu=marquer_lead_perdu,
+        )
+        return Response(
+            DevisSerializer(devis, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])

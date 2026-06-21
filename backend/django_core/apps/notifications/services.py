@@ -16,7 +16,10 @@ import logging
 
 from django.utils import timezone
 
-from .models import Channel, EventType, Notification, NotificationPreference
+from .models import (
+    Channel, EventType, Notification, NotificationPreference,
+    NotificationRoutingRule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +255,71 @@ def _dispatch_webpush(user, title, body, link=None):
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Web push échoué (sub %s) : %s', sub.pk, exc)
     return sent
+
+
+def resolve_recipients(company, event_type):
+    """FG4 — Résout la liste des destinataires pour un événement et une société.
+
+    Si des `NotificationRoutingRule` actives existent pour cet événement et
+    cette société, on les consulte pour construire la liste des destinataires :
+      - règle avec `target_user` → cet utilisateur directement ;
+      - règle avec `target_role` → tous les utilisateurs actifs de la société
+        ayant ce `role_legacy`.
+
+    Si AUCUNE règle n'est configurée pour cet événement + société, on retombe
+    sur le comportement historique : les managers (role_legacy in admin/responsable)
+    actifs de la société.
+
+    Retourne un QuerySet d'utilisateurs (peut être vide). Best-effort :
+    toute erreur renvoie un QuerySet vide plutôt que de propager l'exception."""
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        rules = list(NotificationRoutingRule.objects.filter(
+            company=company, event_type=event_type, enabled=True
+        ).select_related('target_user'))
+
+        if not rules:
+            # Comportement historique : managers actifs de la société.
+            return User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['admin', 'responsable'])
+
+        # Construire l'ensemble des PKs destinataires depuis les règles actives.
+        user_pks = set()
+        role_targets = []
+        for rule in rules:
+            if rule.target_user_id:
+                user_pks.add(rule.target_user_id)
+            elif rule.target_role:
+                role_targets.append(rule.target_role)
+
+        from django.db.models import Q
+        q = Q(pk__in=user_pks)
+        if role_targets:
+            q |= Q(company=company, is_active=True, role_legacy__in=role_targets)
+        return User.objects.filter(q, company=company, is_active=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('resolve_recipients échoué : %s', exc)
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.none()
+
+
+def notify_many(recipients, event_type, title, body='', link=None, company=None):
+    """Émet une notification vers une liste de destinataires.
+
+    Appelle `notify()` pour chaque utilisateur. Best-effort par destinataire :
+    une erreur sur l'un n'interrompt pas les suivants."""
+    created = []
+    for user in recipients:
+        try:
+            n = notify(user, event_type, title, body=body, link=link, company=company)
+            if n is not None:
+                created.append(n)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('notify_many: notification échouée vers %s : %s', user, exc)
+    return created
 
 
 def notify(user, event_type, title, body='', link=None, company=None):

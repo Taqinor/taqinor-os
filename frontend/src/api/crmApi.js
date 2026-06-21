@@ -44,6 +44,18 @@ const crmApi = {
   // plusieurs devis du lead (le commercial appuie lui-même sur Envoyer).
   whatsappDevis: (id, payload) =>
     api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
+  // FG30 — Interaction typée (appel/email) dans le chatter du lead.
+  logInteraction: (id, payload) =>
+    api.post(`/crm/leads/${id}/log-interaction/`, payload),
+  // FG36 — Modèles de messages WhatsApp/SMS.
+  getMessageTemplates: (params) => api.get('/crm/message-templates/', { params }),
+  getMessageTemplate: (id) => api.get(`/crm/message-templates/${id}/`),
+  saveMessageTemplate: (id, data) =>
+    id ? api.patch(`/crm/message-templates/${id}/`, data)
+       : api.post('/crm/message-templates/', data),
+  deleteMessageTemplate: (id) => api.delete(`/crm/message-templates/${id}/`),
+  renderMessageTemplate: (id, payload) =>
+    api.post(`/crm/message-templates/${id}/render/`, payload),
 
   // Listes gérées (Paramètres → CRM).
   getTags: () => api.get('/crm/tags/'),

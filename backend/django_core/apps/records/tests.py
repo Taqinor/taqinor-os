@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Lead, LeadActivity
-from apps.records.models import Activity, ActivityType, Attachment
+from apps.records.models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem
 
 User = get_user_model()
 
@@ -471,3 +471,292 @@ class TestVentesAttachmentTargets(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(
             Attachment.objects.filter(object_id=str(facture.id)).count(), 1)
+
+
+class TestComments(TestCase):
+    """FG7 — Commentaires génériques + @mentions."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Cmt Co', slug='cmt-co')
+        self.resp = User.objects.create_user(
+            username='cmt_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='cmt_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead Cmt')
+        self.api = auth(self.resp)
+
+    def test_create_and_list_comment(self):
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Premier commentaire.',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['body'], 'Premier commentaire.')
+        self.assertEqual(res.data['author_username'], 'cmt_resp')
+        # Liste filtrée par record.
+        lst = self.api.get(
+            f'/api/django/records/comments/?model=crm.lead&id={self.lead.id}')
+        self.assertEqual(lst.status_code, 200)
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+
+    def test_mention_notifies_user(self):
+        """@mention dans un commentaire → notification in-app pour l'utilisateur mentionné."""
+        from apps.notifications.models import Notification
+        # L'admin s'appelle 'cmt_admin'. Le responsable le mentionne.
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Bonjour @cmt_admin, peux-tu vérifier ?',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        notifs = Notification.objects.filter(recipient=self.admin)
+        self.assertGreater(notifs.count(), 0)
+        notif = notifs.first()
+        self.assertIn('cmt_resp', notif.title)
+
+    def test_mention_own_name_no_self_notification(self):
+        """@auto-mention → pas de notification envoyée à soi-même."""
+        from apps.notifications.models import Notification
+        self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': '@cmt_resp je me rappelle à moi-même.',
+        }, format='json')
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.resp).count(), 0)
+
+    def test_delete_by_admin(self):
+        """L'admin peut supprimer n'importe quel commentaire."""
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'À supprimer.',
+        }, format='json')
+        cmt_id = res.data['id']
+        # Le responsable (auteur) ne peut pas supprimer (admin only).
+        d1 = self.api.delete(f'/api/django/records/comments/{cmt_id}/')
+        self.assertEqual(d1.status_code, 403)
+        # L'admin peut.
+        d2 = auth(self.admin).delete(f'/api/django/records/comments/{cmt_id}/')
+        self.assertEqual(d2.status_code, 204)
+        self.assertFalse(Comment.objects.filter(id=cmt_id).exists())
+
+    def test_cross_company_target_rejected(self):
+        """Commenter un enregistrement étranger → 400."""
+        other = Company.objects.create(nom='Other Cmt', slug='other-cmt')
+        other_lead = Lead.objects.create(company=other, nom='Prospect autre')
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': other_lead.id,
+            'body': 'Commentaire interdit.',
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_company_scoped_listing(self):
+        """Un utilisateur ne voit que les commentaires de sa société."""
+        from django.contrib.contenttypes.models import ContentType
+        other = Company.objects.create(nom='Other Cmt2', slug='other-cmt2')
+        other_lead = Lead.objects.create(company=other, nom='Lead Autre')
+        ct = ContentType.objects.get_for_model(Lead)
+        # Commentaire inséré directement pour l'autre société.
+        Comment.objects.create(
+            company=other, content_type=ct, object_id=other_lead.id,
+            body='Commentaire autre société.', author=None)
+        # Notre commentaire.
+        self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'body': 'Mon commentaire.',
+        }, format='json')
+        lst = self.api.get('/api/django/records/comments/')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        # On ne voit que le nôtre.
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['body'], 'Mon commentaire.')
+
+
+class TestTags(TestCase):
+    """FG9 — Vocabulaire de tags partagés + TaggedItems."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Tag Co', slug='tag-co')
+        self.resp = User.objects.create_user(
+            username='tag_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='tag_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead Tag')
+        self.api = auth(self.resp)
+
+    def test_create_and_list_tags(self):
+        res = auth(self.admin).post('/api/django/records/tags/', {
+            'nom': 'Priorité haute', 'couleur': '#ef4444',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['nom'], 'Priorité haute')
+        self.assertEqual(Tag.objects.filter(company=self.company).count(), 1)
+        # La liste est visible par tout rôle.
+        lst = self.api.get('/api/django/records/tags/')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+
+    def test_tag_scoped_per_company(self):
+        """Les tags d'une société ne sont pas visibles par une autre."""
+        other = Company.objects.create(nom='Other Tag', slug='other-tag')
+        Tag.objects.create(company=other, nom='Tag Autre')
+        Tag.objects.create(company=self.company, nom='Tag Nôtre')
+        lst = self.api.get('/api/django/records/tags/')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['nom'], 'Tag Nôtre')
+
+    def test_apply_and_list_tagged_items(self):
+        """Appliquer un tag à un enregistrement et le retrouver par filtrage."""
+        tag = Tag.objects.create(company=self.company, nom='Important')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        self.assertIn(res.status_code, (200, 201))
+        self.assertEqual(TaggedItem.objects.count(), 1)
+        # Liste filtrée par record.
+        lst = self.api.get(
+            f'/api/django/records/tagged-items/?model=crm.lead&id={self.lead.id}')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['tag_nom'], 'Important')
+
+    def test_apply_tag_is_idempotent(self):
+        """Appliquer le même tag deux fois → une seule ligne TaggedItem."""
+        tag = Tag.objects.create(company=self.company, nom='Idempotent')
+        self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        self.assertEqual(TaggedItem.objects.count(), 1)
+
+    def test_remove_tagged_item(self):
+        """Retirer un tag d'un enregistrement (DELETE TaggedItem)."""
+        tag = Tag.objects.create(company=self.company, nom='À retirer')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        item_id = res.data['id']
+        d = self.api.delete(f'/api/django/records/tagged-items/{item_id}/')
+        self.assertEqual(d.status_code, 204)
+        self.assertEqual(TaggedItem.objects.count(), 0)
+
+    def test_foreign_tag_rejected(self):
+        """Appliquer un tag d'une autre société → 400."""
+        other = Company.objects.create(nom='Other T2', slug='other-t2')
+        foreign_tag = Tag.objects.create(company=other, nom='Tag Étranger')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': foreign_tag.id,
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_tag_search_filter(self):
+        """Le filtre ?q= sur /records/tags/ filtre par nom (insensible à la casse)."""
+        Tag.objects.create(company=self.company, nom='Solar VIP')
+        Tag.objects.create(company=self.company, nom='Résidentiel')
+        res = self.api.get('/api/django/records/tags/?q=solar')
+        data = res.data['results'] if 'results' in res.data else res.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['nom'], 'Solar VIP')
+
+
+class TestAttachmentsAll(TestCase):
+    """FG10 — Centre de pièces jointes de la société (GET records/attachments/all/)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='AttAll Co', slug='attall-co')
+        self.user = User.objects.create_user(
+            username='attall_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead AttAll')
+        self.api = auth(self.user)
+
+    def _make_att(self, filename, mime='application/pdf', phase=''):
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(Lead)
+        return Attachment.objects.create(
+            company=self.company, content_type=ct, object_id=self.lead.id,
+            uploaded_by=self.user, file_key=f'attachments/{filename}',
+            filename=filename, size=1, mime=mime, phase=phase)
+
+    def test_all_returns_company_attachments(self):
+        """L'endpoint retourne toutes les pièces jointes de la société."""
+        self._make_att('doc1.pdf')
+        self._make_att('doc2.pdf')
+        res = self.api.get('/api/django/records/attachments/all/')
+        self.assertEqual(res.status_code, 200, res.data)
+        count = res.data.get('count', len(res.data))
+        self.assertEqual(count, 2)
+
+    def test_mime_filter(self):
+        """Filtre ?mime= filtre exactement sur le type MIME."""
+        self._make_att('img.png', mime='image/png')
+        self._make_att('doc.pdf', mime='application/pdf')
+        res = self.api.get('/api/django/records/attachments/all/?mime=image/png')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'img.png')
+
+    def test_mime_like_filter(self):
+        """Filtre ?mime_like=image filtre tous les types image/*."""
+        self._make_att('img.png', mime='image/png')
+        self._make_att('img2.jpg', mime='image/jpeg')
+        self._make_att('doc.pdf', mime='application/pdf')
+        res = self.api.get('/api/django/records/attachments/all/?mime_like=image')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 2)
+
+    def test_phase_filter(self):
+        """Filtre ?phase= filtre sur la phase (avant/pendant/apres)."""
+        self._make_att('avant.pdf', phase='avant')
+        self._make_att('apres.pdf', phase='apres')
+        self._make_att('sans_phase.pdf', phase='')
+        res = self.api.get('/api/django/records/attachments/all/?phase=avant')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'avant.pdf')
+
+    def test_model_filter(self):
+        """Filtre ?model= filtre sur le content_type."""
+        from apps.crm.models import Client
+        from django.contrib.contenttypes.models import ContentType
+        self._make_att('lead.pdf')
+        # PJ sur un Client.
+        cli = Client.objects.create(company=self.company, nom='Cli All')
+        ct_cli = ContentType.objects.get_for_model(Client)
+        Attachment.objects.create(
+            company=self.company, content_type=ct_cli, object_id=cli.id,
+            uploaded_by=self.user, file_key='attachments/cli.pdf',
+            filename='cli.pdf', size=1, mime='application/pdf')
+        res = self.api.get('/api/django/records/attachments/all/?model=crm.lead')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'lead.pdf')
+
+    def test_cross_company_isolation(self):
+        """Les pièces jointes d'une autre société ne sont jamais retournées."""
+        from django.contrib.contenttypes.models import ContentType
+        other = Company.objects.create(nom='Other All', slug='other-all')
+        other_lead = Lead.objects.create(company=other, nom='Lead Other')
+        ct = ContentType.objects.get_for_model(Lead)
+        Attachment.objects.create(
+            company=other, content_type=ct, object_id=other_lead.id,
+            uploaded_by=None, file_key='attachments/other.pdf',
+            filename='other.pdf', size=1, mime='application/pdf')
+        self._make_att('mine.pdf')
+        res = self.api.get('/api/django/records/attachments/all/')
+        data = res.data.get('results', res.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['filename'], 'mine.pdf')

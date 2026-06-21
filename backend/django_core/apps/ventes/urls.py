@@ -9,6 +9,9 @@ from .views import (
     PaiementViewSet,
     AvoirViewSet,
     email_config,
+    client_credit_warning,
+    releve_dry_run,
+    releve_commit,
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -18,6 +21,8 @@ from .recouvrement import (
     client_releve_pdf,
     lettre_relance_pdf,
 )
+from .dashboard_view import dashboard_quote_to_cash
+from .insights_view import cash_flow_forecast
 from .journal_view import journal_ventes, export_comptable
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
@@ -60,5 +65,17 @@ urlpatterns = [
          fiche_remise_premium, name='fiche-remise-premium'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
+    # FG41 — avertissement plafond de crédit client (soft warning, jamais blocage).
+    path('clients/<int:client_id>/credit-warning/', client_credit_warning,
+         name='client-credit-warning'),
+    # FG42 — import relevé bancaire (dry-run + commit).
+    path('paiements/import-releve/dry-run/', releve_dry_run,
+         name='paiements-import-releve-dry-run'),
+    path('paiements/import-releve/commit/', releve_commit,
+         name='paiements-import-releve-commit'),
+    # FG45 — tableau de bord Quote-to-Cash (agrégation lecture seule).
+    path('dashboard/', dashboard_quote_to_cash, name='ventes-dashboard'),
+    # FG47 — prévision cash-flow / encaissements à venir (lecture seule).
+    path('insights/cash-flow/', cash_flow_forecast, name='ventes-cash-flow'),
     path('', include(router.urls)),
 ]

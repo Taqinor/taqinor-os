@@ -143,6 +143,39 @@ def default_responsable_for(company):
     return profile.responsable_defaut_leads if profile else None
 
 
+# FG28 — SLA première prise de contact ────────────────────────────────────────
+
+def maybe_set_first_contacted_at(old_lead, new_lead):
+    """Pose ``first_contacted_at`` sur le lead dès que son stage quitte NEW
+    pour la première fois (et que le champ n'est pas déjà renseigné).
+
+    Best-effort : n'échoue jamais et ne modifie rien si la condition n'est
+    pas remplie.
+    """
+    try:
+        if new_lead.first_contacted_at is not None:
+            return  # déjà posé — ne rien écraser
+        if old_lead.stage == stages.NEW and new_lead.stage != stages.NEW:
+            new_lead.first_contacted_at = timezone.now()
+            new_lead.save(update_fields=['first_contacted_at'])
+    except Exception:
+        pass
+
+
+def lead_sla_hours(company) -> int:
+    """Retourne le délai SLA (heures) configuré pour la société. 24 par défaut."""
+    if company is None:
+        return 24
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+        if profile is not None:
+            return profile.lead_sla_hours
+    except Exception:
+        pass
+    return 24
+
+
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
 # (« on garde la valeur la plus complète », jamais d'écrasement).
 _MERGE_FILL_FIELDS = [
@@ -469,6 +502,7 @@ BULK_ACTIONS = {
     'reassign', 'add_tag', 'remove_tag', 'set_stage', 'set_canal',
     'set_priorite', 'set_relance', 'clear_relance', 'set_perdu',
     'unset_perdu', 'archive', 'unarchive', 'delete', 'plan_activity',
+    'prepare_whatsapp',  # FG33 — file de click-through WhatsApp en masse
 }
 
 # Priorités valides (clés du modèle Lead.Priorite).
@@ -788,6 +822,51 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                     lead.id, lead, getattr(user, 'username', '?'), company.id)
                 lead.delete()
                 updated += 1
+
+            # FG33 — Préparer la file WhatsApp en masse (pas d'envoi auto)
+            elif op == 'prepare_whatsapp':
+                # Pas de décompte updated/unchanged — cette action retourne
+                # directement en dehors de la boucle (pas de side-effect).
+                pass
+
+    # FG33 — Résultat spécial : file de click-through WhatsApp ordonné
+    if op == 'prepare_whatsapp':
+        from apps.ventes.utils.whatsapp import build_wa_url
+        template_id = params.get('template_id')
+        body_tpl = params.get('body') or ''
+        queue = []
+        for lead in leads:
+            phone = lead.whatsapp or lead.telephone
+            if not phone:
+                continue
+            # Résoudre le corps : template ou texte direct
+            corps = body_tpl
+            if template_id:
+                try:
+                    from .models import MessageTemplate
+                    tpl = MessageTemplate.objects.filter(
+                        company=company, id=template_id).first()
+                    if tpl:
+                        corps = tpl.render(
+                            prenom=lead.prenom or lead.nom or '',
+                            ville=lead.ville or '',
+                            lien='',
+                        )
+                except Exception:
+                    pass
+            wa_url = build_wa_url(phone, corps)
+            queue.append({
+                'lead_id': lead.id,
+                'nom': str(lead),
+                'phone': phone,
+                'wa_url': wa_url,
+            })
+        return {
+            'ok': True,
+            'op': 'prepare_whatsapp',
+            'queue': queue,
+            'count': len(queue),
+        }
 
     return {
         'ok': True,

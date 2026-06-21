@@ -103,3 +103,120 @@ class TestServiceReport(ReportsBase):
         for key in ('chantiers_par_statut', 'tickets_ouverts', 'tickets_resolus',
                     'garanties_expirantes_90j'):
             self.assertIn(key, resp.data)
+
+
+class TestPeriodComparison(ReportsBase):
+    """FG92 — comparaison MoM/YoY sur sales_report et dashboard."""
+
+    def _create_old_lead(self, nom='OldLead'):
+        from datetime import date, timedelta
+        lead = Lead.objects.create(company=self.company, nom=nom, stage='NEW')
+        # Décale la création dans le mois précédent pour la comparaison MoM.
+        prev_date = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1)
+        Lead.objects.filter(pk=lead.pk).update(date_creation=prev_date)
+        return lead
+
+    def test_compare_prev_sales_report(self):
+        """?compare=prev retourne un bloc comparison avec current/previous/delta_pct."""
+        Lead.objects.create(company=self.company, nom='CurrLead', stage='NEW')
+        self._create_old_lead()
+        resp = self.api.get('/api/django/reporting/reports/sales/?compare=prev')
+        self.assertEqual(resp.status_code, 200)
+        c = resp.data.get('comparison')
+        self.assertIsNotNone(c, 'comparison manquante')
+        self.assertEqual(c['period'], 'prev')
+        self.assertIn('total_leads', c)
+        self.assertIn('current', c['total_leads'])
+        self.assertIn('previous', c['total_leads'])
+        self.assertIn('delta_pct', c['total_leads'])
+
+    def test_compare_yoy_sales_report(self):
+        """?compare=yoy compare avec le même mois il y a un an."""
+        Lead.objects.create(company=self.company, nom='ThisYear', stage='NEW')
+        resp = self.api.get('/api/django/reporting/reports/sales/?compare=yoy')
+        self.assertEqual(resp.status_code, 200)
+        c = resp.data.get('comparison')
+        self.assertIsNotNone(c)
+        self.assertEqual(c['period'], 'yoy')
+
+    def test_no_compare_returns_null(self):
+        """Sans ?compare, comparison est None."""
+        resp = self.api.get('/api/django/reporting/reports/sales/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.data.get('comparison'))
+
+    def test_compare_prev_dashboard(self):
+        """?compare=prev sur le dashboard retourne un bloc comparison."""
+        resp = self.api.get('/api/django/reporting/dashboard/?compare=prev')
+        self.assertEqual(resp.status_code, 200)
+        c = resp.data.get('comparison')
+        self.assertIsNotNone(c)
+        self.assertIn('ca_paye', c)
+        self.assertIn('nb_leads', c)
+
+
+class TestPDFExport(ReportsBase):
+    """FG95 — ?export=pdf rend un PDF branded sans prix d'achat."""
+
+    def _patch_weasyprint(self):
+        """Remplace WeasyPrint par un stub retournant un PDF minimal valide."""
+        import unittest.mock as mock
+        # Stub PDF minimal (en-tête PDF).
+        stub_pdf = b'%PDF-1.4 fake'
+
+        patcher = mock.patch(
+            'weasyprint.HTML',
+            return_value=mock.MagicMock(write_pdf=mock.MagicMock(return_value=stub_pdf)),
+        )
+        return patcher
+
+    def test_sales_export_pdf_returns_pdf_content_type(self):
+        """?export=pdf sur le rapport ventes retourne application/pdf."""
+        with self._patch_weasyprint():
+            resp = self.api.get('/api/django/reporting/reports/sales/?export=pdf')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('rapport-ventes.pdf', resp['Content-Disposition'])
+
+    def test_stock_export_pdf_returns_pdf_content_type(self):
+        """?export=pdf sur le rapport stock retourne application/pdf."""
+        with self._patch_weasyprint():
+            resp = self.api.get('/api/django/reporting/reports/stock/?export=pdf')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_service_export_pdf_returns_pdf_content_type(self):
+        """?export=pdf sur le rapport service retourne application/pdf."""
+        with self._patch_weasyprint():
+            resp = self.api.get('/api/django/reporting/reports/service/?export=pdf')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+
+    def test_stock_pdf_does_not_contain_buy_price(self):
+        """Le HTML généré pour le rapport stock n'expose jamais le prix d'achat."""
+        from decimal import Decimal
+        from apps.stock.models import Produit
+        import unittest.mock as mock
+
+        Produit.objects.create(
+            company=self.company, nom='PanneauTest', sku='FG95-T',
+            prix_vente=Decimal('5000'), prix_achat=Decimal('3000'),
+            quantite_stock=2)
+
+        captured_html = {}
+
+        class FakeHTML:
+            def __init__(self, string=None, **kw):
+                captured_html['html'] = string
+
+            def write_pdf(self):
+                return b'%PDF-1.4 fake'
+
+        with mock.patch('weasyprint.HTML', FakeHTML):
+            resp = self.api.get('/api/django/reporting/reports/stock/?export=pdf')
+
+        self.assertEqual(resp.status_code, 200)
+        html = captured_html.get('html', '')
+        # prix_achat (3000) ne doit jamais apparaître dans la sortie PDF
+        self.assertNotIn('3000', html,
+                         'Le prix d\'achat est apparu dans le HTML du PDF stock')

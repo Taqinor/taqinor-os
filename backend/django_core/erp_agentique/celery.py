@@ -19,6 +19,10 @@ app.conf.enable_utc = False
 #   - rappels de relance programmés (07:00) — apps/ventes/scheduled.py,
 #   - N76 : récapitulatif quotidien (07:30) et hebdomadaire le lundi (07:30) —
 #     apps/notifications/digests.py,
+#   - FG1 : balayage quotidien des EventTypes morts (08:00) —
+#     apps/notifications/sweeps.py,
+#   - FG2 : balayage quotidien des déclencheurs temporels d'automatisation (08:05) —
+#     apps/automation/beat_tasks.py,
 #   - N79 : envoi des rapports sauvegardés dus, quotidien (06:00) et
 #     hebdomadaire le lundi (06:00) — apps/reporting/scheduled_reports.py.
 app.conf.beat_schedule = {
@@ -37,6 +41,14 @@ app.conf.beat_schedule = {
     'notifications-weekly-digest': {
         'task': 'notifications.weekly_digest',
         'schedule': crontab(hour=7, minute=30, day_of_week=1),
+    },
+    'notifications-sweep-daily': {
+        'task': 'notifications.sweep_daily',
+        'schedule': crontab(hour=8, minute=0),
+    },
+    'automation-time-triggers-daily': {
+        'task': 'automation.time_triggers_daily',
+        'schedule': crontab(hour=8, minute=5),
     },
     'reporting-email-saved-reports-daily': {
         'task': 'reporting.email_saved_reports',

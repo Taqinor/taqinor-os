@@ -186,6 +186,12 @@ class Installation(models.Model):
     date_signature = models.DateField(null=True, blank=True)
     date_materiel_commande = models.DateField(null=True, blank=True)
     date_pose_prevue = models.DateField(null=True, blank=True)
+    # ── FG72 — pose multi-jours. ──
+    # `date_pose_fin_prevue` est la date de FIN prévue de la pose (> date_pose_prevue
+    # pour un chantier multi-jours). `duree_pose_jours` est calculée/éditée à la
+    # main ; rendue comme « durée » sur le calendrier chantier. Additif, nullable.
+    date_pose_fin_prevue = models.DateField(null=True, blank=True)
+    duree_pose_jours = models.PositiveSmallIntegerField(null=True, blank=True)
     date_pose_reelle = models.DateField(null=True, blank=True)
     date_mise_en_service = models.DateField(null=True, blank=True)
     date_reception = models.DateField(null=True, blank=True)
@@ -205,6 +211,9 @@ class Installation(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+    # FG100 — champs personnalisés (additif, jamais destructif).
+    # Les définitions viennent de apps.customfields (module='installation').
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Chantier'

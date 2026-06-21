@@ -34,6 +34,29 @@ def _maybe_xlsx(request, filename, headers, rows, title):
     return None
 
 
+# FG95 — export PDF branded (WeasyPrint + Jinja2)
+def _maybe_pdf(request, pdf_title, sections, pdf_filename, period_label=''):
+    """Retourne un HttpResponse PDF si ?export=pdf, sinon None.
+
+    Jamais de prix d'achat dans les sections transmises ici.
+    """
+    if request.query_params.get('export') != 'pdf':
+        return None
+    from apps.parametres.models import CompanyProfile
+    from apps.reporting.report_pdf import render_report_pdf, pdf_response
+    try:
+        profile = CompanyProfile.get(company=request.user.company)
+    except Exception:
+        profile = None
+    pdf_bytes = render_report_pdf(
+        title=pdf_title,
+        sections=sections,
+        company_profile=profile,
+        period_label=period_label,
+    )
+    return pdf_response(pdf_bytes, filename=pdf_filename)
+
+
 def _qdate(value):
     """Parse une date ?from=/?to= au format ISO (AAAA-MM-JJ), ou None."""
     try:
@@ -46,6 +69,39 @@ def _period(request):
     """Fenêtre de période depuis ?from=&to= (chacune optionnelle)."""
     return (_qdate(request.query_params.get('from')),
             _qdate(request.query_params.get('to')))
+
+
+# ── FG92 — comparaison périodique ─────────────────────────────────────────────
+def _prior_window(start, end):
+    """Décale la fenêtre d'un écart équivalent (MoM)."""
+    today = date.today()
+    s = start or today.replace(day=1)
+    e = end or today
+    span = (e - s).days + 1
+    return s - timedelta(days=span), e - timedelta(days=span)
+
+
+def _yoy_window(start, end):
+    """Même fenêtre, un an avant."""
+    today = date.today()
+    s = start or today.replace(day=1)
+    e = end or today
+    try:
+        ps = s.replace(year=s.year - 1)
+    except ValueError:
+        ps = s - timedelta(days=366)
+    try:
+        pe = e.replace(year=e.year - 1)
+    except ValueError:
+        pe = e - timedelta(days=366)
+    return ps, pe
+
+
+def _compare_kpi(current, previous):
+    """Retourne {current, previous, delta_pct}."""
+    c, p = float(current), float(previous)
+    delta = round((c - p) / p * 100, 1) if p else None
+    return {'current': c, 'previous': p, 'delta_pct': delta}
 
 
 @api_view(['GET'])
@@ -107,11 +163,64 @@ def sales_report(request):
                     ['Étape', 'Leads'], rows, 'Ventes')
     if x:
         return x
+
+    # FG95 — export PDF branded
+    period_label = ''
+    if start or end:
+        _s = start.isoformat() if start else '…'
+        _e = end.isoformat() if end else "aujourd'hui"
+        period_label = f"{_s} → {_e}"
+    p = _maybe_pdf(
+        request, 'Rapport Ventes',
+        sections=[
+            {'title': 'Funnel pipeline',
+             'kv': [{'label': 'Leads total', 'value': str(total)}],
+             'table': {'headers': ['Étape', 'Leads'], 'rows': rows}},
+            {'title': 'Par canal',
+             'kv': None,
+             'table': {'headers': ['Canal', 'Leads'],
+                       'rows': [[c['canal'] or '—', c['count']] for c in par_canal]}},
+            {'title': 'Pertes par motif',
+             'kv': None,
+             'table': {'headers': ['Motif', 'Leads perdus'],
+                       'rows': [[p['motif_perte'] or '—', p['count']] for p in perdus]}},
+        ],
+        pdf_filename='rapport-ventes.pdf',
+        period_label=period_label,
+    )
+    if p:
+        return p
+
+    # FG92 — comparaison périodique (?compare=prev|yoy)
+    comparison = None
+    compare = request.query_params.get('compare')
+    if compare in ('prev', 'yoy'):
+        if compare == 'prev':
+            p_start, p_end = _prior_window(start, end)
+        else:
+            p_start, p_end = _yoy_window(start, end)
+        prev_leads = Lead.objects.filter(**co, is_archived=False)
+        if p_start:
+            prev_leads = prev_leads.filter(date_creation__date__gte=p_start)
+        if p_end:
+            prev_leads = prev_leads.filter(date_creation__date__lte=p_end)
+        prev_total = prev_leads.count()
+        prev_signed = prev_leads.filter(stage='SIGNED').count()
+        curr_signed = leads.filter(stage='SIGNED').count()
+        comparison = {
+            'period': compare,
+            'prev_start': p_start.isoformat() if p_start else None,
+            'prev_end': p_end.isoformat() if p_end else None,
+            'total_leads': _compare_kpi(total, prev_total),
+            'leads_signes': _compare_kpi(curr_signed, prev_signed),
+        }
+
     return Response({
         'funnel': funnel, 'total_leads': total,
         'par_responsable': par_responsable, 'par_canal': par_canal,
         'perdus_par_motif': perdus,
         'devis_par_statut': devis_par_statut,
+        'comparison': comparison,
     })
 
 
@@ -158,6 +267,28 @@ def stock_report(request):
                     ['Catégorie', 'Articles', 'Valeur vente HT'], rows, 'Stock')
     if x:
         return x
+
+    # FG95 — export PDF branded (valorisation achat JAMAIS dans le PDF client)
+    p = _maybe_pdf(
+        request, 'Rapport Stock',
+        sections=[
+            {'title': 'Valorisation par catégorie',
+             'kv': [{'label': 'Valeur vente totale (HT)',
+                     'value': f'{val_vente:,.0f} MAD'}],
+             'table': {'headers': ['Catégorie', 'Articles', 'Valeur vente HT (MAD)'],
+                       'rows': rows}},
+            {'title': 'Articles en bas stock',
+             'kv': None,
+             'table': {'headers': ['Nom', 'SKU', 'Quantité', 'Seuil alerte'],
+                       'rows': [[b['nom'], b['sku'] or '—',
+                                 b['quantite_stock'], b['seuil_alerte']]
+                                for b in bas_stock]}},
+        ],
+        pdf_filename='rapport-stock.pdf',
+    )
+    if p:
+        return p
+
     return Response({
         'valorisation_vente': str(val_vente),
         'valorisation_achat': str(val_achat),  # interne, non client-facing
@@ -214,6 +345,32 @@ def service_report(request):
                     ['Statut chantier', 'Nombre'], rows, 'Service')
     if x:
         return x
+
+    # FG95 — export PDF branded
+    p = _maybe_pdf(
+        request, 'Rapport Service',
+        sections=[
+            {'title': 'Chantiers par statut',
+             'kv': None,
+             'table': {'headers': ['Statut', 'Nombre'], 'rows': rows}},
+            {'title': 'Interventions par technicien',
+             'kv': None,
+             'table': {'headers': ['Technicien', 'Interventions'],
+                       'rows': [[i['technicien__username'] or '—', i['count']]
+                                for i in interventions_tech]}},
+            {'title': 'Tickets par statut',
+             'kv': [{'label': 'Tickets ouverts', 'value': str(tickets_ouverts)},
+                    {'label': 'Tickets résolus', 'value': str(tickets_resolus)},
+                    {'label': 'Garanties expirant ≤90 j',
+                     'value': str(garanties)}],
+             'table': {'headers': ['Statut ticket', 'Nombre'],
+                       'rows': [[t['statut'], t['count']] for t in tickets_statut]}},
+        ],
+        pdf_filename='rapport-service.pdf',
+    )
+    if p:
+        return p
+
     return Response({
         'chantiers_par_statut': chantiers_statut,
         'interventions_par_technicien': interventions_tech,

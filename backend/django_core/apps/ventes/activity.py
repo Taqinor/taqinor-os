@@ -33,6 +33,20 @@ def log_devis_acceptance(devis, user, nom, date_acceptation, option=''):
     )
 
 
+def log_devis_refusal(devis, user, motif, date_refus):
+    """FG44 — Consigne le refus du devis (qui + quand + motif) dans son chatter."""
+    qui = getattr(user, 'username', '?')
+    motif_part = f" — motif : {motif}" if motif else ''
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='statut', field_label='Refus',
+        old_value='',
+        new_value=f"Refusé le {date_refus} par {qui}{motif_part}",
+        body=f"Devis refusé le {date_refus} par {qui}{motif_part}.",
+    )
+
+
 def log_facture_avoir(facture, user, avoir):
     """Consigne la création d'un avoir dans le chatter de la facture.
 

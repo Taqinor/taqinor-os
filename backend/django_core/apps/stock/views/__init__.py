@@ -18,6 +18,7 @@ from .bon_commande_fournisseur import BonCommandeFournisseurViewSet
 from .reception_fournisseur import ReceptionFournisseurViewSet
 from .facture_fournisseur import FactureFournisseurViewSet
 from .paiement_fournisseur import PaiementFournisseurViewSet
+from .inventaire_session import InventaireSessionViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -34,4 +35,5 @@ __all__ = [
     'ReceptionFournisseurViewSet',
     'FactureFournisseurViewSet',
     'PaiementFournisseurViewSet',
+    'InventaireSessionViewSet',
 ]

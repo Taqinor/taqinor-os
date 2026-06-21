@@ -10,6 +10,9 @@ import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
 import { DataTable, Badge, Button, Spinner, Segmented } from '../../ui'
+import { useSavedViews } from '../../hooks/useSavedViews'
+
+const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
 const formatDateFR = (iso) => new Date(iso).toLocaleDateString('fr-FR')
 
@@ -34,6 +37,15 @@ export default function ClientList() {
   const [deletingId, setDeletingId] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [typeFilter, setTypeFilter] = useState('tous')
+  // Vues enregistrées (FG11).
+  const { savedViews, saveView, deleteView } = useSavedViews(CL_SAVED_VIEWS_KEY)
+  const saveCurrentView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    saveView(name, { typeFilter })
+  }
+  const applyView = (v) => {
+    if (v.state?.typeFilter) setTypeFilter(v.state.typeFilter)
+  }
   // Panneau détail (lecture) : devis / factures / chantiers du client cliqué.
   const [detailClient, setDetailClient] = useState(null)
 
@@ -307,13 +319,31 @@ export default function ClientList() {
         </div>
       ) : (
         <>
-          <div className="mb-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <Segmented
               options={TYPE_FILTERS}
               value={typeFilter}
               onChange={setTypeFilter}
               aria-label="Filtrer par type de client"
             />
+            <div className="lp-saved-views">
+              <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
+                ⭐ Enregistrer cette vue
+              </Button>
+              {savedViews.map((v) => (
+                <span key={v.name} className="lp-saved-view-chip">
+                  <button type="button" className="lp-saved-view-apply"
+                          onClick={() => applyView(v)} title="Appliquer cette vue">
+                    {v.name}
+                  </button>
+                  <button type="button" className="lp-saved-view-del"
+                          onClick={() => deleteView(v.name)}
+                          aria-label={`Supprimer la vue ${v.name}`}>
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
 
           <DataTable

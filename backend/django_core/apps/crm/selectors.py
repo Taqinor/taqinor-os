@@ -23,3 +23,70 @@ def find_client_by_email(from_email, company=None):
         return None
     return client_base_qs(company).filter(
         email__iexact=from_email.strip()).first()
+
+
+def client_credit_warning(client, montant_ttc_nouveau=None):
+    """FG41 — encours client + avertissement plafond.
+
+    Calcule l'encours TTC total des factures ouvertes (émises + en_retard) de
+    ce client, l'additionne avec un nouveau montant éventuel, et renvoie un dict :
+
+    ::
+        {
+          'plafond': Decimal | None,   # plafond défini sur le client
+          'encours': Decimal,          # encours actuel (TTC facturé non payé)
+          'encours_avec_nouveau': Decimal | None,   # si montant_ttc_nouveau fourni
+          'depasse': bool,             # encours actuel > plafond
+          'depassera': bool | None,    # encours+nouveau > plafond (si applicable)
+          'message': str | None,       # message d'avertissement prêt à l'affichage
+        }
+
+    ``depasse=False`` et ``depassera=False`` quand aucun plafond n'est défini.
+    Lecture seule — jamais de blocage, uniquement utilisé pour les avertissements.
+    """
+    from decimal import Decimal
+    # Import local pour éviter les cycles crm ↔ ventes au module scope.
+    from apps.ventes.models import Facture
+    STATUTS_OUVERTS = (
+        Facture.Statut.EMISE.value, Facture.Statut.EN_RETARD.value,
+    )
+    # montant_du de chaque facture ouverte (TTC − payé − avoirs).
+    factures_ouvertes = Facture.objects.filter(
+        client=client, statut__in=STATUTS_OUVERTS,
+    ).prefetch_related('paiements', 'avoirs')
+    encours = sum(
+        (f.montant_du for f in factures_ouvertes), Decimal('0'))
+
+    plafond = getattr(client, 'plafond_credit', None)
+    depasse = plafond is not None and encours > plafond
+
+    encours_avec_nouveau = None
+    depassera = None
+    if montant_ttc_nouveau is not None:
+        montant_ttc_nouveau = Decimal(str(montant_ttc_nouveau))
+        encours_avec_nouveau = encours + montant_ttc_nouveau
+        depassera = plafond is not None and encours_avec_nouveau > plafond
+
+    # Message d'avertissement (français, prêt pour l'UI).
+    message = None
+    if plafond is not None:
+        if depassera:
+            message = (
+                f"⚠ Plafond de crédit dépassé : encours actuel "
+                f"{encours:.2f} MAD + {montant_ttc_nouveau:.2f} MAD = "
+                f"{encours_avec_nouveau:.2f} MAD > plafond {plafond:.2f} MAD."
+            )
+        elif depasse:
+            message = (
+                f"⚠ Plafond de crédit dépassé : encours {encours:.2f} MAD "
+                f"> plafond {plafond:.2f} MAD."
+            )
+
+    return {
+        'plafond': plafond,
+        'encours': encours,
+        'encours_avec_nouveau': encours_avec_nouveau,
+        'depasse': depasse,
+        'depassera': depassera,
+        'message': message,
+    }

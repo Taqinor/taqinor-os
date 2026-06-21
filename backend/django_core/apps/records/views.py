@@ -17,10 +17,10 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Activity, ActivityType, Attachment
+from .models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
-    resolve_target,
+    CommentSerializer, TaggedItemSerializer, TagSerializer, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
 
@@ -179,6 +179,95 @@ def _log_done_to_chatter(activity, user):
         pass
 
 
+# ── Commentaires (FG7) ──────────────────────────────────────────────
+import re as _re  # noqa: E402
+
+_MENTION_RE = _re.compile(r'@(\w+)')
+
+
+def _parse_mentions(body):
+    """Retourne la liste des noms d'utilisateur mentionnés dans `body`."""
+    return list(set(_MENTION_RE.findall(body or '')))
+
+
+def _notify_mentions(body, author, company):
+    """Notifie les utilisateurs mentionnés via @username (best-effort)."""
+    mentions = _parse_mentions(body)
+    if not mentions:
+        return
+    try:
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        User = get_user_model()
+        for username in mentions:
+            try:
+                user = User.objects.get(username=username, company=company)
+                if user == author:
+                    continue  # pas d'auto-notification
+                notify(
+                    user, ET.LEAD_ASSIGNED,  # réutilise l'event le plus proche
+                    f'{author.username} vous a mentionné',
+                    body=body[:200],
+                    company=company)
+            except User.DoesNotExist:
+                pass
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    """FG7 — Commentaires génériques + @mentions.
+
+    Lecture : tout rôle. Création/modification : propriétaire ou admin.
+    Suppression : admin seulement. Scopé société (company posée côté serveur)."""
+    serializer_class = CommentSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        if self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = _scoped(
+            Comment.objects.select_related('author', 'content_type'),
+            self.request.user)
+        model = self.request.query_params.get('model')
+        oid = self.request.query_params.get('id')
+        if model and oid:
+            try:
+                ct, _ = resolve_target(model, oid, _company(self.request))
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(content_type=ct, object_id=oid)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            ct, _obj = resolve_target(
+                request.data.get('model'), request.data.get('id'), company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        comment = ser.save(
+            company=company,
+            content_type=ct,
+            object_id=request.data.get('id'),
+            author=request.user)
+        # Notifie les @mentions (best-effort, jamais d'erreur remontée).
+        _notify_mentions(comment.body, request.user, company)
+        return Response(CommentSerializer(comment).data,
+                        status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+
 # ── Pièces jointes ──────────────────────────────────────────────────
 class AttachmentViewSet(viewsets.ModelViewSet):
     serializer_class = AttachmentSerializer
@@ -264,6 +353,151 @@ class AttachmentViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         delete_attachment(instance.file_key)
         instance.delete()
+
+
+# ── Tags (FG9) ──────────────────────────────────────────────────────
+
+class TagViewSet(viewsets.ModelViewSet):
+    """FG9 — Vocabulaire de tags de la société.
+
+    Lecture : tout rôle. Création/modification : responsable ou admin.
+    Suppression : admin seulement. company posée côté serveur."""
+    serializer_class = TagSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        if self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=_company(self.request))
+
+    def get_queryset(self):
+        qs = _scoped(Tag.objects.all(), self.request.user)
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(nom__icontains=q)
+        return qs
+
+
+class TaggedItemViewSet(viewsets.ModelViewSet):
+    """FG9 — Associations tag ↔ enregistrement.
+
+    Lecture : tout rôle (filtrage par model+id). Création/suppression :
+    responsable ou admin. company déduite du tag (jamais du corps)."""
+    serializer_class = TaggedItemSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        user = self.request.user
+        # TaggedItem n'a pas de company directement → filtre par tag__company.
+        if user.company_id:
+            qs = TaggedItem.objects.select_related(
+                'tag', 'content_type').filter(tag__company=user.company)
+        elif user.is_superuser:
+            qs = TaggedItem.objects.select_related('tag', 'content_type').all()
+        else:
+            return TaggedItem.objects.none()
+        model = self.request.query_params.get('model')
+        oid = self.request.query_params.get('id')
+        if model and oid:
+            try:
+                ct, _ = resolve_target(model, oid, _company(self.request))
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(content_type=ct, object_id=oid)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            ct, _obj = resolve_target(
+                request.data.get('model'), request.data.get('id'), company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        tag_id = request.data.get('tag')
+        if not tag_id:
+            return Response({'detail': 'tag requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            tag = Tag.objects.get(pk=tag_id, company=company)
+        except Tag.DoesNotExist:
+            return Response({'detail': 'Tag introuvable.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        item, created = TaggedItem.objects.get_or_create(
+            tag=tag, content_type=ct, object_id=request.data.get('id'))
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(TaggedItemSerializer(item).data, status=code)
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def attachments_all(request):
+    """FG10 — Centre de pièces jointes de la société.
+
+    Retourne TOUTES les pièces jointes de la société (scopé TenantMixin),
+    paginées, avec filtres optionnels :
+      - mime      : filtre exact sur le type MIME (ex. 'application/pdf')
+      - mime_like : filtre icontains sur le type MIME (ex. 'image' → tous les
+                    types image/*)
+      - phase     : 'avant' / 'pendant' / 'apres' / '' (sans phase)
+      - model     : ex. 'crm.lead' (filtre sur content_type)
+      - since     : date ISO 8601 (created_at >= since)
+
+    Résultats triés du plus récent au plus ancien. Paginés à 50 par page."""
+    from rest_framework.pagination import PageNumberPagination
+
+    qs = _scoped(
+        Attachment.objects.select_related('uploaded_by', 'content_type'),
+        request.user
+    ).order_by('-created_at', '-id')
+
+    p = request.query_params
+    mime = p.get('mime')
+    if mime:
+        qs = qs.filter(mime=mime)
+    mime_like = p.get('mime_like')
+    if mime_like:
+        qs = qs.filter(mime__icontains=mime_like)
+    phase = p.get('phase')
+    if phase is not None:
+        qs = qs.filter(phase=phase)
+    model = p.get('model')
+    if model:
+        try:
+            app_label, model_name = str(model).lower().split('.', 1)
+            from django.contrib.contenttypes.models import ContentType
+            ct = ContentType.objects.get(app_label=app_label, model=model_name)
+            qs = qs.filter(content_type=ct)
+        except (ValueError, ContentType.DoesNotExist):
+            qs = qs.none()
+    since = p.get('since')
+    if since:
+        try:
+            from django.utils.dateparse import parse_datetime, parse_date
+            from django.utils import timezone as tz
+            dt = parse_datetime(since)
+            if dt is None:
+                d = parse_date(since)
+                if d:
+                    dt = tz.datetime(d.year, d.month, d.day, tzinfo=tz.utc)
+            if dt:
+                qs = qs.filter(created_at__gte=dt)
+        except Exception:
+            pass
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 50
+    page = paginator.paginate_queryset(qs, request)
+    ser = AttachmentSerializer(page, many=True)
+    return paginator.get_paginated_response(ser.data)
 
 
 @api_view(['GET'])

@@ -35,6 +35,24 @@ FIELD_MAPS = {
         'quantite_stock': 'quantite_stock', 'stock': 'quantite_stock',
         'description': 'description',
     },
+    # FG14 — Fournisseurs : import texte simple, pas de relation.
+    'fournisseurs': {
+        'nom': 'nom', 'contact': 'contact_personne',
+        'contact_personne': 'contact_personne', 'email': 'email',
+        'telephone': 'telephone', 'tel': 'telephone',
+        'adresse': 'adresse',
+    },
+    # FG14 — Équipements : import avec résolution produit (par SKU) et
+    # installation (par référence). Seuls les champs libres sont importables
+    # directement ; produit/installation sont résolus côté commit().
+    'equipements': {
+        'numero_serie': 'numero_serie', 'serie': 'numero_serie',
+        'sn': 'numero_serie', 'statut': 'statut', 'note': 'note',
+        'produit_sku': 'produit_sku', 'sku': 'produit_sku',
+        'installation_ref': 'installation_ref',
+        'chantier': 'installation_ref', 'installation': 'installation_ref',
+        'date_pose': 'date_pose',
+    },
 }
 
 TARGETS = set(FIELD_MAPS)
@@ -215,6 +233,78 @@ def commit(file_bytes, filename, target, company, user):
                         quantite=opening, quantite_avant=0,
                         quantite_apres=opening, created_by=user,
                         note='Stock initial (import)')
+                created += 1
+
+        # FG14 — Fournisseurs.
+        elif target == 'fournisseurs':
+            from apps.stock.models import Fournisseur
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                if not f.get('nom'):
+                    skipped.append({'ligne': i, 'raison': 'nom manquant'})
+                    continue
+                if Fournisseur.objects.filter(
+                        company=company, nom__iexact=f['nom']).exists():
+                    skipped.append({'ligne': i, 'raison': 'doublon (nom existe)'})
+                    continue
+                Fournisseur.objects.create(company=company, **f)
+                created += 1
+
+        # FG14 — Équipements : résolution produit par SKU, installation par réf.
+        elif target == 'equipements':
+            import datetime
+            from apps.sav.models import Equipement
+            from apps.stock.models import Produit
+            from apps.installations.models import Installation
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                # Résolution produit (SKU obligatoire).
+                produit_sku = f.pop('produit_sku', None)
+                if not produit_sku:
+                    skipped.append({'ligne': i, 'raison': 'produit_sku manquant'})
+                    continue
+                try:
+                    produit = Produit.objects.get(company=company, sku=produit_sku)
+                except Produit.DoesNotExist:
+                    skipped.append({'ligne': i, 'raison': f'produit SKU inconnu : {produit_sku}'})
+                    continue
+                # Résolution installation (référence obligatoire).
+                install_ref = f.pop('installation_ref', None)
+                if not install_ref:
+                    skipped.append({'ligne': i, 'raison': 'installation_ref manquant'})
+                    continue
+                try:
+                    installation = Installation.objects.get(
+                        company=company, reference=install_ref)
+                except Installation.DoesNotExist:
+                    skipped.append({'ligne': i, 'raison': f'installation inconnue : {install_ref}'})
+                    continue
+                # Numéro de série : doublon par (produit, installation, numero_serie).
+                numero_serie = f.get('numero_serie')
+                if numero_serie and Equipement.objects.filter(
+                        company=company, produit=produit,
+                        installation=installation,
+                        numero_serie=numero_serie).exists():
+                    skipped.append({'ligne': i, 'raison': 'doublon (série existe)'})
+                    continue
+                # Normalisation date_pose.
+                if 'date_pose' in f:
+                    raw_date = f['date_pose']
+                    if isinstance(raw_date, datetime.datetime):
+                        f['date_pose'] = raw_date.date()
+                    elif isinstance(raw_date, str):
+                        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+                            try:
+                                f['date_pose'] = datetime.datetime.strptime(
+                                    raw_date.strip(), fmt).date()
+                                break
+                            except (ValueError, AttributeError):
+                                pass
+                        else:
+                            f.pop('date_pose')
+                Equipement.objects.create(
+                    company=company, produit=produit,
+                    installation=installation, created_by=user, **f)
                 created += 1
 
     return {'ok': True, 'target': target, 'created': created,

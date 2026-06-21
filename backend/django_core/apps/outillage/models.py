@@ -44,6 +44,16 @@ class Outillage(models.Model):
     date_achat = models.DateField(null=True, blank=True)
     note = models.TextField(blank=True, default='')
 
+    # ── FG80 — suivi calibration / inspection périodique ─────────────────────
+    # Légalement requis pour multimètres, testeurs de terre, harnais (EPI).
+    # `intervalle_calibration_mois` = 0 (défaut) signifie « non soumis ».
+    date_derniere_calibration = models.DateField(null=True, blank=True)
+    intervalle_calibration_mois = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='0 = pas de calibration périodique requise.')
+    # Calculé/dénormalisé pour les alertes et le badge « à calibrer ».
+    date_prochaine_calibration = models.DateField(null=True, blank=True)
+
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

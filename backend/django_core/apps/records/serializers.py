@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
-from .models import Activity, ActivityType, Attachment, ALLOWED_TARGETS
+from .models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem, ALLOWED_TARGETS
 
 
 def resolve_target(model_label, object_id, company):
@@ -119,3 +119,52 @@ class AttachmentSerializer(serializers.ModelSerializer):
         # automatiquement. On ne renvoie plus l'URL présignée MinIO, dont
         # l'hôte interne n'est pas joignable depuis le navigateur.
         return f'/api/django/records/attachments/{obj.id}/download/'
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    """FG7 — Commentaire générique avec @mentions."""
+    author_username = serializers.CharField(
+        source='author.username', read_only=True, default=None)
+    author_display = serializers.SerializerMethodField()
+    target_model = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id', 'body', 'author', 'author_username', 'author_display',
+            'object_id', 'target_model', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'author', 'author_username', 'author_display',
+            'object_id', 'target_model', 'created_at', 'updated_at',
+        ]
+
+    def get_author_display(self, obj):
+        if obj.author is None:
+            return None
+        name = f'{obj.author.first_name} {obj.author.last_name}'.strip()
+        return name or obj.author.username
+
+    def get_target_model(self, obj):
+        ct = obj.content_type
+        return f'{ct.app_label}.{ct.model}'
+
+
+class TagSerializer(serializers.ModelSerializer):
+    """FG9 — Tag du vocabulaire partagé."""
+    class Meta:
+        model = Tag
+        # company posée côté serveur.
+        fields = ['id', 'nom', 'couleur', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class TaggedItemSerializer(serializers.ModelSerializer):
+    """FG9 — Association tag ↔ enregistrement."""
+    tag_nom = serializers.CharField(source='tag.nom', read_only=True)
+    tag_couleur = serializers.CharField(source='tag.couleur', read_only=True)
+
+    class Meta:
+        model = TaggedItem
+        fields = ['id', 'tag', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']
+        read_only_fields = ['id', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']

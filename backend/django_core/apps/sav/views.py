@@ -10,15 +10,25 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import HasPermissionOrLegacy, IsAdminRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+)
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
-from .models import Equipement, Ticket, PieceConsommee
+from .models import (
+    Equipement, Ticket, PieceConsommee,
+    SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
+    WarrantyClaim, KbArticle,
+)
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     PieceConsommeeSerializer, EXPIRING_SOON_DAYS,
+    SavSlaSettingsSerializer,
+    MaintenanceChecklistTemplateSerializer, TicketChecklistItemSerializer,
+    WarrantyClaimSerializer,
+    KbArticleSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -110,8 +120,11 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         # Calcul des horloges de garantie après la pose des FK.
         inst = serializer.instance
         inst.recompute_garanties()
+        # FG85 — jeton QR EQUIP:<id> posé à la création.
+        inst.equipement_token = f'EQUIP:{inst.pk}'
         inst.save(update_fields=[
-            'date_fin_garantie', 'date_fin_garantie_production'])
+            'date_fin_garantie', 'date_fin_garantie_production',
+            'equipement_token'])
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
@@ -123,8 +136,49 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
                  'Ce numéro de série existe déjà dans votre société.'})
         inst = serializer.instance
         inst.recompute_garanties()
-        inst.save(update_fields=[
-            'date_fin_garantie', 'date_fin_garantie_production'])
+        # FG85 — assure que le jeton est toujours présent (migration d'équipements existants).
+        token = f'EQUIP:{inst.pk}'
+        update_fields = ['date_fin_garantie', 'date_fin_garantie_production']
+        if inst.equipement_token != token:
+            inst.equipement_token = token
+            update_fields.append('equipement_token')
+        inst.save(update_fields=update_fields)
+
+    @action(detail=False, methods=['get'], url_path='etiquettes',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def etiquettes(self, request):
+        """FG85 — Étiquettes QR pour les équipements du parc.
+
+        ?ids=1,2,3 pour un sous-ensemble ; sans filtre = tous les équipements
+        de la société (limité à 200 pour WeasyPrint). Symbologie : qr (défaut)
+        ou code128. Renvoie HTML prêt pour impression / conversion PDF."""
+        from apps.stock.labels import render_labels_html
+        from django.http import HttpResponse as HR
+
+        qs = self.get_queryset()
+        ids_param = request.query_params.get('ids', '')
+        if ids_param:
+            try:
+                ids = [int(i) for i in ids_param.split(',') if i.strip()]
+            except ValueError:
+                return Response({'detail': 'ids invalides.'}, status=400)
+            qs = qs.filter(pk__in=ids)
+        qs = qs[:200]
+
+        items = []
+        for eq in qs:
+            # Assure le jeton présent (rétro-compat équipements sans token).
+            token = eq.equipement_token or f'EQUIP:{eq.pk}'
+            titre = eq.produit.nom if eq.produit_id else '—'
+            sous_titre = eq.numero_serie or '(sans série)'
+            items.append({'token': token, 'titre': titre, 'sous_titre': sous_titre})
+
+        if not items:
+            return Response({'detail': 'Aucun équipement.'}, status=404)
+
+        symbology = request.query_params.get('symbology', 'qr')
+        html = render_labels_html(items, symbology=symbology)
+        return HR(html, content_type='text/html; charset=utf-8')
 
 
 class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -224,6 +278,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if client is not None:
                 serializer.validated_data['client'] = client
 
+    def _compute_sla_due_at(self, company, priorite, date_ouverture):
+        """FG81 — Calcule sla_due_at depuis les réglages société (ou None)."""
+        sla = SavSlaSettings.get(company)
+        if not sla.sla_breach_enabled:
+            return None
+        _, resolution_days = sla.days_for(priorite)
+        return date_ouverture + timedelta(days=resolution_days)
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
@@ -235,12 +297,16 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         date_ouverture = (
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())
+        # FG81 — SLA : calcul de l'échéance cible à la création.
+        priorite = serializer.validated_data.get('priorite', 'normale')
+        sla_due_at = self._compute_sla_due_at(company, priorite, date_ouverture)
         create_with_reference(
             Ticket, 'SAV', company,
             lambda ref: serializer.save(
                 reference=ref, company=company,
                 created_by=self.request.user,
-                date_ouverture=date_ouverture),
+                date_ouverture=date_ouverture,
+                sla_due_at=sla_due_at),
         )
         activity.log_creation(serializer.instance, self.request.user)
 
@@ -248,7 +314,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_tenant(serializer)
         old = Ticket.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
-        activity.log_changes(old, serializer.instance, self.request.user)
+        # FG81 — recalcule sla_breach après toute mise à jour de statut.
+        inst = serializer.instance
+        inst.recompute_sla_breach()
+        inst.save(update_fields=['sla_breach'])
+        activity.log_changes(old, inst, self.request.user)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -294,6 +364,31 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             ticket.motif_annulation = None
             ticket.save(update_fields=['annule', 'motif_annulation'])
             activity.log_note(ticket, request.user, "Ticket réactivé")
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='premier-reponse',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def premier_reponse(self, request, pk=None):
+        """FG81 — Enregistre la date de première réponse (horloge de réponse SLA).
+
+        Idempotent : si déjà posée, renvoie la valeur existante. La date peut
+        être fournie en body (`at` ISO8601) sinon utilise now()."""
+        ticket = self.get_object()
+        if ticket.date_premiere_reponse is None:
+            at_raw = request.data.get('at')
+            if at_raw:
+                from django.utils.dateparse import parse_datetime
+                at = parse_datetime(at_raw)
+                if at is None:
+                    return Response({'detail': 'Date invalide.'}, status=400)
+            else:
+                at = timezone.now()
+            ticket.date_premiere_reponse = at
+            ticket.save(update_fields=['date_premiere_reponse'])
+            activity.log_note(
+                ticket, request.user,
+                f'Première réponse enregistrée le {at.strftime("%d/%m/%Y %H:%M")}')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -411,3 +506,299 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 f'Pièce {nom} ×{qte} retirée{suffixe}')
             piece.delete()
         return Response(status=204)
+
+    @action(detail=True, methods=['get', 'post', 'patch'],
+            url_path='checklist',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def checklist(self, request, pk=None):
+        """FG82 — Checklist de visite de maintenance sur le ticket.
+
+        GET : liste les items cochés/non cochés.
+        POST : initialise depuis un template (body: {template_id: N}) ;
+               idempotent (ne duplique pas si déjà initialisée).
+        PATCH : met à jour un item (body: {cle: 'X', coche: true, note: '…'}).
+        """
+        ticket = self.get_object()
+        if request.method == 'GET':
+            items = ticket.checklist_items.order_by('ordre', 'cle')
+            return Response(TicketChecklistItemSerializer(items, many=True).data)
+
+        if request.method == 'POST':
+            template_id = request.data.get('template_id')
+            if not template_id:
+                return Response({'detail': 'template_id requis.'}, status=400)
+            try:
+                tmpl = MaintenanceChecklistTemplate.objects.get(
+                    pk=template_id, company=ticket.company)
+            except MaintenanceChecklistTemplate.DoesNotExist:
+                return Response({'detail': 'Template introuvable.'}, status=404)
+            created = 0
+            for item in tmpl.items.filter(actif=True):
+                _, is_new = TicketChecklistItem.objects.get_or_create(
+                    ticket=ticket, cle=item.cle,
+                    defaults={
+                        'company': ticket.company,
+                        'libelle': item.libelle,
+                        'ordre': item.ordre,
+                    })
+                if is_new:
+                    created += 1
+            items = ticket.checklist_items.order_by('ordre', 'cle')
+            return Response(TicketChecklistItemSerializer(items, many=True).data,
+                            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+        # PATCH — mise à jour d'un item
+        cle = request.data.get('cle')
+        if not cle:
+            return Response({'detail': 'cle requis.'}, status=400)
+        try:
+            item = ticket.checklist_items.get(cle=cle)
+        except TicketChecklistItem.DoesNotExist:
+            return Response({'detail': 'Item introuvable.'}, status=404)
+        if 'coche' in request.data:
+            item.coche = bool(request.data['coche'])
+            if item.coche:
+                item.coche_par = request.user
+                item.date_coche = timezone.now()
+            else:
+                item.coche_par = None
+                item.date_coche = None
+        if 'note' in request.data:
+            item.note = request.data['note'] or ''
+        item.save()
+        return Response(TicketChecklistItemSerializer(item).data)
+
+
+# ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
+
+class SavSlaSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Réglages SLA SAV par société (FG81). Singleton : list renvoie l'unique
+    enregistrement ; écriture responsable/admin."""
+    queryset = SavSlaSettings.objects.all()
+    serializer_class = SavSlaSettingsSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def list(self, request, *args, **kwargs):
+        company = request.user.company
+        if company is None:
+            return Response({})
+        obj = SavSlaSettings.get(company)
+        return Response(self.get_serializer(obj).data)
+
+    def create(self, request, *args, **kwargs):
+        """Upsert du singleton (PATCH-like via POST)."""
+        company = request.user.company
+        obj = SavSlaSettings.get(company)
+        serializer = self.get_serializer(obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(company=company)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ── FG82 — Checklist templates ────────────────────────────────────────────────
+
+class MaintenanceChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Templates de checklist de maintenance (FG82). Lecture tout rôle."""
+    queryset = MaintenanceChecklistTemplate.objects.prefetch_related('items').all()
+    serializer_class = MaintenanceChecklistTemplateSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(actif=True)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        if instance.protege:
+            raise ValidationError('Ce template est protégé et ne peut être supprimé.')
+        instance.delete()
+
+
+# ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
+
+class WarrantyClaimViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Réclamations garantie fournisseur / flux RMA (FG83).
+    Lecture tout rôle ; écriture responsable/admin."""
+    queryset = WarrantyClaim.objects.select_related(
+        'equipement', 'equipement__produit', 'ticket',
+    ).all()
+    serializer_class = WarrantyClaimSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['rma_ref', 'description', 'fournisseur_nom_cache']
+    ordering_fields = ['date_creation', 'date_signalement', 'statut']
+    ordering = ['-date_creation']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        equipement = self.request.query_params.get('equipement')
+        ticket = self.request.query_params.get('ticket')
+        statut = self.request.query_params.get('statut')
+        if equipement:
+            qs = qs.filter(equipement_id=equipement)
+        if ticket:
+            qs = qs.filter(ticket_id=ticket)
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        equipement = serializer.validated_data.get('equipement')
+        ticket = serializer.validated_data.get('ticket')
+        if equipement and equipement.company_id != company.id:
+            raise ValidationError({'equipement': 'Équipement inconnu.'})
+        if ticket and ticket.company_id != company.id:
+            raise ValidationError({'ticket': 'Ticket inconnu.'})
+
+    def _resolve_fournisseur(self, serializer):
+        """Résout le nom du fournisseur via stock.selectors (cross-app)."""
+        fid = serializer.validated_data.get('fournisseur_id_ext')
+        if fid:
+            try:
+                from apps.stock.selectors import get_fournisseur_by_id
+                f = get_fournisseur_by_id(self.request.user.company, fid)
+                if f:
+                    serializer.validated_data['fournisseur_nom_cache'] = f.nom
+            except Exception:
+                pass
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        self._resolve_fournisseur(serializer)
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        self._resolve_fournisseur(serializer)
+        super().perform_update(serializer)
+
+
+# ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
+
+class KbArticleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Articles de la base de connaissances SAV (FG87).
+    Cherchables par texte libre + filtrables par produit/catégorie."""
+    queryset = KbArticle.objects.select_related('produit').all()
+    serializer_class = KbArticleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'corps', 'categorie', 'tags']
+    ordering_fields = ['date_modification', 'date_creation', 'titre']
+    ordering = ['-date_modification']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(actif=True)
+        produit = self.request.query_params.get('produit')
+        categorie = self.request.query_params.get('categorie')
+        if produit:
+            qs = qs.filter(produit_id=produit)
+        if categorie:
+            qs = qs.filter(categorie__icontains=categorie)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+
+# ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────
+
+def sav_parts_forecast(request):
+    """FG89 — Aperçu consommation de pièces SAV sur une fenêtre glissante.
+
+    Agrège PieceConsommee par produit sur les N derniers mois, calcule la
+    consommation mensuelle moyenne et suggère une quantité de réapprovisionnement.
+    Interne uniquement — aucun prix d'achat n'est exposé.
+    """
+    from apps.sav.models import PieceConsommee
+    from django.db.models import Sum
+
+    company = request.user.company
+    months = int(request.query_params.get('months', 12))
+    since = timezone.localdate() - timedelta(days=months * 30)
+
+    qs = (PieceConsommee.objects
+          .filter(company=company, date_creation__date__gte=since)
+          .values('produit', 'produit__nom', 'produit__marque', 'produit__sku')
+          .annotate(total_consomme=Sum('quantite'))
+          .order_by('-total_consomme'))
+
+    results = []
+    for row in qs:
+        mensuel_moyen = float(row['total_consomme']) / max(months, 1)
+        results.append({
+            'produit': row['produit'],
+            'nom': row['produit__nom'],
+            'marque': row['produit__marque'] or '',
+            'sku': row['produit__sku'] or '',
+            'total_consomme': float(row['total_consomme']),
+            'mois_fenetre': months,
+            'consommation_mensuelle_moy': round(mensuel_moyen, 2),
+            # Suggestion : 2 mois de stock de sécurité.
+            'qte_suggere_reappro': round(mensuel_moyen * 2, 1),
+        })
+
+    return Response(results)
+
+
+# ── FG81 — Scan journalier de breach (appelé par Celery-beat ou management cmd) ──
+
+def scan_sla_breaches():
+    """FG81 — Parcourt tous les tickets ouverts avec sla_due_at dépassé, met à
+    jour sla_breach et notifie le technicien responsable. Idempotent.
+
+    Appelé par le scan journalier (management command ou Celery-beat).
+    Aucune modification si sla_breach_enabled est False pour la société."""
+    from apps.notifications.services import notify
+    from apps.notifications.models import EventType
+
+    today = timezone.localdate()
+    breached = Ticket.objects.filter(
+        statut__in=Ticket.OPEN_STATUTS,
+        annule=False,
+        sla_due_at__lt=today,
+        sla_breach=False,
+    ).select_related('company', 'technicien_responsable')
+
+    updated = 0
+    for ticket in breached:
+        # Vérifie que la société a activé les notifications SLA.
+        sla = SavSlaSettings.get(ticket.company)
+        if not sla.sla_breach_enabled:
+            continue
+        ticket.sla_breach = True
+        ticket.save(update_fields=['sla_breach'])
+        updated += 1
+        if ticket.technicien_responsable_id:
+            notify(
+                user=ticket.technicien_responsable,
+                event_type=EventType.SAV_TICKET_BREACHING,
+                title=f'SLA dépassé — {ticket.reference}',
+                body=(f'Le ticket {ticket.reference} a dépassé son délai SLA '
+                      f'({ticket.sla_due_at.strftime("%d/%m/%Y")}).'),
+                link=f'/sav/tickets/{ticket.pk}',
+                company=ticket.company,
+            )
+    return updated

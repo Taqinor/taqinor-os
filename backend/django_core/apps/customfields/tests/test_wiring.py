@@ -185,3 +185,60 @@ class TestReorder(CFWiringBase):
         b.refresh_from_db()
         self.assertEqual(b.ordre, 0)
         self.assertEqual(a.ordre, 1)
+
+
+class TestFG100NewModules(CFWiringBase):
+    """FG100 — DEVIS/INSTALLATION/TICKET ajoutés au Module de CustomFieldDef."""
+
+    def test_devis_module_choice_accepted(self):
+        """CustomFieldDef peut être créé pour le module 'devis'."""
+        resp = self.api.post('/api/django/custom-fields/definitions/', {
+            'module': 'devis', 'code': 'dossier_onee',
+            'libelle': 'Numéro dossier ONEE', 'type': 'text',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        from apps.customfields.models import CustomFieldDef
+        self.assertTrue(
+            CustomFieldDef.objects.filter(
+                company=self.company, module='devis', code='dossier_onee'
+            ).exists())
+
+    def test_installation_module_choice_accepted(self):
+        """CustomFieldDef peut être créé pour le module 'installation'."""
+        resp = self.api.post('/api/django/custom-fields/definitions/', {
+            'module': 'installation', 'code': 'type_nacelle',
+            'libelle': 'Type de nacelle', 'type': 'text',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_ticket_module_choice_accepted(self):
+        """CustomFieldDef peut être créé pour le module 'ticket'."""
+        resp = self.api.post('/api/django/custom-fields/definitions/', {
+            'module': 'ticket', 'code': 'cause_panne',
+            'libelle': 'Cause de la panne', 'type': 'text',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_devis_custom_data_field_exists(self):
+        """Le modèle Devis porte un champ custom_data (JSONField, nullable)."""
+        from apps.ventes.models import Devis
+        from django.db import models as db_models
+        field = Devis._meta.get_field('custom_data')
+        self.assertIsInstance(field, db_models.JSONField)
+        self.assertTrue(field.null)
+
+    def test_installation_custom_data_field_exists(self):
+        """Le modèle Installation porte un champ custom_data (JSONField, nullable)."""
+        from apps.installations.models import Installation
+        from django.db import models as db_models
+        field = Installation._meta.get_field('custom_data')
+        self.assertIsInstance(field, db_models.JSONField)
+        self.assertTrue(field.null)
+
+    def test_ticket_custom_data_field_exists(self):
+        """Le modèle Ticket porte un champ custom_data (JSONField, nullable)."""
+        from apps.sav.models import Ticket
+        from django.db import models as db_models
+        field = Ticket._meta.get_field('custom_data')
+        self.assertIsInstance(field, db_models.JSONField)
+        self.assertTrue(field.null)

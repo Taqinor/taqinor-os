@@ -1,4 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
+
+const ActivityFeedWidget = lazy(() => import('../components/ActivityFeedWidget'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -587,6 +589,22 @@ export function Component() {
               </CardContent>
             </Card>
           </div>
+
+          {/* FG8 — Flux d'activités planifiées (records.Activity) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
+                Mes activités planifiées
+              </CardTitle>
+              <CardDescription>Activités ouvertes qui vous sont assignées</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<p className="text-sm text-muted-foreground">Chargement…</p>}>
+                <ActivityFeedWidget limit={5} />
+              </Suspense>
+            </CardContent>
+          </Card>
 
           {/* Alerte factures en retard */}
           {facturesEnRetard.length > 0 && (
