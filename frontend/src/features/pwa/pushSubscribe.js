@@ -60,7 +60,20 @@ function urlBase64ToUint8Array(base64String) {
 export async function subscribeToPush() {
   if (!pushSupported()) return { ok: false, reason: 'unsupported' }
 
-  // 1) Clé publique VAPID (vide tant que le serveur n'est pas configuré).
+  // 1) Permission EN PREMIER, de façon synchrone dans le geste utilisateur.
+  //    iOS/Safari EXIGE que Notification.requestPermission() soit appelé
+  //    directement dans le gestionnaire de clic : tout `await` AVANT (ex. un
+  //    fetch réseau) fait perdre le contexte de geste et iOS IGNORE alors
+  //    silencieusement la demande → permission jamais accordée, aucun
+  //    abonnement, aucune notif (alors que Chrome/Windows, plus laxiste, marche).
+  //    On demande donc la permission avant tout appel asynchrone.
+  let permission = Notification.permission
+  if (permission === 'default') {
+    try { permission = await Notification.requestPermission() } catch { /* ignore */ }
+  }
+  if (permission !== 'granted') return { ok: false, reason: 'denied' }
+
+  // 2) Clé publique VAPID (vide tant que le serveur n'est pas configuré).
   let publicKey = ''
   try {
     const res = await notificationsApi.getVapidPublicKey()
@@ -69,13 +82,6 @@ export async function subscribeToPush() {
     return { ok: false, reason: 'error', error }
   }
   if (!publicKey) return { ok: false, reason: 'unconfigured' }
-
-  // 2) Permission de notifications (demande native si « default »).
-  let permission = Notification.permission
-  if (permission === 'default') {
-    try { permission = await Notification.requestPermission() } catch { /* ignore */ }
-  }
-  if (permission !== 'granted') return { ok: false, reason: 'denied' }
 
   // 3) Abonnement PushManager via le service worker déjà enregistré.
   try {
