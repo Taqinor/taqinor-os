@@ -11,6 +11,14 @@
  * au déclencheur, aria-expanded reflète l'état. Loi 82-21 (explainer) sort du
  * menu de 1er niveau → vit dans Ressources + le pied de page + les liens
  * contextuels (jamais en nav primaire).
+ *
+ * W150 — Scroll-reactive: starts transparent over hero, transitions to
+ * solid + backdrop-blur + condensed height once scrolled past ~80 px.
+ * W151 — Active-page indicator: brass underline + aria-current="page".
+ * W163 — Chevrons rotate on open + polished dropdown panels.
+ * W164 — Mobile menu: animated panel, phone SVG, LanguageSwitcher inside,
+ *         scrollable on small screens.
+ * W210 — .glow on primary CTA button.
  */
 import Logo from './Logo.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
@@ -49,10 +57,30 @@ const ressources = [
   { href: '/marocains-du-monde', label: t('nav.mre') },
 ];
 
+// W151 — Détecter la page active pour l'indicateur dans la nav desktop.
+// rootPath est déjà sans préfixe de locale (ex. "/realisations", "/").
+const isActive = (href: string) => {
+  const clean = href.replace(/\/$/, '') || '/';
+  const current = rootPath.replace(/\/$/, '') || '/';
+  return current === clean || (clean !== '/' && current.startsWith(clean + '/'));
+};
+
+// Indicateur Solutions actif si on est sur /nos-solutions ou une sous-page.
+const solutionsActive = isActive('/nos-solutions') ||
+  solutions.some((s) => isActive(s.href));
+const ressourcesActive = isActive('/guides') ||
+  ressources.some((r) => isActive(r.href));
+
 const linkBase =
   'group/link relative text-sm font-medium text-lune-soft transition-colors hover:text-white';
+// W151 — variante active : texte blanc + indicateur brass visible au repos.
+const linkBaseActive =
+  'group/link relative text-sm font-medium text-white';
 const underline =
   'absolute -bottom-1 left-0 h-0.5 w-0 bg-brass-400 transition-all duration-200 group-hover/link:w-full';
+// W151 — underline actif : toujours pleine largeur, couleur brass.
+const underlineActive =
+  'absolute -bottom-1 left-0 h-0.5 w-full bg-brass-400';
 // Classes de révélation du panneau : survol, focus clavier OU classe .is-open (JS).
 const menuReveal =
   'invisible translate-y-1 opacity-0 transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-[.is-open]:visible group-[.is-open]:translate-y-0 group-[.is-open]:opacity-100';
@@ -60,8 +88,14 @@ const itemClass =
   'block px-3 py-2 text-sm text-lune-soft transition-colors hover:bg-white/5 hover:text-white focus:bg-white/5 focus:text-white focus:outline-none';
 ---
 
-<header class="sticky top-0 z-50 border-b border-white/10 bg-nuit/90 backdrop-blur">
-  <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4">
+{/* W150 — Spacer keeps the page layout stable; the header is sticky/fixed-like
+    but uses `sticky` which doesn't remove from flow, so no spacer needed for
+    `sticky`. The header chrome transitions its own bg/blur only — zero CLS. */}
+<header
+  id="site-header"
+  class="sticky top-0 z-50 border-b border-transparent bg-transparent transition-[background-color,border-color,backdrop-filter] duration-300 motion-reduce:transition-none"
+>
+  <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4" id="header-inner">
     <a href={L('/')} aria-label="TAQINOR — accueil">
       <Logo size={24} theme="dark" />
     </a>
@@ -70,16 +104,27 @@ const itemClass =
       <div class="dropdown group relative" data-dropdown>
         <a
           href={L('/nos-solutions')}
-          class={`flex items-center gap-1 ${linkBase}`}
+          class={`flex items-center gap-1 ${solutionsActive ? linkBaseActive : linkBase}`}
           data-dropdown-trigger
           aria-haspopup="true"
           aria-expanded="false"
+          {solutionsActive ? { 'aria-current': 'page' } : {}}
         >{t('nav.solutions')}
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="opacity-70"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <span class={underline}></span>
+          {/* W163 — chevron: rotates 180° when dropdown is open (.is-open on parent) */}
+          <svg
+            width="11" height="11" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true"
+            class="dropdown-chevron opacity-70 transition-transform duration-200 motion-reduce:transition-none"
+          ><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <span class={solutionsActive ? underlineActive : underline}></span>
         </a>
+        {/* W163 — polished panel: rounded, layered shadow, brass top accent */}
         <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
-          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label={t('nav.solutions')}>
+          <ul
+            class="w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
+            role="menu" aria-label={t('nav.solutions')}
+          >
             <li role="none"><a href={L('/nos-solutions')} role="menuitem" class={`${itemClass} font-semibold text-white`}>{t('nav.allSolutions')}</a></li>
             {solutions.map((s) => (
               <li role="none"><a href={L(s.href)} role="menuitem" class={itemClass}>{s.label}</a></li>
@@ -88,23 +133,42 @@ const itemClass =
         </div>
       </div>
 
-      <a href={L('/realisations')} class={linkBase}>{t('nav.realisations')}<span class={underline}></span></a>
-      <a href={L('/équipement')} class={linkBase}>{t('nav.equipment')}<span class={underline}></span></a>
+      <a
+        href={L('/realisations')}
+        class={isActive('/realisations') ? linkBaseActive : linkBase}
+        {...(isActive('/realisations') ? { 'aria-current': 'page' } : {})}
+      >{t('nav.realisations')}<span class={isActive('/realisations') ? underlineActive : underline}></span></a>
+      <a
+        href={L('/équipement')}
+        class={isActive('/équipement') ? linkBaseActive : linkBase}
+        {...(isActive('/équipement') ? { 'aria-current': 'page' } : {})}
+      >{t('nav.equipment')}<span class={isActive('/équipement') ? underlineActive : underline}></span></a>
 
       <!-- Ressources (déroulant) -->
       <div class="dropdown group relative" data-dropdown>
         <a
           href={L('/guides')}
-          class={`flex items-center gap-1 ${linkBase}`}
+          class={`flex items-center gap-1 ${ressourcesActive ? linkBaseActive : linkBase}`}
           data-dropdown-trigger
           aria-haspopup="true"
           aria-expanded="false"
+          {...(ressourcesActive ? { 'aria-current': 'page' } : {})}
         >{t('nav.resources')}
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="opacity-70"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <span class={underline}></span>
+          {/* W163 — chevron rotates on open */}
+          <svg
+            width="11" height="11" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true"
+            class="dropdown-chevron opacity-70 transition-transform duration-200 motion-reduce:transition-none"
+          ><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <span class={ressourcesActive ? underlineActive : underline}></span>
         </a>
+        {/* W163 — polished panel: rounded, layered shadow, brass top accent */}
         <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
-          <ul class="w-64 border border-white/10 bg-nuit/95 p-2 shadow-xl backdrop-blur" role="menu" aria-label={t('nav.resources')}>
+          <ul
+            class="w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
+            role="menu" aria-label={t('nav.resources')}
+          >
             {ressources.map((r) => (
               <li role="none"><a href={L(r.href)} role="menuitem" class={itemClass}>{r.label}</a></li>
             ))}
@@ -112,7 +176,11 @@ const itemClass =
         </div>
       </div>
 
-      <a href={L('/à-propos')} class={linkBase}>{t('nav.about')}<span class={underline}></span></a>
+      <a
+        href={L('/à-propos')}
+        class={isActive('/à-propos') ? linkBaseActive : linkBase}
+        {...(isActive('/à-propos') ? { 'aria-current': 'page' } : {})}
+      >{t('nav.about')}<span class={isActive('/à-propos') ? underlineActive : underline}></span></a>
     </nav>
     <div class="flex items-center gap-1.5 sm:gap-3">
       <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
@@ -123,10 +191,12 @@ const itemClass =
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         {NAP.phoneDisplayIntl}
       </a>
+      {/* W210 — .glow on primary CTA */}
       <a
         href={L('/contact')}
-        class="whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4"
+        class="glow whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4"
       >{t('nav.diagnosticCta')}</a>
+      {/* W164 — Mobile menu toggle (hamburger icon) */}
       <button
         id="menu-toggle"
         class="border border-white/20 p-2 lg:hidden"
@@ -142,54 +212,137 @@ const itemClass =
       </button>
     </div>
   </div>
-  <nav id="mobile-menu" class="hidden border-t border-white/10 bg-nuit px-4 py-4 lg:hidden" aria-label={t('nav.mobile')}>
-    <div class="flex flex-col gap-5">
-      <div>
-        <a href={L('/nos-solutions')} class="tech-label block text-brass-300">{t('nav.solutions')}</a>
-        <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
-          {solutions.map((s) => (
-            <li><a href={L(s.href)} class="block text-base font-semibold text-white">{s.label}</a></li>
-          ))}
+  {/* W164 — Mobile menu: animated slide-down panel, scrollable on small screens.
+      Uses grid-rows trick for height animation (no JS height measurement needed).
+      Reduced-motion: state switches without animate. */}
+  <nav
+    id="mobile-menu"
+    class="grid grid-rows-[0fr] overflow-hidden border-t border-white/10 bg-nuit transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none lg:hidden"
+    aria-label={t('nav.mobile')}
+    aria-hidden="true"
+  >
+    <div class="max-h-[calc(100svh-3.5rem)] overflow-y-auto overscroll-contain">
+      <div class="flex flex-col gap-5 px-4 py-4">
+        <div>
+          <a href={L('/nos-solutions')} class="tech-label block text-brass-300">{t('nav.solutions')}</a>
+          <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
+            {solutions.map((s) => (
+              <li><a href={L(s.href)} class="block text-base font-semibold text-white">{s.label}</a></li>
+            ))}
+          </ul>
+        </div>
+        <ul class="flex flex-col gap-3">
+          <li><a href={L('/realisations')} class="block font-display text-base font-bold text-white">{t('nav.realisations')}</a></li>
+          <li><a href={L('/équipement')} class="block font-display text-base font-bold text-white">{t('nav.equipment')}</a></li>
+          <li><a href={L('/à-propos')} class="block font-display text-base font-bold text-white">{t('nav.about')}</a></li>
         </ul>
-      </div>
-      <ul class="flex flex-col gap-3">
-        <li><a href={L('/realisations')} class="block font-display text-base font-bold text-white">{t('nav.realisations')}</a></li>
-        <li><a href={L('/équipement')} class="block font-display text-base font-bold text-white">{t('nav.equipment')}</a></li>
-        <li><a href={L('/à-propos')} class="block font-display text-base font-bold text-white">{t('nav.about')}</a></li>
-      </ul>
-      <div>
-        <a href={L('/guides')} class="tech-label block text-brass-300">{t('nav.resources')}</a>
-        <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
-          {ressources.map((r) => (
-            <li><a href={L(r.href)} class="block text-base font-semibold text-white">{r.label}</a></li>
-          ))}
+        <div>
+          <a href={L('/guides')} class="tech-label block text-brass-300">{t('nav.resources')}</a>
+          <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
+            {ressources.map((r) => (
+              <li><a href={L(r.href)} class="block text-base font-semibold text-white">{r.label}</a></li>
+            ))}
+          </ul>
+        </div>
+        <ul class="flex flex-col gap-3 border-t border-white/10 pt-4">
+          {/* W164 — Inline phone SVG replacing emoji 📞 */}
+          <li>
+            <a href={`tel:${NAP.phone}`} class="flex items-center gap-2 text-sm font-semibold text-lune-soft">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              {NAP.phoneDisplayIntl}
+            </a>
+          </li>
+          <li><a href={L('/contact')} class="glow mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">{t('nav.diagnosticCta')}</a></li>
         </ul>
+        {/* W164 — LanguageSwitcher inside the mobile menu */}
+        <div class="border-t border-white/10 pt-3">
+          <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
+        </div>
       </div>
-      <ul class="flex flex-col gap-3 border-t border-white/10 pt-4">
-        <li><a href={`tel:${NAP.phone}`} class="block text-sm font-semibold text-lune-soft">📞 {NAP.phoneDisplayIntl}</a></li>
-        <li><a href={L('/contact')} class="mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">{t('nav.diagnosticCta')}</a></li>
-      </ul>
     </div>
   </nav>
 </header>
 
 <script>
-  // Menu mobile (inchangé).
+  // ── W150 — Scroll-reactive header ──────────────────────────────────────────
+  // Start transparent over the hero; transition to solid once past ~80 px.
+  // Uses rAF pattern (same as StickyCta) to batch reads. No layout change —
+  // only bg/border/blur visual properties animate, zero CLS.
+  const header = document.getElementById('site-header');
+
+  function applyHeaderScroll(scrolled: boolean) {
+    if (!header) return;
+    if (scrolled) {
+      header.classList.add(
+        'border-white/10', 'bg-nuit/90', 'backdrop-blur',
+      );
+      header.classList.remove('border-transparent', 'bg-transparent');
+    } else {
+      header.classList.add('border-transparent', 'bg-transparent');
+      header.classList.remove(
+        'border-white/10', 'bg-nuit/90', 'backdrop-blur',
+      );
+    }
+  }
+
+  // Apply on paint to avoid flash if page loads mid-scroll.
+  applyHeaderScroll(scrollY > 80);
+
+  let headerTicking = false;
+  addEventListener(
+    'scroll',
+    () => {
+      if (headerTicking) return;
+      headerTicking = true;
+      requestAnimationFrame(() => {
+        applyHeaderScroll(scrollY > 80);
+        headerTicking = false;
+      });
+    },
+    { passive: true },
+  );
+
+  // ── W164 — Mobile menu animated panel ──────────────────────────────────────
+  // Uses CSS grid-rows transition (0fr ↔ 1fr) — no JS height measurement,
+  // no reflow. Reduced-motion: class toggle still switches state instantly
+  // (transition-none in motion-reduce).
   const toggle = document.getElementById('menu-toggle');
   const menu = document.getElementById('mobile-menu');
+
   toggle?.addEventListener('click', () => {
-    const open = menu?.classList.toggle('hidden') === false;
-    toggle.setAttribute('aria-expanded', String(open));
+    const isOpen = menu?.getAttribute('aria-hidden') === 'false';
+    if (isOpen) {
+      menu?.classList.replace('grid-rows-[1fr]', 'grid-rows-[0fr]');
+      menu?.setAttribute('aria-hidden', 'true');
+      toggle.setAttribute('aria-expanded', 'false');
+    } else {
+      menu?.classList.replace('grid-rows-[0fr]', 'grid-rows-[1fr]');
+      menu?.setAttribute('aria-hidden', 'false');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
   });
 
-  // Déroulants desktop — amélioration progressive (survol + focus marchent déjà
-  // en CSS pur ; ce script ajoute ArrowDown/Échap et aria-expanded).
+  // ── Déroulants desktop ──────────────────────────────────────────────────────
+  // Amélioration progressive (survol + focus marchent déjà en CSS pur).
+  // W163 — chevron rotation: toggle .is-open on the dropdown wrapper
+  // and let CSS handle the rotation via the [.is-open] selector.
   document.querySelectorAll<HTMLElement>('[data-dropdown]').forEach((dd) => {
     const trigger = dd.querySelector<HTMLElement>('[data-dropdown-trigger]');
+    const chevron = trigger?.querySelector<SVGElement>('.dropdown-chevron');
     const items = Array.from(dd.querySelectorAll<HTMLElement>('[role="menuitem"]'));
     if (!trigger) return;
-    const open = () => { dd.classList.add('is-open'); trigger.setAttribute('aria-expanded', 'true'); };
-    const close = () => { dd.classList.remove('is-open'); trigger.setAttribute('aria-expanded', 'false'); };
+    const open = () => {
+      dd.classList.add('is-open');
+      trigger.setAttribute('aria-expanded', 'true');
+      // W163 — rotate chevron
+      chevron?.classList.add('rotate-180');
+    };
+    const close = () => {
+      dd.classList.remove('is-open');
+      trigger.setAttribute('aria-expanded', 'false');
+      // W163 — reset chevron
+      chevron?.classList.remove('rotate-180');
+    };
 
     dd.addEventListener('mouseenter', open);
     dd.addEventListener('mouseleave', close);

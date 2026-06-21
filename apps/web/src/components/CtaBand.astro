@@ -35,9 +35,10 @@ const {
   <div class="mx-auto mt-6 max-w-3xl border-2 border-azur-600 bg-blanc px-6 py-10 text-center sm:px-10">
     <p class="tech-label text-azur-600">{t('cta.eyebrow')}</p>
     <h2 class="display mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">{title}</h2>
+    {/* W210 — .glow signature golden halo on the primary CTA */}
     <a
       href={href}
-      class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+      class="glow mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
     >{buttonLabel}</a>
   </div>
 </section>
