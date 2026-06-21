@@ -1,0 +1,130 @@
+---
+/**
+ * Guide (W125) — Monocristallin ou polycristallin ? + onduleur string vs micro-onduleurs.
+ * Choix équipement expliqué en langage clair ; chiffres de rendement stables (physique PV).
+ * Seules les marques déjà publiées sur /équipement sont citées.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Monocristallin ou polycristallin ? String ou micro-onduleurs ?',
+  description: 'Rendement, comportement sous la chaleur, ombre portée : comment choisir entre panneau monocristallin et polycristallin, et entre onduleur string et micro-onduleurs.',
+  about: { '@type': 'Thing', name: 'Panneaux photovoltaïques et onduleurs solaires' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Monocristallin ou polycristallin ? String ou micro-onduleurs ? | Taqinor"
+  description="Rendement ~19–22 % pour le mono, comportement à l'ombre très différent selon l'onduleur : ce guide explique comment choisir ses panneaux et son onduleur en fonction de sa toiture, sans jargon."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Monocristallin ou polycristallin ?' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Équipement</p>
+      <h1 class="display v2-page-title mt-5 text-white">Monocristallin ou polycristallin ? String ou micro-onduleurs ?</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Deux questions qui reviennent dès qu'on compare des devis. La première porte sur les panneaux,
+        la seconde sur l'onduleur — et les deux ont une réponse qui dépend moins du budget que de la
+        forme de votre toiture et de ce qui l'entoure.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Monocristallin : plus de rendement, moins de surface</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un panneau monocristallin est taillé dans un seul cristal de silicium, ce qui donne à ses
+        cellules une structure très homogène. Résultat : un rendement qui tourne autour de 19 à 22 %
+        pour les modèles courants du marché — ce qui veut dire que chaque mètre carré produit plus
+        d'électricité qu'un panneau polycristallin de même surface. Sur une toiture comptée ou en
+        forme irrégulière, c'est directement des kilowatts-crête gagnés sans agrandir l'installation.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        L'autre avantage en climat chaud, c'est le comportement à la chaleur. Tous les panneaux perdent
+        un peu de puissance quand la température monte — c'est la physique des semi-conducteurs — mais
+        les monocristallins encaissent mieux cette dégradation thermique que les polycristallins. À
+        Marrakech ou Agadir en plein été, c'est une différence qui compte sur les heures les plus
+        chaudes de la journée.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Polycristallin : une technologie fiable, mais en recul</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le polycristallin était la norme jusqu'au milieu des années 2010. Ses cellules, issues de
+        plusieurs cristaux fondus ensemble, ont un aspect bleuté caractéristique. Le rendement y est
+        légèrement inférieur — entre 15 et 17 % selon les modèles — et la sensibilité à la chaleur
+        plus marquée. Les prix des deux technologies ayant largement convergé, le monocristallin s'est
+        imposé dans la plupart des installations neuves. Le polycristallin reste disponible, mais il
+        n'est plus le choix par défaut du marché.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Onduleur string : efficace, mais toute la chaîne souffre d'un panneau à l'ombre</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        L'onduleur string est l'architecture la plus répandue : plusieurs panneaux sont câblés en
+        série pour former une « chaîne », et cette chaîne alimente un onduleur centralisé. C'est une
+        solution simple, éprouvée et moins coûteuse à l'installation. Son seul point faible est connu :
+        quand un panneau est partiellement à l'ombre — une antenne, un mur mitoyen, une cheminée — il
+        tire la production de toute la chaîne vers le bas, comme le maillon le plus faible d'une corde.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Certains onduleurs string, comme ceux de la gamme Huawei SUN2000 que nous posons, intègrent
+        une optimisation par chaîne qui limite partiellement cet effet. Mais sur une toiture avec des
+        masques récurrents ou plusieurs pans d'orientation différente, la question des micro-onduleurs
+        mérite d'être posée.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Micro-onduleurs et optimiseurs : suivi panneau par panneau</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les micro-onduleurs remplacent l'onduleur central par un petit convertisseur monté derrière
+        chaque panneau. Chaque panneau travaille de façon totalement indépendante : l'ombre sur l'un
+        n'affecte plus les autres. Le gain peut être significatif sur une toiture complexe ou
+        partiellement masquée, où un onduleur string perdrait une part non négligeable de production
+        pendant les heures creuses de masque.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les optimiseurs de puissance sont une solution intermédiaire : on les installe panneau par
+        panneau, mais ils restent reliés à un onduleur string central. Comme les micro-onduleurs, ils
+        permettent un suivi individuel du point de puissance maximale de chaque panneau — et simplifient
+        le monitoring, car on sait exactement quel panneau sous-performe et pourquoi.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La contrepartie : le coût d'installation est plus élevé, et chaque composant supplémentaire
+        sur le toit est un composant qui peut vieillir. Sur une toiture dégagée, sans masque et bien
+        orientée, un onduleur string reste souvent le choix le plus rationnel. La vraie réponse vient
+        de l'analyse de l'ombrage de votre toiture — pas d'un catalogue.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Ce que ça change concrètement pour votre installation</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Pour la plupart des toitures dégagées au Maroc, la combinaison monocristallin haute densité
+        et onduleur string avec optimisation par chaîne couvre très bien les besoins. C'est vers les
+        micro-onduleurs ou les optimiseurs qu'on se tourne quand la toiture est découpée, orientée
+        dans plusieurs directions, ou que des masques partiels sont inévitables. Dans tous les cas,
+        le choix sort de l'étude de l'ombrage — pas d'une préférence a priori pour une technologie.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/orientation-inclinaison-ombrage" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Orientation, inclinaison, ombrage →</a>
+        <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l'équipement →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Pour savoir quel équipement convient à votre toiture, lancez l'étude gratuite." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>
