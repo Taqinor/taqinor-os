@@ -607,6 +607,168 @@ plumbing + a beautiful client-facing surface.*
 
 ---
 
+### W119–W131 — SEO CONTENT EXPANSION: FAQ, EV-charging pillar, guides library & battery content (founder request 2026-06-21)
+
+<!-- lane: apps/web -->
+
+*Goal: make taqinor.ma the best-ranked, most useful French-language answer source for solar /
+EV-charging-with-solar / battery questions in Morocco. Grounded in a June 2026 SEO research pass
+(residential-solar, EV-charging-with-solar, and home-battery "People Also Ask" / high-volume
+queries) plus the loi 82-21 net-billing framework that went live 9 June 2026 (≤11 kW declaration
+regime, surplus export capped at ~20% of annual production, regulated low buyback ~18 c/kWh
+off-peak · 21 c/kWh peak — below retail). That last fact is the honest differentiator to weave
+through everything: with no true net-metering, **daytime self-consumption + storage + charging an
+EV from your own midday surplus is worth more in Morocco than in net-metering markets.***
+
+> **CONSTRAINTS — every task in this block.** Stay strictly inside `apps/web/**`. **All new
+> user-facing text in French** (code/identifiers English); EN/AR mirrors are a deliberate FR-first
+> follow-up — do NOT register new FR-only routes in `src/i18n/pages.ts` (so the language switcher
+> correctly hides on them), and do NOT block on translating them. **No invented facts or numbers**
+> — every figure must trace to data ALREADY published on the site (existing FAQ orders-of-magnitude,
+> `/garanties` warranty %, `/loi-82-21`, `/regularization-article-33`, the equipment pages) or to a
+> general physics/regulatory fact; any price (MAD/kWc, payback, ONEE/régie tariff, buyback c/kWh,
+> borne/battery price) that is NOT already on the site is written **qualitatively** (method, orders
+> of magnitude) with a `<!-- PENDING(Reda): confirm <fact> -->` placeholder — **never fabricate a
+> figure** (this mirrors the existing guides, which carry "AUCUN chiffre nouveau, AUCUN claim
+> tarif/coût"). **`/faq` stays the SOLE `FAQPage` JSON-LD owner** (W98 invariant): any other page
+> that renders a visual FAQ MUST reuse the `Faq` component with `schema={false}`. New guide/landing
+> pages carry **`Article` (or `Service`) + `BreadcrumbList`** JSON-LD and a self-referencing
+> canonical, matching the existing guide pages. The **live lead form + its whole data flow** (1 000
+> MAD threshold, consent, WhatsApp deeplink, webhook, CAPI) stay **byte-for-byte unchanged**; the
+> **private `/preview/*` routes stay private** and untouched. **No new npm/paid dependency.**
+> **Lighthouse 97–100, zero CLS, reduced-motion respected, one `<h1>` + sane H2/H3 per page,
+> descriptive `alt` on any content image.** New public pages enter the sitemap automatically — verify
+> they do and that `/preview/*` still does not. **Lanes:** each new page is its own file → its own
+> worktree lane (W120–W128 run fully in parallel); W119 (`/faq`), W129 (guides hub), W130
+> (`/batteries-stockage`) each own one existing file; W131 (tests) sequences last.
+
+- [ ] W119 — **Expand the public FAQ (`/faq`) to ~24 questions across solar, EV-charging & battery.**
+  Today `faq.astro` renders ~13 Q grounded in site facts. Add ~11 more, grouped, keeping the single
+  `Faq` component / single `FAQPage` schema (it auto-aligns to the rendered array). Add the
+  high-value EVERGREEN questions the research found (general-fact, publishable now, no founder number
+  needed): *les panneaux fonctionnent-ils la nuit / par temps nuageux ?*, *la chaleur / l'hiver
+  réduisent-ils la production ?*, *quelle orientation et quelle inclinaison ?*, *l'ombre réduit-elle
+  la production ?*, *faut-il nettoyer les panneaux et à quelle fréquence ?* (Morocco dust/sand angle),
+  *les panneaux perdent-ils en rendement avec le temps ?* (degradation vs the published 84,8 %/25 ans),
+  *monocristallin ou polycristallin ?*, *que se passe-t-il pendant une coupure ?* (anti-îlotage vs
+  hybride+batterie), **EV:** *puis-je recharger ma voiture électrique avec mes panneaux ?*, *faut-il
+  une batterie pour recharger la nuit ?*, **battery:** *combien de temps dure une batterie LFP ?*
+  (tie to published 10-ans Dyness warranty). Keep every answer derived from published facts or
+  general physics; anything needing a price/tariff → qualitative + `PENDING(Reda)`. Accept: `/faq`
+  shows ~24 grouped Q, still exactly ONE `FAQPage` block aligned to the rendered list, no fabricated
+  figure, FR copy in the existing voice. Files: `apps/web/src/pages/faq.astro` (FR only; `/en/faq` +
+  `/ar/faq` mirror is a flagged follow-up, not required to land).
+
+- [ ] W120 — **New EV-charging-with-solar PILLAR page `/recharge-voiture-electrique-solaire` (the
+  biggest content gap).** No page covers charging an electric car from solar today. Build a
+  top-level public page (same Layout/`v2` design language, `Breadcrumb`, `CtaBand`, `StickyCta` as
+  the service pages) answering the cluster the research found, in clearly-titled H2 sections: *peut-on
+  recharger une VE avec le solaire ?* · *combien de panneaux pour mes km quotidiens* (anchor on the
+  general facts: VE ≈ 15–20 kWh/100 km, trajet quotidien typique 30–50 km ≈ 6–10 kWh/jour — a small
+  daily top-up, not a 0→100 % charge; per-panel kWh under Morocco's ~5 PSH stays qualitative/PENDING)
+  · *7, 11 ou 22 kW + monophasé vs triphasé* (7 kW = mono OK; 11/22 kW = triphasé) · *jour vs nuit:
+  recharge directe, batterie maison, ou borne « intelligente » qui suit le surplus solaire* (the key
+  honesty point: dumb full-power solar-only charging is impractical without grid/battery/throttling)
+  · *carport / abri solaire* · *V2H/V2G* (framed "à venir au Maroc") · *est-ce rentable face à
+  l'essence ?* (method only — Moroccan fuel/tariff figures stay `PENDING(Reda)`). Tie the whole page
+  to the loi 82-21 self-consumption angle (export capped/cheap → charge from your own surplus). Carry
+  `Service` + `BreadcrumbList` JSON-LD, a self-referencing canonical, a real `og` image (reuse an
+  existing `/og/*.png`), and a visual FAQ via `Faq` with **`schema={false}`** (the EV Q in W119 own
+  the schema on `/faq`). Internal-link to `/batteries-stockage`, `/équipement`, `/guides`, `/contact`.
+  Surface it from `/nos-solutions` body copy and the `/guides` hub (do NOT edit the shared `Header`
+  nav in this task — a nav-dropdown entry is a separate, optional follow-up so this lane stays
+  single-file-plus-its-links). Accept: the page ranks-ready (unique title/description, valid
+  Service+Breadcrumb JSON-LD, one canonical, one h1), no fabricated MAD/kWh, in the sitemap, FR copy.
+  Files: new `apps/web/src/pages/recharge-voiture-electrique-solaire.astro` (+ contextual links from
+  `nos-solutions.astro` / `guides/index.astro` handled in W129).
+
+- [ ] W121 — **Guide: « Combien de panneaux et quelle puissance (kWc) pour ma maison ? »** New guide
+  page following the existing `/guides/*` pattern (Layout, Breadcrumb, `Article` JSON-LD, CtaBand,
+  StickyCta). Explains the sizing METHOD from the ONEE/Lydec bill → annual kWh → kWc → panel count
+  (m²/panel geometry, ~1,7–2 m²/panel are general facts), the high-Morocco-irradiation note kept
+  qualitative, and routes to the diagnostic. No new price/kWh figure (method only; any Morocco
+  kWh/kWc → `PENDING(Reda)`). Accept: clean Article page, single canonical, no invented number,
+  internal-linked, listed by W129. File: `apps/web/src/pages/guides/combien-de-panneaux-pour-ma-maison.astro`.
+
+- [ ] W122 — **Guide: « On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ? »**
+  New guide complementing the existing `onduleur-hybride-ou-reseau` guide: when each system type
+  fits (grid-tied = best ROI for ONEE-connected urban homes, off-grid = remote/no-grid, hybrid =
+  backup), and the safety fact that a standard grid-tied system disconnects in a blackout
+  (anti-îlotage) so backup needs a hybrid + battery. `Article` JSON-LD, no invented number. Accept:
+  as W121. File: `apps/web/src/pages/guides/on-grid-off-grid-ou-hybride.astro`.
+
+- [ ] W123 — **Guide: « Entretien, nettoyage et durée de vie des panneaux au Maroc ».** New guide on
+  the strong local differentiator: dust/sand cleaning cadence, rain self-cleaning, heat de-rating
+  (~0,3–0,5 %/°C above 25 °C — general fact), lifespan & degradation tied to the published warranty
+  (84,8 % à 25 ans, ~0,5 %/an). `Article` JSON-LD. Accept: as W121. File:
+  `apps/web/src/pages/guides/entretien-et-duree-de-vie-des-panneaux.astro`.
+
+- [ ] W124 — **Guide: « Orientation, inclinaison et ombrage : maximiser la production sur un toit
+  marocain ».** New guide: plein sud optimal, E/O ne perd que ~10–15 %, inclinaison ≈ latitude
+  (~30°), impact disproportionné de l'ombre sur une chaîne (cheminée, mur voisin, palmier) et la
+  mitigation (optimiseurs/micro-onduleurs). General facts only. `Article` JSON-LD. Accept: as W121.
+  File: `apps/web/src/pages/guides/orientation-inclinaison-ombrage.astro`.
+
+- [ ] W125 — **Guide: « Monocristallin ou polycristallin ? + onduleur string vs micro-onduleurs ».**
+  New equipment-choice guide: mono (rendement 19–22 %, meilleur sous la chaleur, moins de surface)
+  vs poly; onduleur string (moins cher, une chaîne pénalisée par l'ombre) vs micro/optimiseurs
+  (suivi par panneau). General facts; tie equipment names only to what `/équipement` already
+  publishes. `Article` JSON-LD. Accept: as W121. File:
+  `apps/web/src/pages/guides/monocristallin-ou-polycristallin.astro`.
+
+- [ ] W126 — **Guide: « Batterie solaire : lithium LiFePO4 (LFP) vs GEL/plomb (et NMC) ».** New
+  battery-chemistry guide complementing the existing `faut-il-des-batteries`: LFP wins on durée de
+  vie (3 000–6 000 cycles / 10–15 ans vs 3–5 ans plomb), profondeur de décharge utile (~90 % vs
+  ~50 %), rendement et tolérance à la chaleur (atout au Maroc), and LFP safety vs NMC. Anchor brand
+  claims on the published Dyness LFP / 10-ans warranty only; no invented price. `Article` JSON-LD.
+  Accept: as W121. File: `apps/web/src/pages/guides/batterie-lithium-ou-gel.astro`.
+
+- [ ] W127 — **Guide: « Quelle taille de batterie (kWh) pour ma maison ? Stocker ou revendre ? »**
+  New battery-sizing guide: tiers (secours seul ~5–10 kWh, autoconsommation du soir ~10–20 kWh,
+  quasi-autonomie 20 kWh+), usable-vs-nameplate kWh (DoD), and the Morocco economics — with export
+  capped at 20 % and bought back below retail (loi 82-21, live 9 juin 2026), self-shifting a kWh to
+  the evening beats exporting it; order of value = consommer en journée → stocker pour le soir →
+  exporter les 20 %. Method only; client kWh from the bill stays qualitative. `Article` JSON-LD.
+  Accept: as W121. File: `apps/web/src/pages/guides/quelle-taille-de-batterie.astro`.
+
+- [ ] W128 — **Guide: « Garder l'électricité pendant les coupures : EPS, onduleur hybride et
+  batterie ».** New guide: backup ≠ off-grid (the key myth-buster), EPS/secours circuits on a
+  Deye/Huawei hybrid, switchover behaviour, and why a standard grid-tie dies in an outage. General
+  facts + published brand names only. `Article` JSON-LD. Accept: as W121. File:
+  `apps/web/src/pages/guides/electricite-pendant-les-coupures.astro`.
+
+- [ ] W129 — **Update the `/guides` hub to list every new guide, grouped.** Today `guides/index.astro`
+  lists 3 guides flat. Re-group into clear sections — **Solaire** (sizing W121, système/coupure W122,
+  entretien W123, orientation W124, matériel W125, + the existing loi-82-21 & onduleur guides),
+  **Batteries** (existing faut-il-des-batteries + chemistry W126 + sizing W127 + coupures W128),
+  **Voiture électrique** (link the W120 pillar) — and add the contextual link to the W120 EV page +
+  surface it from `/nos-solutions` body copy. Update the `CollectionPage` JSON-LD `hasPart` to include
+  the new articles. Keep the design/voice. (Sequences AFTER W120–W128 so the links aren't dead.)
+  Accept: hub lists all guides grouped, every link resolves, JSON-LD reflects the full set. Files:
+  `apps/web/src/pages/guides/index.astro`, `apps/web/src/pages/nos-solutions.astro` (one contextual
+  EV link). FR hub only; `/en/guides` + `/ar/guides` keep listing the 3 translated guides (correct —
+  the new guides are FR-only).
+
+- [ ] W130 — **Enrich the public `/batteries-stockage` page with an SEO content + visual-FAQ block.**
+  Add a question-led content section answering the top battery queries (do I need one, lifespan,
+  sizing tiers, backup-during-outage, store-vs-sell Morocco angle) using the `Faq` component with
+  **`schema={false}`** (so `/faq` stays the single `FAQPage` owner), plus internal links to the new
+  battery guides (W126–W128) and `/garanties`. Reuse published facts only; no invented price. Live
+  lead form untouched. Accept: richer page, still one canonical, no second `FAQPage`, no fabricated
+  number; `/en` + `/ar` mirrors left for the FR-first follow-up. File:
+  `apps/web/src/pages/batteries-stockage.astro`.
+
+- [ ] W131 — **Tests for the content-expansion invariants.** Extend the `apps/web` Vitest suite
+  (build on `tests/seoInvariantsW104.test.ts`): `/faq` is still the ONLY route emitting a `FAQPage`
+  (the EV page + `/batteries-stockage` render the `Faq` component with `schema={false}` → no second
+  `FAQPage`); every NEW page (W120–W128) has exactly one self-referencing canonical and carries
+  `Article`/`Service` + `BreadcrumbList` JSON-LD; the new public routes ARE in the sitemap and
+  `/preview/*` still is NOT; a guard asserting no new page contains an obviously-fabricated price
+  token where a `PENDING(Reda)` placeholder is expected (best-effort). Accept: new assertions pass,
+  full suite green, Lighthouse held 97–100. Files: `apps/web/tests/*.ts` (+ new files as needed).
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
@@ -617,6 +779,13 @@ plumbing + a beautiful client-facing surface.*
   (W11), not gated. Délégataire (Lydec/Redal/Amendis) exact grids still await a real bill per
   city — those numbers remain gated until then.
 - **WG3 — Any new paid API or npm dependency** beyond PVGIS / what `apps/web` already ships.
+- **WG4 — A true dated/Markdown blog (Astro content collection).** W119–W131 expand the existing
+  `/guides` library (the site's established content-hub pattern) — no new architecture. A real
+  *blog* with dated posts, author bylines, tags and a Markdown/MDX content collection is a
+  **structural addition** (new `src/content/` collection + config + index/pagination + `Blog`/
+  `Article` schema), so it's a founder decision: do you want a periodic blog on top of the
+  evergreen guides, and if so under `/blog` or folded into `/guides` with dates? Until decided,
+  new long-form content ships as guides (W121–W128).
 
 ---
 
