@@ -47,7 +47,7 @@ export default function ExcelImport({ target, onClose, onDone }) {
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/45"
+      className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/45"
       onClick={onClose}
     >
       <div
