@@ -191,6 +191,17 @@ conflict with a non-negotiable rule. (none yet)
 
 ---
 
+## AUTOPILOT INTAKE LOG (the error-autopilot appends one line per run)
+
+The daily error-autopilot (`.claude/skills/error-autopilot/SKILL.md`) appends
+one dated line per run summarising how many NEW verified `ERR` items it filed
+into the BUILD QUEUE above (a run that finds nothing verified appends nothing
+and makes no commit). Fixing those items stays the job of `work on error plan`.
+
+- *(intake log started 2026-06-21 — daily autopilot now files verified items here.)*
+
+---
+
 ## DONE LOG (agent appends one plain-language line per fixed task)
 
 - *(seeded baseline 2026-06-20 — backlog created from the read-only 11-lane audit of `main` @ 98e9d23.)*

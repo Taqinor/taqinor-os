@@ -132,7 +132,8 @@ def build(ctx) -> str:
 .p3-kicker {{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase;
   color:{C['gold']}; font-weight:700; }}
 .p3-title {{ font-family:{ctx['fonts']['serif']}; font-weight:700;
-  font-size:22pt; color:{C['navy']}; line-height:1.05; margin:3px 0 0; }}
+  font-size:25pt; color:{C['navy']}; line-height:1.04; margin:3px 0 0;
+  letter-spacing:-.3px; }}
 
 /* Value points row */
 .p3-values {{ display:flex; gap:8px; margin:12px 0 15px; }}
