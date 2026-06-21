@@ -13,6 +13,7 @@ Run :
         apps.ventes.tests.test_solar_design -v 2
 """
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
@@ -285,13 +286,28 @@ class OptimizeOrientationTest(SimpleTestCase):
         self.assertEqual(res["gain_vs_default_pct"], 0.0)
 
     def test_uses_real_pvgis_client_when_no_fetch(self):
-        # Sans stub, la fonction importe le client PVGIS RÉEL ; comme le réseau
-        # est bloqué en test, il retombe sur le manuel — jamais d'exception.
+        # Sans stub, la fonction importe le client PVGIS RÉEL
+        # (apps.parametres.pvgis.fetch_productible). On le patche pour simuler
+        # un repli manuel DÉTERMINISTE : selon l'environnement (sandbox/CI) le
+        # réseau PVGIS peut être joignable ou non, donc on ne dépend jamais du
+        # réseau — on prouve seulement que ce chemin (import du vrai client) est
+        # bien emprunté quand aucun `fetch` n'est fourni.
+        def manual_fetch(settings, lat, lon, peakpower_kwc=1.0, tilt=None,
+                         azimuth=None, loss=14):
+            return {
+                "source": "manual",
+                "productible_kwh_kwc": float(settings.productible_manuel_kwh_kwc),
+                "production_mensuelle_kwh_kwc": None,
+                "reason": "PVGIS indisponible (test)",
+            }
         s = _FakeSettings()
-        res = sd.optimize_orientation(
-            s, 33.5, -7.6,
-            tilt_range=(30, 30, 30), azimuth_range=(0, 0, 30))
+        with patch("apps.parametres.pvgis.fetch_productible",
+                   side_effect=manual_fetch):
+            res = sd.optimize_orientation(
+                s, 33.5, -7.6,
+                tilt_range=(30, 30, 30), azimuth_range=(0, 0, 30))
         self.assertIsNotNone(res["best"])
+        self.assertEqual(res["source"], "manual")
         self.assertEqual(res["best"]["productible_kwh_kwc"],
                          float(s.productible_manuel_kwh_kwc))
 
