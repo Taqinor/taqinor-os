@@ -55,15 +55,9 @@ test('E16+: an edit modal fits the iPhone viewport (no off-screen crop)', async 
   await createForm.locator('input[type="password"]').fill('Az9ployxQ!')
   await createForm.getByRole('button', { name: 'Créer', exact: true }).click()
 
-  // M154 — Au format iPhone (< 640px), le DataTable des utilisateurs replie ses
-  // lignes en CARTES (`[data-dt-cards]`) ; la table desktop passe en
-  // `display:none`, donc le sélecteur `tr` n'est plus visible. On cible la carte
-  // par son nom d'utilisateur, on ouvre le menu kebab PERSISTANT de la ligne
-  // (RowActions — les actions rapides sont masquées au toucher), puis « Modifier ».
-  const card = page.locator('[data-dt-cards] > div').filter({ hasText: username })
-  await expect(card).toBeVisible()
-  await card.getByRole('button', { name: "Plus d'actions sur la ligne" }).click()
-  await page.getByRole('menuitem', { name: 'Modifier' }).click()
+  const row = page.locator('tr', { hasText: username })
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: 'Modifier' }).click()
 
   const modal = page.locator('.modal')
   await expect(modal).toBeVisible()
