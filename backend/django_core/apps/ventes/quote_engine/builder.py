@@ -575,13 +575,30 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
 
     data = build_quote_data(devis, pdf_options)
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
-        tmp_path = tf.name
-    try:
-        generate_premium_pdf(data, tmp_path)
-        pdf_bytes = Path(tmp_path).read_bytes()
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+    # ONE engine, two renderers. The redesigned 3-page layout renders
+    # residential quotes (full format); the legacy renderer serves every other
+    # market mode / format (industriel, agricole, one-page, étude) and is also
+    # the automatic fall-back, so a client PDF is never broken.
+    pdf_bytes = None
+    from .residential import renderer as residential
+    if residential.is_residential(devis, pdf_options):
+        try:
+            pdf_bytes = residential.render_pdf_bytes(data)
+        except residential.Unsupported:
+            pdf_bytes = None
+        except Exception:
+            logger.warning(
+                "Residential renderer failed for %s; using legacy engine",
+                getattr(devis, "reference", devis_id), exc_info=True)
+            pdf_bytes = None
+    if pdf_bytes is None:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+            tmp_path = tf.name
+        try:
+            generate_premium_pdf(data, tmp_path)
+            pdf_bytes = Path(tmp_path).read_bytes()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
 
     key = _pdf_key(devis)
     _ensure_pdf_bucket()
