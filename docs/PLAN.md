@@ -14,17 +14,19 @@ waves of 8 when there are more lanes — see HOW TO RUN.
 1. **Read this whole file.**
 2. **Drain the WHOLE queue, PLAN2 first — never just one task, with MAXIMUM SAFE PARALLELISM.**
    Check `docs/PLAN2.md` FIRST: work through EVERY pending `[ ]` task there that isn't
-   gated/blocked — following PLAN2.md's own rules, which are the same as this file's — then
+   `[BLOCKED]` — following PLAN2.md's own rules, which are the same as this file's — then
    drain this file's **BUILD QUEUE** the same way. Process EVERY unchecked `[ ]` task (not
-   `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and MANUAL sections entirely.
+   `[x]`, not `[SKIP]`, not `[BLOCKED]`) of EVERY category — auto-gating is OFF, nothing is
+   skipped for being `ARCH`/`AUTH`/`COST`/`DECISION`/`GALLERY`/`DEP`; ignore only the NEEDS YOUR
+   INPUT and MANUAL sections (those wait on a founder-provided prerequisite).
    **At the START, run `python scripts/plan_lanes.py docs/PLAN2.md` then
    `python scripts/plan_lanes.py docs/PLAN.md`** — it computes the file-ownership + dependency
    graph from the real code (which source files each `[ ]` task must write) and emits a
    **maximally parallel, cross-category wave plan** instead of a top-down walk: each wave takes
    one head from each independent lane (a lane is a group that must run in sequence because it
    shares a file or has a dependency; different lanes never touch each other's files), spanning
-   as many different apps/categories as possible, longest lanes first. It auto-skips + flags the
-   stop-and-ask gates and lists any `UNASSIGNED` task that still needs a `@lane:`/`@files:` tag.
+   as many different apps/categories as possible, longest lanes first. It reports `0 gated` (every
+   category builds — labels only) and lists any `UNASSIGNED` task that still needs a `@lane:`/`@files:` tag.
    **Fan each wave's lanes out to concurrent worktree subagents** (`isolation: worktree`, each
    in its own isolated git worktree so two never edit the same files at once) up to the
    session's worktree ceiling (default 8, raised as high as the session can sustain, passed as
@@ -62,12 +64,14 @@ waves of 8 when there are more lanes — see HOW TO RUN.
    the integrated tree, and merge only when green**; if the push is rejected because `main`
    advanced (e.g. a concurrent web-plan run landed first), **repeat the integrate → CI → push
    loop — never force, never overwrite the other run's commits** (see STANDING RULES).
-6. **Skip-and-note blockers, never stall.** If a task hits a blocker (a destructive migration,
-   a paid/external dependency that isn't pre-approved, an auth or cost change, a brand-new
-   architectural component, a conflict with a non-negotiable rule, or a real decision): do
-   **not** guess and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to the
-   GATED section, and continue with the remaining tasks. A single blocked task must never halt
-   the run.
+6. **Skip-and-note real blockers only, never stall.** Auto-gating is OFF: a destructive (but
+   revertable) migration, a new paid/external dependency, an auth or cost change, a brand-new
+   architectural component, and any `DECISION` are all **buildable** — just NOTE each in the DONE
+   LOG (new paid/external dep, auth change, destructive migration, new architecture). A task is a
+   blocker ONLY when it hits a true external prerequisite a run cannot satisfy (a credential /
+   secret / account / real-world data the founder must provide) or a conflict with a non-negotiable
+   rule (#1–#5). Then do **not** guess and do **not** stall: mark it `[BLOCKED: <one-line reason>]`,
+   move it to **NEEDS YOUR INPUT**, and continue. A single blocked task must never halt the run.
 7. **STOP only when** the queue is drained (no buildable `[ ]` task remains in `docs/PLAN2.md`
    then this file), a usage/length cap pauses the run (fine — the plan is idempotent;
    re-firing resumes from the first still-unchecked task), or every remaining task is blocked.
@@ -76,11 +80,10 @@ waves of 8 when there are more lanes — see HOW TO RUN.
 
 **Then the REFINEMENT QUEUE (run order).** Once the existing BUILD QUEUE is drained — **T1–T17
 first**, then the N/F tasks — work the **REFINEMENT QUEUE — existing-feature polish (audit
-2026-06-18)** section (below, after the BUILD QUEUE and before GATED) top-down: build the
-**ROUTINE** tasks unattended exactly like a queue task, and **skip + flag** every gated task
-(`SCHEMA` / `DEP` / `DECISION` / `GALLERY`) — same skip-and-report behaviour as a GATED item today.
-Those gated refinements are mirrored into the GATED section so an unattended run never auto-builds
-them. The refinement tasks use the format `[ ] [<MODULE>] [L<lens#>] [<GATE>] …` (not the `T#/N#`
+2026-06-18)** section (below, after the BUILD QUEUE) top-down: build **every** task unattended
+regardless of its category label (`ROUTINE` / `SCHEMA` / `DEP` / `DECISION` / `GALLERY`) — auto-gating
+is OFF, so none are skipped; just NOTE any new dep/auth/destructive-migration/architecture in the
+DONE LOG. The refinement tasks use the format `[ ] [<MODULE>] [L<lens#>] [<GATE>] …` (not the `T#/N#`
 ids), so they are deliberately outside the plan-status fingerprint — ticking one does not require a
 CODEMAP §10 refresh.
 
@@ -99,11 +102,15 @@ paste into a fresh cloud session:
 - **Sync-safe single merge.** Right before the one self-merge, **fetch and integrate the latest `origin/main` into `dev`** (merge it in — never rebase published history, never force-push); if that changed the code-structure surface, **recompute the CODEMAP structure fingerprint on the integrated tree** (the fingerprint the `stage-names` check verifies); **re-run CI once on the integrated state and merge only when green**; if the push is rejected because `main` advanced, **repeat (fetch, integrate, recompute if needed, re-run CI, push) — never force**. A run edits the shared files (`CLAUDE.md` / its own plan file / `docs/CODEMAP.md`) only for its own command and ships that change inside this same merge — so a concurrent OS run and web-plan run never fight over those files.
 - **Verify against real code first. Never trust prior reports.** (Round 1 reported a preview
   fix that was never real, because that session's CI was silently broken.)
-- **Additive only.** New tables / nullable columns / new defaults. **Never** a destructive
-  migration (no dropping columns/tables, no deleting rows). If one is needed → `[BLOCKED]`.
+- **Additive by default; destructive allowed only if revertable.** Prefer new tables / nullable
+  columns / new defaults. A destructive migration (dropping columns/tables, deleting rows) is
+  permitted per CLAUDE.md **only when it stays revertable via `git revert`** and is **NOTED in the
+  DONE LOG** — never an irreversible data loss. When in doubt, stay additive.
 - **Do not touch the DEBUG setting.** It is ON by Reda's explicit decision for the trial.
-- **Do not redesign the PDFs.** Keep the existing WeasyPrint engine and the `PDF_ENGINE=legacy`
-  fallback. (A full document redesign is a GATED item — see below.)
+- **Premium devis PDF stays off-limits.** The `/proposal` premium devis engine
+  (`generate_devis_premium.py`) is the only client-facing quote-PDF path (rule #4) — never replace
+  or fork it; keep the `PDF_ENGINE=legacy` fallback working. A facture/BC visual redesign is allowed
+  but needs a **gallery review** first (G3 → NEEDS YOUR INPUT below).
 - **Never expose buy prices / prix revendeur / margins** in any client-facing output, link,
   message, or PDF. This is critical for the WhatsApp public links.
 - **Do not change `STAGES.py` semantics.** Six canonical stages are a contract; "Perdu" is a
@@ -115,11 +122,18 @@ paste into a fresh cloud session:
 - **New settings default to today's exact behavior** — nothing changes until Reda edits it.
 - After merge, **deploy**, then **one plain-language report**.
 
-**Pre-approved dependencies (do NOT treat as blockers):** `openpyxl` (real .xlsx) and
-`vite-plugin-pwa` (build-time dev dependency for the PWA). Anything else new → `[BLOCKED]`.
+**Dependencies & categories (2026-06-21 — auto-gating OFF).** Per the founder standing consent,
+EVERY task category is buildable — `ARCH` / `AUTH` / `COST` / `DECISION` / `GALLERY` / `DEP` are
+now **labels only**, never a stop-and-ask, and `scripts/plan_lanes.py` schedules them like any other
+task. A run may add a new dependency, an additive **or** destructive (but revertable) migration, an
+auth change, or a brand-new architectural component — it just **NOTES each in the DONE LOG** (new
+paid/external dep, auth change, destructive migration, new architecture) so you keep visibility.
+The five non-negotiable rules (#1–#5) still bind. A task is `[BLOCKED]` ONLY when a run cannot
+satisfy a real external prerequisite (a credential / secret / account / real-world data you must
+provide) — those are parked under **NEEDS YOUR INPUT** with a recommendation, not auto-built.
 
 **Status legend:** `[ ]` to do · `[x]` done · `[SKIP]` not needed / already present ·
-`[BLOCKED: reason]` needs a decision (moved to GATED).
+`[BLOCKED: reason]` waits on a founder-provided external prerequisite (→ NEEDS YOUR INPUT).
 
 ---
 
@@ -155,36 +169,26 @@ production on Hetzner at **api.taqinor.ma** (cx23, daily backups, deploy via
 
 ## BUILD QUEUE (do top-down — highest value first)
 
-### PRE-APPROVED FOR AUTONOMOUS BUILD (added 2026-06-18)
+### EVERY CATEGORY IS BUILDABLE (auto-gating OFF, 2026-06-21)
 
-> **ARCH ungated by the founder (2026-06-21).** Reda gave explicit consent to build the
-> `ARCH`-tagged tasks — including the brand-new greenfield modules (compta, paie, flotte,
-> qhse, contrats, gestion_projet, ged, kb, litiges). A run may build `ARCH` tasks without
-> pausing. `AUTH` / `COST` / non-pre-approved `DEP` tasks remain stop-and-ask. The first
-> compta foundation (FG107–FG114, FG121) shipped 2026-06-21; the remaining greenfield
-> modules are still to be sequenced.
+> **Founder standing consent (2026-06-21, Reda).** The former auto-skip of
+> `ARCH` / `DECISION` / `AUTH` / `COST` / `GALLERY` / `DEP` is **LIFTED**. A run builds tasks of
+> EVERY category without pausing — including brand-new greenfield modules (compta, paie, flotte,
+> qhse, contrats, gestion_projet, ged, kb, litiges), auth changes, new paid/external dependencies,
+> additive **and** destructive-but-revertable migrations, and new architecture. `scripts/plan_lanes.py`
+> reflects this in code (`GATED_KEYWORDS` is empty → it reports `0 gated`). The planner still LABELS
+> each category, and the run **NOTES in the DONE LOG** whenever a built task introduced a new
+> paid/external dependency, an auth change, a destructive migration, or a brand-new architectural
+> component — so you keep visibility. The five non-negotiable rules (#1–#5) are unaffected and still
+> bind (rule #5's `tos_risk/` process still applies to any scraping task). Every change must stay
+> revertable via `git revert` and pass the four required CI checks before merge.
 
-For the **specific ungated tasks below ONLY** — N14, N26, N59, N60, N64, N65, N67, N85,
-N87, N88, G9, N103, N104, N105, N106, N107, and the additive-column / UI / comptable-export /
-Odoo-importer refinement tasks flipped to `[ROUTINE]` in the REFINEMENT QUEUE — the following are
-**already authorized**, and a future session must **NOT pause** on them despite the general rule to
-stop-and-ask before a new dependency / schema / cost change:
-
-- the **Leaflet** map library (N85 + the Parc « Carte » refinement);
-- **Celery Beat** as the scheduler (G9);
-- the **Brevo** email integration (N87/N88, SDK or SMTP, key from settings/env, no-op without key);
-- the **specific additive columns** listed (Client `created_by` + `date_modification`; a
-  `type_equipement` tag on `stock.Categorie`; per-company serial uniqueness on `Equipement`;
-  ICE-inclusive client export);
-- the **ONEE grid seed values** (the residential TTC scale + the cheaper force-motrice/agricole
-  class in N64);
-- the **stock-reserve-then-decrement rule** (N14 + the folded-in G6);
-- the **silent DGI export/validator** capability (N105, master toggle default OFF);
-- **converting the devis PDF literals to settings** (the rule-#4 literal→setting wiring of N26 /
-  N59 / N60 / N67 — minimal premium-engine wiring with byte-identical defaults, visual layout
-  unchanged).
-
-The general stop-and-ask / pause rule **still applies to everything NOT on this list.**
+A task is held back ONLY by a genuine **external prerequisite a run cannot satisfy** — a credential /
+secret / account / real-world data **you** must provide, or a conflict with a non-negotiable rule.
+Those are parked under **NEEDS YOUR INPUT** (below) each with a recommendation; everything else
+builds. (Historical note: the long list of "specifically pre-approved" deps — Leaflet, Celery Beat,
+Brevo, the additive columns, ONEE seeds, the stock-reserve rule, the silent DGI export, the devis
+literal→setting wiring — all shipped; they are now just instances of the general rule above.)
 
 ### Active regressions — fix first (added 2026-06-18, top priority)
 
@@ -229,16 +233,16 @@ conformity warning banner).
 ### Import/export / search / calendar / map
 ### Chatbot / integrations / API
 ### PWA / mobile / offline
-- [BLOCKED: ROUTED to the dev-field-exec branch — the offline-sync architecture is APPROVED, but build it ONLY on dev-field-exec; it must NOT be built in a main "work on the plan" run (branch-collision risk on main). Coupled with F21.] N91 — Offline-tolerant field capture for the chantier checklist, photos, and PV de réception signature, syncing when back online.
+- [ ] N91 — Offline-tolerant field capture for the chantier checklist, photos, and PV de réception signature, syncing when back online. (UNBLOCKED 2026-06-21 — the dev-field-exec routing was stale: the whole field-execution backend it extends is already on `main` (F9–F23, `apps/installations/models_field.py`), and worktree isolation already prevents branch collisions, so build it as a normal worktree lane. The PWA/service-worker foundation exists (`frontend/src/sw.js`). Approach: IndexedDB/localStorage outbox + idempotent sync endpoints, last-write-wins on reconnect. Coupled with F21 — same lane.) (ARCH)
 - [x] N92 — PWA web push notifications for high-priority events from the notification engine. (UNGATED 2026-06-20 — pywebpush dependency approved; in the build run generate the VAPID keypair — public key to the frontend, private key to the backend env. Opt-in per device subscription.) [DONE 2026-06-20: `notifications.PushSubscription` (company+user forced server-side), subscribe/unsubscribe/vapid-public-key endpoints, best-effort web-push channel in `notify()` (drops dead subs on 404/410), `sw.js` push+notificationclick handlers, per-device opt-in toggle in NotificationsPreferences. VAPID keys default EMPTY → total NO-OP until Reda sets them. `pywebpush` left as an OPTIONAL install (its `http-ece` sdist won't build on modern setuptools, so it's `pip install`-to-enable rather than a base requirement — keeps CI install green; the dispatch path imports it lazily). 8 tests.]
 ### Localisation / audit / security / data
 - [ ] N93 — Full Arabic & Darija localisation as a selectable interface language with RTL layout support across the app, French default, English in code; client-facing document language selectable per client (facture/devis in French or Arabic). (UNGATED 2026-06-20 — i18n framework approved. SEQUENCING NOTE (do NOT prioritize): this touches every component, so run it as the FINAL step of the UI/UX overhaul, AFTER the component restyle, to avoid re-translating restyled components — pull forward only on Reda's explicit instruction.)
 - [ ] N94 — Translation-management surface in settings so interface strings can be reviewed/adjusted per language without a code change. (UNGATED 2026-06-20 — depends on the N93 i18n framework; SAME sequencing note — final step of the UI/UX overhaul, not prioritized.)
 - [x] N96 — Account security: optional 2FA, visible active sessions with revoke, forced credential-rotation flow; production DEBUG setting left unchanged. (UNGATED 2026-06-20 — auth change approved (this closes G8); pyotp dependency approved. Build 2FA as OPT-IN per user so it can NEVER lock existing users out.) [DONE 2026-06-20: the **2FA** half (opt-in TOTP on `CustomUser`, default OFF → no lockout, setup/enable/disable/status endpoints, login requires `otp` only when enabled, settings tab + login code step, `pyotp==2.10.0`, 11 tests) shipped earlier; THIS run completed the rest — additive `UserSession` (company+user forced, refresh-token jti, UA/IP/last-seen), `GET /auth/sessions/` + `POST /auth/sessions/<id>/revoke/` (blacklists the refresh token via the already-installed `token_blacklist` + marks the row revoked; current device flagged), forced rotation via additive `must_change_password` (default **False** → nobody locked out) + nullable `password_changed_at` surfaced in `/auth/me/`, `POST /auth/change-password/`, and the "Sessions actives" + "Mot de passe" sub-sections in the Sécurité-du-compte tab. Migration 0012, 11 new tests (95 auth tests total green). Closes G8's 2FA half.]
 ### Growth / multi-tenant platform
-- [BLOCKED: full multi-tenant SaaS platform + per-tenant billing (cost) + new architecture. REVIEWED 2026-06-20 — Reda chose to KEEP this deferred post-V1.] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing).
-- [BLOCKED: tenant administration console + self-serve signup (auth change) + new architecture. REVIEWED 2026-06-20 — Reda chose to KEEP this deferred post-V1.] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers.
-- [BLOCKED: depends on N100/N101 (final platform doc/update). REVIEWED 2026-06-20 — kept deferred post-V1 together with N100/N101.] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped.
+- [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing). (UNGATED 2026-06-21 per "ungate all". **RECOMMENDATION: KEEP DEFERRED until a 2nd paying installer — the `company` foundation is ready so no debt accrues by waiting; building SaaS billing for zero customers adds cost + the biggest auth surface in the app. Do NOT let a drain build this unless you've decided to sell TAQINOR as a product.** See NEEDS YOUR INPUT.) (ARCH)
+- [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers. (UNGATED 2026-06-21. **RECOMMENDATION: KEEP DEFERRED — pairs with N100; self-serve signup is a major auth surface, build only when going multi-installer.**) (ARCH) (@after: N100)
+- [ ] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped. (UNGATED 2026-06-21 — depends on N100/N101; do last.) (@after: N100, N101)
 
 ---
 
@@ -270,7 +274,7 @@ STANDING RULE plus the **module-specific constraints** below.
   into one `dev` → self-merged to `main` exactly once after tests pass — never one PR per agent,
   never a merge per task, never split into review PRs.**
 
-- [BLOCKED: ROUTED to the dev-field-exec branch — same offline-sync architecture as N91; APPROVED but build it ONLY on dev-field-exec, never in a main "work on the plan" run (branch-collision risk on main).] F21 — **Offline-tolerant field capture** covering the whole intervention flow — préparation checklist, GPS check-in, photos, serial capture, voice memos, Matériel consommé, réserves, and the signature — queuing locally on a poor connection and syncing when back online (extends the planned offline field capture to the full intervention workflow).
+- [ ] F21 — **Offline-tolerant field capture** covering the whole intervention flow — préparation checklist, GPS check-in, photos, serial capture, voice memos, Matériel consommé, réserves, and the signature — queuing locally on a poor connection and syncing when back online (extends the planned offline field capture to the full intervention workflow). (UNBLOCKED 2026-06-21 — same as N91: the dev-field-exec routing is stale (backend already on `main`, worktree isolation prevents collisions); build N91 + F21 in one offline-sync worktree lane.) (ARCH) (@after: N91)
 
 ---
 
@@ -282,19 +286,21 @@ per-domain Django apps, but the five business-core apps (`crm`, `ventes`, `stock
 (confirmed cycles: crm⇄ventes, stock⇄ventes, installations⇄ventes, installations⇄stock),
 so none can be tested or extracted on its own. These tasks decouple that core **without
 changing behaviour or schema** (additive / refactor only; every STANDING RULE applies).
-Build order top-down — M1 and M2 unlock the rest. Gate notes are inline; an unattended run
-must skip-and-flag the tasks marked `[GATE: …]` per the stop-and-ask STANDING RULE.
+Build order top-down — M1 and M2 unlock the rest. Category notes are inline labels only; auto-gating
+is OFF so every task builds (M4 is unblocked below — see NEEDS YOUR INPUT for the recommended
+event-bus approach; the two heavy-modularity options G16 are recommended-defer, not skipped by rule).
 
 - [x] M1 — Replace every load-time cross-app model import in the core apps with Django string FK references so no `models.py` imports a sibling app at import time. Fait = no top-level `from apps.<other>.models import …` remains in crm/ventes/stock/installations/sav `models.py`; every cross-app FK/M2M uses the `"app.Model"` string form; `python manage.py makemigrations --check` reports no new migration and the suite passes. (Safe refactor — no schema change.) [DONE 2026-06-20: `ventes/models.py` was the ONLY core-app models.py with load-time sibling imports — its 5 `Client` FKs and 3 `Produit` FKs now use `'crm.Client'` / `'stock.Produit'`, the two top-level imports removed (breaks the crm⇄ventes / stock⇄ventes import cycles). The other four already used the string form. `manage.py check` passes; `makemigrations --check` = No changes detected.]
 - [x] M2 — Make `services.py` / `selectors.py` the only cross-app entry point: route cross-app reads/writes through an app's service/selector functions instead of importing its `models`/`views` directly, and write the rule into CLAUDE.md repo-facts. Fait = remaining cross-app call sites import another app's `services`/`selectors` (or use string FKs), never its `models`/`views`; behaviour unchanged; tests pass. (Generalises the existing `ventes → crm.services` lazy-import pattern.) [DONE 2026-06-20: new `selectors.py` in crm/ventes/stock/installations (read helpers + lock helper + lead reassignment); new services `stock.record_stock_movement`/`mouvement_type_*`, `sav.create_equipement_from_serial`/`create_corrective_ticket`; ~25 cross-app call sites across crm/ventes/stock/installations/sav rerouted through services/selectors; same-app and foundation-app imports left as-is; the cross-app boundary rule added to CLAUDE.md repo-facts. 900/903 tests green (the 3 reds are MinIO-unreachable storage tests that pass in CI).]
 - [x] M3 — Add an `import-linter` contract run in CI that forbids import cycles among the core apps and pins the layer order (foundation → domain core → satellites). Fait = a `lint-imports` step runs in CI and fails on a new cycle or an upward import; the contract is committed. (UNGATED 2026-06-20 by the founder — `import-linter` dev dependency approved.) [DONE 2026-06-20: `backend/django_core/.importlinter` (3 contracts — core domain models stay mutually decoupled = the M1 string-FK win, incl. the M7-split installations model modules; `core` stays a base foundation layer that imports no domain/satellite app), `import-linter==2.11` pinned in requirements.txt, a `lint-imports` step added to the `backend-lint` CI job; `lint-imports` = 3 kept / 0 broken locally. Scope note: a full no-cycles/strict-layers contract among the five core apps does NOT pass yet (they still call each other at the service layer) — that is deferred until the deeper decoupling lands; documented in the contract file + CLAUDE.md.]
-- [BLOCKED: the load-time back-edge it targets does NOT exist on main — `ventes` imports `apps.audit` only LAZILY (function-local, in `views.py`), so there is no import-time cycle to remove. The two remaining calls record explicit ACTION audits ("PDF devis généré") with no corresponding model-save to hook a signal to; moving them to signals would change/lose audit semantics. Needs founder sign-off on the audit-event model before any change. Moved to GATED.] M4 — Formalise the three layers (foundation: authentication/roles/records/customfields/core · domain core: crm/stock/ventes/installations/sav · satellites: reporting/automation/monitoring/notifications/publicapi/audit/documents/dataimport/contact) and remove the one back-edge `ventes → audit` by moving that audit capture onto signals. Fait = `ventes` no longer imports `apps.audit`; the layer map is written down; behaviour unchanged; tests pass. (The signal move builds independently; enforcement rides on M3's contract.)
+- [ ] M4 — Formalise the three layers (foundation: authentication/roles/records/customfields/core · domain core: crm/stock/ventes/installations/sav · satellites: reporting/automation/monitoring/notifications/publicapi/audit/documents/dataimport/contact) and remove the one back-edge `ventes → audit` by moving that audit capture onto the M6 event bus. Fait = `ventes` no longer imports `apps.audit`; the layer map is written down; behaviour unchanged; tests pass. (UNBLOCKED 2026-06-21 — **RECOMMENDED APPROACH:** `ventes` already depends on `core/events.py` (for `devis_accepted`); have it EMIT a `document_pdf_generated(instance, kind)` event from the 2 PDF action sites (`apps/ventes/views/devis.py`, `views/facture.py`) and have the `audit` app SUBSCRIBE in its `apps.py ready()` and call `record(AuditLog.Action.PDF, …)`. Synchronous, behaviour-identical, no new model — reuses the existing `AuditLog.Action.PDF` enum. The old blocker's "no model-save to hook to" objection is moot: emit an explicit event, not a save signal.)
 - [x] M5 — Use the empty `core/` app for shared primitives: move the tenant base mixin and the `authentication/scoping.py` company-scoping helpers into `core` so apps depend down on `core` instead of sideways. Fait = the shared helpers live under `core/`, re-exported for back-compat, callers updated; no schema change; tests pass. (Touches authentication/scoping — additive, build carefully.) [DONE 2026-06-20: `core/mixins.py` (`TenantMixin`) + `core/scoping.py` (the full scoping implementation) now hold the real code; `authentication/mixins.py` and `authentication/scoping.py` are thin re-export shims so every existing `from authentication.scoping import …` / `…mixins import TenantMixin` keeps working unchanged — no caller edits needed. `makemigrations --check` clean (no schema change); `manage.py check` passes.]
 - [x] M6 — Replace the hottest direct cross-app calls with a small domain-event layer (e.g. emit `DevisAccepted` that `installations` subscribes to) instead of `installations` importing `ventes`. Fait = at least the accept→chantier and accept→stage seams run through events/signals, no direct call removed without an equivalent subscriber, tests pass. (UNGATED 2026-06-20 by the founder — new event-bus component approved.) [DONE 2026-06-20: `core/events.py` holds a Django-signal event bus (foundation, depends on nothing); `ventes.accepter()` now EMITS `devis_accepted` instead of calling `crm.services` directly, and `crm` subscribes (`apps/crm/receivers.py`, wired in `CrmConfig.ready`) to advance the lead stage — signals fire synchronously so behaviour is identical (the accept→stage seam now runs through the event). DELIBERATE SCOPE on accept→chantier: NOT auto-wired — `create_installation_from_devis` triggers N14 stock RESERVATIONS, so auto-creating a chantier on every acceptance would silently reserve inventory company-wide (a behaviour/inventory change, not a refactor). The event infra is in place for `installations` to subscribe if/when the founder wants that behaviour; flagged in the run report.]
 - [x] M7 — Split the god-files (no behaviour change): turn the large `views.py` into a `views/` package (one module per resource) and split the big `models.py` into `models_*.py` mirroring `parametres`, for `installations` (views 1879 / models 1056 LOC), `ventes` (views 1259) and `stock` (views 1063). Fait = each split app keeps identical importable symbols (re-exported from its package `__init__`), endpoints and migrations unchanged, suite passes. (Pure reorg — cuts merge conflicts across parallel lanes.) [DONE 2026-06-20: `installations/views.py`→`views/` (7 modules), `ventes/views.py`→`views/` (8), `stock/views.py`→`views/` (13), each package `__init__` re-exporting every public name (urls.py untouched); `installations/models.py`→`models_chantier/_field/_installation/_intervention.py` with `models.py` re-exporting all 23 classes. Verified byte-identical (reconstructed each original from the pieces — zero code-line diffs); `makemigrations --check` = no changes; suite green.]
 
-The two heavy options I recommended **deferring** (microservice extraction; per-app pip
-packaging) are recorded under GATED below — not for an unattended run.
+The two heavy options I recommend **deferring** (microservice extraction; per-app pip
+packaging) are G16 under **NEEDS YOUR INPUT** below — ungated, but recommended-hold (~0 payoff for a
+single-installer ERP now that M1–M7 shipped).
 
 ---
 
@@ -305,16 +311,20 @@ Stock/procurement · Installations/field-exec/outillage · SAV/parc/maintenance/
 Reporting/analytics/custom-fields · Paramètres/RBAC/auth/notifications/automation ·
 Integrations + transversal). Every task below was **verified ABSENT against the real `main` code**
 (the audit cited the proving file for each) — none re-propose anything already shipped, queued
-(N93/N94 i18n), or GATED (G2 WhatsApp Cloud, G3 redesign, G7 e-sign, G8 SSO, G11 chatbot key,
-G12 M365, G14 DGI portal, N100–N102 SaaS platform, N91/F21 offline capture, Meta CAPI send).
+(N93/N94 i18n), or parked under NEEDS YOUR INPUT (G2 WhatsApp Cloud, G3 redesign, G7 e-sign, G8 SSO,
+G11 chatbot key, G12 M365, G14 DGI portal, N100–N102 SaaS platform, Meta CAPI send — each waits on a
+founder-provided prerequisite). N91/F21 offline capture is now unblocked below.
 
 **These obey every STANDING RULE** (multi-tenant `company` FK forced server-side, additive-only,
 French UI, `STAGES.py` contract untouched, buy prices/margins never client-facing, cross-app via
-`services.py`/`selectors.py`, premium `/proposal` engine off-limits for restyle). **Gate legend
-(inline per task):** `ROUTINE` = autonomous · `SCHEMA` = additive migration (pre-approved per
-STANDING RULES, safe for an unattended run) · `DEP:<lib>` / `COST` / `AUTH` / `ARCH` / `DECISION`
-/ `GALLERY` = **stop-and-ask** — an unattended run SKIPS these and flags them (mirror to GATED on
-build). Build order is by value within each module; priority across modules is Reda's call.
+`services.py`/`selectors.py`, premium `/proposal` engine off-limits for restyle). **Category legend
+(inline per task — LABELS ONLY, 2026-06-21):** `ROUTINE` · `SCHEMA` (additive migration) ·
+`DEP:<lib>` · `COST` · `AUTH` · `ARCH` · `DECISION` · `GALLERY`. **None of these gate any more** —
+auto-gating is OFF, so a run builds every category and the planner reports `0 gated`; the label is
+kept for visibility and the DONE LOG notes any new paid/external dep, auth change, destructive
+migration, or new architecture. Build order is by value within each module; priority across modules
+is your call. A task only ever waits on a real external prerequisite you must provide (→ NEEDS YOUR
+INPUT).
 **Note (merge):** because these are new `FG*` task IDs, the first run that ticks any of them must
 refresh CODEMAP §10 + re-run `codemap_fingerprint.py --write` in the same commit (standard
 add-to-plan rule) — this audit branch only edits `docs/PLAN.md`.
@@ -465,12 +475,14 @@ RH/Terrain/HSE · Croissance commerciale/Marketing/CPQ/Portail · Vertical solai
 Projets/Supply-chain/Flotte/Qualité · Plateforme/IA/Intégrations/BI/Mobile). Every item was
 verified ABSENT against real `main` code and deduplicated against FG1–FG106.
 
-**These are mostly NEW sub-systems, so many are stop-and-ask** — an unattended run builds only the
-`ROUTINE`/`SCHEMA` items and **SKIPS + flags** every `ARCH` (new app/model-cluster/architecture),
-`DECISION` (founder product/accounting call), `DEP:<lib>` / `COST` / `AUTH` (new dependency, cost,
-or auth/security change). Same STANDING RULES as the rest of the file (multi-tenant company FK
-forced, additive-only, French UI, buy prices/margins never client-facing, `STAGES.py` untouched,
-cross-app via services/selectors, Odoo writes JSON-2-API only). Gate legend = the round-1 legend.
+**These are mostly NEW sub-systems** — but auto-gating is OFF, so an unattended run **builds every
+category**: `ROUTINE`/`SCHEMA` as before, and now also `ARCH` (new app/model-cluster/architecture),
+`DECISION` (founder product/accounting call — pick a sensible default and NOTE it), and
+`DEP:<lib>` / `COST` / `AUTH` (new dependency, cost, or auth/security change — NOTE each in the DONE
+LOG). The only thing that still parks a task is a real external prerequisite you must provide
+(→ NEEDS YOUR INPUT). Same STANDING RULES as the rest of the file (multi-tenant company FK forced,
+French UI, buy prices/margins never client-facing, `STAGES.py` untouched, cross-app via
+services/selectors, Odoo writes JSON-2-API only). Category labels = the round-1 legend.
 Big greenfield clusters (compta générale, RH, projets, WMS, flotte, BPM, portail client) are each
 a multi-session module — sequence them on the founder's call. Same merge note as round 1: the
 first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that commit.
@@ -996,7 +1008,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [ ] FLOTTE27 — Point d'intégration télématique (no-op sans fournisseur). (DEP)
 - [ ] FLOTTE28 — Suivi de position & trajets télématiques. (DEP)
 - [ ] FLOTTE29 — Journal kilométrique & trajets par chantier (via `installations.selectors`). (ROUTINE)
-- [ ] FLOTTE30 — Amortissement (lien immobilisations) — [BLOCKED: pas d'app compta/immo encore]. (DEP)
+- [ ] FLOTTE30 — Amortissement (lien immobilisations). (UNGATED 2026-06-21 — buildable once a compta/immobilisations sub-module exists; sequence it after the relevant COMPTA task. No founder input needed — it's an intra-plan dependency, not an external blocker.) (DEP)
 - [ ] FLOTTE31 — Coût total de possession (TCO) par véhicule (interne). (ROUTINE)
 - [ ] FLOTTE32 — Pool de véhicules & demandes. (ROUTINE)
 - [ ] FLOTTE33 — Éco-conduite & CO₂. (ROUTINE)
@@ -1288,45 +1300,84 @@ client-facing PDFs are GALLERY-gated).
 
 ---
 
-## GATED — needs Reda's decision before building (agent does NOT auto-build)
+## NEEDS YOUR INPUT — ungated; each waits on something only you can give (with my recommendation)
 
-The agent must **not** start these. They cost money, change auth, add a new module/architecture, or
-need Reda's taste. Reda decides; then I write a focused task and move it into the BUILD QUEUE.
+**Auto-gating is OFF (2026-06-21).** Per your standing consent, NO task is gated by category any
+more — `ARCH` / `AUTH` / `COST` / `DECISION` / `GALLERY` / `DEP` are now just **labels**, never a
+stop-and-ask, and `scripts/plan_lanes.py` schedules them like any other task (the planner reports
+`0 gated` by design). The only things that still hold a task are the five non-negotiable rules
+(#1–#5) and a genuine **external prerequisite a run cannot satisfy** — a credential / account /
+paid service **you** must provide, real-world data only you have, or a taste / strategic call that
+is yours to make.
+
+The items below are no longer auto-skipped; they are parked here **with my recommendation** because
+each genuinely needs you. To act on one: provide the credential/data, or say "build it" and a run
+ships the safe **no-op scaffold now** (it lights up the moment the key/data lands). Effort tags:
+S/M/L. The cross-app safety rules (#1–#5, multi-tenant, buy-prices-never-client-facing) still bind.
 
 - **G1 — Real email sending** (devis/facture/relance by email). **UNGATED 2026-06-18 → BUILD QUEUE
   (N87/N88, Brevo).** Provider chosen = **Brevo** (SDK or SMTP), key from settings/env, no-op
   without a key; pre-approved (see the PRE-APPROVED block). No longer a blocker.
-- **G2 — WhatsApp Business Cloud API** (true auto-send + PDF *attached*, message templates). STILL
-  GATED — unblocks when Reda provides: Meta Business **verification** + a WhatsApp Cloud API **access
-  token**, the **phone-number ID**, and an **approved template name**. Cost + Meta Business setup (Month-2 roadmap).
-- **G3 — Full document visual redesign** (devis/facture/bon de commande). **Still GATED** — the
-  full visual redesign **needs your gallery approval** (taste) and is a deliberate non-goal for an
-  unattended run; `PDF_ENGINE=legacy` stays as the fallback. **PARTIAL UNGATE 2026-06-18 → BUILD
-  QUEUE (N106):** only the two additive deliverables in the EXISTING premium visual language — the
-  three escalating-tone relance letters and the one-page after-sale handover/warranty sheet — were
-  ungated; the redesign itself stays here. STILL GATED 2026-06-20 — the full devis/facture/BC redesign needs a deliberate design pass with **gallery review**; the premium devis engine (`generate_devis_premium.py`) stays off-limits.
+- **G2 — WhatsApp Business Cloud API** (true auto-send + PDF *attached*, message templates).
+  Needs: Meta Business **verification** + a WhatsApp Cloud API **access token** + **phone-number
+  ID** + an **approved template name**. Today WhatsApp is link-only (`wa.me`, manual tap) and works
+  well. **MY RECOMMENDATION: defer until you provision the Meta token — the manual link covers the
+  daily need; don't pre-build a dead scaffold. FG207 (inbound WhatsApp → lead) is the SAME Meta
+  credential — bundle the two.** Effort M once unblocked. Use Meta Cloud API directly (skip BSP
+  resellers/their markup). Verification can take days–weeks; that, not code, is the bottleneck.
+- **G3 — Full document visual redesign** (facture + bon de commande; the premium **devis** engine
+  `generate_devis_premium.py` / `/proposal` stays OFF-LIMITS per rule #4). The facture/BC still use
+  the plainer legacy WeasyPrint templates, which undercut the brand next to the premium devis.
+  Needs: a **gallery review** (taste) — I generate 2–3 redesigned facture/BC drafts in the premium
+  visual vocabulary, you pick one. **MY RECOMMENDATION: worth doing — clients see the facture as
+  often as the devis. Say the word and I'll produce the gallery; keep `PDF_ENGINE=legacy` working.**
+  Effort M. (N106 relances + handover sheet already shipped in the premium language.)
 - **G5 — Supplier procurement module** (bons de commande fournisseur, goods-in/receiving, supplier
   invoices / accounts payable). **UNGATED 2026-06-20 → BUILD QUEUE (G5, under « Procurement & inventory »).** Approved as a dedicated multi-session module.
 - **G6 — Stock auto-decrement on installation** (a chantier consumes its equipment from stock).
   **UNGATED 2026-06-18 → folded into BUILD QUEUE N14.** The exact rule is now confirmed and
   pre-approved: **reserve on chantier create → decrement on « Installé » → release on
   cancel/close** (see the PRE-APPROVED block). No longer a blocker.
-- **G7 — Quote e-signature.** STILL GATED — pending Reda's choice of a **paid external e-signature provider**. LOW PRIORITY: lightweight in-OS quote acceptance already exists, so this only adds certified third-party signing.
-- **G8 — 2FA / SSO.** **2FA UNGATED 2026-06-20 → BUILD QUEUE (N96)** — auth change approved, pyotp approved, built OPT-IN per user (never locks out existing users). SSO stays gated (separate provider / architecture).
+- **G7 — Quote e-signature (certified third-party).** Needs your choice of a **paid e-signature
+  provider**. The lightweight in-OS acceptance already shipped (Q7: tokenized public accept stamps
+  name + timestamp + IP, flips the devis to `accepte`, renders on the PDF) — that is legally
+  adequate for residential/SME solar quotes and effectively satisfies FG229. **MY RECOMMENDATION:
+  defer — only add a certified provider (Yousign > DocuSign for an MA/FR SME: cheaper, EU-based,
+  simpler API) when a high-ticket contract or dispute actually needs eIDAS-grade signing.** Effort M.
+- **G8 — 2FA / SSO.** 2FA shipped (N96, opt-in TOTP). **SSO** still needs your choice of an IdP
+  (Google Workspace / Microsoft Entra / Okta) + that tenant's app credentials. **MY RECOMMENDATION:
+  defer — opt-in 2FA already covers the security need for a small internal team; add SSO only if you
+  standardise on one IdP (and then it pairs naturally with G12 if that IdP is Microsoft).** Effort M.
 - **G9 — Automation engine / scheduler.** **UNGATED 2026-06-18 → BUILD QUEUE (G9).** Decision made:
   **Celery Beat (in-app)**, two scheduled jobs in Africa/Casablanca time — scheduled relance
   reminders + a daily facture-overdue check (overdue = échéance passed & not fully paid → « En
   retard »; default échéance = issue + 30 days). Pre-approved (see the PRE-APPROVED block). The
   broader no-code automation engine (N72/N73) and n8n workflows stay separate.
-- **G10 — CAPI service** (Meta Conversions API, sends `SignedQuote` on Signé, EMQ ≥ 7.0). **First half
-  — lead-source capture (fbclid + UTM on the lead model and the apps/web form) — UNGATED 2026-06-20 →
-  queued as the TOP item of `docs/PLAN2.md`.** The **second half (the CAPI SEND itself) STAYS GATED**,
-  pending Reda's **Meta pixel access token**; only the CAPI send remains once the capture ships.
-- **G11 — Chatbot → Reda's Claude API key.** STILL GATED — unblocks when Reda provides a **Claude API key** and **approves the per-use cost**. Small but a cost change.
-- **G12 — MCP server + Microsoft 365** (Entra ID, Outlook, OneDrive, Teams). STILL GATED — unblocks when Reda provides **M365 / Entra access**. Roadmap.
-- **G13 — Import of the 619 real Odoo leads.** The idempotent importer is **already built**; STILL
-  GATED — unblocks on a **fresh Odoo backup file**. The backup holds PII → must **never be committed**
-  (gitignored, never in chat/GitHub).
+- **G10 — CAPI send** (Meta Conversions API, sends `SignedQuote` on Signé, EMQ ≥ 7.0). Capture half
+  shipped (fbclid + UTM on the lead + apps/web). The send hook is a stub at two known sites
+  (`apps/crm/services.py` SIGNED transition). Needs your **Meta pixel/dataset access token**. CAPI
+  itself is **free** (ad-attribution signal, not messaging). **MY RECOMMENDATION: low effort to
+  finish (M) and the hook + hashable lead data already exist — provide the pixel token and I'll wire
+  the SHA-256-hashed event POST; or build the no-op scaffold now (it's nearly free risk).**
+- **G11 — Chatbot / AI assistant → one LLM key.** The chatbot (NL→SQL agent) AND the cross-app AI
+  assistant (PLAN2 Group R, already built) are wired to a multi-provider factory that already
+  supports Claude (`langchain-anthropic` is vendored — no new dependency). They run free on Groq
+  today and degrade gracefully with no key. **MY RECOMMENDATION: provide ONE Anthropic
+  `CLAUDE_API_KEY`, set `SQL_AGENT_PROVIDER=claude` + `SQL_AGENT_MODEL=claude-sonnet-4-6` — that one
+  key also powers FG352 (RAG), FG353 (summarise), FG354 (reply drafts), FG358 (photo QA). Set a
+  monthly spend cap in the Anthropic console.** Use `claude-haiku-4-5` for cheap summaries,
+  `claude-opus-4-8` in reserve. Effort to enable: S (config). **Note: FG357 voice-to-text and FG361
+  forecasting are NOT key-gated** (free faster-whisper / `statsmodels`) — build them independently.
+- **G12 — Microsoft 365** (Entra ID, Outlook, OneDrive, Teams). Needs an **Entra app registration**
+  in your tenant (client id/secret + admin-consented Graph scopes). **MY RECOMMENDATION: confirm
+  your team's mail/file stack first — if you live in Google Workspace, skip M365 and prioritise
+  Google (calendar/email) instead; only invest here (L) if the team actually runs on M365.**
+- **G13 — Import the 619 real Odoo leads.** The idempotent importer is **already built**
+  (`apps/crm/management/commands/import_odoo_leads.py` — 3-way match, fills empty fields only, maps
+  to `STAGES.py`, `--dry-run`). Needs a **fresh Odoo export of `crm.lead`** (CSV/JSON, holds PII →
+  **never committed**, gitignored). **MY RECOMMENDATION: zero dev work — export `crm.lead`, then run
+  `manage.py import_odoo_leads <file> --company <slug> --dry-run` first, then for real.** Effort S to
+  operate.
 - **G14 — DGI e-invoicing readiness (Morocco).** Mandatory ~**Jan 2027** for businesses with CA >
   500k DH — likely Taqinor's wave. **PARTIAL UNGATE 2026-06-18 → BUILD QUEUE (N105):** only the
   **silent, backend-only local capability** was ungated — on-demand **UBL 2.1 / CII** XML export
@@ -1334,43 +1385,43 @@ need Reda's taste. Reda decides; then I write a focused task and move it into th
   OFF and is completely invisible while off. **STILL GATED here** (blocked on the unpublished DGI
   implementing decree — no API spec exists yet, not a decision of Reda's): the **Simpl-TVA portal
   transmission** and the **certified e-signature** (a PDF is explicitly NOT compliant; clearance
-  needs the live DGI platform). Start those when the specs publish. CONFIRMED 2026-06-20 — the silent local UBL/XML export already shipped (N105); only the DGI portal transmission + certified e-signature wait on the unpublished DGI implementing decree.
+  needs the live DGI platform). CONFIRMED — the silent local UBL/XML export already shipped (N105).
+  **MY RECOMMENDATION: WAIT for the spec — there is no published Simpl-TVA API to code against, so
+  building the portal half now would be guesswork. Mandatory ~Jan 2027 gives runway; the local UBL
+  export already positions the data model. Revisit the day DGI publishes the technical spec.** This
+  one is blocked by an external SPEC, not by anything you can provide today. Effort L when it lands.
 - **G15 — Arabic / Darija UI** (full interface localization, not just message templates). **UNGATED
   2026-06-20 → BUILD QUEUE (N93/N94)** — i18n framework approved. SEQUENCING: run as the FINAL step of
   the UI/UX overhaul (after the component restyle); not prioritized — pull forward only on Reda's
   explicit instruction.
-- **G16 — Heavy modularity options (deferred, NOT recommended now).** The two heaviest
-  decoupling moves from the 2026-06-20 modularity review, recorded for completeness and held
-  here so no unattended run starts them: (a) extracting a bounded context into its own
-  deployable service (like `fastapi_ia`), and (b) turning each Django app into a versioned,
-  pip-installable package. Both are large, risky migrations against a shared Postgres and the
-  single `company` tenant threaded through every model, with low payoff for a single-installer
-  ERP. Defer until a module genuinely needs independent scaling/deploy; the M1–M7 in-monolith
-  decoupling delivers the modularity benefit first.
+- **G16 — Heavy modularity options.** (a) extract a bounded context into its own deployable service
+  (like `fastapi_ia`), (b) per-app pip packaging. **MY RECOMMENDATION: KEEP DEFERRED.** M1–M7
+  already delivered the modularity benefit (CI-enforced decoupled boundaries + the `core/events.py`
+  bus). Both moves are large, risky migrations against a shared Postgres + the ubiquitous `company`
+  FK with ~zero payoff for a single-installer ERP. Defer until a module genuinely needs independent
+  scaling/deploy. No founder action needed — this is a "don't burn weeks on it" call. Effort L.
 
-### From the 2026-06-18 refinement audit — gated copies (do NOT auto-build)
+### Strategic calls (ungated, but I recommend holding until you decide)
 
-Mirror of every non-ROUTINE task in the REFINEMENT QUEUE above, kept here so an unattended run
-never auto-builds them. Each still lives in its module section above; build only after Reda's call.
+- **N100 / N101 / N102 — Multi-tenant SaaS platform** (per-tenant billing, tenant admin console,
+  self-serve signup). The `company` foundation is already threaded everywhere and isolation is
+  enforced, so **no debt accrues by waiting**. **MY RECOMMENDATION: KEEP DEFERRED until there is a
+  2nd paying installer.** Self-serve signup is the single biggest auth surface in the app; building
+  SaaS billing/console for zero customers adds cost + risk for no return. Decide on a *demand
+  signal*, not a date. (The cheap, reversible bit with standalone value — per-tenant white-label of
+  client docs via `CompanyProfile` — can be a small separate task if you want it.) These three are
+  flipped to `[ ]` in the BUILD QUEUE per your "ungate all", but **do not let a drain build them yet
+  unless you've decided to sell TAQINOR as a product** — tell me and I'll re-park them.
+- **S21 — Real-time WebSocket chat** (Django Channels + Redis layer + ASGI + nginx WS proxy). Chat
+  already works via 3 s polling. **MY RECOMMENDATION: DEFER — polling is plenty for a small internal
+  team; the WS stack adds real ops complexity (sticky sessions, connection draining on deploy) for a
+  marginal UX gain.** Build only on a concrete need (live dispatch, many concurrent users).
 
-**SCHEMA — needs an additive DB migration (still gated)**
-_(none — the three SCHEMA refinements (client ICE export, client `created_by`/`date_modification`,
-`type_equipement` tag on `stock.Categorie`) were UNGATED 2026-06-18 to `[ROUTINE]` in their module
-sections; additive migrations are pre-approved — see the PRE-APPROVED block.)_
+### From the 2026-06-18 refinement audit — gated copies
 
-**DEP — needs a dependency beyond openpyxl / vite-plugin-pwa**
-_(none — the Parc « Carte » Leaflet refinement was UNGATED 2026-06-18 to `[ROUTINE]`; Leaflet is
-pre-approved — see the PRE-APPROVED block + N85.)_
-
-**DECISION — needs Reda's product call**
-_(none remaining — 2026-06-20: L17 « Langue préférée » UNGATED to `[ROUTINE]`; L7 « En retard » matérialisé RESOLVED + DONE — already shipped via the G9 daily job (`check_overdue_factures` flips the stored `statut` → `en_retard`), see docs/DONE.md.)_
-_(UNGATED 2026-06-18 to `[ROUTINE]` in their module sections — see the PRE-APPROVED block:
-saved named views (local, no email); comptable export; per-company `Equipement` serial uniqueness;
-Stock-category management UI; Fournisseurs management screen; Retours list; public ShareLink
-noindex + per-token throttle.)_
-
-**GALLERY — changes a client-facing PDF/visual (needs gallery approval)**
-_(none remaining — 2026-06-20: L13 (escalating-tone relance letter) and L4 (in-app after-sale PDF preview) both UNGATED to `[ROUTINE]` in their module sections on Reda's explicit approval; the premium devis engine stays off-limits.)_
+_All cleared. The former SCHEMA / DEP / DECISION / GALLERY mirrors of the REFINEMENT QUEUE held
+nothing pending even before this change, and auto-gating is now OFF entirely (the labels remain on
+the tasks for visibility but no run skips them)._
 
 ---
 
