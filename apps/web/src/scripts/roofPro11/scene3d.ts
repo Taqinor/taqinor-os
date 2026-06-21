@@ -30,6 +30,8 @@ import {
   eaveUpSlopeCoord,
   flushPanelCenterAt,
   pitchedDeckZ,
+  upSlopeCoord,
+  pitchedRise,
 } from '../../lib/estimatorBrainV6';
 import { ringBBox, type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
@@ -82,6 +84,146 @@ export interface Scene3d {
   setPanelHighlight: (cellIndex: number | null) => void;
 }
 
+// ════════════════════════ W107 — faîtière commune (pans connectés) ════════════════════════
+// Deux pans EN PENTE qui partagent une arête doivent se rejoindre sur une FAÎTIÈRE commune,
+// pas flotter comme deux couvercles indépendants. On détecte l'adjacence en ENU (mètres, frame
+// commune de la scène), on calcule la hauteur de faîtière NATURELLE de chaque pan (rive amont)
+// et on remonte chaque pan connecté d'un `ridgeLiftM` constant pour que les arêtes de faîtière
+// du groupe coïncident à la hauteur MAX du groupe (le plan monte sans changer de pente → l'égout
+// reste ≥ wallH). Tout est PUR (numbers in, numbers out), sans Three ni DOM.
+
+/** Un pan en pente candidat à l'alignement de faîtière (ring ENU dans la frame de scène). */
+export interface RidgePan {
+  /** Anneau ENU (mètres) du pan, déjà translaté dans la frame commune de la scène active. */
+  ringENU: [number, number][];
+  /** Azimut de face (= pack.azimuthDeg du pavage affleurant). */
+  facingAzimuthDeg: number;
+  /** Pente (°) du pan. */
+  tiltDeg: number;
+}
+
+/** Longueur (m) du segment de RECOUVREMENT entre deux arêtes quasi-collinéaires/coïncidentes
+ *  en ENU, ou 0 si elles ne sont pas une arête partagée (écart trop grand, angle trop large,
+ *  recouvrement trop court). Mêmes tolérances que roofAdjacency (1,5 m / 12° / 0,5 m). */
+function enuSharedEdgeOverlapM(
+  a1: [number, number],
+  a2: [number, number],
+  b1: [number, number],
+  b2: [number, number],
+): number {
+  const MAX_GAP_M = 1.5;
+  const MAX_ANGLE_DEG = 12;
+  const MIN_OVERLAP_M = 0.5;
+  const da: [number, number] = [a2[0] - a1[0], a2[1] - a1[1]];
+  const db: [number, number] = [b2[0] - b1[0], b2[1] - b1[1]];
+  const la = Math.hypot(da[0], da[1]);
+  const lb = Math.hypot(db[0], db[1]);
+  if (la <= 0 || lb <= 0) return 0;
+  // Angle d'arête (non-orienté, mod 180°).
+  const angA = Math.atan2(da[1], da[0]) * (180 / Math.PI);
+  const angB = Math.atan2(db[1], db[0]) * (180 / Math.PI);
+  let diff = Math.abs(angA - angB) % 180;
+  if (diff > 90) diff = 180 - diff;
+  if (diff > MAX_ANGLE_DEG) return 0;
+  // Écart moyen point→segment (robuste aux longueurs différentes).
+  const distPS = (p: [number, number], s: [number, number], e: [number, number]): number => {
+    const se: [number, number] = [e[0] - s[0], e[1] - s[1]];
+    const len2 = se[0] * se[0] + se[1] * se[1];
+    if (len2 === 0) return Math.hypot(p[0] - s[0], p[1] - s[1]);
+    let t = ((p[0] - s[0]) * se[0] + (p[1] - s[1]) * se[1]) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (s[0] + se[0] * t), p[1] - (s[1] + se[1] * t));
+  };
+  const gap = (distPS(b1, a1, a2) + distPS(b2, a1, a2) + distPS(a1, b1, b2) + distPS(a2, b1, b2)) / 4;
+  if (gap > MAX_GAP_M) return 0;
+  // Recouvrement : projette les 4 extrémités sur la direction unitaire de l'arête A.
+  const ux = da[0] / la;
+  const uy = da[1] / la;
+  const proj = (p: [number, number]): number => (p[0] - a1[0]) * ux + (p[1] - a1[1]) * uy;
+  const lo2 = Math.min(proj(b1), proj(b2));
+  const hi2 = Math.max(proj(b1), proj(b2));
+  const overlap = Math.min(la, hi2) - Math.max(0, lo2);
+  return overlap >= MIN_OVERLAP_M ? overlap : 0;
+}
+
+/** Deux pans ENU partagent-ils une arête ? (au moins une paire d'arêtes coïncidentes). */
+function pansSharedEdge(a: RidgePan, b: RidgePan): boolean {
+  const ra = a.ringENU;
+  const rb = b.ringENU;
+  for (let i = 0; i < ra.length; i++) {
+    const a1 = ra[i];
+    const a2 = ra[(i + 1) % ra.length];
+    for (let j = 0; j < rb.length; j++) {
+      const b1 = rb[j];
+      const b2 = rb[(j + 1) % rb.length];
+      if (enuSharedEdgeOverlapM(a1, a2, b1, b2) > 0) return true;
+    }
+  }
+  return false;
+}
+
+/** Hauteur de faîtière NATURELLE d'un pan (rive amont) au-dessus de sa base : (rive amont −
+ *  égout) × tan(pente) — la montée du plan incliné sur toute sa profondeur. */
+function naturalRidgeHeightM(pan: RidgePan): number {
+  let minUp = Infinity;
+  let maxUp = -Infinity;
+  for (const [x, y] of pan.ringENU) {
+    const u = upSlopeCoord(x, y, pan.facingAzimuthDeg);
+    if (u < minUp) minUp = u;
+    if (u > maxUp) maxUp = u;
+  }
+  if (!Number.isFinite(minUp) || !Number.isFinite(maxUp)) return 0;
+  return pitchedRise(maxUp - minUp, pan.tiltDeg);
+}
+
+/**
+ * W107 — pour chaque pan EN PENTE, le lift vertical (m) à appliquer pour que les pans
+ * CONNECTÉS se rejoignent sur une faîtière commune. On regroupe les pans par adjacence
+ * (composantes connexes via arêtes partagées) ; dans chaque groupe de ≥ 2 pans, la faîtière
+ * commune est la hauteur MAX des faîtières naturelles du groupe, et chaque pan reçoit
+ * `lift = ridgeCommun − faîtièreNaturelle` (≥ 0 ; le plan monte, l'égout reste ≥ base). Un
+ * pan isolé (groupe de 1) ou non-pente garde lift 0 → rendu inchangé. Pur.
+ */
+export function computeRidgeLifts(pans: RidgePan[]): number[] {
+  const n = pans.length;
+  const lifts = new Array<number>(n).fill(0);
+  if (n < 2) return lifts;
+  // Composantes connexes (union-find léger via parcours).
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (pansSharedEdge(pans[i], pans[j])) union(i, j);
+    }
+  }
+  // Faîtière naturelle par pan + max par groupe.
+  const natural = pans.map(naturalRidgeHeightM);
+  const groupMax = new Map<number, number>();
+  const groupSize = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const g = find(i);
+    groupMax.set(g, Math.max(groupMax.get(g) ?? -Infinity, natural[i]));
+    groupSize.set(g, (groupSize.get(g) ?? 0) + 1);
+  }
+  for (let i = 0; i < n; i++) {
+    const g = find(i);
+    if ((groupSize.get(g) ?? 1) < 2) continue; // pan isolé → pas de lift
+    lifts[i] = Math.max(0, (groupMax.get(g) ?? natural[i]) - natural[i]);
+  }
+  return lifts;
+}
+
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;
   const opts = ctx.opts;
@@ -103,6 +245,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let roofTex: THREE.Texture | null = null;
   let roofTexKey = '';
   let deckMaterial: THREE.MeshStandardMaterial | null = null;
+  // W107 — lift de faîtière commune par zone (id → mètres), recalculé à chaque renderScene
+  // dans la frame ENU de la zone active. Vide / 0 → rendu inchangé (pans isolés, toit plat).
+  let ridgeLifts = new Map<string, number>();
 
   const AXIS_X = new THREE.Vector3(1, 0, 0);
   const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -489,6 +634,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const { pack, grid, tiltDeg, family, flush } = plan;
     const wallH = FLOORS * FLOOR_HEIGHT_M;
     const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
+    // W107 — lift de faîtière commune : le pan incliné monte de `ridgeLiftM` (sans changer
+    // de pente) pour rejoindre la faîtière partagée d'un pan voisin. 0 (défaut / pan isolé /
+    // toit plat) → rendu inchangé, octet pour octet.
+    const ridgeLiftM = flush ? Math.max(0, plan.ridgeLiftM ?? 0) : 0;
 
     // Bâtiment
     const shape = new THREE.Shape();
@@ -528,7 +677,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       // reste géo-alignée. Plat : dalle horizontale (inchangé).
       const dpos = deckGeo.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < dpos.count; i++) {
-        dpos.setZ(i, pitchedDeckZ(dpos.getX(i), dpos.getY(i), pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg));
+        // W107 — + ridgeLiftM : tout le plan incliné monte vers la faîtière commune.
+        dpos.setZ(i, pitchedDeckZ(dpos.getX(i), dpos.getY(i), pitchEaveCoord, ridgeLiftM, tiltDeg, pack.azimuthDeg));
       }
       dpos.needsUpdate = true;
       deckGeo.computeVertexNormals();
@@ -550,8 +700,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       const n = ring.length;
       const positions: number[] = [];
       // z du dessous de la dalle inclinée à un sommet (repère local du mur, base z=0).
+      // W107 — + ridgeLiftM : la jupe monte jusqu'à la dalle relevée vers la faîtière commune.
       const deckRiseAt = (x: number, y: number) =>
-        0.02 + pitchedDeckZ(x, y, pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg);
+        0.02 + ridgeLiftM + pitchedDeckZ(x, y, pitchEaveCoord, 0, tiltDeg, pack.azimuthDeg);
       for (let i = 0; i < n; i++) {
         const [ax, ay] = ring[i];
         const [bx, by] = ring[(i + 1) % n];
@@ -645,7 +796,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       // sur le plan + un décalage CONSTANT le long de la normale → le centre monte
       // avec la pente (vrai plan incliné, pas un calepinage plat de panneaux inclinés).
       if (flush) {
-        const c = flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ, tiltDeg, pack.azimuthDeg, PITCHED_FLUSH_STANDOFF_M);
+        // W107 — baseZ + ridgeLiftM : les panneaux montent avec le plan vers la faîtière commune.
+        const c = flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ + ridgeLiftM, tiltDeg, pack.azimuthDeg, PITCHED_FLUSH_STANDOFF_M);
         panelMatsArr.push(compose(c.x + offX, c.y + offY, c.z, rowAngleRad, signedTilt));
       } else {
         const pZ = baseZ + frontStrut + rise / 2 + 0.07;
@@ -759,6 +911,38 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return ring;
   }
 
+  /** W107 — (re)calcule le lift de faîtière commune de CHAQUE zone (id → m), recensant tous
+   *  les pans EN PENTE (active + autres avec renderPlan flush) dans la frame ENU de la zone
+   *  active, puis appariant les pans connectés (`computeRidgeLifts`). Pans isolés/non-pente →
+   *  0. Appelée une fois en tête de renderScene ; lue par buildZoneMeshes via `ridgeLifts`. */
+  function computeAllRidgeLifts(activeOrigin: LngLat, activePack: PackResult, activeTiltDeg: number, activeFlush: boolean) {
+    ridgeLifts = new Map<string, number>();
+    const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
+    const entries: { id: string; pan: RidgePan }[] = [];
+    // Zone ACTIVE (offset nul), seulement si en pente.
+    if (activeFlush) {
+      entries.push({
+        id: ctx.activeAreaId,
+        pan: { ringENU: activePack.ringENU.map(([x, y]) => [x, y]), facingAzimuthDeg: activePack.azimuthDeg, tiltDeg: activeTiltDeg },
+      });
+    }
+    // Autres zones EN PENTE avec un renderPlan, translatées dans la frame active.
+    for (const a of ctx.areas) {
+      if (a.id === ctx.activeAreaId) continue;
+      const plan = a.renderPlan;
+      if (!plan || !plan.flush) continue;
+      const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
+      const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
+      entries.push({
+        id: a.id,
+        pan: { ringENU: plan.pack.ringENU.map(([x, y]) => [x + offX, y + offY]), facingAzimuthDeg: plan.pack.azimuthDeg, tiltDeg: plan.tiltDeg },
+      });
+    }
+    if (entries.length < 2) return; // pan isolé → aucun lift (rendu inchangé)
+    const lifts = computeRidgeLifts(entries.map((e) => e.pan));
+    entries.forEach((e, i) => ridgeLifts.set(e.id, lifts[i]));
+  }
+
   /** Re-dessine TOUTES les zones SAUF l'active, à leur vraie position relative (« toutes
    *  les zones empilées »). Pour chaque zone disposant d'un `renderPlan`, on calcule
    *  l'offset ENU entre son origine GPS et celle de la zone active, puis on construit ses
@@ -778,7 +962,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const plan = a.renderPlan;
         const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
         const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
-        const built = buildZoneMeshes(plan, offX, offY, true);
+        // W107 — applique le lift de faîtière commune de cette zone (copie superficielle pour
+        // ne pas muter le renderPlan stocké). 0 par défaut → rendu inchangé.
+        const liftedPlan: ZoneRenderPlan = { ...plan, ridgeLiftM: ridgeLifts.get(a.id) ?? 0 };
+        const built = buildZoneMeshes(liftedPlan, offX, offY, true);
         rings.push(built.ring);
       } else {
         // W78 — pas de plan de rendu (zone finie à 0 panneau) : on dessine son volume nu.
@@ -825,11 +1012,15 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       ? grid.panels.filter((_, i) => occupiedSet.has(i))
       : grid.panels.slice(0, Math.max(0, maxCount));
 
+    // W107 — recense les pans EN PENTE connectés (active + autres) et calcule leur lift de
+    // faîtière commune AVANT de bâtir les meshes (lu par buildZoneMeshes via `ridgeLifts`).
+    computeAllRidgeLifts(pack.origin, pack, tiltDeg, flush);
+
     // Bâtiment + dalle + panneaux de la zone ACTIVE : MÊME chemin de construction que les
     // autres zones (buildZoneMeshes), à offset NUL et sans atténuation → octet pour octet
     // identique à avant. Les obstacles VIVANTS (tinte sélection + étiquette + drag) et la
     // photo satellite restent gérés ici car ils dépendent de l'état d'édition courant.
-    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles };
+    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0 };
     const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
     // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
     // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.

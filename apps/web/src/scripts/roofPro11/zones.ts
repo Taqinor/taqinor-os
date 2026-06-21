@@ -54,6 +54,7 @@ export function createZones(ctx: Ctx): Zones {
     a.roofType = ctx.roofType;
     a.pitchDeg = ctx.pitchDeg;
     a.facingAzimuthDeg = ctx.facingAzimuthDeg;
+    a.facingManual = ctx.facingManual; // W106 — l'override manuel par zone persiste
     a.neededPanels = ctx.neededPanels;
     a.neededAuto = ctx.neededAuto;
   }
