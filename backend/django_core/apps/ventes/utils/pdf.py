@@ -50,6 +50,41 @@ def download_pdf(key):
     return resp['Body'].read()
 
 
+# ── Q4 — Rendu 3D de toiture (image) dans le bucket PDF ──────────────────────
+# Le snapshot 3D est stocké dans le MÊME bucket que les PDF (réutilise toute
+# l'infra existante : client MinIO + bucket erp-pdf), sous une clé scopée
+# société pour éviter toute collision/fuite inter-tenant. La récupération se
+# fait par URL pré-signée (lecture seule, expiration courte) — jamais d'accès
+# public direct au bucket.
+
+def upload_roof_image(image_bytes, key, content_type='image/png'):
+    """Upload a roof-render image to the (existing) PDF bucket under `key`."""
+    client = get_minio_client()
+    client.put_object(
+        Bucket=settings.MINIO_BUCKET_PDF,
+        Key=key,
+        Body=image_bytes,
+        ContentType=content_type,
+    )
+
+
+def download_roof_image(key):
+    """Stream a roof-render image from the PDF bucket. Returns bytes or raises."""
+    client = get_minio_client()
+    resp = client.get_object(Bucket=settings.MINIO_BUCKET_PDF, Key=key)
+    return resp['Body'].read()
+
+
+def roof_image_signed_url(key, expires=3600):
+    """Pre-signed, read-only GET URL for a stored roof-render image (1 h)."""
+    client = get_minio_client()
+    return client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': settings.MINIO_BUCKET_PDF, 'Key': key},
+        ExpiresIn=expires,
+    )
+
+
 # ── Image embedding ──────────────────────────────────────────────────────────
 
 def _to_data_uri(raw_bytes, key):

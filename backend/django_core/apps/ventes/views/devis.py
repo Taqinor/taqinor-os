@@ -80,6 +80,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
+            'layout', 'roof_image',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -460,6 +461,80 @@ class DevisViewSet(viewsets.ModelViewSet):
             f'inline; filename="Proposition_{devis.reference}.pdf"'
         )
         return response
+
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path='layout',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def layout(self, request, pk=None):
+        """Q1 — lit (GET) ou enregistre (POST) le layout 3D FINALISÉ du devis.
+
+        Le corps POST EST le layout sérialisé (AreaRecord[] + result +
+        renderPlan) tel que le produit l'outil roofPro11. La société n'est
+        jamais lue du corps : le devis est déjà borné à la société de
+        l'utilisateur par ``get_queryset`` (un devis d'une autre société →
+        404). Seul ``roof_layout`` est touché ; aucun statut ne bouge
+        (préservation des statuts, règle #4)."""
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response({'roof_layout': devis.roof_layout})
+        # POST — le corps entier est le layout (on accepte aussi un wrapper
+        # {"roof_layout": …} pour rester souple côté front).
+        payload = request.data
+        if isinstance(payload, dict) and set(payload.keys()) == {'roof_layout'}:
+            payload = payload['roof_layout']
+        devis.roof_layout = payload
+        devis.save(update_fields=['roof_layout'])
+        return Response({'roof_layout': devis.roof_layout})
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='roof-image',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def roof_image(self, request, pk=None):
+        """Q4 — réceptionne le snapshot PNG 3D et le stocke dans MinIO.
+
+        L'image part dans le bucket PDF existant sous une clé scopée société
+        (``roofs/<company>/<reference>.png``) et la clé est mémorisée sur
+        ``devis.roof_image``. La société est forcée côté serveur (clé dérivée
+        du devis, lui-même borné à la société par ``get_queryset``) ; rien
+        n'est lu du corps hors le fichier. Aucun statut ne bouge (règle #4).
+        Renvoie l'URL pré-signée de relecture (lecture seule, 1 h)."""
+        from ..utils.pdf import upload_roof_image, roof_image_signed_url
+        from ..quote_engine.builder import _ensure_pdf_bucket
+
+        upload = request.FILES.get('image') or request.FILES.get('file')
+        if upload is None:
+            return Response(
+                {'detail': "Fichier image manquant (champ « image »)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = upload.read()
+        # Validation magic-bytes : PNG (\x89PNG) ou JPEG (\xff\xd8\xff).
+        is_png = data[:8] == b'\x89PNG\r\n\x1a\n'
+        is_jpeg = data[:3] == b'\xff\xd8\xff'
+        if not (is_png or is_jpeg):
+            return Response(
+                {'detail': 'Image invalide (PNG ou JPEG attendu).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        devis = self.get_object()
+        ext = 'png' if is_png else 'jpg'
+        ctype = 'image/png' if is_png else 'image/jpeg'
+        company_id = getattr(devis, 'company_id', None) or '0'
+        key = f'roofs/{company_id}/{devis.reference}.{ext}'
+        _ensure_pdf_bucket()
+        upload_roof_image(data, key, content_type=ctype)
+        devis.roof_image = key
+        devis.save(update_fields=['roof_image'])
+        return Response(
+            {'roof_image': key, 'url': roof_image_signed_url(key)},
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(
         detail=True,
