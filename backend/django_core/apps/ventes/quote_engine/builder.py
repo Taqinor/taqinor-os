@@ -119,6 +119,13 @@ DEFAULT_PDF_OPTIONS = {
     'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
     'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
     'include_etude': False,    # page Étude (industriel) — 4th premium page
+    # ── Agricole (pompage) — toggleable persuasion sections (default on) ──
+    'show_subsidy': True,          # FDA 30% subsidy block
+    'show_fuel_comparison': True,  # solaire vs butane vs diesel + payback
+    'show_environmental': True,    # CO₂ / fuel-avoided strip
+    'show_schematic': True,        # system schematic on the study page
+    'show_water_yield': True,      # water-delivered-per-month chart
+    'current_fuel': None,          # 'butane' | 'diesel' | 'none' (else étude/default)
 }
 
 
@@ -136,6 +143,13 @@ def clean_pdf_options(raw) -> dict:
         opts['include_etude'] = bool(raw['include_etude'])
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
+    # Agricole toggles — booleans default True; current_fuel a small enum.
+    for _flag in ('show_subsidy', 'show_fuel_comparison', 'show_environmental',
+                  'show_schematic', 'show_water_yield'):
+        if _flag in raw:
+            opts[_flag] = bool(raw[_flag])
+    if raw.get('current_fuel') in ('butane', 'diesel', 'none'):
+        opts['current_fuel'] = raw['current_fuel']
     try:
         acompte = raw.get('custom_acompte')
         # ERR76 — never forward a negative acompte; the engine additionally
@@ -358,6 +372,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # production/savings are canonical; payback and prix/kWc are recomputed from
     # the canonical totals so edited lines can never desynchronize the document.
     etude = dict(devis_etude_override or {})
+    # Agricole : le carburant de référence du comparatif peut être forcé par
+    # l'option PDF (sinon l'étude / le défaut « butane » s'applique).
+    if opts.get('current_fuel'):
+        etude['current_fuel'] = opts['current_fuel']
     roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec)
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
@@ -520,6 +538,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "payment_terms": payment_terms,
         "mode_installation": mode,
         "etude": etude,
+        # Agricole — toggleable persuasion sections + company (Paramètres
+        # economics override). Ignored by every other renderer.
+        "show_subsidy": opts['show_subsidy'],
+        "show_fuel_comparison": opts['show_fuel_comparison'],
+        "show_environmental": opts['show_environmental'],
+        "show_schematic": opts['show_schematic'],
+        "show_water_yield": opts['show_water_yield'],
+        # company id only (JSON-serializable — this dict is also returned by the
+        # public proposal-data endpoint; never put the model instance here).
+        "_company_id": getattr(devis, "company_id", None),
         # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
         "doc_texts": doc_texts,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
@@ -608,8 +636,21 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # market mode / format (industriel, agricole, one-page, étude) and is also
     # the automatic fall-back, so a client PDF is never broken.
     pdf_bytes = None
+    # Agricole premium multi-page proposal (full format). One-page agricole and
+    # every other mode/format stay on the legacy engine / residential renderer.
+    from .agricole import renderer as agricole
+    if agricole.is_agricultural(devis, pdf_options):
+        try:
+            pdf_bytes = agricole.render_pdf_bytes(data)
+        except agricole.Unsupported:
+            pdf_bytes = None
+        except Exception:
+            logger.warning(
+                "Agricole renderer failed for %s; using legacy engine",
+                getattr(devis, "reference", devis_id), exc_info=True)
+            pdf_bytes = None
     from .residential import renderer as residential
-    if residential.is_residential(devis, pdf_options):
+    if pdf_bytes is None and residential.is_residential(devis, pdf_options):
         try:
             pdf_bytes = residential.render_pdf_bytes(data)
         except residential.Unsupported:
