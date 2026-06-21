@@ -14,7 +14,7 @@ from decimal import Decimal
 from html import escape
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -45,6 +45,7 @@ def _is_pdf(blob):
     return isinstance(blob, (bytes, bytearray)) and blob[:5] == b'%PDF-'
 
 
+@tag('pdf')  # toutes les sous-classes rendent des PDF (relances/fiches) → lourd
 class _Base(TestCase):
     def setUp(self):
         self.company = make_company()

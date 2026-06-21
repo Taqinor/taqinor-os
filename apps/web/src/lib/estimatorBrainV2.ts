@@ -33,7 +33,7 @@
  * vrai panneau Canadian Solar 720 W de roofPro2.ts, et la table PVGIS committée
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
-import { geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
+import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 
@@ -449,6 +449,13 @@ export interface PackOptions {
    * rendement par panneau baisse honnêtement à mesure qu'on s'écarte du sud).
    */
   azimuthDeg?: number;
+  /**
+   * W108 — débord autorisé des panneaux AU-DELÀ de la rive (m). Les rails restent
+   * sur le toit, le panneau déborde (fréquent sur toit incliné). Un panneau est
+   * retenu si son empreinte reste à `setbackM` du bord OU dépasse d'au plus
+   * `overhangM`. Défaut 0 → calepinage IDENTIQUE à aujourd'hui.
+   */
+  overhangM?: number;
 }
 
 /**
@@ -618,6 +625,7 @@ function packCells(
   setbackM: number,
   p: CellParams,
   clearanceM: number,
+  overhangM = 0,
 ): PackedPanel[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -638,8 +646,13 @@ function packCells(
   }
 
   const colPitch = p.rowWidthM + PANEL_SIDE_GAP_M;
-  const rows = Math.floor((vMax - vMin) / p.pitchM);
-  const cols = Math.floor((uMax - uMin) / colPitch);
+  // W108 — débord : on étend la fenêtre de balayage d'un nombre ENTIER de pas de
+  // chaque côté (la PHASE du lattice reste inchangée → panneaux intérieurs
+  // identiques au pixel près). overhangM=0 → ohRows=ohCols=0 → tout est identique.
+  const ohRows = overhangM > 0 ? Math.ceil(overhangM / p.pitchM) : 0;
+  const ohCols = overhangM > 0 ? Math.ceil(overhangM / colPitch) : 0;
+  const rows = Math.floor((vMax - vMin) / p.pitchM) + 2 * ohRows;
+  const cols = Math.floor((uMax - uMin) / colPitch) + 2 * ohCols;
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
@@ -658,19 +671,28 @@ function packCells(
   // serait perdue → « retirer la marge » donnerait paradoxalement MOINS de
   // panneaux. À retrait positif, la 2nde condition rejette de toute façon les
   // coins de rive, donc ce relâchement n'agit qu'à retrait ≈ 0.
+  // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
+  // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM` (rails sur le
+  // toit). overhangM=0 → équivaut exactement à l'ancienne règle (dedans/pile-rive
+  // ET retrait), y compris la tolérance EDGE_EPS à retrait nul.
   const cellInside = (corners: [number, number][]): boolean =>
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
-      return (pointInPolygon(c, ringENU) || d <= EDGE_EPS_M) && d >= setbackM - EDGE_EPS_M;
+      const sd = pointInPolygon(c, ringENU) ? d : -d;
+      return sd >= setbackM - overhangM - EDGE_EPS_M;
     });
 
+  // Départ décalé de ohRows/ohCols pas entiers vers l'extérieur ; borne haute
+  // étendue du débord. overhangM=0 : vStart=vMin+setbackM, séquence et borne identiques.
+  const vStart = vMin + setbackM - ohRows * p.pitchM;
+  const uStart = uMin + setbackM - ohCols * colPitch;
   const panels: PackedPanel[] = [];
   for (let r = 0; r < rows; r++) {
-    const v0 = vMin + setbackM + r * p.pitchM;
+    const v0 = vStart + r * p.pitchM;
     const v1 = v0 + p.cellDepthM;
-    if (v1 > vMax - setbackM + EDGE_EPS_M) break;
+    if (v1 > vMax - setbackM + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
-      const u0 = uMin + setbackM + c * colPitch;
+      const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
       const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];
       if (!cellInside(corners)) continue;
@@ -694,6 +716,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const azimuthDeg = opts.azimuthDeg ?? familyAzimuthDeg(opts.family);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
+  const overhangM = Math.max(0, opts.overhangM ?? 0);
   const tiltDeg = opts.tiltDeg;
   const beta = tiltDeg * DEG2RAD;
   const eastWest = opts.family === 'eastwest';
@@ -701,7 +724,11 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   // Surface utile = aire tracée − recouvrement RÉEL obstacles ∩ toit (union des
   // obstacles, part hors toit exclue) — la borne « Σ empreintes ≤ utile ».
   const obstructions = opts.obstructions ?? [];
-  const usableAreaM2 = Math.max(0, areaM2 - obstructionOverlapM2(ring, obstructions, areaM2));
+  // W108 — la borne d'honnêteté « Σ empreintes ≤ utile » s'élargit de l'anneau de
+  // débord (dilatation de Minkowski : périmètre·r + π·r²) : surface réellement
+  // portée par les rails, jamais une capacité inventée. overhangM=0 → +0.
+  const overhangRingM2 = overhangM > 0 ? geodesicPerimeterM(ring) * overhangM + Math.PI * overhangM * overhangM : 0;
+  const usableAreaM2 = Math.max(0, areaM2 + overhangRingM2 - obstructionOverlapM2(ring, obstructions, areaM2));
 
   const buildEmpty = (
     panelOrientation: 'portrait' | 'landscape',
@@ -787,7 +814,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
     const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM);
     return {
       panelOrientation,
       count: panels.length,

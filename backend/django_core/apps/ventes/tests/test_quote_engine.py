@@ -11,7 +11,7 @@ Run:
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Client
@@ -199,6 +199,7 @@ class TestBuildQuoteData(TestCase):
         self.assertEqual(data['total_sans'], 10800)
 
 
+@tag('pdf')  # rendu PDF premium complet — lourd → palier release-verify
 class TestPremiumPdfRender(TestCase):
     def setUp(self):
         self.company = make_company()

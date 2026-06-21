@@ -63,6 +63,10 @@ export interface ZoneRenderPlan {
   flush: boolean;
   count: number;
   obstacles: Obstacle[];
+  /** W107 — lift VERTICAL (m) appliqué au pan incliné pour que les pans connectés se
+   *  rejoignent sur une faîtière COMMUNE (le plan monte de `ridgeLiftM` sans changer sa
+   *  pente). Défaut 0 (pan isolé / toit plat) → rendu inchangé, octet pour octet. */
+  ridgeLiftM?: number;
 }
 
 /** W69 — pavage gagnant courant (pack + grid + tilt + family + flush) pour
@@ -83,6 +87,9 @@ export interface AreaRecord {
   roofType: RoofType;
   pitchDeg: number;
   facingAzimuthDeg: number;
+  /** W106 — la face de ce pan a-t-elle été fixée À LA MAIN (override par zone) ? Si oui,
+   *  l'auto-inférence d'adjacence ne l'écrase jamais. Optionnel (rétro-compatible, défaut false). */
+  facingManual?: boolean;
   neededPanels: number;
   neededAuto: boolean;
   result: AreaResult | null;

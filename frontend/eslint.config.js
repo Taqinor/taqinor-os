@@ -50,4 +50,22 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // Config Vitest + setup RTL : contexte Node/Vitest (pas l'app navigateur).
+  {
+    files: ['vitest.config.js', 'src/test/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  // Tests de composants/UX (RTL + axe) : ce ne sont pas des composants → la règle
+  // fast-refresh ne s'y applique pas.
+  {
+    files: ['src/**/*.test.{js,jsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
