@@ -98,6 +98,17 @@ INSTALLED_APPS = [
     # pièces jointes/voix, mentions, réactions, partage d'enregistrement.
     # Multi-tenant strict ; temps réel par polling (pas de WebSocket en v1).
     'apps.chat',
+    # Modules ERP greenfield (fondations) — multi-société, additifs, scopés
+    # société côté serveur. RH (dossier employé master DC29), Paie (paramètres
+    # CNSS/AMO/IR), Gestion de projet (multi-chantiers), Contrats (CLM), QHSE
+    # (NCR/CAPA), Base de connaissances, Réclamations & litiges.
+    'apps.rh',
+    'apps.paie',
+    'apps.gestion_projet',
+    'apps.contrats',
+    'apps.qhse',
+    'apps.kb',
+    'apps.litiges',
 ]
 
 MIDDLEWARE = [
