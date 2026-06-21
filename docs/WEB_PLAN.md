@@ -1075,15 +1075,13 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W152 — **Footer redesign.** It's a flat link grid on bare `bg-nuit` with a 1px top
   border — the weakest element on the site. Add a brand block + phone/WhatsApp CTA buttons,
   a golden hairline/seam top edge, and real column hierarchy. Files: `apps/web/src/components/Footer.astro`.
-- [ ] W153 — **Ship the founder portrait.** `FounderPortrait.astro` is hardcoded
-  `FOUNDER_PHOTO = null`, so the doctor-engineer trust section renders with no face — the
-  highest-ROI human/premium cue. The component is already wired for a 4:5 `Picture`; the
-  pipeline expects the raw file in `apps/web/photos-raw/` + a `PHOTOS` entry in
-  `scripts/process-photos.mjs` (out base name, ratio 4/5), then `FOUNDER_PHOTO` set to it.
-  *(ASSET-BLOCKED 2026-06-21: the founder pasted the portrait inline in chat, but no image
-  FILE was attached — nothing on disk to process. Still needs the actual photo file uploaded
-  as an attachment.)* Files: `apps/web/src/components/FounderPortrait.astro`,
-  `apps/web/photos-raw/`, `apps/web/scripts/process-photos.mjs`, `apps/web/public/photos/`.
+- [x] W153 — **Ship the founder portrait.** *(Shipped 2026-06-21: founder supplied the photo
+  (`DSC_0612.JPG`, Nikon 6016×4000) inside a zip; generated 4:5 face-framed AVIF+WebP derivatives
+  at 640/480 into `public/photos/fondateur-portrait-*`, set `FOUNDER_PHOTO='fondateur-portrait'`,
+  and recorded provenance as a `PHOTOS` entry in `process-photos.mjs`. The doctor-engineer trust
+  section now renders the real portrait + "Reda Kasri" caption instead of the text fallback.)*
+  Files: `apps/web/src/components/FounderPortrait.astro`, `apps/web/scripts/process-photos.mjs`,
+  `apps/web/public/photos/fondateur-portrait-*`.
 
 **— Homepage & hero —**
 
@@ -1173,10 +1171,14 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   `apps/web/src/styles/v3-photo-motion.css`.
 - [ ] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
   Dyness, Nexans) to replace the text word-mark fallback. These are THIRD-PARTY *manufacturer*
-  logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(ASSET-BLOCKED
-  2026-06-21: the founder supplied the TAQINOR logo pack (now at `apps/web/public/brand/`), which
-  does NOT satisfy this task — it has no manufacturer logos. Still needs the 7 official monochrome
-  manufacturer SVGs.)* Files: `apps/web/public/brands/`, `apps/web/src/lib/brands.ts`.
+  logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(BLOCKED 2026-06-21:
+  net-sourcing attempted but this environment's network egress is ALLOWLISTED — only npm-type hosts
+  are reachable; commons.wikimedia.org and the open web return `403 Host not in allowlist`. Of the 7,
+  only Huawei exists in a reachable npm logo set (`simple-icons`); the 6 solar brands are in none.
+  To finish, EITHER the founder drops the 6 remaining official monochrome SVGs (Canadian Solar,
+  JA Solar, Jinko, Deye, Dyness, Nexans) in a zip — best, from each brand kit — OR widens the
+  environment's network egress allowlist to include the logo source hosts, then a run can fetch them.)*
+  Files: `apps/web/public/brands/`, `apps/web/src/lib/brands.ts`.
 
 **— Forms & interactive widgets (visual-only; lead mechanics untouched) —**
 
@@ -1314,9 +1316,14 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   pack (staged under `apps/web/public/brand/`) — real brand lockup as apple-touch (256px) +
   icon-512, a `site.webmanifest` (name/theme `#070b1d`/bg + 256/512 icons), and the apple-touch +
   manifest head links; kept the lightweight square sun `favicon.svg` for the tiny browser tab.
-  W153 (founder portrait) and W187 (third-party manufacturer logos) remain ASSET-BLOCKED — neither
-  asset is present (the portrait was pasted in chat but never attached as a file; the logo pack is
-  Taqinor's own mark, not the manufacturer logos W187 needs).
+- 2026-06-21 — W153: shipped the founder portrait. Founder zipped the photo (`DSC_0612.JPG`); used a
+  one-off `sharp` pass to generate 4:5 face-framed AVIF+WebP derivatives (640/480) into
+  `public/photos/fondateur-portrait-*`, wired `FOUNDER_PHOTO='fondateur-portrait'`, and logged
+  provenance in `process-photos.mjs`. The accueil "Le fondateur" section now shows the real face.
+- 2026-06-21 — W187 still BLOCKED: tried to source the manufacturer logos from the web, but the
+  environment's network egress is allowlisted (only npm reachable; the open web returns 403). Only
+  Huawei is obtainable (npm `simple-icons`); the 6 solar brands are in no reachable set. Needs the
+  founder's 6 official SVGs (zip) or a widened egress allowlist. NOTE: no new external/paid dep added.
 - 2026-06-20 — W75: pro-11 address `geocode` now takes a module-scoped `geoToken` (ignores stale
   responses) + an `AbortController` (aborts the previous request) and the search-form submit is
   debounced ~300 ms (mirroring the bill debounce) — rapid Enter presses resolve only to the last
