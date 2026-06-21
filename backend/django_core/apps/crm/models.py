@@ -398,6 +398,24 @@ class LeadActivity(models.Model):
         CREATION = 'creation', 'Création'
         MODIFICATION = 'modification', 'Modification'
         NOTE = 'note', 'Note'
+        # FG30 — Interactions de communication typées
+        APPEL = 'appel', 'Appel'
+        EMAIL = 'email', 'E-mail'
+
+    # FG30 — Résultat optionnel d'un appel ou e-mail (affiché dans le chatter).
+    OUTCOMES = [
+        ('',        '—'),
+        ('joint',   'Joint'),
+        ('non_joint', 'Non joint'),
+        ('rappel',  'À rappeler'),
+        ('refuse',  'Refus'),
+        ('interesse', 'Intéressé'),
+    ]
+    outcome = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=OUTCOMES,
+        verbose_name="Résultat de l'interaction",
+    )
 
     company = models.ForeignKey(
         'authentication.Company',

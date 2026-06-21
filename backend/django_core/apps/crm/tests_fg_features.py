@@ -1,4 +1,4 @@
-"""Tests for CRM feature gaps FG27, FG28, FG29, FG31, FG33, FG34, FG36, FG38."""
+"""Tests for CRM feature gaps FG27–FG38 (FG30 Unified comm log, FG32 segments, FG33 bulk WA…)."""
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -415,3 +415,80 @@ class TestFG38ClientMatch(TestCase):
         self.assertIn('id', row)
         self.assertIn('nom', row)
         self.assertIn('nb_devis', row)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FG30 — Unified communication log (typed appel/email in chatter)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestFG30CommunicationLog(TestCase):
+    """log-interaction endpoint posts typed Appel/Email entries to chatter."""
+
+    def setUp(self):
+        self.company = make_company('fg30-co', 'FG30 Co')
+        self.user = make_user(self.company, 'fg30_user', 'responsable')
+        self.api = make_api(self.user)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Appel Lead',
+            stage='NEW',
+        )
+
+    def test_log_appel_creates_activity(self):
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
+            {'kind': 'appel', 'body': 'Résumé de l'appel', 'outcome': 'joint'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        act = LeadActivity.objects.get(pk=resp.data['id'])
+        self.assertEqual(act.kind, 'appel')
+        self.assertEqual(act.outcome, 'joint')
+        self.assertEqual(act.user, self.user)
+
+    def test_log_email_without_outcome(self):
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
+            {'kind': 'email', 'body': 'Mail envoyé'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['kind'], 'email')
+        self.assertEqual(resp.data['outcome'], '')
+
+    def test_invalid_kind_rejected(self):
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
+            {'kind': 'sms'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_outcome_rejected(self):
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
+            {'kind': 'appel', 'outcome': 'inconnu'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_appel_on_new_lead_sets_first_contacted_at(self):
+        """An appel log on a NEW lead triggers first_contacted_at (FG28 hook)."""
+        self.assertIsNone(self.lead.first_contacted_at)
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
+            {'kind': 'appel', 'outcome': 'joint'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.lead.refresh_from_db()
+        self.assertIsNotNone(self.lead.first_contacted_at)
+
+    def test_outcome_serialized_in_response(self):
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
+            {'kind': 'appel', 'outcome': 'rappel', 'body': 'À rappeler demain'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('outcome', resp.data)
+        self.assertEqual(resp.data['outcome'], 'rappel')

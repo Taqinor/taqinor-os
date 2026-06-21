@@ -11,7 +11,7 @@ class LeadActivitySerializer(serializers.ModelSerializer):
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
-            'body', 'bulk', 'user_nom', 'created_at',
+            'body', 'outcome', 'bulk', 'user_nom', 'created_at',
         ]
 
     def get_user_nom(self, obj):

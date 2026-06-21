@@ -799,6 +799,52 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
+    # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
+    @action(detail=True, methods=['post'], url_path='log-interaction',
+            permission_classes=[IsResponsableOrAdmin])
+    def log_interaction(self, request, pk=None):
+        """Enregistre un appel ou un e-mail dans le chatter du lead.
+
+        Corps requis :
+          - kind : 'appel' | 'email'
+          - body : texte libre (résumé de l'échange), facultatif
+          - outcome : parmi les choix LeadActivity.OUTCOMES, facultatif
+
+        L'auteur et la société sont toujours pris côté serveur.
+        """
+        from .models import LeadActivity
+        lead = self.get_object()
+        kind = (request.data.get('kind') or '').strip()
+        valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL}
+        if kind not in valid_kinds:
+            return Response(
+                {'kind': f"Valeur invalide. Choisir parmi : {', '.join(valid_kinds)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        body = (request.data.get('body') or '').strip()
+        outcome = (request.data.get('outcome') or '').strip()
+        valid_outcomes = {k for k, _ in LeadActivity.OUTCOMES}
+        if outcome and outcome not in valid_outcomes:
+            return Response(
+                {'outcome': f"Valeur invalide. Choisir parmi : {', '.join(valid_outcomes)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        act = LeadActivity.objects.create(
+            lead=lead,
+            company=lead.company,
+            kind=kind,
+            body=body or None,
+            outcome=outcome,
+            user=request.user,
+        )
+        # FG28 — tout contact direct = première prise de contact
+        if lead.stage == 'NEW' and lead.first_contacted_at is None:
+            from django.utils import timezone
+            lead.first_contacted_at = timezone.now()
+            lead.save(update_fields=['first_contacted_at'])
+        return Response(LeadActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):
