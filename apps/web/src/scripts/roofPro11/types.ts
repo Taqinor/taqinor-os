@@ -63,6 +63,10 @@ export interface ZoneRenderPlan {
   flush: boolean;
   count: number;
   obstacles: Obstacle[];
+  /** W107 — lift VERTICAL (m) appliqué au pan incliné pour que les pans connectés se
+   *  rejoignent sur une faîtière COMMUNE (le plan monte de `ridgeLiftM` sans changer sa
+   *  pente). Défaut 0 (pan isolé / toit plat) → rendu inchangé, octet pour octet. */
+  ridgeLiftM?: number;
 }
 
 /** W69 — pavage gagnant courant (pack + grid + tilt + family + flush) pour
