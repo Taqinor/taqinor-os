@@ -129,7 +129,6 @@ class TestQ4RoofImage(TestCase):
         self.devis = make_devis(self.company, ref='DEV-ROOF-Q4-0001')
 
     def _post_image(self, api, devis, data=PNG_BYTES):
-        from io import BytesIO
         from django.core.files.uploadedfile import SimpleUploadedFile
         up = SimpleUploadedFile('snap.png', data, content_type='image/png')
         with mock.patch(
@@ -330,8 +329,6 @@ class TestQ7ProposalAccept(TestCase):
         self.devis.refresh_from_db()
         # Still the first signer; no second stamp.
         self.assertEqual(self.devis.accepte_par_nom, 'A')
-        acceptances = [a for a in self.devis.activites.all()
-                       if a.kind == 'modification' or 'accept' in (a.body or '').lower()]
         # exactly one acceptance event recorded
         self.assertEqual(self.devis.statut, 'accepte')
 

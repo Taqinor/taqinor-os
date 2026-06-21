@@ -202,7 +202,8 @@ class DevisViewSet(viewsets.ModelViewSet):
         try:
             accept_devis(
                 devis=devis, user=request.user, nom=nom,
-                date_acceptation=date_acc, option=option)
+                date_acceptation=date_acc, option=option,
+                idempotent_reaccept=False)
         except AcceptError as exc:
             return Response(
                 {'detail': exc.message},

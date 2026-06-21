@@ -7,7 +7,6 @@ des apps cibles — jamais par leurs modèles/vues (contrat d'import CI).
 import re
 
 from django.db import transaction
-from django.db.models import Count, Q
 from django.utils import timezone
 
 

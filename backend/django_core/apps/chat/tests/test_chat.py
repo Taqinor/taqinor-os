@@ -383,7 +383,7 @@ class S7ReactionPinTests(TestCase):
             f'/api/django/chat/messages/?conversation={self.conv.id}&pinned=1')
         rows = rl.data['results'] if isinstance(rl.data, dict) else rl.data
         self.assertEqual(len(rows), 1)
-        ru = api.post(f'/api/django/chat/messages/{self.msg.id}/unpin/')
+        api.post(f'/api/django/chat/messages/{self.msg.id}/unpin/')
         self.msg.refresh_from_db()
         self.assertIsNone(self.msg.pinned_at)
 

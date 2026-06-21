@@ -189,7 +189,7 @@ class AcceptError(Exception):
 
 
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
-                 ip=None):
+                 ip=None, idempotent_reaccept=True):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -199,8 +199,12 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     chain is preserved 1:1 (rule #4). The engine only RENDERS elsewhere; this
     is the single place a quote document changes status to accepté.
 
-    Idempotent: an already-accepted devis is returned unchanged (no second
-    stamp, no second event) so a double e-signature submit is a no-op.
+    With ``idempotent_reaccept=True`` (default) a re-submit on an
+    already-accepted devis is returned unchanged (no second stamp, no second
+    event) so a double e-signature submit on the tokenized web proposal (Q7)
+    is a no-op. With ``idempotent_reaccept=False`` (the in-app viewset action)
+    an already-accepted devis raises ``AcceptError(conflict=True)`` → 409,
+    preserving the ERR33 re-accept guard.
 
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
@@ -209,9 +213,12 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     from apps.ventes import activity
     from core.events import devis_accepted
 
-    # Idempotence: a re-submit on an already-accepted devis does nothing.
+    # Re-submit on an already-accepted devis: a no-op for the tokenized web
+    # proposal, but rejected (409) for the in-app action (ERR33 guard).
     if devis.statut == Devis.Statut.ACCEPTE:
-        return devis
+        if idempotent_reaccept:
+            return devis
+        raise AcceptError('Ce devis est déjà accepté.', conflict=True)
 
     # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
     if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):

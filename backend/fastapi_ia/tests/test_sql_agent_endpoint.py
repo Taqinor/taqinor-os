@@ -14,11 +14,10 @@ L'endpoint importe fastapi ; si absent (env leger), les tests se sautent.
 import os
 import sys
 import unittest
+from unittest import mock
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from unittest import mock
 
 try:
     from app.api.endpoints import sql_agent as _ep

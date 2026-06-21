@@ -24,7 +24,7 @@ from .models import (
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
 from .serializers import (
-    ConversationSerializer, MessageSerializer, MessageAttachmentSerializer,
+    ConversationSerializer, MessageSerializer,
 )
 
 
@@ -321,7 +321,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                   if _transcription_enabled()
                   else MessageAttachment.TranscriptStatus.DISABLED)
         duration = request.data.get('duration_s')
-        att = MessageAttachment.objects.create(
+        MessageAttachment.objects.create(
             message=msg, kind=att_kind, transcript_status=ts,
             duration_s=(int(duration) if duration else None), **meta)
         return Response(self.get_serializer(msg).data,
@@ -391,6 +391,6 @@ class MessageViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         # Les actions au niveau objet exigent l'appartenance.
         if self.action in ('partial_update', 'update', 'destroy', 'react',
-                            'pin', 'unpin', 'download_attachment', 'retrieve'):
+                           'pin', 'unpin', 'download_attachment', 'retrieve'):
             return [IsAuthenticated(), IsConversationMember()]
         return [IsAuthenticated()]
