@@ -35,13 +35,15 @@ def _khalil_devis():
                     "Hybride avec gestion batterie + backup secteur.", "10 ans")
     bat = _produit("Batterie 10 kWh", "Deye",
                    "Stockage lithium LiFePO4, 6000 cycles.", "10 ans")
+    sm = _produit("Smart Meter", "Huawei", "Compteur intelligent triphasé.", "5 ans")
+    wifi = _produit("Wifi Dongle", "Huawei", "Module de communication WiFi.", "2 ans")
     lignes = [
         _ligne("Onduleur réseau triphasé", 16666.67, 1, 20, ondr),
         _ligne("Onduleur hybride 10 kW", 33333.33, 1, 20, ondh),
         _ligne("Batterie 10 kWh", 25000, 1, 20, bat),
         _ligne("Panneaux 710 Wc", 1272.73, 16, 10, pan),   # reform 10 %
-        _ligne("Smart Meter", 1500, 1, 20, ondr),
-        _ligne("Wifi Dongle", 1000, 1, 20, ondr),
+        _ligne("Smart Meter", 1500, 1, 20, sm),
+        _ligne("Wifi Dongle", 1000, 1, 20, wifi),
         _ligne("Structures acier", 416.67, 16, 20),
         _ligne("Socles", 66.67, 32, 20),
         _ligne("Accessoires", 2000, 1, 20),
