@@ -11,6 +11,7 @@ import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
 import Breadcrumbs from './Breadcrumbs'
 import { titleFor } from './routes.meta'
+import { ThemeToggle } from '../../design/ThemeToggle'
 
 // I35 — Déclenche la palette de commandes (⌘K) construite par l'autre lane,
 // qui écoute cet événement exact. On ne construit PAS la palette ici.
@@ -66,6 +67,7 @@ export default function Header({ onMenu }) {
         </button>
 
         <div className="header-user">
+          <ThemeToggle />
           <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
