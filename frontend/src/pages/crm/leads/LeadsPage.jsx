@@ -10,6 +10,7 @@ import {
 } from '../../../features/crm/bulk'
 import { Button, IconButton, Spinner } from '../../../ui'
 import { errorMessageFrom } from '../../../lib/toast'
+import { useSavedViews } from '../../../hooks/useSavedViews'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
 import FilterBar from './FilterBar'
@@ -29,16 +30,7 @@ const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
 const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte']  // FG37
 
-// Vues enregistrées (N79, LOCAL uniquement) : nom → { filters, view }.
-function loadSavedViews() {
-  try {
-    const raw = localStorage.getItem(SAVED_VIEWS_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+// loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
 // Filtres persistés en localStorage : on fusionne avec EMPTY_FILTERS pour
 // tolérer un schéma plus ancien (clés manquantes/en trop ignorées).
@@ -89,28 +81,17 @@ export default function LeadsPage() {
   }, [filters])
   const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
 
-  // Vues enregistrées nommées (combinaison filtres + vue), LOCALES (sans email).
-  const [savedViews, setSavedViews] = useState(loadSavedViews)
-  useEffect(() => {
-    try {
-      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(savedViews))
-    } catch { /* stockage indisponible */ }
-  }, [savedViews])
+  // Vues enregistrées nommées (FG11 — useSavedViews hook).
+  const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
   const saveCurrentView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    const trimmed = (name || '').trim()
-    if (!trimmed) return
-    setSavedViews((vs) => [
-      ...vs.filter((v) => v.name !== trimmed),
-      { name: trimmed, filters, view },
-    ])
+    saveView(name, { filters, view })
   }
   const applySavedView = (v) => {
-    setFilters({ ...EMPTY_FILTERS, ...(v.filters || {}) })
-    if (VALID_VIEWS.includes(v.view)) setView(v.view)
+    setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
+    const savedView = v.state?.view ?? v.view
+    if (VALID_VIEWS.includes(savedView)) setView(savedView)
   }
-  const deleteSavedView = (name) =>
-    setSavedViews((vs) => vs.filter((v) => v.name !== name))
 
   // Formulaire lead (création / édition).
   const [showForm, setShowForm] = useState(false)

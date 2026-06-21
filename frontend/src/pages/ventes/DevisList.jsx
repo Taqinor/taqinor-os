@@ -24,6 +24,9 @@ import {
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
+import { useSavedViews } from '../../hooks/useSavedViews'
+
+const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -104,6 +107,16 @@ export default function DevisList() {
   // ── Filtre statut + recherche (référence / client) ──
   const [statutFilter, setStatutFilter] = useState('tous')
   const [query, setQuery] = useState('')
+  // Vues enregistrées (FG11).
+  const { savedViews: devisSavedViews, saveView: saveDevisView, deleteView: deleteDevisView } = useSavedViews(DL_SAVED_VIEWS_KEY)
+  const saveCurrentDevisView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    saveDevisView(name, { statutFilter, query })
+  }
+  const applyDevisView = (v) => {
+    if (v.state?.statutFilter !== undefined) setStatutFilter(v.state.statutFilter)
+    if (v.state?.query !== undefined) setQuery(v.state.query)
+  }
 
   // ── Sélection multiple pour génération PDF par lot ──
   const [selectedIds, setSelectedIds] = useState([]) // ids cochés
@@ -565,6 +578,24 @@ export default function DevisList() {
               className="pl-8 sm:w-64"
               aria-label="Rechercher un devis"
             />
+          </div>
+          <div className="lp-saved-views">
+            <Button type="button" variant="link" size="sm" onClick={saveCurrentDevisView}>
+              ⭐ Enregistrer cette vue
+            </Button>
+            {devisSavedViews.map((v) => (
+              <span key={v.name} className="lp-saved-view-chip">
+                <button type="button" className="lp-saved-view-apply"
+                        onClick={() => applyDevisView(v)} title="Appliquer cette vue">
+                  {v.name}
+                </button>
+                <button type="button" className="lp-saved-view-del"
+                        onClick={() => deleteDevisView(v.name)}
+                        aria-label={`Supprimer la vue ${v.name}`}>
+                  ✕
+                </button>
+              </span>
+            ))}
           </div>
         </div>
       )}

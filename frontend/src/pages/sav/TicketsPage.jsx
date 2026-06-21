@@ -52,6 +52,9 @@ import {
   DataTable,
   toast,
 } from '../../ui'
+import { useSavedViews } from '../../hooks/useSavedViews'
+
+const TP_SAVED_VIEWS_KEY = 'taqinor.sav.tickets.savedViews'
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -842,6 +845,15 @@ export default function TicketsPage() {
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('table') // L295 — 'table' | 'kanban'
+  // Vues enregistrées (FG11).
+  const { savedViews: ticketSavedViews, saveView: saveTicketView, deleteView: deleteTicketView } = useSavedViews(TP_SAVED_VIEWS_KEY)
+  const saveCurrentTicketView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    saveTicketView(name, { filters })
+  }
+  const applyTicketView = (v) => {
+    if (v.state?.filters) setFilters({ ...EMPTY_TICKET_FILTERS, ...v.state.filters })
+  }
 
   const reload = () => dispatch(fetchTickets())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1064,6 +1076,24 @@ export default function TicketsPage() {
               <SelectItem value="sans">Sans annulés</SelectItem>
             </SelectContent>
           </Select>
+          <div className="lp-saved-views">
+            <Button type="button" variant="link" size="sm" onClick={saveCurrentTicketView}>
+              ⭐ Enregistrer cette vue
+            </Button>
+            {ticketSavedViews.map((v) => (
+              <span key={v.name} className="lp-saved-view-chip">
+                <button type="button" className="lp-saved-view-apply"
+                        onClick={() => applyTicketView(v)} title="Appliquer cette vue">
+                  {v.name}
+                </button>
+                <button type="button" className="lp-saved-view-del"
+                        onClick={() => deleteTicketView(v.name)}
+                        aria-label={`Supprimer la vue ${v.name}`}>
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
 
         {loading ? (

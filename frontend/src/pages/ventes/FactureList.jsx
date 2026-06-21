@@ -26,6 +26,9 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
+import { useSavedViews } from '../../hooks/useSavedViews'
+
+const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -173,6 +176,16 @@ export default function FactureList() {
   const [activeTab, setActiveTab]     = useState('toutes')
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState('')
+  // Vues enregistrées (FG11).
+  const { savedViews: factSavedViews, saveView: saveFactView, deleteView: deleteFactView } = useSavedViews(FL_SAVED_VIEWS_KEY)
+  const saveCurrentFactView = () => {
+    const name = window.prompt('Nom de la vue enregistrée :')
+    saveFactView(name, { activeTab, typeFilter })
+  }
+  const applyFactView = (v) => {
+    if (v.state?.activeTab !== undefined) setActiveTab(v.state.activeTab)
+    if (v.state?.typeFilter !== undefined) setTypeFilter(v.state.typeFilter)
+  }
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
@@ -731,20 +744,40 @@ export default function FactureList() {
         </Card>
       )}
 
-      {/* ── Tabs ── */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-1">
-        <TabsList className="flex-wrap">
-          {TABS.map(t => (
-            <TabsTrigger key={t.key} value={t.key}
-                         className={t.key === 'overdue' && counts.overdue > 0 ? 'text-destructive data-[state=active]:text-destructive' : undefined}>
-              {t.label}
-              {counts[t.key] > 0 && (
-                <span className="ml-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{counts[t.key]}</span>
-              )}
-            </TabsTrigger>
+      {/* ── Tabs + vues enregistrées (FG11) ── */}
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="flex-wrap">
+            {TABS.map(t => (
+              <TabsTrigger key={t.key} value={t.key}
+                           className={t.key === 'overdue' && counts.overdue > 0 ? 'text-destructive data-[state=active]:text-destructive' : undefined}>
+                {t.label}
+                {counts[t.key] > 0 && (
+                  <span className="ml-1.5 rounded bg-muted px-1.5 text-xs text-muted-foreground">{counts[t.key]}</span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <div className="lp-saved-views">
+          <Button type="button" variant="link" size="sm" onClick={saveCurrentFactView}>
+            ⭐ Enregistrer cette vue
+          </Button>
+          {factSavedViews.map((v) => (
+            <span key={v.name} className="lp-saved-view-chip">
+              <button type="button" className="lp-saved-view-apply"
+                      onClick={() => applyFactView(v)} title="Appliquer cette vue">
+                {v.name}
+              </button>
+              <button type="button" className="lp-saved-view-del"
+                      onClick={() => deleteFactView(v.name)}
+                      aria-label={`Supprimer la vue ${v.name}`}>
+                ✕
+              </button>
+            </span>
           ))}
-        </TabsList>
-      </Tabs>
+        </div>
+      </div>
 
       {filtered.length === 0 ? (
         <EmptyState

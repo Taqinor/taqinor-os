@@ -4503,3 +4503,54 @@ textarea.form-control {
 @media (max-width: 400px) {
   .pe-grid-relance { grid-template-columns: 1fr; }
 }
+
+/* ── FG11 — Vues enregistrées (partagé : LeadsPage, ClientList, DevisList, etc.) ── */
+.lp-saved-views {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lp-saved-view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 9999px;
+  background: var(--card, #fff);
+  overflow: hidden;
+  font-size: 0.78rem;
+}
+
+.lp-saved-view-apply {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  color: var(--foreground, #1e293b);
+  white-space: nowrap;
+  font-size: inherit;
+  transition: background 0.12s;
+}
+
+.lp-saved-view-apply:hover {
+  background: var(--muted, #f1f5f9);
+}
+
+.lp-saved-view-del {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border, #e2e8f0);
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+
+.lp-saved-view-del:hover {
+  background: color-mix(in srgb, var(--destructive, #dc2626) 10%, transparent);
+  color: var(--destructive, #dc2626);
+}
