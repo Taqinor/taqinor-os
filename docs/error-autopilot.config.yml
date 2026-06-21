@@ -23,6 +23,40 @@ schedule_note: "daily 12:00 Africa/Casablanca (midday)"
 # can sustain.
 max_lanes: 8
 
+# Detection surfaces swept every run (turn any off to skip it). See STEP 2 of
+# the skill for what each one hunts and Appendix A for the tools.
+detection_surfaces:
+  - tests              # run all suites; write reproduction tests for gaps
+  - static_analysis    # flake8/ruff, eslint, tsc, mypy/pyright, import-linter
+  - security_sast      # injection, IDOR, SSRF, XSS, auth bypass, secrets (bandit/semgrep)
+  - dependency_vulns   # CVE triage (pip-audit/npm audit/osv) + Dependabot advisories
+  - concurrency        # races / missing select_for_update / atomicity / idempotency
+  - data_integrity     # missing migrations, decimal truncation, constraint gaps
+  - multitenancy       # company-scoping / cross-tenant IDOR
+  - logic_invariants   # domain rules from CLAUDE.md (stages, quote statuses, …)
+  - performance        # N+1 / unbounded queries / unbounded memory
+  - error_handling     # swallowed errors, fail-open guards, PII in logs
+  - frontend_runtime   # stale state, optimistic rollback, a11y, never-reject-number
+  - web_specific       # redirects, PII logging, CAPI hashing, rate limits, a11y
+  - i18n               # French-message consistency
+  - deploy_hardening   # prod settings (SECURE_*/HSTS/cookies), DEBUG fail-open
+
+# Verification rigor — every filed item must clear all enabled gates (STEP 3).
+verification:
+  require_reproduction: true   # a failing (red) test/check before any fix
+  require_proof: true          # the red signal goes green after the fix
+  require_no_regression: true  # the four required CI checks stay green
+  run_proof_twice: true        # guard against flaky / non-deterministic proofs
+
+# Quality knobs.
+min_confidence: high           # only file high-confidence, reproduced items
+max_items_per_run: 40          # keep one run bounded; the rest carry to the next
+
+# Transient analyzers (bandit/semgrep/ruff/mypy/pip-audit/osv-scanner/knip/
+# vulture/gitleaks…) may be installed JUST for a run's detection pass. They are
+# NEVER added to the project's dependency manifests (that would be gated).
+transient_analyzers: true
+
 # What each area triages into. The two areas never overlap: OS = the whole
 # repo EXCEPT apps/web; web = apps/web only. Do not change unless the repo
 # layout changes.

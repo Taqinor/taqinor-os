@@ -19,6 +19,20 @@ already-verified items, then self-merges that plan update to `main`.
 | `docs/error-autopilot.config.yml` | Settings + **kill switch** (`enabled`), lane ceiling, and the area→file map. |
 | `docs/ERROR_PLAN.md` / `docs/WEB_ERROR_PLAN.md` | Where verified items land. Each has an **AUTOPILOT INTAKE LOG** the run appends to. |
 
+## What it detects (a wide, tunable taxonomy)
+
+It doesn't just run the test suite. Each run sweeps a **Surface × Area matrix**
+across the whole repo: tests & coverage, static analysis & types (flake8/ruff,
+eslint, tsc, mypy), **security SAST** (injection, IDOR, SSRF, XSS, auth bypass,
+secrets — via bandit/semgrep), **dependency CVEs** (pip-audit / npm audit / osv +
+your Dependabot advisories), concurrency & atomicity races, data-integrity &
+missing migrations, multi-tenancy isolation, the domain-logic invariants from
+`CLAUDE.md`, performance/N+1, error-handling & PII-in-logs, frontend runtime &
+a11y, web/Astro specifics, and deploy hardening. Surfaces, verification rigor,
+the confidence floor, and the per-run item cap are all tunable in
+`docs/error-autopilot.config.yml`. Nothing is filed unless it's reproduced
+red→green with no regression (zero-false-positive bar).
+
 ## Wire up the schedule (one-time, ~2 min)
 
 The midday trigger is a **Claude Code Routine** (runs in Anthropic's cloud on
@@ -41,8 +55,11 @@ Then confirm these routine settings (the form / `/schedule update` walks them):
   branches and the merge step can't complete.
 - **Environment:** one whose setup can run the test suites the verification step
   needs — backend tests need Postgres **and** MinIO, like CI; web/frontend need
-  node. Reuse the same environment your "work on the plan" runs use. Network
-  access only as much as those suites require.
+  node. Reuse the same environment your "work on the plan" runs use. The default
+  **Trusted** network access reaches the package registries, so the transient
+  analyzers (semgrep/bandit/pip-audit/osv-scanner…) install fine; if a scanner
+  needs another host, widen the environment's allowed domains. Analyzers are used
+  for detection only and are never committed to the project's manifests.
 - **Model:** the strongest available (the run orchestrates many lanes + an
   adversarial reviewer).
 
