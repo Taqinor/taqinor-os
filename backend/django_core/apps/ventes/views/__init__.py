@@ -13,6 +13,7 @@ from .avoir import AvoirViewSet
 from .paiement import PaiementViewSet
 from .ligne_facture import LigneFactureViewSet
 from .email import email_config
+from .credit_warning import client_credit_warning
 
 __all__ = [
     'DevisViewSet',
@@ -23,4 +24,5 @@ __all__ = [
     'PaiementViewSet',
     'LigneFactureViewSet',
     'email_config',
+    'client_credit_warning',
 ]

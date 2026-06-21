@@ -53,6 +53,16 @@ class Client(models.Model):
     date_modification = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
     custom_data = models.JSONField(null=True, blank=True)
+    # FG41 — plafond d'encours client (soft warning, jamais un blocage dur).
+    # NULL = pas de limite définie (comportement actuel inchangé).
+    # Quand défini, un devis/facture ajouté qui pousse l'encours TTC total
+    # des factures ouvertes au-delà déclenche un avertissement API + UI.
+    plafond_credit = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Plafond de crédit (MAD TTC)',
+        help_text='Seuil d\'encours client. Vide = pas de limite.',
+    )
 
     class Meta:
         verbose_name = "Client"

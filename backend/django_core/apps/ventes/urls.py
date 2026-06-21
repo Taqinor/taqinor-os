@@ -9,6 +9,7 @@ from .views import (
     PaiementViewSet,
     AvoirViewSet,
     email_config,
+    client_credit_warning,
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -60,5 +61,8 @@ urlpatterns = [
          fiche_remise_premium, name='fiche-remise-premium'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
+    # FG41 — avertissement plafond de crédit client (soft warning, jamais blocage).
+    path('clients/<int:client_id>/credit-warning/', client_credit_warning,
+         name='client-credit-warning'),
     path('', include(router.urls)),
 ]
