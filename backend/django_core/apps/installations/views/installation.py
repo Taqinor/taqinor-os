@@ -187,11 +187,19 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS + [
             'historique', 'besoin_materiel', 'checklist', 'regime_suggestion',
             'rapport_energie',
+            # FG74 — Gantt multi-chantier (lecture seule).
+            'gantt',
+            # FG75 — relevés de toiture / drone (lecture).
+            'releves',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
+            # FG75 — ajout / suppression de relevés.
+            'ajouter_releve', 'supprimer_releve',
+            # FG79 — scaffold interventions standard.
+            'creer_interventions_standard',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -561,3 +569,164 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['Content-Disposition'] = (
             f'inline; filename="rapport-production-{inst.reference}.pdf"')
         return resp
+
+    # ── FG74 — Gantt multi-chantier (lecture seule) ──────────────────────────
+    @action(detail=False, methods=['get'], url_path='gantt',
+            permission_classes=[IsAnyRole])
+    def gantt(self, request):
+        """FG74 — vue Gantt multi-chantier : une ligne par chantier avec les barres
+        issues des jalons (date_signature → date_cloture). Lecture seule. Renvoie
+        chantiers actifs (non clôturés, non annulés) avec leurs jalons datés pour
+        un rendu recharts/Gantt côté frontend."""
+        company = request.user.company
+        qs = (Installation.objects
+              .filter(company=company, annule=False)
+              .exclude(statut=Installation.Statut.CLOTURE)
+              .select_related('client', 'technicien_responsable')
+              .order_by('date_pose_prevue', 'date_creation'))
+        rows = []
+        for inst in qs:
+            rows.append({
+                'id': inst.id,
+                'reference': inst.reference,
+                'client_nom': (f'{inst.client.prenom or ""} {inst.client.nom}'.strip()
+                               if inst.client_id else None),
+                'statut': inst.statut,
+                'technicien_responsable': getattr(
+                    inst.technicien_responsable, 'username', None),
+                'jalons': {
+                    'signature': str(inst.date_signature) if inst.date_signature else None,
+                    'materiel_commande': str(inst.date_materiel_commande) if inst.date_materiel_commande else None,
+                    'pose_prevue': str(inst.date_pose_prevue) if inst.date_pose_prevue else None,
+                    'pose_fin_prevue': str(inst.date_pose_fin_prevue) if inst.date_pose_fin_prevue else None,
+                    'pose_reelle': str(inst.date_pose_reelle) if inst.date_pose_reelle else None,
+                    'mise_en_service': str(inst.date_mise_en_service) if inst.date_mise_en_service else None,
+                    'reception': str(inst.date_reception) if inst.date_reception else None,
+                    'cloture': str(inst.date_cloture) if inst.date_cloture else None,
+                },
+                'duree_pose_jours': inst.duree_pose_jours,
+            })
+        return Response(rows)
+
+    # ── FG75 — relevés de toiture / drone (attachments chantier-level) ───────
+    # Les relevés sont des Attachment generics liés à l'Installation avec
+    # `phase` = 'releve_toiture' ou 'drone' (réutilise le champ phase existant
+    # plutôt qu'un nouveau champ pour rester additif).
+    _RELEVE_PHASES = ('releve', 'drone')
+
+    @action(detail=True, methods=['get'], url_path='releves',
+            permission_classes=[IsAnyRole])
+    def releves(self, request, pk=None):
+        """FG75 — liste les relevés de toiture / drone attachés au chantier."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        inst = self.get_object()
+        ct = ContentType.objects.get_for_model(Installation)
+        qs = Attachment.objects.filter(
+            company=inst.company, content_type=ct, object_id=inst.id,
+            phase__in=self._RELEVE_PHASES,
+        ).order_by('-created_at')
+        from apps.records.serializers import AttachmentSerializer
+        return Response(AttachmentSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='ajouter-releve',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_releve(self, request, pk=None):
+        """FG75 — attache un relevé de toiture ou drone (photo/PDF) au chantier.
+        Multipart : `file` (fichier), `phase` (`releve_toiture`|`drone`)."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import store_attachment
+        inst = self.get_object()
+        file = request.FILES.get('file')
+        if file is None:
+            return Response({'file': 'Fichier requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        phase = (request.data.get('phase') or 'releve').strip()
+        if phase not in self._RELEVE_PHASES:
+            return Response(
+                {'phase': 'Valeur invalide (releve ou drone).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        meta, err = store_attachment(file)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+        ct = ContentType.objects.get_for_model(Installation)
+        att = Attachment.objects.create(
+            company=inst.company, content_type=ct, object_id=inst.id,
+            uploaded_by=request.user, phase=phase, **meta)
+        label = 'drone' if phase == 'drone' else 'relevé'
+        activity.log_note(inst, request.user,
+                          f"Relevé {label} ajouté : {att.filename}")
+        from apps.records.serializers import AttachmentSerializer
+        return Response(AttachmentSerializer(att).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='supprimer-releve',
+            permission_classes=[IsResponsableOrAdmin])
+    def supprimer_releve(self, request, pk=None):
+        """FG75 — supprime un relevé de toiture / drone du chantier.
+        Corps : {"releve": <attachment_id>}."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import delete_attachment
+        inst = self.get_object()
+        ct = ContentType.objects.get_for_model(Installation)
+        att = Attachment.objects.filter(
+            id=request.data.get('releve'), content_type=ct, object_id=inst.id,
+            company=inst.company, phase__in=self._RELEVE_PHASES,
+        ).first()
+        if att is None:
+            return Response({'detail': 'Relevé introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        delete_attachment(att.file_key)
+        activity.log_note(inst, request.user,
+                          f"Relevé supprimé : {att.filename}")
+        att.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── FG79 — scaffold chaîne d'interventions standard ──────────────────────
+    @action(detail=True, methods=['post'], url_path='creer-interventions-standard',
+            permission_classes=[IsResponsableOrAdmin])
+    def creer_interventions_standard(self, request, pk=None):
+        """FG79 — matérialise la chaîne d'interventions standard depuis le
+        TypeInterventionPlan du type d'installation du chantier. Idempotent :
+        ne recrée pas un type déjà présent. Renvoie la liste des interventions
+        créées + celles déjà existantes."""
+        from ..models import TypeInterventionPlan
+        inst = self.get_object()
+        company = request.user.company
+        type_inst = inst.type_installation
+        if not type_inst:
+            return Response({'detail': "Le chantier n'a pas de type d'installation."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        plan_items = (TypeInterventionPlan.objects
+                      .filter(company=company, type_installation=type_inst)
+                      .order_by('ordre'))
+        if not plan_items.exists():
+            return Response({'detail': 'Aucun plan standard défini pour ce type.',
+                             'created': [], 'existants': []})
+        existing_types = set(
+            inst.interventions.values_list('type_intervention', flat=True))
+        created = []
+        existants = []
+        for item in plan_items:
+            if item.type_intervention_cle in existing_types:
+                existants.append(item.type_intervention_cle)
+            else:
+                interv = Intervention.objects.create(
+                    company=company,
+                    installation=inst,
+                    type_intervention=item.type_intervention_cle,
+                    compte_rendu=item.libelle_contexte or '',
+                    created_by=request.user,
+                )
+                # Chatter de l'intervention + trace sur le chantier.
+                from .. import intervention_activity as ia
+                ia.log_creation(interv, request.user)
+                activity.log_note(
+                    inst, request.user,
+                    f"Intervention standard créée : {item.type_intervention_cle}")
+                created.append(InterventionSerializer(
+                    interv, context={'request': request}).data)
+                existing_types.add(item.type_intervention_cle)
+        return Response({'created': created, 'existants': existants},
+                        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

@@ -8,6 +8,7 @@ from .models import (
     ComponentSerial, PhotoAnnotation, MaterielConsommation, ConsommationLigne,
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
     SafetyCheckItem,
+    TypeInterventionPlan,
 )
 
 
@@ -15,6 +16,8 @@ class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChecklistEtapeModele
         fields = ['id', 'template', 'cle', 'libelle', 'ordre', 'capture_serie',
+                  # FG76 — gate photo obligatoire.
+                  'photo_obligatoire',
                   'actif', 'protege']
         read_only_fields = ['protege']
 
@@ -54,6 +57,8 @@ class ChantierChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChantierChecklistItem
         fields = ['id', 'cle', 'libelle', 'ordre', 'capture_serie',
+                  # FG76 — photo obligatoire.
+                  'photo_obligatoire',
                   'fait', 'fait_par_nom', 'fait_le']
 
     def get_fait_par_nom(self, obj):
@@ -566,3 +571,21 @@ class SafetySignoffSerializer(serializers.ModelSerializer):
 
     def get_signe_par_nom(self, obj):
         return getattr(obj.signe_par, 'username', None)
+
+
+# ── FG79 — Plan d'interventions standard ─────────────────────────────────────
+
+class TypeInterventionPlanSerializer(serializers.ModelSerializer):
+    """FG79 — sérialise un élément du plan d'interventions standard
+    (type_installation + type_intervention_cle + ordre)."""
+    type_installation_display = serializers.CharField(
+        source='get_type_installation_display', read_only=True)
+
+    class Meta:
+        model = TypeInterventionPlan
+        fields = [
+            'id', 'type_installation', 'type_installation_display',
+            'type_intervention_cle', 'libelle_contexte', 'ordre',
+        ]
+        # company posée côté serveur.
+        read_only_fields = []
