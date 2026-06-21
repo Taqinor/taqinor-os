@@ -21,10 +21,10 @@ const L = (href: string) => localizeNavHref(href, locale);
 const categories = [
   { ref: 'PV-1', title: 'Panels — Canadian Solar TOPBiHiKu', body: "Bifacial modules also capture the light reflected by the roof: on a light-coloured terrace, that's yield gained without extra surface area. These 705 to 720 Wc modules come from a manufacturer that has shipped more than 100 GW worldwide, held to the IEC 61215 and IEC 61730 standards. These are the ones fitted in Casablanca and El Jadida.", points: ['Bifacial 705 – 720 Wc', '12-year product warranty', '25-year performance warranty (≥ 84.8 %)'] },
   { ref: 'PV-2', title: 'Panels — JA Solar DeepBlue', body: "The monocrystalline DeepBlue cell goes after yield rather than surface area — useful when roof space is tight. Same tier of manufacturer, same certification requirement. Installed in Nouaceur.", points: ['High-efficiency monocrystalline', '12-year product warranty', '25-year performance warranty'] },
-  { ref: 'OND-1', title: 'Hybrid inverters — Deye', body: "The hybrid inverter is the conductor: it arbitrates in real time between panels, battery and grid. The Deye SUN-SG04LP1, SG04LP3 and SG01HP3 ranges cover 5 to 30 kW, single-phase as well as three-phase, and talk directly to the battery BMS over CAN. Compliant with IEC 61727 and VDE-AR-N-4105.", points: ['Single-phase and three-phase, 5 – 30 kW', 'Built-in CAN BMS battery management', '10-year warranty'] },
+  { ref: 'OND-1', title: 'Hybrid inverters — Deye', body: "We choose the Deye hybrid for one concrete reason: when the grid drops, it switches to battery within milliseconds — fast enough to keep a computer running. The rest of the time it decides, second by second, whether to draw from the panels, charge the battery or pull from the grid. The SUN-SG04LP1, SG04LP3 and SG01HP3 ranges cover 5 to 30 kW, single-phase as well as three-phase, and talk to the battery BMS over CAN. Compliant with IEC 61727 and VDE-AR-N-4105.", points: ['Single-phase and three-phase, 5 – 30 kW', 'Built-in CAN BMS battery management', '10-year warranty'] },
   { ref: 'OND-2', title: 'Grid-tied inverters — Huawei SUN2000', body: "When the study calls for no battery, we go with pure string. The Huawei SUN2000 optimises string by string: a shaded panel no longer drags the whole row down. From residential to commercial rooftops.", points: ['High European efficiency', 'Per-string optimisation', '10-year warranty'] },
   { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Lithium iron phosphate does not run away thermally the way some other lithium chemistries do: it's the safe choice for home storage. The DL5.0C / DL5.0C PRO modules stack in 5 kWh blocks and natively speak the CAN BMS of the Deye units. Certified CE, IEC 62619, UN38.3.", points: ['LFP chemistry — 6,000+ cycles at 90 % DoD', 'Modular: 5 to 15 kWh and beyond', '10-year warranty'] },
-  { ref: 'MON', title: 'Monitoring — Deye Cloud', body: "An installation you don't measure is an installation you take on faith. Every roof carries a WiFi/Ethernet dongle linked to Deye Cloud: minute-by-minute production, history, alerts. You keep your own personal access; on our side, we see the whole fleet and step in before you've even noticed the fault.", points: ['Production measured continuously', 'Automatic alerts — proactive after-sales', 'Client access via mobile app'] },
+  { ref: 'MON', title: 'Monitoring — Deye Cloud', body: "Without measurement, a stated output is just an unverifiable promise. So every roof carries a WiFi/Ethernet dongle linked to Deye Cloud: minute-by-minute production, history, fault alerts. You keep your own personal access; on our side, we watch the whole fleet and step in before the fault ever shows up at your home.", points: ['Production measured continuously', 'Automatic alerts — proactive after-sales', 'Client access via mobile app'] },
 ];
 
 const warranties = [
@@ -139,9 +139,9 @@ const warranties = [
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          None of these references is chosen in advance. The power retained, whether or not there's
-          a battery, single-phase or three-phase: it all comes out of your roof's figures.
-          The hardware follows the calculation — it does not precede it.
+          Nothing on this list is decided before your roof. It's the study that dictates the power to
+          fit, whether or not a battery is needed, single-phase or three-phase; these references then
+          do nothing more than answer what the figures asked for.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href={L('/garanties')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">Our warranties →</a>

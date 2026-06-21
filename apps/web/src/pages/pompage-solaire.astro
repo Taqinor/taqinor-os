@@ -18,7 +18,7 @@ const etapes = [
   {
     k: '01',
     title: 'Captage solaire',
-    body: 'Les panneaux convertissent l’ensoleillement en électricité du lever au coucher du soleil. La puissance du champ se déduit du volume d’eau à délivrer : on remonte du besoin vers le nombre de panneaux, et non l’inverse.',
+    body: 'Du lever au coucher du soleil, les panneaux transforment le rayonnement en électricité. Pour savoir combien il en faut, on part du volume d’eau à délivrer et on remonte jusqu’au champ : c’est le besoin d’irrigation qui dicte la puissance, et le champ qui s’y ajuste.',
   },
   {
     k: '02',
@@ -52,7 +52,7 @@ const variables = [
   },
   {
     title: 'Besoins en eau de la culture',
-    body: 'Le type de culture, la surface et la saison fixent le volume visé. C’est l’entrée du calcul : on part de là, et le reste — pompe, variateur, nombre de panneaux — en découle.',
+    body: 'Le type de culture, la surface irriguée et la saison fixent le volume d’eau visé. Ce volume ouvre le calcul ; une fois posé, il commande le choix de la pompe, du variateur et la taille du champ photovoltaïque.',
   },
 ];
 
@@ -86,10 +86,11 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Nouveau service</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Pomper l’eau au soleil, pas au gasoil</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Pour l’irrigation, le pompage solaire met fin au plein de gasoil : des panneaux
-          entraînent la pompe pendant que le soleil donne. Le champ ne sort pas d’un catalogue —
-          il se déduit de quatre mesures relevées sur votre parcelle : le débit visé, la hauteur
-          à vaincre, le niveau du forage et l’eau que la culture réclame.
+          Pour l’irrigation, le pompage solaire remplace le plein de gasoil : tant que le soleil
+          donne, les panneaux entraînent la pompe. Le nombre de panneaux, lui, dépend entièrement
+          de votre parcelle — du débit que vous visez, de la hauteur que la pompe doit vaincre, de
+          la profondeur du forage et de l’eau dont la culture a besoin. On relève ces quatre
+          mesures avant de proposer quoi que ce soit.
         </p>
       </div>
     </section>
@@ -109,9 +110,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
-          Les ordres de grandeur tiennent entièrement à votre site : tant que le forage n’a pas
-          été relevé, il y a une méthode, pas un chiffre. Le champ et le variateur reposent sur les
-          mêmes marques tier-1 que nos toitures — <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">voir l’équipement →</a>
+          Tout ordre de grandeur dépend de votre site : avant le relevé du forage, nous pouvons vous
+          décrire la méthode, mais pas vous avancer un chiffre que nous tiendrions. Le champ et le
+          variateur, eux, s’appuient sur les mêmes marques tier-1 que nos toitures — <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">voir l’équipement →</a>
         </p>
       </div>
     </section>
@@ -136,8 +137,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          Donnez-nous ces quatre chiffres et le système se dessine de lui-même ; il manque le
-          débit ou la HMT, et tout reste à deviner. On préfère mesurer. <a href="/contact#simulateur" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
+          Avec ces quatre chiffres en main, le système se dessine presque tout seul. Sans eux —
+          quand le débit ou la HMT manquent — on en serait réduit à supposer, et nous ne dimensionnons
+          pas une pompe sur des suppositions. <a href="/contact#simulateur" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
         </p>
       </div>
     </section>
@@ -176,9 +178,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">L’agriculture, un segment professionnel</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
-          Le pompage solaire est une affaire d’exploitants et de professionnels, pas de kits grand
-          public. On relève le forage, on calcule, on pose du matériel tier-1, et l’installation
-          repart avec son dossier technique complet.
+          Le pompage solaire relève de l’exploitation agricole, pas du kit grand public qu’on
+          branche soi-même. Après le relevé du forage et le calcul de dimensionnement, on pose du
+          matériel tier-1 et l’installation repart avec son dossier technique complet.
         </p>
         <div class="mt-10 flex flex-wrap gap-3">
           <a href="/contact#simulateur" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Demander un diagnostic →</a>

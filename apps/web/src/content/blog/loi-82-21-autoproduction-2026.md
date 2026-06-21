@@ -3,21 +3,22 @@ title: "Loi 82-21 : ce qui change depuis le 9 juin 2026"
 description: "Autoproduction au Maroc : 3 régimes, plafond surplus 20 %, net-billing (rachat 0,18–0,21 DH/kWh) — la valeur est dans l'autoconsommation."
 pubDate: 2026-06-21
 tags: ["loi 82-21", "réglementation", "autoproduction", "2026"]
-author: "Taqinor"
+author: "Reda Kasri"
 ogSlug: "accueil"
 draft: false
 ---
 
-## Ce qui est entré en vigueur le 9 juin 2026
+## Le texte est enfin opérationnel
 
-La loi 82-21 sur l'autoproduction d'énergie électrique existe depuis 2022, mais elle
-est restée lettre morte faute de textes d'application. Le **Décret 2-25-100**, publié
-au Bulletin Officiel le 9 mars 2026, a comblé ce vide ; la **Décision ANRE 04/26** a
-fixé les tarifs de rachat du surplus. Ensemble, ils ont rendu le dispositif pleinement
-opérationnel à compter du **9 juin 2026**.
+Pendant des années, j'ai dû répondre la même chose aux clients qui me parlaient de
+revendre leur surplus : « la loi existe, mais elle n'est pas applicable ». La loi 82-21
+était sur le papier depuis 2022 et restait lettre morte, faute de textes d'application.
+Ce n'est plus le cas. Le **Décret 2-25-100**, publié au Bulletin Officiel le **9 mars 2026**,
+a comblé ce vide et la **décision de l'ANRE** a fixé les tarifs de rachat du surplus. Le dispositif
+est **en vigueur depuis le 9 juin 2026**.
 
-Ce n'est donc pas une annonce future : les règles s'appliquent dès aujourd'hui,
-aux installations neuves comme aux installations existantes.
+Autrement dit, ce n'est plus une promesse pour plus tard. Les règles s'appliquent
+aujourd'hui, aux installations neuves comme à celles déjà posées.
 
 ---
 
@@ -73,19 +74,18 @@ Le Maroc a choisi le **net-billing**, pas le net-metering. La distinction est fo
 - **Net-billing** (système marocain) : le surplus injecté est **racheté à un tarif
   réglementé**, fixé par l'ANRE, nettement inférieur au prix de détail.
 
-Le tarif de rachat fixé par la Décision ANRE 04/26 est :
+Le tarif de rachat fixé par l'ANRE est :
 - **0,21 DH/kWh** en heure de pointe
 - **0,18 DH/kWh** en heure creuse
 
 À titre de comparaison, un foyer qui consomme plus de 301 kWh/mois paye son électricité
 à 1,45 DH/kWh (tranche sélective ONEE) — soit **six à huit fois le tarif de rachat**.
 
-La conséquence logique est simple : **la valeur économique d'une installation solaire
-réside dans l'autoconsommation, pas dans l'export**. Chaque kWh produit et consommé
-immédiatement sur place évite l'achat d'un kWh au prix de détail (0,90 à 1,66 DH selon
-la tranche). Chaque kWh injecté ne rapporte que 0,18–0,21 DH. Ce n'est pas une
-mauvaise nouvelle en soi — c'est simplement la règle à intégrer dans tout dimensionnement
-sérieux.
+Pour le dimensionnement, ça change tout. La valeur économique d'une installation solaire
+se joue sur l'autoconsommation. Chaque kWh produit et consommé immédiatement sur place
+évite l'achat d'un kWh au prix de détail (0,90 à 1,66 DH selon la tranche), alors qu'un
+kWh injecté sur le réseau ne rapporte que 0,18 à 0,21 DH. Ce n'est pas une mauvaise
+nouvelle : c'est simplement la règle que j'intègre dans chaque étude sérieuse.
 
 ---
 
@@ -124,21 +124,20 @@ les pénalités prévues aux articles 28 et 29.
 
 ---
 
-## Conclusion honnête : la valeur du solaire reste dans l'autoconsommation
+## Ce que j'en retiens pour mes clients
 
-La loi 82-21 est une avancée réglementaire réelle : elle sécurise juridiquement les
-autoproducteurs, simplifie les démarches pour les petites installations (simple
-déclaration sous 11 kW), et ouvre enfin la possibilité de revendre une partie du surplus.
+La loi 82-21 est une vraie avancée. Elle sécurise juridiquement les autoproducteurs,
+allège les démarches des petites installations (simple déclaration sous 11 kW) et ouvre
+enfin la porte à la revente d'une partie du surplus. Rien de tout cela n'est anodin
+après des années de flou.
 
-Mais le tarif de rachat (0,18–0,21 DH/kWh) est structurellement bas par rapport aux
-tranches de détail ONEE (0,90–1,66 DH/kWh), et le plafond à 20 % limite de toute
-façon le volume exportable. Pour la grande majorité des foyers marocains, l'équation
-reste la même qu'avant la loi : **l'installation solaire se rentabilise sur l'énergie
-que vous consommez vous-même**, sur place, en journée ou via un stockage. L'export est
-un appoint secondaire, pas le moteur du retour sur investissement.
-
-C'est pourquoi le dimensionnement doit partir de vos habitudes de consommation réelles,
-pas d'un objectif d'injection maximale.
+Reste que le tarif de rachat (0,18 à 0,21 DH/kWh) demeure très bas face aux tranches
+de détail ONEE (0,90 à 1,66 DH/kWh), et que le plafond de 20 % limite de toute façon le
+volume exportable. Pour la grande majorité des foyers marocains, l'équation n'a donc pas
+bougé : une installation solaire se rentabilise sur l'énergie que vous consommez
+vous-même, en journée ou via un stockage. L'export reste un appoint, jamais le moteur
+du retour sur investissement. C'est pour cette raison que je commence toujours par vos
+habitudes de consommation réelles, et non par un objectif d'injection maximale.
 
 ---
 

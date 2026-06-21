@@ -13,7 +13,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 // Chaque cas : fichier source + une phrase traduite distinctive à y trouver.
 const EN_PAGES = [
-  { file: '../src/pages/en/résidentiel.astro', phrase: 'A villa, its bill, its roof: three data points, one sizing' },
+  { file: '../src/pages/en/résidentiel.astro', phrase: 'Your bill already knows the size of your installation' },
   { file: '../src/pages/en/professionnel.astro', phrase: 'Your electricity cost line — you can steer it instead of enduring it' },
   { file: '../src/pages/en/marocains-du-monde.astro', phrase: 'Are you a Moroccan living abroad?' },
 ] as const;

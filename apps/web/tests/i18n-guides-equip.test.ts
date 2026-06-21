@@ -19,7 +19,7 @@ type Page = { rel: string; locale: 'en' | 'ar'; phrase: string; article: boolean
 
 const PAGES: Page[] = [
   // équipement
-  { rel: '../src/pages/en/équipement.astro', locale: 'en', phrase: 'The hardware follows the calculation', article: false },
+  { rel: '../src/pages/en/équipement.astro', locale: 'en', phrase: 'fast enough to keep a computer running', article: false },
   { rel: '../src/pages/ar/équipement.astro', locale: 'ar', phrase: 'العتاد يتبع الحساب', article: false },
   // regularization-article-33
   { rel: '../src/pages/en/regularization-article-33.astro', locale: 'en', phrase: 'Regularize it now', article: false },

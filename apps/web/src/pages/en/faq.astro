@@ -26,11 +26,28 @@ const faq = [
   },
   {
     q: "How is an installation's price calculated?",
-    a: 'The price follows the power, and the power follows your consumption. An order of magnitude, not a quote: a villa with about 2 000 MAD of monthly bill generally aims for 6 kWc, an investment of the order of 60 000 to 75 000 MAD. What that figure becomes for you depends on the roof and the equipment chosen — that is the purpose of the technical visit.',
+    a: 'The price follows the power, and the power follows your consumption. Take an order of magnitude, not a quote: a villa with about 2 000 MAD of monthly bill generally aims for 6 kWc, an investment of the order of 60 000 to 75 000 MAD (indicative range, 2026). Where your figure lands within that range depends on the roof and the equipment chosen, which the technical visit settles.',
   },
   {
     q: 'From what bill is solar worthwhile?',
     a: 'Below about 1 000 MAD a month, the return on investment generally goes past the 7-year mark, and we will tell you frankly rather than equipping you for nothing. Above 10 000 MAD a month, you are no longer in the residential bracket: your case deserves a dedicated study (see the Business page).',
+  },
+  // — How panels work —
+  {
+    q: 'Do panels work at night or in cloudy weather?',
+    a: "At night, no: no light, no current. Overcast weather is another story — the panels still produce, simply less, because the photovoltaic cell also responds to diffuse light, not just direct sun. In Morocco, with more than 300 days of sun a year and some of the best irradiation in the world, the days that are truly “lost” can be counted on one hand. That is what makes self-consumption so worthwhile here.",
+  },
+  {
+    q: 'Does shade reduce production a lot?',
+    a: 'More than you might think. In a conventional series-string installation, shade falling on a single panel holds back the whole row, a bit like bulbs wired in series. A badly placed chimney is enough to cut 20 to 30 % of the output. Power optimisers or micro-inverters (one per panel) ease the effect, at an added cost. This is precisely one of the first things we note on the technical visit.',
+  },
+  {
+    q: 'Do the panels need cleaning, and how often?',
+    a: "In Morocco, yes: dust, Saharan sand and bird droppings eat into the output. Winter rains do part of the job, but a flat or low-tilt mount fouls faster than a roof at 30°. In practice, a rinse with clean water (no abrasive detergent) two to three times a year is enough in most regions; in very dusty areas or by the sea, expect more like a monthly pass. The monitoring warns you as soon as an abnormal drop sets in.",
+  },
+  {
+    q: 'What happens if the grid goes down?',
+    a: 'It all depends on the inverter. A conventional grid-tied inverter cuts out automatically, by anti-islanding — a legal safety requirement that protects grid technicians — so you stay without power even in full sun. A hybrid inverter paired with a battery, by contrast, switches to standalone mode within milliseconds and keeps your essentials running: lighting, fridge, internet box. That is one of the main reasons to add a battery where the grid is unstable.',
   },
   // — Law 82-21 —
   {
@@ -44,16 +61,20 @@ const faq = [
   // — Article 33 —
   {
     q: 'My existing installation is not declared. What should I do?',
-    a: "Don't wait. Article 33 gives you an 18-month window, opened on 9 June 2026, to regularize an installation already in place — after that deadline it closes. The simplest is to start the process now; the Regularization page details the 5-step procedure.",
+    a: "Don't wait. Article 33 gives you an 18-month window, opened on 9 June 2026, to regularize an installation already in place — after that deadline it closes. The wisest move is to start the process now; the Regularization page details the 5-step procedure.",
   },
   {
     q: 'What does a non-regularized installation risk?',
-    a: 'As long as it is not regularized, an existing installation is, in the eyes of Law 82-21, in an irregular situation. Concretely, this ranges from a fine — 2 000 to 5 000 MAD for operating without the required declaration, and 100 000 to 1 000 000 MAD without a connection agreement or authorization — to formal notice, shutdown of the installation, or even its disconnection from the grid. So many reasons to take advantage of the Article 33 window.',
+    a: 'As long as it is not regularized, an existing installation remains, in the eyes of Law 82-21, in an irregular situation. The possible consequences range from a fine — 2 000 to 5 000 MAD for operating without the required declaration, and 100 000 to 1 000 000 MAD without a connection agreement or authorization — to formal notice, shutdown of the installation, or even its disconnection from the grid. So many good reasons to take advantage of the Article 33 window.',
   },
   // — Batteries / self-consumption —
   {
     q: 'Do I need batteries?',
-    a: "Often no, and that is rarely the expected answer. If you consume mostly during the day, the energy goes straight to your appliances and direct self-consumption pays more than any storage. The battery is justified for night-time use or service continuity during an outage — your consumption curve says so, and we look at it in the study.",
+    a: "Often no, and that is rarely the expected answer. When you consume mostly during the day, the energy flows straight to your appliances, and that direct self-consumption pays more than any storage. A battery comes into its own for night-time use or to ride out an outage; your consumption curve is what decides, and we look at it closely in the study.",
+  },
+  {
+    q: 'How long does an LFP battery last?',
+    a: 'The lithium iron phosphate (LFP) batteries we fit — such as the Dyness — last far longer than the old lead-acid batteries. The Dyness is rated for 6,000 cycles at 90 % depth of discharge, with a 10-year warranty at 70 % or more of capacity retained. In ordinary residential use (around one cycle a day), it often passes 12 to 15 years before dropping below that threshold. LFP chemistry is also the safest at home: unlike NMC chemistries, it does not release oxygen if it overheats.',
   },
   // — Warranties —
   {
@@ -62,12 +83,21 @@ const faq = [
   },
   {
     q: 'How long do panels last?',
-    a: "A panel doesn't 'die' on a date: it slowly loses efficiency, and the warranty frames this decline. Ours are guaranteed to deliver at least 84.8 % of their initial power after 25 years. The inverter is an electronic part: generally plan for one replacement over the installation's lifetime.",
+    a: "A panel doesn't 'die' on a fixed date: it slowly loses efficiency, and the warranty frames this decline. Ours are guaranteed to deliver at least 84.8 % of their initial power after 25 years. The inverter, being an electronic part, will generally need one replacement over the installation's lifetime.",
+  },
+  // — Electric vehicle —
+  {
+    q: 'Can I charge my electric car with my solar panels?',
+    a: "Yes, and it's one of the most cost-effective combinations. A compact car uses about 15 kWh/100 km (a Dacia Spring runs around 14 kWh, a BYD Dolphin 14.5 kWh). For a daily trip of 30 to 40 km, you need to cover about 5 kWh a day — what 2 to 3 panels of 550 W produce on average in Morocco. If you come home in the evening, a 'solar-aware' charger (such as the myenergi Zappi or the Wallbox in solar mode) automatically redirects the day's surplus to the car while you're away. The marginal cost per kilometre then falls close to zero, where petrol works out at about 93 MAD/100 km.",
+  },
+  {
+    q: 'Do I need a battery to charge the car at night?',
+    a: "It's an option, not an obligation. If you plug the car in when you get home in the evening, the sun already down, two routes are open to you. The first is to schedule charging during the grid's off-peak hours, cheaper than peak. The second rests on a home battery that stores the day's solar surplus and gives it back to the car come evening. The battery becomes worthwhile when you drive a lot and want to break free of the grid; otherwise, off-peak grid charging stays economical. We work out the figures together in the study.",
   },
   // — Timeline & process —
   {
     q: 'How does an installation work, step by step?',
-    a: 'Three stages, no detours. First a 60-second assessment that returns a first range. Then a direct WhatsApp exchange with a technician, with roof photos. Finally the technical visit, the complete free study, and the quote. You talk to the person who sizes, not a switchboard that will call back.',
+    a: 'Three stages, no detours. First a 60-second assessment that returns a first range. Then a direct WhatsApp exchange with a technician, with roof photos. Finally the technical visit, the complete free study, and the quote. You talk to the person who sizes the system, not a switchboard that will call back.',
   },
   // — Monitoring / after-sales —
   {
@@ -78,8 +108,8 @@ const faq = [
 ---
 
 <Layout
-  title="Frequently asked questions about solar in Morocco — prices, law, warranties | Taqinor"
-  description="The questions people ask us before signing, with figured, honest answers: how much it really costs, from what bill it pays off, which Law 82-21 regime concerns you, what a non-regularized installation risks, and how far the warranties go."
+  title="FAQ on solar, batteries and EV charging in Morocco | Taqinor"
+  description="Questions about solar energy in Morocco: prices, profitability, Law 82-21, shade, LFP batteries, electric-car charging and warranties — with figured, honest answers."
   ogSlug="accueil"
 >
   <div class="v2">

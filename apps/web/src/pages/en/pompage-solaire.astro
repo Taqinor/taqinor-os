@@ -23,41 +23,41 @@ const etapes = [
   {
     k: '01',
     title: 'Solar capture',
-    body: 'The panels convert sunlight into electricity from sunrise to sunset. The array power is deduced from the volume of water to deliver: we work from the need up to the number of panels, not the other way around.',
+    body: 'From sunrise to sunset, the panels turn sunlight into electricity. To know how many you need, we start from the volume of water to deliver and work back to the array: the irrigation need sets the power, and the array is sized to match.',
   },
   {
     k: '02',
     title: 'Pumping with the sun',
-    body: 'Direct drive, most often without batteries: the pump runs during the sunlight hours and flows all the more as the radiation is strong. No battery bank to buy, cool or replace every eight years.',
+    body: 'Direct drive, usually without batteries: the pump runs through the daylight hours and pushes more water the stronger the sunlight. No battery bank to buy, cool or replace every eight years.',
   },
   {
     k: '03',
     title: 'Storing water, not energy',
-    body: 'The reserve is the basin, not the battery. We pump at midday when the array gives its full power, and irrigate at the hour the crop demands. The water waits in the tank; it does not discharge and does not age.',
+    body: 'The reserve is the tank, not the battery. We pump at midday, when the array is at full power, and irrigate when the crop needs it. The water waits in the tank; it does not discharge and it does not age.',
   },
   {
     k: '04',
     title: 'Variable-speed drive control',
-    body: 'The drive modulates the pump speed according to available energy, starts the motor smoothly and cuts it on a fault — dry running, undervoltage, overload. It is this electronics that absorbs passing clouds and the seasons.',
+    body: 'The drive matches the pump speed to the energy available, ramps the motor up gently and shuts it down on a fault — dry running, undervoltage, overload. This is the electronics that rides out passing clouds and the changing seasons.',
   },
 ];
 
 const variables = [
   {
     title: 'Flow rate',
-    body: 'The volume of water to deliver, in m³/h or m³/day. It comes from the crop\'s needs and the area to irrigate; it is the data point that commands all the others.',
+    body: 'The volume of water to deliver, in m³/h or m³/day. It comes from the crop and the area to irrigate; it is the figure that drives every other.',
   },
   {
     title: 'Total head (HMT)',
-    body: 'The total manometric head: everything the pump must overcome, added up — depth of the water level in the borehole, elevation up to the basin, and friction losses in the pipes. Underestimating the head means underflowing all summer.',
+    body: 'The total head: everything the pump has to overcome, added up — the depth of the water level in the borehole, the rise up to the tank, and friction losses in the pipes. Underestimate the head and you underflow all summer.',
   },
   {
     title: 'Borehole depth',
-    body: 'The well depth and especially the dynamic level — the one the water reaches with the pump running — decide between a submersible pump and a surface pump, and set the array power.',
+    body: 'The well depth, and above all the dynamic level — what the water drops to with the pump running — decide between a submersible and a surface pump, and set the array power.',
   },
   {
-    title: "Crop's water needs",
-    body: 'The crop type, the area and the season set the target volume. It is the input of the calculation: we start from there, and the rest — pump, drive, number of panels — follows.',
+    title: "Crop water needs",
+    body: 'The crop, the irrigated area and the season set the target volume. It opens the calculation: once fixed, it dictates the pump, the drive and the size of the array.',
   },
 ];
 
@@ -91,10 +91,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">New service</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Pump water with the sun, not with diesel</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          For irrigation, solar pumping puts an end to the diesel fill-up: panels drive the pump while
-          the sun gives. The array doesn't come from a catalogue — it is deduced from four
-          measurements taken on your plot: the target flow rate, the head to overcome, the borehole
-          level and the water the crop demands.
+          For irrigation, solar pumping replaces the tank of diesel: while the sun is up, the panels
+          drive the pump. How many panels, though, depends entirely on your plot — the flow rate you
+          are after, the head the pump must overcome, the depth of the borehole and the water the
+          crop needs. We take those four measurements before we propose anything at all.
         </p>
       </div>
     </section>
@@ -114,9 +114,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
-          The orders of magnitude depend entirely on your site: until the borehole has been measured,
-          there is a method, not a figure. The array and the drive rest on the same tier-1 brands as
-          our roofs — <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">see the equipment →</a>
+          Every order of magnitude depends on your site: before the borehole survey we can walk you
+          through the method, but not quote a figure we'd stand behind. The array and the drive, for
+          their part, rely on the same tier-1 brands as our rooftops — <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">see the equipment →</a>
         </p>
       </div>
     </section>
@@ -128,9 +128,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-azur-600">Four measurements</p>
         <h2 class="display v2-section-title mt-5">What decides the sizing</h2>
         <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
-          An oversized pump wastes panels; a pump that's too tight dries out in mid-July. The right
-          point is found at the intersection of four concrete variables, taken on site before opening
-          any catalogue.
+          An oversized pump wastes panels; a pump cut too fine runs dry in the heat of July. The
+          right answer sits at the intersection of four concrete variables, all measured on site
+          before we open a single catalogue.
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
           {variables.map((v, i) => (
@@ -141,8 +141,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
-          Give us these four figures and the system draws itself; miss the flow rate or the head, and
-          everything stays guesswork. We prefer to measure. <a href={contactSim} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
+          With these four figures in hand, the system almost designs itself. Without them — when the
+          flow rate or the head is missing — we'd be left guessing, and we don't size a pump on
+          guesswork. <a href={contactSim} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
         </p>
       </div>
     </section>
@@ -155,19 +156,19 @@ const jsonLd = {
             <p class="tech-label v2-kicker rule-brass text-brass-300">Verified tax advantage</p>
             <h2 class="display v2-section-title mt-5 text-white">Agricultural pumping, VAT-exempt</h2>
             <p class="v2-lead mt-5 text-lune-soft">
-              In Morocco, solar-powered water-pumping systems are VAT-exempt — and the exemption covers
-              the whole: the pump as well as the panels that feed it. For a farm, that is so much that
-              doesn't add to the equipment bill, and it brings forward the moment the system has paid
-              for itself in diesel not burned.
+              In Morocco, solar water-pumping systems are exempt from VAT — and the exemption covers
+              the lot: the pump as much as the panels that power it. For a farm, that is money that
+              never lands on the equipment bill, and it brings forward the day the system has paid for
+              itself in diesel never burned.
             </p>
           </div>
           <div class="v2-rise cine-card p-7" style="--v2-i:1">
             <h3 class="display text-xl text-white">Not to be confused</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-              The exemption targets <strong class="text-white">agricultural pumping</strong> — the pump
+              The exemption is for <strong class="text-white">agricultural pumping</strong> — the pump
               and its array — and <strong class="text-white">it does not extend to residential rooftop
-              photovoltaics</strong>. Solar on a house roof remains subject to VAT: two separate
-              regimes, and we will never promise you to transpose one onto the other.
+              photovoltaics</strong>. Solar on a house roof still carries VAT: two separate regimes,
+              and we will never promise to carry one across to the other.
             </p>
           </div>
         </div>
@@ -180,9 +181,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-brass-300">To go further</p>
         <h2 class="display v2-section-title mt-5 text-white">Agriculture, a business segment</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
-          Solar pumping is a matter for farmers and professionals, not consumer kits. We measure the
-          borehole, we calculate, we install tier-1 hardware, and the installation leaves with its
-          complete technical file.
+          Solar pumping belongs to the working farm, not to the plug-in kit you wire up yourself.
+          After the borehole survey and the sizing calculation, we install tier-1 hardware and the
+          system is handed over with its full technical file.
         </p>
         <div class="mt-10 flex flex-wrap gap-3">
           <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Request an assessment →</a>

@@ -1,10 +1,12 @@
 ---
 /**
  * EN — Batteries & storage (W67). Faithful translation of /batteries-stockage ;
- * EVERY spec/figure (6 000 cycles, 90 % DoD, 5 kWh modules, 5–15 kWh, CE/IEC
- * 62619/UN38.3, 10 years, 15/10/5 kWh installs, refs 468/400/236) kept EXACT.
- * No invented capacity/price/spec. Internal links via localizeNavHref. FR
- * untouched.
+ * EVERY spec/figure (6,000 cycles at 90% DoD, 10-year warranty with ≥70%
+ * capacity retained, 5 kWh modules, 5–15 kWh, CE/IEC 62619/UN38.3, 15/10/5 kWh
+ * installs, refs 468/400/236) kept EXACT. DoD and end-of-life capacity are
+ * distinct axes — never conflated. Visual FAQ (schema={false} so /faq stays the
+ * only FAQPage) and the battery-guide cards mirror the FR. No invented
+ * capacity/price/spec. Internal links via localizeNavHref. FR untouched.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -12,6 +14,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import Faq from '../../components/Faq.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 
@@ -21,23 +24,23 @@ const contactSim = L('/contact') + '#simulateur';
 
 const specs = [
   { item: 'Lithium-iron-phosphate (LFP) chemistry', detail: 'Dyness DL5.0C / DL5.0C PRO' },
-  { item: 'Lifespan', detail: '6 000+ cycles at 90 % depth of discharge (DoD)' },
+  { item: 'Lifespan', detail: '6,000 cycles at 90% depth of discharge' },
   { item: 'Modular capacity', detail: 'Expandable 5 kWh modules: 5 to 15 kWh and more' },
   { item: 'Communication', detail: 'Native CAN BMS with Deye hybrid inverters' },
   { item: 'Certifications', detail: 'CE · IEC 62619 · UN38.3' },
-  { item: 'Warranty', detail: '10 ans' },
+  { item: 'Warranty', detail: '10-year warranty with ≥ 70% capacity retained' },
 ];
 
 const cas = [
   {
     k: 'Without storage',
     title: 'Mostly daytime consumption',
-    body: 'When most of your consumption falls during the day, the best kWh is the one your panels feed at that very moment — without a detour through a battery, without charge or discharge losses. That is the case for households active by day and sites whose activity follows the sun: pump, refrigeration, machines, air conditioning.',
+    body: "When most of your use falls during the day, the best kWh is the one your panels feed you on the spot — no detour through a battery, no charging and discharging losses. That fits households that are busy by day and sites whose activity follows the sun: a pump, refrigeration, machines, air conditioning.",
   },
   {
     k: 'With storage',
-    title: 'Night-time consumption or service continuity',
-    body: 'The battery becomes useful when your consumption peak comes once the sun has set, or when an outage must stop nothing. The surplus produced at midday is set aside and returned in the evening, at the hour when the grid bills at the high rate.',
+    title: 'Evening consumption or uninterrupted supply',
+    body: "A battery earns its keep when your peak arrives after sunset, or when an outage must bring nothing to a halt. The surplus made at midday is set aside and given back in the evening — exactly the hour the grid charges its highest rate.",
   },
 ];
 
@@ -45,6 +48,30 @@ const installs = [
   { kwh: '15 kWh', where: 'El Jadida', ref: '468' },
   { kwh: '10 kWh', where: 'Casablanca', ref: '400' },
   { kwh: '5 kWh', where: 'El Jadida', ref: '236' },
+];
+
+// FAQ — schema={false} so /faq stays the only page carrying the FAQPage JSON-LD.
+const faqItems = [
+  {
+    q: 'Do I really need a battery with my solar panels?',
+    a: "Not necessarily. If you use most of your electricity during the day — refrigeration, a pump, air conditioning, machines — your panels feed your loads directly, and a battery would only add cost and conversion losses. It earns its place when your consumption peak falls in the evening, or when you need power to stay on through outages. We read your consumption curve hour by hour before recommending anything.",
+  },
+  {
+    q: 'How long does an LFP battery last?',
+    a: "On paper, a Dyness LFP battery takes 6,000 cycles at 90% depth of discharge, with a 10-year warranty and at least 70% of its capacity retained. Count one cycle a day and those 6,000 cycles alone span more than sixteen years. But a battery also ages while it sits — roughly 1 to 2% of capacity lost per year, even unused. It is this calendar ageing that usually decides matters in the end, bringing the real working life down to 12–15 years in the Moroccan climate. The way to claw back some of those years: keep the battery in the shade, ventilated, between 15 and 35 °C.",
+  },
+  {
+    q: 'What battery size should I choose? (5–10 kWh, 10–20 kWh or 20 kWh+)',
+    a: "The tiers map to distinct needs. 5 to 10 kWh: basic night-time backup, or keeping a few essentials running through an outage. 10 to 20 kWh: full evening self-consumption for an average household — the day's solar surplus covers most of the night-time load. 20 kWh and up: near-autonomy, remote sites, or 2 to 3 days of cover with no sun. Our Dyness modules stack in 5 kWh steps, so we set the capacity to the evening dip you need to cover, not to a marketing tier. A dedicated guide walks through the calculation.",
+  },
+  {
+    q: 'Does a battery protect me from power cuts?',
+    a: "Yes, if the hybrid inverter is set to EPS (Emergency Power Supply) mode. Deye SG-series inverters switch over almost instantly (about 4 ms) with no extra box — comparable to a UPS. How much power you have during an outage depends on the installed capacity and on the loads wired to the backup circuit. Don't confuse this with a plain on-grid inverter, which also shuts down during an outage, for safety.",
+  },
+  {
+    q: 'Is it better to store the surplus or sell it to the grid in Morocco?',
+    a: "In Morocco, law 82-21 (in force since June 2026) caps grid injection at 20% of annual output, and the ANRE buy-back rate runs from 0.18 to 0.21 DH/kWh depending on the hour. Yet a kWh bought from the grid costs you between 0.90 DH (first tier) and 1.66 DH (heavy use). In other words, a kWh stored and self-consumed in the evening is worth 4 to 9 times more than one sold to the grid. So the order of priority is: (1) consume directly by day, (2) store for the evening, (3) export the balance, capped at 20%. Don't oversize your batteries to export more — it doesn't pay.",
+  },
 ];
 
 const jsonLd = {
@@ -59,8 +86,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="Dyness LFP solar batteries in Morocco: 6 000 cycles, 90 % DoD | Taqinor"
-  description="Solar storage in Morocco: Dyness lithium-iron-phosphate batteries, more than 6 000 cycles at 90 % depth of discharge, expandable 5 kWh modules, native CAN BMS dialogue with Deye hybrid inverters, 10-year warranty. The question is whether your consumption profile justifies a battery — often, by day, it doesn't."
+  title="Dyness LFP solar batteries in Morocco: 6,000 cycles, 90% DoD | Taqinor"
+  description="Solar storage in Morocco: Dyness lithium-iron-phosphate batteries, 6,000 cycles at 90% depth of discharge, expandable 5 kWh modules, native CAN BMS dialogue with Deye hybrid inverters, 10-year warranty with ≥70% capacity retained. The real question is your consumption profile: if you use most of your power by day, the battery often has to wait its turn."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -76,10 +103,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Energy storage</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Batteries &amp; storage</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          A Dyness LFP battery takes more than 6 000 cycles at 90 % depth of discharge — enough to
-          last for years. But it still has to be useful. The real question is not which battery, but
-          <em>when</em> you consume: by day, the extra cost of a storage bank is rarely the best
-          investment.
+          A Dyness LFP battery takes 6,000 cycles at 90% depth of discharge; it will last. The
+          question that actually decides things, though, isn't <em>which</em> battery but <em>when</em>
+          you consume. If most of your power goes out the door during the day, what you pay to store
+          it is mostly money paid for nothing.
         </p>
       </div>
     </section>
@@ -99,9 +126,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mt-8 max-w-2xl border-s-4 border-brass-400 ps-4 text-sm leading-relaxed text-lune-soft">
-          Selling a battery is easy; saying it is useless less so. We first read your consumption
-          curve, hour by hour: it is what says whether storage pays, and how many kWh are enough.
-          Adding hardware is never the goal.
+          Our commercial interest would be to sell you one. We'd rather start by reading your
+          consumption curve hour by hour: that is what settles whether storage pays its way and, if
+          it does, how many kWh are genuinely enough. Often the honest answer is two words — not yet.
           <a href={L('/guides/faut-il-des-batteries')} class="border-b-2 border-brass-400 pb-0.5 font-bold text-brass-300 transition-colors hover:text-brass-200">Read the full guide →</a>
         </p>
       </div>
@@ -114,11 +141,11 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-azur-600">The hardware installed</p>
         <h2 class="display v2-section-title mt-5">Dyness lithium-iron-phosphate batteries</h2>
         <p class="v2-lead mt-4 text-encre-soft">
-          When storage is justified, we install Dyness LFP batteries. Lithium-iron-phosphate
-          chemistry does not run away thermally like some other lithiums and accepts being drained to
-          90 % every cycle without ruining itself. The BMS talks over CAN with the Deye hybrid
-          inverter, which manages charge and discharge precisely. Hardware sourced via official
-          distributors in Morocco, warranty enforceable locally.
+          When storage is justified, we fit Dyness LFP batteries. Lithium-iron-phosphate chemistry
+          doesn't run away thermally the way some other lithiums can, and it takes being drawn down to
+          90% every cycle without wearing out. The BMS talks to the Deye hybrid inverter over CAN, and
+          the inverter manages charge and discharge to the watt. Hardware sourced through the official
+          distributors in Morocco, with the warranty honoured on the ground here.
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {specs.map((s, i) => (
@@ -129,8 +156,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
-          The modules stack in 5 kWh increments: we set the capacity to the evening dip to cover, no
-          more, no less. The size follows the figured need, not a commercial tier.
+          The modules stack in 5 kWh steps. In practice, we measure the dip your consumption leaves
+          after sunset and stack just enough modules to fill it: that figure sets the capacity, never
+          a catalogue tier.
           <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See all the hardware installed →</a>
         </p>
 
@@ -144,22 +172,57 @@ const jsonLd = {
           {installs.map((inst, i) => (
             <div class="v2-rise border-s-2 border-azur-600 bg-blanc px-4 py-4" style={`--v2-i:${i}`}>
               <p class="fig whitespace-nowrap text-2xl text-azur-600" dir="ltr" data-tally>{inst.kwh}</p>
-              <p class="tech-label mt-2 text-encre-faint">Dyness · {inst.where} · réf. {inst.ref}</p>
+              <p class="tech-label mt-2 text-encre-faint">Dyness · {inst.where} · ref. {inst.ref}</p>
             </div>
           ))}
         </div>
       </div>
     </section>
 
-    <!-- Closing links -->
-    <section class="px-4 py-20 sm:py-24">
+    <!-- Visual FAQ — schema={false}: /faq stays the only FAQPage -->
+    <Faq
+      schema={false}
+      heading="Frequently asked questions about solar storage"
+      items={faqItems}
+    />
+
+    <!-- Internal guides & resources — battery links -->
+    <section class="px-4 pb-20 pt-16 sm:pb-24">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-brass-300">To go further</p>
-        <h2 class="display v2-section-title mt-5 text-white">Storage in your project</h2>
-        <div class="mt-10 flex flex-wrap gap-3">
+        <h2 class="display v2-section-title mt-5 text-white">Battery &amp; storage guides</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          <a href={L('/guides/batterie-lithium-ou-gel')} class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:0">
+            <p class="tech-label text-brass-300">Chemistry</p>
+            <h3 class="display mt-2 text-lg text-white">Lithium or gel: which chemistry?</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">LFP, AGM/GEL, NMC — lifespan, depth of discharge, thermal safety: the comparison for Morocco.</p>
+            <span class="mt-4 text-sm font-bold text-brass-300">Read the guide →</span>
+          </a>
+          <a href={L('/guides/quelle-taille-de-batterie')} class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:1">
+            <p class="tech-label text-brass-300">Sizing</p>
+            <h3 class="display mt-2 text-lg text-white">What battery size for my home?</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">A step-by-step method: measure your evening dip, then choose between the 5–10 / 10–20 / 20+ kWh tiers.</p>
+            <span class="mt-4 text-sm font-bold text-brass-300">Read the guide →</span>
+          </a>
+          <a href={L('/guides/electricite-pendant-les-coupures')} class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:2">
+            <p class="tech-label text-brass-300">Uninterrupted supply</p>
+            <h3 class="display mt-2 text-lg text-white">Keeping the power on through outages</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">EPS mode, ≈ 4 ms switchover, backup circuits: how a hybrid system carries you through a grid cut.</p>
+            <span class="mt-4 text-sm font-bold text-brass-300">Read the guide →</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Closing links -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Storage in your project</p>
+        <div class="mt-6 flex flex-wrap gap-3">
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">All the equipment →</a>
           <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Residential solar →</a>
           <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Guide: do you need batteries? →</a>
+          <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Warranties →</a>
           <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our projects →</a>
         </div>
       </div>

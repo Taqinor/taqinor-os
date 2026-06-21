@@ -41,9 +41,11 @@ const jsonLd = {
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Architecture</p>
       <h1 class="display v2-page-title mt-5 text-white">On-grid, off-grid ou hybride ?</h1>
       <p class="v2-lead mt-6 text-lune-soft">
-        Trois architectures, trois comportements radicalement différents lors d'une coupure réseau.
-        Comprendre la distinction — surtout le mécanisme d'anti-îlotage — évite de nombreuses
-        déceptions au moment où l'on en a le plus besoin.
+        Une coupure ONEE arrive en plein après-midi. Trois maisons du même quartier ont des
+        panneaux sur le toit ; une seule garde le courant. La différence ne tient pas à la
+        marque des panneaux ni à leur nombre, mais à l'architecture choisie. Voici comment
+        chacune des trois se comporte quand le réseau tombe — et pourquoi l'anti-îlotage
+        explique l'essentiel.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Le système on-grid (raccordé réseau)</h2>
@@ -85,26 +87,29 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">Le système hybride : réseau + batterie + secours</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Un système <strong class="text-lune">hybride</strong> combine le meilleur des deux mondes :
-        il est raccordé au réseau pour l'autoconsommation et l'équilibre jour/nuit, et dispose d'une
-        batterie qui peut alimenter des circuits prioritaires (éclairage, réfrigérateur, chargeurs,
-        box internet) lorsque le réseau tombe.
+        Un système <strong class="text-lune">hybride</strong> reste raccordé au réseau pour
+        l'autoconsommation et l'équilibre jour/nuit, mais lui ajoute une batterie qui prend le
+        relais sur des circuits prioritaires — éclairage, réfrigérateur, chargeurs, box internet —
+        dès que le réseau tombe. Une batterie de 5 à 10 kWh suffit en général à tenir ces usages
+        essentiels pendant plusieurs heures.
       </p>
       <p class="v2-lead mt-4 text-lune-soft">
-        L'onduleur hybride gère la bascule en quelques millisecondes — sans coupure perceptible pour
-        les appareils — et isole les circuits secours du réseau, respectant ainsi l'anti-îlotage
-        tout en maintenant l'alimentation. C'est la seule configuration qui permette à la fois
-        l'autoconsommation quotidienne <em>et</em> la continuité de service lors d'une coupure.
+        Quand la coupure survient, l'onduleur hybride bascule sur ses sorties de secours en quelques
+        millisecondes (de l'ordre de 4 à 10 ms sur les modèles à mode UPS, jusqu'à une à deux
+        secondes sur d'autres). Il isole ces circuits du réseau, ce qui respecte l'anti-îlotage,
+        et continue à les alimenter. C'est la seule des trois architectures qui assure
+        l'autoconsommation au quotidien tout en gardant le courant pendant une panne.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">En résumé : quelle architecture vous convient ?</h2>
+      <h2 class="display v2-section-title mt-12 text-white">Laquelle pour les trois maisons du quartier ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Si vous êtes raccordé à l'ONEE et que les coupures ne sont qu'une gêne passagère,
-        un système on-grid suffit et offre le meilleur retour sur investissement. Si vous êtes
-        sur un site sans réseau, l'off-grid s'impose. Si la continuité de service est un impératif
-        — activité commerciale, équipements médicaux, télétravail intensif — le système hybride
-        avec batterie est la réponse. Ce n'est pas une question de budget a priori, mais d'usage :
-        on part du besoin, pas du catalogue.
+        Revenons à la coupure du début. La maison raccordée à l'ONEE pour qui les délestages
+        restent une gêne occasionnelle vit très bien avec un on-grid : c'est lui qui rentabilise
+        le plus vite. Une maison de campagne sans ligne électrique n'a pas le choix, c'est
+        l'off-grid. La troisième — un cabinet médical, un commerce qui ne peut pas s'arrêter, un
+        bureau de télétravail — paie sa batterie hybride par la continuité qu'elle achète. Le bon
+        repère n'est donc pas le budget de départ mais une question simple : que se passe-t-il
+        chez vous, concrètement, le jour où le courant s'arrête ?
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href="/guides/onduleur-hybride-ou-reseau" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Onduleur hybride ou réseau ? →</a>

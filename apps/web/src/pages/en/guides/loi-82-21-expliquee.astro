@@ -40,12 +40,12 @@ const regimes = [
   {
     n: '02',
     title: 'Connection agreement',
-    body: 'Above the declaration threshold and up to 5 MW, as soon as you inject onto the grid at low or medium voltage, you need to obtain a connection agreement from the operator before starting. This is the usual ground for business sites.',
+    body: 'Above the declaration threshold and up to 5 MW, as soon as you inject onto the grid at low or medium voltage, you need to secure a connection agreement from the grid operator before starting — ONEE in most regions, or the local utility where there is one (Lydec in Casablanca, Redal in Rabat, Amendis in Tangier). This is the typical case for business sites.',
   },
   {
     n: '03',
     title: 'Authorisation',
-    body: 'From 5 MW, at medium, high or very high voltage, the scale changes: a full authorisation must be obtained before the first stroke of the pickaxe. Few private rooftops are concerned.',
+    body: 'From 5 MW, at medium, high or very high voltage, the scale changes: a full, formal authorisation must be obtained before breaking ground. Few private rooftops are concerned.',
   },
 ];
 ---
@@ -87,10 +87,13 @@ const regimes = [
 
       <h2 class="display v2-section-title mt-14 text-white">And if my installation already exists?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        The law does not forget the installations put in place before it: its Article 33 opens,
-        since 9 June 2026, an 18-month window to bring them into line. The calculation is binary —
-        an installation regularized within this deadline is legally safe; an installation left out
-        of bounds stays in an irregular situation, with all the risks that implies.
+        The law does not forget the installations put in place before it. Its Article 33 has opened,
+        since 9 June 2026, an 18-month window to bring them into line: that's the time you have to
+        file the missing paperwork — declaration, connection agreement or authorisation, depending
+        on the regime that applies to you above. Regularised within that window, an existing
+        installation joins the legal framework just like a new one. Once the window closes, it stays
+        in an irregular situation under Law 82-21, with the penalties that brings. There is nothing
+        to gain by waiting, and the process can begin today.
       </p>
       <div class="mt-8 flex flex-wrap gap-3">
         <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identify my regime in 3 questions →</a>

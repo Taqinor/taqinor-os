@@ -72,18 +72,18 @@ describe('W139 — exclusion des brouillons', () => {
   it('l’index /blog exclut les brouillons en prod', () => {
     const idx = read('../src/pages/blog/index.astro');
     expect(idx).toContain("getCollection('blog'");
-    expect(idx).toMatch(/PROD\s*\?\s*!data\.draft\s*:\s*true/);
+    expect(idx).toMatch(/PROD\s*\?\s*!data\.draft\s*&&\s*data\.pubDate\.getTime\(\)\s*<=\s*Date\.now\(\)\s*:\s*true/);
   });
 
   it('la route [slug] exclut les brouillons (getStaticPaths)', () => {
     const slug = read('../src/pages/blog/[...slug].astro');
     expect(slug).toContain('getStaticPaths');
-    expect(slug).toMatch(/PROD\s*\?\s*!data\.draft\s*:\s*true/);
+    expect(slug).toMatch(/PROD\s*\?\s*!data\.draft\s*&&\s*data\.pubDate\.getTime\(\)\s*<=\s*Date\.now\(\)\s*:\s*true/);
   });
 
   it('le RSS n’inclut QUE les articles non-draft', () => {
     const rss = read('../src/pages/rss.xml.ts');
-    expect(rss).toMatch(/getCollection\('blog',\s*\(\{\s*data\s*\}\)\s*=>\s*!data\.draft\)/);
+    expect(rss).toMatch(/getCollection\('blog',\s*\(\{\s*data\s*\}\)\s*=>\s*!data\.draft\s*&&\s*data\.pubDate\.getTime\(\)\s*<=\s*Date\.now\(\)\)/);
   });
 });
 

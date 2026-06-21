@@ -1,8 +1,9 @@
 ---
 /**
  * AR — Guide (W67, RTL): Hybrid inverter or grid-tied inverter? Faithful Arabic
- * translation of /guides/onduleur-hybride-ou-reseau ; no figure beyond the
- * already published ranges (5–30 kW), no price/cost claim. Internal links use
+ * translation of /guides/onduleur-hybride-ou-reseau, including the loi 82-21
+ * section the FR added (20 % injection cap, 0,18–0,21 DH/kWh buy-back vs
+ * 0,90–1,66 DH/kWh grid) plus the 5–30 kW ranges. Internal links use
  * localizeNavHref (EN/AR if available, else the existing FR page — never a dead
  * link). FR untouched.
  */
@@ -68,11 +69,21 @@ const jsonLd = {
         لا تخزين تؤدّي ثمنه لطاقة تستعملها أصلاً على إيقاع الشمس.
       </p>
 
+      <h2 class="display v2-section-title mt-12 text-white">أين يدخل القانون 82-21</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        قد يُظَنّ أن عاكس الشبكة «يُعوّض» ببيع كل الفائض. القانون 82-21 يقول العكس. فالحقن في الشبكة
+        مسقوف عند 20 % من إنتاجك السنوي، وهذا الفائض لا يُشترى إلا بـ 0,18 إلى 0,21 درهم/kWh — بينما
+        تشتري أنت نفس الـ kWh من الشبكة بين 0,90 و1,66 درهم/kWh. أي أن الطاقة التي لا تستهلكها في
+        عين المكان قيمتها ضئيلة. وهنا يتّضح دور كلّ عاكس: إن كان استهلاكك نهارياً، يكفيك عاكس الشبكة،
+        إذ يلتقط جلّ هذه القيمة عبر الاستهلاك الذاتي المباشر؛ وإن كان مسائياً، يأتي دور العاكس الهجين،
+        الذي يخزّن فائض النهار ويردّه إلى ساعات ذروتك بدل تصديره بثمن بخس.
+      </p>
+
       <h2 class="display v2-section-title mt-12 text-white">كيف نختار</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        اختيار العاكس إذن ليس الأول، بل الأخير: ينبثق من قرار التخزين، الذي ينبثق بدوره من ملفّ
-        استهلاكك. نصعد السلسلة في الاتجاه الصحيح — فاتورتك أولاً، العتاد بعدها — بدل الانطلاق من
-        طراز مُقرَّر سلفاً.
+        اختيار العاكس إذن ليس الأول، بل الأخير: ينبثق من قرار التخزين، الذي ينبثق بدوره من ملمح
+        استهلاكك ومن استقرار شبكتك. نرتّب القرار من أوّله — فاتورتك وساعات استهلاكك أولاً،
+        العتاد بعدها — بدل الانطلاق من طراز مُقرَّر سلفاً.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
         <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">هل تحتاج بطاريات؟ →</a>

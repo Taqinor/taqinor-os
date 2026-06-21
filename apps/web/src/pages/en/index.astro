@@ -40,8 +40,8 @@ const heroSub =
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [
   { q: 'How much does a residential solar installation cost?', a: 'It depends on your consumption and your roof. A villa with a bill of 1 500 MAD per month typically gets a 4 to 6 kWc system. The diagnostic below gives you an immediate range; the precise quote is set after a technical visit.' },
-  { q: 'What does Law 82-21 say for households?', a: 'At low voltage, an installation under 11 kW falls under the declaration regime: a prior formality, not an authorization. Taqinor prepares and files the declaration for you.' },
-  { q: 'My existing installation is not declared. What should I do?', a: 'Article 33 of Law 82-21 opens a regularization window for existing installations. The window is open: file now. See the Regularization page for the 5-step procedure.' },
+  { q: 'What does Law 82-21 say for households?', a: 'At low voltage, an installation under 11 kW falls under the declaration regime: a prior formality, not an authorisation. Taqinor prepares and files the declaration for you.' },
+  { q: 'My existing installation is not declared. What should I do?', a: 'Article 33 of Law 82-21 opens a regularisation window for existing installations. The window is open: file now. See the Regularisation page for the 5-step procedure.' },
   { q: 'How long do the panels last?', a: 'Panels carry a 25-year performance warranty (generally ≥ 84,8 % of the initial output at 25 years). Inverters are typically replaced once over the lifetime of the installation.' },
   { q: 'Do I need batteries?', a: 'Not necessarily. If your consumption is mostly during the day, direct self-consumption is the best investment. Batteries are justified for night-time consumption or service continuity — we calculate it in the study.' },
 ];
@@ -62,11 +62,11 @@ const gallery = [
 // figure. Text cards (no image) → zero CLS.
 const solutions = [
   { href: '/résidentiel', tag: 'Villas & apartments', title: 'Residential solar', body: 'Sized to your real bill, Law 82-21 declaration included.' },
-  { href: '/professionnel', tag: 'Industry · hotels · clinics', title: 'Business solar', body: 'Cutting the electricity line, medium voltage, Law 82-21 compliance.' },
+  { href: '/professionnel', tag: 'Industry · hotels · clinics', title: 'Business solar', body: 'Cutting your electricity costs, medium voltage, Law 82-21 compliance.' },
   { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Solar pumping', body: 'Pumping with the sun, often without batteries, sized to the real need.' },
   { href: '/batteries-stockage', tag: 'Self-consumption', title: 'Batteries & storage', body: 'LFP storage for the evening or service continuity — when the study justifies it.' },
   { href: '/maintenance-monitoring', tag: 'After the install', title: 'Maintenance & monitoring', body: 'Deye Cloud supervision with client access, proactive after-sales, technical file.' },
-  { href: '/regularization-article-33', tag: 'Bringing into compliance', title: 'Law 82-21 regularization', body: 'Regularizing existing installations via Article 33.' },
+  { href: '/regularization-article-33', tag: 'Bringing into compliance', title: 'Law 82-21 regularisation', body: 'Regularising existing installations via Article 33.' },
 ];
 
 // The real journey, end to end. Facts already published on the site (60-second
@@ -74,11 +74,11 @@ const solutions = [
 // Deye Cloud monitoring with client access). No invented delay/SLA.
 const journey = [
   { n: '1', title: '60-second diagnostic', body: 'An immediate range from your bill, with no commitment.' },
-  { n: '2', title: 'WhatsApp exchange', body: 'Direct with the technical team, roof photos in hand — no call centre.' },
+  { n: '2', title: 'WhatsApp exchange', body: 'Straight to the technical team, roof photos in hand — no call centre.' },
   { n: '3', title: 'Technical visit & free study', body: 'On-site roof reading, complete study and a 0 MAD quote.' },
   { n: '4', title: 'Installation', body: 'Tier-1 equipment installed with its complete technical file.' },
-  { n: '5', title: 'Commissioning', body: 'Connection, checks, and the Law 82-21 file taken through to the end.' },
-  { n: '6', title: 'Deye Cloud monitoring', body: 'Production read continuously, client access included — measurement replaces the promise.' },
+  { n: '5', title: 'Commissioning', body: 'Connection, checks, and the Law 82-21 file carried through to the end.' },
+  { n: '6', title: 'Deye Cloud monitoring', body: 'Production read continuously, client access included: you read your kWh at the source.' },
 ];
 
 // Sober iconography for the "Our solutions" cards: one SVG line per card,
@@ -172,11 +172,11 @@ const solutionIcons: Record<string, string> = {
     <section class="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr] lg:items-center">
       <div class="v2-rise">
         <p class="tech-label v2-kicker rule-brass text-brass-300">The argument, in figures</p>
-        <h2 class="display v2-section-title mt-5 max-w-md text-white">An investment that is measured, not a promise</h2>
+        <h2 class="display v2-section-title mt-5 max-w-md text-white">The return, worked out before installation</h2>
         <p class="v2-lead mt-5 max-w-md text-lune-soft">
           A well-sized installation covers most of your bill for twenty-five years.
-          The calculation starts from your real consumption — that is what decides
-          the equipment, never the other way around.
+          The calculation starts from your real consumption, and it is the calculation
+          that decides the equipment — never the other way around.
         </p>
       </div>
       <dl class="grid grid-cols-2 gap-x-6 gap-y-12 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
@@ -311,7 +311,7 @@ const solutionIcons: Record<string, string> = {
             <p class="v2-lead mt-5 max-w-md text-lune-soft">
               No call centre, no chasing: your diagnostic arrives on WhatsApp,
               you talk directly with the technical team, roof photos in hand,
-              right up to the on-site visit. Sample exchange opposite — anonymized.
+              right up to the on-site visit. Sample exchange opposite — anonymised.
             </p>
           </div>
           <div class="v2-rise">

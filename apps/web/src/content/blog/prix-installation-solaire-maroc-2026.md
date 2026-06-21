@@ -3,12 +3,12 @@ title: "Combien coûte une installation solaire au Maroc en 2026 ?"
 description: "Fourchettes indicatives 2026 par puissance, surcoûts toiture, batterie, TVA — pour savoir à quoi s'attendre avant votre devis."
 pubDate: 2026-06-21
 tags: ["coût", "prix", "installation", "2026"]
-author: "Taqinor"
+author: "Reda Kasri"
 ogSlug: "accueil"
 draft: false
 ---
 
-La question revient systématiquement avant chaque projet solaire : **combien ça coûte, vraiment ?** Les chiffres qui circulent en ligne varient du simple au triple, et pour cause — le prix d'un panneau seul n'a rien à voir avec celui d'une installation clé-en-main posée et raccordée. Voici les fourchettes indicatives du marché marocain en 2026, avec leurs sources et leurs limites.
+« Combien ça coûte, vraiment ? » C'est la première phrase de presque tous mes rendez-vous. Et la raison pour laquelle les chiffres qu'on trouve en ligne vont du simple au triple est facile à expliquer : le prix d'un panneau posé sur une étagère n'a rien à voir avec celui d'une installation clé-en-main, montée sur votre toit et raccordée. Je préfère donc poser les fourchettes du marché marocain 2026 telles qu'elles sont, avec leurs sources et, surtout, leurs limites.
 
 ## Les fourchettes clé-en-main par puissance (indicatif 2026)
 
@@ -83,8 +83,8 @@ Avant de comparer les prix, il faut connaître la bonne puissance pour votre foy
 
 Notre guide dédié vous explique la méthode complète : [Combien de panneaux pour ma maison ?](/guides/combien-de-panneaux-pour-ma-maison)
 
-## Ce que ces fourchettes ne remplacent pas
+## Un dernier mot avant de signer quoi que ce soit
 
-Les prix indicatifs ci-dessus vous donnent un cadre pour budgéter et comparer les offres. Ils **ne remplacent pas un devis sur site** : la configuration réelle de votre toiture, votre consommation électrique, votre tranche tarifaire, et la distance aux équipements peuvent faire varier le coût final de manière significative.
+Servez-vous de ces fourchettes pour budgéter et pour repérer une offre anormalement basse ou anormalement chère. Mais ne leur demandez pas ce qu'elles ne peuvent pas donner : un prix ferme. La configuration de votre toiture, votre consommation, votre tranche ONEE et la distance entre les panneaux et le tableau électrique déplacent le total final, parfois de plusieurs milliers de dirhams.
 
-Le seul chiffre qui compte pour **votre** installation, c'est celui issu d'une analyse de votre facture et d'une visite technique. Obtenez votre estimation personnalisée en lançant le diagnostic — c'est gratuit et sans engagement.
+Le seul chiffre qui vaut pour votre maison sort d'une lecture de votre facture et d'une visite. C'est exactement ce que fait notre diagnostic, gratuitement et sans engagement.

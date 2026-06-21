@@ -37,10 +37,10 @@ const REGIMES = regimesFor(locale);
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Law 82-21 · decree 2-25-100</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Three regimes, only one is yours</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-          Law 82-21 on the autoproduction of electrical energy and its implementing decree
-          2-25-100 have been in force since 9 June 2026. Every autoproduction installation —
-          new or existing — now falls under one of the three regimes below, depending on its
-          power and its connection.
+          Since 9 June 2026, Law 82-21 on the self-production of electrical energy and its
+          implementing decree 2-25-100 have been in force. From now on, whether it is brand new
+          or already installed, every self-production installation falls under one of the three
+          regimes below — and it is its power and its connection that decide which one.
         </p>
       </div>
     </section>
@@ -72,6 +72,10 @@ const REGIMES = regimesFor(locale);
             </div>
           </div>
         ))}
+      </div>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Regimes for a business site →</a>
+        <a href={L('/guides/loi-82-21-expliquee')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Law 82-21 explained simply →</a>
       </div>
     </section>
 
