@@ -158,6 +158,8 @@ interface SolveCtx {
   effectiveNeed: number;
   obstructions: LngLat[][];
   defaultSetbackM: number;
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
+  overhangM: number;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -187,10 +189,12 @@ function evalOne(
   margin: MarginAxis,
 ): LiveConfigEval {
   const setbackM = margin === 'keep' ? ctx.defaultSetbackM : 0;
-  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}`;
+  // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
+  // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
+  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}`;
   let pack = ctx.cache.get(key);
   if (!pack) {
-    pack = packConfig(ctx.ring, ctx.latitudeDeg, { family, tiltDeg, azimuthDeg, obstructions: ctx.obstructions, setbackM });
+    pack = packConfig(ctx.ring, ctx.latitudeDeg, { family, tiltDeg, azimuthDeg, obstructions: ctx.obstructions, setbackM, overhangM: ctx.overhangM });
     ctx.cache.set(key, pack);
   }
   const grid = layout === 'portrait' ? pack.portrait : pack.landscape;
@@ -293,6 +297,8 @@ export interface LiveSolveOptions {
   city?: string;
   /** Rendement spécifique PVGIS injecté (sinon table committée seule). */
   yieldFn?: YieldFn;
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
+  overhangM?: number;
 }
 
 export interface LiveSolveResult {
@@ -364,6 +370,7 @@ export function solveLive(
     target,
     obstructions,
     defaultSetbackM: PERIMETER_SETBACK_M,
+    overhangM: Math.max(0, options.overhangM ?? 0),
     tariff,
     yieldFn: options.yieldFn,
     roofAz,

@@ -189,8 +189,16 @@ def _dispatch_webpush(user, title, body, link=None):
         'title': str(title), 'body': str(body or ''),
         'link': str(link or ''),
     })
-    admin_email = getattr(settings, 'VAPID_ADMIN_EMAIL', '') or 'admin@erp.local'
-    claims = {'sub': f'mailto:{admin_email}'}
+    # Sujet VAPID (contact du serveur applicatif). Apple Web Push REJETTE un
+    # sujet non routable — ex. l'ancien défaut `mailto:admin@erp.local` — avec
+    # `403 BadJwtToken` et abandonne SILENCIEUSEMENT chaque push iOS (FCM/Chrome
+    # est laxiste, d'où « ça marche sur Windows mais pas sur iPhone »). À défaut
+    # d'email configuré (`VAPID_ADMIN_EMAIL`), on retombe donc sur l'URL https: de
+    # production — un sujet VAPID valide (RFC 8292) accepté par Apple — pour que le
+    # push iPhone fonctionne sans configuration serveur supplémentaire.
+    admin_email = (getattr(settings, 'VAPID_ADMIN_EMAIL', '') or '').strip()
+    sub = f'mailto:{admin_email}' if admin_email else 'https://taqinor.ma'
+    claims = {'sub': sub}
     # Clé privée résolue (env si fournie, sinon singleton auto-généré).
     _public, private_key = resolve_vapid_keys()
 

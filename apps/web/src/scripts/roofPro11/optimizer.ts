@@ -323,6 +323,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       azimuthDeg: w.azimuthDeg,
       obstructions: obstructionRings(),
       setbackM,
+      overhangM: ctx.overhangM, // W109 — le gagnant rendu déborde comme le solve l'a évalué
     });
     const grid = w.layout === 'portrait' ? pack.portrait : pack.landscape;
     renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
@@ -380,7 +381,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
     };
-    const res = solveLive(ring, ctx.centroidLat, bill, obstructionRings(), locks, { yieldFn });
+    const res = solveLive(ring, ctx.centroidLat, bill, obstructionRings(), locks, { yieldFn, overhangM: ctx.overhangM });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
     const hasLocks = !!(locks.orientation || locks.tiltDeg != null || locks.layout || locks.margin || locks.need != null);
@@ -607,7 +608,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.pitchedYieldCache.get(pitchedKey(pitch, facing));
       return v == null ? null : v;
     };
-    const res = solveLivePitched(ring, ctx.centroidLat, bill, ctx.pitchDeg, ctx.facingAzimuthDeg, obstructionRings(), locks, { yieldFn });
+    const res = solveLivePitched(ring, ctx.centroidLat, bill, ctx.pitchDeg, ctx.facingAzimuthDeg, obstructionRings(), locks, { yieldFn, overhangM: ctx.overhangM });
     ctx.pitchedLiveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
     const hasLocks = !!(locks.layout || locks.margin || locks.need != null);
@@ -870,7 +871,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
     };
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, bill, obstructionRings(), { yieldFn });
+    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, bill, obstructionRings(), { yieldFn, overhangM: ctx.overhangM });
     paintComparison();
     renderMatrixOptimumCard();
     // W34 — le cache PVGIS vient d'être enrichi : re-résout le solveur vivant pour que

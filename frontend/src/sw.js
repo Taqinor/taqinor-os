@@ -82,6 +82,16 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: '/pwa-192.png',
     badge: '/pwa-192.png',
+    // Notification VISIBLE et insistante : la bannière reste affichée jusqu'à
+    // ce que l'utilisateur la ferme (au lieu de disparaître seule) et le
+    // téléphone vibre. Le SON est joué par l'OS (réglages de notification de
+    // l'appareil) — le web ne permet pas d'embarquer un son personnalisé.
+    requireInteraction: true,
+    vibrate: [200, 100, 200],
+    // Regroupe par lien : une nouvelle notification du même enregistrement
+    // remplace la précédente, mais re-sonne/re-vibre (renotify).
+    tag: data.link || 'taqinor-notif',
+    renotify: true,
     // Conserve le lien interne pour la navigation au clic.
     data: { link: data.link || '/' },
   }

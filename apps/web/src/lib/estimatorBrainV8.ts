@@ -127,6 +127,8 @@ interface PitchedCtx {
   target: number;
   effectiveNeed: number;
   obstructions: LngLat[][];
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
+  overhangM: number;
   tariff: TariffGrid;
   yieldFn: PitchedYieldFn | undefined;
   packCache: Map<string, FlushPack>;
@@ -134,12 +136,14 @@ interface PitchedCtx {
 
 function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: PitchedMarginAxis): PitchedLiveEval {
   const setbackM = margin === 'keep' ? PERIMETER_SETBACK_M : 0;
-  const key = String(Math.round(setbackM * 1000));
+  // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
+  // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
+  const key = `${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}`;
   let pack = ctx.packCache.get(key);
   if (!pack) {
     pack = packFlushPlane(
       { ring: ctx.ring, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, obstructions: ctx.obstructions },
-      { setbackM },
+      { setbackM, overhangM: ctx.overhangM },
     );
     ctx.packCache.set(key, pack);
   }
@@ -199,6 +203,8 @@ export interface PitchedSolveOptions {
   city?: string;
   /** Rendement spécifique PVGIS (kWh/kWc/an) du plan (pente, face), pose 'building'. */
   yieldFn?: PitchedYieldFn;
+  /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
+  overhangM?: number;
 }
 
 export interface PitchedLiveResult {
@@ -272,6 +278,7 @@ export function solveLivePitched(
     target,
     effectiveNeed,
     obstructions,
+    overhangM: Math.max(0, options.overhangM ?? 0),
     tariff,
     yieldFn: options.yieldFn,
     packCache: new Map<string, FlushPack>(),

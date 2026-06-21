@@ -4,12 +4,13 @@
  * 2026-06-20) — comportement INCHANGÉ.
  *
  * GARDE-FOU PERMANENT : ce module ne poste AUCUN lead. Il n'écrit QUE dans les
- * champs du diagnostic existant (`lf-area`, `lf-orient`, `lf-kwc-est`, et — pour
- * le diagnostic « une page » de pro-11 — `lf-city`, `billRange`, `roofType`,
- * pré-remplis depuis le simulateur) et défile vers `#simulateur` ; toute la
- * plomberie (seuil, consentement, webhook, CAPI) reste celle du formulaire
- * existant. Aucune requête réseau (ni route lead, ni route de simulation) n'est
- * émise ici.
+ * champs du diagnostic existant (`lf-area`, `lf-orient`, `lf-kwc-est`, W110 :
+ * `lf-name`/`lf-phone`/`lf-city` quand on les lui fournit + la ville géocodée
+ * depuis `rp9-address`, et — pour le diagnostic « une page » de pro-11 — les
+ * selects OBLIGATOIRES `billRange`/`roofType` pré-remplis depuis le simulateur)
+ * et défile vers `#simulateur` ; toute la plomberie (seuil, consentement,
+ * webhook, CAPI) reste celle du formulaire existant. Aucune requête réseau (ni
+ * route lead, ni route de simulation) n'est émise ici.
  */
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
@@ -18,9 +19,17 @@ import { type CardData } from './types';
 import { BILL_RANGES } from '../../lib/billRange';
 import { ROOF_TYPES } from '../../lib/lead';
 
+/** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
+ *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
+export interface LeadContact {
+  name?: string;
+  phone?: string;
+  city?: string;
+}
+
 export interface Prefill {
   geodesicArea: () => number;
-  prefillLead: (d: CardData) => void;
+  prefillLead: (d: CardData, contact?: LeadContact) => void;
 }
 
 // Tranche de facture mensuelle (MAD) ↔ id `BILL_RANGES`. Le simulateur saisit un
@@ -93,7 +102,7 @@ export function createPrefill(ctx: Ctx): Prefill {
     return 'sud';
   }
 
-  function prefillLead(d: CardData) {
+  function prefillLead(d: CardData, contact?: LeadContact) {
     // Pré-remplit le diagnostic enrichi — RÉUTILISE le même formulaire et toute sa
     // plomberie (seuil 1 000 MAD, consentement, webhook, CAPI) : on n'écrit que
     // dans ses champs, on ne poste AUCUN lead ici.
@@ -116,14 +125,25 @@ export function createPrefill(ctx: Ctx): Prefill {
     if (orient) orient.value = leadOrientationId(); // W85 : face réelle de la config gagnante
     if (kwc) kwc.value = String(Math.round(d.kwc * 100) / 100);
 
-    // Diagnostic « une page » (pro-11) : le visiteur ne tape que Nom/Téléphone/Adresse.
-    // On pré-remplit les selects OBLIGATOIRES (billRange, roofType) + l'adresse depuis
-    // le simulateur, pour que la soumission passe sans saisie supplémentaire. On
-    // n'écrase que si on a une valeur sûre (sinon le visiteur complète lui-même).
-    const cityEl = $<HTMLInputElement>('lf-city');
-    const addressEl = document.getElementById('rp9-address') as HTMLInputElement | null;
-    if (cityEl && addressEl && addressEl.value.trim()) cityEl.value = addressEl.value.trim();
+    // W110 — flux en une page : reporte Nom / Téléphone / Ville quand fournis, et — à défaut
+    // de ville saisie — la VILLE GÉOCODÉE depuis #rp9-address (handoff, jamais un POST). On
+    // n'écrase un champ que si on a une vraie valeur (champ vide → on n'efface rien).
+    const name = $<HTMLInputElement>('lf-name');
+    const phone = $<HTMLInputElement>('lf-phone');
+    const city = $<HTMLInputElement>('lf-city');
+    const trimmedName = contact?.name?.trim();
+    const trimmedPhone = contact?.phone?.trim();
+    const trimmedCity = contact?.city?.trim();
+    const geocodedAddress = ($<HTMLInputElement>('rp9-address')?.value ?? '').trim();
+    if (name && trimmedName) name.value = trimmedName;
+    if (phone && trimmedPhone) phone.value = trimmedPhone;
+    const cityValue = trimmedCity || geocodedAddress;
+    if (city && cityValue && !city.value.trim()) city.value = cityValue;
 
+    // Diagnostic « une page » (pro-11) : le visiteur ne tape que Nom/Téléphone/Adresse.
+    // On pré-remplit les selects OBLIGATOIRES (billRange, roofType) depuis le simulateur,
+    // pour que la soumission passe sans saisie supplémentaire. On n'écrit que des valeurs
+    // sûres (id connu) — sinon le visiteur complète lui-même.
     const billSelect = $<HTMLSelectElement>('lf-bill');
     const billInput = document.getElementById('rp9-bill') as HTMLInputElement | null;
     if (billSelect && billInput) {
@@ -131,7 +151,6 @@ export function createPrefill(ctx: Ctx): Prefill {
       const id = billRangeIdForAmount(mad);
       if (id && BILL_RANGES.some((r) => r.id === id)) billSelect.value = id;
     }
-
     const roofSelect = $<HTMLSelectElement>('lf-roof');
     if (roofSelect) roofSelect.value = roofTypeIdForBuilder(ctx.roofType);
 
