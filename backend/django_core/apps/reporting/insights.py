@@ -804,3 +804,106 @@ def _cf_module_model(module):
         from apps.sav.models import Ticket
         return Ticket
     return None
+
+
+# ── FG98 — Analyse cohortes / saisonnalité ────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def cohorts(request):
+    """FG98 — Cohortes de leads par mois d'acquisition.
+
+    Paramètres optionnels :
+      ?from=YYYY-MM-DD  &to=YYYY-MM-DD  — fenêtre (défaut : 12 mois)
+      ?group_by=canal   — dimension de regroupement secondaire (défaut : aucune)
+
+    Retourne pour chaque mois d'acquisition :
+      - nb_leads           : leads entrants dans la cohorte
+      - nb_signes          : signés à terme (toute date de signature)
+      - taux_signature     : %
+      - avg_days_to_sign   : durée moyenne lead→SIGNED (en jours)
+
+    Les données sont company-scopées côté serveur.
+    """
+    from apps.crm.models import Lead
+
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+
+    # Fenêtre par défaut : 12 mois glissants.
+    today = date.today()
+    if not start:
+        start = (today.replace(day=1) - timedelta(days=365)).replace(day=1)
+    if not end:
+        end = today
+
+    qs = Lead.objects.filter(
+        **co, is_archived=False,
+        date_creation__date__gte=start,
+        date_creation__date__lte=end,
+    )
+
+    group_by = request.query_params.get('group_by', '').strip()
+    valid_group_by = {'canal'}  # champs supportés pour le group-by secondaire
+
+    # Buckets par mois d'acquisition.
+    cohort_map: dict = defaultdict(lambda: {
+        'leads': [], 'signes': 0, 'durees': []
+    })
+
+    for lead in qs.only('id', 'stage', 'date_creation', 'canal',
+                         'date_modification').iterator():
+        month_key = lead.date_creation.strftime('%Y-%m') if lead.date_creation else 'inconnu'
+        dim_key = month_key
+        if group_by in valid_group_by:
+            canal = getattr(lead, 'canal', '') or ''
+            dim_key = f'{month_key}/{canal or "—"}'
+
+        cohort_map[dim_key]['leads'].append(lead.id)
+        if lead.stage == 'SIGNED':
+            cohort_map[dim_key]['signes'] += 1
+            # Proxy : date_modification ≈ date de signature (auto_now).
+            if lead.date_modification and lead.date_creation:
+                sig_date = lead.date_modification.date()
+                created_date = lead.date_creation.date()
+                delta = (sig_date - created_date).days
+                if delta >= 0:
+                    cohort_map[dim_key]['durees'].append(delta)
+
+    result = []
+    for key in sorted(cohort_map.keys()):
+        bucket = cohort_map[key]
+        nb = len(bucket['leads'])
+        signes = bucket['signes']
+        durees = bucket['durees']
+        taux = round(signes / nb * 100, 1) if nb > 0 else 0.0
+        avg_days = round(sum(durees) / len(durees), 1) if durees else None
+        entry = {
+            'cohorte': key,
+            'nb_leads': nb,
+            'nb_signes': signes,
+            'taux_signature': taux,
+            'avg_days_to_sign': avg_days,
+        }
+        result.append(entry)
+
+    x = _maybe_xlsx(
+        request, 'cohortes.xlsx',
+        ['Cohorte', 'Leads', 'Signés', 'Taux (%)', 'Délai moyen (j)'],
+        [[r['cohorte'], r['nb_leads'], r['nb_signes'],
+          r['taux_signature'], r['avg_days_to_sign'] or '']
+         for r in result],
+        'Cohortes')
+    if x:
+        return x
+
+    return Response({
+        'from': start.isoformat(),
+        'to': end.isoformat(),
+        'group_by': group_by or None,
+        'cohorts': result,
+    })

@@ -451,3 +451,89 @@ class TestCFGroupBy(InsightsBase):
         self.assertEqual(resp.status_code, 200)
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))
+
+
+class TestCohorts(InsightsBase):
+    """FG98 — analyse cohortes leads par mois d'acquisition."""
+
+    def _make_lead(self, nom, stage, months_ago=0, canal=None):
+        """Crée un lead dont la date_creation est décalée de months_ago mois."""
+        from datetime import date as d, timedelta
+        today = d.today()
+        # Décaler au premier du mois cible.
+        target_month = today.replace(day=1)
+        for _ in range(months_ago):
+            target_month = (target_month - timedelta(days=1)).replace(day=1)
+        lead = Lead.objects.create(
+            company=self.company, nom=nom, stage=stage,
+            canal=canal or '')
+        Lead.objects.filter(pk=lead.pk).update(date_creation=target_month)
+        lead.refresh_from_db()
+        return lead
+
+    def test_cohorts_shape(self):
+        """L'endpoint retourne from/to/cohorts."""
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('from', 'to', 'cohorts'):
+            self.assertIn(key, resp.data)
+        self.assertIsInstance(resp.data['cohorts'], list)
+
+    def test_cohorts_counts_leads_by_month(self):
+        """Deux leads du mois courant appartiennent à la même cohorte."""
+        self._make_lead('A', 'NEW', months_ago=0)
+        self._make_lead('B', 'SIGNED', months_ago=0)
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        self.assertEqual(resp.status_code, 200)
+        from datetime import date as d
+        month_key = d.today().strftime('%Y-%m')
+        entry = next(
+            (c for c in resp.data['cohorts'] if c['cohorte'] == month_key), None)
+        self.assertIsNotNone(entry, f'Cohorte {month_key} absente')
+        self.assertGreaterEqual(entry['nb_leads'], 2)
+        self.assertGreaterEqual(entry['nb_signes'], 1)
+
+    def test_cohorts_taux_signature(self):
+        """Taux de signature cohérent (0–100)."""
+        self._make_lead('C1', 'SIGNED', months_ago=1)
+        self._make_lead('C2', 'NEW', months_ago=1)
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        self.assertEqual(resp.status_code, 200)
+        for entry in resp.data['cohorts']:
+            self.assertGreaterEqual(entry['taux_signature'], 0)
+            self.assertLessEqual(entry['taux_signature'], 100)
+
+    def test_cohorts_company_scoped(self):
+        """Les leads d'une autre société n'apparaissent pas."""
+        Lead.objects.create(company=self.other, nom='Foreign', stage='NEW')
+        self._make_lead('Local', 'NEW', months_ago=0)
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        total_leads = sum(c['nb_leads'] for c in resp.data['cohorts'])
+        # Seulement le lead local.
+        self.assertGreaterEqual(total_leads, 1)
+        # Tous les leads comptés sont de la société courante.
+        from apps.crm.models import Lead as L
+        local_count = L.objects.filter(company=self.company, is_archived=False).count()
+        self.assertEqual(total_leads, local_count)
+
+    def test_cohorts_xlsx_export(self):
+        """?export=xlsx retourne un fichier ZIP (xlsx)."""
+        resp = self.api.get('/api/django/reporting/insights/cohorts/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
+
+    def test_cohorts_group_by_canal(self):
+        """?group_by=canal scinde les cohortes par canal."""
+        self._make_lead('G1', 'NEW', months_ago=0, canal='facebook')
+        self._make_lead('G2', 'NEW', months_ago=0, canal='google')
+        resp = self.api.get(
+            '/api/django/reporting/insights/cohorts/?group_by=canal')
+        self.assertEqual(resp.status_code, 200)
+        # Les clés de cohorte contiennent un séparateur '/'.
+        keys_with_canal = [
+            c['cohorte'] for c in resp.data['cohorts']
+            if '/' in c['cohorte']
+        ]
+        self.assertTrue(len(keys_with_canal) > 0,
+                        'Les cohortes group_by=canal doivent avoir "mois/canal"')
