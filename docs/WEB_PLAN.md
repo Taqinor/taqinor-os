@@ -1166,7 +1166,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   exists). Files: `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/lib/realisations.ts`.
 - [x] W185 — **Per-realisation OG card** (each case reuses a generic OG today). Files:
   `apps/web/src/pages/realisations/[slug].astro`.
-- [ ] W186 — **Optional duotone/grade pass on non-hero photos** so the imagery matches the
+- [x] W186 — **Optional duotone/grade pass on non-hero photos** so the imagery matches the
   "Cinéma du chantier" claim (keep the hero ungraded for LCP). Files: `apps/web/scripts/` or scoped
   `apps/web/src/styles/v3-photo-motion.css`.
 - [ ] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
@@ -1229,7 +1229,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   repeated across ~40 hero blocks). Files: `apps/web/src/styles/global.css` + heroes.
 - [x] W207 — **Wire up or remove the orphaned `.reveal`/`.emerge` CSS scroll-timeline reveals**
   (defined, zero usages). Files: `apps/web/src/styles/global.css`, `v3-photo-motion.css`.
-- [ ] W208 — **Optional slow shimmer on `.seam-lumiere` + subtle brand-logo/testimonial-card hover.**
+- [x] W208 — **Optional slow shimmer on `.seam-lumiere` + subtle brand-logo/testimonial-card hover.**
   Files: `apps/web/src/styles/global.css`, `v2.css`, `BrandStrip.astro`, `Testimonials.astro`.
 
 **— Shared interaction primitives —**
@@ -1250,7 +1250,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - [ ] W213 — **Mirror the ~90 directional `→` arrows across `ar/*`** (direction-aware glyph or
   SVG flipped via `rtl:-scale-x-100`). Files: `apps/web/src/pages/ar/**`.
-- [ ] W214 — **Add a global `[dir="rtl"]` stylesheet** (accent rails, timeline dots, blockquote
+- [x] W214 — **Add a global `[dir="rtl"]` stylesheet** (accent rails, timeline dots, blockquote
   borders, spec-row alignment), flip the asymmetric two-column hero grids, and guard `tech-label`
   letter-spacing/uppercase off for Arabic. Files: `apps/web/src/styles/global.css`, `apps/web/src/pages/ar/**`.
 
@@ -1494,3 +1494,6 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W204: reduced-motion-safe hover arrow nudge on gallery/CTA "→" links (index, nos-solutions, realisations index).
 - 2026-06-21 — W211: removed whitespace-nowrap from wide figures (kWc/%/years) on homepage + city + realisation pages (+ en/ar twins) → no 320px overflow.
 - 2026-06-21 — W201: documented 3 sanctioned hero archetypes (top-of-file note) and kept installation-solaire-[city] on archetype B.
+- 2026-06-21 — W208: reduced-motion-gated slow shimmer on .seam-lumiere (RTL-aware) + subtle brand-logo lift and testimonial-card hover.
+- 2026-06-21 — W186: subtle .photo-grade duotone utility in v3-photo-motion.css for non-hero photos (hero/LCP excluded; opt-in, documented).
+- 2026-06-21 — W214: comprehensive [dir="rtl"] block in global.css (tech-label tracking off, logical-property border/padding flips, rule-brass reorder, blockquote, grids, shimmer direction) + one scoped ar timeline fix.
