@@ -127,7 +127,7 @@ const TICKET_STATUS_TONES = {
   resolu: 'success',
   cloture: 'success',
 }
-function StatutPill({ statut }) {
+export function StatutPill({ statut }) {
   return <StatusPill tone={TICKET_STATUS_TONES[statut] ?? 'neutral'} label={statusLabel(statut)} />
 }
 
@@ -141,13 +141,13 @@ function GarantieIndicator({ value }) {
 }
 
 const PRIORITE_TONES = { basse: 'neutral', normale: 'info', haute: 'warning', urgente: 'danger' }
-function PrioriteBadge({ value }) {
+export function PrioriteBadge({ value }) {
   return <Badge tone={PRIORITE_TONES[value] ?? 'neutral'}>{TICKET_PRIORITE_LABELS[value] ?? value}</Badge>
 }
 
 // L298/L6 — badge SLA/âge des tickets ouverts (calculé à la lecture, sans
 // scheduler). Couleur escaladée pour les ouverts en retard. Rien sur les autres.
-function TicketSlaBadge({ ticket }) {
+export function TicketSlaBadge({ ticket }) {
   const age = ticketAgeDays(ticket)
   const level = ticketSlaLevel(ticket)
   if (age == null
@@ -807,7 +807,7 @@ function TicketDetail({ ticket, onClose, onSaved }) {
 // L295 — colonne Kanban (un statut) : cartes ticket cliquables, couleur de
 // statut (TICKET_STATUS_COLORS) en bandeau de tête. Ordre funnel garanti par
 // l'appelant (TICKET_STATUSES). Couleur jamais le seul signal — le libellé reste.
-function KanbanColumn({ statut, tickets, onSelect }) {
+export function KanbanColumn({ statut, tickets, onSelect }) {
   return (
     <div className="flex w-64 shrink-0 flex-col gap-2">
       <div className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm font-semibold"
