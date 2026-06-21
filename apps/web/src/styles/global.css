@@ -385,6 +385,15 @@ body {
   color: var(--color-lune-soft);
 }
 
+/* ─── W175 — Eyebrow canonique sur fond clair (« salle blanche ») ──────────
+   Les sections claires mélangaient azur et brass pour leurs micro-étiquettes.
+   .eyebrow-light fixe un accent unique (azur-600) cohérent avec la marque.
+   Compose avec .tech-label pour la typographie (capitales, espacement).
+   Usage : <span class="tech-label eyebrow-light">Votre étude</span> */
+.eyebrow-light {
+  color: var(--color-azur-600);
+}
+
 /* ─── W172 — Scrim héro canonique ──────────────────────────────────────────
    Remplace les dégradés inline main-tuning (/35, /45, /55…) par un scrim
    standardisé en deux couches : radial central + linéaire bas.
