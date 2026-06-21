@@ -40,12 +40,15 @@ class Migration(migrations.Migration):
             name="roof_point",
             field=models.JSONField(blank=True, null=True),
         ),
-        # Token: add nullable, backfill distinct values, then enforce unique.
+        # Token: add nullable (NO column-level default — a one-shot default makes
+        # every existing row share ONE value, which then collides on the unique
+        # index). Existing rows land NULL, the backfill gives each a distinct
+        # UUID, then AlterField enforces uniqueness.
         migrations.AddField(
             model_name="lead",
             name="token",
             field=models.UUIDField(
-                db_index=True, default=uuid.uuid4, editable=False, null=True
+                db_index=True, editable=False, null=True
             ),
         ),
         migrations.RunPython(_backfill_tokens, migrations.RunPython.noop),
