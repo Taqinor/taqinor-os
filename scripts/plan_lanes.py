@@ -29,9 +29,17 @@ For every unchecked ``[ ]`` BUILD-QUEUE task it derives:
   4. a domain keyword in the section name or task text;
   5. else ``UNASSIGNED`` (``--check`` flags these so coverage can reach 100 %).
 
-* **gate** -- ``ROUTINE``/``SCHEMA`` are buildable unattended; ``ARCH`` /
-  ``DECISION`` / ``AUTH`` / ``COST`` / ``GALLERY`` and a non-pre-approved
-  ``DEP:<lib>`` are stop-and-ask (skipped + flagged, never auto-built).
+* **category label** -- the task's declared category (``ROUTINE`` / ``SCHEMA``
+  / ``ARCH`` / ``DECISION`` / ``AUTH`` / ``COST`` / ``GALLERY`` / ``DEP:<lib>``).
+  Per the **FOUNDER STANDING CONSENT (2026-06-21, Reda)** every category is
+  buildable — the former auto-skip of ``ARCH``/``DECISION``/``AUTH``/``COST``/
+  ``GALLERY``/``DEP`` is **LIFTED**. The planner still LABELS the category for
+  visibility (and the DONE LOG must note new paid/external deps, auth changes,
+  destructive migrations, or brand-new architecture), but it NEVER gates on it:
+  nothing is auto-skipped. A task is only ever held back by a genuine external
+  prerequisite the run cannot satisfy (a founder-provisioned credential/secret/
+  account) or a conflict with a non-negotiable rule — those are marked
+  ``[BLOCKED]`` in the plan, not auto-detected here. See CLAUDE.md.
 
 * **deps** -- explicit ``@after:<ID>`` and resolvable ``DEP:<...ID>`` edges, so
   a dependent task is held back to a later wave.
@@ -68,11 +76,18 @@ _NON_QUEUE_SECTION = re.compile(
     r"^#{1,3}\s+(GATED|MANUAL|DONE LOG|ALREADY LIVE)\b", re.IGNORECASE
 )
 
-# Stop-and-ask gate keywords (a task carrying any of these is skipped + flagged).
-GATED_KEYWORDS = {"ARCH", "DECISION", "AUTH", "COST", "GALLERY"}
+# Category keywords kept ONLY as informational labels. Per the founder standing
+# consent (2026-06-21) NONE of these gate any more — every category is buildable
+# and nothing is auto-skipped. The set is empty so no keyword is ever treated as
+# a stop-and-ask; the labels themselves are still surfaced for visibility.
+GATED_KEYWORDS: set[str] = set()
 
-# Dependencies the founder pre-approved in the STANDING RULES -- a DEP on one of
-# these is NOT a blocker.
+# Category keywords the planner still recognises and LABELS (for the report and
+# the DONE-LOG visibility note) -- labelling only, never gating.
+LABEL_KEYWORDS = {"ARCH", "DECISION", "AUTH", "COST", "GALLERY"}
+
+# Dependencies the founder long ago pre-approved. Kept for reference; with the
+# standing consent a DEP no longer gates regardless of membership here.
 PRE_APPROVED_DEPS = {
     "openpyxl", "leaflet", "celery", "celery-beat", "celerybeat", "beat",
     "brevo", "pyotp", "pywebpush", "vite-plugin-pwa", "pwa",
@@ -232,20 +247,27 @@ def _section_lane(headers: dict[str, str]) -> str:
 
 
 def _classify_gate(label: str) -> tuple[str, list[str]]:
-    """Return ('buildable'|'gated', [reasons])."""
-    reasons: list[str] = []
+    """Return ('buildable', [category labels]).
+
+    Founder standing consent (2026-06-21): EVERY category is buildable, so this
+    is always 'buildable' and nothing is auto-skipped. The returned list is the
+    task's category labels (ARCH/DECISION/AUTH/COST/GALLERY and any DEP:<lib>),
+    surfaced for visibility only — the run still notes a new paid/external dep,
+    auth change, destructive migration, or brand-new architecture in the DONE
+    LOG. ``GATED_KEYWORDS`` is empty, so it can never flip the status to gated.
+    """
+    labels: list[str] = []
     tokens = {t.upper() for t in _GATE_TOKEN_RE.findall(label)}
-    hard = tokens & GATED_KEYWORDS
-    if hard:
-        reasons += sorted(hard)
+    labels += sorted(tokens & LABEL_KEYWORDS)
     for dep in _DEP_TOKEN_RE.findall(label):
-        # A DEP that names another task id is a dependency edge, not a gate.
+        # A DEP that names another task id is a dependency edge, not a label.
         if _TASK_ID_RE.search(dep):
             continue
-        if dep.lower() in PRE_APPROVED_DEPS:
-            continue
-        reasons.append(f"DEP:{dep}")
-    return ("gated" if reasons else "buildable"), reasons
+        labels.append(f"DEP:{dep}")
+    # GATED_KEYWORDS is intentionally empty -> never gated. Kept as a guard so a
+    # future re-introduction of a gate keyword would still flow through here.
+    gated = bool({t.upper() for t in _GATE_TOKEN_RE.findall(label)} & GATED_KEYWORDS)
+    return ("gated" if gated else "buildable"), labels
 
 
 def _deps(label: str) -> set[str]:
@@ -369,7 +391,8 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         "",
         f"{c['buildable']} buildable task(s) across {c['lanes']} independent lane(s) "
         f"-> {c['waves']} wave(s), up to {c['max_parallel']} in parallel.",
-        f"{c['gated']} gated (skip + flag), {c['unassigned']} unassigned (need a "
+        f"{c['gated']} gated (auto-gating is OFF — every category builds; this "
+        f"stays 0 by design), {c['unassigned']} unassigned (need a "
         f"@lane:/@files: tag).",
         "",
         "## Waves (each row builds in parallel; one task per lane)",
