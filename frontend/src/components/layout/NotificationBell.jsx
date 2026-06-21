@@ -18,6 +18,30 @@ import {
 } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import notificationsApi from '../../api/notificationsApi'
+import { toastInfo } from '../../lib/toast'
+
+// Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
+// l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
+// est bloqué (aucun geste utilisateur récent) — aucun asset son embarqué.
+function playBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.type = 'sine'
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.45)
+    osc.onended = () => { try { ctx.close() } catch { /* noop */ } }
+  } catch { /* best-effort : pas de son si l'autoplay est bloqué */ }
+}
 
 // L13 — tri par urgence : le plus en retard d'abord (date la plus ancienne).
 // Les éléments sans date passent en fin de liste.
@@ -68,30 +92,59 @@ export default function NotificationBell() {
   // L'invite reste masquée tant que l'utilisateur n'a pas ouvert la cloche.
   const [promptDismissed, setPromptDismissed] = useState(false)
   const ref = useRef(null)
+  // Dernier compteur non-lu connu : sert à détecter l'ARRIVÉE d'une nouvelle
+  // notification (compteur en hausse) pour déclencher le bip + le toast.
+  const prevUnreadRef = useRef(null)
   const navigate = useNavigate()
 
-  const load = () => {
-    reportingApi.getNotifications()
-      .then((r) => { setData(r.data); setDerivedError(false) })
-      .catch(() => { setData(null); setDerivedError(true) })
-      .finally(() => setLoaded(true))
-    // Feed in-app persisté (best-effort : ne casse jamais la cloche).
+  // Recharge la liste in-app persistée (best-effort).
+  const refreshFeed = () => {
     notificationsApi.list({ unread: 0 })
       .then((r) => {
         const items = r.data?.results ?? r.data ?? []
         setFeed(Array.isArray(items) ? items.slice(0, 20) : [])
       })
       .catch(() => setFeed([]))
+  }
+
+  // Sondage léger du compteur non-lu. Si une nouvelle notification est arrivée
+  // (compteur en hausse) ET que ce n'est pas le tout premier chargement, on
+  // ALERTE immédiatement : bip sonore + toast + rafraîchit la liste — pour ne
+  // pas attendre un rechargement de page. Le push système (bannière OS) reste le
+  // canal temps réel quand l'app est fermée ; ceci couvre l'app OUVERTE.
+  const checkUnread = () => {
     notificationsApi.unreadCount()
-      .then((r) => setFeedUnread(r.data?.unread ?? 0))
-      .catch(() => setFeedUnread(0))
+      .then((r) => {
+        const n = r.data?.unread ?? 0
+        const prev = prevUnreadRef.current
+        if (prev !== null && n > prev) {
+          playBeep()
+          toastInfo('🔔 Nouvelle notification')
+          refreshFeed()
+        }
+        prevUnreadRef.current = n
+        setFeedUnread(n)
+      })
+      .catch(() => {})
+  }
+
+  const load = () => {
+    reportingApi.getNotifications()
+      .then((r) => { setData(r.data); setDerivedError(false) })
+      .catch(() => { setData(null); setDerivedError(true) })
+      .finally(() => setLoaded(true))
+    refreshFeed()
+    checkUnread()
   }
 
   useEffect(() => {
     load()
-    // Rafraîchit périodiquement (5 min) pendant que l'app est ouverte.
-    const iv = setInterval(load, 5 * 60 * 1000)
-    return () => clearInterval(iv)
+    // Rafraîchissement complet (alertes dérivées + feed) toutes les 3 min.
+    const ivFull = setInterval(load, 3 * 60 * 1000)
+    // Sondage léger du compteur toutes les 30 s → alerte sonore + toast quasi
+    // temps réel dès qu'une notification arrive, app ouverte.
+    const ivPoll = setInterval(checkUnread, 30 * 1000)
+    return () => { clearInterval(ivFull); clearInterval(ivPoll) }
   }, [])
 
   // Marque une notification persistée comme lue, puis recharge le compteur.
