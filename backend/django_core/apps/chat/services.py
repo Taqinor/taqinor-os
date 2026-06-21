@@ -191,6 +191,26 @@ def _preview(message):
     return 'Pièce jointe'
 
 
+# ── Transcription des mémos vocaux (S11) ──────────────────────────────
+def enqueue_voice_transcription(attachment_id):
+    """Enfile la transcription d'un mémo vocal APRÈS commit de la pièce.
+
+    Appelé par le signal `post_save` sur `MessageAttachment` (signals.py). On
+    diffère via `transaction.on_commit` pour que le worker ne lise pas une pièce
+    encore invisible (transaction en cours). Best-effort : si le broker est
+    indisponible, on n'interrompt jamais l'upload (la pièce restera `pending` et
+    pourra être relancée). NO-OP quand la transcription est désactivée — la tâche
+    elle-même bascule alors la pièce en `disabled`."""
+    def _send():
+        try:
+            from .tasks import task_transcribe_voice_attachment
+            task_transcribe_voice_attachment.delay(attachment_id)
+        except Exception:  # pragma: no cover - broker indisponible
+            pass
+
+    transaction.on_commit(_send)
+
+
 # ── Lecture / non-lus (S4) ────────────────────────────────────────────
 def mark_read(conversation, user, when=None):
     """Avance `last_read_at` du membre à `when` (par défaut maintenant)."""
