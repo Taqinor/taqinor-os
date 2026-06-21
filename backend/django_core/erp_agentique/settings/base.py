@@ -83,6 +83,9 @@ INSTALLED_APPS = [
     'apps.automation',
     # N89 — API publique REST (clés API, scopes, webhooks signés).
     'apps.publicapi',
+    # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
+    # partie double, états de synthèse). Auto-écritures OFF par défaut.
+    'apps.compta',
 ]
 
 MIDDLEWARE = [
