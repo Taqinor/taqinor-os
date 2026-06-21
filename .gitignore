@@ -60,3 +60,7 @@ logs/
 # …but keep the shared permission allowlist tracked (personal
 # overrides live in the still-ignored settings.local.json).
 !.claude/settings.json
+# …and keep committed skills tracked (e.g. the error-autopilot routine
+# brain) so cloud sessions / routines get them in a fresh clone.
+!.claude/skills/
+!.claude/skills/**

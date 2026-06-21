@@ -22,12 +22,14 @@ relies on the agent's own memory — the file on disk is the memory.
 1. **Read this whole file.**
 2. **Drain the WHOLE BUILD QUEUE — never just one task, with MAXIMUM SAFE PARALLELISM.** Process
    EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and
-   MANUAL sections entirely. **At the START, compute the file-ownership + dependency graph from
-   the real `apps/web` code and partition the queue into independent lanes** (a lane shares a
-   file or has a dependency and runs in sequence; different lanes never touch each other's
-   files), then **fan the lanes out to up to 8 concurrent worktree subagents** (`isolation:
-   worktree`, each in its own isolated git worktree so two never edit the same files at once),
-   in **waves of up to 8** when there are more lanes, with fewer agents when there are fewer.
+   MANUAL sections entirely. **At the START, run `python scripts/plan_lanes.py docs/WEB_PLAN.md`**
+   to compute the file-ownership + dependency graph from the real `apps/web` code and emit a
+   **maximally-parallel wave plan** (a lane shares a file or has a dependency and runs in
+   sequence; different lanes never touch each other's files; each wave takes one head per lane,
+   longest lanes first), then **fan each wave's lanes out to concurrent worktree subagents**
+   (`isolation: worktree`, each in its own isolated git worktree so two never edit the same files
+   at once) up to the session's worktree ceiling (default 8, raised as high as the session can
+   sustain via `--max-lanes`), **continuously refilled (work-stealing)** rather than rigid waves.
    Each subagent commits its lane to its own worktree branch as each task lands; the orchestrator
    folds every branch into one `dev` at the end. Scope stays strictly inside `apps/web/**` and
    the `docs/WEB_PLAN*` files. **Default to running this as a dynamic workflow with review** —
