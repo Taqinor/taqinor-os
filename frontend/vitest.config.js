@@ -12,5 +12,12 @@ export default defineConfig({
     include: ['src/**/*.test.jsx'],
     setupFiles: ['./src/test/setup.js'],
     css: false,
+    coverage: {
+      // `npm run test:coverage` → un % visible des composants/UX couverts.
+      provider: 'v8',
+      reporter: ['text-summary', 'json-summary'],
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/**/*.test.{js,jsx}', 'src/test/**', 'src/**/*.test.mjs'],
+    },
   },
 })
