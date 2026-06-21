@@ -12,6 +12,9 @@ from .checklist_etape import ChecklistEtapeModeleViewSet
 from .intervention import InterventionViewSet
 from .shotlist import ShotListSlotViewSet
 from .safety import SafetyChecklistSlotViewSet
+from .projet import (
+    JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
+)
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -22,4 +25,7 @@ __all__ = [
     'InterventionViewSet',
     'ShotListSlotViewSet',
     'SafetyChecklistSlotViewSet',
+    'JalonProjetViewSet',
+    'ModeleProjetViewSet',
+    'ReunionChantierViewSet',
 ]

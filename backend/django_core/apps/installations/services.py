@@ -368,3 +368,90 @@ def release_reservations(installation):
     return (StockReservation.objects
             .filter(installation=installation, active=True, consomme=False)
             .update(active=False))
+
+
+# ── FG296 — Instanciation d'un modèle de projet sur un chantier ───────────────
+# Un modèle de projet (« chantier-type ») pré-crée à la demande/signature les
+# jalons standard (FG293) et complète la nomenclature gelée du chantier
+# (`Installation.bom`) avec ses lignes de BoM type. IDEMPOTENT et ADDITIF :
+# on ne recrée jamais un jalon de même libellé déjà présent et on n'écrase
+# jamais une ligne de BoM déjà gelée pour le même produit.
+
+def _bom_existing_keys(installation):
+    """Clés produit déjà présentes dans la nomenclature gelée du chantier
+    (`produit_id` non nul), pour ne jamais dupliquer une ligne."""
+    keys = set()
+    for ligne in (installation.bom or []):
+        if isinstance(ligne, dict) and ligne.get('produit_id'):
+            keys.add(ligne['produit_id'])
+    return keys
+
+
+def instantiate_modele_projet(installation, modele, user=None):
+    """FG296 — applique un modèle de projet à un chantier.
+
+    Crée les `JalonProjet` du modèle (date cible pré-remplie = date de base
+    décalée de `offset_jours` ; base = `date_signature` du chantier, à défaut
+    aujourd'hui) sans dupliquer un jalon de même libellé déjà présent, et ajoute
+    les lignes de BoM type à `Installation.bom` sans écraser une ligne déjà gelée
+    pour le même produit. Renvoie un dict {jalons_crees, bom_lignes_ajoutees}.
+
+    Idempotent : ré-appliquer le même modèle ne crée aucun doublon."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import JalonProjet
+
+    company = installation.company
+    base_date = installation.date_signature or timezone.localdate()
+
+    # ── Jalons ───────────────────────────────────────────────────────────────
+    existing_libelles = {
+        j.libelle for j in installation.jalons.all()
+    }
+    jalons_crees = 0
+    for mj in modele.jalons.all():
+        if mj.libelle in existing_libelles:
+            continue
+        date_cible = None
+        try:
+            date_cible = base_date + timedelta(days=mj.offset_jours)
+        except (TypeError, OverflowError):
+            date_cible = None
+        JalonProjet.objects.create(
+            company=company, installation=installation,
+            phase=mj.phase or None, libelle=mj.libelle, ordre=mj.ordre,
+            date_cible=date_cible)
+        existing_libelles.add(mj.libelle)
+        jalons_crees += 1
+
+    # ── BoM type → nomenclature gelée du chantier ───────────────────────────
+    bom = list(installation.bom or [])
+    existing_keys = _bom_existing_keys(installation)
+    bom_ajoutees = 0
+    for ml in modele.bom_lignes.all():
+        produit_id = ml.produit_id
+        # On déduplique sur le produit catalogue ; une ligne sans produit
+        # (designation libre) est toujours ajoutée.
+        if produit_id and produit_id in existing_keys:
+            continue
+        try:
+            qte = float(ml.quantite)
+        except (TypeError, ValueError):
+            qte = None
+        bom.append({
+            'produit_id': produit_id,
+            'designation': ml.designation or '',
+            'quantite': qte,
+            'marque': None,
+        })
+        if produit_id:
+            existing_keys.add(produit_id)
+        bom_ajoutees += 1
+
+    if bom_ajoutees:
+        installation.bom = bom
+        installation.save(update_fields=['bom'])
+        # Réaligne les réservations de stock sur la nomenclature enrichie.
+        seed_reservations(installation)
+
+    return {'jalons_crees': jalons_crees, 'bom_lignes_ajoutees': bom_ajoutees}
