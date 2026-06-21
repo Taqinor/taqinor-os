@@ -1,0 +1,102 @@
+---
+title: "Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le secours"
+description: "Gamme Dyness LFP, ≥6 000 cycles, 10 ans de garantie — et le vrai différenciateur secours entre Deye SG (≈4–10 ms) et Huawei SUN2000 (< 3 s)."
+pubDate: 2026-06-21
+tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
+author: "Taqinor"
+ogSlug: "equipement"
+draft: false
+---
+
+## La gamme Dyness LFP
+
+Dyness propose une gamme entièrement en chimie **LiFePO4 (LFP)** — la référence pour le stockage résidentiel au Maroc : bonne tenue à la chaleur, sécurité élevée (pas de dégagement d'oxygène en cas d'emballement), et durée de vie bien supérieure au gel ou à l'AGM.
+
+Tous les modèles partagent le même socle : **≥ 6 000 cycles** et une **garantie 10 ans à 70 % de rétention de capacité**.
+
+| Modèle | Capacité nominale | Particularité |
+|---|---|---|
+| **B4850** | 2,4 kWh | Entrée de gamme, 90 % de DoD, 0–55 °C |
+| **PowerDepot H5B** | 5,12 kWh | Chauffage intégré, **−20 à +55 °C**, ≈ 95 % DoD |
+| **Tower T7** | 7,10 kWh | Haute tension empilable, 95 % DoD |
+| **Tower T10** | 10,66 kWh | Haute tension empilable, 95 % DoD |
+| **Tower T14** | 14,21 kWh | Haute tension empilable, 95 % DoD |
+| **PowerBrick** | 14,34 kWh | ≥ 8 000 cycles, rendement aller-retour **> 95 %** (confirmé datasheet), 55 °C max |
+
+Le PowerBrick est le seul modèle dont le rendement aller-retour est explicitement confirmé par datasheet (> 95 %). Pour les autres modèles, la classe LFP offre **≈ 95 %** en conditions normales — mais nous préférons ne pas le citer comme valeur garantie fabricant.
+
+---
+
+## Le différenciateur secours : Deye SG-series vs Huawei SUN2000
+
+Le critère souvent négligé dans le choix d'un onduleur hybride, c'est la **qualité du secours** — ce qui se passe exactement quand ONEE coupe le courant.
+
+### Deye SG-series (SG03LP1 monophasé / SG04LP3 triphasé)
+
+- Bascule **≈ 4–10 ms** — quasi-instantanée, **de type UPS**
+- **Aucun boîtier supplémentaire** : le secours est intégré à l'onduleur
+- Compatible **batterie LFP 48 V basse tension** (dont la gamme Dyness)
+- **6 fenêtres TOU** configurables (charge/décharge par plage horaire)
+
+Une coupure de ≈ 4–10 ms est imperceptible pour la quasi-totalité des équipements domestiques (ordinateurs, NAS, appareils médicaux courants). C'est ce que l'on désigne par le terme UPS (*Uninterruptible Power Supply*).
+
+> Le délai de ≈ 4 ms est corroboré par des retours d'utilisateurs et forums spécialisés ; le PDF fabricant n'étant pas directement accessible, nous le citons avec "≈".
+
+### Huawei SUN2000 + Backup Box (L1 monophasé / M1 triphasé)
+
+- Bascule **< 3 s** — une coupure brève mais perceptible ; **pas UPS**
+- Le secours nécessite un **Backup Box séparé** (B0 ou B1 selon la puissance)
+- Technologie haute tension (≈ 350–980 V), batterie LUNA2000 HV
+- Monitoring excellent, intégration soignée, TOU nocturne disponible
+
+| Critère | Deye SG-series | Huawei SUN2000 + Backup Box |
+|---|---|---|
+| Délai de bascule | **≈ 4–10 ms (UPS)** | **< 3 s** (coupure brève) |
+| Boîtier secours séparé | Non, intégré | Oui (Backup Box B0/B1) |
+| Triphasé sans secours | Non (le SG04LP3 assure le secours) | **SUN2000 M0 : aucun secours** |
+| Tension batterie | 48 V basse tension | Haute tension (LUNA2000) |
+| Fenêtres TOU | **6** | Oui (nombre selon firmware) |
+
+**Point d'attention Huawei :** le modèle **SUN2000 M0 (triphasé d'entrée de gamme) ne propose aucune fonction secours**, même avec une batterie branchée. Si le secours est votre priorité, vérifiez précisément le modèle commandé (L1 mono ou M1 tri avec Backup Box).
+
+---
+
+## Durée de vie LFP et effets de la chaleur
+
+### Combien de temps dure une batterie LFP ?
+
+- Durée de vie **calendaire : ≈ 10–15 ans** dans des conditions normales
+- Les garanties fabricant ciblent typiquement 10 ans à 70 % de rétention
+- À raison d'un cycle par jour, le budget cycles (4 000–6 000) représente ≈ 11–16 ans — c'est souvent le **vieillissement calendaire** qui limite en premier, pas le compteur de cycles
+
+### L'ennemi numéro 1 : la chaleur
+
+**+ 10 °C ≈ divise la durée de vie par deux** (règle d'ordre de grandeur, source : Battery University). Une batterie stockée à 45 °C vieillira deux fois plus vite qu'à 35 °C. Au Maroc, cela signifie :
+
+- Installer la batterie dans un local **ombragé et ventilé** (cave, pièce technique, garage au nord)
+- Éviter les pièces exposées au soleil ou sous toiture métallique non isolée
+- Température optimale : **15–35 °C**
+
+### Attention au froid : ne jamais charger une LFP sous 0 °C
+
+En dessous de 0 °C, charger une cellule LFP provoque un **dépôt de lithium métallique** (lithium plating) qui endommage l'anode de façon permanente et réduit irrémédiablement la capacité.
+
+En usage marocain, cela concerne principalement :
+- Le **Haut Atlas** et les zones montagneuses (nuits d'hiver sous 0 °C)
+- Les installations agricoles en altitude (pompage solaire)
+
+Le **Dyness PowerDepot H5B** est équipé d'un **chauffage intégré** qui préchauffe les cellules avant la charge — une fonctionnalité concrètement utile dans ces contextes, pas un argument marketing.
+
+---
+
+## En résumé : comment choisir ?
+
+- Si le **secours sans interruption perceptible** est critique (équipements médicaux, télétravail, congélateur) → **Deye SG-series** avec batterie Dyness basse tension
+- Si vous privilégiez un **écosystème intégré avec supervision cloud poussée** et que 3 secondes de coupure sont acceptables → **Huawei SUN2000 L1/M1 + LUNA2000 + Backup Box**
+- Pour les **petits systèmes** (entrée de gamme, maison secondaire) → Dyness **B4850** (2,4 kWh)
+- Pour les **installations en montagne** ou zones à gel hivernal → Dyness **PowerDepot H5B** (chauffage intégré, −20 °C)
+- Pour maximiser la capacité dans un espace réduit → **PowerBrick** (14,34 kWh, ≥ 8 000 cycles)
+
+Pour connaître la taille d'installation adaptée à votre consommation, consultez notre guide [Lithium ou gel — quelle chimie choisir ?](/guides/batterie-lithium-ou-gel) et notre article [Stocker ou revendre : quel arbitrage avec la loi 82-21 ?](/blog/batterie-stocker-ou-revendre-maroc).
+
+Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE.

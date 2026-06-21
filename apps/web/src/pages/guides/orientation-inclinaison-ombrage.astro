@@ -1,0 +1,160 @@
+---
+/**
+ * Guide (W124) — Orientation, inclinaison et ombrage : maximiser la production
+ * sur un toit marocain. Faits physiques uniquement — aucun prix, aucun payback.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Orientation, inclinaison et ombrage : maximiser la production sur un toit marocain',
+  description: 'Plein sud, inclinaison proche de la latitude, et zéro ombre : les trois règles qui font vraiment la différence sur un toit marocain, expliquées sans jargon.',
+  about: { '@type': 'Thing', name: 'Installation solaire photovoltaïque' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Orientation, inclinaison et ombrage : maximiser la production sur un toit marocain | Taqinor"
+  description="Plein sud optimal, est/ouest acceptable (−10 à 15 %), inclinaison ≈ latitude (27–31° selon la ville) : les trois règles qui font vraiment la différence — et pourquoi une seule cheminée peut pénaliser toute votre installation."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Orientation, inclinaison et ombrage' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Installation</p>
+      <h1 class="display v2-page-title mt-5 text-white">Orientation, inclinaison et ombrage</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Trois paramètres décident d'une bonne part de ce que vos panneaux produiront sur toute leur
+        durée de vie : vers où ils regardent, à quel angle ils sont posés, et si quoi que ce soit
+        les prive de soleil à un moment de la journée. Le bon réglage de ces trois leviers coûte
+        souvent rien — ou presque — et peut valoir des années de production supplémentaire.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">L'orientation : plein sud, et rien d'autre ?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Au Maroc, le soleil décrit son arc au sud. Les panneaux orientés plein sud récoltent le
+        maximum de rayonnement sur l'ensemble de la journée : c'est la configuration de référence,
+        celle qui donne la production la plus élevée pour une surface et une puissance données.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Une orientation <strong class="text-white">est ou ouest</strong> n'est pas un obstacle
+        rédhibitoire. On estime la perte à environ <strong class="text-white">10 à 15 %</strong>
+        par rapport au plein sud — ce qui reste tout à fait rentable si votre toiture ne laisse pas
+        d'autre choix. Une orientation est peut même mieux coller à un profil de consommation
+        matinal ; une orientation ouest, à un foyer qui revient chez lui en fin d'après-midi.
+        L'important, c'est de ne pas se retrouver dos au soleil : une façade nord est à exclure.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">L'inclinaison : ni à plat, ni trop penché</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        L'angle idéal d'inclinaison d'un panneau correspond grossièrement à la latitude du site.
+        Le Maroc se situe entre 27° et 36° de latitude nord, ce qui donne les repères suivants
+        pour les principales villes :
+      </p>
+      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
+        <li><strong class="text-white">Agadir</strong> — environ <strong class="text-white">27°</strong></li>
+        <li><strong class="text-white">Marrakech</strong> — environ <strong class="text-white">28°</strong></li>
+        <li><strong class="text-white">Casablanca &amp; Rabat</strong> — environ <strong class="text-white">29°</strong></li>
+        <li><strong class="text-white">Tanger</strong> — environ <strong class="text-white">31°</strong></li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ces valeurs sont issues de données d'irradiation satellitaires (PVGIS / Global Solar Atlas)
+        et optimisées pour la production annuelle totale, pas pour un seul mois. En pratique, la
+        pente de votre toit est souvent dictée par l'architecture existante, et un écart de quelques
+        degrés par rapport à l'optimum a un effet modeste sur la production annuelle — bien moins
+        important que l'ombrage, comme nous allons le voir.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Une installation à <strong class="text-white">plat</strong> (0°) n'est pas idéale : la
+        production baisse, et l'eau stagnante salit plus vite les panneaux. En revanche, une pente
+        entre 15° et 35° reste dans une plage très acceptable pour l'ensemble du territoire.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">L'ombrage : l'ennemi numéro un</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        C'est le facteur le plus sous-estimé — et souvent le plus coûteux. Une installation
+        standard câble ses panneaux en <strong class="text-white">série</strong> : le courant passe
+        de l'un à l'autre comme des maillons d'une chaîne. Si un seul maillon est à l'ombre, toute
+        la chaîne est pénalisée. La production ne chute pas de 10 % parce qu'un panneau est à
+        moitié ombré — elle peut s'effondrer bien davantage, car c'est le panneau le plus faible
+        qui impose son rythme aux autres.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les sources d'ombre à surveiller sont souvent là depuis toujours, mais on ne les voit
+        vraiment qu'en faisant le tour des heures de la journée et des saisons :
+      </p>
+      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
+        <li>Une <strong class="text-white">cheminée ou un conduit de ventilation</strong> qui projette une ombre mobile au fil du soleil</li>
+        <li>Un <strong class="text-white">mur mitoyen ou un acrotère</strong> qui coupe le soleil tôt le matin ou tard l'après-midi</li>
+        <li>Un <strong class="text-white">palmier, un arbre ou une antenne</strong> qui n'est peut-être pas gênant maintenant mais le deviendra dans quelques années</li>
+        <li>Des <strong class="text-white">rangées de panneaux qui s'ombraient mutuellement</strong> si l'espacement entre rangées est mal calculé</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Avant tout projet, une analyse d'ombrage sur site — idéalement à différentes heures et en
+        tenant compte du solstice d'hiver, quand le soleil est le plus bas — est indispensable.
+        C'est à ce moment-là qu'on repère les obstacles qui ne semblent anodins qu'en été.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Quand l'ombre est inévitable : les solutions</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Si votre toit présente des zones d'ombre partielles et incontournables, deux technologies
+        permettent d'en limiter l'impact :
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les <strong class="text-white">optimiseurs de puissance</strong> s'installent panneau par
+        panneau et permettent à chacun de fonctionner à son propre point de puissance maximale,
+        indépendamment de ses voisins. Un panneau ombré ne tire plus les autres vers le bas ; il
+        donne simplement ce qu'il peut.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les <strong class="text-white">micro-onduleurs</strong> vont encore plus loin : chaque
+        panneau dispose de son propre micro-onduleur qui convertit le courant continu en courant
+        alternatif directement au niveau du panneau. Là encore, chaque panneau est complètement
+        indépendant. Ce type d'installation est plus coûteux mais apporte aussi une surveillance
+        panneau par panneau très fine, utile pour détecter rapidement un problème.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ces deux solutions sont pertinentes dès que l'ombre est régulière et touche une partie
+        significative de l'installation. Si votre toit est parfaitement dégagé et que l'ombre est
+        anecdotique, un onduleur classique avec diodes bypass suffit : inutile de surpayer.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">En résumé</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Plein sud reste l'orientation de référence ; est ou ouest coûte environ 10 à 15 % de
+        production mais reste rentable. L'angle optimal tourne autour de 27–31° selon votre ville,
+        et la plupart des toits marocains tombent dans une plage acceptable. Le point sur lequel il
+        faut être le plus vigilant, c'est l'ombrage : une cheminée, un mur ou un arbre mal placé
+        peut dégrader durablement la production de toute une chaîne de panneaux — bien plus qu'une
+        orientation légèrement sous-optimale. C'est pourquoi une étude de site sérieuse commence
+        toujours par une analyse d'ombrage.
+      </p>
+
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/monocristallin-ou-polycristallin" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Monocristallin ou polycristallin ? →</a>
+        <a href="/guides/combien-de-panneaux-pour-ma-maison" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Combien de panneaux pour ma maison ? →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Votre toit a ses propres contraintes. Étudions-les ensemble." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

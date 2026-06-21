@@ -1,10 +1,12 @@
 ---
 /**
- * Batteries & stockage (W24). Page publique INDEXÉE. Reprend strictement les
+ * Batteries & stockage (W24 / W130). Page publique INDEXÉE. Reprend strictement les
  * faits déjà publiés : le raisonnement autoconsommation/stockage du guide
  * « Faut-il des batteries ? » et les faits matériel Dyness de la page
  * Équipement (réf. BAT). AUCUNE capacité, AUCUN prix, AUCUNE spec inventés.
  * Les kWh des installs (15/10/5 kWh) sont déjà publiés dans realisations.ts.
+ * W130 : bloc FAQ visuel via <Faq schema={false}> — /faq reste l'unique FAQPage.
+ * Chiffres tracés sur CONTENT_SEO_NOTES.md §1 + §7 (PUBLISH-SAFE).
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -12,6 +14,7 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import Faq from '../components/Faq.astro';
 
 // Faits matériel — identiques à la page Équipement (réf. BAT), source publiée.
 const specs = [
@@ -28,12 +31,12 @@ const cas = [
   {
     k: 'Sans stockage',
     title: 'Consommation principalement diurne',
-    body: 'Quand l’essentiel de votre consommation tombe en journée, le meilleur kWh est celui que vos panneaux alimentent à l’instant même — sans détour par une batterie, sans pertes de charge ni de décharge. C’est le cas des foyers actifs en journée et des sites dont l’activité suit le soleil : pompe, froid, machines, climatisation.',
+    body: 'Quand l'essentiel de votre consommation tombe en journée, le meilleur kWh est celui que vos panneaux alimentent à l'instant même — sans détour par une batterie, sans pertes de charge ni de décharge. C'est le cas des foyers actifs en journée et des sites dont l'activité suit le soleil : pompe, froid, machines, climatisation.',
   },
   {
     k: 'Avec stockage',
     title: 'Consommation nocturne ou continuité de service',
-    body: 'La batterie devient utile quand votre pic de consommation arrive une fois le soleil couché, ou quand une coupure ne doit rien arrêter. Le surplus produit à midi est mis de côté et restitué le soir, à l’heure où le réseau, lui, se facture au prix fort.',
+    body: 'La batterie devient utile quand votre pic de consommation arrive une fois le soleil couché, ou quand une coupure ne doit rien arrêter. Le surplus produit à midi est mis de côté et restitué le soir, à l'heure où le réseau, lui, se facture au prix fort.',
   },
 ];
 
@@ -42,6 +45,31 @@ const installs = [
   { kwh: '15 kWh', where: 'El Jadida', ref: '468' },
   { kwh: '10 kWh', where: 'Casablanca', ref: '400' },
   { kwh: '5 kWh', where: 'El Jadida', ref: '236' },
+];
+
+// FAQ W130 — questions tracées sur CONTENT_SEO_NOTES.md §7 + §1 (PUBLISH-SAFE).
+// schema={false} → /faq reste l'unique page portant le FAQPage JSON-LD.
+const faqItems = [
+  {
+    q: 'Ai-je vraiment besoin d'une batterie avec mes panneaux solaires ?',
+    a: 'Pas nécessairement. Si vous consommez l'essentiel de votre électricité en journée — appareils de froid, pompe, climatisation, machines — vos panneaux alimentent directement vos charges et une batterie n'ajouterait qu'un coût et des pertes de conversion. Elle devient utile si votre pic de consommation tombe le soir, ou si vous avez besoin de continuité de service lors des coupures. Nous analysons votre courbe de consommation heure par heure avant toute recommandation.',
+  },
+  {
+    q: 'Quelle est la durée de vie d'une batterie LFP ?',
+    a: 'Une batterie lithium-fer-phosphate (LFP) comme les Dyness que nous posons encaisse 6 000 cycles ou plus à 90 % de profondeur de décharge, avec une garantie de 10 ans. À raison d'un cycle par jour, cela représente plus de 16 ans de cycles. En pratique, c'est souvent le vieillissement calendaire — environ 1 à 2 % de perte de capacité par an même au repos — qui fixe la durée de vie réelle, soit 12 à 15 ans dans les conditions marocaines. Pour préserver cette longévité : installez-la à l'ombre, ventilée, entre 15 et 35 °C.',
+  },
+  {
+    q: 'Quelle taille de batterie choisir ? (5–10 kWh, 10–20 kWh ou 20 kWh+)',
+    a: 'Les paliers correspondent à des besoins distincts. 5 à 10 kWh : secours nocturne basique ou recharge de quelques appareils essentiels lors d'une coupure. 10 à 20 kWh : autoconsommation du soir complète pour un foyer moyen — le surplus solaire de la journée couvre la majorité de la consommation nocturne. 20 kWh et plus : quasi-autonomie, sites éloignés ou besoin de 2 à 3 jours d'autonomie sans soleil. Nos modules Dyness s'empilent par tranches de 5 kWh — on cale la capacité sur le creux du soir à couvrir, pas sur un palier commercial. Un guide dédié détaille la méthode de calcul.',
+  },
+  {
+    q: 'La batterie me protège-t-elle des coupures de courant ?',
+    a: 'Oui, si l'onduleur hybride est configuré en mode EPS (Emergency Power Supply). Les onduleurs Deye SG-series assurent un basculement quasi instantané (environ 4 ms) sans boîtier supplémentaire — comparable à un onduleur UPS. La puissance disponible pendant une coupure dépend de la capacité installée et des charges raccordées sur le circuit de secours. À ne pas confondre avec un simple onduleur réseau (« on-grid ») qui coupe lui aussi lors d'une coupure, par sécurité.',
+  },
+  {
+    q: 'Vaut-il mieux stocker son surplus ou le revendre au réseau au Maroc ?',
+    a: 'Au Maroc, la loi 82-21 (en vigueur depuis juin 2026) plafonne l'injection à 20 % de la production annuelle, et le tarif de rachat ANRE est de 0,18 à 0,21 DH/kWh selon l'heure. Or, un kWh acheté sur le réseau vous coûte entre 0,90 DH (première tranche) et 1,66 DH (forte consommation). Autrement dit, un kWh stocké et autoconsommé le soir vaut 4 à 9 fois plus qu'un kWh vendu au réseau. L'ordre de priorité est donc : (1) consommer directement en journée, (2) stocker pour le soir, (3) exporter le solde plafonné à 20 %. Ne surdimensionnez pas vos batteries pour exporter davantage — ce n'est pas rentable.',
+  },
 ];
 
 const jsonLd = {
@@ -70,12 +98,12 @@ const jsonLd = {
 
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Stockage d’énergie</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Stockage d'énergie</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Batteries &amp; stockage</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Une batterie LFP Dyness encaisse plus de 6 000 cycles à 90 % de profondeur de décharge —
-          de quoi durer des années. Encore faut-il qu’elle serve. La vraie question n’est pas
-          quelle batterie, mais <em>quand</em> vous consommez : en journée, le surcoût d’un parc de
+          de quoi durer des années. Encore faut-il qu'elle serve. La vraie question n'est pas
+          quelle batterie, mais <em>quand</em> vous consommez : en journée, le surcoût d'un parc de
           stockage est rarement le meilleur placement.
         </p>
       </div>
@@ -96,9 +124,9 @@ const jsonLd = {
           ))}
         </div>
         <p class="mt-8 max-w-2xl border-l-4 border-brass-400 pl-4 text-sm leading-relaxed text-lune-soft">
-          Vendre une batterie est facile ; dire qu’elle est inutile l’est moins. Nous lisons d’abord
-          la courbe de votre consommation, heure par heure : c’est elle qui dit si le stockage paie,
-          et combien de kWh suffisent. Ajouter du matériel n’est jamais l’objectif.
+          Vendre une batterie est facile ; dire qu'elle est inutile l'est moins. Nous lisons d'abord
+          la courbe de votre consommation, heure par heure : c'est elle qui dit si le stockage paie,
+          et combien de kWh suffisent. Ajouter du matériel n'est jamais l'objectif.
           <a href="/guides/faut-il-des-batteries" class="border-b-2 border-brass-400 pb-0.5 font-bold text-brass-300 transition-colors hover:text-brass-200">Lire le guide complet →</a>
         </p>
       </div>
@@ -112,8 +140,8 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5">Batteries Dyness lithium-fer-phosphate</h2>
         <p class="v2-lead mt-4 text-encre-soft">
           Quand le stockage se justifie, nous posons des batteries Dyness LFP. La chimie
-          lithium-fer-phosphate ne s’emballe pas thermiquement comme d’autres lithiums et accepte
-          d’être vidée à 90 % à chaque cycle sans se ruiner. Le BMS dialogue en CAN avec l’onduleur
+          lithium-fer-phosphate ne s'emballe pas thermiquement comme d'autres lithiums et accepte
+          d'être vidée à 90 % à chaque cycle sans se ruiner. Le BMS dialogue en CAN avec l'onduleur
           hybride Deye, qui pilote charge et décharge au plus juste. Matériel sourcé via les
           distributeurs officiels au Maroc, garantie activable sur place.
         </p>
@@ -126,7 +154,7 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          Les modules s’empilent par tranches de 5 kWh : on cale la capacité sur le creux du soir
+          Les modules s'empilent par tranches de 5 kWh : on cale la capacité sur le creux du soir
           à couvrir, ni plus ni moins. La taille suit le besoin chiffré, pas un palier commercial.
           <a href="/équipement" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir tout le matériel posé →</a>
         </p>
@@ -135,7 +163,7 @@ const jsonLd = {
         <h3 class="display mt-14 text-xl">Du stockage déjà sur nos toits</h3>
         <p class="mt-3 text-sm leading-relaxed text-encre-soft">
           Du 5 kWh au 15 kWh : plusieurs foyers tournent déjà avec des batteries Dyness, chaque
-          capacité calée sur le profil de la maison qui l’a reçue.
+          capacité calée sur le profil de la maison qui l'a reçue.
         </p>
         <div class="mt-6 grid gap-4 sm:grid-cols-3" data-stagger>
           {installs.map((inst, i) => (
@@ -148,15 +176,50 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- Liens de fin -->
-    <section class="px-4 py-20 sm:py-24">
+    <!-- FAQ visuelle — schema={false} : /faq reste l'unique FAQPage (W130) -->
+    <Faq
+      schema={false}
+      heading="Questions fréquentes sur le stockage solaire"
+      items={faqItems}
+    />
+
+    <!-- Guides et ressources internes — liens battery (W130) -->
+    <section class="px-4 pb-20 pt-16 sm:pb-24">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
-        <h2 class="display v2-section-title mt-5 text-white">Le stockage dans votre projet</h2>
-        <div class="mt-10 flex flex-wrap gap-3">
-          <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tout l’équipement →</a>
+        <h2 class="display v2-section-title mt-5 text-white">Guides batteries &amp; stockage</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          <a href="/guides/batterie-lithium-ou-gel" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:0">
+            <p class="tech-label text-brass-300">Chimie</p>
+            <h3 class="display mt-2 text-lg text-white">Lithium ou gel : quelle chimie choisir ?</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">LFP, AGM/GEL, NMC — durée de vie, profondeur de décharge, sécurité thermique : le comparatif pour le Maroc.</p>
+            <span class="mt-4 text-sm font-bold text-brass-300">Lire le guide →</span>
+          </a>
+          <a href="/guides/quelle-taille-de-batterie" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:1">
+            <p class="tech-label text-brass-300">Dimensionnement</p>
+            <h3 class="display mt-2 text-lg text-white">Quelle taille de batterie pour ma maison ?</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">Méthode de calcul pas à pas : relevez votre creux du soir, choisissez les paliers 5–10 / 10–20 / 20+ kWh.</p>
+            <span class="mt-4 text-sm font-bold text-brass-300">Lire le guide →</span>
+          </a>
+          <a href="/guides/electricite-pendant-les-coupures" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:2">
+            <p class="tech-label text-brass-300">Continuité de service</p>
+            <h3 class="display mt-2 text-lg text-white">Avoir de l'électricité pendant les coupures</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">Mode EPS, basculement ≈ 4 ms, circuits de secours : comment une installation hybride tient les coupures.</p>
+            <span class="mt-4 text-sm font-bold text-brass-300">Lire le guide →</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Liens de fin -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">Le stockage dans votre projet</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tout l'équipement →</a>
           <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire résidentiel →</a>
           <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Guide : faut-il des batteries ? →</a>
+          <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Garanties →</a>
           <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations →</a>
         </div>
       </div>

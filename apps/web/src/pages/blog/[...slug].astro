@@ -1,0 +1,191 @@
+---
+/**
+ * Article de blog (W132) — route dynamique sur les articles PUBLIÉS.
+ *
+ * Le rendu Markdown passe par l'API `render()` des content collections ; les
+ * JSON-LD BlogPosting + BreadcrumbList sont construits ICI à partir du
+ * frontmatter, pour que les fichiers .md ne portent que frontmatter + corps.
+ * Canonique auto-référencé : émis par le Layout via l'URL de la page. L'image
+ * OG vient de `ogSlug` (repli 'accueil'). Liens précédent/suivant + articles
+ * liés (par tag partagé) en pied d'article.
+ */
+import { getCollection, render } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+export async function getStaticPaths() {
+  const posts = (
+    await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft : true))
+  ).sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
+
+  return posts.map((post, i) => ({
+    params: { slug: post.id },
+    props: {
+      post,
+      prev: posts[i - 1] ?? null,
+      next: posts[i + 1] ?? null,
+      // Articles liés : autres publiés partageant au moins un tag (max 3).
+      related: posts
+        .filter((p) => p.id !== post.id && p.data.tags.some((t) => post.data.tags.includes(t)))
+        .slice(0, 3),
+    },
+  }));
+}
+
+const { post, prev, next, related } = Astro.props;
+const { data } = post;
+const { Content } = await render(post);
+
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const url = new URL(`/blog/${post.id}`, Astro.site).href;
+
+const blogPosting = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: data.title,
+  description: data.description,
+  datePublished: data.pubDate.toISOString(),
+  ...(data.updatedDate ? { dateModified: data.updatedDate.toISOString() } : {}),
+  ...(data.tags.length ? { keywords: data.tags.join(', ') } : {}),
+  author: { '@type': 'Organization', name: data.author || NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+};
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Accueil', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: 'Blog', item: new URL('/blog', Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: data.title },
+  ],
+};
+---
+
+<Layout
+  title={`${data.title} | Blog Taqinor`}
+  description={data.description}
+  ogSlug={data.ogSlug ?? 'accueil'}
+>
+  <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
+  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Blog', href: '/blog' }, { label: data.title }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">
+        Blog · {dateFmt.format(data.pubDate)}
+        {data.updatedDate && <> · mis à jour le {dateFmt.format(data.updatedDate)}</>}
+      </p>
+      <h1 class="display v2-page-title mt-5 text-white">{data.title}</h1>
+      <p class="v2-lead mt-6 text-lune-soft">{data.description}</p>
+
+      {data.tags.length > 0 && (
+        <ul class="mt-6 flex flex-wrap gap-2">
+          {data.tags.map((tag) => (
+            <li class="border border-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-lune-soft">{tag}</li>
+          ))}
+        </ul>
+      )}
+
+      <div class="blog-prose mt-10">
+        <Content />
+      </div>
+
+      {(prev || next) && (
+        <nav class="mt-14 grid gap-3 border-t border-white/10 pt-8 sm:grid-cols-2" aria-label="Navigation entre articles">
+          {prev ? (
+            <a href={`/blog/${prev.id}`} class="border border-white/20 p-4 transition-colors hover:border-white hover:bg-white/5">
+              <span class="tech-label text-brass-300">← Plus récent</span>
+              <span class="mt-1 block font-semibold text-white">{prev.data.title}</span>
+            </a>
+          ) : <span></span>}
+          {next ? (
+            <a href={`/blog/${next.id}`} class="border border-white/20 p-4 text-right transition-colors hover:border-white hover:bg-white/5 sm:text-right">
+              <span class="tech-label text-brass-300">Plus ancien →</span>
+              <span class="mt-1 block font-semibold text-white">{next.data.title}</span>
+            </a>
+          ) : <span></span>}
+        </nav>
+      )}
+
+      {related.length > 0 && (
+        <section class="mt-12">
+          <p class="tech-label text-brass-300">À lire aussi</p>
+          <ul class="mt-3 flex flex-col gap-2">
+            {related.map((r) => (
+              <li>
+                <a href={`/blog/${r.id}`} class="border-b border-white/20 pb-0.5 text-sm font-bold text-white transition-colors hover:border-brass-400">{r.data.title} →</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/blog" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les articles →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Les guides pérennes →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Un projet en tête ? Lancez l’étude gratuite." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<style>
+  /* Style d'article (prose) aligné sur les pages guides : titres display,
+     paragraphes lune-soft, listes et liens lisibles sur fond marine. */
+  .blog-prose :global(p) {
+    margin-top: 1.25rem;
+    line-height: 1.75;
+    color: var(--color-lune-soft, #c7d0e8);
+  }
+  .blog-prose :global(h2) {
+    margin-top: 3rem;
+    font-family: var(--font-display, inherit);
+    font-size: 1.5rem;
+    line-height: 1.2;
+    color: #fff;
+  }
+  .blog-prose :global(h3) {
+    margin-top: 2rem;
+    font-family: var(--font-display, inherit);
+    font-size: 1.2rem;
+    color: #fff;
+  }
+  .blog-prose :global(ul),
+  .blog-prose :global(ol) {
+    margin-top: 1.25rem;
+    padding-left: 1.25rem;
+    color: var(--color-lune-soft, #c7d0e8);
+    line-height: 1.75;
+  }
+  .blog-prose :global(ul) { list-style: disc; }
+  .blog-prose :global(ol) { list-style: decimal; }
+  .blog-prose :global(li) { margin-top: 0.4rem; }
+  .blog-prose :global(a) {
+    color: #fff;
+    text-decoration: underline;
+    text-decoration-color: var(--color-brass-400, #d9a441);
+    text-underline-offset: 3px;
+  }
+  .blog-prose :global(strong) { color: #fff; }
+  .blog-prose :global(blockquote) {
+    margin-top: 1.5rem;
+    border-left: 3px solid var(--color-brass-400, #d9a441);
+    padding-left: 1rem;
+    color: var(--color-lune-soft, #c7d0e8);
+    font-style: italic;
+  }
+</style>
