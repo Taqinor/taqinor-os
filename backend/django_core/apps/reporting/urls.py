@@ -6,7 +6,7 @@ from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
 from .insights import (
     recurring_revenue, audit_log, job_costing, analytics, commissions,
-    sales_leaderboard,
+    sales_leaderboard, cf_group_by,
 )
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
@@ -40,6 +40,9 @@ urlpatterns = [
     # FG93 — classement commerciaux (CA signé, taux victoire, deal moyen, kWc).
     path('insights/sales-leaderboard/', sales_leaderboard,
          name='insights-sales-leaderboard'),
+    # FG94 — group-by sur un champ personnalisé visible_liste.
+    # ?module=lead|client|produit|devis|installation|ticket &code=<code>.
+    path('insights/cf-group-by/', cf_group_by, name='insights-cf-group-by'),
     path('archive/client/<int:pk>/', archive_client,
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,

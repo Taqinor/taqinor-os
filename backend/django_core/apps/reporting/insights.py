@@ -704,3 +704,103 @@ def sales_leaderboard(request):
         return x
 
     return Response({'rows': rows, 'total_commerciaux': len(rows)})
+
+
+# ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def cf_group_by(request):
+    """FG94 — Agrégation (group-by) sur un champ personnalisé.
+
+    Paramètres :
+      ?module=lead|client|produit|devis|installation|ticket
+      ?code=<code_du_champ>
+    Renvoie le compte d'enregistrements par valeur du champ personnalisé
+    (depuis custom_data[code]), borné à la société. Seuls les champs avec
+    `visible_liste=True` sont aggregables (dead flag activé). Les valeurs
+    manquantes ou vides sont regroupées sous '(vide)'.
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    module = request.query_params.get('module', '').strip()
+    code = request.query_params.get('code', '').strip()
+
+    if not module or not code:
+        return Response(
+            {'detail': 'Paramètres requis : ?module=<module>&code=<code>'},
+            status=400)
+
+    # Vérifier que le champ est bien visible_liste pour ce module.
+    from apps.customfields.models import CustomFieldDef
+    try:
+        cf_def = CustomFieldDef.objects.get(
+            company=request.user.company, module=module, code=code,
+            actif=True, visible_liste=True)
+    except CustomFieldDef.DoesNotExist:
+        # Superuser sans company ou champ non visible_liste.
+        if request.user.is_superuser:
+            try:
+                cf_def = CustomFieldDef.objects.get(
+                    module=module, code=code, actif=True, visible_liste=True)
+            except CustomFieldDef.DoesNotExist:
+                return Response(
+                    {'detail': 'Champ non trouvé ou non visible dans les listes.'},
+                    status=404)
+        else:
+            return Response(
+                {'detail': 'Champ non trouvé ou non visible dans les listes.'},
+                status=404)
+
+    # Résoudre le modèle cible.
+    model = _cf_module_model(module)
+    if model is None:
+        return Response({'detail': f'Module {module!r} non supporté.'}, status=400)
+
+    qs = model.objects.filter(**co)
+    buckets = defaultdict(int)
+    for row in qs.values_list('custom_data', flat=True).iterator():
+        val = (row or {}).get(code)
+        key = str(val).strip() if val not in (None, '') else '(vide)'
+        buckets[key] += 1
+
+    rows = sorted(
+        [{'valeur': k, 'count': v} for k, v in buckets.items()],
+        key=lambda r: -r['count'])
+
+    x = _maybe_xlsx(
+        request, f'cf-{module}-{code}.xlsx',
+        [cf_def.libelle, 'Nombre'],
+        [[r['valeur'], r['count']] for r in rows],
+        f'{cf_def.libelle} par valeur')
+    if x:
+        return x
+
+    return Response({
+        'module': module, 'code': code, 'libelle': cf_def.libelle,
+        'rows': rows, 'total': sum(r['count'] for r in rows),
+    })
+
+
+def _cf_module_model(module):
+    """Résout un module CustomField vers le modèle Django porteur de custom_data."""
+    if module == 'lead':
+        from apps.crm.models import Lead
+        return Lead
+    if module == 'client':
+        from apps.crm.models import Client
+        return Client
+    if module == 'produit':
+        from apps.stock.models import Produit
+        return Produit
+    if module == 'devis':
+        from apps.ventes.models import Devis
+        return Devis
+    if module == 'installation':
+        from apps.installations.models import Installation
+        return Installation
+    if module == 'ticket':
+        from apps.sav.models import Ticket
+        return Ticket
+    return None

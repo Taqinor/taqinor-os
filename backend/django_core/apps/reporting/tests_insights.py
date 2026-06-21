@@ -372,3 +372,82 @@ class TestSalesLeaderboard(InsightsBase):
         self.assertEqual(resp.status_code, 200)
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))
+
+
+class TestCFGroupBy(InsightsBase):
+    """FG94 — group-by sur champ personnalisé (visible_liste)."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.customfields.models import CustomFieldDef
+        # Crée un champ visible_liste sur lead pour la société courante.
+        self.cf = CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='segment',
+            libelle='Segment', type='choice',
+            options=['Résidentiel', 'Industriel'],
+            visible_liste=True, actif=True)
+
+    def test_group_by_returns_counts(self):
+        """L'endpoint compte les leads par valeur du champ personnalisé."""
+        Lead.objects.create(
+            company=self.company, nom='L1', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        Lead.objects.create(
+            company=self.company, nom='L2', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        Lead.objects.create(
+            company=self.company, nom='L3', stage='NEW',
+            custom_data={'segment': 'Industriel'})
+        # Lead sans valeur → groupe '(vide)'.
+        Lead.objects.create(company=self.company, nom='L4', stage='NEW')
+
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=segment')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = {r['valeur']: r['count'] for r in resp.data['rows']}
+        self.assertEqual(rows.get('Résidentiel'), 2)
+        self.assertEqual(rows.get('Industriel'), 1)
+        self.assertEqual(rows.get('(vide)'), 1)
+        self.assertEqual(resp.data['total'], 4)
+
+    def test_non_visible_liste_returns_404(self):
+        """Un champ non visible_liste renvoie 404."""
+        from apps.customfields.models import CustomFieldDef
+        CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='interne',
+            libelle='Interne', type='text',
+            visible_liste=False, actif=True)
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=interne')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_missing_params_returns_400(self):
+        resp = self.api.get('/api/django/reporting/insights/cf-group-by/')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_other_company_data_excluded(self):
+        """Les leads d'une autre société ne sont pas comptés."""
+        Lead.objects.create(
+            company=self.other, nom='LX', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        Lead.objects.create(
+            company=self.company, nom='L1', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=segment')
+        self.assertEqual(resp.status_code, 200)
+        rows = {r['valeur']: r['count'] for r in resp.data['rows']}
+        # Seul le lead de la société courante (1) doit apparaître.
+        self.assertEqual(rows.get('Résidentiel'), 1)
+        self.assertEqual(resp.data['total'], 1)
+
+    def test_xlsx_export(self):
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=segment&export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
