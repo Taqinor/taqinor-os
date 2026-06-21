@@ -1,9 +1,11 @@
 # flake8: noqa
-"""TAQINOR quote engine — RESIDENTIAL renderer (brand tokens + shared CSS).
+"""TAQINOR quote engine — AGRICOLE renderer (brand tokens + shared CSS).
 
-The redesigned 3-page residential proposal. Part of the single quote engine
-(`apps/ventes/quote_engine`); selected for `mode_installation == residentiel`
-by `residential.renderer`. Reuses the engine's bundled fonts/logo.
+The premium multi-page agricultural (pompage solaire) proposal. Part of the
+single quote engine (`apps/ventes/quote_engine`); selected for
+`mode_installation == agricole` (full format) by `agricole.renderer`. Reuses the
+engine's bundled fonts/logo (one level up at quote_engine/assets), exactly like
+the residential package, so the brand stays identical across markets.
 """
 from __future__ import annotations
 import base64
@@ -13,15 +15,20 @@ from pathlib import Path
 _LIVE_ASSETS = Path(__file__).resolve().parent.parent / "assets"
 _FONT_DIR = _LIVE_ASSETS / "fonts"
 
-# ── Brand palette (extracted from the live engine) ──────────────────────────
+# ── Brand palette (shared with residential) + agricole accents ──────────────
 C = {
     "navy":      "#1A2B4A",
     "navy_900":  "#12203b",
     "navy_700":  "#243a5e",
     "gold":      "#F5A623",
-    "gold_soft": "#E8A020",
+    "gold_soft": "#FDF3E3",
     "green":     "#16A34A",
-    "green_bg":  "#e8f5e9",
+    "green_bg":  "#E8F5EC",
+    "green_700": "#0F7A38",
+    # Agricole accents: water blue + earth, for the pumping/irrigation story.
+    "water":     "#2C5F8A",
+    "water_bg":  "#EAF1F7",
+    "earth":     "#8A5A2B",
     "ink":       "#1f2937",
     "muted":     "#6b7280",
     "muted_2":   "#9BA3AE",
@@ -31,6 +38,7 @@ C = {
     "wash":      "#F7F9FC",
     "wash_navy": "#0f1d36",
     "blue":      "#2C5F8A",
+    "red":       "#C0392B",
 }
 
 FONT_DISPLAY = "'DM Serif Display', Georgia, serif"
@@ -48,6 +56,8 @@ def logo_dark_b64() -> str:
     from PIL import Image
     import io
     p = _LIVE_ASSETS / "logo.png"
+    if not p.exists():
+        return ""
     img = Image.open(p).convert("RGBA")
     px = img.load()
     w, h = img.size
@@ -65,18 +75,18 @@ def logo_dark_b64() -> str:
 
 def logo_color_b64() -> str:
     p = _LIVE_ASSETS / "logo.png"
-    return base64.b64encode(p.read_bytes()).decode()
+    return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
-# This renderer's own bundled assets (the page-1 hero photo).
-_RESID_ASSETS = Path(__file__).resolve().parent / "assets"
+# This renderer's own bundled assets (a page-1 hero photo — drop a real farm
+# install photo at quote_engine/agricole/assets/hero.jpg; empty -> flat navy).
+_AGRI_ASSETS = Path(__file__).resolve().parent / "assets"
 
 
-def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
-    """Base64 JPEG of the page-1 hero photo (real installation), chosen by
-    NEAREST power (kWc) from the shared installation-photo library
-    (quote_engine/assets/installations/) instead of a single fixed image. Falls
-    back to this package's bundled hero.jpg, then "" (flat navy)."""
+def hero_image_b64(kwc=None, mode="agricole") -> str:
+    """Hero photo for the cover: nearest-power installation photo from the shared
+    library (agricole falls back to residential/industriel of similar kWc), else
+    this package's own bundled hero.jpg, else "" (flat navy)."""
     try:
         from .. import installations          # Django: quote_engine.installations
     except ImportError:                        # standalone dev harness
@@ -84,7 +94,7 @@ def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
     b = installations.pick_b64(kwc, mode)
     if b:
         return b
-    p = _RESID_ASSETS / "hero.jpg"
+    p = _AGRI_ASSETS / "hero.jpg"
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
@@ -114,7 +124,18 @@ def fmt(n) -> str:
         n = round(float(n))
     except (TypeError, ValueError):
         return str(n)
-    return f"{n:,.0f}".replace(",", " ")
+    return f"{n:,.0f}".replace(",", " ")
+
+
+def fmt_dec(n, decimals=1) -> str:
+    """Decimal-comma FR number, trailing zeros trimmed (3.0 -> '3', 4.7 -> '4,7')."""
+    try:
+        f = float(n)
+    except (TypeError, ValueError):
+        return str(n)
+    if f == int(f):
+        return str(int(f))
+    return f"{f:.{decimals}f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
 # French name particles that stay lowercase inside a name.
@@ -123,12 +144,7 @@ _NAME_PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von",
 
 
 def titlecase_name(name) -> str:
-    """Display-case a person's name: 'meryem hida' -> 'Meryem Hida'.
-
-    Leaves already-mixed-case tokens (e.g. 'McAdam', 'TAQINOR') untouched, keeps
-    French/Arabic particles lowercase mid-name, and splits on spaces/hyphens so
-    'jean-pierre' -> 'Jean-Pierre'. Never raises on odd input.
-    """
+    """Display-case a person's name: 'meryem hida' -> 'Meryem Hida'."""
     s = str(name or "").strip()
     if not s:
         return ""
@@ -136,7 +152,6 @@ def titlecase_name(name) -> str:
     def cap_token(tok, first):
         if not tok:
             return tok
-        # Respect intentional internal capitals (McAdam, TAQINOR, d'Or).
         if tok[1:] != tok[1:].lower():
             return tok
         low = tok.lower()
@@ -154,50 +169,13 @@ def titlecase_name(name) -> str:
 
 
 def join_meta(*parts, sep=" · ") -> str:
-    """Join non-empty, stripped meta fragments with `sep` (no dangling commas/dots
-    when a field like the address or city is missing)."""
+    """Join non-empty, stripped meta fragments with `sep`."""
     clean = [str(p).strip().strip(",").strip() for p in parts if p and str(p).strip()]
     return sep.join(c for c in clean if c)
 
 
-def fiche_slug(designation, marque="") -> str:
-    """Map an equipment line to its fiche-technique page slug on taqinor.ma.
-
-    Keyword-classified on the designation + brand, EXACTLY mirroring the slugs
-    built by docs/WEB_PLAN.md W141–W145 (the /produits/<slug> pages), so a quote
-    link always points at a real datasheet page. Returns '' when no datasheet is
-    known (TAQINOR's own structures/socles/installation/transport/services)."""
-    blob = f"{designation} {marque}".lower()
-    if "panneau" in blob or "panel" in blob:
-        return "jinko-710" if "jinko" in blob else "canadian-solar-710"
-    if "onduleur" in blob or "inverter" in blob:
-        if "hybride" in blob or "hybrid" in blob:
-            return "onduleur-deye-hybride"
-        if "réseau" in blob or "reseau" in blob or "injection" in blob:
-            return "onduleur-huawei-reseau"
-        return "onduleur-huawei-reseau"
-    if "batterie" in blob or "battery" in blob:
-        return "batterie-dyness"
-    if "smart meter" in blob or "compteur" in blob:
-        return "smart-meter-huawei"
-    if "dongle" in blob or "wifi" in blob:
-        return "wifi-dongle-huawei"
-    return ""
-
-
-def fiche_href(designation, marque="", produits_base="taqinor.ma/produits") -> str:
-    """Full https URL of a line's fiche-technique page, or '' if none."""
-    slug = fiche_slug(designation, marque)
-    if not slug:
-        return ""
-    base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
-    if not base.startswith("http"):
-        base = "https://" + base
-    return f"{base}/{slug}"
-
-
 def base_css() -> str:
-    """Page frame + design tokens shared by all three pages."""
+    """Page frame + design tokens shared by all agricole pages."""
     return f"""
 {font_face_css()}
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -206,6 +184,7 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 .page {{
   position:relative; width:210mm; height:297mm; overflow:hidden;
   background:{C['paper']}; page-break-after:always;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }}
 .page:last-child {{ page-break-after:auto; }}
 .pad {{ padding:14mm 14mm 0 14mm; }}
@@ -219,7 +198,7 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 .h-sec {{ font-family:{FONT_SERIF}; font-weight:700; font-size:15pt;
   color:{C['navy']}; }}
 
-/* Shared footer (FIXED — no overlapping chips like the live page-1 bug) */
+/* Shared footer */
 .foot {{
   position:absolute; left:0; right:0; bottom:0; height:13mm;
   background:{C['navy']}; color:#cdd5e2; display:flex; align-items:center;
@@ -228,7 +207,6 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 .foot b {{ color:#fff; font-weight:700; letter-spacing:.04em; }}
 .foot a {{ color:{C['gold']}; text-decoration:none; }}
 
-/* Reusable card */
 .card {{ border:1px solid {C['line']}; border-radius:12px; background:{C['paper']}; }}
 .pill {{ display:inline-block; padding:3px 10px; border-radius:999px;
   font-size:7.6pt; font-weight:700; letter-spacing:.04em; }}
@@ -236,10 +214,14 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 
 
 def page_footer(data: dict) -> str:
+    """Footer band. `{page}` is substituted per page by the render harness;
+    the total page count comes from `data['pages_total']`."""
     site = data.get("site_url", "taqinor.ma")
+    total = data.get("pages_total", 5)
+    ref = data.get("ref", "")
     return f"""
 <div class="foot">
   <div><b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10</div>
-  <div>Page {{page}} / 3 &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
+  <div>Page {{page}} / {total} &nbsp;·&nbsp; Réf. {ref} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """
