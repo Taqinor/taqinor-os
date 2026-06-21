@@ -273,4 +273,28 @@ body {
       filter: brightness(1);
     }
   }
+
+  /* ─── W206 — Stagger helpers pour .cine-in ────────────────────────────
+     Applique un décalage d'animation canonique sur .cine-in.
+     Usage : ajoute .cine-in-1 … .cine-in-4 en plus de .cine-in.
+     Alternative custom-property : style="--cine-delay:120ms" + .cine-in-d
+     Les deux sont gated ici (no-preference) → zero delay en reduced-motion. */
+  .cine-in-1 { animation-delay: 120ms; }
+  .cine-in-2 { animation-delay: 240ms; }
+  .cine-in-3 { animation-delay: 360ms; }
+  .cine-in-4 { animation-delay: 480ms; }
+
+  /* Variant custom-property — style="--cine-delay: 200ms" */
+  .cine-in-d { animation-delay: var(--cine-delay, 0ms); }
+}
+
+/* Ensure stagger classes are inert when motion is reduced */
+@media (prefers-reduced-motion: reduce) {
+  .cine-in-1,
+  .cine-in-2,
+  .cine-in-3,
+  .cine-in-4,
+  .cine-in-d {
+    animation-delay: 0ms;
+  }
 }
