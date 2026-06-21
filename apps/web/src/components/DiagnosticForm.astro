@@ -56,8 +56,10 @@ const VILLES = [
 // W51 — Le diagnostic vit désormais dans le système navy+or (champs sombres,
 // texte lune/blanc, accents laiton). Comportement, markup, attributs (hors
 // classes) et script INCHANGÉS.
+// W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
+// py-3 + text-base + border ≈ 46 px ; placeholder contrast raised to lune-soft.
 const inputClass =
-  'w-full border border-white/15 bg-nuit-800 px-3 py-2.5 text-sm text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+  'w-full min-h-[44px] border border-white/15 bg-nuit-800 px-3 py-3 text-base text-white placeholder:text-lune-soft outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
 ---
 
 <!-- ACTE FINAL — le diagnostic, dans la nuit éclairée d'or (W51). La couture
@@ -130,12 +132,12 @@ const inputClass =
             <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-300"></p>
           </div>
         </div>
-        <label class="flex items-start gap-2 text-sm text-lune">
-          <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-brass-400" checked />
+        <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-lune">
+          <input type="checkbox" name="whatsappOptIn" class="h-5 w-5 shrink-0 cursor-pointer accent-brass-400" checked />
           <span>{t('form.waOptIn')}</span>
         </label>
-        <label class="flex items-start gap-2 text-sm text-lune">
-          <input type="checkbox" name="consent" required class="mt-0.5 accent-brass-400" />
+        <label class="flex min-h-[44px] cursor-pointer items-start gap-2 text-sm text-lune">
+          <input type="checkbox" name="consent" required class="h-5 w-5 shrink-0 mt-0.5 cursor-pointer accent-brass-400" />
           <span>
             {t('form.consent.pre')} <a href={privacyHref} target="_blank" rel="noopener" class="text-lune-faint underline underline-offset-2 hover:text-brass-300">{t('form.consent.link')}</a>
           </span>

@@ -39,8 +39,9 @@ const VILLES = [
   'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
 ];
 
+// W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
 const inputClass =
-  'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
+  'w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
 ---
 
 <!-- ACTE FINAL — la nuit s'ouvre : le diagnostic arrive en pleine lumière -->
@@ -148,12 +149,12 @@ const inputClass =
           </div>
         </details>
 
-        <label class="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-azur-600" checked />
+        <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" name="whatsappOptIn" class="h-5 w-5 shrink-0 cursor-pointer accent-azur-600" checked />
           <span>Je préfère être contacté(e) par WhatsApp</span>
         </label>
-        <label class="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="consent" required class="mt-0.5 accent-azur-600" />
+        <label class="flex min-h-[44px] cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" name="consent" required class="h-5 w-5 mt-0.5 shrink-0 cursor-pointer accent-azur-600" />
           <span>
             J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
             demande d'étude solaire. * <a href="/politique-de-confidentialite" target="_blank" rel="noopener" class="text-encre-faint underline underline-offset-2 hover:text-azur-700">Politique de confidentialité</a>
