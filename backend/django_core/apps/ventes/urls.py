@@ -10,6 +10,8 @@ from .views import (
     AvoirViewSet,
     email_config,
     client_credit_warning,
+    releve_dry_run,
+    releve_commit,
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -64,5 +66,10 @@ urlpatterns = [
     # FG41 — avertissement plafond de crédit client (soft warning, jamais blocage).
     path('clients/<int:client_id>/credit-warning/', client_credit_warning,
          name='client-credit-warning'),
+    # FG42 — import relevé bancaire (dry-run + commit).
+    path('paiements/import-releve/dry-run/', releve_dry_run,
+         name='paiements-import-releve-dry-run'),
+    path('paiements/import-releve/commit/', releve_commit,
+         name='paiements-import-releve-commit'),
     path('', include(router.urls)),
 ]
