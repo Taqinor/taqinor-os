@@ -11,10 +11,12 @@ cross-checking ≥2 independent sources, with confidence + freshness flags). Cur
 
 ## How to use this on the site (honesty rules)
 
-1. **PUBLISH-SAFE vs VERIFY-FIRST.** Each figure below is tagged. **PUBLISH-SAFE** = high-confidence,
-   well-corroborated, safe to state (as a range). **VERIFY-FIRST** = single-source, evolving, or
-   founder-internal — write it qualitatively and label it *« à confirmer »* / *« fourchette
-   indicative »*, or get the founder to confirm, before stating it as fact.
+1. **PUBLISH-SAFE vs LOCK-FIRST.** Each figure below is tagged. **PUBLISH-SAFE** = high-confidence,
+   well-corroborated, safe to state (as a range). **LOCK-FIRST** = single-source or evolving — a
+   build/research step must **lock it from a primary source** (official ONEE/distributor tariff PDF,
+   the Bulletin Officiel / ANRE decision, the manufacturer datasheet, a live fuel price) **before**
+   it's published as a hard fact; until locked, publish it as a labelled range. **The agent does the
+   locking by searching primary sources — never ask the founder to verify a researchable fact.**
 2. **Volatile vs stable.** **Stable** physics/spec numbers (irradiation kWh/kWc, optimal tilt,
    panel degradation %, LFP cycle life / DoD / efficiency, EV kWh/100 km) may appear in **evergreen
    guides**. **Volatile** market/regulatory numbers (MAD prices, ONEE tranches, buyback rate, fuel
@@ -22,8 +24,10 @@ cross-checking ≥2 independent sources, with confidence + freshness flags). Cur
    from the guides rather than hardcoding a price into an undated page.
 3. **Ranges, not false precision.** Moroccan price data is installer/blog-sourced, not audited —
    always a range, always "indicatif".
-4. **Taqinor's OWN prices/products stay founder-confirmed.** Market ranges here are context; the
-   firm's quoted MAD figures come only from the founder / the quote engine.
+4. **The only founder-owned thing is Taqinor's actual quote.** Content never states the firm's
+   internal MAD quote or margins; it uses the indicative market ranges here + a CTA to the diagnostic
+   / quote engine (the existing funnel produces the real number). That is NOT a research gap and
+   needs no placeholder asking the founder for data.
 
 ---
 
@@ -43,8 +47,8 @@ surplus), **not** export revenue.
 | Surplus injection cap | **20 % of annual production** | PUBLISH-SAFE (high) | Médias24; LesEco; Fidal |
 | Buyback / rachat tariff | **0,21 DH/kWh peak · 0,18 DH/kWh off-peak** (ANRE 04/26) | PUBLISH-SAFE (high) | Médias24; LesEco; energypartnership |
 | Net-metering? | **No** — net-billing only; buyback ≪ retail | PUBLISH-SAFE (high) | multiple |
-| Penalties (no authorization) | 3 mo–1 yr + **100 000–1 000 000 DH** fines | VERIFY-FIRST (medium — exact article mapping not confirmed) | ecoactu.ma |
-| Article 33 regularization window | transitional regime, **18-month** window anchored to 9 Jun 2026 entry-into-force | VERIFY-FIRST (medium — exact start-trigger) | Fidal; Médias24 |
+| Penalties — **fines only** (enacted law dropped the draft's prison terms) | **Art. 28** no déclaration **2 000–5 000 DH**; **Art. 29** no raccordement/autorisation **100 000–1 000 000 DH**; **Art. 31** obstructing control **10 000–100 000 DH**; (Art. 30, number unconfirmed) modif. contraire à l'autorisation **10 000–20 000 DH + saisie** | PUBLISH-SAFE (high — verbatim from indexed BO n°7400, except Art. 30 medium) | ANRE Loi 82-21 PDF (BO 7400) |
+| Article 33 regularization window | **18 months from the LAW's entry into force** (verbatim Art. 33); dead-letter until the decree, so the operative trigger is now the **9 Jun 2026** decree entry-into-force (Fidal). No clean restated calendar deadline confirmed. | PUBLISH-SAFE on the 18-month text (high); operative date medium | ANRE PDF Art. 33; Fidal |
 
 Primary: ANRE Loi 82-21 PDF (anre.ma/.../Loi-82-21-BO_7400_Fr.pdf); ledesk.ma; fidal.com;
 energypartnership.ma; le212news.ma; medias24.com; leseco.ma. *(NB: ONEE/Fidal/distributor portals
@@ -54,28 +58,35 @@ energypartnership.ma; le212news.ma; medias24.com; leseco.ma. *(NB: ONEE/Fidal/di
 
 ## 2. Electricity tariffs (what solar offsets)
 
-ONEE residential basse-tension, **TTC**, current/2025 schedule:
+ONEE residential basse-tension, **TTC**, current in-force grid (this is the long-standing ONEE BT
+grid — the rounded figures below ARE the current usable rates):
 
-| Monthly use | DH/kWh | Mode |
-|---|---|---|
-| 0–100 kWh | **0,9010** | progressive |
-| 101–150 | 1,0732 | progressive |
-| 151–200 | 1,0732 | sélective |
-| 201–300 | 1,1676 | sélective |
-| 301–500 | 1,3817 | sélective |
-| > 500 | **1,5958** | sélective |
+| Monthly use | DH/kWh (rounded) | Precise grid value | Mode |
+|---|---|---|---|
+| 0–100 kWh | **0,90** | 0,9010 | progressive |
+| 101–150 | 1,07 | 1,0732 | progressive |
+| 151–200 | 1,18 | 1,1804 (sélective whole-bill 1,1676 in examples) | sélective |
+| 201–300 | ~1,18→1,45 | *(not cleanly pinned — examples jump 1,18→1,45)* | sélective |
+| 301–500 | **1,45** | 1,4555 | sélective |
+| > 500 | **1,66** | 1,6651 (sélective whole-bill 1,5958 in examples) | sélective |
 
-- **Key mechanic (PUBLISH-SAFE, high):** above **150 kWh/month** the bill turns **"sélective"** — the
-  **whole** month is billed at the reached tranche's rate, so high consumers pay the high marginal
-  rate on *everything*. This is precisely the cost solar removes. Above 500 kWh, **bi-horaire**
-  (peak/off-peak) applies.
-- **VERIFY-FIRST (evolving):** a **+5,5 % increase ~Oct 2025** may have moved the top tranches to
-  **≈1,45 and ≈1,66 DH/kWh**; the decimals 1,0732/1,1676/1,3817 are medium-confidence. ANRE tariff
-  reform may push further 2027 changes. **Re-check a current bill before quoting.**
-- **Distributors (Lydec/Casablanca, Redal/Rabat, Amendis/Tanger):** same **structure** as ONEE;
-  exact per-tranche decimals **NOT verified** (portals 403-blocked) → VERIFY-FIRST.
-- Sources: kherba.com/tarifs; RADEEF/RADEEJ tariff tables; globalpetrolprices (electricity); Médias24
-  (ANRE reform, 22 Dec 2025).
+- **Bi-horaire (peak/off-peak), avg >500 kWh/mo or >26 kVA (PUBLISH-SAFE, medium):** pointe
+  **1,4157** · pleines **1,0101** · creuses **0,7398** DH/kWh.
+- **Key mechanic (PUBLISH-SAFE, high):** at **≤150 kWh/mo** billing is **progressive** (each tranche
+  at its own rate); **above 150 kWh/mo** it turns **"sélective"** — the **whole** month is billed at
+  the reached tranche's rate, so high consumers pay the high marginal rate on *everything* (a **10
+  kWh/mo tolerance** per tranche softens overruns). This is precisely the cost solar removes.
+- **CORRECTION (vs first pass):** the often-repeated **"+5,5 % Oct-2025 hike"** could **not** be
+  confirmed to any primary source — it is likely conflated with **TVA** changes. The grid above is
+  the current usable schedule (press dates its last official revision to ~2015); the real near-term
+  change is an **ANRE tariff overhaul targeted ~March 2027**. **VAT note:** sources split on **14 %
+  vs 18 %** on BT — affects the TTC value → confirm when locking (W140).
+- **Distributors (Lydec/Casablanca, Redal/Rabat, Amendis/Tanger):** same **structure** + very close
+  rates to ONEE; exact per-tranche decimals **NOT verified** (portals 403-blocked) → LOCK-FIRST, use
+  the ONEE grid as the proxy and say so.
+- Sources: kherba.com/tarifs; calculateur.ma (ONEE simulator); electrosolarplus.ma; bati.ma;
+  globalpetrolprices (electricity); Médias24 (ANRE 2027 reform, 22 Dec 2025); distributor tariff
+  pages (Lydec/Redal/Amendis — 403, structure only).
 
 ---
 
@@ -84,24 +95,30 @@ ONEE residential basse-tension, **TTC**, current/2025 schedule:
 Specific yield = annual kWh per kWc installed. Strong, well-corroborated data (PVGIS / Global Solar
 Atlas / Solargis / peer-reviewed).
 
-| City | kWh/kWc/yr | Confidence |
-|---|---|---|
-| Tanger | ~1 450–1 550 | medium-low (cloudiest coast) |
-| Casablanca | 1 500–1 600 | medium-high |
-| Rabat-Salé | ~1 550–1 650 | medium |
-| Fès | ~1 600–1 700 | medium |
-| Marrakech | **1 700–1 780** (Solargis PVOUT **1 779**, PR 78 %) | high |
-| Agadir | 1 700–1 800 | medium-high |
-| Ouarzazate | ~1 850–1 950 (best in country) | high |
+Realistic PVOUT (~14 % system losses, GSA/PVGIS-aligned) + the **firmly-sourced optimal tilt**
+(all due-south):
 
-- **National PVOUT band: 1 600–1 900 kWh/kWp/yr** (Global Solar Atlas / World Bank). **~3 000
-  sunshine hours/yr** (3 500+ in the Sahara); daily GHI ~5,0–5,3 kWh/m², >5,5 in the south. Use
-  **~5–5,5 peak-sun-hours** for daily math.
-- **Installer rule of thumb (PUBLISH-SAFE): 1 500–1 800 kWh/kWc/yr by region.**
-- **Optimal tilt:** ~**28–32° south** central/north, ~**25–28°** south (Agadir/Ouarzazate) —
-  latitude-based estimate, VERIFY per-site in PVGIS.
-- Sources: globalsolaratlas.info/download/morocco; MDPI Resources 2024 13(10):140 (Marrakech 1 779);
-  solaratlas.masen.ma; soda-pro.com Morocco Atlas; World Bank.
+| City | PVOUT kWh/kWc/yr | Optimal tilt | Confidence |
+|---|---|---|---|
+| Tanger | ~1 550–1 650 | **31°** (2nd study: 32°) | tilt high; yield est. |
+| Casablanca | ~1 620–1 700 | **29°** | tilt high; yield est. |
+| Rabat-Salé | ~1 620–1 700 | **29°** | tilt high; yield est. |
+| Fès | ~1 650–1 750 | **~32°** | tilt medium; yield est. |
+| Marrakech | **1 779** (GTI 2 276, PR 78 %) | **28°** | **high** — one fully-confirmed row |
+| Agadir | ~1 750–1 820 | **27°** | tilt high; yield est. |
+| Ouarzazate | ~1 850–1 950 (best) | ~28–30° (est.) | yield band medium; tilt est. |
+
+- **Methodology:** *resource-side* yields (profileSOLAR / NASA POWER, PR≈1) run ~2 000–2 330 kWh/kWp
+  (low-loss, best-case); **GSA/PVGIS PVOUT** applies real losses. **Marrakech 1 779 (PR 78 %)** is the
+  one fully-confirmed datapoint and calibrates the rest. Standardize the site on **PVGIS, 14 % system
+  losses, optimalangles=1**; at 14 % losses each PVOUT above nudges up ~5–6 %. The exact per-city
+  PVOUT/GHI are LOCK-FIRST — pull per coordinate from globalsolaratlas.info / PVGIS (W140; the tilts
+  are already locked).
+- **National anchors (PUBLISH-SAFE):** GSA PVOUT **1 600–1 900 kWh/kWp/yr**; ~**3 000** sunshine
+  hours/yr (3 500+ in the Sahara); GHI ~5,8 kWh/m²/day (~2 100 kWh/m²/yr); use **~5–5,5 peak-sun-
+  hours** for daily math. **Installer rule of thumb: 1 500–1 800 kWh/kWc/yr by region.**
+- Sources: MDPI Resources 2024 13(10):140 (Marrakech 1 779, confirmed); profileSOLAR (NASA POWER,
+  per-city tilts); globalsolaratlas.info; PVGIS; soda-pro.com Morocco Atlas; World Bank.
 
 ---
 
@@ -118,10 +135,11 @@ Atlas / Solargis / peer-reviewed).
 
 ---
 
-## 5. Installed price — residential rooftop PV (VERIFY-FIRST — installer/blog-sourced, indicative)
+## 5. Installed price — residential rooftop PV (LOCK-FIRST — installer/blog-sourced, indicative)
 
 > All MAD prices are **advertised/indicative from Moroccan installer blogs, not audited**. Publish as
-> ranges labelled « fourchette indicative 2026 ». Taqinor's real quote comes from the founder.
+> ranges labelled « fourchette indicative 2026 ». Taqinor's real quote comes from the diagnostic /
+> quote engine (the existing funnel) — content links to it, it is not a number to ask anyone for.
 
 | System | Turnkey (MAD) | Confidence |
 |---|---|---|
@@ -176,14 +194,32 @@ Médias24; le360; Infomédiaire; globalpetrolprices.
 - "Solar-aware" chargers (myenergi **Zappi**, Wallbox **Pulsar/Quasar** solar mode) divert PV
   surplus to the car — the key honesty point: dumb full-power solar-only charging is impractical
   without grid/battery/throttling.
-- Wallbox installed **~7 000–25 000 MAD** (VERIFY-FIRST — installer-blog estimate; get a live quote).
+- Wallbox installed **~7 000–25 000 MAD** (LOCK-FIRST — installer-blog estimate; lock from a Moroccan
+  distributor's live listing, or publish as the labelled range).
   Brands sold in MA: Wallbox, Schneider EVlink, Legrand, V2C, Circontrol.
 
-**EV market (VERIFY-FIRST — automotive press):** >15 000 EVs (2025), fast growth; ADM + TotalEnergies
-motorway fast-charge corridor (incl. A3 Casa–Marrakech); ~2 500 bornes planned by end-2026; TVA
-exemption + no vignette; **~50 000 MAD purchase prime (individuals)** — verify against an official
-source. Common models: Dacia Spring, BYD Dolphin/Atto 3, Renault Mégane E-Tech, Citroën ë-C3, MG4.
-Sources: evccat.ma; autoactu.ma; ftmservices.ma; storeaccess.ma; voiturenet.ma.
+**EV policy (CORRECTED 2026 — the honesty fix):**
+- ⚠️ **The "50 000 / 100 000 MAD prime à l'achat" is NOT a confirmed Moroccan measure.** It appears
+  only in commercial secondary blogs and is **Tunisia bleed-through** (the "TVA 19→7 %, prime, 50 000
+  véhicules d'ici 2030" package is *Tunisia's*, per the African Manager article repeatedly mis-cited
+  as Moroccan). Authoritative LF-2026 summaries (Deloitte, DGI, CGI-2026) list **no EV cash bonus**.
+  The only real cash help is a **private manufacturer promo** (Stellantis Maroc "ECO BONUS", ~30 000
+  DH, not state, not EV-specific). **Do NOT publish the prime as Moroccan policy.** (Med-high it is
+  NOT real MA policy.)
+- **Real, citable Moroccan EV measures (PUBLISH-SAFE):** **TVA exemption** (0 % vs 20 %),
+  **customs/import-duty waiver** on qualifying 100 %-electric vehicles, and **vignette/TSAVA
+  exemption** (EV **and** PHEV; non-plug-in HEV generally **not** exempt) — long-standing (2014/2017
+  finance laws). The "7 % TVA / 2,5 % customs" variants are **Tunisian** — not Morocco.
+- **Charger/wallbox/inverter import-duty cut: UNVERIFIED** — LF-2026 actually *raised* duties on
+  several electronics; do not assume a cut.
+- **Charging network (medium):** ~**632** public points now (~**142** fast up to 150 kW); target
+  **2 500 stations by end-2026**, ~5 000 by 2028; flagship corridor = **TotalEnergies + ADM** on the
+  motorway **A1/A3 Casablanca–Rabat–Tanger**; ONEE in cities/malls.
+- **EV parc:** >15 000 EVs (2025), fast growth. Common models: Dacia Spring, BYD Dolphin/Atto 3,
+  Renault Mégane E-Tech, Citroën ë-C3, MG4.
+- Sources: IEA Policies (vignette/circulation exemption); PwC Morocco tax summary; Deloitte LF-2026;
+  Le Matin / Médias24 (vignette 2026); laquotidienne.ma (2 500 bornes); TotalEnergies Maroc. Tunisia
+  bleed-through traced to africanmanager.com.
 
 ---
 
@@ -211,13 +247,18 @@ Sources: evccat.ma; autoactu.ma; ftmservices.ma; storeaccess.ma; voiturenet.ma.
 **Dyness LFP lineup (the brand Taqinor uses) — PUBLISH-SAFE family facts:**
 - Chemistry **LiFePO4** across the range; headline **≥6 000 cycles**; **10-year warranty to ~70 %
   retention** (family standard); marketed **≥95 %** round-trip (DC-level — cite as "≈" / medium).
-- Models: **B4850** 2,4 kWh (90 % DoD, 0–55 °C); **B3** 3,6 kWh rack; **A5/PowerBox** 4,8 kWh;
-  **PowerDepot H5B** 5,12 kWh (built-in heating — good for cold mountain installs; warranty 10 yr
-  *conditional* on registration else 7 yr); **PowerBrick** 14,34 kWh (95 % DoD); **Tower T7/T10/T14**
-  HV stacked (6,7 / 10,1 / 13,5 kWh usable).
-- VERIFY-FIRST: exact round-trip %, PowerBrick 6 000-vs-8 000 cycles & 55-vs-60 °C, H5B 7-vs-10-yr,
-  Tower original-vs-2.0 capacity. Open the official Dyness PDFs to lock precise figures.
-- Sources: dyness.com datasheets/warranty PDFs; solarquotes.com.au; enfsolar; distributor pages.
+- Models (locked from official datasheets): **B4850** 2,4 kWh (90 % DoD, 0–55 °C); **B3** 3,6 kWh
+  rack (90 % DoD); **A5/PowerBox** 4,8 kWh; **PowerDepot H5B** 5,12 kWh (~95 % DoD, **built-in
+  heating**, **−20–55 °C**, warranty **7 yr base / 10 yr on registration** to 70 %); **PowerBrick**
+  14,34 kWh (95 % DoD, **≥8 000 cycles** latest datasheet / ≥6 000 @ 80 % warranty basis, **55 °C**
+  ceiling, **>95 %** round-trip — the one efficiency datasheet-confirmed); **Tower T7/T10/T14** HV
+  stacked (7,10 / 10,66 / 14,21 kWh nominal, 95 % DoD, charge 0–50 °C / discharge −10–50 °C).
+- **Resolved conflicts (was LOCK-FIRST):** PowerBrick ≥8 000 cycles & 55 °C; H5B 7/10-yr & −20–55 °C
+  w/ heating — all locked above. **One residual gap:** round-trip efficiency for the **non-PowerBrick**
+  models is not on any datasheet extraction (PowerBrick's >95 % is) → state "≈95 % (classe LFP)" or
+  omit; do not cite the lone aggregator "90 %".
+- Sources: dyness.com datasheets/warranty PDFs (PowerBrick 20250228, H5B, B4850, B3, Tower);
+  solarquotes.com.au; enfsolar; bimblesolar; distributor spec mirrors.
 
 **Hybrid inverters (Deye / Huawei) — PUBLISH-SAFE concept facts:** support **EPS/backup**, **off-peak
 grid-charging** (both have time-of-use scheduling), and **"battery-ready"** operation (run solar-only
@@ -250,7 +291,7 @@ difference** (great differentiator for a Moroccan home riding through grid cuts)
 
 **Sizing (PUBLISH-SAFE rules of thumb):** backup-only **5–10 kWh**; evening self-consumption
 **10–20 kWh**; near-autonomy **20 kWh+**; off-grid = **2–3 days** autonomy + winter margin. Quote
-**usable** kWh (DoD), not nameplate. **Battery price ~3 000–4 000 DH/kWh generic LFP** (VERIFY-FIRST;
+**usable** kWh (DoD), not nameplate. **Battery price ~3 000–4 000 DH/kWh generic LFP** (LOCK-FIRST;
 the Huawei LUNA 62 050 DH/5 kWh ≈ 12 400 DH/kWh listing is an outlier — do **not** benchmark on it).
 
 **Battery economics — the Morocco angle (PUBLISH-SAFE logic):** with export capped at 20 % and bought
@@ -265,12 +306,20 @@ that could simply run at midday.
 
 - ONEE/Fidal/Le Desk/distributor portals and PVGIS/Global Solar Atlas interactive pages **403-block
   automated fetch** — figures were triangulated from ≥2 independent search extractions, not always a
-  fetched primary PDF. Confidence tags reflect this.
-- **Re-verify before publishing as fact:** current ONEE top-tranche rates (post-Oct-2025 +5,5 %),
-  distributor per-tranche decimals, exact penalty articles, Article 33 start-trigger, fuel prices
-  (biweekly), wallbox/battery MAD prices, the EV purchase prime, and exact Dyness efficiency/cycle
-  conflicts.
-- **Strongest, publish-now data:** irradiation/yield by city, sizing rules, EV kWh/100 km and
-  panels-per-EV, the cost-per-100 km *ordering*, LFP-vs-lead-vs-NMC ranking, the 82-21 regimes +
-  20 % cap + 0,18–0,21 DH buyback + net-billing fact, panel degradation (~0,5 %/yr, ~80–85 % at 25
-  yr).
+  fetched primary PDF. Confidence tags reflect this. A second targeted research wave (2026-06-21) was
+  run to LOCK the open items from primary sources; promoted figures are folded in above.
+- **LOCKED by the 2nd wave (now PUBLISH-SAFE, folded in above):** the current ONEE BT grid + the
+  "+5,5 % hike" correction; loi 82-21 penalty articles (28/29/31, fines-only — prison was dropped);
+  Article 33 = 18 months from the law's entry into force; per-city optimal tilts (Casa/Rabat 29°,
+  Marrakech 28°, Agadir 27°, Tanger 31°); Dyness conflicts (PowerBrick ≥8 000 cyc/55 °C/>95 %, H5B
+  7-/10-yr & heating); fuel mid-Jun-2026; and the **EV-prime correction** (50 000 MAD prime = Tunisia
+  bleed-through, NOT Moroccan — only TVA/vignette/customs exemptions are real).
+- **Residual gaps (publish as labelled ranges; the agent re-locks via W140, never the founder):**
+  exact 201–300 kWh tranche rate; distributor (Lydec/Redal/Amendis) per-tranche decimals; BT VAT
+  14 % vs 18 %; round-trip efficiency for the non-PowerBrick Dyness models; exact per-city PVOUT
+  (tilts locked, yields reconciled-estimated); live wallbox/battery MAD prices. Volatile (fuel,
+  tariffs, prices) = date-stamp + refresh cadence.
+- **Strongest, publish-now data:** per-city optimal tilt + national PVOUT band, sizing rules, EV
+  kWh/100 km and panels-per-EV, the cost-per-100 km *ordering*, LFP-vs-lead-vs-NMC ranking, the 82-21
+  regimes + 20 % cap + 0,18–0,21 DH buyback + net-billing fact + the locked penalty bands, panel
+  degradation (~0,5 %/yr, ~80–85 % at 25 yr).

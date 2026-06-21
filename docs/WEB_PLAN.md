@@ -628,16 +628,21 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
 > [`apps/web/CONTENT_SEO_NOTES.md`](../apps/web/CONTENT_SEO_NOTES.md) (loi 82-21 regimes/20 %-cap/
 > 0,18–0,21 DH buyback, ONEE tranches, irradiation kWh/kWc by city, sizing, install-price ranges,
 > EV economics, battery chemistry/Dyness specs, inverter backup behaviour) — each figure tagged
-> PUBLISH-SAFE or VERIFY-FIRST with a confidence + source. Use it as follows: (a) **STABLE** physics/
+> PUBLISH-SAFE or LOCK-FIRST with a confidence + source. Use it as follows: (a) **STABLE** physics/
 > spec figures (irradiation, optimal tilt, ~0,5 %/yr degradation, LFP cycle life/DoD/efficiency, EV
 > ~15 kWh/100 km, panels-per-EV) may go in the **evergreen guides** with their source; (b)
 > **VOLATILE** market/regulatory figures (MAD prices, ONEE tranches, buyback rate, fuel prices)
 > belong in the **dated blog posts** (W132–W139) and are *linked* from the guides, never hardcoded
-> into an undated page; (c) anything tagged **VERIFY-FIRST** is published as a labelled range
-> (« fourchette indicative 2026 » / « à confirmer ») — never as hard single-point fact; (d)
-> **Taqinor's OWN quoted prices/products stay founder-confirmed** (use a `<!-- PENDING(Reda) -->`
-> placeholder only for the firm's internal figures, not for the cited market context). **Never
-> fabricate or over-precision a number.** **`/faq` stays the SOLE `FAQPage` JSON-LD owner** (W98 invariant): any other page
+> into an undated page; (c) anything tagged **LOCK-FIRST** must be **locked by the task itself from a
+> primary source** (the running agent searches the official ONEE/distributor PDF, the Bulletin
+> Officiel / ANRE decision, the manufacturer datasheet, or a live price — W140 centralizes this and
+> feeds the doc) — **never defer a researchable fact to the founder**; until locked it publishes as a
+> labelled range (« fourchette indicative 2026 »), never as hard single-point fact; (d) **the only
+> founder-owned thing is Taqinor's actual quote** — content never states the firm's internal MAD
+> figure, it uses the indicative ranges + a CTA to the diagnostic/quote engine. **`<!-- PENDING(Reda)
+> -->` is reserved strictly for founder-owned ASSETS the web cannot research** (real client reviews,
+> team/founder photos) — **never for a number, tariff, spec, or fact**. **Never fabricate or
+> over-precision a number.** **`/faq` stays the SOLE `FAQPage` JSON-LD owner** (W98 invariant): any other page
 > that renders a visual FAQ MUST reuse the `Faq` component with `schema={false}`. New guide/landing
 > pages carry **`Article` (or `Service`) + `BreadcrumbList`** JSON-LD and a self-referencing
 > canonical, matching the existing guide pages. The **live lead form + its whole data flow** (1 000
@@ -647,7 +652,29 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
 > descriptive `alt` on any content image.** New public pages enter the sitemap automatically — verify
 > they do and that `/preview/*` still does not. **Lanes:** each new page is its own file → its own
 > worktree lane (W120–W128 run fully in parallel); W119 (`/faq`), W129 (guides hub), W130
-> (`/batteries-stockage`) each own one existing file; W131 (tests) sequences last.
+> (`/batteries-stockage`) each own one existing file; W131 (tests) sequences last. **W140 (data lock/refresh) runs FIRST** — it only writes
+  `CONTENT_SEO_NOTES.md` (no file conflict; can run in parallel) and its locked figures feed every
+  content task below.
+
+- [ ] W140 — **Research-and-lock the open figures + refresh the volatile ones (the agent searches,
+  never the founder).** Before/while the content tasks run, lock every `LOCK-FIRST` figure in
+  `CONTENT_SEO_NOTES.md` from a PRIMARY source and promote it (or leave a labelled range if a primary
+  source genuinely can't be reached — never a founder ask): (1) the current ONEE BT residential grid
+  + bi-horaire rates from the ONEE/distributor tariff page or a recent dated source (the "+5,5 %
+  Oct-2025 hike" was found UNVERIFIED — the rounded grid 0,90/1,07/1,18/1,45/1,66 DH/kWh is the
+  current usable grid; confirm + date-stamp); (2) loi 82-21 penalty bands + the Article 33 window
+  start-trigger from the Bulletin Officiel / decree text; (3) per-city PVGIS specific yield + optimal
+  tilt from PVGIS/Global Solar Atlas (state the system-loss assumption); (4) Dyness round-trip
+  efficiency for the non-PowerBrick models from the official datasheets (PowerBrick >95 %, ≥8000
+  cycles, 55 °C, and H5B 7-yr-base/10-yr-on-registration are already locked); (5) **CORRECTED EV
+  policy** — the "50 000/100 000 MAD prime à l'achat" is NOT a confirmed Moroccan measure (Tunisia
+  cross-contamination in secondary blogs); the real, citable measures are EV **TVA exemption**,
+  **vignette/TSAVA exemption** (EV + PHEV, not HEV) and **import-duty waiver** — do NOT publish the
+  prime as Moroccan policy; (6) date-stamp the volatile figures (fuel ~14,3/13,6 MAD/L mid-Jun-2026,
+  tariffs, prices) + a one-line refresh-cadence note so the blog posts can be re-checked. Update the
+  PUBLISH-SAFE / LOCK-FIRST tags accordingly. Accept: every figure in `CONTENT_SEO_NOTES.md` is either
+  locked-with-source or an explicitly labelled range, the EV-prime correction is applied, no founder
+  ask anywhere. File: `apps/web/CONTENT_SEO_NOTES.md` (notes only — runs first, conflict-free).
 
 - [ ] W119 — **Expand the public FAQ (`/faq`) to ~24 questions across solar, EV-charging & battery.**
   Today `faq.astro` renders ~13 Q grounded in site facts. Add ~11 more, grouped, keeping the single
@@ -661,7 +688,8 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   hybride+batterie), **EV:** *puis-je recharger ma voiture électrique avec mes panneaux ?*, *faut-il
   une batterie pour recharger la nuit ?*, **battery:** *combien de temps dure une batterie LFP ?*
   (tie to published 10-ans Dyness warranty). Keep every answer derived from published facts or
-  general physics; anything needing a price/tariff → qualitative + `PENDING(Reda)`. Accept: `/faq`
+  general physics; anything needing a price/tariff → the cited figure from `CONTENT_SEO_NOTES.md` as
+  a labelled range (link the relevant blog post for the live number), never a founder ask. Accept: `/faq`
   shows ~24 grouped Q, still exactly ONE `FAQPage` block aligned to the rendered list, no fabricated
   figure, FR copy in the existing voice. Files: `apps/web/src/pages/faq.astro` (FR only; `/en/faq` +
   `/ar/faq` mirror is a flagged follow-up, not required to land).
@@ -677,7 +705,8 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   recharge directe, batterie maison, ou borne « intelligente » qui suit le surplus solaire* (the key
   honesty point: dumb full-power solar-only charging is impractical without grid/battery/throttling)
   · *carport / abri solaire* · *V2H/V2G* (framed "à venir au Maroc") · *est-ce rentable face à
-  l'essence ?* (method only — Moroccan fuel/tariff figures stay `PENDING(Reda)`). Tie the whole page
+  l'essence ?* (Moroccan fuel/tariff figures come from `CONTENT_SEO_NOTES.md` / the EV blog post
+  W136 as labelled, sourced ranges — not a founder ask). Tie the whole page
   to the loi 82-21 self-consumption angle (export capped/cheap → charge from your own surplus). Carry
   `Service` + `BreadcrumbList` JSON-LD, a self-referencing canonical, a real `og` image (reuse an
   existing `/og/*.png`), and a visual FAQ via `Faq` with **`schema={false}`** (the EV Q in W119 own
@@ -694,7 +723,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   StickyCta). Explains the sizing METHOD from the ONEE/Lydec bill → annual kWh → kWc → panel count
   (m²/panel geometry, ~1,7–2 m²/panel are general facts), the high-Morocco-irradiation note kept
   qualitative, and routes to the diagnostic. No new price/kWh figure (method only; any Morocco
-  kWh/kWc → `PENDING(Reda)`). Accept: clean Article page, single canonical, no invented number,
+  kWh/kWc from `CONTENT_SEO_NOTES.md` §3, cited). Accept: clean Article page, single canonical, no invented number,
   internal-linked, listed by W129. File: `apps/web/src/pages/guides/combien-de-panneaux-pour-ma-maison.astro`.
 
 - [ ] W122 — **Guide: « On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ? »**
@@ -770,8 +799,8 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   (the EV page + `/batteries-stockage` render the `Faq` component with `schema={false}` → no second
   `FAQPage`); every NEW page (W120–W128) has exactly one self-referencing canonical and carries
   `Article`/`Service` + `BreadcrumbList` JSON-LD; the new public routes ARE in the sitemap and
-  `/preview/*` still is NOT; a guard asserting no new page contains an obviously-fabricated price
-  token where a `PENDING(Reda)` placeholder is expected (best-effort). Accept: new assertions pass,
+  `/preview/*` still is NOT; a guard asserting volatile market figures render as labelled ranges
+  (« indicatif » / dated) rather than bare fabricated single-point prices (best-effort). Accept: new assertions pass,
   full suite green, Lighthouse held 97–100. Files: `apps/web/tests/*.ts` (+ new files as needed).
 
 ---
@@ -793,8 +822,10 @@ fuel) — published as cited, dated, labelled ranges.*
 > **No new npm/paid dependency:** the blog uses **core Astro content collections** (`glob` loader +
 > Zod schema — already in Astro 6, no package) and a **hand-rolled `/rss.xml` endpoint** (no
 > `@astrojs/rss`). Numbers trace to `CONTENT_SEO_NOTES.md` with their source + the PUBLISH-SAFE /
-> VERIFY-FIRST discipline (cited ranges, « à confirmer » on evolving figures, `PENDING(Reda)` only
-> for Taqinor's own quoted prices). **Drafts never ship:** a `draft: true` post is excluded from the
+> LOCK-FIRST discipline (cited ranges; a LOCK-FIRST figure is locked from a primary source by the
+> task / W140, else published as a labelled « fourchette indicative » — never deferred to the
+> founder; `PENDING(Reda)` reserved strictly for founder-owned assets like real reviews/photos).
+> **Drafts never ship:** a `draft: true` post is excluded from the
 > build output, the index, the sitemap and the RSS feed. Posts are FR-only for now (not in the
 > i18n registry). Cross-link blog ↔ guides ↔ service pages so intent is clear and link equity flows.
 > **Lanes:** W132 builds the architecture (collection config + routes + RSS + nav) → it MUST land
@@ -836,8 +867,10 @@ fuel) — published as cited, dated, labelled ranges.*
   Uses `CONTENT_SEO_NOTES.md` §3+§2: the **kWh/kWc/yr by city** table (Casablanca 1 500–1 600,
   Marrakech ~1 779, Ouarzazate ~1 850–1 950, etc., cited PVGIS/Solargis), the **"sélective" tranche
   mechanism** (above 150 kWh/mo you pay the high marginal rate on everything — what solar removes),
-  and the **5–7 yr payback** consensus. Flag the evolving top-tranche rates as « à vérifier sur une
-  facture récente ». Cross-link the cost pillar (W133) + loi 82-21 post (W135). Accept: cited
+  and the **5–7 yr payback** consensus. Use the locked ONEE grid from `CONTENT_SEO_NOTES.md` §2
+  (date-stamped); if a fresher rate is needed the task locks it from the ONEE/distributor tariff
+  source (W140), else publishes the date-stamped range. Cross-link the cost pillar (W133) + loi
+  82-21 post (W135). Accept: cited
   city/yield table + payback, freshness-flagged tariffs. File:
   `apps/web/src/content/blog/rentabilite-solaire-par-ville-maroc.md`.
 
@@ -846,8 +879,8 @@ fuel) — published as cited, dated, labelled ranges.*
   regimes + thresholds (≤11 kW déclaration / 11 kW–5 MW accord / >5 MW autorisation), the **9 June
   2026** entry into force, the **20 % surplus cap**, the **net-billing (not net-metering)** fact and
   the **0,18–0,21 DH buyback ≪ retail** consequence (self-consumption is where the value is). Penalties
-  + Article 33 18-month window included but explicitly VERIFY-FIRST (« à confirmer sur le texte
-  officiel »). Complements the existing `/guides/loi-82-21-expliquee` (this one is dated + numeric).
+  + Article 33 18-month window included, locked from the Bulletin Officiel / decree text by W140
+  (or stated qualitatively if a primary article reference can't be reached — never a founder ask). Complements the existing `/guides/loi-82-21-expliquee` (this one is dated + numeric).
   Accept: accurate cited regulatory post with the honest self-consumption conclusion. File:
   `apps/web/src/content/blog/loi-82-21-autoproduction-2026.md`.
 
@@ -864,7 +897,7 @@ fuel) — published as cited, dated, labelled ranges.*
   Maroc ».** From `CONTENT_SEO_NOTES.md` §1+§7: with export capped at 20 % and bought back at
   0,18–0,21 DH while you buy at 0,90–1,66 DH, a **stored-and-self-used kWh beats an exported one**;
   the **order of value** (consommer en journée → stocker le soir → exporter les 20 %), generic LFP
-  **~3 000–4 000 DH/kWh** (VERIFY-FIRST; the 12 400 DH/kWh outlier explicitly excluded), battery
+  **~3 000–4 000 DH/kWh** (LOCK-FIRST; the 12 400 DH/kWh outlier explicitly excluded), battery
   payback +1–3 yr. Cross-link battery sizing guide (W127) + Dyness post (W138). Accept: the Morocco
   store-vs-sell economics, honestly framed, cited ranges. File:
   `apps/web/src/content/blog/batterie-stocker-ou-revendre-maroc.md`.
@@ -875,7 +908,8 @@ fuel) — published as cited, dated, labelled ranges.*
   ≥6 000 cycles, 10-yr/70 % warranty) and the **backup differentiator** — **Deye SG-series near-seamless
   ~4–10 ms UPS, no extra box, 48 V LFP, 6 TOU windows** vs **Huawei SUN2000 + Backup Box (<3 s
   changeover, three-phase M0 = no backup)** — plus the LFP lifespan/heat facts (10–15 yr, +10 °C ≈
-  halves life, never charge <0 °C). Mark the VERIFY-FIRST spec conflicts (efficiency %, H5B 7-vs-10-yr).
+  halves life, never charge <0 °C). Lock the spec conflicts (efficiency %, H5B 7-vs-10-yr) from the
+  official Dyness datasheets via W140; publish what's locked, omit what isn't — no founder ask.
   Complements the chemistry guide (W126). Accept: accurate cited product/backup post. File:
   `apps/web/src/content/blog/batterie-lfp-dyness-deye-huawei.md`.
 
