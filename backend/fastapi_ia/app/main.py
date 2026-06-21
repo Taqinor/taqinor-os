@@ -2,7 +2,7 @@ import os
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import ocr, sql_agent
+from app.api.endpoints import ocr, sql_agent, transcription
 from app.core.database import create_tables
 from app.core.security import verify_token
 
@@ -64,5 +64,11 @@ app.include_router(
     sql_agent.router,
     prefix="/sql-agent",
     tags=["SQL Agent"],
+    dependencies=[Depends(verify_token)],
+)
+app.include_router(
+    transcription.router,
+    prefix="/chat",
+    tags=["Transcription"],
     dependencies=[Depends(verify_token)],
 )
