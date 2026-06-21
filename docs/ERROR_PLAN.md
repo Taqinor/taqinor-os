@@ -2,7 +2,9 @@
 
 This file is the bug/error backlog **drained by the `work on error plan` command**
 (defined in `CLAUDE.md`). That command is identical to `work on the plan` in every
-respect — same lanes, same up-to-8 worktree subagents, same dynamic-workflow-with-
+respect — same `scripts/plan_lanes.py`-driven maximally-parallel cross-category lane
+plan (run it on `docs/ERROR_PLAN.md`), same concurrent worktree subagents up to the
+session ceiling continuously refilled (work-stealing), same dynamic-workflow-with-
 review engine, same stop conditions, same per-task commit/tick/DONE-LOG, same
 sync-safe single self-merge `dev` → `main` — **with exactly one difference: it
 works through THIS file** instead of `docs/PLAN.md` / `docs/PLAN2.md`. There is no
@@ -31,9 +33,11 @@ Follow the `work on error plan` rules in `CLAUDE.md` (they mirror `docs/PLAN.md`
 HOW TO RUN verbatim, only the drain file changes). One-line starter:
 
 > Read `docs/ERROR_PLAN.md`. Work through EVERY unchecked `[ ]` ERR task: first
-> partition them into independent lanes by the real source files each fix writes,
-> then build the lanes in parallel with up to 8 worktree subagents (each in its own
-> git worktree, waves of 8 if there are more lanes), coupled fixes in sequence
+> run `python scripts/plan_lanes.py docs/ERROR_PLAN.md` to get the maximally-parallel
+> cross-category wave plan, then build those lanes in parallel with concurrent worktree
+> subagents (each in its own git worktree) up to the session ceiling (default 8, raised
+> as high as the session can sustain via `--max-lanes`), continuously refilled
+> (work-stealing), coupled fixes in sequence
 > inside a lane (default: dynamic workflow with a separate adversarial review agent
 > that must pass each change before it's merge-eligible; fall back to plain parallel
 > worktree subagents — never a single serial one-task-at-a-time agent). For each

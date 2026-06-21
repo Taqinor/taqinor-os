@@ -5,9 +5,11 @@
 This is the **priority queue**, worked **before** `docs/PLAN.md`. A run drains every `[ ]` task
 in this file FIRST — the same way (verify it isn't already built, build it completely with
 tests, obey every STANDING RULE in `PLAN.md`, then commit it to a worktree branch, tick it `[x]`,
-and append a DONE LOG line as it lands; **partition the unchecked tasks into independent lanes by
-the real files they write and build the lanes in parallel with up to 8 concurrent worktree
-subagents — waves of 8 if there are more — coupled tasks in sequence inside a lane**) — and only
+and append a DONE LOG line as it lands; **run `python scripts/plan_lanes.py docs/PLAN2.md` to get
+the maximally-parallel cross-category wave plan and build those lanes in parallel with concurrent
+worktree subagents up to the session ceiling (default 8, raised as high as the session can sustain
+via `--max-lanes`), continuously refilled (work-stealing), coupled tasks in sequence inside a
+lane**) — and only
 once this file has no pending `[ ]` task left does it fall through to `docs/PLAN.md`. Every
 worktree branch is folded into one `dev`, CI runs once over the whole batch, and the run
 self-merges `dev` → `main` exactly once at the very end — **no per-agent PR, no per-task merge**.

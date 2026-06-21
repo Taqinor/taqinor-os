@@ -55,13 +55,19 @@ repo yet, the rule still applies to any future integration.
 
 - A run lands its whole batch as a single self-merge of `dev` → `main` (one merge
   commit, history preserved, 0 approvals). At the START of the run the orchestrator
-  computes the file-ownership + dependency graph from the real code and partitions
-  the unchecked queue into independent **lanes** (groups that must run in sequence
-  because they share a file or depend on each other; different lanes never touch
-  each other's files), then fans those lanes out to **up to 8 concurrent worktree
-  subagents** — each in its own isolated git worktree, so two tasks never edit the
-  same files at once — running them in **waves of up to 8** when there are more
-  lanes than that, with tasks inside a lane done in sequence. When the lanes finish,
+  runs `python scripts/plan_lanes.py` (PLAN2.md first, then PLAN.md) to compute the
+  file-ownership + dependency graph from the real code and partition the unchecked
+  queue into independent **lanes** (groups that must run in sequence because they
+  share a file or depend on each other; different lanes never touch each other's
+  files). It does NOT walk the queue top-down — the planner emits a **maximally
+  parallel, cross-category frontier** (one task per app/file-set, longest chains
+  first) so every wave fills with truly-independent work drawn from as many different
+  categories as possible. Those lanes fan out to concurrent worktree subagents —
+  each in its own isolated git worktree, so two tasks never edit the same files at
+  once — up to the session's worktree ceiling (default 8, raised as high as the
+  session can sustain) and **continuously refilled (work-stealing): a freed slot
+  immediately takes the next ready lane head rather than idling until a whole wave
+  finishes**, with tasks inside a lane done in sequence. When the lanes finish,
   every worktree branch is folded into one `dev` branch, the four required CI checks
   run once over the whole batch and gate the single merge, and `main` stays
   revertable: if a merge breaks something, `git revert` restores the previous state.
@@ -222,22 +228,38 @@ Anything typed after the command is extra detail for that run.
   ever one session at a time.
 - Read it fully and verify real repo state.
 - **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
-  with MAXIMUM SAFE PARALLELISM.** At the START of the run, compute the
-  file-ownership + dependency graph from the real code (which source files each
-  unchecked `[ ]` task must write) and **partition the queue into independent lanes**
-  — a lane is a group of tasks that must run in sequence because they share a file or
-  depend on each other; different lanes never touch each other's files. Process EVERY
-  unchecked `[ ]` task in the BUILD QUEUE. **Fan the lanes out to concurrent
-  subagents, each launched with worktree isolation (`isolation: worktree`)** so no
-  two ever edit the same files. Spawn them concurrently — do NOT finish one before
-  starting the next — up to a ceiling of **8 worktree subagents running at once**;
-  with more than 8 lanes, run them in **waves of up to 8**; with fewer, use fewer
-  agents. **Tasks inside one lane run in sequence.** Each subagent builds its lane's
-  tasks completely with tests and, as each lands, commits it to **its own worktree
-  branch**, ticks it `[x]`, and adds one dated line to the DONE LOG — so an
-  interrupted run loses nothing and re-firing resumes from the first still-unchecked
-  task. CI runs once at the end over the whole batch (see below), not per task or per
-  agent. This processes EVERY unchecked task; it does NOT end the run after the first.
+  with MAXIMUM SAFE PARALLELISM.** At the START of the run, run
+  **`python scripts/plan_lanes.py docs/PLAN2.md` then `python scripts/plan_lanes.py
+  docs/PLAN.md`** (PLAN2 is the priority queue — drain its waves first, then
+  PLAN.md). The planner computes the file-ownership + dependency graph from the real
+  code (which source files each unchecked `[ ]` task must write) and emits a
+  **maximally parallel, cross-category wave plan** — NEVER top-down: each wave holds
+  one head per independent lane (a lane is tasks that share a file or depend on each
+  other and run in sequence), spanning as many different apps/categories as possible
+  so the parallel frontier is as wide as it can be, longest lanes first. Buildable
+  `ROUTINE`/`SCHEMA` tasks schedule; stop-and-ask gates (`ARCH`/`DECISION`/`AUTH`/
+  `COST`/`GALLERY`/non-pre-approved `DEP`) are auto-skipped and flagged; any
+  `UNASSIGNED` task needs a `@lane:`/`@files:` tag (`plan_lanes.py --check` lists
+  them). Process EVERY scheduled `[ ]` task in the BUILD QUEUE. **Fan each wave's
+  lanes out to concurrent subagents, each launched with worktree isolation
+  (`isolation: worktree`)** so no two ever edit the same files. Spawn them
+  concurrently — do NOT finish one before starting the next — up to the session's
+  worktree ceiling (**default 8, raised as high as the session can sustain**, passed
+  as `--max-lanes`), and **continuously refill (work-stealing): the moment a lane
+  finishes, hand its freed slot the next ready lane head — do not idle waiting for a
+  whole wave to complete.** **Tasks inside one lane run in sequence.** Each subagent
+  builds its lane's tasks completely with tests and, as each lands, commits it to
+  **its own worktree branch**, ticks it `[x]`, and adds one dated line to the DONE
+  LOG — so an interrupted run loses nothing and re-firing resumes from the first
+  still-unchecked task. CI runs once at the end over the whole batch (see below), not
+  per task or per agent. This processes EVERY unchecked task; it does NOT end the run
+  after the first.
+- **Keep subagents lean — context discipline + model tiering.** Each lane subagent
+  gets only its slice of the plan and **returns a short summary** (files touched,
+  tests added, status) — never a full diff — so the orchestrator's context stays
+  light enough to drive many waves. Run the orchestrator and the adversarial review
+  agent on the strongest model and the focused lane workers on a faster one when the
+  session allows it.
 - **Engine — default to a dynamic workflow with review; fall back to parallel
   subagents; NEVER single-serial.** The default way to run the lanes is a
   **dynamic workflow with a fan-out-and-verify shape**: one subagent per
@@ -327,8 +349,11 @@ Anything typed after the command is extra detail for that run.
   commit on `dev` and self-merge to `main`. Confirm in one line.
 
 ### "work on error plan"
-Identical to `work on the plan` in every respect — same lane partitioning, same
-**up to 8 concurrent worktree subagents in waves of 8**, same
+Identical to `work on the plan` in every respect — same
+**`scripts/plan_lanes.py`-driven, maximally-parallel cross-category lane plan** (run
+it on `docs/ERROR_PLAN.md`), same concurrent worktree subagents up to the session
+ceiling (default 8, raised as high as the session can sustain) continuously refilled
+(work-stealing), same
 dynamic-workflow-with-adversarial-review engine (fall back to parallel worktree
 subagents; never a single serial one-task-at-a-time agent), same stop conditions
 (queue drained / usage cap / a genuine stop-and-ask → mark `[BLOCKED: <reason>]`,
@@ -365,17 +390,20 @@ The website autopilot stays strictly inside `apps/web/**` plus its own
 - Read it fully and verify real repo state. Scope: edit ONLY `apps/web/**` and
   the `docs/WEB_PLAN*` files. NEVER touch anything outside apps/web.
 - **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
-  with MAXIMUM SAFE PARALLELISM.** At the START of the run, compute the
-  file-ownership + dependency graph from the real code (which source files each
-  unchecked `[ ]` task must write) and **partition the queue into independent lanes**
-  — a lane is a group of tasks that must run in sequence because they share a file or
-  depend on each other; different lanes never touch each other's files. Process EVERY
-  unchecked `[ ]` task in the BUILD QUEUE. **Fan the lanes out to concurrent
-  subagents, each launched with worktree isolation (`isolation: worktree`)** so no
-  two ever edit the same files. Spawn them concurrently — do NOT finish one before
-  starting the next — up to a ceiling of **8 worktree subagents running at once**;
-  with more than 8 lanes, run them in **waves of up to 8**; with fewer, use fewer
-  agents. **Tasks inside one lane run in sequence.** Each subagent builds its lane's
+  with MAXIMUM SAFE PARALLELISM.** At the START of the run, run
+  **`python scripts/plan_lanes.py docs/WEB_PLAN.md`** to compute the file-ownership +
+  dependency graph from the real `apps/web` code and emit a **maximally parallel
+  wave plan** — NEVER top-down: each wave holds one head per independent lane (tasks
+  that share an `apps/web` file or depend on each other run in sequence), spanning as
+  many independent files as possible, longest lanes first. Process EVERY scheduled
+  `[ ]` task in the BUILD QUEUE. **Fan each wave's lanes out to concurrent subagents,
+  each launched with worktree isolation (`isolation: worktree`)** so no two ever edit
+  the same files. Spawn them concurrently — do NOT finish one before starting the
+  next — up to the session's worktree ceiling (**default 8, raised as high as the
+  session can sustain**, passed as `--max-lanes`), and **continuously refill
+  (work-stealing): the moment a lane finishes, hand its freed slot the next ready
+  lane head — do not idle waiting for a whole wave to complete.** **Tasks inside one
+  lane run in sequence.** Each subagent builds its lane's
   tasks completely with tests and, as each lands, commits it to **its own worktree
   branch**, ticks it `[x]`, and adds one dated line to the DONE LOG — so an
   interrupted run loses nothing and re-firing resumes from the first still-unchecked
