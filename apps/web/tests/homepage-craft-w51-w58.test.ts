@@ -159,7 +159,7 @@ describe('W51 — DiagnosticForm + Faq dans le système sombre', () => {
     // Le bandeau d'en-tête, les champs et la réussite parlent désormais lune/or.
     expect(form).toContain('text-brass-300');
     expect(form).toMatch(/bg-nuit-800[^']*text-white/); // inputClass sombre + texte clair
-    expect(form).toContain('focus:ring-brass-400/30'); // anneau de focus visible
+    expect(form).toMatch(/focus:ring-brass-400\/[0-9]+/); // anneau de focus visible (W194: /60)
   });
 
   it('la FAQ n’est plus sur fond clair — fond nuit, texte lune, marqueur laiton', () => {
@@ -201,10 +201,11 @@ describe('FROZEN — le comportement du formulaire est inchangé (classes seules
     expect(uiFr['form.progress'].replace('{step}', '1')).toBe('Étape 1 sur 3');
   });
 
-  it('le script de progression (bg-azur-600/100) reste piloté tel quel', () => {
-    // Les segments statiques correspondent aux classes que le script bascule,
-    // pour qu'aucun conflit de fond n'apparaisse (changement de classes seul).
-    expect(form).toContain("seg.classList.toggle('bg-azur-600', on)");
-    expect(form).toMatch(/data-seg="1" class="[^"]*bg-azur-600/);
+  it('le script de progression (W189 : brass/white) reste piloté tel quel', () => {
+    // W189 — les classes bg-azur-600/bg-azur-100 ont été remplacées par
+    // bg-brass-400/bg-white/15 (barre plus haute, remplissage laiton).
+    // Le script bascule toujours les classes via toggle (même mécanique).
+    expect(form).toContain("seg.classList.toggle('bg-brass-400', on)");
+    expect(form).toMatch(/data-seg="1" class="[^"]*bg-brass-400/);
   });
 });

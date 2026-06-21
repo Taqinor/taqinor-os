@@ -39,8 +39,10 @@ const VILLES = [
   'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
 ];
 
+// W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
+// W194 — focus ring boosted to /50 opacity; aria-invalid field style in <style>.
 const inputClass =
-  'w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25';
+  'w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50 placeholder:text-encre-faint';
 ---
 
 <!-- ACTE FINAL — la nuit s'ouvre : le diagnostic arrive en pleine lumière -->
@@ -148,12 +150,12 @@ const inputClass =
           </div>
         </details>
 
-        <label class="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-azur-600" checked />
+        <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" name="whatsappOptIn" class="h-5 w-5 shrink-0 cursor-pointer accent-azur-600" checked />
           <span>Je préfère être contacté(e) par WhatsApp</span>
         </label>
-        <label class="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="consent" required class="mt-0.5 accent-azur-600" />
+        <label class="flex min-h-[44px] cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" name="consent" required class="h-5 w-5 mt-0.5 shrink-0 cursor-pointer accent-azur-600" />
           <span>
             J'accepte d'être contacté(e) par Taqinor par WhatsApp et par email au sujet de ma
             demande d'étude solaire. * <a href="/politique-de-confidentialite" target="_blank" rel="noopener" class="text-encre-faint underline underline-offset-2 hover:text-azur-700">Politique de confidentialité</a>
@@ -184,9 +186,11 @@ const inputClass =
           class="bg-azur-600 px-6 py-3.5 text-base font-bold text-white transition-colors hover:bg-azur-700">
           Continuer →
         </button>
+        <!-- W191 — spinner hidden by default; shown via JS during submit -->
         <button type="submit" id="lf-submit"
-          class="hidden bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
-          Recevoir mon étude sur WhatsApp
+          class="hidden items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
+          <span id="lf-spinner" class="spinner hidden" aria-hidden="true"></span>
+          <span id="lf-submit-label">Recevoir mon étude sur WhatsApp</span>
         </button>
       </div>
     </form>
@@ -223,6 +227,21 @@ const inputClass =
   </div>
 </section>
 
+<!-- W194 — validation / error / focus-ring / placeholder styles (Astro-scoped). -->
+<style>
+  /* Champs invalides (aria-invalid posé par le JS de validation) */
+  input[aria-invalid="true"],
+  select[aria-invalid="true"] {
+    border-color: var(--color-alert-600);
+    box-shadow: 0 0 0 2px rgb(179 64 42 / 0.2);
+  }
+  /* Message d'erreur global — fond plus visible */
+  #lf-err:not(.hidden) {
+    border-color: var(--color-alert-600);
+    background-color: var(--color-alert-50);
+  }
+</style>
+
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';
   import { nextStep, progressLabel, sunshineSignal, validateStep, type DiagnosticState } from '../lib/diagnostic';
@@ -239,6 +258,9 @@ const inputClass =
   const backBtn = document.getElementById('diag-back') as HTMLButtonElement;
   const progressEl = document.getElementById('diag-progress')!;
   const sunEl = document.getElementById('diag-sun')!;
+  // W191 — spinner elements (null-safe)
+  const spinnerEl = document.getElementById('lf-spinner') as HTMLElement | null;
+  const submitLabelEl = document.getElementById('lf-submit-label') as HTMLElement | null;
 
   // Reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout)
   const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
@@ -379,7 +401,12 @@ const inputClass =
     if (estimatedKwc) payload.estimatedKwc = estimatedKwc;
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Calcul en cours…';
+    // W191 — show spinner + aria-busy; update label text without destroying innerHTML
+    if (submitLabelEl) submitLabelEl.textContent = 'Calcul en cours…';
+    else submitBtn.textContent = 'Calcul en cours…';
+    spinnerEl?.classList.remove('hidden');
+    submitBtn.classList.add('flex');
+    form?.setAttribute('aria-busy', 'true');
     try {
       const res = await fetch('/api/preview-lead', {
         method: 'POST',
@@ -397,6 +424,8 @@ const inputClass =
       kwcEl.textContent = data.band.kwcLabel;
       roiEl.textContent = data.band.paybackLabel;
       waEl.href = data.whatsappUrl;
+      // W191 — fade-in result (CSS animation gated under no-preference)
+      success.classList.add('result-fade');
       success.classList.remove('hidden');
       success.scrollIntoView({ behavior: 'smooth', block: 'center' });
       if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
@@ -409,7 +438,12 @@ const inputClass =
       errEl.classList.remove('hidden');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Recevoir mon étude sur WhatsApp';
+      // W191 — restore button state
+      spinnerEl?.classList.add('hidden');
+      submitBtn.classList.remove('flex');
+      form?.removeAttribute('aria-busy');
+      if (submitLabelEl) submitLabelEl.textContent = 'Recevoir mon étude sur WhatsApp';
+      else submitBtn.textContent = 'Recevoir mon étude sur WhatsApp';
     }
   });
 </script>

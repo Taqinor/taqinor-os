@@ -112,19 +112,20 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            {/* W211 — whitespace-nowrap removed: can overflow at 320 px in grid-cols-2 */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>60–90 %</dd>
             <dt class="tech-label mt-2 text-lune-faint">Of the bill covered</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>3–7 years</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>3–7 years</dd>
             <dt class="tech-label mt-2 text-lune-faint">Return on investment</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>25 years</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>25 years</dd>
             <dt class="tech-label mt-2 text-lune-faint">Performance warranty</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
             <dt class="tech-label mt-2 text-lune-faint">Simple Law 82-21 declaration</dt>
           </div>
         </dl>
@@ -140,7 +141,8 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
           <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
             {inCity.map((r, i) => (
               <a href={L(`/realisations/${r!.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
-                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={r!.photos[0].ratio}
+                {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS (anti-CLS). */}
+                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
                   sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
                 <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
                   <span class="fig block text-2xl text-white">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>

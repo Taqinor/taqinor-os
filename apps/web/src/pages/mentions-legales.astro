@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
 import { NAP } from '../lib/nap';
 
 // Informations légales — dossier entreprise 2026. Pas d'adresse postale
@@ -21,34 +22,38 @@ const rows = [
   description="Informations légales de TAQINOR Solutions SARLAU — RC 691213 Casablanca, ICE 003799642000067."
   ogSlug="accueil"
 >
-  <section class="px-4 py-14 text-white">
-    <div class="mx-auto max-w-3xl">
-      <p class="tech-label rule-brass cine-in text-brass-300">Informations légales</p>
-      <h1 class="display cine-in mt-4 text-4xl [animation-delay:120ms]">Mentions légales</h1>
-    </div>
-  </section>
+  <div class="v2">
+    <V2Enhance />
 
-  <!-- Le document officiel, en pleine lumière -->
-  <div class="seam-lumiere" aria-hidden="true"></div>
-  <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
-    ><div class="mx-auto max-w-3xl">
-    <div class="border-t-2 border-azur-900 bg-blanc">
-      {rows.map((r) => (
-        <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
-          <span class="tech-label text-encre-faint">{r.label}</span>
-          <span class="text-sm font-semibold">{r.value}</span>
-        </div>
-      ))}
-    </div>
-    <p class="mt-6 text-sm leading-relaxed text-encre-soft">
-      Taqinor intervient en mode zone de service (interventions sur site uniquement,
-      pas d'accueil du public) : Casablanca, Rabat, Marrakech, Tanger, Agadir —
-      déplacements dans tout le Maroc.
-    </p>
-    <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-      Pour toute question relative aux données personnelles, consultez la
-      <a href="/politique-de-confidentialite" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">politique de confidentialité</a>.
-    </p>
-    </div>
-  </section>
+    <section class="px-4 py-14 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Informations légales</p>
+        <h1 class="display v2-page-title cine-in mt-4 [animation-delay:120ms]">Mentions légales</h1>
+      </div>
+    </section>
+
+    <!-- Le document officiel, en pleine lumière -->
+    <div class="seam-lumiere" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
+      ><div class="mx-auto max-w-3xl">
+      <div class="v2-rise border-t-2 border-azur-900 bg-blanc">
+        {rows.map((r) => (
+          <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
+            <span class="tech-label text-encre-faint">{r.label}</span>
+            <span class="text-sm font-semibold">{r.value}</span>
+          </div>
+        ))}
+      </div>
+      <p class="mt-6 text-sm leading-relaxed text-encre-soft">
+        Taqinor intervient en mode zone de service (interventions sur site uniquement,
+        pas d'accueil du public) : Casablanca, Rabat, Marrakech, Tanger, Agadir —
+        déplacements dans tout le Maroc.
+      </p>
+      <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+        Pour toute question relative aux données personnelles, consultez la
+        <a href="/politique-de-confidentialite" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">politique de confidentialité</a>.
+      </p>
+      </div>
+    </section>
+  </div>
 </Layout>

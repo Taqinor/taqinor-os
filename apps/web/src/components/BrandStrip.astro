@@ -9,6 +9,9 @@
  * marque (Jinko, Huawei, Nexans…) restent identiques dans toutes les langues.
  * Rendu FR inchangé : la branche `fr` reprend les libellés actuels mot pour mot
  * et `localizeNavHref('/équipement','fr') === '/équipement'`.
+ *
+ * W183 — optical-size-normalize : heightMultiplier par marque équilibre la
+ *         hauteur visuelle. Grayscale → couleur au hover (reduced-motion safe).
  */
 import { BRANDS } from '../lib/brands';
 import { getLocaleFromPath } from '../i18n/utils';
@@ -46,22 +49,29 @@ const { heading = s.heading } = Astro.props;
     <p class="tech-label v2-kicker rule-brass justify-center text-brass-300">{heading}</p>
     <ul class="mt-10 flex flex-wrap items-center justify-center gap-x-10 gap-y-6 sm:gap-x-14" data-stagger>
       {
-        BRANDS.map((brand, i) => (
-          <li class="v2-rise" style={`--v2-i:${i}`}>
-            {brand.logo ? (
-              <img
-                src={brand.logo}
-                alt={brand.name}
-                class="h-8 w-auto object-contain opacity-90 transition hover:opacity-100"
-                loading="lazy"
-              />
-            ) : (
-              <span class="font-display text-xl font-bold tracking-tight text-lune transition-colors hover:text-white sm:text-2xl">
-                {brand.name}
-              </span>
-            )}
-          </li>
-        ))
+        BRANDS.map((brand, i) => {
+          const scale = brand.heightMultiplier ?? 1;
+          return (
+            <li class="v2-rise brand-item" style={`--v2-i:${i}`}>
+              {brand.logo ? (
+                <img
+                  src={brand.logo}
+                  alt={brand.name}
+                  class="brand-logo w-auto object-contain"
+                  style={`height:${(2 * scale).toFixed(3)}rem`}
+                  loading="lazy"
+                />
+              ) : (
+                <span
+                  class="brand-wordmark font-display font-bold tracking-tight text-lune"
+                  style={`font-size:${(1.25 * scale).toFixed(3)}rem`}
+                >
+                  {brand.name}
+                </span>
+              )}
+            </li>
+          );
+        })
       }
     </ul>
     <a
@@ -72,3 +82,56 @@ const { heading = s.heading } = Astro.props;
     </a>
   </div>
 </section>
+
+<style>
+  /*
+   * W183 — grayscale → couleur au hover, reduced-motion safe.
+   * Les logos SVG/PNG passent de niveaux-de-gris à leur couleur d'origine.
+   * Les word-marks passent de lune (gris bleuté) à blanc pur.
+   *
+   * W208 — hover lift sur .brand-item : légère élévation (translateY -2px) +
+   * légère hausse de luminosité, gated derrière prefers-reduced-motion.
+   * Coordonné avec le grayscale→color : les deux effets se déclenchent ensemble
+   * sur hover/focus, sans conflit (transform sur .brand-item, filter sur
+   * .brand-logo enfant — éléments distincts, pas de double-transform).
+   */
+  .brand-logo {
+    filter: grayscale(1);
+    opacity: 0.8;
+    transition: filter 300ms ease, opacity 300ms ease;
+  }
+  .brand-wordmark {
+    transition: color 300ms ease;
+  }
+
+  /* Hover/focus : révéler la couleur */
+  .brand-item:hover .brand-logo,
+  .brand-item:focus-within .brand-logo {
+    filter: grayscale(0);
+    opacity: 1;
+  }
+  .brand-item:hover .brand-wordmark,
+  .brand-item:focus-within .brand-wordmark {
+    color: #d6dbe9; /* --color-lune → blanc sur hover */
+  }
+
+  /* W208 — lift + brightness sur .brand-item (reduced-motion safe) */
+  @media (prefers-reduced-motion: no-preference) {
+    .brand-item {
+      transition: transform 280ms ease, filter 280ms ease;
+    }
+    .brand-item:hover,
+    .brand-item:focus-within {
+      transform: translateY(-2px);
+      filter: brightness(1.1);
+    }
+  }
+
+  /* prefers-reduced-motion : pas de transition, passage direct */
+  @media (prefers-reduced-motion: reduce) {
+    .brand-logo,
+    .brand-wordmark {
+      transition: none;
+    }
+  }
+</style>

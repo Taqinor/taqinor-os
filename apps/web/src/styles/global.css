@@ -38,6 +38,21 @@
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* W215 — Métrique de repli pour Archivo : Arial Bold comme police système
+   la plus proche sur Windows/Mac/Linux. size-adjust ≈ 104 % compense la
+   différence de corps entre Arial Bold étendu et Archivo 800. Les
+   ajustements ascent/descent/line-gap gardent l'interligne visuel stable
+   pendant le swap → CLS du titre LCP minimisé. */
+@font-face {
+  font-family: 'Archivo Fallback';
+  src: local('Arial Bold'), local('Arial');
+  size-adjust: 104%;
+  ascent-override: 92%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
 @font-face {
   font-family: 'Hanken Grotesk';
   font-style: normal;
@@ -59,9 +74,21 @@
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* W215 — Métrique de repli pour Hanken Grotesk : Arial Regular. */
+@font-face {
+  font-family: 'Hanken Fallback';
+  src: local('Arial');
+  size-adjust: 101%;
+  ascent-override: 94%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
+
 @theme {
-  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Archivo', 'Hanken Grotesk', sans-serif;
+  /* W215 — les polices de repli métriques ('Hanken Fallback', 'Archivo Fallback')
+     sont insérées juste avant les génériques système pour minimiser le CLS au swap. */
+  --font-sans: 'Hanken Grotesk', 'Hanken Fallback', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', 'Archivo Fallback', 'Hanken Grotesk', 'Hanken Fallback', sans-serif;
 
   /* Blanc architectural — l'acte final éclairé (« salle blanche ») */
   --color-blanc: #ffffff;
@@ -105,12 +132,138 @@
   --color-alert-300: #f4a18a;
 }
 
+/* ─── W216 — Lien d'évitement « Aller au contenu » ─────────────────────────
+   Visuellement masqué jusqu'au focus clavier (clip-path hors-écran) ; au focus,
+   il surgit en haut-gauche avec le traitement brass du site. ZÉRO CLS :
+   le lien est retiré du flux normal (position: fixed) dès le départ, donc
+   il ne réserve aucune place et n'affecte pas le layout. */
+.skip-link {
+  position: fixed;
+  top: -100%;
+  left: 1rem;
+  z-index: 10000;
+  padding: 0.5rem 1.25rem;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-nuit);
+  background: var(--color-brass-300);
+  border: 2px solid var(--color-brass-400);
+  border-radius: 4px;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus-visible {
+  top: 1rem;
+  /* Override le focus-visible global pour que le ring reste visible
+     sur fond brass : outline noir fin suffit ici. */
+  outline: 2px solid var(--color-nuit);
+  outline-offset: 2px;
+}
+
 html {
   scroll-behavior: smooth;
+  /* W202 — Fix anchor scroll offset under the sticky header (~5 rem desktop,
+     responsive: tighter on mobile where header may be shorter). */
+  scroll-padding-top: clamp(4rem, 7vw, 5.5rem);
+  /* W217 — native controls (select, scrollbars, autofill) render dark on the
+     night canvas; avoids the jarring white system-UI flash. */
+  color-scheme: dark;
 }
 
 body {
   text-rendering: optimizeLegibility;
+}
+
+/* W217 — Brass/azur text selection, readable on both dark and light sections. */
+::selection {
+  background-color: rgb(232 181 74 / 0.35);
+  color: var(--color-lune);
+}
+
+/* W209 — Global focus-visible brass ring.
+   Targets all interactive elements. Using :focus-visible ensures keyboard users
+   get a clear indicator without disturbing pointer users.
+   Specificity is deliberately low so components that legitimately style their
+   own focus (e.g. .btn-pill) can still override with a more specific rule;
+   the important on outline-offset is only needed to override stray
+   outline:none declarations that suppress focus entirely. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-brass-300);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ─── W221 — prefers-contrast: more ────────────────────────────────────────
+   Bump faint/soft lune inks toward higher contrast and remove decorative glow. */
+@media (prefers-contrast: more) {
+  :root {
+    /* Shift faint ink toward the full lune value for legibility */
+    --color-lune-faint: var(--color-lune-soft);
+    --color-lune-soft: var(--color-lune);
+  }
+
+  /* Kill decorative text-glow on high-contrast to avoid halation */
+  .lum {
+    text-shadow: none;
+  }
+
+  /* Reinforce card borders for legibility */
+  .cine-card {
+    border-color: rgb(255 255 255 / 0.35);
+  }
+
+  /* Brass focus ring: thicker for high-contrast mode */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* ─── W221 — forced-colors (Windows High Contrast / Contrast Mode) ──────────
+   Keep text legible; neutralize decorative shadows/glows that invert or
+   disappear under forced-colors. Use system color keywords so the OS palette
+   drives the experience. */
+@media (forced-colors: active) {
+  .lum {
+    /* Remove glow; text colour will be forced by OS — keep it readable */
+    text-shadow: none;
+    color: CanvasText;
+  }
+
+  .cine-card {
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  .btn-pill {
+    border: 1.5px solid ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
+
+  .hero-scrim {
+    /* Scrims are decorative; under forced-colors a plain overlay suffices */
+    background: Canvas;
+    opacity: 0.5;
+  }
+
+  /* Disable decorative box-shadow glows */
+  .glow,
+  .shadow-premium {
+    box-shadow: none;
+  }
 }
 
 /* ---- Signature typographique : les chiffres sont le protagoniste ------ */
@@ -176,11 +329,41 @@ body {
   text-shadow: 0 0 26px rgb(232 181 74 / 0.35);
 }
 
-/* Carte braise : surface à peine éclairée sur la nuit */
+/* ─── W157 / W203 — Carte braise : surface glass sur nuit, hover lift ──────
+   W157 : fond légèrement plus opaque, reflet en filet de haut, bord chaud.
+   W203 : hover lift + border brass gated derrière prefers-reduced-motion.
+   .cine-card-link : modificateur pour carte cliquable (cursor pointer). */
 .cine-card {
-  background: rgb(255 255 255 / 0.04);
-  border: 1px solid rgb(255 255 255 / 0.09);
-  box-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.8);
+  background:
+    /* reflet subtil en filet en haut de carte */
+    linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 0.07) 0px,
+      rgb(255 255 255 / 0.07) 1px,
+      transparent 1px
+    ),
+    rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 24px 60px -30px rgb(0 0 0 / 0.8);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.cine-card-link {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cine-card:hover,
+  .cine-card-link:hover {
+    border-color: rgb(232 181 74 / 0.30);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.14),
+      0 8px 24px -8px rgb(232 181 74 / 0.18),
+      0 32px 72px -24px rgb(0 0 0 / 0.75);
+    transform: translateY(-3px);
+  }
 }
 
 /* CTA doré qui irradie au survol */
@@ -194,23 +377,42 @@ body {
   background:
     radial-gradient(60% 130% at 50% 100%, rgb(232 181 74 / 0.16), transparent 70%),
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+  position: relative;
+  overflow: hidden;
 }
 
-/* Révélation au défilement — translation seule, 350 ms, jamais d'opacité
-   (contraste mesurable, aucun contenu masqué si l'animation échoue). */
+/* W208 — Slow shimmer on .seam-lumiere : un reflet qui glisse horizontalement
+   sur la couture, très lent (8 s), gate prefers-reduced-motion.
+   Implémenté en pseudo-élément pour ne pas perturber le background gradient
+   existant. Zéro CLS : position absolute + pointer-events none. */
 @media (prefers-reduced-motion: no-preference) {
-  .reveal {
-    transform: translateY(16px);
-    animation: reveal 0.35s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
-    animation-timeline: view();
-    animation-range: entry 0% entry 30%;
-  }
-  @keyframes reveal {
-    to {
-      transform: none;
-    }
+  @keyframes seamShimmer {
+    0%   { transform: translateX(-120%); }
+    100% { transform: translateX(120%); }
   }
 
+  .seam-lumiere::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Bande diagonale lumineuse translucide */
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgb(232 181 74 / 0.18) 48%,
+      rgb(255 255 255 / 0.10) 52%,
+      transparent 70%
+    );
+    animation: seamShimmer 8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    pointer-events: none;
+    will-change: transform;
+  }
+}
+
+/* W207 — .reveal and .emerge were defined here but had zero usages across all
+   .astro/.tsx/.ts/.js sources (confirmed by grep). Removed as dead code. */
+
+@media (prefers-reduced-motion: no-preference) {
   .glow:hover {
     box-shadow: 0 0 38px -6px rgb(232 181 74 / 0.55);
   }
@@ -228,19 +430,348 @@ body {
     }
   }
 
-  /* Les photos émergent de la nuit : léger éclaircissement à l'entrée.
-     Gardé derrière @supports — sans scroll-timeline, jamais d'assombrissement. */
-  @supports (animation-timeline: view()) {
-    .emerge {
-      filter: brightness(0.85);
-      animation: emerge 0.6s ease-out forwards;
-      animation-timeline: view();
-      animation-range: entry 0% entry 25%;
-    }
+  /* ─── W206 — Stagger helpers pour .cine-in ────────────────────────────
+     Applique un décalage d'animation canonique sur .cine-in.
+     Usage : ajoute .cine-in-1 … .cine-in-4 en plus de .cine-in.
+     Alternative custom-property : style="--cine-delay:120ms" + .cine-in-d
+     Les deux sont gated ici (no-preference) → zero delay en reduced-motion. */
+  .cine-in-1 { animation-delay: 120ms; }
+  .cine-in-2 { animation-delay: 240ms; }
+  .cine-in-3 { animation-delay: 360ms; }
+  .cine-in-4 { animation-delay: 480ms; }
+
+  /* Variant custom-property — style="--cine-delay: 200ms" */
+  .cine-in-d { animation-delay: var(--cine-delay, 0ms); }
+}
+
+/* Ensure stagger classes are inert when motion is reduced */
+@media (prefers-reduced-motion: reduce) {
+  .cine-in-1,
+  .cine-in-2,
+  .cine-in-3,
+  .cine-in-4,
+  .cine-in-d {
+    animation-delay: 0ms;
   }
-  @keyframes emerge {
-    to {
-      filter: brightness(1);
-    }
+}
+
+/* ─── W191 — Spinner + fade-in résultat ────────────────────────────────────
+   ONE shared @keyframes spin — gated behind prefers-reduced-motion so the
+   wheel never spins when motion is reduced (the .spinner just shows static).
+   .spinner : inline block, 1 em × 1 em, transparent fill + brass border cap.
+   .result-fade : utilisé sur #lf-success pour un fondu doux à l'apparition. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .spinner {
+    animation: spin 0.75s linear infinite;
+  }
+
+  .result-fade {
+    animation: cineIn 0.5s cubic-bezier(0.2, 0.65, 0.25, 1) both;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ─── W173 — Rythme vertical des sections ──────────────────────────────────
+   Remplace les valeurs py-* ad-hoc par des tokens cohérents avec le site.
+   .section      → espacement standard (py ≈ 96 px → 128 px)
+   .section-lg   → espacement généreux pour les sections héroïques (py ≈ 128 px → 192 px)
+   .section-tight → espacement resserré pour break/couture (py ≈ 48 px → 64 px) */
+.section {
+  padding-block: clamp(6rem, 10vw, 8rem);
+}
+
+.section-lg {
+  padding-block: clamp(8rem, 14vw, 12rem);
+}
+
+.section-tight {
+  padding-block: clamp(3rem, 5vw, 4rem);
+}
+
+/* ─── W174 — Bouton pill contour brass + shadow premium ────────────────────
+   .btn-pill     : outline doré arrondi, hover fill brass (reduced-motion safe).
+   .shadow-premium : drop-shadow de prestige pour cartes/images clés. */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.6em 1.5em;
+  border: 1.5px solid var(--color-brass-400);
+  border-radius: 9999px;
+  color: var(--color-brass-300);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.01em;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn-pill {
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+}
+
+.btn-pill:hover {
+  background: var(--color-brass-400);
+  border-color: var(--color-brass-400);
+  color: var(--color-nuit);
+}
+
+/* Premium drop-shadow : relief lumineux sur canvas sombre */
+.shadow-premium {
+  box-shadow:
+    0 4px 16px -4px rgb(0 0 0 / 0.6),
+    0 16px 48px -12px rgb(0 0 0 / 0.55),
+    0 2px 4px rgb(0 0 0 / 0.3);
+}
+
+/* ─── W169 — Échelle typo figures + corps courant ──────────────────────────
+   Extends .fig (défini plus haut) avec des tailles fluides clamp().
+   .fig-xl  : grands chiffres héroïques (≈ 80–128 px)
+   .fig-lg  : chiffres de sections proéminentes (≈ 56–80 px)
+   .fig-md  : chiffres de cartes / tableaux (≈ 40–56 px)
+   .v2-body : corps courant harmonisé, texte long lisible en plein soleil */
+.fig-xl {
+  font-size: clamp(5rem, 10vw + 1rem, 8rem);
+  /* hérite font-family/weight/stretch/lnum via .fig + .fig-xl */
+}
+
+.fig-lg {
+  font-size: clamp(3.5rem, 6vw + 0.5rem, 5rem);
+}
+
+.fig-md {
+  font-size: clamp(2.5rem, 4vw + 0.25rem, 3.5rem);
+}
+
+/* Corps de texte "version 2" : taille fluide, interligne aéré */
+.v2-body {
+  font-family: var(--font-sans);
+  font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
+  line-height: 1.7;
+  color: var(--color-lune-soft);
+}
+
+/* ─── W175 — Eyebrow canonique sur fond clair (« salle blanche ») ──────────
+   Les sections claires mélangaient azur et brass pour leurs micro-étiquettes.
+   .eyebrow-light fixe un accent unique (azur-600) cohérent avec la marque.
+   Compose avec .tech-label pour la typographie (capitales, espacement).
+   Usage : <span class="tech-label eyebrow-light">Votre étude</span> */
+.eyebrow-light {
+  color: var(--color-azur-600);
+}
+
+/* ─── W172 — Scrim héro canonique ──────────────────────────────────────────
+   Remplace les dégradés inline main-tuning (/35, /45, /55…) par un scrim
+   standardisé en deux couches : radial central + linéaire bas.
+   Usage : position: absolute; inset: 0; + classe .hero-scrim (ou --hero-scrim).
+   Custom property --hero-scrim-strength (défaut 0.45) pour ajuster par page. */
+:root {
+  --hero-scrim-strength: 0.45;
+}
+
+.hero-scrim {
+  background:
+    /* Point chaud central radial — atténue l'éclat de la photo */
+    radial-gradient(
+      ellipse 80% 60% at 50% 40%,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.1)),
+      transparent 70%
+    ),
+    /* Voile latéral gauche — côté texte, renforce la lisibilité du headline */
+    linear-gradient(
+      to right,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) + 0.15)) 0%,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.05)) 40%,
+      transparent 70%
+    ),
+    /* Voile linéaire bas → haut : ancrage du texte en bas */
+    linear-gradient(
+      to top,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) + 0.2)) 0%,
+      rgb(7 11 29 / var(--hero-scrim-strength)) 40%,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.15)) 70%,
+      transparent 100%
+    );
+}
+
+/* ─── W149 — Halo doré renforcé sur le CTA héro ────────────────────────────
+   .glow-hero : variante du .glow standard, halo visible au repos (pas
+   seulement au survol) pour que le bouton principal soit immédiatement
+   perceptible comme point focal. Gated prefers-reduced-motion pour éviter
+   tout effet de pulsation non voulu. */
+.glow-hero {
+  box-shadow:
+    0 0 0 1px rgb(232 181 74 / 0.35),
+    0 0 22px -4px rgb(232 181 74 / 0.55),
+    0 4px 16px -4px rgb(0 0 0 / 0.5);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .glow-hero:hover {
+    box-shadow:
+      0 0 0 1px rgb(232 181 74 / 0.55),
+      0 0 44px -4px rgb(232 181 74 / 0.7),
+      0 8px 24px -8px rgb(232 181 74 / 0.4);
+  }
+}
+
+/* ─── W158 — Couture douce entre sections ───────────────────────────────────
+   .seam-soft : transition gradient subtile (brass + nuit) entre deux sections,
+   remplace les hairlines border-y border-white/10 répétées. */
+.seam-soft {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgb(232 181 74 / 0.18) 30%,
+    rgb(232 181 74 / 0.28) 50%,
+    rgb(232 181 74 / 0.18) 70%,
+    transparent 100%
+  );
+}
+
+/* ─── W161 — Chevron d'invitation au défilement ─────────────────────────────
+   .scroll-chevron : SVG animé (bounce vertical). Gated prefers-reduced-motion :
+   statique quand la motion est réduite. */
+.scroll-chevron {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes scrollBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(8px); }
+  }
+  .scroll-chevron {
+    animation: scrollBounce 1.8s ease-in-out infinite;
+  }
+}
+
+/* ─── W148 — Traitement lumineux du diagnostic (salle blanche) ──────────────
+   .diag-lumiere : fond lumineux pour la section diagnostic — dégradé nuit-800
+   éclairé depuis le haut en brass, plus lumineux que la nuit pure mais restant
+   lisible pour les cartes sombres (.cine-card) posées dessus.
+   Le halo brass au sommet prolonge la couture .seam-lumiere et crée la sensation
+   d'un acte final éclairé sans compromettre les couleurs de texte existantes. */
+.diag-lumiere {
+  background:
+    radial-gradient(ellipse 100% 55% at 50% 0%, rgb(232 181 74 / 0.12), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 30% 60%, rgb(35 66 181 / 0.08), transparent 70%),
+    linear-gradient(
+      to bottom,
+      var(--color-nuit-800) 0%,
+      var(--color-nuit) 60%
+    );
+}
+
+/* ─── W214 — RTL Arabic layout corrections ──────────────────────────────────
+   Comprehensive [dir="rtl"] block for Arabic pages. Approach:
+   - Prefer logical CSS properties (border-inline-start, padding-inline-start)
+     so the browser handles LTR/RTL automatically where supported.
+   - Where Tailwind utility classes use physical (border-l-*, pl-*) these
+     overrides flip the decoration to the right side in RTL.
+   - Two-column asymmetric hero grids (lg:grid-cols-[1.1fr_1fr] etc.) are
+     mirrored: the text column, which is first in DOM order, should appear on
+     the RIGHT in RTL, which the browser grid already handles correctly when
+     `direction: rtl` is set on the element — no column swap needed for pure
+     CSS grid. The accent rail (border-l-2 + pl-*) needs the physical flip.
+   - .tech-label uppercase + letter-spacing is suppressed for Arabic since
+     uppercase/wide-tracking is semantically wrong for Arabic script. */
+
+/* — Tech-label: disable uppercase and wide tracking for Arabic ------------- */
+[dir="rtl"] .tech-label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* — Accent rails: flip border-l-* → border-r-* and pl-* → pr-* ----------- */
+/* These target the brass rail pattern used on figures / stats grids.
+   Uses `:where()` to keep specificity low so page-level classes can still win. */
+[dir="rtl"] :where(.border-l-2) {
+  border-left: none;
+  border-inline-start: 2px solid;  /* logical: becomes border-right in RTL */
+}
+
+/* Padding-inline-start for common rail classes (Tailwind physical utilities) */
+[dir="rtl"] :where(.pl-6) {
+  padding-left: 0;
+  padding-inline-start: 1.5rem;
+}
+[dir="rtl"] :where(.pl-10) {
+  padding-left: 0;
+  padding-inline-start: 2.5rem;
+}
+
+/* — .rule-brass : the brass rule + diamond appear before the text.
+   In LTR: diamond on left, rule left, text right.
+   In RTL: reverse the order so diamond + rule appear on the right. */
+[dir="rtl"] .rule-brass {
+  flex-direction: row-reverse;
+  /* ::before (rule) and ::after (diamond) keep their content but swap sides */
+}
+[dir="rtl"] .rule-brass::after {
+  order: 1;   /* diamond: move to the logical end (right) */
+}
+[dir="rtl"] .rule-brass::before {
+  order: 2;   /* rule: after diamond */
+}
+
+/* — Blockquote border (testimonial cards): flip to inline-start ------------ */
+[dir="rtl"] blockquote {
+  border-left: none;
+  padding-left: 0;
+  border-inline-start: 3px solid var(--color-brass-400);
+  padding-inline-start: 1rem;
+}
+
+/* — Timeline / journey dots: the ::before accent bar (top-left of each step)
+   should appear on the right in RTL. The step uses border-t-2 + a pseudo
+   absolute bar on the left (left:0). We flip it to the right. */
+[dir="rtl"] :where(li[class*="border-t"]) > :where(span[aria-hidden="true"][class*="left-0"]) {
+  left: auto;
+  right: 0;
+}
+
+/* — Spec-row alignment: in LTR spec tables, values left-align in their column.
+   In RTL they should right-align to match reading direction. */
+[dir="rtl"] :where(.grid[class*="grid-cols"]) > :where(span, div) {
+  text-align: start;
+}
+
+/* — Two-column hero grid: asymmetric ratios like [1.1fr_1fr], [1fr_1.1fr].
+   In RTL the DOM-first text column is already placed on the right by the
+   browser when direction:rtl is inherited by the grid. However, images in
+   the second column that use physical classes for object-position (e.g.
+   object-[65%_40%]) won't auto-flip — these are acceptable as-is since
+   object-position is purely cosmetic cropping.
+   No column swap is required: grid + rtl handles it. */
+
+/* — seam-lumiere shimmer: the shimmer animates translateX from left to right.
+   In RTL we reverse the direction so it reads naturally. */
+@media (prefers-reduced-motion: no-preference) {
+  [dir="rtl"] .seam-lumiere::after {
+    animation-direction: reverse;
   }
 }
