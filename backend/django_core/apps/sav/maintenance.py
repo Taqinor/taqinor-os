@@ -94,6 +94,45 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'ok': True, 'tickets_generes': n},
                         status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='facturer',
+            permission_classes=[IsResponsableOrAdmin])
+    def facturer(self, request, pk=None):
+        """FG40 — Émet une facture de maintenance récurrente pour ce contrat.
+
+        POST /sav/contrats-maintenance/{id}/facturer/
+
+        Crée une Facture (statut=EMISE) via ventes.services.creer_facture_contrat
+        et avance `derniere_facturation`. La facturation doit être activée
+        (`facturation_active=True`) et un prix doit être renseigné sur le contrat.
+
+        Réponse 201 : {ok: true, facture_reference: str, facture_id: int}
+        """
+        contrat = self.get_object()
+        try:
+            from apps.ventes.services import creer_facture_contrat
+            facture = creer_facture_contrat(
+                contrat=contrat,
+                user=request.user,
+                company=request.user.company,
+            )
+        except ValueError as exc:
+            return Response({'ok': False, 'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                'facturer: erreur inattendue (contrat #%s)', pk, exc_info=True)
+            return Response(
+                {'ok': False, 'detail': 'Erreur inattendue lors de la facturation.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {
+                'ok': True,
+                'facture_reference': facture.reference,
+                'facture_id': facture.id,
+            },
+            status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_pdf(self, request, pk=None):

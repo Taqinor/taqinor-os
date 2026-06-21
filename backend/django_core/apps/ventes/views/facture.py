@@ -82,7 +82,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
-            'dgi_export', 'dgi_conformite',
+            'dgi_export', 'dgi_conformite', 'bulk',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -617,3 +617,120 @@ class FactureViewSet(viewsets.ModelViewSet):
         return Response(
             FactureActivitySerializer(
                 facture.activites.all(), many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='bulk',
+            permission_classes=[IsResponsableOrAdmin])
+    def bulk(self, request):
+        """FG43 — opérations en masse sur les factures.
+
+        Body :
+          - ``action`` ∈ {emettre, relancer, envoyer-email, generer-pdf}
+          - ``ids``    : liste d'ids de factures (toutes scopées à la société)
+
+        Renvoie un dict par id : ``{id: {ok: bool, detail: str}}``.
+        Les erreurs par facture n'interrompent pas le batch.
+        """
+        company = request.user.company
+        action_name = (request.data.get('action') or '').strip()
+        ids = request.data.get('ids') or []
+
+        VALID_ACTIONS = {'emettre', 'relancer', 'envoyer-email', 'generer-pdf'}
+        if action_name not in VALID_ACTIONS:
+            return Response(
+                {'detail': (
+                    f'Action invalide. Valeurs acceptées : '
+                    f'{", ".join(sorted(VALID_ACTIONS))}.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not ids or not isinstance(ids, list):
+            return Response(
+                {'detail': 'La liste `ids` est requise et doit être non vide.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Borner aux factures de la société (scoping multi-tenant).
+        factures_qs = _company_qs(
+            Facture.objects.select_related('client').all(), request.user
+        ).filter(id__in=ids)
+        factures_by_id = {f.id: f for f in factures_qs}
+
+        results = {}
+        for fid in ids:
+            try:
+                fid_int = int(fid)
+            except (ValueError, TypeError):
+                results[fid] = {'ok': False, 'detail': 'ID invalide.'}
+                continue
+            facture = factures_by_id.get(fid_int)
+            if facture is None:
+                results[fid_int] = {'ok': False, 'detail': 'Introuvable.'}
+                continue
+            try:
+                if action_name == 'emettre':
+                    if facture.statut != Facture.Statut.BROUILLON:
+                        results[fid_int] = {
+                            'ok': False,
+                            'detail': (
+                                f'Statut {facture.get_statut_display()} : '
+                                'seule une facture brouillon peut être émise.'
+                            )}
+                    elif not facture.lignes.exists() and not facture.libelle:
+                        results[fid_int] = {
+                            'ok': False,
+                            'detail': 'La facture doit avoir au moins une ligne.'}
+                    else:
+                        facture.statut = Facture.Statut.EMISE
+                        facture.save(update_fields=['statut'])
+                        results[fid_int] = {
+                            'ok': True,
+                            'detail': 'Émise.',
+                            'reference': facture.reference}
+
+                elif action_name == 'relancer':
+                    if facture.statut not in (
+                        Facture.Statut.EMISE, Facture.Statut.EN_RETARD,
+                    ):
+                        results[fid_int] = {
+                            'ok': False,
+                            'detail': (
+                                f'Statut {facture.get_statut_display()} : '
+                                'relance uniquement sur facture émise ou en retard.'
+                            )}
+                    else:
+                        from ..models import RelanceLog
+                        RelanceLog.objects.create(
+                            company=facture.company, facture=facture,
+                            note='Relance en masse', created_by=request.user)
+                        results[fid_int] = {
+                            'ok': True,
+                            'detail': 'Relance consignée.',
+                            'reference': facture.reference}
+
+                elif action_name == 'envoyer-email':
+                    from ..email_service import send_document_email
+                    from ..models import EmailLog
+                    log = send_document_email(
+                        facture, user=request.user, attach_pdf=True)
+                    if log.statut == EmailLog.Statut.ECHEC:
+                        results[fid_int] = {
+                            'ok': False,
+                            'detail': log.erreur or 'Envoi impossible.'}
+                    else:
+                        results[fid_int] = {
+                            'ok': True,
+                            'detail': f'Email envoyé à {log.to_email}.',
+                            'reference': facture.reference}
+
+                elif action_name == 'generer-pdf':
+                    from ..tasks import task_generate_facture_pdf
+                    task = task_generate_facture_pdf.delay(facture.id)
+                    results[fid_int] = {
+                        'ok': True,
+                        'detail': 'Génération PDF lancée.',
+                        'task_id': task.id,
+                        'reference': facture.reference}
+
+            except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all
+                results[fid_int] = {'ok': False, 'detail': str(exc)}
+
+        return Response(results)

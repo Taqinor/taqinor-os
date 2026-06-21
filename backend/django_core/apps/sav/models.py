@@ -593,6 +593,20 @@ class ContratMaintenance(models.Model):
     # tout optionnel : NULL = comportement actuel (contrat sans échéance fixée).
     duree_mois = models.PositiveIntegerField(null=True, blank=True)
     date_renouvellement = models.DateField(null=True, blank=True)
+    # ── Facturation récurrente (FG40) — additif, tout optionnel ──
+    # `facturation_active` = False → le contrat génère des visites mais aucune
+    # facture (comportement historique préservé — default False).
+    # `derniere_facturation` = date du dernier cycle de facturation réussi.
+    facturation_active = models.BooleanField(
+        default=False,
+        verbose_name='Facturation récurrente active',
+        help_text='Si activé, `facturer` produit une Facture à chaque période.',
+    )
+    derniere_facturation = models.DateField(
+        null=True, blank=True,
+        verbose_name='Dernière facturation',
+        help_text='Date du dernier cycle de facturation émis. Null = jamais facturé.',
+    )
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -627,6 +641,27 @@ class ContratMaintenance(models.Model):
             return False
         return self.actif and (
             today or timezone.localdate()) >= self.date_renouvellement
+
+    def prochaine_facturation(self):
+        """Date du prochain cycle de facturation (FG40).
+
+        Basé sur `derniere_facturation` (si posé) ou `date_debut`.
+        Utilise la même périodicité MONTHS que les visites.
+        """
+        from datetime import date as _date
+        base = self.derniere_facturation or self.date_debut
+        m = self.MONTHS.get(self.periodicite, 12)
+        y, mo = base.year, base.month + m
+        y += (mo - 1) // 12
+        mo = ((mo - 1) % 12) + 1
+        day = min(base.day, 28)
+        return _date(y, mo, day)
+
+    def facturation_due(self, today=None):
+        """True si la facturation récurrente est due aujourd'hui ou passée."""
+        if not self.facturation_active or not self.actif:
+            return False
+        return (today or timezone.localdate()) >= self.prochaine_facturation()
 
 
 class PieceConsommee(models.Model):
