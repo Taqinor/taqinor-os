@@ -384,3 +384,30 @@ body {
   line-height: 1.7;
   color: var(--color-lune-soft);
 }
+
+/* ─── W172 — Scrim héro canonique ──────────────────────────────────────────
+   Remplace les dégradés inline main-tuning (/35, /45, /55…) par un scrim
+   standardisé en deux couches : radial central + linéaire bas.
+   Usage : position: absolute; inset: 0; + classe .hero-scrim (ou --hero-scrim).
+   Custom property --hero-scrim-strength (défaut 0.45) pour ajuster par page. */
+:root {
+  --hero-scrim-strength: 0.45;
+}
+
+.hero-scrim {
+  background:
+    /* Point chaud central radial — atténue l'éclat de la photo */
+    radial-gradient(
+      ellipse 80% 60% at 50% 40%,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.1)),
+      transparent 70%
+    ),
+    /* Voile linéaire bas → haut : ancrage du texte en bas */
+    linear-gradient(
+      to top,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) + 0.2)) 0%,
+      rgb(7 11 29 / var(--hero-scrim-strength)) 40%,
+      rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.15)) 70%,
+      transparent 100%
+    );
+}
