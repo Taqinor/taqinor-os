@@ -117,14 +117,15 @@ def build(ctx) -> str:
 .a3-cr-tot span{{font-weight:700;font-size:9.5pt;color:{navy};}}
 .a3-cr-tot b{{font-family:{f_display};font-size:16pt;color:{gold};}}
 .a3-fda{{border:1px solid #BFE6CB;border-radius:12px;background:linear-gradient(180deg,{green_bg},#fff 72%);
-  padding:11px 14px;flex:1 1 0;min-width:0;}}
+  padding:11px 14px;flex:1 1 0;min-width:0;display:flex;flex-direction:column;}}
 .a3-fda-empty{{border-color:{line};background:{wash};}}
 .a3-fda-k{{font-size:8.4pt;font-weight:700;color:{green_700};}}
 .a3-fda-empty .a3-fda-k{{color:{navy};}}
 .a3-fda-v{{font-family:{f_display};font-size:20pt;color:{green_700};line-height:1;margin:4px 0;}}
 .a3-fda-s{{font-size:7.4pt;color:{muted};line-height:1.3;}}
-.a3-fda-net{{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;
-  border-top:1px dashed #BFE6CB;font-size:8.6pt;}} .a3-fda-net b{{color:{green_700};font-weight:700;}}
+.a3-fda-net{{display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:8px;
+  border-top:1px dashed #BFE6CB;font-size:9pt;}}
+.a3-fda-net b{{color:{green_700};font-weight:700;font-family:{f_display};font-size:13pt;}}
 /* garanties */
 .a3-gh{{font-family:{f_serif};font-weight:700;font-size:11pt;color:{navy};margin:14px 0 7px;}}
 .a3-badges{{display:flex;gap:8px;}}

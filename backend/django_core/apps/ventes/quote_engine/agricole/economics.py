@@ -115,6 +115,9 @@ def compute(data: dict, company=None) -> dict:
     saving_vs_butane = butane_today
     saving_vs_diesel = diesel
     annual_saving = annual_fuel_now or saving_vs_butane
+    # Cumulative fuel saved over the system life (panels are warrantied 25 yr;
+    # use a conservative 20-yr horizon). A big, tangible anchor for the quote.
+    savings_20y = annual_saving * 20
 
     def _payback(total, saving):
         return round(total / saving, 1) if (total > 0 and saving > 0) else None
@@ -181,6 +184,7 @@ def compute(data: dict, company=None) -> dict:
         "current_fuel": current_fuel,
         "annual_fuel_now": annual_fuel_now,
         "annual_saving": annual_saving,
+        "savings_20y": savings_20y,
         "saving_vs_butane": saving_vs_butane,
         "saving_vs_diesel": saving_vs_diesel,
         "payback": payback,
