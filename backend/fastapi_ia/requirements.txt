@@ -34,3 +34,8 @@ pymupdf>=1.23,<2.0
 
 # HTTP client
 httpx==0.28.1
+
+# Transcription audio — Whisper auto-heberge (S10, founder-approved).
+# Modele charge/telecharge PARESSEUSEMENT au premier appel uniquement, derriere
+# le flag CHAT_TRANSCRIPTION_ENABLED ; aucun poids tire au build/import.
+faster-whisper>=1.0,<2.0

@@ -236,11 +236,19 @@ Anything typed after the command is extra detail for that run.
   **maximally parallel, cross-category wave plan** — NEVER top-down: each wave holds
   one head per independent lane (a lane is tasks that share a file or depend on each
   other and run in sequence), spanning as many different apps/categories as possible
-  so the parallel frontier is as wide as it can be, longest lanes first. Buildable
-  `ROUTINE`/`SCHEMA` tasks schedule; stop-and-ask gates (`ARCH`/`DECISION`/`AUTH`/
-  `COST`/`GALLERY`/non-pre-approved `DEP`) are auto-skipped and flagged; any
-  `UNASSIGNED` task needs a `@lane:`/`@files:` tag (`plan_lanes.py --check` lists
-  them). Process EVERY scheduled `[ ]` task in the BUILD QUEUE. **Fan each wave's
+  so the parallel frontier is as wide as it can be, longest lanes first. **FOUNDER
+  STANDING CONSENT (2026-06-21, Reda): every task category is buildable — the former
+  auto-skip of the `ARCH`/`DECISION`/`AUTH`/`COST`/`GALLERY`/`DEP` gates is LIFTED.**
+  Buildable tasks of EVERY category (`ROUTINE`/`SCHEMA`/`ARCH`/`DECISION`/`AUTH`/
+  `COST`/`GALLERY`/`DEP` — including architectural and security tasks) now schedule and
+  build. The planner still LABELS those categories, and the DONE LOG must NOTE when a
+  built task introduced a new paid/external dependency, an auth change, a destructive
+  migration, or a brand-new architectural component (so the founder keeps visibility);
+  every change must stay revertable via `git revert` and pass the four required CI
+  checks before merge. The five non-negotiable safety rules (#1–#5 above) are
+  unaffected and still bind — including rule #5's `tos_risk/` process, which a
+  scraping task must still satisfy. Any `UNASSIGNED` task needs a `@lane:`/`@files:`
+  tag (`plan_lanes.py --check` lists them). Process EVERY scheduled `[ ]` task in the BUILD QUEUE. **Fan each wave's
   lanes out to concurrent subagents, each launched with worktree isolation
   (`isolation: worktree`)** so no two ever edit the same files. Spawn them
   concurrently — do NOT finish one before starting the next — up to the session's
@@ -278,20 +286,25 @@ Anything typed after the command is extra detail for that run.
      QUEUE.
   2. **Usage/length cap hit** — stopping here is fine; the plan is idempotent, so
      re-firing "work on the plan" resumes from the first still-unchecked task.
-  3. **A task hits a genuine stop-and-ask condition** — a new external
-     dependency, a schema/destructive migration, an auth or cost change, a
-     deleted state file, a brand-new architectural component, or a conflict with a
-     non-negotiable rule. Mark it `[BLOCKED: <reason>]`, move it to GATED, and
-     CONTINUE the remaining tasks. A single blocked task must NEVER halt the whole
-     run.
+  3. **A task hits a genuine BLOCKER** — per the founder standing consent above,
+     task *categories* (`ARCH`/`AUTH`/`COST`/`DECISION`/`GALLERY`/`DEP`) no longer
+     stop a run; build them. A task is BLOCKED only by a true external
+     prerequisite the run cannot itself satisfy (a credential/secret/account the
+     founder must provision, e.g. a Meta token or a Cloudflare secret), a deleted
+     state file, or a direct conflict with a non-negotiable rule (#1–#5). Mark such
+     a task `[BLOCKED: <reason>]`, move it to GATED, and CONTINUE the remaining
+     tasks. A single blocked task must NEVER halt the whole run.
 - **There is no "one task per session" / "stop after one task" / "merge per task"
   limit.** Any such wording anywhere — including older lines in `docs/PLAN.md`,
   `docs/PLAN2.md`, or `docs/WEB_PLAN.md` — is overridden by this rule: keep going
   until the queue is drained or a cap/limit above stops you. Do not invent a stop
   after the first task, and do not merge after each task.
-- Database migrations a task needs (additive) are approved. New external
-  dependencies, auth or cost changes, deleted state, or brand-new architecture
-  are stop-and-ask (condition 3) — skip those and list them.
+- Database migrations a task needs (additive AND destructive) are approved, provided
+  they stay revertable. Per the founder standing consent above, new external/paid
+  dependencies, auth changes, cost changes, and brand-new architecture are likewise
+  approved to build — NOTE each in the DONE LOG. Only a truly missing external
+  prerequisite the run cannot satisfy (a founder-provisioned credential/secret/account)
+  or a conflict with a non-negotiable rule remains a stop-and-ask (condition 3).
 - **Refresh the code map when structure changed.** If the run added or changed any
   backend models, API endpoints, frontend routes or features, or the service/module
   structure, regenerate `docs/CODEMAP.md` from the actual source (re-derive the

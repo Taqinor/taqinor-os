@@ -146,6 +146,19 @@ class Devis(models.Model):
     # Les définitions viennent de apps.customfields (module='devis').
     custom_data = models.JSONField(null=True, blank=True)
 
+    # ── Q1 — Toiture 3D : layout FINALISÉ (additif, optionnel) ──
+    # JSON sérialisé de l'outil roofPro11 (apps/web) une fois la conception
+    # validée par Meriem : AreaRecord[] (sommets de toiture, obstacles,
+    # roofType, pitch, azimuth), le résultat {panels, kwc, annualKwh, savings}
+    # et le renderPlan. SEUL ce layout finalisé (panneaux placés) alimente la
+    # proposition — distinct du pin/contour brut du client posé sur le Lead
+    # (apps.crm.Lead.roof_point). Vide → comportement historique inchangé.
+    roof_layout = models.JSONField(null=True, blank=True)
+    # ── Q4 — Rendu 3D de la toiture (clé MinIO, additif, optionnel) ──
+    # Clé de l'image PNG « votre installation » (snapshot 3D) stockée dans le
+    # bucket PDF, scopée société. Vide → la proposition n'affiche pas de rendu.
+    roof_image = models.CharField(max_length=500, blank=True, null=True)
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'

@@ -1,17 +1,16 @@
-// L878 — Garde-fou PWA iPhone-first des tables reporting/archive.
+// L878 / J146 — Garde-fou PWA iPhone-first des tables reporting/archive.
 //
-// Sur 375px (iPhone), une <table className="data-table"> multi-colonnes qui
-// n'est pas dans un conteneur scrollable déborde et provoque un scroll
-// horizontal de TOUTE la page (titre + actions partent hors écran). Le correctif
-// est d'envelopper chaque table large dans un conteneur `overflow-x-auto`
-// (présent sur la carte ou un <div> direct), pour qu'elle scrolle DANS sa carte.
+// Sur 375px (iPhone), une table multi-colonnes qui n'est pas dans un conteneur
+// scrollable déborde et provoque un scroll horizontal de TOUTE la page. Le
+// correctif est d'envelopper chaque table large dans `overflow-x-auto`.
 //
-// Ce test verrouille l'invariant : dans chaque page reporting/archive, CHAQUE
-// occurrence de `className="data-table"` doit être précédée de près par un
-// `overflow-x-auto` (le conteneur scrollable qui l'enveloppe). Pas de rendu DOM :
-// on lit la source, comme les autres tests .mjs de ce dépôt.
-//
-// Exécuté en CI : node --test src/pages/reporting/reporting.layout.test.mjs
+// J146 a migré les tables HTML héritées (`<table className="data-table">`) des
+// pages reporting/archive vers le primitif partagé `./Table.jsx` — qui enveloppe
+// LUI-MÊME sa table dans `overflow-x-auto`. Ce test verrouille donc : (1) le
+// primitif Table reste scrollable, (2) toute table `.data-table` HÉRITÉE encore
+// présente dans une page reporting/archive reste enveloppée d'un conteneur
+// scrollable, et (3) les pages migrées n'écrivent plus de `.data-table` à la
+// main. Pas de rendu DOM : on lit la source, comme les autres tests .mjs.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -21,9 +20,7 @@ import { dirname, join } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const pagesDir = join(here, '..')
 
-// Pages reporting/archive qui rendent des tables `.data-table` (les wrappers
-// ArchiveClientPage/ArchiveChantierPage délèguent à DocumentsArchive et ne
-// rendent aucune table eux-mêmes).
+// Pages reporting/archive qui rendent des tables.
 const FILES = [
   join(pagesDir, 'Reporting.jsx'),
   join(pagesDir, 'Rapports.jsx'),
@@ -32,44 +29,56 @@ const FILES = [
 ]
 
 // Fenêtre arrière (caractères) où le conteneur scrollable doit apparaître avant
-// l'ouverture de la table. Couvre le cas `overflow-x-auto` posé sur la
-// <CardContent> parente comme sur un <div> direct.
+// l'ouverture d'une table `.data-table` héritée.
 const WINDOW = 220
 
 for (const file of FILES) {
   const src = readFileSync(file, 'utf8')
   const name = file.split('/').slice(-1)[0]
 
-  test(`${name} : chaque table .data-table est dans un conteneur scrollable (L878)`, () => {
-    // Toutes les ouvertures de table porteuses de la classe .data-table
-    // (tolère « data-table » seul ou « data-table mb-2 »).
+  test(`${name} : toute table .data-table héritée reste scrollable (L878)`, () => {
     const re = /className="data-table\b/g
     let m
-    let count = 0
     while ((m = re.exec(src)) !== null) {
-      count += 1
       const before = src.slice(Math.max(0, m.index - WINDOW), m.index)
       assert.ok(
         before.includes('overflow-x-auto'),
-        `${name} : la table .data-table à l'offset ${m.index} n'est pas `
-        + 'enveloppée d\'un conteneur « overflow-x-auto » (régression PWA 375px).',
+        `${name} : table .data-table à l'offset ${m.index} non enveloppée `
+        + 'd\'un conteneur « overflow-x-auto » (régression PWA 375px).',
       )
     }
-    assert.ok(count > 0, `${name} : aucune table .data-table trouvée — test obsolète ?`)
   })
 }
 
-// Reporting.jsx avait deux tables NON enveloppées (StageTable + « Pertes par
-// motif ») corrigées par L878 — on verrouille leur présence pour éviter une
-// régression silencieuse si le composant est remanié.
-test('Reporting.jsx : ≥ 3 tables .data-table, toutes scrollables (L878)', () => {
-  const src = readFileSync(join(pagesDir, 'Reporting.jsx'), 'utf8')
-  const tables = (src.match(/className="data-table\b/g) || []).length
-  const wrappers = (src.match(/overflow-x-auto/g) || []).length
-  assert.ok(tables >= 3, `Reporting.jsx doit garder ses ${tables} tables (≥ 3)`)
+// J146 — Le primitif Table partagé enveloppe toujours sa table d'un conteneur
+// scrollable (invariant porté par le composant, pas par chaque page).
+test('Table.jsx (primitif partagé) enveloppe sa table dans overflow-x-auto (J146/L878)', () => {
+  const src = readFileSync(join(here, 'Table.jsx'), 'utf8')
+  // On ne lit que le corps rendu (après `return (`) pour ignorer les `<table`
+  // présents dans la doc-string du composant.
+  const body = src.slice(src.indexOf('return ('))
+  const tableOpen = body.search(/<table\s+className/)
+  assert.ok(tableOpen > 0, 'Table.jsx doit rendre une <table className=…>')
+  const before = body.slice(Math.max(0, tableOpen - WINDOW), tableOpen)
   assert.ok(
-    wrappers >= tables,
-    `Reporting.jsx : ${wrappers} conteneurs overflow-x-auto pour ${tables} tables — `
-    + 'chaque table doit avoir son conteneur scrollable.',
+    before.includes('overflow-x-auto'),
+    'Table.jsx : la <table> doit être enveloppée d\'un conteneur overflow-x-auto.',
   )
+})
+
+// J146 — Plus aucune <table className="data-table"> écrite à la main dans les
+// pages migrées (elles passent par le primitif Table partagé).
+test('Reporting / BalanceAgee / DocumentsArchive : plus de data-table héritée (J146)', () => {
+  for (const f of ['Reporting.jsx', 'BalanceAgeePage.jsx', 'DocumentsArchive.jsx']) {
+    const p = f === 'Reporting.jsx' ? join(pagesDir, f) : join(here, f)
+    const src = readFileSync(p, 'utf8')
+    assert.ok(
+      !/className="data-table\b/.test(src),
+      `${f} : table HTML héritée .data-table encore présente — doit passer par <Table>.`,
+    )
+    assert.ok(
+      src.includes("from './Table'") || src.includes("from './reporting/Table'"),
+      `${f} : doit importer le primitif Table partagé.`,
+    )
+  }
 })

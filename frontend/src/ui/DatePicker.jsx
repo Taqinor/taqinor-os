@@ -94,7 +94,7 @@ function CalendarGrid({
       <div role="grid" className="select-none" ref={gridRef} onKeyDown={onKeyDown}>
         <div role="row" className="mb-1 grid grid-cols-7">
           {WEEKDAY_LABELS.map((w) => (
-            <div key={w} role="columnheader" className="grid h-7 place-items-center text-xs font-medium text-muted-foreground">
+            <div key={w} role="columnheader" className="grid h-[var(--control-h-sm)] place-items-center text-xs font-medium text-muted-foreground">
               {w}
             </div>
           ))}
@@ -120,7 +120,9 @@ function CalendarGrid({
                 disabled={dis}
                 onClick={() => !dis && onPick(date)}
                 className={cn(
-                  'grid h-8 place-items-center rounded-md text-sm tabular-nums transition-colors',
+                  // G128 — hauteur des cellules alignée sur le token de densité
+                  // (compact ↔ confortable) plutôt qu'une hauteur fixe.
+                  'grid h-[var(--control-h-sm)] place-items-center rounded-md text-sm tabular-nums transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   !inMonth && 'text-muted-foreground/50',
                   inMonth && !sel && !rangeEnd && 'text-foreground hover:bg-accent',

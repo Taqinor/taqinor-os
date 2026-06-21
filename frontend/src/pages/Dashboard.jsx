@@ -7,10 +7,7 @@ import {
   Package, Users, FileCheck, FileText, AlertTriangle,
   TrendingUp, Activity, ReceiptText, Clock,
 } from 'lucide-react'
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
-} from 'recharts'
+import { AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty } from '../ui/charts'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
@@ -19,9 +16,10 @@ import {
   INSTALLATION_STATUSES, STATUS_LABELS, STATUS_COLORS, canonicalStatus,
 } from '../features/installations/statuses'
 import {
-  Stat, Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
   StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText,
 } from '../ui'
+import { cn } from '../lib/cn'
 import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
 
 /* K51 — Tableau de bord restylé sur le système de design (refonte UI).
@@ -74,17 +72,90 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0
 }
 
-// Style commun de l'infobulle recharts (surface + bordure tokenisées).
-const tooltipStyle = {
-  borderRadius: 10,
-  fontSize: 12,
-  border: `1px solid ${TOKEN.grid}`,
-  background: TOKEN.surface,
-  color: 'var(--popover-foreground)',
-  boxShadow: 'var(--shadow-md)',
+// K148 — Delta tokenisé pour une carte KPI : flèche + SIGNE + couleur (jamais
+// la couleur seule). `signDisplay:"exceptZero"` force le « + »/« − » explicite.
+// Renvoie un objet `delta` consommé par <Stat>, ou undefined si nul/indéfini.
+function makeDelta(value, { decimals = 0, suffix = '' } = {}) {
+  if (value == null || !Number.isFinite(value) || value === 0) return undefined
+  const body = new Intl.NumberFormat('fr-FR', {
+    signDisplay: 'exceptZero',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value)
+  return {
+    value: `${body}${suffix}`,
+    direction: value > 0 ? 'up' : 'down',
+  }
 }
 
-function ChartCard({ title, description, children, isEmpty, emptyLabel }) {
+// Ton de couleur du delta (flèche + signe + couleur — jamais la couleur seule).
+const DELTA_CLASS = {
+  success: 'text-success',
+  danger: 'text-destructive',
+  muted: 'text-muted-foreground',
+}
+
+/* K148 — Carte KPI : Libellé → Valeur → Δ → Période + sparkline.
+   Le delta combine flèche + signe + couleur (jamais la couleur seule), avec
+   `signDisplay:"exceptZero"` (cf. makeDelta). Construite sur <Card> pour porter
+   la sparkline sous le delta. */
+export function KpiCard({ kpi, navigate }) {
+  const Icon = kpi.icon
+  const d = kpi.delta
+  const deltaTone = d?.tone
+    ?? (d?.direction === 'up' ? 'success' : d?.direction === 'down' ? 'danger' : 'muted')
+  return (
+    <Card
+      className="cursor-pointer p-4 transition-colors hover:border-primary/40 sm:p-5"
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(kpi.to)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          navigate(kpi.to)
+        }
+      }}
+    >
+      {/* Libellé */}
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {kpi.label}
+        </span>
+        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
+      </div>
+      {/* Valeur */}
+      <div className="mt-2 font-display text-2xl font-semibold tabular-nums leading-none">
+        {kpi.value}
+      </div>
+      {/* Δ + indice */}
+      {(kpi.hint || d) && (
+        <div className="mt-1.5 flex items-center gap-2 text-xs">
+          {d && (
+            <span className={cn('font-medium tabular-nums', DELTA_CLASS[deltaTone])}>
+              {d.direction === 'up' ? '▲' : d.direction === 'down' ? '▼' : ''} {d.value}
+            </span>
+          )}
+          {kpi.hint && <span className="text-muted-foreground">{kpi.hint}</span>}
+        </div>
+      )}
+      {/* Période */}
+      {kpi.period && (
+        <div className="mt-1 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
+          {kpi.period}
+        </div>
+      )}
+      {/* Sparkline (série réelle ; masquée si tout à zéro) */}
+      {kpi.spark && kpi.spark.some((v) => v > 0) && (
+        <div className="mt-2 -mx-1">
+          <KpiSpark data={kpi.spark} tone={kpi.sparkTone} height={36} />
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function ChartCard({ title, description, children, isEmpty, emptyLabel, loading }) {
   return (
     <Card>
       <CardHeader>
@@ -92,8 +163,11 @@ function ChartCard({ title, description, children, isEmpty, emptyLabel }) {
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent>
-        {isEmpty ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+        {loading ? (
+          // Squelette de graphe (K148) — aire fantôme pendant le chargement.
+          <Skeleton className="h-44 w-full" />
+        ) : isEmpty ? (
+          <ChartEmpty description={emptyLabel} />
         ) : (
           children
         )}
@@ -142,6 +216,40 @@ export function Component() {
   }, [factures])
 
   const caTotal = useMemo(() => caMensuel.reduce((s, m) => s + m.ca, 0), [caMensuel])
+
+  // Sparklines KPI : comptes mensuels RÉELS sur 6 mois, dérivés des dates des
+  // enregistrements déjà chargés (aucun appel API en plus). `monthlyCount`
+  // renvoie [{ ca: n }] (clé 'ca' = série KpiSpark) + le delta mois/mois.
+  const monthlyCount = useMemo(() => (records, dateField) => {
+    const map = {}
+    const today = new Date()
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      map[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`] = 0
+    }
+    records.forEach((r) => {
+      const v = r?.[dateField]
+      if (!v) return
+      const key = String(v).slice(0, 7)
+      if (key in map) map[key] += 1
+    })
+    return Object.values(map)
+  }, [])
+
+  const devisSpark = useMemo(
+    () => monthlyCount(devisAcceptes, 'date_creation'),
+    [monthlyCount, devisAcceptes],
+  )
+  const facturesSpark = useMemo(
+    () => monthlyCount(facturesEmises, 'date_emission'),
+    [monthlyCount, facturesEmises],
+  )
+
+  // Delta mois/mois (dernier mois vs précédent) d'une série de comptes.
+  const momDelta = (series) => {
+    if (series.length < 2) return null
+    return series[series.length - 1] - series[series.length - 2]
+  }
 
   // Répartition des devis par statut (compte par catégorie connue).
   const devisParStatut = useMemo(
@@ -249,18 +357,40 @@ export function Component() {
   // un cul-de-sac, il ouvre les enregistrements (la facture en retard ouvre la
   // liste factures, sur l'onglet « En retard » côté liste).
   const kpis = [
-    { label: 'Produits en stock', value: formatNumber(produits.length), icon: Package, hint: 'références actives', to: '/stock' },
-    { label: 'Clients', value: formatNumber(clients.length), icon: Users, hint: 'enregistrés', to: '/crm' },
-    { label: 'Devis acceptés', value: formatNumber(devisAcceptes.length), icon: FileCheck, hint: `sur ${formatNumber(devis.length)} devis`, to: '/ventes/devis?statut=accepte' },
-    { label: 'Factures émises', value: formatNumber(facturesEmises.length), icon: FileText, hint: 'en attente de règlement', to: '/ventes/factures?statut=emise' },
+    { label: 'Produits en stock', value: formatNumber(produits.length), icon: Package, hint: 'références actives', period: 'Total', to: '/stock' },
+    { label: 'Clients', value: formatNumber(clients.length), icon: Users, hint: 'enregistrés', period: 'Total', to: '/crm' },
+    {
+      label: 'Devis acceptés',
+      value: formatNumber(devisAcceptes.length),
+      icon: FileCheck,
+      hint: `sur ${formatNumber(devis.length)} devis`,
+      period: '6 derniers mois',
+      to: '/ventes/devis?statut=accepte',
+      spark: devisSpark,
+      sparkTone: 'success',
+      delta: makeDelta(momDelta(devisSpark)),
+    },
+    {
+      label: 'Factures émises',
+      value: formatNumber(facturesEmises.length),
+      icon: FileText,
+      hint: 'en attente de règlement',
+      period: '6 derniers mois',
+      to: '/ventes/factures?statut=emise',
+      spark: facturesSpark,
+      sparkTone: 'info',
+      delta: makeDelta(momDelta(facturesSpark)),
+    },
     {
       label: 'Factures en retard',
       value: formatNumber(facturesEnRetard.length),
       icon: AlertTriangle,
       hint: facturesEnRetard.length > 0 ? 'à relancer' : 'aucune',
+      period: 'En cours',
       to: '/ventes/factures?statut=en_retard',
+      // En retard : une hausse est NÉGATIVE → on inverse le ton du delta.
       delta: facturesEnRetard.length > 0
-        ? { value: `${facturesEnRetard.length}`, direction: 'down' }
+        ? { value: new Intl.NumberFormat('fr-FR', { signDisplay: 'always' }).format(facturesEnRetard.length), direction: 'down' }
         : undefined,
     },
   ]
@@ -339,24 +469,7 @@ export function Component() {
           {/* Cartes KPI */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
             {kpis.map((kpi) => (
-              <Stat
-                key={kpi.label}
-                label={kpi.label}
-                value={kpi.value}
-                hint={kpi.hint}
-                delta={kpi.delta}
-                icon={kpi.icon}
-                role="button"
-                tabIndex={0}
-                className="cursor-pointer transition-colors hover:border-primary/40"
-                onClick={() => navigate(kpi.to)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    navigate(kpi.to)
-                  }
-                }}
-              />
+              <KpiCard key={kpi.label} kpi={kpi} navigate={navigate} />
             ))}
           </div>
 
@@ -368,38 +481,15 @@ export function Component() {
               isEmpty={caMensuel.every((m) => m.ca === 0)}
               emptyLabel="Aucune facture payée sur les 6 derniers mois."
             >
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={caMensuel} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="caGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={TOKEN.primary} stopOpacity={0.35} />
-                      <stop offset="95%" stopColor={TOKEN.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
-                  <XAxis dataKey="mois" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: TOKEN.muted }}
-                    tickLine={false}
-                    axisLine={false}
-                    width={40}
-                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
-                  />
-                  <Tooltip
-                    cursor={{ stroke: TOKEN.grid }}
-                    contentStyle={tooltipStyle}
-                    formatter={(v) => [`${formatMAD(v, { decimals: 0 })}`, 'CA HT']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="ca"
-                    stroke={TOKEN.primary}
-                    strokeWidth={2}
-                    fill="url(#caGrad)"
-                    dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <AreaSansAxe
+                data={caMensuel}
+                dataKey="ca"
+                xKey="mois"
+                tone="primary"
+                name="CA HT"
+                height={180}
+                tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+              />
             </ChartCard>
 
             <ChartCard
@@ -408,23 +498,18 @@ export function Component() {
               isEmpty={devis.length === 0}
               emptyLabel="Aucun devis pour le moment."
             >
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart
-                  data={devisParStatut.filter((s) => s.count > 0)}
-                  layout="vertical"
-                  margin={{ top: 4, right: 12, bottom: 0, left: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="label" width={78} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Devis']} />
-                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={18}>
-                    {devisParStatut.filter((s) => s.count > 0).map((s) => (
-                      <Cell key={s.key} fill={s.token} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarArrondie
+                data={devisParStatut.filter((s) => s.count > 0)}
+                dataKey="count"
+                categoryKey="label"
+                colorKey="token"
+                layout="vertical"
+                name="Devis"
+                height={180}
+                barSize={18}
+                categoryWidth={78}
+                tooltipFormat={(v) => formatNumber(v)}
+              />
             </ChartCard>
           </div>
 
@@ -436,22 +521,16 @@ export function Component() {
               isEmpty={factures.length === 0}
               emptyLabel="Aucune facture pour le moment."
             >
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart
-                  data={facturesParStatut.filter((s) => s.count > 0)}
-                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} width={32} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Factures']} />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={36}>
-                    {facturesParStatut.filter((s) => s.count > 0).map((s) => (
-                      <Cell key={s.key} fill={s.token} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarArrondie
+                data={facturesParStatut.filter((s) => s.count > 0)}
+                dataKey="count"
+                categoryKey="label"
+                colorKey="token"
+                name="Factures"
+                height={180}
+                barSize={36}
+                tooltipFormat={(v) => formatNumber(v)}
+              />
             </ChartCard>
 
             <ChartCard
@@ -460,25 +539,16 @@ export function Component() {
               isEmpty={encoursTotal === 0}
               emptyLabel="Aucun encours client à recouvrer."
             >
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={ageBalance} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                  <YAxis
-                    width={40}
-                    tick={{ fontSize: 11, fill: TOKEN.muted }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
-                  />
-                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatMAD(v, { decimals: 0 }), 'Montant dû']} />
-                  <Bar dataKey="montant" radius={[6, 6, 0, 0]} barSize={40}>
-                    {ageBalance.map((b) => (
-                      <Cell key={b.key} fill={b.token} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarArrondie
+                data={ageBalance}
+                dataKey="montant"
+                categoryKey="label"
+                colorKey="token"
+                name="Montant dû"
+                height={180}
+                barSize={40}
+                tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+              />
             </ChartCard>
           </div>
 
@@ -489,23 +559,18 @@ export function Component() {
             isEmpty={chantiersActifs === 0}
             emptyLabel="Aucun chantier pour le moment."
           >
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart
-                data={chantiersParStatut.filter((s) => s.count > 0)}
-                layout="vertical"
-                margin={{ top: 4, right: 12, bottom: 0, left: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} horizontal={false} />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Chantiers']} />
-                <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={18}>
-                  {chantiersParStatut.filter((s) => s.count > 0).map((s) => (
-                    <Cell key={s.key} fill={s.token} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <BarArrondie
+              data={chantiersParStatut.filter((s) => s.count > 0)}
+              dataKey="count"
+              categoryKey="label"
+              colorKey="token"
+              layout="vertical"
+              name="Chantiers"
+              height={200}
+              barSize={18}
+              categoryWidth={120}
+              tooltipFormat={(v) => formatNumber(v)}
+            />
           </ChartCard>
 
           {/* Rangée : conversion devis→signé + flux d'activité */}

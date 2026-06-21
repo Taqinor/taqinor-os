@@ -90,3 +90,27 @@ def client_credit_warning(client, montant_ttc_nouveau=None):
         'depassera': depassera,
         'message': message,
     }
+
+
+def lead_card(lead_id, company):
+    """S8 — fiche-carte LECTURE SEULE d'un lead pour le partage dans la
+    messagerie. Scopée société : renvoie None si le lead n'appartient pas à la
+    société (jamais d'accès cross-tenant). Format {label, subtitle, url}."""
+    from .models import Lead
+    lead = Lead.objects.filter(pk=lead_id, company=company).first()
+    if lead is None:
+        return None
+    nom = ' '.join(p for p in [lead.nom, (lead.prenom or '')] if p).strip()
+    label = nom or f'Lead #{lead.pk}'
+    parts = []
+    try:
+        parts.append(lead.get_stage_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    if lead.ville:
+        parts.append(lead.ville)
+    return {
+        'label': label,
+        'subtitle': ' · '.join(parts),
+        'url': f'/leads/{lead.pk}',
+    }

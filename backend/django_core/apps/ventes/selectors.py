@@ -27,3 +27,27 @@ def is_devis_accepte(devis):
     """Vrai si le devis est au statut « Accepté » (sans exposer l'enum)."""
     from .models import Devis
     return devis.statut == Devis.Statut.ACCEPTE
+
+
+def devis_card(devis_id, company):
+    """S8 — fiche-carte LECTURE SEULE d'un devis pour le partage dans la
+    messagerie. Scopée société : None si le devis n'appartient pas à la société.
+    Format {label, subtitle, url}. N'expose aucun prix d'achat/marge."""
+    from .models import Devis
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .select_related('client').first())
+    if devis is None:
+        return None
+    parts = []
+    try:
+        parts.append(devis.get_statut_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    client = getattr(devis, 'client', None)
+    if client is not None:
+        parts.append(str(client))
+    return {
+        'label': f'Devis {devis.reference}',
+        'subtitle': ' · '.join(p for p in parts if p),
+        'url': f'/devis/{devis.pk}',
+    }

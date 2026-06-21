@@ -66,6 +66,7 @@ const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPag
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
+const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -151,6 +152,7 @@ const router = createBrowserRouter([
   { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
+  { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
 
   // Stock
   { path: '/stock', loader: authLoader, element: <WithLayout><StockList /></WithLayout> },

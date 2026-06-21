@@ -91,3 +91,29 @@ def update_installation_lead(absorbed_lead, survivor_lead):
 def _active_reservations():
     from .models import StockReservation
     return StockReservation.objects.filter(active=True, consomme=False)
+
+
+def chantier_card(chantier_id, company):
+    """S8 — fiche-carte LECTURE SEULE d'un chantier (Installation) pour le
+    partage dans la messagerie. Scopée société : None si le chantier n'appartient
+    pas à la société. Format {label, subtitle, url}."""
+    from .models import Installation
+    chantier = (Installation.objects.filter(pk=chantier_id, company=company)
+                .select_related('client').first())
+    if chantier is None:
+        return None
+    parts = []
+    try:
+        parts.append(chantier.get_statut_display())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    client = getattr(chantier, 'client', None)
+    if client is not None:
+        parts.append(str(client))
+    if getattr(chantier, 'site_ville', None):
+        parts.append(chantier.site_ville)
+    return {
+        'label': f'Chantier {chantier.reference}',
+        'subtitle': ' · '.join(p for p in parts if p),
+        'url': f'/installations/{chantier.pk}',
+    }

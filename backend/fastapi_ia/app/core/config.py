@@ -27,12 +27,59 @@ SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "llama-3.3-70b-versatile")
 DJANGO_INTERNAL_URL = os.environ.get(
     "DJANGO_INTERNAL_URL", "http://django_core:8000")
 
+# Transcription audio (chat vocal) — Whisper auto-heberge via faster-whisper.
+# OFF par defaut : quand desactive, l'endpoint /transcribe repond "disabled"
+# (degradation gracieuse, pas une erreur) et le modele n'est JAMAIS telecharge
+# (chargement paresseux au premier appel uniquement), donc le service demarre et
+# le build CI passe sans poids ni reseau.
+CHAT_TRANSCRIPTION_ENABLED = os.environ.get(
+    "CHAT_TRANSCRIPTION_ENABLED", "0").lower() in ("true", "1", "yes")
+# Taille du modele faster-whisper (small/medium multilingue conseille).
+WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "small")
+# Cache de telechargement des poids (persiste entre redemarrages du conteneur).
+# Vide => cache HuggingFace par defaut (~/.cache/huggingface).
+WHISPER_CACHE_DIR = os.environ.get("WHISPER_CACHE_DIR", "")
+# Indice de langue (FR/AR/Darija). Vide => auto-detection complete.
+# "ar" couvre la Darija marocaine ; sinon on laisse l'auto-detect actif.
+WHISPER_LANGUAGE_HINT = os.environ.get("WHISPER_LANGUAGE_HINT", "")
+
+# AG10 — Transcription vocale de l'ASSISTANT via Groq Whisper (API OpenAI-
+# compatible). REUTILISE GROQ_API_KEY (deja requise pour l'agent SQL) — AUCUN
+# nouveau service payant. Distinct du chemin self-heberge S10 ci-dessus : ce
+# chemin sert le micro de l'assistant et appelle Groq en REST (whisper-large-v3),
+# FR / AR / Darija. Cle absente => degradation gracieuse (message clair), aucun
+# transcript persiste. Endpoint OpenAI-compatible audio/transcriptions de Groq.
+GROQ_WHISPER_MODEL = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3")
+GROQ_API_BASE_URL = os.environ.get(
+    "GROQ_API_BASE_URL", "https://api.groq.com/openai/v1"
+)
+# Indice de langue facultatif pour Groq (FR/AR/Darija). Vide => auto-detection.
+# "ar" couvre la Darija marocaine.
+GROQ_WHISPER_LANGUAGE_HINT = os.environ.get("GROQ_WHISPER_LANGUAGE_HINT", "")
+
 # Historique chat — Redis db 2 (db0=Celery, db1=Django cache)
 _REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 _REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 REDIS_CHAT_URL = f"redis://{_REDIS_HOST}:{_REDIS_PORT}/2"
 CHAT_HISTORY_TTL = 86400   # 24h en secondes
 CHAT_HISTORY_MAX = 20      # nb max de messages conserves
+
+# AG2 — Propositions d'action en attente de confirmation (Redis db 2, meme
+# instance que l'historique chat). Une action `outward`/`irreversible` n'est
+# JAMAIS executee directement : l'agent renvoie une proposition signee (HMAC,
+# inviolable) stockee sous un jeton avec un TTL court. L'endpoint /confirm la
+# rejoue par jeton apres re-validation des entrees contre le catalogue.
+REDIS_PROPOSAL_URL = f"redis://{_REDIS_HOST}:{_REDIS_PORT}/2"
+# TTL court (5 min) : une proposition expiree doit etre re-demandee.
+ACTION_PROPOSAL_TTL = int(os.environ.get("ACTION_PROPOSAL_TTL", "300"))
+# Cle de signature des propositions. On reutilise la cle Django (deja partagee
+# avec FastAPI pour le JWT) afin de ne PAS introduire de nouveau secret : la
+# proposition est signee HMAC-SHA256 et verifiee avant tout rejouage.
+ACTION_PROPOSAL_SECRET = (
+    os.environ.get("ACTION_PROPOSAL_SECRET")
+    or os.environ.get("DJANGO_SECRET_KEY", "")
+    or FASTAPI_SECRET_KEY
+)
 
 # Database
 DB_NAME = os.environ.get("DB_NAME", "erp_db")

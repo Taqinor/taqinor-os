@@ -41,6 +41,14 @@ class SQLResponse(BaseModel):
     # N86 — True si l'agent a effectue une action d'ecriture (ticket SAV,
     # brouillon de bon de commande, visite). Le frontend affiche un badge.
     action_performed: bool = False
+    # AG2 — proposition d'action SENSIBLE (outward/irreversible) a confirmer :
+    # {action_key, human_preview, confirm_token, inputs?}. Le `confirm_token`
+    # est le MEME jeton signe attendu par /sql-agent/confirm — c'est le seul
+    # chemin pour confirmer. None quand aucune action sensible n'a ete proposee.
+    proposal: dict | None = None
+    # AG2 — resultat d'une action INTERNE deja executee ce tour :
+    # {action_key, reference?, wa_url?, devis_id?, detail?, ...}. None sinon.
+    result: dict | None = None
 
 
 class HistoryMessage(BaseModel):
@@ -85,6 +93,10 @@ async def query_database(
         sql_query="",
         data=result["data"],
         action_performed=bool(result.get("action_performed", False)),
+        # AG2 — surface la proposition signee (avec confirm_token) et/ou le
+        # resultat d'action interne produit ce tour ; None quand absent.
+        proposal=result.get("proposal"),
+        result=result.get("result"),
     )
 
 
@@ -106,3 +118,61 @@ def clear_history(token_payload: dict = Depends(verify_token)):
 async def get_schema(token_payload: dict = Depends(verify_token)):
     """Retourne les tables disponibles et le provider LLM actif."""
     return await sql_agent_service.get_schema_summary()
+
+
+# ── AG2 — Confirmation d'une action proposee ──────────────────────────────────
+
+
+class ConfirmRequest(BaseModel):
+    # Jeton opaque renvoye par une proposition d'action (outward/irreversible).
+    token: str
+
+
+class ConfirmResponse(BaseModel):
+    ok: bool
+    action_key: str = ""
+    detail: str = ""
+    data: dict | list | None = None
+
+
+@router.post("/confirm", response_model=ConfirmResponse)
+async def confirm_action(
+    request: ConfirmRequest,
+    token_payload: dict = Depends(verify_token),
+    raw_token: str = Depends(get_raw_token),
+):
+    """AG2 — Execute une action SENSIBLE precedemment PROPOSEE, par jeton.
+
+    Une action `outward`/`irreversible` n'est jamais executee a la volee :
+    l'agent renvoie une proposition signee, stashee en Redis (TTL court). Cet
+    endpoint la rejoue APRES :
+      - verification de la signature (rejet si alteree / expiree) ;
+      - controle que la societe du jeton == societe de l'appelant ;
+      - re-recuperation du catalogue de l'appelant (l'action doit toujours y
+        figurer) et RE-VALIDATION des entrees contre le JSON-Schema courant
+        (les entrees hors catalogue sont rejetees) ;
+      - relais JWT a Django, qui re-tranche permission + societe.
+    """
+    if not request.token or not request.token.strip():
+        raise HTTPException(status_code=400, detail="Jeton de confirmation requis.")
+
+    company_id = _require_company_id(token_payload)
+    action_ctx = ActionContext(
+        company_id=company_id,
+        role=token_payload.get("role", ""),
+        permissions=token_payload.get("permissions") or [],
+        token=raw_token,
+        is_superuser=bool(token_payload.get("is_superuser", False)),
+    )
+
+    result = await sql_agent_service.confirm_action(action_ctx, request.token.strip())
+    if not result.get("ok"):
+        return ConfirmResponse(
+            ok=False, detail=result.get("error", "L'action n'a pas pu etre executee."))
+    data = result.get("data")
+    return ConfirmResponse(
+        ok=True,
+        action_key=result.get("action_key", ""),
+        data=data if isinstance(data, (dict, list)) else None,
+        detail="Action executee.",
+    )

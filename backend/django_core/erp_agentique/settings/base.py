@@ -86,6 +86,14 @@ INSTALLED_APPS = [
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
+    # AG1 — Catalogue d'actions agentiques (déclarées en code, aucun modèle).
+    # Expose ce que l'agent peut proposer au caller, filtré par permission +
+    # société. Métadonnées seulement ; l'exécution re-vérifie côté endpoint.
+    'apps.agent',
+    # Group S — Messagerie interne d'équipe (« Discuss ») : DM + canaux,
+    # pièces jointes/voix, mentions, réactions, partage d'enregistrement.
+    # Multi-tenant strict ; temps réel par polling (pas de WebSocket en v1).
+    'apps.chat',
 ]
 
 MIDDLEWARE = [

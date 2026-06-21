@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { Spinner } from './Spinner'
 
 /* G23 — Select natif accessible (clavier + type-ahead gérés par Radix).
    Pour une liste fixe et courte. Combobox/MultiSelect couvrent la recherche. */
@@ -37,8 +38,29 @@ export const SelectTrigger = forwardRef(function SelectTrigger(
   )
 })
 
+/* G126 — Squelette de chargement (3 lignes) calqué sur la densité des items. */
+function SelectLoadingState({ loadingText }) {
+  return (
+    <div role="status" aria-live="polite" className="p-1">
+      <span className="sr-only">{loadingText}</span>
+      <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+        <Spinner className="size-4" aria-hidden="true" />
+        <span aria-hidden="true">{loadingText}</span>
+      </div>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center px-2 py-1.5" aria-hidden="true">
+          <div
+            className="h-3.5 animate-pulse rounded bg-muted"
+            style={{ width: ['70%', '55%', '62%'][i] }}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export const SelectContent = forwardRef(function SelectContent(
-  { className, children, position = 'popper', ...props },
+  { className, children, position = 'popper', loading = false, loadingText = 'Chargement…', ...props },
   ref,
 ) {
   return (
@@ -62,7 +84,11 @@ export const SelectContent = forwardRef(function SelectContent(
         <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted-foreground">
           <ChevronUp className="size-4" />
         </SelectPrimitive.ScrollUpButton>
-        <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+        <SelectPrimitive.Viewport className="p-1">
+          {/* G126 — état de chargement (spinner + squelette) pendant une
+              recherche/alimentation asynchrone des options. */}
+          {loading ? <SelectLoadingState loadingText={loadingText} /> : children}
+        </SelectPrimitive.Viewport>
         <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted-foreground">
           <ChevronDown className="size-4" />
         </SelectPrimitive.ScrollDownButton>
