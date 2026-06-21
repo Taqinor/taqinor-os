@@ -1,0 +1,86 @@
+---
+/**
+ * Hub Blog (W132) — liste les articles PUBLIÉS (draft=false), du plus récent au
+ * plus ancien. Même design v2/Layout que /guides (Breadcrumb, CtaBand,
+ * StickyCta) + JSON-LD CollectionPage. Le blog couvre l'actualité, les retours
+ * de chantier et les nouveautés produit ; distinct des guides pérennes.
+ *
+ * En PROD, les brouillons sont masqués du build (donc de l'index, du sitemap et
+ * du flux RSS) ; en dev ils restent visibles pour relecture.
+ */
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+
+const posts = (
+  await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft : true))
+).sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
+
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Blog Taqinor — actualités & retours de terrain',
+  url: new URL('/blog', Astro.site).href,
+  hasPart: posts.map((p) => ({
+    '@type': 'BlogPosting',
+    headline: p.data.title,
+    datePublished: p.data.pubDate.toISOString(),
+    url: new URL(`/blog/${p.id}`, Astro.site).href,
+  })),
+};
+---
+
+<Layout
+  title="Blog Taqinor — actualités solaires, retours de chantier & nouveautés | Taqinor"
+  description="Le blog Taqinor : actualités du solaire au Maroc, retours de nos chantiers, nouveautés d'équipement et coulisses de l'installateur. Distinct des guides pérennes — ici, ce qui bouge."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Blog' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Blog</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Ce qui bouge chez Taqinor</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          Les guides expliquent ce qui ne change pas ; le blog raconte ce qui se passe. Retours de
+          chantier, nouveautés d’équipement, évolutions du cadre marocain de l’autoproduction — de
+          quoi suivre le terrain sans jargon.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      {posts.length === 0 ? (
+        <div class="mx-auto max-w-3xl">
+          <p class="v2-lead text-lune-soft">Les premiers articles arrivent très bientôt.</p>
+        </div>
+      ) : (
+        <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
+          {posts.map((p, i) => (
+            <a href={`/blog/${p.id}`} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="tech-label text-brass-300">{dateFmt.format(p.data.pubDate)}</p>
+              <h2 class="display mt-2 text-xl text-white">{p.data.title}</h2>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.data.description}</p>
+              <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Lire l’article →</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <CtaBand title="Une question sur votre projet solaire ? Lancez l’étude gratuite." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>
