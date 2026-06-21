@@ -4,6 +4,11 @@
  * scripts/process-photos.mjs) : AVIF + WebP, srcset par largeurs.
  * `name` = nom de base, `widths` = largeurs générées (desc.),
  * `ratio` = rapport w/h du cadrage (pour width/height anti-CLS).
+ *
+ * W181 — prop `position` (alias `objectPosition`) optionnel : définit
+ * l'attribut style `object-position` sur l'<img>. Défaut : non défini
+ * (laisse le CSS appelant décider, typiquement `object-center`). Tous
+ * les appels existants sans ce prop restent inchangés.
  */
 interface Props {
   name: string;
@@ -14,6 +19,11 @@ interface Props {
   loading?: 'lazy' | 'eager';
   fetchpriority?: 'high' | 'auto';
   class?: string;
+  style?: string;
+  /** W181 — Point focal CSS, ex. 'center top', '30% 60%'. Défaut : non défini. */
+  position?: string;
+  /** Alias de `position` pour compatibilité avec les noms React-style. */
+  objectPosition?: string;
 }
 const {
   name,
@@ -24,11 +34,21 @@ const {
   loading = 'lazy',
   fetchpriority = 'auto',
   class: className = '',
+  style: styleProp = '',
+  position,
+  objectPosition,
 } = Astro.props;
 
 import { intrinsicHeight, largestWidth, photoSrcset } from '../lib/picture';
 
 const largest = largestWidth(widths);
+
+// W181 — construire le style avec object-position si fourni
+const focalPoint = position ?? objectPosition;
+const styleAttr = [
+  focalPoint ? `object-position:${focalPoint}` : '',
+  styleProp,
+].filter(Boolean).join(';') || undefined;
 ---
 
 <picture>
@@ -43,5 +63,6 @@ const largest = largestWidth(widths);
     decoding="async"
     fetchpriority={fetchpriority}
     class={className}
+    style={styleAttr}
   />
 </picture>

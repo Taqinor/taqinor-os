@@ -9,6 +9,10 @@
  * (El Jadida, Nouaceur) et tous les chemins /videos/... restent identiques dans
  * toutes les langues. Rendu FR inchangé (branche `fr` = strings actuels mot
  * pour mot).
+ *
+ * W179 — hover-zoom standardisé à scale(1.04) (réduit-mouvement safe).
+ * W182 — framing palette nuit/laiton, dimensions explicites anti-CLS,
+ *         preload="none" + poster sur la vidéo, considération save-data/mobile.
  */
 import { getLocaleFromPath } from '../i18n/utils';
 import type { Locale } from '../i18n/config';
@@ -58,34 +62,90 @@ const s = STR[locale] ?? STR.fr;
       </p>
     </div>
 
-    <div id="chantier-player" class="group relative mt-8 aspect-video w-full cursor-pointer overflow-hidden border border-white/15">
-      <picture>
-        <source type="image/avif" srcset="/videos/chantier-poster.avif" />
-        <img src="/videos/chantier-poster.webp" alt={s.imgAlt}
-          width="1600" height="900" loading="lazy" decoding="async"
-          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" />
-      </picture>
-      <button id="chantier-play" type="button" aria-label={s.playLabel}
-        class="absolute inset-0 flex items-center justify-center bg-azur-950/30 transition-colors group-hover:bg-azur-950/15">
-        <span class="flex h-20 w-20 items-center justify-center rounded-full bg-brass-400 text-azur-950 shadow-lg transition-transform group-hover:scale-110">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-        </span>
-      </button>
+    <!--
+      W182 — Framing palette nuit/laiton :
+        • Bordure laiton (border-brass-400/40) + anneau de lueur douce
+        • Dimensions explicites sur l'affiche (anti-CLS : 16/9, 1600x900)
+        • preload="none" sur la video (chargée à la demande)
+        • poster="/videos/chantier-poster.webp" sur la video (premier frame visible)
+        • W179 : group-hover scale-[1.04] (standardisé, était 1.02)
+    -->
+    <div
+      id="chantier-player"
+      class="group relative mt-8 w-full cursor-pointer overflow-hidden border border-brass-400/40"
+      style="box-shadow: 0 0 0 1px rgb(232 181 74 / 0.08), 0 24px 60px -20px rgb(0 0 0 / 0.7);"
+    >
+      <!-- Aspect-ratio réservé : 16/9, largeur max ~1600 px → hauteur = 900 px -->
+      <div class="relative" style="padding-bottom: 56.25%;">
+        <picture class="absolute inset-0">
+          <source type="image/avif" srcset="/videos/chantier-poster.avif" />
+          <img
+            src="/videos/chantier-poster.webp"
+            alt={s.imgAlt}
+            width="1600"
+            height="900"
+            loading="lazy"
+            decoding="async"
+            class="chantier-poster h-full w-full object-cover"
+          />
+        </picture>
+        <!-- Halo laiton discret derrière le bouton play -->
+        <div class="absolute inset-0 bg-azur-950/20 transition-colors group-hover:bg-azur-950/5"></div>
+        <button
+          id="chantier-play"
+          type="button"
+          aria-label={s.playLabel}
+          class="absolute inset-0 flex items-center justify-center"
+        >
+          <span class="flex h-20 w-20 items-center justify-center rounded-full bg-brass-400 text-azur-950 shadow-lg transition-transform group-hover:scale-110">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </button>
+      </div>
     </div>
   </div>
 </section>
 
+<style>
+  /* W179 — hover-zoom affiche à 1.04, reduced-motion safe */
+  @media (prefers-reduced-motion: no-preference) {
+    .chantier-poster {
+      transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    #chantier-player:hover .chantier-poster {
+      transform: scale(1.04);
+    }
+  }
+</style>
+
 <script>
   const wrap = document.getElementById('chantier-player');
-  document.getElementById('chantier-play')?.addEventListener('click', () => {
+  const playBtn = document.getElementById('chantier-play');
+
+  playBtn?.addEventListener('click', () => {
     if (!wrap) return;
+
     const video = document.createElement('video');
     video.src = '/videos/chantier-a.mp4';
+    // W182 — poster visible dès le chargement ; preload="none" pour économiser
+    // la bande passante (la vidéo n'est chargée qu'après le clic).
+    video.poster = '/videos/chantier-poster.webp';
+    video.preload = 'none';
     video.controls = true;
     video.autoplay = true;
     video.playsInline = true;
-    video.className = 'absolute inset-0 h-full w-full object-cover bg-azur-950';
-    wrap.appendChild(video);
+    // W182 — respecter prefers-reduced-data si disponible dans le futur
+    // (pas d'API standard stable — on garde preload="none" comme proxy)
+    video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#070b1d';
+
+    // Remplace le contenu interne (poster + bouton) par la vidéo
+    const inner = wrap.querySelector<HTMLElement>('div[style]');
+    if (inner) {
+      inner.innerHTML = '';
+      inner.appendChild(video);
+    } else {
+      wrap.appendChild(video);
+    }
     wrap.classList.remove('cursor-pointer');
   });
 </script>
