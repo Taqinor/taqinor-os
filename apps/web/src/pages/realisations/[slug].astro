@@ -10,9 +10,8 @@
  * W179 — hover-zoom standardisé à 1.04 (reduced-motion safe)
  * W181 — object-position depuis RealisationPhoto.objectPosition
  * W184 — diptych avant/pendant/après si phases présentes dans les données
- * W185 — BLOQUÉ : Layout.astro n'expose que `ogSlug` (→ /og/<slug>.png) et
- *         n'accepte pas d'URL ogImage arbitraire. Passer le prop ogSlug pointant
- *         vers l'image générique de segment reste le comportement actuel.
+ * W185 — OG card propre à chaque réalisation : l'image héro réelle est passée
+ *         via le prop ogImage de Layout (pris en charge depuis W185).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -88,7 +87,13 @@ const hasDiptych = phasedPhotos.length >= 2;
 const galleryPhotos = rest;
 ---
 
-<Layout title={title} description={description} ogSlug={ogSlug}>
+<Layout
+  title={title}
+  description={description}
+  ogSlug={ogSlug}
+  ogImage={heroImg}
+  ogImageAlt={`Installation solaire ${r.kwc} à ${r.ville} — photo de chantier`}
+>
   <script type="application/ld+json" set:html={JSON.stringify(articleJsonLd)} />
   <div class="v2">
     <V2Enhance />
