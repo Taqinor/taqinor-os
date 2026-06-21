@@ -291,3 +291,50 @@ jobs:
           path: apps/web/lighthouse-report.html
           retention-days: 14
           if-no-files-found: ignore
+
+  # ── Service IA (FastAPI) : sécurité agent NL→SQL, JWT, OCR, garde-marge ─────
+  # Dépendances lourdes (langchain/torch) → palier 3 plutôt que par-merge. Les
+  # suites se sautent proprement si une dépendance manque ; avec les requirements
+  # complètes installées, elles s'exécutent réellement.
+  fastapi-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install FastAPI service dependencies
+        working-directory: backend/fastapi_ia
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run FastAPI test suite (NL→SQL security / JWT / OCR / margin guard)
+        working-directory: backend/fastapi_ia
+        run: python -m unittest discover -s tests -v

@@ -1,0 +1,21 @@
+# Mesure de couverture backend (informational). Lancé en CI :
+#   coverage run manage.py test apps authentication … && coverage report
+# On mesure le CODE applicatif, pas les tests/migrations/réglages.
+[run]
+source = apps,authentication
+branch = True
+omit =
+    */migrations/*
+    */tests/*
+    */tests_*.py
+    */test_*.py
+    */__init__.py
+    manage.py
+    */settings/*
+    */wsgi.py
+    */asgi.py
+
+[report]
+show_missing = False
+skip_covered = False
+precision = 1

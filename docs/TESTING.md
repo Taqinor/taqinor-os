@@ -62,9 +62,28 @@ les commit sous `e2e/**-snapshots/` pour activer la vraie comparaison pixel.
 ## Smoke e2e vs matrice complète
 
 Le projet Playwright `setup` (connexion réelle) est une **dépendance** des projets
-`chromium`/`mobile`, donc il tourne toujours. Le smoke par-merge cible quelques
-parcours (`--project=chromium devis.spec.js health.spec.js`) ; la matrice complète
-(toutes les specs + mobile) part dans `release-verify`.
+`chromium`/`mobile`, donc il tourne toujours. Le smoke par-merge cible des parcours
+UTILISATEUR **self-contained** (`--project=chromium devis.spec.js health.spec.js`
+— `devis` = lead → devis → PDF) ; la matrice complète (toutes les specs + mobile)
+part dans `release-verify`. ⚠️ Pour promouvoir un spec en smoke il doit être
+AUTONOME : `leads.spec` (E7 → Signé) dépend d'un devis créé par un spec antérieur
+dans la matrice ordonnée, donc il reste en e2e complet (le rendre autonome est un
+préalable à sa promotion).
+
+### Règle permanente : un parcours e2e par fonctionnalité
+Toute nouvelle fonctionnalité ship avec **au moins un test e2e qui la pilote comme
+un utilisateur** (Playwright + les helpers `e2e/helpers.js`). Les parcours
+réellement critiques sont **promus dans le smoke par-merge** (ci.yml) pour attraper
+« ça marchait pas au final » AVANT le merge ; les autres vivent dans la matrice
+complète (`release-verify`). C'est le garde-fou n°1 contre les régressions
+fonctionnelles silencieuses.
+
+## Couverture (un % visible, pas une promesse)
+- Front (logique pure) : `node --test --experimental-test-coverage`.
+- Front (composants/UX) : `npm run test:coverage` (Vitest + v8).
+- Back : `coverage run manage.py test … && coverage report` (config `.coveragerc`).
+Les % s'impriment en CI (informatif, **non bloquant** — on ne fixe pas de seuil
+artificiel). But : rendre l'écart visible, jamais prétendre « 100 % testé ».
 
 ## Déclencher le palier 3
 
@@ -80,9 +99,37 @@ les 2–3 passes de `work on the plan`, avant de livrer.
   promouvoir en e2e que les parcours transverses réels.
 * **Une intention par test.**
 
-## Suites encore hors-CI (pistes)
+## Service FastAPI (IA)
+`backend/fastapi_ia/tests/` (sécurité agent NL→SQL, JWT, OCR, garde-marge) tourne
+désormais dans **`release-verify`** (job `fastapi-tests`, Postgres + Redis +
+requirements complètes) — palier 3 car les dépendances sont lourdes
+(langchain/torch). Les suites se sautent proprement si une dépendance manque.
+Promotion possible en gate par-merge (path-gated sur `backend/fastapi_ia/**`) une
+fois la stabilité confirmée.
 
-* `backend/fastapi_ia/tests/` (sécurité SQL, scoping, OCR) — non câblées au CI
-  Django ; candidates à un job `release-verify` dédié (dépendances FastAPI).
-* Tests service-layer cross-app et garde-fous de règles (#3 Meta `PAUSED`,
-  #4 `/proposal` seul chemin PDF devis) — à étoffer au palier 1/2.
+## Cohérence des données inter-modules
+Tous les liens inter-modules sont de **vrais FK** (`db_constraint=True`) : la base
+empêche déjà les orphelins (la ligne référencée existe forcément). Ce qu'un FK ne
+garantit PAS : qu'elle soit dans la **bonne société**. D'où l'outil :
+
+```bash
+python manage.py check_data_integrity          # rapport + exit 1 si fuite
+```
+
+`authentication/management/commands/check_data_integrity.py` — auditeur LECTURE
+SEULE, **générique** (registre d'apps Django) : il couvre AUTOMATIQUEMENT tout
+modèle, présent ou futur, portant un FK `company`, et signale tout FK pointant vers
+une autre société (168 liens analysés aujourd'hui). À lancer sur la prod (sans
+risque) ou en cron. Le logique est gardée par `tests_data_integrity.py` (détecte un
+lien inter-sociétés planté, ignore les données propres). C'est le filet « quand on
+ajoute une fonctionnalité, la donnée reste connectée DANS sa société » — il s'étend
+tout seul aux nouveaux modèles.
+
+## Pistes restantes
+* Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
+  installations, SAV, reporting) — à écrire avec l'app lancée pour des sélecteurs
+  fiables, puis promouvoir les plus critiques dans le smoke.
+* Garde-fous de règles (#3 Meta `PAUSED`, #4 `/proposal` seul chemin PDF devis) —
+  à étoffer au palier 1/2 quand le code correspondant atterrit.
+* Régression visuelle : commiter les baselines générées par `release-verify` pour
+  activer la comparaison pixel.
