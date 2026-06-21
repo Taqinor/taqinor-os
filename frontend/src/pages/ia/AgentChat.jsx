@@ -1,8 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Bot, MessageSquare, Send, Code2, ChevronDown, CheckCircle2 } from 'lucide-react'
+import {
+  Bot, MessageSquare, Send, Code2, ChevronDown, CheckCircle2,
+  ShieldQuestion, Check, X, FileDown, MessageCircle,
+} from 'lucide-react'
 import {
   Button,
+  buttonVariants,
   IconButton,
   Card,
   CardContent,
@@ -13,7 +17,10 @@ import {
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import StateBlock from '../../components/StateBlock'
-import { queryAgent, loadChatHistory, clearChatHistory } from '../../features/ia/store/iaSlice'
+import {
+  queryAgent, loadChatHistory, clearChatHistory,
+  confirmAgentAction, dismissProposal,
+} from '../../features/ia/store/iaSlice'
 
 const SUGGESTIONS = [
   'Quels produits sont en rupture de stock ?',
@@ -43,7 +50,7 @@ function isConfigMissing(text) {
 
 export default function AgentChat() {
   const dispatch = useDispatch()
-  const { messages, agentLoading, agentError } = useSelector((s) => s.ia)
+  const { messages, agentLoading, agentError, confirmingIndex, confirmError } = useSelector((s) => s.ia)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -163,6 +170,98 @@ export default function AgentChat() {
                       <CheckCircle2 className="size-3.5" aria-hidden="true" />
                       Action effectuée
                     </span>
+                  )}
+
+                  {/* AG3 — carte CONFIRMATION pour une action proposée */}
+                  {msg.kind === 'proposal' && (
+                    <div
+                      data-testid="proposal-card"
+                      className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-foreground"
+                    >
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        <ShieldQuestion className="size-3.5" aria-hidden="true" />
+                        Confirmation requise
+                      </p>
+                      {msg.human_preview && (
+                        <p className="mt-1.5 whitespace-pre-wrap break-words text-sm">
+                          {msg.human_preview}
+                        </p>
+                      )}
+                      {!msg.confirm_token && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          Confirmation indisponible pour le moment.
+                        </p>
+                      )}
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={!msg.confirm_token || confirmingIndex === i}
+                          loading={confirmingIndex === i}
+                          onClick={() =>
+                            dispatch(confirmAgentAction({ token: msg.confirm_token, index: i }))
+                          }
+                        >
+                          <Check className="size-4" aria-hidden="true" />
+                          Confirmer
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={confirmingIndex === i}
+                          onClick={() => dispatch(dismissProposal(i))}
+                        >
+                          <X className="size-4" aria-hidden="true" />
+                          Annuler
+                        </Button>
+                      </div>
+                      {confirmError && confirmingIndex == null && (
+                        <p className="mt-2 text-xs text-destructive">
+                          {typeof confirmError === 'string' ? confirmError : 'Échec de la confirmation.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* AG3 — carte RÉSULTAT pour une action terminée */}
+                  {msg.kind === 'result' && (
+                    <div
+                      data-testid="result-card"
+                      className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-foreground"
+                    >
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                        Action effectuée
+                      </p>
+                      {msg.reference && (
+                        <p className="mt-1.5 text-sm">
+                          Référence : <span className="font-medium">{msg.reference}</span>
+                        </p>
+                      )}
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        {msg.proposal_url && (
+                          <a
+                            href={msg.proposal_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                          >
+                            <FileDown className="size-4" aria-hidden="true" />
+                            Télécharger le devis
+                          </a>
+                        )}
+                        {msg.wa_url && (
+                          <a
+                            href={msg.wa_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                          >
+                            <MessageCircle className="size-4" aria-hidden="true" />
+                            Ouvrir WhatsApp
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   )}
                   {msg.sql_query && (
                     <details className="group mt-2 rounded-md border border-border bg-card text-foreground">
