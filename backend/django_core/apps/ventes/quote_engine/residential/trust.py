@@ -34,10 +34,13 @@ def _disp(url: str) -> str:
 
 
 def build(ctx) -> str:
+    from . import theme
+
     d = ctx["d"]
     C = ctx["C"]
 
-    client_full = d.get("client_full") or d.get("client_name") or "Le client"
+    client_full = (theme.titlecase_name(
+        d.get("client_full") or d.get("client_name")) or "Le client")
     validity_days = d.get("validity_days", 30)
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}

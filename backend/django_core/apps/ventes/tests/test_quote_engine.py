@@ -1171,3 +1171,110 @@ class TestGeneratorQuoteFlow(TestCase):
             len(doc.pages), 3,
             f'catalogue quote must render exactly 3 pages, got {len(doc.pages)}',
         )
+
+
+def _residential_sample_data():
+    """A minimal residential two-option quote dict for the residential renderer
+    (built without the DB so the layout can be tested in isolation). Mirrors the
+    shape `builder.build_quote_data` produces for a residentiel quote."""
+    def _item(desig, q, ht, taux=20.0, marque=""):
+        return {"designation": desig, "marque": marque, "description": "",
+                "garantie": "", "quantite": float(q), "prix_unit_ht": float(ht),
+                "prix_unit_ttc": round(float(ht) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _totaux(rows):
+        ht = round(sum(r["quantite"] * r["prix_unit_ht"] for r in rows), 2)
+        buckets = {}
+        for r in rows:
+            buckets[r["taux_tva"]] = (
+                buckets.get(r["taux_tva"], 0.0) + r["quantite"] * r["prix_unit_ht"])
+        tpt = [{"taux": t, "montant": round(b * t / 100, 2), "ht_net": round(b, 2)}
+               for t, b in sorted(buckets.items())]
+        tva = round(sum(x["montant"] for x in tpt), 2)
+        return {"ht_brut": ht, "remise": 0.0, "ht_net": ht, "tva": tva,
+                "tva_par_taux": tpt, "ttc": round(ht + tva)}
+
+    shared = [
+        _item("Installation", 1, 6000), _item("Transport", 1, 1000),
+        _item("Smart Meter", 1, 1500, marque="Huawei"),
+        _item("Structures acier", 16, 417),
+        _item("Panneau Canadien Solar 710W", 16, 1272.73, 10, marque="Canadian Solar"),
+    ]
+    sans = shared + [_item("Onduleur réseau Huawei 10kW Triphasé", 1, 16667, marque="Huawei")]
+    avec = shared + [_item("Onduleur hybride Deye 10kW Triphasé", 1, 23333, marque="Deye"),
+                     _item("Batterie Deyness 10 kWh", 1, 25000, marque="Deyness")]
+    eco = 20953
+    sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116, 0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+    eco_m = [round(eco * f) for f in sf]
+    return {
+        "ref": "DEV-202606-0071", "date": "21/06/2026",
+        # deliberately lower-case + empty address to prove the display fixes
+        "client_name": "meryem hida", "client_full": "meryem hida",
+        "client_addr": "", "client_city": "Casablanca",
+        "client_phone": "+212600000000", "inst_type": "Résidentielle",
+        "puissance_kwc": 11.36, "nb_panneaux": 16, "watt_par_panneau": 710,
+        "prod_kwh": 14086,
+        "total_sans": _totaux(sans)["ttc"], "total_avec": _totaux(avec)["ttc"],
+        "totaux_sans": _totaux(sans), "totaux_avec": _totaux(avec),
+        "roi_s": 4.7, "roi_a": 5.1,
+        "eco_s_ann": eco, "eco_a_ann": eco, "eco_a_cumul": eco,
+        "eco_s_monthly": eco_m, "eco_a_monthly": eco_m,
+        "factures_mensuelles": [round(v / 0.85) for v in eco_m],
+        "sans_items": sans, "avec_items": avec,
+        "sans_bullets": ["16 panneaux 710 W", "Onduleur réseau Huawei 10kW Triphasé",
+                         "Smart Meter + monitoring"],
+        "avec_bullets": ["16 panneaux 710 W", "Onduleur hybride Deye 10kW Triphasé",
+                         "Batterie Deyness 10 kWh"],
+        "scenario": "Les deux (Sans + Avec)", "recommended": "Avec batterie",
+        "tva_note": "TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations",
+        "payment_terms": {"acompte": 30, "materiel": 60, "solde": 10},
+        "discount_pct": 0.0, "taux_tva": 20.0,
+    }
+
+
+@tag('pdf')
+class TestResidentialRenderer(TestCase):
+    """The redesigned residential 3-page proposal (the engine that renders a
+    real residentiel quote). The legacy-engine page-count tests above don't
+    exercise this renderer, so guard its layout + display polish here."""
+
+    def _html_and_doc(self):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.residential import renderer, render
+        d = renderer._augment(_residential_sample_data())
+        html = render.build_html(d)
+        return html, HTML(string=html).render()
+
+    def test_residential_proposal_is_exactly_three_pages(self):
+        _, doc = self._html_and_doc()
+        self.assertEqual(
+            len(doc.pages), 3,
+            f'residential proposal must render exactly 3 pages, got {len(doc.pages)}')
+
+    def test_render_pdf_bytes_smoke(self):
+        from apps.ventes.quote_engine.residential import renderer
+        pdf = renderer.render_pdf_bytes(_residential_sample_data())
+        self.assertEqual(pdf[:4], b'%PDF')
+        self.assertGreater(len(pdf), 5000)
+
+    def test_client_name_is_display_cased_everywhere(self):
+        """'meryem hida' is shown 'Meryem Hida' on the cover greeting and the
+        signature block — never the raw lower-case input."""
+        html, _ = self._html_and_doc()
+        self.assertIn('Bonjour Meryem,', html)
+        self.assertIn('Meryem Hida', html)
+        self.assertNotIn('Bonjour meryem', html)
+
+    def test_no_dangling_comma_when_address_empty(self):
+        """An empty address must not leave a stray ', Casablanca' on the cover."""
+        html, _ = self._html_and_doc()
+        self.assertNotIn(', Casablanca', html)
+        self.assertIn('Casablanca', html)
+
+    def test_tangible_monthly_and_impact_framing_present(self):
+        """Cover carries the per-month framing and the derived CO₂ impact line."""
+        html, _ = self._html_and_doc()
+        self.assertIn('MAD/mois', html)
+        self.assertIn('CO', html)        # CO₂ impact strip
+        self.assertIn('arbres', html)

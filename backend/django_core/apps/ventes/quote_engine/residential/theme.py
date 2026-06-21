@@ -108,6 +108,49 @@ def fmt(n) -> str:
     return f"{n:,.0f}".replace(",", " ")
 
 
+# French name particles that stay lowercase inside a name.
+_NAME_PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von",
+                   "el", "al", "ben", "bin", "ould", "aït", "ait"}
+
+
+def titlecase_name(name) -> str:
+    """Display-case a person's name: 'meryem hida' -> 'Meryem Hida'.
+
+    Leaves already-mixed-case tokens (e.g. 'McAdam', 'TAQINOR') untouched, keeps
+    French/Arabic particles lowercase mid-name, and splits on spaces/hyphens so
+    'jean-pierre' -> 'Jean-Pierre'. Never raises on odd input.
+    """
+    s = str(name or "").strip()
+    if not s:
+        return ""
+
+    def cap_token(tok, first):
+        if not tok:
+            return tok
+        # Respect intentional internal capitals (McAdam, TAQINOR, d'Or).
+        if tok[1:] != tok[1:].lower():
+            return tok
+        low = tok.lower()
+        if not first and low in _NAME_PARTICLES:
+            return low
+        return low[:1].upper() + low[1:]
+
+    out = []
+    for i, word in enumerate(s.split(" ")):
+        parts = word.split("-")
+        out.append("-".join(
+            cap_token(p, first=(i == 0 and j == 0))
+            for j, p in enumerate(parts)))
+    return " ".join(out)
+
+
+def join_meta(*parts, sep=" · ") -> str:
+    """Join non-empty, stripped meta fragments with `sep` (no dangling commas/dots
+    when a field like the address or city is missing)."""
+    clean = [str(p).strip().strip(",").strip() for p in parts if p and str(p).strip()]
+    return sep.join(c for c in clean if c)
+
+
 def base_css() -> str:
     """Page frame + design tokens shared by all three pages."""
     return f"""

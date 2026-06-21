@@ -62,18 +62,23 @@ def bill_before_after(bills_before, bills_after, w=6.6, h=2.0) -> str:
     import numpy as np
     x = np.arange(12)
     fig, ax = plt.subplots(figsize=(w, h))
-    bw = 0.40
-    ax.bar(x - bw / 2 - 0.02, bills_before, bw, label="Facture ONEE aujourd'hui",
-           color=GREY, edgecolor="none", zorder=3)
-    ax.bar(x + bw / 2 + 0.02, bills_after, bw, label="Facture après solaire",
-           color=GOLD, edgecolor="none", zorder=3)
+    bw = 0.38
+    # Ghost "before" bar sets the reference height; the gold "after" bar sits in
+    # front so the eye reads the shrinking remainder as the saving.
+    for xi, (b, a) in enumerate(zip(bills_before, bills_after)):
+        ax.bar(xi, b, bw, color=GREY, edgecolor="none", zorder=2,
+               alpha=0.85)
+        ax.bar(xi, a, bw, color=GOLD, edgecolor="none", zorder=3)
+    ymax = max(list(bills_before) + [1])
+    ax.set_ylim(0, ymax * 1.16)
     ax.set_xticks(x); ax.set_xticklabels(_MONTHS, fontsize=7.5, color=MUTED)
     ax.tick_params(axis="y", labelsize=7, colors=MUTED)
+    ax.yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
     _clean(ax)
-    ax.margins(x=0.01)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.20), ncol=2,
-              frameon=False, fontsize=8, handlelength=1.0, handleheight=1.0,
-              labelcolor=INK, columnspacing=1.6)
+    ax.margins(x=0.02)
+    # No in-chart legend — the card header already labels the two series, so the
+    # plot stays clean and gets the full height.
     fig.tight_layout()
     return _uri(fig)
 
@@ -94,24 +99,48 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
 
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
                   w=6.6, h=2.25) -> str:
-    years = list(range(0, 26))
-    cs = [(-total_sans + eco_s * y) / 1000 for y in years]
-    ca = [(-total_avec + eco_a * y) / 1000 for y in years]
+    import numpy as np
+    years = np.arange(0, 26)
+    cs = np.array([(-total_sans + eco_s * y) / 1000 for y in years])
+    ca = np.array([(-total_avec + eco_a * y) / 1000 for y in years])
     fig, ax = plt.subplots(figsize=(w, h))
-    ax.axhline(0, color="#C5CCD6", linewidth=1, zorder=1)
-    ax.fill_between(years, ca, 0, where=[v > 0 for v in ca],
-                    color=GOLD, alpha=0.08, zorder=1)
-    ax.plot(years, cs, color=NAVY, linewidth=2.4, label="Sans batterie", zorder=3)
-    ax.plot(years, ca, color=GOLD, linewidth=2.4, label="Avec batterie", zorder=3)
-    for roi, col, dy in ((roi_s, NAVY, 12), (roi_a, GOLD, -20)):
-        ax.scatter([roi], [0], s=40, color=col, zorder=5,
-                   edgecolor="white", linewidth=1.2)
-        ax.annotate(f"{roi:g} ans", (roi, 0), textcoords="offset points",
-                    xytext=(4, dy), fontsize=8, color=col, fontweight="bold")
-    ax.set_xlim(0, 25); ax.margins(y=0.08)
+
+    # Profit zone: everything above break-even reads as money earned.
+    ax.fill_between(years, ca, 0, where=(ca > 0), color=GOLD, alpha=0.10,
+                    zorder=1, interpolate=True)
+    ax.axhline(0, color="#C5CCD6", linewidth=1, zorder=2)
+
+    ax.plot(years, cs, color=NAVY, linewidth=2.6, label="Sans batterie",
+            zorder=4, solid_capstyle="round")
+    ax.plot(years, ca, color=GOLD, linewidth=2.6, label="Avec batterie",
+            zorder=4, solid_capstyle="round")
+
+    # Break-even markers ON the curve (interpolated y), with a soft drop guide.
+    def _y_on(curve, roi):
+        if roi is None:
+            return None
+        yr = int(roi); fr = roi - yr
+        if yr >= len(curve) - 1:
+            return float(curve[-1])
+        return float(curve[yr] + fr * (curve[yr + 1] - curve[yr]))
+    for roi, curve, col, dy in ((roi_s, cs, NAVY, 13), (roi_a, ca, GOLD, -22)):
+        if not roi:
+            continue
+        yv = _y_on(curve, roi)
+        ax.vlines(roi, 0, yv, color=col, linewidth=0.9, linestyle=(0, (2, 2)),
+                  alpha=0.55, zorder=3)
+        ax.scatter([roi], [yv], s=64, color=col, zorder=6,
+                   edgecolor="white", linewidth=1.6, marker="o")
+        ax.annotate(f"rentabilisé\n{str(roi).replace('.', ',')} ans", (roi, yv),
+                    textcoords="offset points", xytext=(7, dy), fontsize=7.6,
+                    color=col, fontweight="bold", linespacing=1.0)
+
+    ax.set_xlim(0, 25); ax.margins(y=0.10)
     ax.set_xlabel("Années", fontsize=8, color=MUTED)
     ax.set_ylabel("Gain cumulé (k MAD)", fontsize=8, color=MUTED)
     ax.tick_params(labelsize=7.5, colors=MUTED)
+    ax.yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
     _clean(ax)
     ax.legend(loc="upper left", frameon=False, fontsize=8.5, labelcolor=INK,
               handlelength=1.4)

@@ -17,6 +17,8 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 
 
 def build(ctx):
+    from . import theme
+
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
@@ -47,12 +49,14 @@ def build(ctx):
     # ── data ────────────────────────────────────────────────────────────────
     ref = d["ref"]
     date = d["date"]
-    client_full = d["client_full"]
+    client_full = theme.titlecase_name(d["client_full"])
     first_name = (client_full.split() or [client_full])[0]
     client_addr = d.get("client_addr", "")
     client_city = d.get("client_city", "")
     client_phone = d.get("client_phone", "")
     inst_type = d.get("inst_type", "")
+    # One clean meta line — no dangling comma when address or city is empty.
+    client_meta = theme.join_meta(client_addr, client_city, client_phone)
     kwc = d["puissance_kwc"]
     nb_pan = d["nb_panneaux"]
     wp = d["watt_par_panneau"]
@@ -66,6 +70,16 @@ def build(ctx):
     annual_after = d["annual_after"]
     coverage_pct = d["coverage_pct"]
     pct_cut = round((1 - annual_after / max(1, annual_before)) * 100)
+    # Tangible monthly framing (research: a monthly figure lands harder than an
+    # annual one) — derived straight from the annual before/after, never invented.
+    month_before = round(annual_before / 12)
+    month_after = round(annual_after / 12)
+    # Environmental impact — a CALCULATION, not an invented statistic: Moroccan
+    # grid factor ≈ 0.81 t CO₂/MWh (IEA), ~21 kg CO₂ absorbed per tree per year.
+    co2_t = prod_kwh * 0.81 / 1000.0
+    co2_txt = (f"{co2_t:.1f}".replace(".", ",") if co2_t < 10
+               else fmt(co2_t))
+    trees = max(1, round(prod_kwh * 0.81 / 21))
     validity_days = d["validity_days"]
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
@@ -160,6 +174,9 @@ def build(ctx):
 .c1-bigcut-c{{font-size:9.5pt;color:{muted};margin-top:5px;white-space:nowrap;}}
 .c1-bigcut-c s{{color:{muted_2};text-decoration-thickness:1.5px;}}
 .c1-bigcut-c b{{color:{navy};font-weight:700;}}
+.c1-bigcut-m{{font-size:8pt;color:{muted};margin-top:2px;white-space:nowrap;}}
+.c1-bigcut-m s{{color:{muted_2};text-decoration-thickness:1.2px;}}
+.c1-bigcut-m b{{color:{gold};font-weight:700;}}
 .c1-cut{{background:{gold};color:{navy_900};font-weight:700;font-size:9.5pt;
   padding:3px 11px;border-radius:20px;letter-spacing:.2px;white-space:nowrap;}}
 .c1-cmp{{display:flex;align-items:center;gap:12px;}}
@@ -198,6 +215,14 @@ def build(ctx):
   line-height:1.0;}}
 .c1-kpi-v .c1-u{{font-size:9pt;color:{muted};}}
 .c1-kpi-l{{font-size:7pt;color:{muted};margin-top:3px;letter-spacing:.4px;}}
+
+/* ── IMPACT STRIP ──────────────────────────────────────────────────────── */
+.c1-impact{{display:flex;align-items:center;gap:9px;margin-top:9px;
+  border:1px solid {green_bg};border-left:4px solid {green};border-radius:12px;
+  background:linear-gradient(100deg,{green_bg},#ffffff 70%);padding:7px 13px;}}
+.c1-impact svg{{width:15px;height:15px;flex-shrink:0;}}
+.c1-impact-t{{font-size:8pt;color:{ink};line-height:1.25;}}
+.c1-impact-t b{{color:{green};font-weight:700;}}
 
 /* ── OPTION CARDS ──────────────────────────────────────────────────────── */
 .c1-opts{{display:flex;gap:14px;margin-top:11px;}}
@@ -258,8 +283,7 @@ def build(ctx):
   <!-- CLIENT LINE ──────────────────────────────────────────────────────── -->
   <div class="c1-client">
     <b>{client_full}</b>
-    <span class="c1-dot">·</span><span>{client_addr}, {client_city}</span>
-    <span class="c1-dot">·</span><span>{client_phone}</span>
+    {f'<span class="c1-dot">·</span><span>{client_meta}</span>' if client_meta else ''}
     <span class="c1-tag">{inst_type}</span>
   </div>
 
@@ -275,6 +299,8 @@ def build(ctx):
             <div class="c1-bigcut-t">sur votre facture<br>d'électricité</div>
             <div class="c1-bigcut-c">≈&nbsp;<s>{fmt(annual_before)} MAD/an</s>
               &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} MAD/an</b></div>
+            <div class="c1-bigcut-m">soit ≈&nbsp;<s>{fmt(month_before)}</s>
+              &nbsp;&rarr;&nbsp;<b>{fmt(month_after)} MAD/mois</b></div>
           </div>
         </div>
       </div>
@@ -310,6 +336,15 @@ def build(ctx):
         <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>
         <div class="c1-kpi-l">Économie estimée</div>
       </div>
+    </div>
+
+    <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
+    <div class="c1-impact">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
+        stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO₂</b>
+        évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
     </div>
 
     <!-- OPTION CARDS ───────────────────────────────────────────────────── -->
