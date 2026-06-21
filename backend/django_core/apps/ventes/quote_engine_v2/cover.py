@@ -65,6 +65,7 @@ def build(ctx):
     annual_before = d["annual_before"]
     annual_after = d["annual_after"]
     coverage_pct = d["coverage_pct"]
+    pct_cut = round((1 - annual_after / max(1, annual_before)) * 100)
     validity_days = d["validity_days"]
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
@@ -148,8 +149,11 @@ def build(ctx):
 .c1-hook-left{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:12px;
   padding:13px 16px;background:#fff;display:flex;flex-direction:column;
   justify-content:center;}}
+.c1-hook-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}}
 .c1-hook-eyebrow{{color:{muted};font-size:6.5pt;letter-spacing:2px;text-transform:uppercase;
-  font-weight:700;margin-bottom:8px;}}
+  font-weight:700;}}
+.c1-cut{{background:{gold};color:{navy_900};font-weight:700;font-size:9.5pt;
+  padding:3px 11px;border-radius:20px;letter-spacing:.2px;white-space:nowrap;}}
 .c1-cmp{{display:flex;align-items:center;gap:12px;}}
 .c1-cmp-col{{flex:1 1 0;min-width:0;}}
 .c1-cmp-lab{{font-size:7.5pt;color:{muted};margin-bottom:2px;}}
@@ -255,7 +259,10 @@ def build(ctx):
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
     <div class="c1-hook">
       <div class="c1-hook-left">
-        <div class="c1-hook-eyebrow">Ce que le solaire change pour vous</div>
+        <div class="c1-hook-head">
+          <div class="c1-hook-eyebrow">Ce que le solaire change pour vous</div>
+          <div class="c1-cut">&minus;{pct_cut}&#8201;% sur votre facture</div>
+        </div>
         <div class="c1-cmp">
           <div class="c1-cmp-col">
             <div class="c1-cmp-lab">Votre facture aujourd'hui</div>
