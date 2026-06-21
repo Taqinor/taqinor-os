@@ -22,6 +22,7 @@ from .recouvrement import (
     lettre_relance_pdf,
 )
 from .dashboard_view import dashboard_quote_to_cash
+from .insights_view import cash_flow_forecast
 from .journal_view import journal_ventes, export_comptable
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
@@ -74,5 +75,7 @@ urlpatterns = [
          name='paiements-import-releve-commit'),
     # FG45 — tableau de bord Quote-to-Cash (agrégation lecture seule).
     path('dashboard/', dashboard_quote_to_cash, name='ventes-dashboard'),
+    # FG47 — prévision cash-flow / encaissements à venir (lecture seule).
+    path('insights/cash-flow/', cash_flow_forecast, name='ventes-cash-flow'),
     path('', include(router.urls)),
 ]
