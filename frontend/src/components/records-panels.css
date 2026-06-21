@@ -18,6 +18,23 @@
 .chatter-submit:hover:not(:disabled) { background: #2563eb; }
 .chatter-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* FG9 — TagChipInput */
+.tag-chip-input { display: flex; flex-direction: column; gap: 6px; }
+.tag-chip-header { display: flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 600; color: #475569; }
+.tag-chip-area { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid; border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
+.tag-chip-remove { background: none; border: none; cursor: pointer; display: flex; align-items: center; padding: 0; opacity: 0.5; transition: opacity 0.15s; }
+.tag-chip-remove:hover { opacity: 1; }
+.tag-chip-input-wrap { position: relative; }
+.tag-chip-search { border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 8px; font-size: 0.82rem; width: 120px; background: #fff; font-family: inherit; }
+.tag-chip-search:focus { outline: none; border-color: #3b82f6; }
+.tag-chip-dropdown { position: absolute; top: calc(100% + 3px); left: 0; min-width: 160px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); z-index: 50; padding: 4px; }
+.tag-chip-option { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: 6px 8px; border-radius: 5px; font-size: 0.82rem; color: #1e293b; }
+.tag-chip-option:hover { background: #f1f5f9; }
+.tag-chip-create { color: #3b82f6; font-style: italic; }
+.tag-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tag-chip-empty { padding: 6px 8px; font-size: 0.78rem; color: #94a3b8; }
+
 /* FG8 — ActivityFeedWidget */
 .activity-feed-widget { display: flex; flex-direction: column; gap: 10px; }
 .activity-feed-header { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 2px; }

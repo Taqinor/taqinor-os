@@ -17,10 +17,10 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Activity, ActivityType, Attachment, Comment
+from .models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
-    CommentSerializer, resolve_target,
+    CommentSerializer, TaggedItemSerializer, TagSerializer, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
 
@@ -353,6 +353,88 @@ class AttachmentViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         delete_attachment(instance.file_key)
         instance.delete()
+
+
+# ── Tags (FG9) ──────────────────────────────────────────────────────
+
+class TagViewSet(viewsets.ModelViewSet):
+    """FG9 — Vocabulaire de tags de la société.
+
+    Lecture : tout rôle. Création/modification : responsable ou admin.
+    Suppression : admin seulement. company posée côté serveur."""
+    serializer_class = TagSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        if self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=_company(self.request))
+
+    def get_queryset(self):
+        qs = _scoped(Tag.objects.all(), self.request.user)
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(nom__icontains=q)
+        return qs
+
+
+class TaggedItemViewSet(viewsets.ModelViewSet):
+    """FG9 — Associations tag ↔ enregistrement.
+
+    Lecture : tout rôle (filtrage par model+id). Création/suppression :
+    responsable ou admin. company déduite du tag (jamais du corps)."""
+    serializer_class = TaggedItemSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        user = self.request.user
+        # TaggedItem n'a pas de company directement → filtre par tag__company.
+        if user.company_id:
+            qs = TaggedItem.objects.select_related(
+                'tag', 'content_type').filter(tag__company=user.company)
+        elif user.is_superuser:
+            qs = TaggedItem.objects.select_related('tag', 'content_type').all()
+        else:
+            return TaggedItem.objects.none()
+        model = self.request.query_params.get('model')
+        oid = self.request.query_params.get('id')
+        if model and oid:
+            try:
+                ct, _ = resolve_target(model, oid, _company(self.request))
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(content_type=ct, object_id=oid)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            ct, _obj = resolve_target(
+                request.data.get('model'), request.data.get('id'), company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        tag_id = request.data.get('tag')
+        if not tag_id:
+            return Response({'detail': 'tag requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            tag = Tag.objects.get(pk=tag_id, company=company)
+        except Tag.DoesNotExist:
+            return Response({'detail': 'Tag introuvable.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        item, created = TaggedItem.objects.get_or_create(
+            tag=tag, content_type=ct, object_id=request.data.get('id'))
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(TaggedItemSerializer(item).data, status=code)
 
 
 @api_view(['GET'])

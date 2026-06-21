@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Lead, LeadActivity
-from apps.records.models import Activity, ActivityType, Attachment, Comment
+from apps.records.models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem
 
 User = get_user_model()
 
@@ -574,3 +574,99 @@ class TestComments(TestCase):
         # On ne voit que le nôtre.
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['body'], 'Mon commentaire.')
+
+
+class TestTags(TestCase):
+    """FG9 — Vocabulaire de tags partagés + TaggedItems."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Tag Co', slug='tag-co')
+        self.resp = User.objects.create_user(
+            username='tag_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        from apps.roles.models import Role, ALL_PERMISSIONS
+        admin_role = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.admin = User.objects.create_user(
+            username='tag_admin', password='x', role=admin_role,
+            role_legacy='admin', company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead Tag')
+        self.api = auth(self.resp)
+
+    def test_create_and_list_tags(self):
+        res = auth(self.admin).post('/api/django/records/tags/', {
+            'nom': 'Priorité haute', 'couleur': '#ef4444',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['nom'], 'Priorité haute')
+        self.assertEqual(Tag.objects.filter(company=self.company).count(), 1)
+        # La liste est visible par tout rôle.
+        lst = self.api.get('/api/django/records/tags/')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+
+    def test_tag_scoped_per_company(self):
+        """Les tags d'une société ne sont pas visibles par une autre."""
+        other = Company.objects.create(nom='Other Tag', slug='other-tag')
+        Tag.objects.create(company=other, nom='Tag Autre')
+        Tag.objects.create(company=self.company, nom='Tag Nôtre')
+        lst = self.api.get('/api/django/records/tags/')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['nom'], 'Tag Nôtre')
+
+    def test_apply_and_list_tagged_items(self):
+        """Appliquer un tag à un enregistrement et le retrouver par filtrage."""
+        tag = Tag.objects.create(company=self.company, nom='Important')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        self.assertIn(res.status_code, (200, 201))
+        self.assertEqual(TaggedItem.objects.count(), 1)
+        # Liste filtrée par record.
+        lst = self.api.get(
+            f'/api/django/records/tagged-items/?model=crm.lead&id={self.lead.id}')
+        data = lst.data['results'] if 'results' in lst.data else lst.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['tag_nom'], 'Important')
+
+    def test_apply_tag_is_idempotent(self):
+        """Appliquer le même tag deux fois → une seule ligne TaggedItem."""
+        tag = Tag.objects.create(company=self.company, nom='Idempotent')
+        self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        self.assertEqual(TaggedItem.objects.count(), 1)
+
+    def test_remove_tagged_item(self):
+        """Retirer un tag d'un enregistrement (DELETE TaggedItem)."""
+        tag = Tag.objects.create(company=self.company, nom='À retirer')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': tag.id,
+        }, format='json')
+        item_id = res.data['id']
+        d = self.api.delete(f'/api/django/records/tagged-items/{item_id}/')
+        self.assertEqual(d.status_code, 204)
+        self.assertEqual(TaggedItem.objects.count(), 0)
+
+    def test_foreign_tag_rejected(self):
+        """Appliquer un tag d'une autre société → 400."""
+        other = Company.objects.create(nom='Other T2', slug='other-t2')
+        foreign_tag = Tag.objects.create(company=other, nom='Tag Étranger')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'crm.lead', 'id': self.lead.id, 'tag': foreign_tag.id,
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_tag_search_filter(self):
+        """Le filtre ?q= sur /records/tags/ filtre par nom (insensible à la casse)."""
+        Tag.objects.create(company=self.company, nom='Solar VIP')
+        Tag.objects.create(company=self.company, nom='Résidentiel')
+        res = self.api.get('/api/django/records/tags/?q=solar')
+        data = res.data['results'] if 'results' in res.data else res.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['nom'], 'Solar VIP')

@@ -91,6 +91,60 @@ class Activity(models.Model):
         return f'{self.activity_type} — {self.summary or self.due_date}'
 
 
+class Tag(models.Model):
+    """FG9 — Tag partagé entre modules (vocabulaire contrôlé par société).
+
+    Un tag appartient à UNE société et peut être appliqué à N'IMPORTE quel
+    enregistrement via TaggedItem (ContentType). Vocabulaire additivement
+    contrôlé : on ne crée jamais un tag à la volée sans le passer par l'API.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tags')
+    nom = models.CharField(max_length=80)
+    # Couleur hex optionnelle pour le chip UI (ex. '#3b82f6'). Vide = défaut.
+    couleur = models.CharField(max_length=7, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Tag'
+        verbose_name_plural = 'Tags'
+        indexes = [
+            models.Index(fields=['company', 'nom']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class TaggedItem(models.Model):
+    """FG9 — Association entre un Tag et un enregistrement quelconque.
+
+    Utilise le même mécanisme ContentType que Activity/Attachment.
+    Mêmes ALLOWED_TARGETS ; company déduit du tag (jamais du corps de requête).
+    """
+    tag = models.ForeignKey(
+        Tag, on_delete=models.CASCADE, related_name='tagged_items')
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('tag', 'content_type', 'object_id')]
+        ordering = ['tag__nom']
+        indexes = [
+            models.Index(fields=['content_type', 'object_id']),
+        ]
+        verbose_name = 'Tag appliqué'
+        verbose_name_plural = 'Tags appliqués'
+
+    def __str__(self):
+        return f'{self.tag} → {self.content_type.model}:{self.object_id}'
+
+
 class Comment(models.Model):
     """FG7 — Commentaire générique rattaché à un enregistrement (GenericForeignKey).
 

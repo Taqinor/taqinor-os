@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
-from .models import Activity, ActivityType, Attachment, Comment, ALLOWED_TARGETS
+from .models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem, ALLOWED_TARGETS
 
 
 def resolve_target(model_label, object_id, company):
@@ -148,3 +148,23 @@ class CommentSerializer(serializers.ModelSerializer):
     def get_target_model(self, obj):
         ct = obj.content_type
         return f'{ct.app_label}.{ct.model}'
+
+
+class TagSerializer(serializers.ModelSerializer):
+    """FG9 — Tag du vocabulaire partagé."""
+    class Meta:
+        model = Tag
+        # company posée côté serveur.
+        fields = ['id', 'nom', 'couleur', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class TaggedItemSerializer(serializers.ModelSerializer):
+    """FG9 — Association tag ↔ enregistrement."""
+    tag_nom = serializers.CharField(source='tag.nom', read_only=True)
+    tag_couleur = serializers.CharField(source='tag.couleur', read_only=True)
+
+    class Meta:
+        model = TaggedItem
+        fields = ['id', 'tag', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']
+        read_only_fields = ['id', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']

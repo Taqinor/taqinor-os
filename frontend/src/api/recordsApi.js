@@ -13,6 +13,16 @@ const recordsApi = {
   markActivityDone: (id, next) =>
     api.post(`/records/activities/${id}/done/`, next ? { next } : {}),
 
+  // ── Tags (FG9) ──
+  getTags: (q) => api.get('/records/tags/', { params: q ? { q } : {} }),
+  createTag: (nom, couleur) => api.post('/records/tags/', { nom, couleur: couleur || '' }),
+  deleteTag: (id) => api.delete(`/records/tags/${id}/`),
+  getTaggedItems: (model, id) =>
+    api.get('/records/tagged-items/', { params: { model, id } }),
+  addTag: (model, id, tagId) =>
+    api.post('/records/tagged-items/', { model, id, tag: tagId }),
+  removeTag: (taggedItemId) => api.delete(`/records/tagged-items/${taggedItemId}/`),
+
   // ── Commentaires (FG7) ──
   getComments: (model, id) =>
     api.get('/records/comments/', { params: { model, id } }),
