@@ -51,7 +51,7 @@ const GARANTIE_TONES = {
   non_renseignee: 'neutral',
 }
 
-function GarantiePill({ eq }) {
+export function GarantiePill({ eq }) {
   const etat = eq?.garantie_etat ?? 'non_renseignee'
   return <StatusPill tone={GARANTIE_TONES[etat] ?? 'neutral'} label={garantieLabel(eq)} />
 }
