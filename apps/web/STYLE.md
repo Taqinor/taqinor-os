@@ -137,3 +137,86 @@ sa propre physique), ou n'en retient que ce qui sert son propos.
 - Une **biographie inventée** du fondateur (projets, dates, titres, anecdotes).
   Faits approuvés uniquement : docteur-ingénieur, 10+ ans de R&D chez Huawei,
   Ericsson et STMicroelectronics.
+
+---
+
+## 7. Design System — tokens et utilitaires CSS (W177)
+
+> Les règles ci-dessous complètent la voix éditoriale avec les contraintes
+> visuelles. La règle d'or : **préférer les tokens/utilitaires aux valeurs
+> arbitraires** (`text-[…]`, `shadow-[…]`, px/hex en dur). Le test
+> `tests/styleTokens.test.ts` vérifie en CI que les tokens principaux existent
+> dans `src/styles/global.css`.
+
+### 7.1 Palette — familles de tokens
+
+**Canvas nuit** (`--color-nuit-*`) — fond page et cartes.
+- `--color-nuit` `#070b1d` — fond par défaut
+- `--color-nuit-800` `#0b1226` — surfaces de carte
+- `--color-nuit-700` `#101a3c` — surfaces hover
+
+**Encres lune** (`--color-lune-*`) — texte sur fond sombre, calibré plein soleil.
+- `--color-lune` ≈ 13:1 AAA — texte courant principal
+- `--color-lune-soft` ≈ 8:1 AAA — texte secondaire / `.v2-body`
+- `--color-lune-faint` ≈ 5,5:1 AA — micro-étiquettes **en gras/capitales uniquement**
+
+**Azur Majorelle** (`--color-azur-*`) — couleur de marque, CTAs bleus, `.eyebrow-light`.
+
+**Laiton** (`--color-brass-*`) — **chiffres clés et CTAs uniquement**.
+- `--color-brass-300` `#f3cc66` — `.lum`, `.btn-pill` texte
+- `--color-brass-400` `#e8b54a` — `.btn-pill` bordure + fond hover
+
+**Blanc architectural** (`--color-blanc`, `--color-blanc-azur`) — « salle blanche »,
+sections claires finales.
+
+**États fonctionnels** — `--color-ok-*`, `--color-alert-*` (formulaires).
+
+### 7.2 Typographie
+
+| Classe | Usage |
+|---|---|
+| `.display` | Titres `<h1>` et héros — Archivo 800, stretch 112 % |
+| `.fig` | Base chiffre-objet — tabular lining nums |
+| `.fig-xl` | Chiffres héroïques ≈ 80–128 px |
+| `.fig-lg` | Chiffres de section ≈ 56–80 px |
+| `.fig-md` | Chiffres de carte ≈ 40–56 px |
+| `.v2-body` | Corps courant sur fond sombre, 1 rem → 1.125 rem, interligne 1.7 |
+| `.tech-label` | Micro-étiquette 0.6875 rem, 700, uppercase, spacing 0.2 em |
+
+Composer `.fig` + `.fig-xl` + `.lum` pour les grands chiffres héroïques.
+
+### 7.3 Rythme vertical
+
+| Classe | `padding-block` | Usage |
+|---|---|---|
+| `.section` | 6 rem → 8 rem | Standard |
+| `.section-lg` | 8 rem → 12 rem | Héros / généreux |
+| `.section-tight` | 3 rem → 4 rem | Couture / break |
+
+### 7.4 Utilitaires composants
+
+| Classe | Rôle |
+|---|---|
+| `.cine-card` | Surface glass sur nuit, hover lift brass (motion-safe) |
+| `.cine-card-link` | Modificateur curseur pour carte-lien |
+| `.btn-pill` | Bouton pill contour laiton, hover fill |
+| `.hero-scrim` | Scrim standardisé héros (radial + linéaire) ; ajuster `--hero-scrim-strength` |
+| `.eyebrow-light` | Micro-étiquette azur-600 sur fond clair (compose avec `.tech-label`) |
+| `.glow` | Box-shadow brass subtil, pulse au survol (motion-safe) |
+| `.lum` | Couleur brass + lueur pour chiffres sur fond sombre |
+| `.seam-lumiere` | Transition 7 rem du canvas nuit vers la salle blanche |
+| `.shadow-premium` | Ombre trois couches pour cartes/images clés |
+| `.rule-brass` | Ancrage typographique : filet + losange avant le titre |
+| `.cine-in` | Entrée page-load (opacité + translate, 800 ms, no-preference) |
+| `.cine-in-1..4` | Stagger 120 ms, 240 ms, 360 ms, 480 ms sur `.cine-in` |
+| `.cine-in-d` | Stagger custom via `style="--cine-delay: 200ms"` |
+
+### 7.5 Accessibilité intégrée
+
+- **Scroll offset** : `html { scroll-padding-top }` compense l'entête sticky sur les ancres.
+- **`color-scheme: dark`** : contrôles natifs (select, scrollbar, autofill) rendus sombres.
+- **`::selection`** : surlignage brass/azur lisible.
+- **`:focus-visible` brass ring** : anneau 2 px brass-300 sur tout élément interactif.
+- **`prefers-contrast: more`** : encres faint remontées vers soft/lune, glow supprimé.
+- **`forced-colors: active`** : shadows/glows neutralisés, couleurs système appliquées.
+- Toutes les animations sont gated `prefers-reduced-motion: no-preference`.
