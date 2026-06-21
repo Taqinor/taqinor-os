@@ -227,6 +227,18 @@ Anything typed after the command is extra detail for that run.
 - The active file is `docs/PLAN.md`. There is no `.running` lock — there is only
   ever one session at a time.
 - Read it fully and verify real repo state.
+- **Worktree base must be current — sync local `main` BEFORE any fan-out.** Every
+  `isolation: worktree` lane is branched off the LOCAL `main` ref, which git
+  freezes at the commit cloned at session start and never advances — so without
+  this step the lanes start from a stale snapshot (older apps/files missing) even
+  though this session's working branch is current, and lanes silently build against
+  the wrong tree. So right after verifying repo state and BEFORE spawning any
+  worktree subagent, run `git fetch origin main && git branch -f main origin/main`
+  (purely local — no force-push, no remote effect) so every lane worktree starts
+  from the true remote `main`. The committed `.claude/settings.json` SessionStart
+  hook is configured to do this automatically each session; this preflight is the
+  explicit backstop if the hook ever doesn't fire. The same applies to
+  `work on error plan` and `work on the web plan`.
 - **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
   with MAXIMUM SAFE PARALLELISM.** At the START of the run, run
   **`python scripts/plan_lanes.py docs/PLAN2.md` then `python scripts/plan_lanes.py
