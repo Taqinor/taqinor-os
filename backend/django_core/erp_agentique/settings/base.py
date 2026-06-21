@@ -86,6 +86,10 @@ INSTALLED_APPS = [
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
+    # Group S — Messagerie interne d'équipe (« Discuss ») : DM + canaux,
+    # pièces jointes/voix, mentions, réactions, partage d'enregistrement.
+    # Multi-tenant strict ; temps réel par polling (pas de WebSocket en v1).
+    'apps.chat',
 ]
 
 MIDDLEWARE = [

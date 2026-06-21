@@ -52,6 +52,8 @@ urlpatterns = [
     path('api/django/publicapi/', include('apps.publicapi.urls')),
     # FG107-FG121 — Comptabilité générale (interne, admin/responsable).
     path('api/django/compta/', include('apps.compta.urls')),
+    # Group S — Messagerie interne d'équipe (« Discuss »).
+    path('api/django/chat/', include('apps.chat.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont
