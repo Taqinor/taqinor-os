@@ -1065,11 +1065,11 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   étude sur WhatsApp", give the button a persistent golden halo (the `.glow` resting
   state barely glows today) and a larger size/weight so it's unmistakably the focal
   point. Files: `apps/web/src/pages/index.astro`, `apps/web/src/styles/global.css`.
-- [ ] W150 — **Scroll-reactive header.** It carries the same heavy `bg-nuit/90` slab
+- [x] W150 — **Scroll-reactive header.** It carries the same heavy `bg-nuit/90` slab
   over the cinematic hero as mid-page, with zero scroll JS. Start transparent/borderless
   over the hero → solid + backdrop-blur + condensed height + logo step-down past ~80px
   (reuse the rAF pattern in `StickyCta.astro`). Files: `apps/web/src/components/Header.astro`.
-- [ ] W151 — **Active-page indicator in the desktop nav.** No `aria-current`/active state
+- [x] W151 — **Active-page indicator in the desktop nav.** No `aria-current`/active state
   exists; every link looks identical. Compute the current section from `rootPath` and
   render a brass underline / text on the active item. Files: `apps/web/src/components/Header.astro`.
 - [x] W152 — **Footer redesign.** It's a flat link grid on bare `bg-nuit` with a 1px top
@@ -1108,12 +1108,12 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Navigation chrome —**
 
-- [ ] W163 — **Rotate dropdown chevrons on open + polish dropdown panels** (rounded, layered
+- [x] W163 — **Rotate dropdown chevrons on open + polish dropdown panels** (rounded, layered
   shadow, brass top accent). Files: `apps/web/src/components/Header.astro`.
-- [ ] W164 — **Upgrade the mobile menu** into an animated panel: replace the emoji 📞 with the
+- [x] W164 — **Upgrade the mobile menu** into an animated panel: replace the emoji 📞 with the
   existing phone SVG, move the language switcher inside it, and add
   `max-h-[calc(100svh-3.5rem)] overflow-y-auto overscroll-contain`. Files: `apps/web/src/components/Header.astro`.
-- [ ] W165 — **Refine the StickyCta pill** (the green WhatsApp button breaks the brass/night
+- [x] W165 — **Refine the StickyCta pill** (the green WhatsApp button breaks the brass/night
   palette; add the glow) and add `env(safe-area-inset-bottom)` padding so notched iPhones don't
   bury it. Files: `apps/web/src/components/StickyCta.astro`.
 - [x] W166 — **Chevron + RTL-safe breadcrumb separators** (literal `/` doesn't flip for Arabic).
@@ -1236,7 +1236,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - [x] W209 — **Global `focus-visible` brass ring on all interactive elements** (CTAs/nav/card
   links have none; some set `focus:outline-none`). Files: `apps/web/src/styles/global.css` + chrome.
-- [ ] W210 — **Propagate the signature `.glow` to every primary CTA** (header, CtaBand, StickyCta
+- [x] W210 — **Propagate the signature `.glow` to every primary CTA** (header, CtaBand, StickyCta
   are flat `transition-colors`). Files: `Header.astro`, `CtaBand.astro`, `StickyCta.astro`.
 
 **— Mobile & responsive —**
@@ -1463,3 +1463,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W221: prefers-contrast: more remaps faint inks + kills .lum glow; forced-colors neutralizes decorative shadows and defers to system colors.
 - 2026-06-21 — W207: removed dead .reveal/.emerge scroll-timeline CSS (zero usages confirmed by grep), left a note.
 - 2026-06-21 — W177: STYLE.md §7 design-system tokens/utilities doc + tests/styleTokens.test.ts (39 assertions guarding token/utility presence; +dead-class-stays-removed).
+- 2026-06-21 — W150: scroll-reactive header (transparent over hero → solid+blur+condensed+logo step-down past 80px via rAF), zero CLS (sticky, chrome-only), reduced-motion safe.
+- 2026-06-21 — W151: active desktop-nav indicator (brass underline + aria-current) computed from rootPath, incl. dropdown sub-pages.
+- 2026-06-21 — W163: dropdown chevrons rotate on open; panels polished (rounded, layered shadow, brass top accent).
+- 2026-06-21 — W164: mobile menu animated grid-rows panel, emoji 📞 → inline phone SVG, LanguageSwitcher moved inside, scrollable (max-h/overscroll-contain).
+- 2026-06-21 — W165: StickyCta pill restyled to brass/night + .glow + env(safe-area-inset-bottom); WhatsApp deeplink byte-identical.
+- 2026-06-21 — W210: signature .glow propagated to header/mobile/CtaBand/StickyCta primary CTAs; all hrefs unchanged.
