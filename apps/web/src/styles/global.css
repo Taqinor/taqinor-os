@@ -298,3 +298,20 @@ body {
     animation-delay: 0ms;
   }
 }
+
+/* ─── W173 — Rythme vertical des sections ──────────────────────────────────
+   Remplace les valeurs py-* ad-hoc par des tokens cohérents avec le site.
+   .section      → espacement standard (py ≈ 96 px → 128 px)
+   .section-lg   → espacement généreux pour les sections héroïques (py ≈ 128 px → 192 px)
+   .section-tight → espacement resserré pour break/couture (py ≈ 48 px → 64 px) */
+.section {
+  padding-block: clamp(6rem, 10vw, 8rem);
+}
+
+.section-lg {
+  padding-block: clamp(8rem, 14vw, 12rem);
+}
+
+.section-tight {
+  padding-block: clamp(3rem, 5vw, 4rem);
+}
