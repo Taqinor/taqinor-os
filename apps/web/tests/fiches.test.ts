@@ -1,5 +1,8 @@
 // Garde-fou des fiches techniques (W141–W145) : la bibliothèque /produits et
 // l'alignement des slugs avec le moteur de devis Django.
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FICHES,
@@ -8,6 +11,9 @@ import {
   ficheBySlug,
   ficheDownloadHref,
 } from '../src/lib/fiches';
+
+// Racine des assets publics servis tels quels par Astro (apps/web/public).
+const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../public');
 
 describe('fiches techniques — manifest', () => {
   it('chaque fiche a slug unique, datasheet https et catégorie connue', () => {
@@ -25,6 +31,18 @@ describe('fiches techniques — manifest', () => {
   it('le téléchargement renvoie la copie auto-hébergée si présente, sinon la source', () => {
     for (const f of FICHES) {
       expect(ficheDownloadHref(f)).toBe(f.pdf ?? f.datasheet);
+    }
+  });
+
+  // W146 : chaque PDF auto-hébergé (pdf non-null) DOIT exister sur disque sous
+  // apps/web/public — sinon le lien /fiches/<slug>.pdf tomberait en 404.
+  it('chaque PDF auto-hébergé existe réellement sous public/', () => {
+    for (const f of FICHES) {
+      if (f.pdf === null) continue;
+      expect(f.pdf.startsWith('/'), `pdf doit être une URL absolue de site: ${f.pdf}`).toBe(true);
+      // '/fiches/x.pdf' -> <public>/fiches/x.pdf
+      const onDisk = resolve(PUBLIC_DIR, '.' + f.pdf);
+      expect(existsSync(onDisk), `fichier PDF manquant: ${onDisk}`).toBe(true);
     }
   });
 
@@ -48,5 +66,38 @@ describe('fiches techniques — manifest', () => {
     ]) {
       expect(ficheBySlug(slug), `fiche manquante pour le slug ${slug}`).toBeTruthy();
     }
+  });
+});
+
+// W147 — aperçu de la fiche intégré sur /produits/<slug> : embed si PDF
+// auto-hébergé, repli téléchargement sinon ; boîte de hauteur réservée (zéro CLS).
+describe('W147 — fiche intégrée sur /produits/<slug>', () => {
+  const slugPage = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/pages/produits/[slug].astro'),
+    'utf-8',
+  );
+
+  it('l’aperçu est strictement conditionné par la présence du PDF auto-hébergé (sinon téléchargement seul)', () => {
+    // branche embed-vs-fallback : pas de PDF /fiches → pas d’aperçu intégré.
+    expect(slugPage).toContain('{fiche.pdf && (');
+  });
+
+  it('l’aperçu inline est un iframe lazy pointant le PDF auto-hébergé', () => {
+    expect(slugPage).toContain('<iframe');
+    expect(slugPage).toContain('loading="lazy"');
+    expect(slugPage).toContain('${fiche.pdf}#view=FitH');
+  });
+
+  it('un repli de téléchargement existe (mobile / sans lecteur PDF)', () => {
+    expect(slugPage).toMatch(/href=\{fiche\.pdf\}/);
+    expect(slugPage).toContain('Télécharger la fiche (PDF)');
+  });
+
+  it('la boîte d’aperçu réserve sa hauteur → zéro CLS', () => {
+    expect(slugPage).toMatch(/h-\[80vh\]/);
+  });
+
+  it('au moins une fiche a un PDF auto-hébergé à prévisualiser (sinon W147 est inerte)', () => {
+    expect(FICHES.some((f) => f.pdf !== null)).toBe(true);
   });
 });

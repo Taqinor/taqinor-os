@@ -9,6 +9,7 @@ import {
   summarize, splitTVA,
   toggleSelected, setAllSelected, selectionState,
   computeWindow,
+  pinnedEdgeOffsets, columnWidthVars,
 } from './logic.js'
 import {
   encodeSort, decodeSort, encodeFilters, decodeFilters,
@@ -278,6 +279,42 @@ test('toggleSelected / setAllSelected / selectionState', () => {
   assert.equal(selectionState(sel, ['a', 'b', 'c']), 'some')
   assert.equal(selectionState({}, ['a', 'b']), 'none')
   assert.equal(selectionState({}, []), 'none')
+})
+
+/* ============================== ÉPINGLAGE / LARGEURS (H130/O166) ============================== */
+
+test('pinnedEdgeOffsets: décalages cumulés gauche et droite', () => {
+  const cols = [
+    { id: 'nom', pinned: 'left', width: 200 },
+    { id: 'ville', width: 140 },
+    { id: 'montant' },
+    { id: 'actions', pinned: 'right', width: 80 },
+  ]
+  const { left, right } = pinnedEdgeOffsets(cols, { leadOffset: 44, fallbackWidth: 160, actionsWidth: 48 })
+  assert.equal(left.nom, 44) // après la gouttière de sélection
+  // une seule colonne épinglée à droite, commence après la colonne actions (48)
+  assert.equal(right.actions, 48)
+})
+
+test('pinnedEdgeOffsets: deux colonnes épinglées à gauche se cumulent', () => {
+  const cols = [
+    { id: 'a', pinned: 'left', width: 100 },
+    { id: 'b', pinned: 'left', width: 120 },
+    { id: 'c' },
+  ]
+  const { left } = pinnedEdgeOffsets(cols, { leadOffset: 0 })
+  assert.equal(left.a, 0)
+  assert.equal(left.b, 100) // collée juste après a
+})
+
+test('columnWidthVars: variables CSS par colonne avec largeur', () => {
+  const cols = [{ id: 'nom', width: 200 }, { id: 'ville' }, { id: 'montant', width: '10rem' }]
+  const { vars, get } = columnWidthVars(cols)
+  assert.equal(vars['--dt-col-nom'], '200px')
+  assert.equal(vars['--dt-col-montant'], '10rem')
+  assert.equal(vars['--dt-col-ville'], undefined) // pas de largeur → pas de var
+  assert.equal(get('nom'), 'var(--dt-col-nom)')
+  assert.equal(get('ville'), undefined)
 })
 
 /* ============================== VIRTUALISATION ============================== */

@@ -16,14 +16,14 @@ import {
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
-import InlineEdit from '../../components/InlineEdit'
+import { CatalogueTable } from './CatalogueTable'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
-  groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
+  groupCatalogue, searchCatalogue, sansPrix,
 } from '../../features/stock/catalogue'
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
@@ -468,150 +468,6 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   )
 }
 
-// ── Ligne article du catalogue (hoistée : identité stable entre rendus) ─────
-function CatalogueRow({ p, canWrite, canDelete, onEdit, onDelete, onHistorique, onReapprovisionner, categories, onInlineSave, selected, onToggleSelect }) {
-  const spec = keySpec(p)
-  const ttc = prixTtc(p)
-  const catOptions = [{ value: '', label: '— Catégorie —' }]
-    .concat((categories ?? []).map((c) => ({ value: c.id, label: c.nom })))
-  return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors sm:flex-nowrap ${p.is_low_stock ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card hover:bg-muted/40'}`}>
-      {onToggleSelect && (
-        <Checkbox checked={selected} onCheckedChange={() => onToggleSelect(p.id)}
-                  aria-label={`Sélectionner ${p.nom}`} />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium text-foreground">{p.nom}</div>
-        <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          {p.sku
-            ? <span className="font-mono">{p.sku}</span>
-            : <Badge tone="warning">SKU manquant</Badge>}
-          {parseFloat(p.prix_achat) > 0 && (
-            <span>· achat {parseFloat(p.prix_achat).toFixed(2)} DH HT</span>
-          )}
-          {onInlineSave && (
-            <span>
-              {' · '}
-              <InlineEdit
-                value={p.categorie?.id ?? ''}
-                options={catOptions}
-                display={p.categorie?.nom ?? null}
-                placeholder="catégorie"
-                onSave={(v) => onInlineSave(p, 'categorie_id', v)}
-              />
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="shrink-0">{spec && <Badge tone="primary">{spec}</Badge>}</div>
-      <div className="shrink-0 text-right">
-        {sansPrix(p) && !onInlineSave
-          ? <Badge tone="warning">prix à renseigner</Badge>
-          : (
-            <>
-              <div className="font-semibold tabular-nums">
-                {ttc.toLocaleString('fr-MA')} DH <span className="text-xs font-normal text-muted-foreground">TTC</span>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {onInlineSave ? (
-                  <InlineEdit
-                    value={p.prix_vente}
-                    type="number"
-                    display={`${parseFloat(p.prix_vente || 0).toFixed(2)} HT`}
-                    placeholder="prix HT"
-                    onSave={(v) => onInlineSave(p, 'prix_vente', v)}
-                  />
-                ) : `${parseFloat(p.prix_vente).toFixed(2)} HT`}
-                {' · TVA '}{parseFloat(p.tva ?? 20)}%
-              </div>
-            </>
-          )}
-      </div>
-      <div className="shrink-0 text-right">
-        <span className={`text-sm ${p.is_low_stock ? 'text-destructive' : ''}`}>
-          {onInlineSave ? (
-            <InlineEdit
-              value={p.quantite_stock}
-              type="number"
-              display={<strong>{p.quantite_stock}</strong>}
-              onSave={(v) => onInlineSave(p, 'quantite_stock', v)}
-            />
-          ) : <strong>{p.quantite_stock}</strong>}
-          {' '}en stock
-        </span>
-        {p.quantite_reservee > 0 && (
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {p.quantite_reservee} réservé · {p.quantite_disponible} dispo
-          </div>
-        )}
-        {/* N15 — ventilation par emplacement en lecture (dépôt/camionnette),
-            affichée seulement quand le stock est réparti sur ≥2 emplacements. */}
-        {Array.isArray(p.stock_par_emplacement) && p.stock_par_emplacement.length > 1 && (
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {p.stock_par_emplacement.map((b) => (
-              <span key={b.emplacement_id} className="ml-1.5 first:ml-0">
-                {b.emplacement_nom} {b.quantite}
-              </span>
-            ))}
-          </div>
-        )}
-        {p.is_low_stock && (
-          <div className="mt-0.5 flex flex-col items-end gap-0.5">
-            <Badge tone="danger">
-              <AlertTriangle className="size-3" />{' seuil '}
-              {onInlineSave ? (
-                <InlineEdit
-                  value={p.seuil_alerte}
-                  type="number"
-                  display={String(p.seuil_alerte)}
-                  onSave={(v) => onInlineSave(p, 'seuil_alerte', v)}
-                />
-              ) : p.seuil_alerte}
-            </Badge>
-            {suggestionCommande(p) > 0 && (
-              <span className="text-xs text-muted-foreground">commander ~{suggestionCommande(p)}</span>
-            )}
-            {onReapprovisionner && (
-              <Button type="button" variant="outline" size="sm" className="h-7"
-                      onClick={() => onReapprovisionner(p)}>
-                Réapprovisionner
-              </Button>
-            )}
-          </div>
-        )}
-        {!p.is_low_stock && onInlineSave && (
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            seuil{' '}
-            <InlineEdit
-              value={p.seuil_alerte}
-              type="number"
-              display={String(p.seuil_alerte)}
-              onSave={(v) => onInlineSave(p, 'seuil_alerte', v)}
-            />
-          </div>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {onHistorique && (
-          <IconButton label="Historique des mouvements" variant="ghost" size="icon" className="size-8"
-                      onClick={() => onHistorique(p)}>
-            <History />
-          </IconButton>
-        )}
-        {canWrite && (
-          <IconButton label="Éditer" variant="ghost" size="icon" className="size-8" onClick={() => onEdit(p)}>
-            <Pencil />
-          </IconButton>
-        )}
-        {canDelete && (
-          <IconButton label="Supprimer" variant="ghost" size="icon" className="size-8" onClick={() => onDelete(p)}>
-            <Trash2 className="text-destructive" />
-          </IconButton>
-        )}
-      </div>
-    </div>
-  )
-}
 
 // ── Confirmation suppression définitive (AlertDialog + saisie de confirmation) ──
 function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
@@ -851,11 +707,6 @@ export default function StockList() {
     const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
     return [...set].sort((a, b) => a.localeCompare(b))
   }, [actifs])
-  // Valeur de vente HT du catalogue affiché (somme prix_vente × quantité).
-  const valeurVenteFiltree = useMemo(
-    () => filtered.reduce((sum, p) => sum + (parseFloat(p.prix_vente) || 0) * (Number(p.quantite_stock) || 0), 0),
-    [filtered],
-  )
   // Export Excel de la liste filtrée courante (T9) — défini après `filtered`.
   const exportFiltered = async () => {
     const ids = filtered.map(p => p.id)
@@ -869,12 +720,8 @@ export default function StockList() {
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch { /* ignore */ }
   }
+  // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCat`.
   const allGroups = useMemo(() => groupCatalogue(actifs), [actifs])
-  const groups = useMemo(() => {
-    const g = groupCatalogue(filtered)
-    if (searching || !activeCat) return g
-    return g.filter(c => c.nom === activeCat)
-  }, [filtered, searching, activeCat])
 
   const lowCount = useMemo(
     () => produits.filter(p => p.is_low_stock && !p.is_archived).length,
@@ -1279,46 +1126,29 @@ export default function StockList() {
               « {search} » dans tout le catalogue
             </p>
           )}
-          <div className="flex flex-col gap-6">
-            {groups.map(c => (
-              <section key={c.nom} className="flex flex-col gap-2">
-                <h3 className="flex items-center gap-2 font-display text-base font-semibold tracking-tight">
-                  {c.nom} <Badge>{c.count}</Badge>
-                </h3>
-                {c.brands.map(b => (
-                  <div key={b.marque} className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{b.marque}</span>
-                      <span className="h-px flex-1 bg-border" />
-                      <span className="text-xs text-muted-foreground">{b.items.length} article{b.items.length !== 1 ? 's' : ''}</span>
-                    </div>
-                    {b.items.map(p => (
-                      <CatalogueRow key={p.id} p={p} canWrite={canWrite} canDelete={canDelete}
-                                    onEdit={openEdit} onDelete={handleDelete}
-                                    onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
-                                    onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
-                                      state: { prefillBcf: {
-                                        produit: prod.id,
-                                        fournisseur: prod.fournisseur?.id ?? null,
-                                        quantite: suggestionCommande(prod) || 1,
-                                      } },
-                                    }) : null}
-                                    categories={categories}
-                                    onInlineSave={canWrite ? onInlineSave : null}
-                                    selected={visibleSelected.has(p.id)}
-                                    onToggleSelect={canWrite ? onToggleSelect : null} />
-                    ))}
-                  </div>
-                ))}
-              </section>
-            ))}
-          </div>
-          {/* Valeur de vente HT du catalogue affiché (recalculée au filtre/recherche). */}
+          {/* J142 — Catalogue unifié sur le moteur DataTable (virtualisation des
+              grandes listes, édition de cellule clavier, cartes mobiles, ligne de
+              sous-totaux). Le rail de catégories à gauche pilote toujours le filtre. */}
           {filtered.length > 0 && (
-            <div className="mt-4 flex justify-end border-t border-border pt-3 text-sm text-muted-foreground">
-              Valeur vente du catalogue affiché :{' '}
-              <strong className="ml-1 text-foreground tabular-nums">{fmtNum2(valeurVenteFiltree)} DH HT</strong>
-            </div>
+            <CatalogueTable
+              produits={filtered}
+              loading={loading}
+              canWrite={canWrite}
+              canDelete={canDelete}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+              onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
+              onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
+                state: { prefillBcf: {
+                  produit: prod.id,
+                  fournisseur: prod.fournisseur?.id ?? null,
+                  quantite: suggestionCommande(prod) || 1,
+                } },
+              }) : null}
+              onInlineSave={canWrite ? onInlineSave : null}
+              selected={visibleSelected}
+              onToggleSelect={canWrite ? onToggleSelect : null}
+            />
           )}
           {filtered.length === 0 && !loading && (
             actifs.length === 0 ? (

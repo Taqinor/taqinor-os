@@ -1,7 +1,8 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import {
-  ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal,
+  ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal, MoreVertical,
   ChevronRight, Pin, PinOff, EyeOff, Download, ChevronLeft, Inbox, AlertTriangle,
+  ArrowLeft, ArrowRight,
 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { useDensity } from '../../design/theme-context'
@@ -16,7 +17,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
 } from '../DropdownMenu'
-import { highlightSegments, computeWindow } from './logic.js'
+import { highlightSegments, computeWindow, pinnedEdgeOffsets, columnWidthVars } from './logic.js'
 import { debounce } from '../../lib/debounce.js'
 import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
@@ -75,6 +76,7 @@ export const DataTable = forwardRef(function DataTable(
     bulkActions, // (selectedRows, selectedKeys, clear) => [{ id,label,icon,onClick,... }]
     rowActions, // (row) => [{ id, label, icon, onClick, destructive }] (max 3 + overflow)
     onRowClick,
+    onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
     renderExpanded, // (row) => ReactNode → ligne dépliable
     // pagination
     pageSize: initialPageSize = 25,
@@ -108,6 +110,13 @@ export const DataTable = forwardRef(function DataTable(
   const { density } = useDensity()
   const compact = density === 'compact'
 
+  /* ---- H129 — Hauteur de ligne par densité ----
+     Le moteur de thème stocke aujourd'hui 'compact' | 'comfortable' ; on prévoit
+     déjà 'spacious' pour une future densité. Compact 32 / confort 40 / spacieux 48
+     (px). Cette hauteur s'applique à TOUTES les lignes corps (pas seulement en
+     virtualisation) pour un rythme vertical premium et régulier. */
+  const densityRowHeight = density === 'compact' ? 32 : density === 'spacious' ? 48 : 40
+
   const table = useDataTable({
     data, columns, getRowId, globalColumns,
     initialPageSize, initialView: savedViews?.[0]?.id ?? null,
@@ -121,7 +130,7 @@ export const DataTable = forwardRef(function DataTable(
     setColumnFilters,
     pageIndex, setPageIndex, pageSize, setPageSize,
     columnState, dispatchColumns,
-    selected, selectedKeys, selectedRows, pageSelectionState, onToggleRow, onToggleAllPage, clearSelection,
+    selected, selectedKeys, selectedRows, pageKeys, pageSelectionState, onToggleRow, onToggleAllPage, clearSelection,
     view, setView,
     keyOf, pageOffset,
   } = table
@@ -130,6 +139,34 @@ export const DataTable = forwardRef(function DataTable(
   const dragId = useRef(null)
   const scrollRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
+  // H130 — ombre de bord d'épinglage : marquée dès qu'on défile horizontalement.
+  const [scrollLeft, setScrollLeft] = useState(0)
+  // N160 — ligne active pour la navigation clavier (index dans la page courante).
+  const [activeRow, setActiveRow] = useState(-1)
+  // H131 — ancre de sélection par plage (dernier index basculé sans Maj).
+  const rangeAnchor = useRef(null)
+
+  /* ---- H131 — Sélection par plage au Shift-clic ----
+     On bascule chaque clé entre l'ancre et l'index cliqué pour qu'elles soient
+     toutes SÉLECTIONNÉES (jamais désélectionnées par mégarde). Sans Maj, on
+     bascule simplement et on déplace l'ancre. `pageKeys` est l'univers de clés
+     visibles de la page courante. */
+  const onRowSelect = useCallback(
+    (rowIndex, key, shiftKey) => {
+      if (shiftKey && rangeAnchor.current !== null && pageKeys?.length) {
+        const a = Math.min(rangeAnchor.current, rowIndex)
+        const b = Math.max(rangeAnchor.current, rowIndex)
+        for (let i = a; i <= b; i++) {
+          const k = pageKeys[i]
+          if (k != null && !selected[k]) onToggleRow(k)
+        }
+      } else {
+        onToggleRow(key)
+        rangeAnchor.current = rowIndex
+      }
+    },
+    [pageKeys, selected, onToggleRow],
+  )
 
   /* ---- Recherche globale anti-rebond (O66) ----
      La valeur AFFICHÉE dans le champ reste instantanée (`searchInput`) ; seul le
@@ -220,29 +257,34 @@ export const DataTable = forwardRef(function DataTable(
     [dispatchColumns],
   )
 
-  /* ---- Largeurs / offsets des colonnes épinglées (gel) ---- */
-  const pinOffsets = useMemo(() => {
-    const offsets = {}
-    let acc = selectable ? 44 : 0
-    for (const c of resolvedColumns) {
-      if (c.pinned === 'left') {
-        offsets[c.id] = acc
-        acc += c.width ?? 160
-      }
-    }
-    return offsets
-  }, [resolvedColumns, selectable])
+  /* ---- H130 — Offsets cumulés des colonnes épinglées (gauche ET droite) ---- */
+  const leadOffset = selectable ? 44 : 0
+  const actionsWidth = rowActions ? 48 : 0
+  const pinEdges = useMemo(
+    () => pinnedEdgeOffsets(resolvedColumns, { leadOffset, fallbackWidth: 160, actionsWidth }),
+    [resolvedColumns, leadOffset, actionsWidth],
+  )
+
+  /* ---- O166 — Variables CSS de largeur, calculées une fois par rendu ---- */
+  const colWidths = useMemo(() => columnWidthVars(resolvedColumns), [resolvedColumns])
 
   const toggleExpand = useCallback(
     (key) => setExpanded((p) => ({ ...p, [key]: !p[key] })),
     [],
   )
 
-  /* ---- Virtualisation (H33) : fenêtre de lignes ---- */
-  const win = virtualize
-    ? computeWindow({ scrollTop, viewportHeight: maxBodyHeight, rowHeight, rowCount: rows.length, overscan: 8 })
+  /* ---- O164 — Virtualisation : explicite OU auto au-delà du seuil ----
+     `virtualize` force la fenêtre ; sinon on l'active automatiquement quand la
+     page dépasse ~100 lignes (catalogue stock, grosses listes de leads), avec
+     une hauteur de ligne fixe = celle de la densité courante (calage parfait du
+     windowing). En dessous du seuil, rendu intégral comme avant. */
+  const VIRTUALIZE_THRESHOLD = 100
+  const effectiveRowHeight = virtualize ? rowHeight : densityRowHeight
+  const effectiveVirtualize = virtualize || rows.length > VIRTUALIZE_THRESHOLD
+  const win = effectiveVirtualize
+    ? computeWindow({ scrollTop, viewportHeight: maxBodyHeight, rowHeight: effectiveRowHeight, rowCount: rows.length, overscan: 8 })
     : { startIndex: 0, endIndex: rows.length, paddingTop: 0, paddingBottom: 0 }
-  const visibleRows = virtualize ? rows.slice(win.startIndex, win.endIndex) : rows
+  const visibleRows = effectiveVirtualize ? rows.slice(win.startIndex, win.endIndex) : rows
 
   const colSpan = resolvedColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0) + (renderExpanded ? 1 : 0)
   const expandable = typeof renderExpanded === 'function'
@@ -257,6 +299,39 @@ export const DataTable = forwardRef(function DataTable(
     const text = value === null || value === undefined || value === '' ? '—' : String(value)
     return <Highlighted text={text} query={c.searchable === false ? '' : query} />
   }
+
+  /* ---- N160 — Navigation clavier de la grille ----
+     Flèches haut/bas déplacent la ligne active (bornée à la page), Home/End
+     vont au début/fin, Entrée ouvre la ligne active (= clic). On ne capture les
+     touches QUE si le focus est sur la grille elle-même (pas dans un champ/menu
+     interne), pour ne jamais voler les raccourcis natifs. */
+  const onGridKeyDown = useCallback(
+    (e) => {
+      if (e.target !== e.currentTarget) return // évènement venu d'un enfant interactif
+      const last = rows.length - 1
+      if (last < 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveRow((p) => Math.min(last, p + 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveRow((p) => Math.max(0, p < 0 ? 0 : p - 1))
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        setActiveRow(0)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        setActiveRow(last)
+      } else if (e.key === 'Enter') {
+        const idx = activeRow < 0 ? 0 : activeRow
+        if (rows[idx] && onRowClick) {
+          e.preventDefault()
+          onRowClick(rows[idx])
+        }
+      }
+    },
+    [rows, activeRow, onRowClick],
+  )
 
   const hasToolbar = searchable || savedViews || columns.some((c) => c.hideable !== false) || onExport !== undefined
 
@@ -315,19 +390,49 @@ export const DataTable = forwardRef(function DataTable(
       ) : (
         <>
           {/* -------- DESKTOP : tableau -------- */}
-          <div className="hidden overflow-hidden rounded-xl border border-border bg-card sm:block">
+          <div
+            data-dt-table
+            data-pin-shadow-left={scrollLeft > 0 ? 'true' : undefined}
+            className="hidden overflow-hidden rounded-xl border border-border bg-card sm:block"
+          >
             <div
               ref={scrollRef}
-              onScroll={virtualize ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined}
+              data-dt-scroll
+              onScroll={(e) => {
+                // H130 — ombre de bord à l'apparition du défilement horizontal.
+                setScrollLeft(e.currentTarget.scrollLeft)
+                // O164 — position verticale pour la fenêtre virtualisée.
+                if (effectiveVirtualize) setScrollTop(e.currentTarget.scrollTop)
+              }}
               className="overflow-auto"
-              style={virtualize ? { maxHeight: maxBodyHeight } : undefined}
+              style={effectiveVirtualize ? { maxHeight: maxBodyHeight } : undefined}
             >
               <table
                 role="grid"
                 aria-label={ariaLabel}
                 aria-rowcount={totalCount}
-                className="w-full border-collapse text-sm"
+                tabIndex={0}
+                onKeyDown={onGridKeyDown}
+                className="w-full border-collapse text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                style={colWidths.vars}
               >
+                {/* O166 — <colgroup> dimensionne les colonnes UNE SEULE FOIS par rendu
+                    (largeur résolue depuis la variable CSS du conteneur), au lieu de
+                    recalculer/poser la largeur sur CHAQUE cellule à chaque rendu. */}
+                <colgroup>
+                  {expandable && <col style={{ width: 36 }} />}
+                  {selectable && <col style={{ width: leadOffset }} />}
+                  {resolvedColumns.map((c) => (
+                    <col
+                      key={c.id}
+                      style={{
+                        width: c.width != null ? (typeof c.width === 'number' ? `${c.width}px` : c.width) : undefined,
+                        minWidth: c.minWidth ?? undefined,
+                      }}
+                    />
+                  ))}
+                  {rowActions && <col style={{ width: actionsWidth }} />}
+                </colgroup>
                 <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted/95 backdrop-blur">
                   <tr>
                     {expandable && <th scope="col" className="w-9 px-2" aria-label="Déplier" />}
@@ -343,30 +448,34 @@ export const DataTable = forwardRef(function DataTable(
                         />
                       </th>
                     )}
-                    {resolvedColumns.map((c) => {
+                    {resolvedColumns.map((c, hi) => {
                       const dir = sortDir[c.id]
                       const sortable = c.sortable !== false && !manualSorting ? true : c.sortable
                       const pinnedLeft = c.pinned === 'left'
+                      const pinnedRight = c.pinned === 'right'
                       return (
                         <th
                           key={c.id}
                           scope="col"
+                          data-pinned={pinnedLeft ? 'left' : pinnedRight ? 'right' : undefined}
                           aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : sortable ? 'none' : undefined}
                           draggable={c.reorderable !== false}
                           onDragStart={() => { dragId.current = c.id }}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={() => onHeaderDrop(c.id)}
                           style={{
-                            width: c.width ?? undefined,
                             minWidth: c.minWidth ?? undefined,
-                            left: pinnedLeft ? pinOffsets[c.id] : undefined,
+                            left: pinnedLeft ? pinEdges.left[c.id] : undefined,
+                            right: pinnedRight ? pinEdges.right[c.id] : undefined,
                           }}
                           className={cn(
                             'whitespace-nowrap px-3 text-left align-middle font-semibold text-muted-foreground',
                             compact ? 'py-2 text-xs' : 'py-2.5 text-xs',
                             c.align === 'right' && 'text-right',
                             c.align === 'center' && 'text-center',
-                            pinnedLeft && 'sticky z-[var(--z-sticky)] bg-muted/95',
+                            (pinnedLeft || pinnedRight) && 'sticky z-[var(--z-sticky)] bg-muted/95',
+                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.25)]',
+                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]',
                           )}
                         >
                           <div className={cn('flex items-center gap-1.5', c.align === 'right' && 'justify-end', c.align === 'center' && 'justify-center')}>
@@ -389,24 +498,43 @@ export const DataTable = forwardRef(function DataTable(
                             ) : (
                               <span className="uppercase tracking-wide">{c.header ?? c.id}</span>
                             )}
-                            {/* Menu d'en-tête : épingler / masquer */}
-                            <ColumnHeaderMenu column={c} dispatch={dispatchColumns} />
+                            {/* Menu d'en-tête : épingler / masquer / déplacer (N162) */}
+                            <ColumnHeaderMenu
+                              column={c}
+                              dispatch={dispatchColumns}
+                              canMoveLeft={hi > 0}
+                              canMoveRight={hi < resolvedColumns.length - 1}
+                              prevId={resolvedColumns[hi - 1]?.id}
+                              nextId={resolvedColumns[hi + 1]?.id}
+                            />
                           </div>
                         </th>
                       )
                     })}
-                    {rowActions && <th scope="col" className="w-12 px-3" aria-label="Actions" />}
+                    {rowActions && (
+                      <th
+                        scope="col"
+                        data-pinned="actions-right"
+                        aria-label="Actions"
+                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]"
+                      />
+                    )}
                   </tr>
                 </thead>
 
                 <tbody>
                   {loading ? (
+                    /* H133 — lignes-squelettes calquées sur la VRAIE disposition
+                       (une cellule par colonne, hauteur de densité). Jamais de
+                       spinner en parallèle : le squelette EST l'indicateur. */
                     Array.from({ length: 6 }).map((unused, i) => (
-                      <tr key={i} className="border-t border-border">
+                      <tr key={i} data-skeleton-row className="border-t border-border" style={{ height: densityRowHeight }}>
                         {expandable && <td className="px-2 py-2.5" />}
                         {selectable && <td className="px-3 py-2.5"><Skeleton className="size-4" /></td>}
                         {resolvedColumns.map((c) => (
-                          <td key={c.id} className="px-3 py-2.5"><Skeleton className="h-4 w-3/4" /></td>
+                          <td key={c.id} className={cn('px-3 py-2.5', c.align === 'right' && 'text-right')}>
+                            <Skeleton className={cn('h-4', c.align === 'right' ? 'ml-auto w-1/2' : 'w-3/4')} />
+                          </td>
                         ))}
                         {rowActions && <td className="px-3 py-2.5" />}
                       </tr>
@@ -419,28 +547,35 @@ export const DataTable = forwardRef(function DataTable(
                     </tr>
                   ) : (
                     <>
-                      {virtualize && win.paddingTop > 0 && (
+                      {effectiveVirtualize && win.paddingTop > 0 && (
                         <tr aria-hidden="true" style={{ height: win.paddingTop }}>
                           <td colSpan={colSpan} className="p-0" />
                         </tr>
                       )}
                       {visibleRows.map((row, vi) => {
-                        const i = (virtualize ? win.startIndex : 0) + vi
+                        const i = (effectiveVirtualize ? win.startIndex : 0) + vi
                         const rowKey = keyOf(row, pageOffset + i)
                         const isSelected = !!selected[rowKey]
                         const isExpanded = !!expanded[rowKey]
+                        const isActive = i === activeRow
                         const actions = rowActions ? rowActions(row) : []
                         return (
                           <Fragment key={rowKey}>
                             <tr
+                              role="row"
+                              aria-rowindex={pageOffset + i + 1}
                               className={cn(
                                 'group border-t border-border transition-colors',
                                 onRowClick && 'cursor-pointer',
+                                // H129 — survol discret (~4 %), sélection légèrement plus marquée.
                                 isSelected ? 'bg-primary/5' : 'hover:bg-muted/40',
+                                isActive && 'bg-accent/40 ring-1 ring-inset ring-ring/30',
                               )}
                               onClick={onRowClick ? () => onRowClick(row) : undefined}
+                              onMouseEnter={onRowPrefetch ? () => onRowPrefetch(row) : undefined}
+                              onFocus={onRowPrefetch ? () => onRowPrefetch(row) : undefined}
                               aria-selected={selectable ? isSelected : undefined}
-                              style={virtualize ? { height: rowHeight } : undefined}
+                              style={{ height: effectiveRowHeight }}
                             >
                               {expandable && (
                                 <td className="w-9 px-2" onClick={(e) => e.stopPropagation()}>
@@ -464,7 +599,7 @@ export const DataTable = forwardRef(function DataTable(
                                   <span className={cn('inline-flex', !isSelected && 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:opacity-0', isSelected && 'opacity-100')}>
                                     <Checkbox
                                       checked={isSelected}
-                                      onCheckedChange={() => onToggleRow(rowKey)}
+                                      onClick={(e) => onRowSelect(i, rowKey, e.shiftKey)}
                                       aria-label={`Sélectionner la ligne ${i + 1}`}
                                     />
                                   </span>
@@ -472,21 +607,25 @@ export const DataTable = forwardRef(function DataTable(
                               )}
                               {resolvedColumns.map((c, ci) => {
                                 const pinnedLeft = c.pinned === 'left'
+                                const pinnedRight = c.pinned === 'right'
                                 const firstCol = ci === 0
                                 return (
                                   <td
                                     key={c.id}
                                     role="gridcell"
                                     style={{
-                                      width: c.width ?? undefined,
-                                      left: pinnedLeft ? pinOffsets[c.id] : undefined,
+                                      left: pinnedLeft ? pinEdges.left[c.id] : undefined,
+                                      right: pinnedRight ? pinEdges.right[c.id] : undefined,
                                     }}
                                     className={cn(
                                       cellPadX, cellPadY, 'align-middle',
+                                      // H129 — colonnes numériques : chiffres tabulaires + alignés à droite.
                                       c.align === 'right' && 'text-right tabular-nums',
                                       c.align === 'center' && 'text-center',
-                                      c.numeric && 'tabular-nums',
-                                      (pinnedLeft || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
+                                      c.numeric && 'text-right tabular-nums',
+                                      (pinnedLeft || pinnedRight || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
+                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
                                       firstCol && 'font-medium text-foreground',
                                     )}
                                   >
@@ -495,7 +634,13 @@ export const DataTable = forwardRef(function DataTable(
                                 )
                               })}
                               {rowActions && (
-                                <td className="px-2" onClick={(e) => e.stopPropagation()}>
+                                <td
+                                  className={cn(
+                                    'sticky right-0 z-[1] bg-inherit px-2',
+                                    'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                  )}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <RowActions actions={actions} />
                                 </td>
                               )}
@@ -510,7 +655,7 @@ export const DataTable = forwardRef(function DataTable(
                           </Fragment>
                         )
                       })}
-                      {virtualize && win.paddingBottom > 0 && (
+                      {effectiveVirtualize && win.paddingBottom > 0 && (
                         <tr aria-hidden="true" style={{ height: win.paddingBottom }}>
                           <td colSpan={colSpan} className="p-0" />
                         </tr>
@@ -549,12 +694,17 @@ export const DataTable = forwardRef(function DataTable(
             </div>
           </div>
 
-          {/* -------- MOBILE : cartes (H33) -------- */}
-          <div className="flex flex-col gap-2 sm:hidden">
+          {/* -------- M154 — MOBILE : repli en cartes (< 768px) --------
+             Sous le point de rupture `sm`, chaque ligne devient une carte :
+             titre (1re colonne) en haut, métrique clé en GRAND, le reste des
+             champs en libellé/valeur, et un chevron vers le détail. L'en-tête
+             de tableau est masqué (la table desktop est en `hidden sm:block`). */}
+          <div data-dt-cards className="flex flex-col gap-2 sm:hidden">
             {loading ? (
               Array.from({ length: 4 }).map((unused, i) => (
-                <div key={i} className="rounded-xl border border-border bg-card p-3">
+                <div key={i} data-skeleton-card className="rounded-xl border border-border bg-card p-3">
                   <Skeleton className="mb-2 h-5 w-1/2" />
+                  <Skeleton className="mb-3 h-8 w-1/3" />
                   <Skeleton className="h-4 w-3/4" />
                 </div>
               ))
@@ -566,34 +716,67 @@ export const DataTable = forwardRef(function DataTable(
                 const isSelected = !!selected[rowKey]
                 const actions = rowActions ? rowActions(row) : []
                 const mobileCols = resolvedColumns.filter((c) => c.mobileHidden !== true)
+                const titleCol = mobileCols[0]
+                // Métrique clé : colonne marquée `mobileMetric`, sinon 1re colonne
+                // numérique / alignée à droite (montant, kWc…), sinon aucune.
+                const metricCol =
+                  mobileCols.find((c) => c.mobileMetric) ||
+                  mobileCols.find((c, ci) => ci !== 0 && (c.numeric || c.align === 'right'))
+                const restCols = mobileCols.filter((c) => c !== titleCol && c !== metricCol)
+                const cellOf = (c) => {
+                  const value = c.accessor ? c.accessor(row) : row?.[c.id]
+                  return c.cell ? c.cell(value, row, { query }) : <Highlighted text={String(value ?? '—')} query={query} />
+                }
                 return (
                   <div
                     key={rowKey}
+                    role={onRowClick ? 'button' : undefined}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    aria-pressed={onRowClick && selectable ? isSelected : undefined}
                     className={cn(
                       'rounded-xl border bg-card p-3 transition-colors',
                       isSelected ? 'border-primary bg-primary/5' : 'border-border',
+                      onRowClick && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     )}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onKeyDown={
+                      onRowClick
+                        ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              onRowClick(row)
+                            }
+                          }
+                        : undefined
+                    }
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        {mobileCols.map((c, ci) => {
-                          const value = c.accessor ? c.accessor(row) : row?.[c.id]
-                          return (
-                            <div key={c.id} className={cn('flex items-baseline justify-between gap-2', ci === 0 ? 'mb-1' : 'py-0.5')}>
-                              {ci !== 0 && <span className="shrink-0 text-xs text-muted-foreground">{c.header ?? c.id}</span>}
-                              <span className={cn('min-w-0 truncate', ci === 0 ? 'font-semibold text-foreground' : 'text-sm')}>
-                                {c.cell ? c.cell(value, row, { query }) : <Highlighted text={String(value ?? '—')} query={query} />}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        {selectable && (
-                          <Checkbox checked={isSelected} onCheckedChange={() => onToggleRow(rowKey)} aria-label={`Sélectionner la ligne ${i + 1}`} />
+                        {titleCol && (
+                          <div className="truncate text-sm font-semibold text-foreground">{cellOf(titleCol)}</div>
                         )}
-                        {rowActions && <RowActions actions={actions} />}
+                        {metricCol && (
+                          <div className="mt-0.5 truncate text-2xl font-bold tabular-nums text-foreground">
+                            {cellOf(metricCol)}
+                          </div>
+                        )}
+                        {restCols.map((c) => (
+                          <div key={c.id} className="mt-1 flex items-baseline justify-between gap-2">
+                            <span className="shrink-0 text-xs text-muted-foreground">{c.header ?? c.id}</span>
+                            <span className="min-w-0 truncate text-sm">{cellOf(c)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          {selectable && (
+                            <Checkbox checked={isSelected} onCheckedChange={() => onToggleRow(rowKey)} aria-label={`Sélectionner la ligne ${i + 1}`} />
+                          )}
+                          {rowActions && <RowActions actions={actions} />}
+                        </div>
+                        {onRowClick && (
+                          <ChevronRight data-card-chevron aria-hidden="true" className="size-5 text-muted-foreground" />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -661,22 +844,43 @@ export const DataTable = forwardRef(function DataTable(
 
 /* ---- Sous-composants ---- */
 
-/** Menu contextuel d'en-tête : épingler à gauche / dégingler / masquer (H31). */
-function ColumnHeaderMenu({ column, dispatch }) {
-  if (column.hideable === false && column.pinnable === false) return null
+/** Menu contextuel d'en-tête : déplacer (N162) / épingler / masquer (H31).
+    N162 — alternative au glisser-déposer : « Déplacer à gauche / à droite »
+    réordonne au clavier ou au clic, sans aucun glissement (cibles ≥ 24px). */
+function ColumnHeaderMenu({ column, dispatch, canMoveLeft, canMoveRight, prevId, nextId }) {
+  if (column.hideable === false && column.pinnable === false && column.reorderable === false) {
+    return null
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={`Options de la colonne ${column.header ?? column.id}`}
-          className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
+          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
           onClick={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="size-3.5" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
+        {column.reorderable !== false && (
+          <>
+            <DropdownMenuItem
+              disabled={!canMoveLeft}
+              onSelect={() => prevId && dispatch({ type: 'reorder', fromId: column.id, toId: prevId })}
+            >
+              <ArrowLeft /> Déplacer à gauche
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!canMoveRight}
+              onSelect={() => nextId && dispatch({ type: 'reorder', fromId: nextId, toId: column.id })}
+            >
+              <ArrowRight /> Déplacer à droite
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {column.pinned === 'left' ? (
           <DropdownMenuItem onSelect={() => dispatch({ type: 'pin', id: column.id, side: null })}>
             <PinOff /> Détacher
@@ -684,6 +888,15 @@ function ColumnHeaderMenu({ column, dispatch }) {
         ) : (
           <DropdownMenuItem onSelect={() => dispatch({ type: 'pin', id: column.id, side: 'left' })}>
             <Pin /> Épingler à gauche
+          </DropdownMenuItem>
+        )}
+        {column.pinned === 'right' ? (
+          <DropdownMenuItem onSelect={() => dispatch({ type: 'pin', id: column.id, side: null })}>
+            <PinOff /> Détacher (droite)
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => dispatch({ type: 'pin', id: column.id, side: 'right' })}>
+            <Pin /> Épingler à droite
           </DropdownMenuItem>
         )}
         {column.hideable !== false && (
@@ -696,51 +909,58 @@ function ColumnHeaderMenu({ column, dispatch }) {
   )
 }
 
-/** Jusqu'à 3 actions icône + menu overflow (H32). */
+/** H131 — Affordances de ligne : actions rapides révélées au survol
+    (`opacity-0 group-hover`) + menu kebab PERSISTANT (toujours visible) qui liste
+    TOUTES les actions. Le menu garantit qu'aucune action n'est inaccessible au
+    clavier ou au toucher, même quand les actions rapides sont masquées. */
 function RowActions({ actions = [] }) {
   if (!actions.length) return null
-  const inline = actions.slice(0, 3)
-  const overflow = actions.slice(3)
+  const quick = actions.slice(0, 2) // 2 actions rapides au survol
   return (
-    <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-      {inline.map((a) => {
-        const Icon = a.icon ?? MoreHorizontal
-        return (
-          <IconButton
-            key={a.id}
-            label={a.label}
-            variant="ghost"
-            size="icon"
-            onClick={() => a.onClick?.()}
-            className={cn('size-8', a.destructive && 'text-destructive hover:text-destructive')}
-          >
-            <Icon />
-          </IconButton>
-        )
-      })}
-      {overflow.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton label="Plus d'actions" variant="ghost" size="icon" className="size-8">
-              <MoreHorizontal />
+    <div className="flex items-center justify-end gap-0.5">
+      {/* Actions rapides : masquées jusqu'au survol/focus (toujours visibles au toucher). */}
+      <div
+        data-row-quick-actions
+        className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+      >
+        {quick.map((a) => {
+          const Icon = a.icon ?? MoreHorizontal
+          return (
+            <IconButton
+              key={a.id}
+              label={a.label}
+              variant="ghost"
+              size="icon"
+              onClick={() => a.onClick?.()}
+              className={cn('size-8', a.destructive && 'text-destructive hover:text-destructive')}
+            >
+              <Icon />
             </IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            {overflow.map((a) => {
-              const Icon = a.icon
-              return (
-                <Fragment key={a.id}>
-                  {a.separatorBefore && <DropdownMenuSeparator />}
-                  <DropdownMenuItem destructive={a.destructive} onSelect={() => a.onClick?.()}>
-                    {Icon && <Icon />} {a.label}
-                  </DropdownMenuItem>
-                </Fragment>
-              )
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+          )
+        })}
+      </div>
+      {/* Menu kebab PERSISTANT : toutes les actions, toujours présent. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <IconButton label="Plus d'actions sur la ligne" variant="ghost" size="icon" className="size-8">
+            <MoreVertical />
+          </IconButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          {actions.map((a) => {
+            const Icon = a.icon
+            return (
+              <Fragment key={a.id}>
+                {a.separatorBefore && <DropdownMenuSeparator />}
+                <DropdownMenuItem destructive={a.destructive} onSelect={() => a.onClick?.()}>
+                  {Icon && <Icon />} {a.label}
+                </DropdownMenuItem>
+              </Fragment>
+            )
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

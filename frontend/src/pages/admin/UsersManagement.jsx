@@ -1,25 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { UserPlus, Users, Pencil, Trash2, ShieldCheck } from 'lucide-react'
+import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
 import Avatar from '../../components/Avatar'
 import {
-  Button, Spinner, Badge,
+  Button, Badge,
   Card,
-  EmptyState, Skeleton,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
-  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  TooltipProvider, SimpleTooltip,
+  EmptyState,
+  StatusPill,
+  DataTable,
+  TooltipProvider,
   Form, FormSection, FormField, FormActions,
   Label, Input, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   FileUpload,
 } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { useConfirmDialog, toast } from '../../ui/confirm'
 
-// Teinte de badge dérivée du nom de rôle (admin → ambre, responsable → violet,
-// sinon vert) — purement visuel, ne change rien à la sémantique RBAC.
+// Teinte de pastille dérivée du nom de rôle (admin → ambre, responsable →
+// violet, sinon vert) — purement visuel, ne change rien à la sémantique RBAC.
 const roleTone = (nom) => {
   if (!nom) return 'neutral'
   const n = nom.toLowerCase()
@@ -43,6 +44,7 @@ const isAdminRole = (r) => {
 
 export default function UsersManagement() {
   const currentUsername = useSelector(s => s.auth.user?.username)
+  const { confirm } = useConfirmDialog()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -99,6 +101,7 @@ export default function UsersManagement() {
       if (editForm.password) payload.password = editForm.password
       await api.patch(`/users/${editUser.id}/`, payload)
       closeEdit()
+      toast.success('Utilisateur enregistré.')
       await load()
     } catch (err) {
       setEditError(err.response?.data?.detail
@@ -157,6 +160,7 @@ export default function UsersManagement() {
       await api.post('/users/', form)
       setForm({ username: '', email: '', password: '', role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '' })
       setShowForm(false)
+      toast.success('Utilisateur créé.')
       await load()
     } catch (err) {
       setCreateError('Erreur : ' + (err.response?.data?.username?.[0] ?? err.message))
@@ -182,7 +186,140 @@ export default function UsersManagement() {
 
   const adminCount = users.filter(isAdminUser).length
 
-  const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
+  // ── Suppression d'un utilisateur (confirmation maison, jamais window.confirm) ──
+  const askDelete = async (u) => {
+    const ok = await confirm({
+      title: 'Supprimer cet utilisateur ?',
+      description: `Le compte « ${u.username} » sera définitivement supprimé.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await handleDelete(u.id)
+      toast.success('Utilisateur supprimé.')
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Suppression impossible.')
+    }
+  }
+
+  // ── Activation / désactivation rapide (et en masse) ──
+  const setActive = async (u, active) => {
+    try {
+      await api.patch(`/users/${u.id}/`, { is_active: active })
+      setUsers(list => list.map(x => (x.id === u.id ? { ...x, is_active: active } : x)))
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Modification impossible.')
+    }
+  }
+
+  // ── Colonnes du DataTable (cellule avatar, pastilles de rôle/statut) ──
+  const columns = useMemo(() => [
+    {
+      id: 'username',
+      header: 'Utilisateur',
+      width: 260,
+      hideable: false,
+      accessor: (u) => u.username,
+      cell: (value, u) => (
+        <span className="flex items-center gap-3">
+          <Avatar name={u.username} src={u.avatar_url} size={32} />
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium text-foreground">{value}</span>
+            {u.is_protected && (
+              <Badge tone="warning">Propriétaire protégé</Badge>
+            )}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: 'poste',
+      header: 'Poste',
+      width: 160,
+      accessor: (u) => u.poste || '',
+      cell: (value) => value || '—',
+    },
+    {
+      id: 'email',
+      header: 'Email',
+      width: 220,
+      accessor: (u) => u.email || '',
+      cell: (value) => value || '—',
+    },
+    {
+      id: 'role',
+      header: 'Rôle',
+      width: 170,
+      accessor: (u) => u.role_nom || '',
+      cell: (value) => (value
+        ? <StatusPill label={value} tone={roleTone(value)} />
+        : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      id: 'is_active',
+      header: 'Actif',
+      width: 120,
+      searchable: false,
+      accessor: (u) => (u.is_active ? 'Actif' : 'Inactif'),
+      cell: (_value, u) => (u.is_active
+        ? <StatusPill label="Actif" tone="success" />
+        : <StatusPill label="Inactif" tone="neutral" />),
+    },
+  ], [])
+
+  // Actions de ligne : Modifier (toujours) + activer/désactiver + Supprimer
+  // (selon les gardes propriétaire / dernier admin / soi-même).
+  const rowActions = (u) => {
+    const isLastAdmin = isAdminUser(u) && adminCount <= 1
+    const deleteLocked = u.is_protected || isLastAdmin
+    const actions = [
+      { id: 'edit', label: 'Modifier', icon: Pencil, onClick: () => openEdit(u) },
+    ]
+    actions.push(
+      u.is_active
+        ? { id: 'deactivate', label: 'Désactiver', icon: UserX, onClick: () => setActive(u, false) }
+        : { id: 'activate', label: 'Activer', icon: UserCheck, onClick: () => setActive(u, true) },
+    )
+    if (u.username !== currentUsername && !deleteLocked) {
+      actions.push({
+        id: 'delete',
+        label: 'Supprimer',
+        icon: Trash2,
+        destructive: true,
+        separatorBefore: true,
+        onClick: () => askDelete(u),
+      })
+    }
+    return actions
+  }
+
+  // Actions groupées (admin) : activer / désactiver une sélection d'un coup.
+  const bulkActions = (rows, _keys, clear) => [
+    {
+      id: 'bulk-activate',
+      label: 'Activer',
+      icon: UserCheck,
+      onClick: async () => {
+        for (const u of rows) if (!u.is_active) await setActive(u, true)
+        clear?.()
+      },
+    },
+    {
+      id: 'bulk-deactivate',
+      label: 'Désactiver',
+      icon: UserX,
+      onClick: async () => {
+        for (const u of rows) {
+          if (u.is_active && u.username !== currentUsername && !u.is_protected) {
+            await setActive(u, false)
+          }
+        }
+        clear?.()
+      },
+    },
+  ]
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -267,26 +404,16 @@ export default function UsersManagement() {
           </Card>
         )}
 
-        {/* ── Liste ── */}
-        {loading ? (
-          <Card className="p-5">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Spinner /> Chargement…
-            </div>
-            <div className="mt-4 space-y-3">
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
-            </div>
-          </Card>
-        ) : error ? (
+        {/* ── Liste (DataTable unifié : recherche, tri, cellule avatar,
+              pastilles de rôle/statut, actions de ligne + groupées) ── */}
+        {error ? (
           <EmptyState
             icon={Users}
             title="Données indisponibles"
             description={error}
             action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
           />
-        ) : users.length === 0 ? (
+        ) : !loading && users.length === 0 ? (
           <EmptyState
             icon={Users}
             title="Aucun utilisateur"
@@ -294,235 +421,159 @@ export default function UsersManagement() {
             action={<Button size="sm" onClick={() => setShowForm(true)}>+ Nouvel utilisateur</Button>}
           />
         ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    <th className={th} style={{ width: 48 }}></th>
-                    <th className={th}>Utilisateur</th>
-                    <th className={th}>Poste</th>
-                    <th className={th}>Email</th>
-                    <th className={th}>Rôle</th>
-                    <th className={th}>Actif</th>
-                    <th className={`${th} text-right`}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => {
-                    const isLastAdmin = isAdminUser(u) && adminCount <= 1
-                    const deleteLocked = u.is_protected || isLastAdmin
-                    const lockTooltip = u.is_protected
-                      ? 'Compte propriétaire protégé'
-                      : 'Au moins un administrateur doit rester'
-                    return (
-                      <tr key={u.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
-                        <td className="px-4 py-2.5">
-                          <Avatar name={u.username} src={u.avatar_url} size={32} />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="font-medium text-foreground">{u.username}</span>
-                          {u.is_protected && (
-                            <Badge tone="warning" className="ml-2">Propriétaire protégé</Badge>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{u.poste || '—'}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{u.email || '—'}</td>
-                        <td className="px-4 py-2.5">
-                          {u.role_nom
-                            ? <Badge tone={roleTone(u.role_nom)}>{u.role_nom}</Badge>
-                            : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          {u.is_active
-                            ? <Badge tone="success">Actif</Badge>
-                            : <Badge tone="neutral">Inactif</Badge>}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button size="sm" variant="outline" onClick={() => openEdit(u)}>
-                              <Pencil /> Modifier
-                            </Button>
-                            {u.username !== currentUsername && (
-                              deleteLocked ? (
-                                <SimpleTooltip label={lockTooltip}>
-                                  <span>
-                                    <Button size="sm" variant="ghost" disabled>
-                                      <Trash2 /> Supprimer
-                                    </Button>
-                                  </span>
-                                </SimpleTooltip>
-                              ) : (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
-                                      <Trash2 /> Supprimer
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Supprimer cet utilisateur ?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Le compte « {u.username} » sera définitivement supprimé.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDelete(u.id)}>
-                                        Supprimer
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <DataTable
+            data={users}
+            columns={columns}
+            getRowId={(u) => u.id}
+            loading={loading && users.length === 0}
+            searchable
+            searchPlaceholder="Rechercher un utilisateur, poste, email…"
+            rowActions={rowActions}
+            selectable
+            bulkActions={bulkActions}
+            exportName="utilisateurs"
+            emptyTitle="Aucun utilisateur"
+            emptyDescription="Aucun utilisateur ne correspond à cette recherche."
+            aria-label="Liste des utilisateurs"
+          />
         )}
 
-        {/* ── Modale d'édition employé ── */}
-        <Dialog open={!!editUser} onOpenChange={(o) => { if (!o) closeEdit() }}>
+        {/* ── Édition employé : ResponsiveDialog (modale bureau ↔ Sheet bas
+              mobile). La classe `modal` est conservée pour les contrats e2e
+              (recherche de la modale + tenue dans le viewport iPhone). ── */}
+        <ResponsiveDialog
+          open={!!editUser}
+          onOpenChange={(o) => { if (!o) closeEdit() }}
+          title={editUser ? `Employé — ${editUser.username}` : undefined}
+          className="modal max-w-xl"
+        >
           {editUser && editForm && (
-            <DialogContent className="modal max-w-xl">
-              <DialogHeader>
-                <DialogTitle>Employé — {editUser.username}</DialogTitle>
-              </DialogHeader>
-              <Form onSubmit={saveEdit} className="gap-5">
-                {/* Photo */}
-                <div className="flex items-center gap-4">
-                  <Avatar name={editUser.username} src={editUser.avatar_url} size={64} />
-                  <div className="flex-1">
-                    <FileUpload
-                      accept="image/png,image/jpeg,image/webp"
-                      maxSize={2 * 1024 * 1024}
-                      busy={avatarBusy}
-                      onFiles={(files) => uploadAvatar(files[0])}
-                      hint="PNG, JPEG ou WebP"
-                    >
-                      <p className="text-sm font-medium text-foreground">
-                        {avatarBusy
-                          ? 'Envoi…'
-                          : (editUser.avatar_url ? 'Remplacer la photo' : 'Ajouter une photo')}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">PNG, JPEG ou WebP — max 2 Mo</p>
-                    </FileUpload>
-                  </div>
+            <Form onSubmit={saveEdit} className="gap-5">
+              {/* Photo */}
+              <div className="flex items-center gap-4">
+                <Avatar name={editUser.username} src={editUser.avatar_url} size={64} />
+                <div className="flex-1">
+                  <FileUpload
+                    accept="image/png,image/jpeg,image/webp"
+                    maxSize={2 * 1024 * 1024}
+                    busy={avatarBusy}
+                    onFiles={(files) => uploadAvatar(files[0])}
+                    hint="PNG, JPEG ou WebP"
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      {avatarBusy
+                        ? 'Envoi…'
+                        : (editUser.avatar_url ? 'Remplacer la photo' : 'Ajouter une photo')}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">PNG, JPEG ou WebP — max 2 Mo</p>
+                  </FileUpload>
                 </div>
+              </div>
 
-                <FormSection>
-                  <FormField label="Nom d'utilisateur" htmlFor="edit-username">
-                    <Input id="edit-username" value={editUser.username} disabled />
-                  </FormField>
-                  <FormField label="Email" htmlFor="edit-email">
-                    <Input
-                      id="edit-email"
-                      type="email"
-                      value={editForm.email}
-                      onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                    />
-                  </FormField>
-                  <FormField label="Poste (intitulé du métier)" htmlFor="edit-poste">
-                    <Input
-                      id="edit-poste"
-                      value={editForm.poste}
-                      placeholder="ex: Commerciale, Technicien…"
-                      onChange={e => setEditForm(f => ({ ...f, poste: e.target.value }))}
-                    />
-                  </FormField>
-                  <FormField label="Rôle (permissions)" htmlFor="edit-role">
-                    <Select
-                      value={editForm.role ? String(editForm.role) : '__none__'}
-                      onValueChange={v => setEditForm(f => ({ ...f, role: v === '__none__' ? '' : Number(v) }))}
-                    >
-                      <SelectTrigger id="edit-role">
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {/* Propriétaire protégé : pas d'option « Aucun rôle » et
-                            seuls les rôles admin sont proposés (il doit garder un
-                            accès administrateur). */}
-                        {!editUser.is_protected && <SelectItem value="__none__">—</SelectItem>}
-                        {(editUser.is_protected ? roles.filter(isAdminRole) : roles).map(r => (
-                          <SelectItem key={r.id} value={String(r.id)}>{roleOptionLabel(r)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </FormField>
-                </FormSection>
-
-                {editUser.is_protected && (
-                  <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
-                    <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                    <span>
-                      Propriétaire protégé : ce compte doit toujours conserver un
-                      rôle administrateur. Le rôle ne peut pas être retiré.
-                    </span>
-                  </p>
-                )}
-
-                <label className="flex items-center gap-2.5 text-sm text-foreground">
-                  <Switch
-                    checked={editForm.is_active}
-                    onCheckedChange={(v) => setEditForm(f => ({ ...f, is_active: v }))}
+              <FormSection>
+                <FormField label="Nom d'utilisateur" htmlFor="edit-username">
+                  <Input id="edit-username" value={editUser.username} disabled />
+                </FormField>
+                <FormField label="Email" htmlFor="edit-email">
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
                   />
-                  Compte actif
-                </label>
+                </FormField>
+                <FormField label="Poste (intitulé du métier)" htmlFor="edit-poste">
+                  <Input
+                    id="edit-poste"
+                    value={editForm.poste}
+                    placeholder="ex: Commerciale, Technicien…"
+                    onChange={e => setEditForm(f => ({ ...f, poste: e.target.value }))}
+                  />
+                </FormField>
+                <FormField label="Rôle (permissions)" htmlFor="edit-role">
+                  <Select
+                    value={editForm.role ? String(editForm.role) : '__none__'}
+                    onValueChange={v => setEditForm(f => ({ ...f, role: v === '__none__' ? '' : Number(v) }))}
+                  >
+                    <SelectTrigger id="edit-role">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Propriétaire protégé : pas d'option « Aucun rôle » et
+                          seuls les rôles admin sont proposés (il doit garder un
+                          accès administrateur). */}
+                      {!editUser.is_protected && <SelectItem value="__none__">—</SelectItem>}
+                      {(editUser.is_protected ? roles.filter(isAdminRole) : roles).map(r => (
+                        <SelectItem key={r.id} value={String(r.id)}>{roleOptionLabel(r)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </FormSection>
 
-                <div className="rounded-lg border border-border bg-muted/30 p-3">
-                  <p className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                    <span>
-                      Mot de passe : on ne peut pas afficher l'ancien (il est chiffré).
-                      Laissez vide pour ne pas le changer, sinon saisissez un nouveau mot de passe.
-                    </span>
-                  </p>
-                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="edit-password">Nouveau mot de passe</Label>
-                      <Input
-                        id="edit-password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={editForm.password}
-                        onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="edit-password2">Confirmer</Label>
-                      <Input
-                        id="edit-password2"
-                        type="password"
-                        autoComplete="new-password"
-                        value={editForm.password2}
-                        onChange={e => setEditForm(f => ({ ...f, password2: e.target.value }))}
-                      />
-                    </div>
+              {editUser.is_protected && (
+                <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    Propriétaire protégé : ce compte doit toujours conserver un
+                    rôle administrateur. Le rôle ne peut pas être retiré.
+                  </span>
+                </p>
+              )}
+
+              <label className="flex items-center gap-2.5 text-sm text-foreground">
+                <Switch
+                  checked={editForm.is_active}
+                  onCheckedChange={(v) => setEditForm(f => ({ ...f, is_active: v }))}
+                />
+                Compte actif
+              </label>
+
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    Mot de passe : on ne peut pas afficher l'ancien (il est chiffré).
+                    Laissez vide pour ne pas le changer, sinon saisissez un nouveau mot de passe.
+                  </span>
+                </p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-password">Nouveau mot de passe</Label>
+                    <Input
+                      id="edit-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={editForm.password}
+                      onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-password2">Confirmer</Label>
+                    <Input
+                      id="edit-password2"
+                      type="password"
+                      autoComplete="new-password"
+                      value={editForm.password2}
+                      onChange={e => setEditForm(f => ({ ...f, password2: e.target.value }))}
+                    />
                   </div>
                 </div>
+              </div>
 
-                {editError && (
-                  <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                    {editError}
-                  </p>
-                )}
+              {editError && (
+                <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  {editError}
+                </p>
+              )}
 
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button type="button" variant="ghost">Annuler</Button>
-                  </DialogClose>
-                  <Button type="submit" loading={editSaving}>Enregistrer</Button>
-                </DialogFooter>
-              </Form>
-            </DialogContent>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="ghost" onClick={closeEdit}>Annuler</Button>
+                <Button type="submit" loading={editSaving}>Enregistrer</Button>
+              </div>
+            </Form>
           )}
-        </Dialog>
+        </ResponsiveDialog>
       </div>
     </TooltipProvider>
   )

@@ -68,6 +68,20 @@ function visiteProche(contrat, jours = 90) {
   return diff >= 0 && diff <= jours
 }
 
+// J144 — statut d'un contrat → { tone, label } pour StatusPill (la couleur n'est
+// jamais le seul signal : le libellé reste explicite). Inactif > visite due > à jour.
+function contratStatut(row) {
+  if (!row?.actif) return { tone: 'neutral', label: 'Inactif' }
+  if (row.due) return { tone: 'danger', label: 'Visite due' }
+  return { tone: 'success', label: 'À jour' }
+}
+
+// Composant exporté (testable) : le statut d'un contrat rendu en StatusPill.
+export function ContratStatutPill({ contrat }) {
+  const { tone, label } = contratStatut(contrat)
+  return <StatusPill tone={tone} label={label} />
+}
+
 export function Component() {
   const [rows, setRows] = useState([])
   const [clients, setClients] = useState([])
@@ -275,12 +289,8 @@ export function Component() {
     },
     {
       id: 'statut', header: 'Statut', width: 130, searchable: false,
-      cell: (_v, row) => (
-        !row.actif ? <StatusPill tone="neutral" label="Inactif" />
-          : row.due ? <StatusPill tone="danger" label="Visite due" />
-            : <StatusPill tone="success" label="À jour" />
-      ),
-      exportValue: (row) => (!row.actif ? 'Inactif' : row.due ? 'Visite due' : 'À jour'),
+      cell: (_v, row) => <ContratStatutPill contrat={row} />,
+      exportValue: (row) => contratStatut(row).label,
     },
     {
       id: 'actions', header: '', width: 270, sortable: false, searchable: false, hideable: false,

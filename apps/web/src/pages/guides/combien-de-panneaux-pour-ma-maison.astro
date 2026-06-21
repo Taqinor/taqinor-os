@@ -1,0 +1,127 @@
+---
+/**
+ * Guide (W121) — Combien de panneaux et quelle puissance (kWc) pour ma maison ?
+ * Explique la méthode de dimensionnement en clair : facture → kWh → kWc → panneaux.
+ * Aucun prix, aucun payback — méthode uniquement. Chiffres tracés vers CONTENT_SEO_NOTES.md §3 et §4.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Combien de panneaux solaires et quelle puissance (kWc) pour ma maison ?',
+  description: 'La méthode pas à pas pour dimensionner son installation solaire au Maroc : lire sa facture ONEE/Lydec, convertir en kWh annuels, choisir la puissance en kWc, et estimer le nombre de panneaux.',
+  about: { '@type': 'Thing', name: 'Dimensionnement installation solaire' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Combien de panneaux solaires pour ma maison ? La méthode kWc | Taqinor"
+  description="Facture ONEE ou Lydec → kWh annuels → kWc → nombre de panneaux : la méthode de dimensionnement expliquée simplement. Repères indicatifs pour le Maroc, sans chiffre inventé."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Combien de panneaux pour ma maison ?' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Dimensionnement</p>
+      <h1 class="display v2-page-title mt-5 text-white">Combien de panneaux et quelle puissance ?</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        La question revient à chaque premier contact : « combien de panneaux il me faut ? ». La
+        réponse ne part pas du panneau — elle part de votre facture. On remonte de la consommation
+        réelle vers la puissance à installer, puis seulement vers le nombre de panneaux. Voici la
+        méthode, étape par étape.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Étape 1 — lire votre facture ONEE ou Lydec</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La première donnée utile est votre consommation annuelle en kilowattheures (kWh). Elle figure
+        soit directement sur votre relevé bimestriel ONEE, soit dans l'espace client de votre
+        distributeur (Lydec à Casablanca, Redal à Rabat, Amendis à Tanger). Additionnez les
+        relevés des 12 derniers mois, ou multipliez le relevé bimestriel moyen par six. Ce chiffre
+        est votre point de départ ; tout le reste en découle.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Si vous n'avez pas encore ces relevés — maison neuve ou première installation — estimez à
+        partir de vos appareils principaux : climatiseurs, chauffe-eau, éclairage, électroménager.
+        Une villa résidentielle marocaine typique avec climatisation tourne entre 4 000 et
+        10 000 kWh par an, mais la vôtre peut être très différente. Partez de votre réel, pas d'une
+        moyenne nationale.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Étape 2 — convertir en puissance crête (kWc)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        On divise la consommation annuelle par la production spécifique attendue de votre région.
+        Au Maroc, les installateurs utilisent un repère de <strong class="text-white">1 500 à
+        1 800 kWh produits par kWc installé et par an</strong> selon la zone géographique — ce qui
+        correspond à environ 5 à 5,5 heures de soleil utile par jour en moyenne annuelle (source :
+        PVGIS / Global Solar Atlas, §3 des notes de contenu).
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        En pratique, une consommation de <strong class="text-white">4 000 à 6 000 kWh/an</strong>{' '}
+        oriente vers <strong class="text-white">3 à 5 kWc</strong>, et une consommation de{' '}
+        <strong class="text-white">6 000 à 10 000 kWh/an</strong> vers{' '}
+        <strong class="text-white">5 à 8 kWc</strong>. Ces fourchettes sont des repères
+        indicatifs, pas des promesses — l'orientation du toit, l'ombrage, le taux d'autoconsommation
+        visé et la loi 82-21 (plafond d'injection à 20 %) font varier le résultat. Le diagnostic
+        gratuit produit le chiffre précis pour votre situation.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Étape 3 — déduire le nombre de panneaux</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Les panneaux solaires résidentiels installés aujourd'hui au Maroc sont majoritairement des
+        modules <strong class="text-white">550 à 600 W</strong> en monocristallin. À cette
+        puissance, un kWc correspond à environ <strong class="text-white">2 panneaux</strong>.
+        Ainsi, une installation de 5 kWc représente typiquement 9 à 10 panneaux ; une installation
+        de 3 kWc, 5 à 6 panneaux.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Chaque panneau occupe environ <strong class="text-white">1,7 à 2 m²</strong> de surface
+        utile, ce qui donne un repère de <strong class="text-white">5 à 6 m² de toiture par
+        kWc</strong> installé (source : §4 des notes de contenu). Une installation de 5 kWc
+        nécessite donc 25 à 30 m² de surface dégagée, bien orientée et sans ombrage significatif.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Ce que cette méthode ne remplace pas</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La méthode ci-dessus donne un ordre de grandeur fiable pour comprendre la taille d'une
+        installation. Elle ne remplace pas une étude sur mesure, pour trois raisons simples.
+        Premièrement, l'orientation et l'inclinaison réelles de votre toit font varier la
+        production de façon significative — un toit plat au nord n'est pas un toit penché au
+        sud. Deuxièmement, le taux d'autoconsommation cible change la taille optimale : viser
+        80 % d'autoconsommation ne mène pas au même dimensionnement que viser 60 %. Troisièmement,
+        la loi 82-21 plafonne l'injection à 20 % de la production annuelle — surdimensionner
+        n'augmente pas forcément la valeur de l'installation.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le diagnostic gratuit que nous proposons part de vos relevés réels, analyse l'orientation
+        de votre site, et produit le dimensionnement précis — kWc, nombre de panneaux, surface
+        requise — adapté à votre maison et à votre profil de consommation.
+      </p>
+
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/orientation-inclinaison-ombrage" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Orientation, inclinaison, ombrage →</a>
+        <a href="/guides/monocristallin-ou-polycristallin" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Monocristallin ou polycristallin ? →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="Obtenez le dimensionnement exact pour votre maison." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>

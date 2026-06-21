@@ -84,6 +84,31 @@ const jsonLd = {
         <a href="/contact" class="border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">Demander un devis &rarr;</a>
       </div>
 
+      {/* W147 — aperçu intégré de la fiche auto-hébergée (skip si pas de PDF /fiches). */}
+      {fiche.pdf && (
+        <div class="mt-10">
+          <h2 class="tech-label text-brass-300">Aperçu de la fiche</h2>
+          {/* Desktop : aperçu inline, boîte de hauteur réservée → zéro CLS, aucune animation. */}
+          <div class="mt-4 hidden h-[80vh] max-h-[900px] w-full overflow-hidden rounded border border-white/15 bg-white/5 sm:block">
+            <iframe
+              src={`${fiche.pdf}#view=FitH`}
+              title={`Fiche technique ${fiche.nom} (PDF)`}
+              loading="lazy"
+              class="h-full w-full"
+            ></iframe>
+          </div>
+          {/* Mobile / sans lecteur PDF : repli téléchargement net. */}
+          <a
+            href={fiche.pdf}
+            target="_blank"
+            rel="noopener"
+            class="mt-4 flex items-center justify-center gap-2 border border-white/25 px-5 py-4 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 sm:hidden"
+          >
+            Télécharger la fiche (PDF)
+          </a>
+        </div>
+      )}
+
       <p class="mt-6 text-xs leading-relaxed text-lune-faint">
         Les spécifications détaillées font foi dans la fiche constructeur officielle liée ci-dessus.
         Le raisonnement derrière chaque marque est expliqué sur
