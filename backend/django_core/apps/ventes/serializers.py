@@ -119,6 +119,51 @@ class DevisSerializer(serializers.ModelSerializer):
         return {'id': inst.id, 'reference': inst.reference,
                 'statut': inst.statut}
 
+    # FG48 — comparaison deux options (Sans batterie / Avec batterie).
+    # Données déjà calculées par build_quote_data ; on les expose ici pour
+    # que le frontend puisse afficher la carte de comparaison A vs B avec ROI.
+    # Vaut None pour un devis mono-option (pas de deuxième option).
+    comparaison_options = serializers.SerializerMethodField()
+
+    def get_comparaison_options(self, obj):
+        """Retourne {sans, avec, roi, nb_options} si nb_options=2, sinon None.
+
+        FG48 — expose les totaux des deux options (sans/avec batterie) et le
+        ROI pour la carte de comparaison interactive dans DevisGenerator/detail.
+        Données calculées par build_quote_data (même source que le PDF) — aucun
+        nouveau calcul.
+        """
+        d = self._display(obj)
+        if d.get('nb_options', 1) != 2:
+            return None
+        try:
+            from .quote_engine.builder import build_quote_data
+            data = build_quote_data(obj, {'pdf_mode': 'onepage'})
+            ts = data.get('totaux_sans') or {}
+            ta = data.get('totaux_avec') or {}
+            return {
+                'nb_options': 2,
+                'sans': {
+                    'ttc': ts.get('ttc'),
+                    'ht_net': ts.get('ht_net'),
+                    'remise': ts.get('remise'),
+                },
+                'avec': {
+                    'ttc': ta.get('ttc'),
+                    'ht_net': ta.get('ht_net'),
+                    'remise': ta.get('remise'),
+                },
+                'roi': {
+                    'prod_kwh': data.get('prod_kwh'),
+                    'eco_s_ann': data.get('eco_s_ann'),
+                    'eco_a_ann': data.get('eco_a_ann'),
+                    'roi_s': data.get('roi_s'),
+                    'roi_a': data.get('roi_a'),
+                },
+            }
+        except Exception:
+            return None
+
     class Meta:
         model = Devis
         fields = '__all__'
