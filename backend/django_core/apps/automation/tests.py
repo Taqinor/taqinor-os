@@ -566,3 +566,118 @@ class FactureOverdueTimezoneTests(TestCase):
             self._facture(local_today - timedelta(days=1))  # échue hier
         self.assertTrue(AutomationRun.objects.filter(
             rule__trigger_type=TriggerType.FACTURE_OVERDUE).exists())
+
+
+class BeatTaskTests(TestCase):
+    """FG2 — Déclencheurs temporels de l'automation engine via Celery Beat."""
+
+    def setUp(self):
+        self.co = make_company('beat-co', 'Beat Co')
+        self.user = make_user(self.co, 'beat-admin', 'admin')
+
+    def _rule(self, trigger_type):
+        """Crée une règle CREATE_ACTIVITY activée pour ce TriggerType."""
+        return AutomationRule.objects.create(
+            company=self.co, nom=f'Test {trigger_type}',
+            trigger_type=trigger_type,
+            action_type=ActionType.CREATE_ACTIVITY,
+            action_config={'body': 'test'},
+            enabled=True)
+
+    def test_warranty_expiring_beat_triggers_rule(self):
+        """WARRANTY_EXPIRING : un équipement en garantie expirante déclenche
+        la règle configurée."""
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from apps.automation.beat_tasks import _trigger_warranty_expiring
+
+        self._rule(TriggerType.WARRANTY_EXPIRING)
+        client = Client.objects.create(company=self.co, nom='CliB')
+        chantier = Installation.objects.create(
+            company=self.co, client=client, reference='CH-BEAT')
+        produit = Produit.objects.create(
+            company=self.co, nom='Onduleur Beat', prix_vente=0)
+        from datetime import date, timedelta
+        Equipement.objects.create(
+            company=self.co, produit=produit, installation=chantier,
+            statut=Equipement.Statut.EN_SERVICE,
+            date_fin_garantie=date.today() + timedelta(days=30))
+
+        count = _trigger_warranty_expiring(self.co)
+        self.assertEqual(count, 1)
+        self.assertTrue(AutomationRun.objects.filter(
+            company=self.co,
+            rule__trigger_type=TriggerType.WARRANTY_EXPIRING).exists())
+
+    def test_maintenance_due_beat_triggers_rule(self):
+        """MAINTENANCE_DUE : un contrat en retard déclenche la règle."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.sav.models import ContratMaintenance
+        from apps.automation.beat_tasks import _trigger_maintenance_due
+
+        self._rule(TriggerType.MAINTENANCE_DUE)
+        client = Client.objects.create(company=self.co, nom='CliM')
+        ContratMaintenance.objects.create(
+            company=self.co, client=client, actif=True,
+            date_debut=date.today() - timedelta(days=400),
+            periodicite='annuel')
+
+        count = _trigger_maintenance_due(self.co)
+        self.assertEqual(count, 1)
+        self.assertTrue(AutomationRun.objects.filter(
+            company=self.co,
+            rule__trigger_type=TriggerType.MAINTENANCE_DUE).exists())
+
+    def test_facture_overdue_beat_triggers_rule(self):
+        """FACTURE_OVERDUE : une facture échue non payée déclenche la règle."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.ventes.models import Facture
+        from apps.automation.beat_tasks import _trigger_facture_overdue
+
+        self._rule(TriggerType.FACTURE_OVERDUE)
+        client = Client.objects.create(company=self.co, nom='CliF')
+        Facture.objects.create(
+            company=self.co, client=client, reference='F-BEAT',
+            statut='envoye',
+            date_echeance=date.today() - timedelta(days=1))
+
+        count = _trigger_facture_overdue(self.co)
+        self.assertEqual(count, 1)
+        self.assertTrue(AutomationRun.objects.filter(
+            company=self.co,
+            rule__trigger_type=TriggerType.FACTURE_OVERDUE).exists())
+
+    def test_beat_noop_without_matching_rules(self):
+        """Sans règle activée, la tâche ne fait rien."""
+        from apps.automation.beat_tasks import time_triggers_daily
+        result = time_triggers_daily()
+        self.assertIsInstance(result, int)
+        self.assertEqual(AutomationRun.objects.count(), 0)
+
+    def test_beat_scoped_per_company(self):
+        """Les évaluations ne traversent pas les frontières de société."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.ventes.models import Facture
+        from apps.automation.beat_tasks import _trigger_facture_overdue
+
+        # Règle dans self.co uniquement.
+        self._rule(TriggerType.FACTURE_OVERDUE)
+        other_co = make_company('beat-other', 'Beat Other')
+        other_client = Client.objects.create(company=other_co, nom='OtherC')
+        # Facture de l'AUTRE société.
+        Facture.objects.create(
+            company=other_co, client=other_client, reference='F-OTHER',
+            statut='envoye',
+            date_echeance=date.today() - timedelta(days=1))
+
+        count = _trigger_facture_overdue(other_co)
+        # Aucune règle dans other_co → 0 run.
+        self.assertEqual(count, 1)  # la facture existe (count = nb d'évaluations)
+        # Mais aucun run enregistré pour other_co.
+        self.assertEqual(
+            AutomationRun.objects.filter(company=other_co).count(), 0)
