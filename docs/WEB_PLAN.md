@@ -1072,7 +1072,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W151 — **Active-page indicator in the desktop nav.** No `aria-current`/active state
   exists; every link looks identical. Compute the current section from `rootPath` and
   render a brass underline / text on the active item. Files: `apps/web/src/components/Header.astro`.
-- [ ] W152 — **Footer redesign.** It's a flat link grid on bare `bg-nuit` with a 1px top
+- [x] W152 — **Footer redesign.** It's a flat link grid on bare `bg-nuit` with a 1px top
   border — the weakest element on the site. Add a brand block + phone/WhatsApp CTA buttons,
   a golden hairline/seam top edge, and real column hierarchy. Files: `apps/web/src/components/Footer.astro`.
 - [x] W153 — **Ship the founder portrait.** *(Shipped 2026-06-21: founder supplied the photo
@@ -1099,7 +1099,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   `apps/web/src/styles/global.css`.
 - [ ] W159 — **Vary the repeated eyebrow treatment** (`tech-label + rule-brass` used ~9×
   down the homepage → wallpaper). Files: `apps/web/src/pages/index.astro`.
-- [ ] W160 — **Refine the Article 33 ribbon** so it reads as a premium announcement, not an
+- [x] W160 — **Refine the Article 33 ribbon** so it reads as a premium announcement, not an
   admin bar above the hero. Files: `apps/web/src/components/Article33Ribbon.astro`.
 - [ ] W161 — **Add a hero scroll affordance** (subtle animated chevron / peeking next-section
   edge). Files: `apps/web/src/pages/index.astro`.
@@ -1116,11 +1116,11 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W165 — **Refine the StickyCta pill** (the green WhatsApp button breaks the brass/night
   palette; add the glow) and add `env(safe-area-inset-bottom)` padding so notched iPhones don't
   bury it. Files: `apps/web/src/components/StickyCta.astro`.
-- [ ] W166 — **Chevron + RTL-safe breadcrumb separators** (literal `/` doesn't flip for Arabic).
+- [x] W166 — **Chevron + RTL-safe breadcrumb separators** (literal `/` doesn't flip for Arabic).
   Files: `apps/web/src/components/Breadcrumb.astro`.
-- [ ] W167 — **LanguageSwitcher discoverability + ≥44px tap target** (currently `text-xs`, ~24px).
+- [x] W167 — **LanguageSwitcher discoverability + ≥44px tap target** (currently `text-xs`, ~24px).
   Files: `apps/web/src/components/LanguageSwitcher.astro`.
-- [ ] W168 — **Logo sun-mark glow + elevate the ZelligeDivider motif** (currently ~18px, nearly
+- [x] W168 — **Logo sun-mark glow + elevate the ZelligeDivider motif** (currently ~18px, nearly
   invisible). *(Asset available 2026-06-21: official TAQINOR logo pack — main/inverted/monochrome
   SVGs — at `apps/web/public/brand/`; use it instead of the hand-coded inline mark if it reads
   better.)* Files: `apps/web/src/components/Logo.astro`, `apps/web/src/components/ZelligeDivider.astro`,
@@ -1130,7 +1130,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - [ ] W169 — **Extend the modular scale to body + figure sizes as tokens** (`.fig-xl/lg/md`,
   `.v2-body`); 519 ad-hoc `text-*` uses across 40 pages drive drift. Files: `apps/web/src/styles/global.css` + sweep.
-- [ ] W170 — **Bring `produits/*` + legal pages onto the `v2-page-title` scale + `V2Enhance`
+- [x] W170 — **Bring `produits/*` + legal pages onto the `v2-page-title` scale + `V2Enhance`
   engine** (they bypass it and feel like a different site). Files: `apps/web/src/pages/produits/index.astro`,
   `apps/web/src/pages/produits/[slug].astro`, `politique-de-confidentialite.astro`, `mentions-legales.astro`.
 - [ ] W171 — **Extract a `PhotoCaption` scrim component** (duplicated ~30× verbatim with drifting
@@ -1427,3 +1427,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W146: self-hosted all 7 datasheet PDFs under /fiches/<slug>.pdf (browser-UA fetch; Jinko datasheet located + recompressed to 1,3 MB), manifest pdf fields flipped, fiches.test.ts asserts every hosted PDF exists on disk.
 - 2026-06-21 — W147: /produits/<slug> now embeds the self-hosted datasheet inline (lazy iframe on desktop, clean download fallback on mobile, height reserved → zero CLS), guarded by fiche.pdf; fiches.test.ts covers the embed-vs-fallback branch.
 - 2026-06-21 — W112–W118 BLOCKED: the devis-pipeline web halves depend on unbuilt backend endpoints (PLAN2 Group Q1–Q7); skipped per STANDING RULES and listed in GATED-style note above.
+- 2026-06-21 — W152: Footer redesign — brand block (logo + tagline) + phone & WhatsApp CTA buttons (real NAP/WHATSAPP_LEADS constants, no invented number), brass gradient hairline top seam, clearer column hierarchy; reduced-motion safe.
+- 2026-06-21 — W160: Article 33 ribbon refined to a premium announcement — translucent brass badge with ring, small solar icon, subtle azur-tinted background, brass top hairline; message/link/i18n unchanged.
+- 2026-06-21 — W166: Breadcrumb separator switched from literal "/" to an aria-hidden inline chevron SVG that flips under [dir="rtl"] for Arabic.
+- 2026-06-21 — W167: LanguageSwitcher given a globe icon, ≥44px tap targets, per-locale aria-labels; links/behaviour unchanged.
+- 2026-06-21 — W168: Logo sun-mark gains a static brass glow (+ reduced-motion-gated pulse); ZelligeDivider motif enlarged 18→28px with raised opacity/stroke and longer flanking rules.
+- 2026-06-21 — W170: produits/index, produits/[slug], politique-de-confidentialite, mentions-legales brought onto the v2-page-title scale + V2Enhance engine (matching nos-solutions pattern); W147 datasheet embed preserved, lead form untouched.
