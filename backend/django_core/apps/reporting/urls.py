@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import dashboard
 from .search import global_search, notifications
-from .pipeline import pipeline
+from .pipeline import pipeline, funnel_velocity
 from .reports import sales_report, stock_report, service_report
 from .insights import (
     recurring_revenue, audit_log, job_costing, analytics, commissions,
@@ -27,6 +27,7 @@ urlpatterns = [
          name='reporting-calendar-reschedule'),
     path('geo/', geo_points, name='reporting-geo'),
     path('pipeline/', pipeline, name='reporting-pipeline'),
+    path('pipeline/velocity/', funnel_velocity, name='reporting-funnel-velocity'),  # FG29
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
     path('reports/service/', service_report, name='report-service'),
