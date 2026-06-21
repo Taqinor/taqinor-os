@@ -28,7 +28,13 @@ import sqlparse
 from sqlparse.sql import Function, Identifier, IdentifierList, Parenthesis
 from sqlparse.tokens import CTE, DDL, DML, Keyword, Punctuation
 
-from langchain.callbacks.base import BaseCallbackHandler
+try:
+    # langchain < 1.0
+    from langchain.callbacks.base import BaseCallbackHandler
+except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
+    # langchain >= 1.0 : le module historique a ete retire au profit de
+    # langchain_core. Le comportement est identique.
+    from langchain_core.callbacks.base import BaseCallbackHandler
 
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
@@ -1015,9 +1021,15 @@ class SQLAgentService:
         # qui re-applique scope societe + permissions. Une injection de prompt ne
         # peut donc ni ecrire en base via SQL, ni atteindre un outil d'action si
         # l'appelant n'a pas deja le droit d'ecriture cote serveur.
+        # AG2 (surfacage) — collecteur partage par requete : chaque outil
+        # d'action y depose sa sortie structuree (proposition signee avec
+        # confirm_token, ou resultat d'une action interne). On le remonte ensuite
+        # au frontend, qui ne peut PAS recuperer le jeton autrement (le LLM ne
+        # re-emet jamais le JSON brut).
+        action_outputs: list[dict[str, Any]] = []
         action_tool_names: set[str] = set()
         if actions_available(action_ctx):
-            action_tools = build_action_tools(action_ctx)
+            action_tools = build_action_tools(action_ctx, action_outputs)
             tools.extend(action_tools)
             action_tool_names = {t.name for t in action_tools}
 
@@ -1061,6 +1073,13 @@ class SQLAgentService:
         if final_sql:
             logger.debug("SQL agent — requete finale (serveur): %s", final_sql)
 
+        # AG2 (surfacage) — on remonte la DERNIERE proposition en attente et/ou
+        # le DERNIER resultat d'action interne produit ce tour, pour que le
+        # frontend puisse afficher une carte de proposition et, surtout, appeler
+        # /confirm avec le `confirm_token` signe (le seul chemin pour confirmer).
+        proposal = self._build_proposal_payload(action_outputs)
+        action_result = self._build_result_payload(action_outputs)
+
         return {
             "answer": answer,
             "sql_query": "",
@@ -1068,7 +1087,50 @@ class SQLAgentService:
             # N86 — True si l'agent a effectue une action d'ecriture (le
             # frontend affiche alors un badge « Action »).
             "action_performed": capture.action_used,
+            # AG2 — proposition a confirmer (outward/irreversible) ou resultat
+            # d'une action interne deja executee. None quand aucune action.
+            "proposal": proposal,
+            "result": action_result,
         }
+
+    @staticmethod
+    def _build_proposal_payload(
+        action_outputs: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """AG2 — extrait la derniere PROPOSITION (outward/irreversible) du
+        collecteur d'actions. Renvoie le sous-ensemble destine au frontend
+        (avec le `confirm_token` signe), ou None si aucune proposition."""
+        for out in reversed(action_outputs or []):
+            if out.get("type") == "proposal":
+                payload = {
+                    "action_key": out.get("action_key"),
+                    "human_preview": out.get("human_preview"),
+                    "confirm_token": out.get("confirm_token"),
+                    "inputs": out.get("inputs"),
+                }
+                if out.get("note"):
+                    payload["note"] = out["note"]
+                return payload
+        return None
+
+    @staticmethod
+    def _build_result_payload(
+        action_outputs: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """AG2 — extrait le dernier RESULTAT d'action interne deja executee.
+        Aplatit le payload Django (`data`) au niveau racine pour que le frontend
+        y lise directement reference / wa_url / devis_id / detail. None si aucun
+        resultat."""
+        for out in reversed(action_outputs or []):
+            if out.get("type") == "result":
+                payload: dict[str, Any] = {"action_key": out.get("action_key")}
+                data = out.get("data")
+                if isinstance(data, dict):
+                    payload.update(data)
+                elif data is not None:
+                    payload["data"] = data
+                return payload
+        return None
 
     async def query(
         self,

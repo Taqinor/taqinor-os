@@ -590,6 +590,7 @@ def _execute_catalogue_action(
 
 def run_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], raw_inputs: dict[str, Any],
+    collector: Optional[list[dict[str, Any]]] = None,
 ) -> str:
     """Point d'entree appele par chaque outil dynamique.
 
@@ -597,6 +598,12 @@ def run_catalogue_action(
     - `internal` -> execute au vol via relais JWT.
     - `outward`/`irreversible` -> stash signe + renvoie une proposition JSON
       `{action_key, inputs, human_preview, confirm_token}` ; n'execute PAS.
+
+    AG2 (surfacage) — l'outil renvoie au LLM une chaine JSON, mais la sortie
+    STRUCTUREE (proposition ou resultat) est aussi APPENDUE a `collector` quand
+    il est fourni, pour que l'endpoint /query puisse la remonter telle quelle au
+    frontend (avec le `confirm_token` signe) sans dependre de ce que le LLM
+    re-emet en texte.
     """
     try:
         inputs = validate_inputs(action.get("inputs") or {}, raw_inputs)
@@ -621,17 +628,21 @@ def run_catalogue_action(
             proposal["note"] = (
                 "Confirmation requise mais le stockage est indisponible."
             )
+        if collector is not None:
+            collector.append(proposal)
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate.
     res = _execute_catalogue_action(ctx, action, inputs)
     if not res.get("ok"):
         return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
-    return json.dumps(
-        {"type": "result", "action_key": action["key"],
-         "ok": True, "data": res.get("data")},
-        ensure_ascii=False,
-    )
+    result = {
+        "type": "result", "action_key": action["key"],
+        "ok": True, "data": res.get("data"),
+    }
+    if collector is not None:
+        collector.append(result)
+    return json.dumps(result, ensure_ascii=False)
 
 
 def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
@@ -726,7 +737,9 @@ def _pyd_field(default, description):
     return Field(default, description=description or "")
 
 
-def build_action_tools(ctx: ActionContext) -> list:
+def build_action_tools(
+    ctx: ActionContext, collector: Optional[list[dict[str, Any]]] = None,
+) -> list:
     """Construit dynamiquement la liste d'outils LangChain a partir du CATALOGUE
     Django (AG2). Chaque entree que l'appelant a le droit d'executer devient un
     StructuredTool dont le nom/description/entrees viennent de l'entree.
@@ -735,6 +748,10 @@ def build_action_tools(ctx: ActionContext) -> list:
     le jeton — ils viennent toujours du serveur. L'execution / la proposition
     est deleguee a `run_catalogue_action` (internal => execute ; outward /
     irreversible => proposition signee a confirmer).
+
+    AG2 (surfacage) — quand `collector` est fourni (une liste partagee par
+    requete), chaque outil y APPEND sa sortie structuree (proposition/resultat)
+    pour que /query la remonte au frontend avec le `confirm_token`.
     """
     from langchain_core.tools import StructuredTool
 
@@ -756,7 +773,7 @@ def build_action_tools(ctx: ActionContext) -> list:
             )
 
         def _make_func(act):
-            return lambda **kw: run_catalogue_action(ctx, act, kw)
+            return lambda **kw: run_catalogue_action(ctx, act, kw, collector)
 
         tools.append(StructuredTool.from_function(
             name=_tool_name_for(action),

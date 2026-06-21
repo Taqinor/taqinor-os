@@ -523,6 +523,84 @@ class ConfirmProposalTests(unittest.TestCase):
         self.assertFalse(res["ok"])
 
 
+# ── AG2 (surfacage) — le collecteur capture proposition/resultat ──────────────
+
+
+class CollectorTests(unittest.TestCase):
+    """run_catalogue_action APPEND sa sortie structuree au collecteur fourni —
+    c'est ce que /query remonte au frontend (le LLM ne re-emet pas le JSON)."""
+
+    def setUp(self):
+        self._sec = mock.patch.object(at, "ACTION_PROPOSAL_SECRET", "test-sig-secret")
+        self._sec.start()
+        self.addCleanup(self._sec.stop)
+        self.fake_redis = _FakeRedis()
+        self._rds = mock.patch.object(at, "_proposal_redis", lambda: self.fake_redis)
+        self._rds.start()
+        self.addCleanup(self._rds.stop)
+
+    def test_outward_appends_proposal_to_collector(self):
+        ctx = _ctx(role="admin")
+        collector: list = []
+        with mock.patch.object(at, "_django_call",
+                               lambda *a, **k: (_ for _ in ()).throw(
+                                   AssertionError("propose only"))):
+            at.run_catalogue_action(ctx, _CAT_PROPOSAL_PDF, {"id": 9}, collector)
+        self.assertEqual(len(collector), 1)
+        prop = collector[0]
+        self.assertEqual(prop["type"], "proposal")
+        self.assertEqual(prop["action_key"], "ventes.devis.proposal_pdf")
+        self.assertTrue(prop["confirm_token"])
+
+    def test_internal_appends_result_to_collector(self):
+        ctx = _ctx(role="admin")
+        collector: list = []
+        with mock.patch.object(
+                at, "_django_call",
+                lambda ctx, path, method="POST", payload=None:
+                {"ok": True, "status": 200, "data": {"results": []}}):
+            at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {}, collector)
+        self.assertEqual(len(collector), 1)
+        self.assertEqual(collector[0]["type"], "result")
+
+    def test_no_collector_is_safe(self):
+        ctx = _ctx(role="admin")
+        with mock.patch.object(
+                at, "_django_call",
+                lambda *a, **k: {"ok": True, "status": 200, "data": {}}):
+            out = at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {})
+        self.assertEqual(json.loads(out)["type"], "result")
+
+    def test_build_action_tools_threads_collector(self):
+        try:
+            from langchain_core.tools import StructuredTool  # noqa: F401
+        except Exception:
+            self.skipTest("langchain_core indisponible")
+        ctx = _ctx(role="admin")
+        collector: list = []
+        with _patch_catalogue([_CAT_PROPOSAL_PDF]), \
+                mock.patch.object(at, "_django_call",
+                                  lambda *a, **k: (_ for _ in ()).throw(
+                                      AssertionError("propose only"))):
+            tools = at.build_action_tools(ctx, collector)
+            tools[0].func(id=9)
+        self.assertEqual(len(collector), 1)
+        self.assertEqual(collector[0]["type"], "proposal")
+        # Le jeton appose dans le collecteur EST utilisable par /confirm.
+        token = collector[0]["confirm_token"]
+        captured = {}
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            captured["path"] = path
+            return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
+
+        with mock.patch.object(at, "fetch_catalogue", lambda c: _FULL_CATALOGUE), \
+                mock.patch.object(at, "_django_call", fake_call):
+            res = at.confirm_proposal(ctx, token)
+        self.assertTrue(res["ok"])
+        self.assertEqual(captured["path"], "/api/django/ventes/devis/9/proposal/")
+
+
 class FetchCatalogueTests(unittest.TestCase):
     def test_no_url_returns_empty(self):
         ctx = _ctx(role="admin")
