@@ -153,7 +153,7 @@ const internalLinks = (h: string) =>
   [...h.matchAll(/href="([^"]+)"/g)].map((m) => m[1]).filter((href) => href.startsWith('/') && !href.startsWith('//'));
 
 // Une route/asset interne existe-t-elle dans le build ?
-const ASSET_EXT = /\.(css|js|mjs|svg|png|jpe?g|webp|avif|woff2?|xml|ico|txt|json|mp4|webm|pdf)$/i;
+const ASSET_EXT = /\.(css|js|mjs|svg|png|jpe?g|webp|avif|woff2?|xml|ico|txt|json|webmanifest|mp4|webm|pdf)$/i;
 function internalTargetExists(href: string): boolean {
   const clean = decodeURIComponent(href.split('#')[0].split('?')[0]);
   if (clean === '' || clean === '/') return existsSync(`${distClient}index.html`);
