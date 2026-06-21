@@ -1,0 +1,50 @@
+"""Sérialiseurs de la Gestion de projet.
+
+``company`` n'est JAMAIS exposée en écriture : elle est posée côté serveur par
+le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
+appartenant à la société de l'utilisateur.
+"""
+from rest_framework import serializers
+
+from .models import Projet, ProjetChantier
+
+
+def _meme_societe(serializer, value, label):
+    """Garde-fou : un FK doit appartenir à la société de l'utilisateur."""
+    request = serializer.context.get('request')
+    if value is not None and request is not None:
+        if value.company_id != request.user.company_id:
+            raise serializers.ValidationError(f'{label} inconnu.')
+    return value
+
+
+class ProjetSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Projet
+        fields = [
+            'id', 'code', 'nom', 'description', 'statut', 'statut_display',
+            'client_id', 'date_debut', 'date_fin_prevue', 'responsable',
+            'budget_total', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')
+
+
+class ProjetChantierSerializer(serializers.ModelSerializer):
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+
+    class Meta:
+        model = ProjetChantier
+        fields = [
+            'id', 'projet', 'projet_code', 'chantier_id', 'libelle',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
