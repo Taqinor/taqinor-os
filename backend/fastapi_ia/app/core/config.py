@@ -27,6 +27,22 @@ SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "llama-3.3-70b-versatile")
 DJANGO_INTERNAL_URL = os.environ.get(
     "DJANGO_INTERNAL_URL", "http://django_core:8000")
 
+# Transcription audio (chat vocal) — Whisper auto-heberge via faster-whisper.
+# OFF par defaut : quand desactive, l'endpoint /transcribe repond "disabled"
+# (degradation gracieuse, pas une erreur) et le modele n'est JAMAIS telecharge
+# (chargement paresseux au premier appel uniquement), donc le service demarre et
+# le build CI passe sans poids ni reseau.
+CHAT_TRANSCRIPTION_ENABLED = os.environ.get(
+    "CHAT_TRANSCRIPTION_ENABLED", "0").lower() in ("true", "1", "yes")
+# Taille du modele faster-whisper (small/medium multilingue conseille).
+WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "small")
+# Cache de telechargement des poids (persiste entre redemarrages du conteneur).
+# Vide => cache HuggingFace par defaut (~/.cache/huggingface).
+WHISPER_CACHE_DIR = os.environ.get("WHISPER_CACHE_DIR", "")
+# Indice de langue (FR/AR/Darija). Vide => auto-detection complete.
+# "ar" couvre la Darija marocaine ; sinon on laisse l'auto-detect actif.
+WHISPER_LANGUAGE_HINT = os.environ.get("WHISPER_LANGUAGE_HINT", "")
+
 # Historique chat — Redis db 2 (db0=Celery, db1=Django cache)
 _REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 _REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
