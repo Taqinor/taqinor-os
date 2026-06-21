@@ -1,4 +1,4 @@
-// Garde-fou des fiches techniques (W119–W123) : la bibliothèque /produits et
+// Garde-fou des fiches techniques (W141–W145) : la bibliothèque /produits et
 // l'alignement des slugs avec le moteur de devis Django.
 import { describe, expect, it } from 'vitest';
 import {

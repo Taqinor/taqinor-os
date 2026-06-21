@@ -1281,7 +1281,7 @@ class TestResidentialRenderer(TestCase):
 
     def test_equipment_lines_deep_link_to_fiche_pages(self):
         """Panels/inverters/battery/meter/dongle link to their /produits/<slug>
-        fiche-technique page (slugs match docs/WEB_PLAN.md W119–W123); TAQINOR's
+        fiche-technique page (slugs match docs/WEB_PLAN.md W141–W145); TAQINOR's
         own lines (structures, socles, installation…) stay plain text."""
         html, _ = self._html_and_doc()
         for slug in ('canadian-solar-710', 'onduleur-huawei-reseau',

@@ -155,7 +155,7 @@ def fiche_slug(designation, marque="") -> str:
     """Map an equipment line to its fiche-technique page slug on taqinor.ma.
 
     Keyword-classified on the designation + brand, EXACTLY mirroring the slugs
-    built by docs/WEB_PLAN.md W119–W123 (the /produits/<slug> pages), so a quote
+    built by docs/WEB_PLAN.md W141–W145 (the /produits/<slug> pages), so a quote
     link always points at a real datasheet page. Returns '' when no datasheet is
     known (TAQINOR's own structures/socles/installation/transport/services)."""
     blob = f"{designation} {marque}".lower()
