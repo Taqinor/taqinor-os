@@ -105,8 +105,9 @@ describe('FounderPortrait — FR verbatim, EN/AR présents, faits/chiffre invari
     expect(founder).toContain('10+ ans'); // figure identique fr/en/ar (pas « 10+ years »)
     expect(founder).not.toContain('10+ years');
     expect(founder).toContain('Huawei, Ericsson et STMicroelectronics');
-    // Repli texte préservé (aucune image inventée) + lien localisé.
-    expect(founder).toMatch(/const FOUNDER_PHOTO\s*:\s*string \| null\s*=\s*null\s*;/);
+    // Déclaration FOUNDER_PHOTO bien typée (null = repli texte, ou portrait réel)
+    // + branche conditionnelle conservée + lien localisé.
+    expect(founder).toMatch(/const FOUNDER_PHOTO\s*:\s*string \| null\s*=\s*(?:null|'[^']+')\s*;/);
     expect(founder).toContain('FOUNDER_PHOTO ?');
     expect(founder).toContain('localizeNavHref');
     expect(founder).toContain("L('/à-propos')");

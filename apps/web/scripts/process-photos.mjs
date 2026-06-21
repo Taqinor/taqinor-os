@@ -174,6 +174,17 @@ const PHOTOS = [
     ratio: 1,
     treat: { slope: 2, exposure: 1.02, sat: 1.06 },
   },
+  {
+    // Portrait du fondateur (Reda Kasri) — section confiance accueil.
+    // Source fournie par le fondateur (DSC_0612.JPG, Nikon 6016×4000).
+    // Cadrage 4:5 centré sur le visage ; dérivés web (640/480 AVIF+WebP)
+    // committés dans public/photos/. Provenance committée le 2026-06-21.
+    src: 'DSC_0612.JPG',
+    out: 'fondateur-portrait',
+    widths: [640, 480],
+    ratio: 4 / 5,
+    treat: { slope: 1.6, exposure: 1.02, sat: 1.05 },
+  },
 ];
 
 /** sharp si possible, sinon décodage HEIC (HEVC) via WASM. */
