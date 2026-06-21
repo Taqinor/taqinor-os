@@ -407,7 +407,7 @@ preview routes are out of scope for all of these** — they keep their `noindex`
 the latest `toiture-3d-pro-*` route must NEVER enter the sitemap or nav. **Lighthouse held 97–100,
 zero layout shift, reduced-motion respected.**
 
-- [ ] **W98 — Structured data (JSON-LD) across public routes.** Keep `/faq` as the **sole owner** of
+- [x] **W98 — Structured data (JSON-LD) across public routes.** Keep `/faq` as the **sole owner** of
   `FAQPage`. Add an **Organization/LocalBusiness** block on the homepage using the real business
   name, the phone already on the site, and the real address from the contact/footer — invent nothing,
   omit any field with no real value; set `areaServed` to the cities the site already serves; include
@@ -415,26 +415,26 @@ zero layout shift, reduced-motion respected.**
   pages and a **BreadcrumbList** matching the existing nav. Leave `sameAs` OUT until real social
   profiles exist. Accept: homepage carries valid LocalBusiness JSON-LD; service pages carry Service +
   BreadcrumbList; `/faq` still the only FAQPage; no fabricated fields. Files: `apps/web/**`.
-- [ ] **W99 — Per-page head hygiene.** Every public route gets a **unique, descriptive `<title>` and
+- [x] **W99 — Per-page head hygiene.** Every public route gets a **unique, descriptive `<title>` and
   meta description**, a **self-referencing canonical**, and a complete **Open Graph + Twitter Card**
   set (`og:title`, `og:description`, `og:url`, `og:type`, `og:locale = fr_MA`, `twitter:card`) with a
   **real `og:image` from an existing asset**. Fix pages missing these; leave good ones alone. Accept:
   each public route has exactly one canonical (self-referencing) and a complete OG/Twitter set with a
   real image. Files: `apps/web/**` (head/layout components).
-- [ ] **W100 — Sitemap completeness + exclusions.** Confirm every public page is included and that the
+- [x] **W100 — Sitemap completeness + exclusions.** Confirm every public page is included and that the
   private estimator preview routes and any `noindex` page are excluded. Safety line: the latest
   `toiture-3d-pro-*` route must NEVER enter the sitemap or nav. Accept: all public pages present, all
   `/preview/*` + noindex pages absent. Files: `apps/web/astro.config.mjs` (sitemap filter).
-- [ ] **W101 — robots.txt.** Confirm it references the sitemap, allows legitimate crawlers, and
+- [x] **W101 — robots.txt.** Confirm it references the sitemap, allows legitimate crawlers, and
   disallows the private estimator path as defense-in-depth alongside `noindex`. Accept: robots.txt
   cites the sitemap, allows crawlers, disallows the private estimator path. Files: `apps/web/**`
   (`robots.txt` / its generator).
-- [ ] **W102 — Locale.** Confirm `<html lang="fr">` site-wide. Leave `hreflang`/Arabic alone —
+- [x] **W102 — Locale.** Confirm `<html lang="fr">` site-wide. Leave `hreflang`/Arabic alone —
   parked. Accept: every public route renders `lang="fr"`. Files: `apps/web/**` (root layout).
-- [ ] **W103 — Images & headings.** Add descriptive `alt` text to content images missing it; confirm
+- [x] **W103 — Images & headings.** Add descriptive `alt` text to content images missing it; confirm
   one `<h1>` per page with a sane H2/H3 order. Accept: no content image without alt; exactly one h1
   per public page; heading order is sane. Files: `apps/web/**`.
-- [ ] **W104 — Tests for the new SEO invariants.** Keep Vitest green and add assertions for the new
+- [x] **W104 — Tests for the new SEO invariants.** Keep Vitest green and add assertions for the new
   invariants: the latest private preview route is **absent from the sitemap**, the homepage carries
   the **LocalBusiness JSON-LD**, and **each public route has exactly one canonical**. Accept: new
   assertions pass, full suite green; Lighthouse held 97–100, zero CLS, reduced-motion respected.
@@ -462,7 +462,7 @@ and mark `[x] (already present)` if already done. Lanes: the pure-lib tasks (W10
 self-contained worktree lanes with their own unit tests; the wiring/render/UI tasks (W106, W107, W109, W110) all
 write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so they run as ONE sequenced lane.
 
-- [ ] **W105 — geometry: zone adjacency + auto facing inference (pure lib).** Today each zone keeps its own
+- [x] **W105 — geometry: zone adjacency + auto facing inference (pure lib).** Today each zone keeps its own
   `facingAzimuthDeg`, but a newly-added pitched zone defaults to 180 (south), so two connected pans both tilt
   south. Add a PURE, unit-tested helper (new `apps/web/src/lib/roofAdjacency.ts`) that, given the traced rings
   (lng/lat) of the zones, finds the SHARED/closest edge between two adjacent zones and infers a coherent
@@ -472,7 +472,7 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
   caller falls back to south when no edge is shared. No DOM/Three/map deps. Accept: gable + mono-pente fixtures
   infer the right opposite/equal facings; disjoint zones report `connected:false` and leave the facing to the user.
   Files: `apps/web/src/lib/roofAdjacency.ts`, `apps/web/tests/roofAdjacency.test.ts`.
-- [ ] **W106 — 3D: auto-apply the inferred facing on zone add + per-zone manual correction.** Wire W105 into
+- [x] **W106 — 3D: auto-apply the inferred facing on zone add + per-zone manual correction.** Wire W105 into
   `roof-tool-pro11.ts`: when a pitched zone's trace closes (or `+ Ajouter une zone` makes one adjacent to an
   existing pan), set its `facingAzimuthDeg` from the inferred value instead of the hardcoded 180 default — so
   connected pans auto-orient to meet at the ridge. Keep the existing "Face du pan" buttons (`data-facing`) + the
@@ -481,14 +481,14 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
   one-line note when the facing was auto-inferred vs hand-set. Accept: adding a connected pitched pan auto-faces
   it coherently; the user can override any zone's facing and switching zones reflects the right value. Files:
   `roof-tool-pro11.ts`, `toiture-3d-pro-11.astro` (note/control wiring), `roofPro11/zones.ts` if needed.
-- [ ] **W107 — 3D: render connected pitched pans meeting at the shared ridge.** In `roofPro11/scene3d.ts` the
+- [x] **W107 — 3D: render connected pitched pans meeting at the shared ridge.** In `roofPro11/scene3d.ts` the
   other zones are drawn from their own `renderPlan`, each deck + gable skirt referenced to its OWN eave
   (`eaveUpSlopeCoord`), so two connected pans float as separate tilted lids ("each tilted to one side"). Use the
   W105 adjacency to reference adjacent pitched pans to a COMMON ridge line at the shared edge (matched ridge
   height, eave on the outer edges) so they read as one connected roof; flat zones and disjoint zones unchanged.
   Accept: two connected pitched zones render as a single coherent gable/slope meeting at the ridge, not two
   independent lids. Files: `roofPro11/scene3d.ts`, `roof-tool-pro11.ts` wiring.
-- [ ] **W108 — packing: user-specified panel overhang past the roof edge (pure lib).** Add an `overhangM` option
+- [x] **W108 — packing: user-specified panel overhang past the roof edge (pure lib).** Add an `overhangM` option
   to `packConfig`/`packCells` (`estimatorBrainV2.ts`) and the pitched packers (`estimatorBrainV6/V7/V8.ts` as
   wired) so a panel is retained when its footprint stays within `setbackM` of the edge OR extends at most
   `overhangM` BEYOND it (rails on-roof, panel cantilevers out) — i.e. the corner-test floor becomes `-overhangM`.
@@ -497,7 +497,7 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
   today. Pure → unit tests. Accept: with `overhangM>0` panels may slightly exceed the ring, count rises only by
   the geometric room gained, the footprint bound still holds, and `0` is unchanged. Files: `estimatorBrainV2.ts`,
   `estimatorBrainV6/V7/V8.ts` (as wired), `roofPro2.ts` if shared, `apps/web/tests/*`.
-- [ ] **W109 — 3D: overhang control + render.** Add a "Débord panneaux autorisé (m)" numeric input (`step="any"`,
+- [x] **W109 — 3D: overhang control + render.** Add a "Débord panneaux autorisé (m)" numeric input (`step="any"`,
   default 0, beside the marge/retrait control) and thread it into the solve (flat + pitched) so panels can extend
   past the eave/rake — most useful on tilted roofs. Render the overhanging panels correctly in the 3D scene (panel
   cantilevered over the edge on its rails). Honesty: overhang changes only geometric capacity, never the
@@ -505,7 +505,7 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
   place at the edges and they render hanging over the eave; the bill cap and the savings ceiling are unchanged.
   Files: `toiture-3d-pro-11.astro`, `roof-tool-pro11.ts`, `roofPro11/scene3d.ts`, `roofPro11/optimizer.ts` /
   `roofPro11/obstaclesUi.ts` wiring as needed.
-- [ ] **W110 — simulator: ONE-page flow with client contact capture (Nom / Téléphone / Adresse) at the TOP.**
+- [x] **W110 — simulator: ONE-page flow with client contact capture (Nom / Téléphone / Adresse) at the TOP.**
   Today `/preview/toiture-3d-pro-11` puts the 3D builder at the top and a SEPARATE diagnostic form
   (`DiagnosticFormEnriched`, `#simulateur`) far BELOW that the user must scroll to — and the simulator has nowhere
   to enter name/phone/address. Make the whole experience ONE top-down page: add Nom, Téléphone and Adresse inputs
@@ -521,7 +521,7 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
   private (noindex, not in nav, sitemap-excluded, unlinked). Accept: the whole flow is one page at the top with no
   separate form below; Nom/Téléphone/Adresse are captured up top; the live form/data flow is unchanged. Files:
   `toiture-3d-pro-11.astro`, `roofPro11/prefill.ts`, `roof-tool-pro11.ts` wiring.
-- [ ] **W111 — tests: lock in multi-zone facing, overhang honesty & contact prefill.** Add coverage: W105 facing
+- [x] **W111 — tests: lock in multi-zone facing, overhang honesty & contact prefill.** Add coverage: W105 facing
   inference (gable opposite, mono-pente equal, disjoint → user); W108 overhang packing (count grows only by the
   geometric room, footprint bound holds, `overhangM=0` unchanged, savings ≤ bill ceiling); W110 contact prefill
   writes `lf-name`/`lf-phone`/`lf-city` AND the preview still never calls `fetch`/POSTs a lead (extend the existing
@@ -602,3 +602,48 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
 - 2026-06-20 — W95: a summer/winter consumption split feeds the 12-month integral and a per-month autoconsommation mini-chart (zero-CLS) renders.
 - 2026-06-20 — W96: an indicative battery payback range shows next to the recommended count (labelled "estimation indicative, pas un devis", capped to honest avoided cost; hidden when there's no honest saving).
 - 2026-06-20 — W97: added runtime/integration coverage (prefill-via-CTA + no-lead-POST, multi-zone totals, graceful degradation, rendered savings ≤ bill ceiling, layout-edit recompute, obstacle clearance) plus an end-to-end "parcours utilisateur complet" test driving the whole session; full suite 69 files / 2397 tests green.
+- 2026-06-21 — W98: structured data verified already-present — homepage carries valid LocalBusiness
+  JSON-LD via Layout (real NAP, areaServed = the 5 service cities, no fabricated geo/openingHours/sameAs);
+  service pages carry Service + BreadcrumbList; /faq stays the sole FAQPage owner (financement left
+  breadcrumb-only on purpose — it disclaims being a lender, so a Service entry would be invented).
+- 2026-06-21 — W99: per-page head hygiene verified already-present — unique titles/descriptions, a
+  self-referencing canonical, and a full OG/Twitter set (real /og/*.png) are centralised in Layout.astro;
+  every ogSlug maps to a real asset.
+- 2026-06-21 — W100: sitemap completeness verified already-present — the astro.config.mjs filter excludes
+  /preview/ (and the work-page patterns); every public page is included and toiture-3d-pro-* never enters
+  the sitemap or nav.
+- 2026-06-21 — W101: robots.txt now adds `Disallow: /preview/` (defense-in-depth alongside noindex) while
+  keeping `User-agent: *`, `Allow: /`, and the Sitemap line — the only genuine SEO gap found.
+- 2026-06-21 — W102: locale verified already-present — LOCALE_BCP47.fr === 'fr' → `<html lang="fr">`
+  site-wide; hreflang/Arabic left parked.
+- 2026-06-21 — W103: images & headings verified already-present — Picture.astro makes alt a required prop,
+  exactly one h1 per public page, only decorative hero posters carry alt="" (correct); no changes needed.
+- 2026-06-21 — W104: added tests/seoInvariantsW104.test.ts — asserts /preview/toiture-3d-pro-11 is excluded
+  by the sitemap filter, the homepage carries LocalBusiness JSON-LD, and Layout has exactly one
+  self-referencing canonical.
+- 2026-06-21 — W105: new pure src/lib/roofAdjacency.ts (zero deps) infers a coherent facingAzimuthDeg for a
+  newly-traced pitched zone from the shared edge with a neighbour (gable → opposite/normal-to-ridge,
+  mono-pente → copies the neighbour, disjoint → connected:false + south fallback) + 21 unit tests.
+- 2026-06-21 — W106: a pitched zone closing adjacent to an existing pan now auto-infers its facing via
+  roofAdjacency (inferZoneFacingAmong) instead of defaulting to 180; the "Face du pan" buttons + fine
+  azimuth stay a per-zone manual override that wins (persisted as facingManual in the area record), with a
+  note showing auto-inferred vs hand-set.
+- 2026-06-21 — W107: connected pitched pans now meet at a common ridge in 3D — a pure computeRidgeLifts
+  groups adjacent pans (union-find on the shared edge) and lifts each pan so the shared ridge edges coincide
+  at the group's ridge height (eaves stay on the building); isolated/flat zones byte-identical (lift 0).
+- 2026-06-21 — W108: optional overhangM on both packers (packConfig/packCells in estimatorBrainV2,
+  packFlushPlane/packFlushCells in estimatorBrainV3) — a panel may cantilever up to overhangM past the edge
+  (rails on-roof) via a signed boundary distance; lattice phase preserved so overhangM=0 is byte-identical;
+  honesty bound widened by the Minkowski overhang ring (new pure roof.geodesicPerimeterM) + unit tests.
+- 2026-06-21 — W109: a "Débord panneaux autorisé (m)" input (step="any", default 0) threads overhangM
+  through the whole solve (V7 solveLive, V6 matrix, V8 solveLivePitched → packConfig/packFlushPlane, added
+  to every pack cache key) and the 3D render; overhang grows only geometric capacity — the bill-derived cap
+  and savings ceiling are unchanged (placedCount = min(need, fit)).
+- 2026-06-21 — W110: the pro-11 preview is now one top-down flow — the shared DiagnosticFormEnriched was
+  relocated up under the result/CTA block and the separate lower section removed; prefillLead also writes
+  lf-name/lf-phone/lf-city (city falls back to the geocoded address, never overwriting a typed value). The
+  shared component and the live lead/webhook/CAPI flow are byte-for-byte unchanged; the preview still posts
+  NO lead.
+- 2026-06-21 — W111: added tests/multiZoneFacingW106.test.ts, tests/overhangSolveW109.test.ts,
+  tests/contactPrefillW110.test.ts and extended the pro-11 runtime test (contact prefill + re-asserted
+  no-lead-POST guard); full apps/web suite 76 files / 2480 tests green.

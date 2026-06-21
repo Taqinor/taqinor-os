@@ -50,6 +50,26 @@ export function geodesicAreaM2(ring: LngLat[]): number {
 }
 
 /**
+ * Périmètre géodésique (m) d'un anneau lng/lat : somme des longueurs d'arête en
+ * mètres locaux (mise à l'échelle cos(lat) sur la longitude, latitude moyenne par
+ * arête). PUR. Sert à élargir honnêtement la borne « Σ empreintes ≤ utile » de
+ * l'anneau de débord autorisé (W108 — dilatation de Minkowski). < 3 sommets → 0.
+ */
+export function geodesicPerimeterM(ring: LngLat[]): number {
+  if (!Array.isArray(ring) || ring.length < 3) return 0;
+  let total = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [lng1, lat1] = ring[i];
+    const [lng2, lat2] = ring[(i + 1) % ring.length];
+    const midLat = ((lat1 + lat2) / 2) * DEG2RAD;
+    const de = (lng2 - lng1) * DEG2RAD * Math.cos(midLat) * WGS84_RADIUS;
+    const dn = (lat2 - lat1) * DEG2RAD * WGS84_RADIUS;
+    total += Math.hypot(de, dn);
+  }
+  return total;
+}
+
+/**
  * Libellé à afficher pour la « surface du toit » tracée : aire géodésique BRUTE
  * du tracé (la forme dessinée, obstacles non déduits — ils n'affectent que le
  * pavage), arrondie au m² entier, au format FR (séparateur d'espace, unité

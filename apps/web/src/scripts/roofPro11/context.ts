@@ -122,6 +122,11 @@ export interface Ctx {
   roofType: RoofType;
   pitchDeg: number;
   facingAzimuthDeg: number;
+  /** W106 — la face du pan actif a-t-elle été fixée À LA MAIN (override par zone) ? */
+  facingManual: boolean;
+  /** W109 — débord panneaux autorisé au-delà de la rive (m), saisi par l'utilisateur. 0 par
+   *  défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique, jamais le cap besoin. */
+  overhangM: number;
 
   // — Besoin « panneaux nécessaires » de la zone active (mutable) —
   neededPanels: number;
