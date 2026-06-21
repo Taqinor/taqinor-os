@@ -7,6 +7,7 @@ import {
   Card, CardContent, Skeleton, EmptyState, Input, Button,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { Table } from '../reporting/Table'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -111,69 +112,49 @@ export default function PaiementsPage() {
         </Card>
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto p-0 sm:p-0">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Facture</th>
-                  <th>Client</th>
-                  <th className="ta-right">Montant</th>
-                  <th>Date</th>
-                  <th>Mode</th>
-                  <th>Par qui</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(p => (
-                  <tr key={p.id}>
-                    <td data-label="Facture">
-                      {p.facture ? (
-                        <Link
-                          className="font-medium text-info hover:underline"
-                          to={`/ventes/factures?facture=${p.facture}`}
-                        >
-                          {p.facture_reference || `Facture #${p.facture}`}
-                        </Link>
-                      ) : '—'}
-                    </td>
-                    <td data-label="Client">{p.client_nom || '—'}</td>
-                    <td data-label="Montant" className="ta-right tabular-nums">
-                      <strong>{dh(p.montant)}</strong>
-                    </td>
-                    <td data-label="Date">{p.date_paiement || '—'}</td>
-                    <td data-label="Mode">{p.mode_display || p.mode}</td>
-                    <td data-label="Par qui">{p.created_by_username || '—'}</td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>
-                      <EmptyState
-                        icon={Wallet}
-                        title="Aucun encaissement"
-                        description={rows.length === 0
-                          ? 'Aucun paiement n’a encore été enregistré.'
-                          : 'Aucun encaissement ne correspond à ces filtres.'}
-                        className="border-0 py-6"
-                      />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {filtered.length > 0 && (
-                <tfoot>
-                  <tr className="font-bold">
-                    <td data-label="Total" colSpan={2}>
-                      Total ({filtered.length})
-                    </td>
-                    <td data-label="Montant" className="ta-right tabular-nums">
-                      {dh(total)}
-                    </td>
-                    <td colSpan={3}></td>
-                  </tr>
-                </tfoot>
+          <CardContent className="p-0 sm:p-0">
+            {/* P167 — migré vers le moteur de tableau partagé. */}
+            <Table
+              aria-label="Encaissements"
+              getRowKey={(p) => p.id}
+              columns={[
+                {
+                  key: 'facture',
+                  header: 'Facture',
+                  cell: (p) => (p.facture ? (
+                    <Link
+                      className="font-medium text-info hover:underline"
+                      to={`/ventes/factures?facture=${p.facture}`}
+                    >
+                      {p.facture_reference || `Facture #${p.facture}`}
+                    </Link>
+                  ) : '—'),
+                },
+                { key: 'client', header: 'Client', cell: (p) => p.client_nom || '—' },
+                { key: 'montant', header: 'Montant', align: 'right', cell: (p) => <strong>{dh(p.montant)}</strong> },
+                { key: 'date', header: 'Date', cell: (p) => p.date_paiement || '—' },
+                { key: 'mode', header: 'Mode', cell: (p) => p.mode_display || p.mode },
+                { key: 'par_qui', header: 'Par qui', cell: (p) => p.created_by_username || '—' },
+              ]}
+              rows={filtered}
+              empty={(
+                <EmptyState
+                  icon={Wallet}
+                  title="Aucun encaissement"
+                  description={rows.length === 0
+                    ? 'Aucun paiement n’a encore été enregistré.'
+                    : 'Aucun encaissement ne correspond à ces filtres.'}
+                  className="border-0 py-6"
+                />
               )}
-            </table>
+              footer={filtered.length > 0 && (
+                <tr className="border-t border-border font-bold">
+                  <td className="px-3 py-2" colSpan={2} data-label="Total">Total ({filtered.length})</td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-label="Montant">{dh(total)}</td>
+                  <td className="px-3 py-2" colSpan={3} />
+                </tr>
+              )}
+            />
           </CardContent>
         </Card>
       )}

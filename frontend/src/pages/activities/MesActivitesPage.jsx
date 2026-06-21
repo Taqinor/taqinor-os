@@ -7,6 +7,7 @@ import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner,
 } from '../../ui'
+import { Table } from '../reporting/Table'
 
 // Date du jour au format ISO (YYYY-MM-DD), pour comparer aux échéances.
 const todayStr = () => {
@@ -189,56 +190,53 @@ export default function MesActivitesPage() {
                   <Badge tone={tone}>{data[key].length}</Badge>
                 </CardHeader>
                 <CardContent className="p-0 sm:p-0">
-                  <div className="overflow-x-auto">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Type</th><th>Résumé</th><th>Échéance</th>
-                          <th>Enregistrement</th><th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data[key].map(a => {
+                  {/* P167 — migré vers le moteur de tableau partagé. */}
+                  <Table
+                    aria-label={label}
+                    getRowKey={(a) => a.id}
+                    columns={[
+                      { key: 'type', header: 'Type', cell: (a) => `${a.activity_type_icone} ${a.activity_type_nom}` },
+                      { key: 'summary', header: 'Résumé', cell: (a) => a.summary || '—' },
+                      { key: 'due_date', header: 'Échéance', cellClassName: 'tabular-nums', cell: (a) => a.due_date || '—' },
+                      {
+                        key: 'enregistrement',
+                        header: 'Enregistrement',
+                        cell: (a) => {
                           const link = targetLink(a)
-                          return (
-                            <tr key={a.id}>
-                              <td>{a.activity_type_icone} {a.activity_type_nom}</td>
-                              <td>{a.summary || '—'}</td>
-                              <td className="tabular-nums">{a.due_date || '—'}</td>
-                              <td>
-                                {link ? (
-                                  <Button size="sm" variant="outline" onClick={() => navigate(link)}>
-                                    <ExternalLink /> {a.target_label || 'Ouvrir'}
-                                  </Button>
-                                ) : (a.target_label || '—')}
-                              </td>
-                              <td className="ta-right">
-                                {reschedId === a.id ? (
-                                  <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                    <input type="date" min={todayStr()}
-                                           className="form-control form-control-sm w-auto"
-                                           value={reschedDate}
-                                           onChange={e => setReschedDate(e.target.value)} />
-                                    <Button size="sm" onClick={() => saveResched(a)}>OK</Button>
-                                    <Button size="sm" variant="outline" onClick={cancelResched}>Annuler</Button>
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                    <Button size="sm" variant="outline" onClick={() => openResched(a)}>
-                                      <CalendarClock /> Reporter
-                                    </Button>
-                                    <Button size="sm" onClick={() => markDone(a)}>
-                                      <CalendarCheck2 /> Fait
-                                    </Button>
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                          return link ? (
+                            <Button size="sm" variant="outline" onClick={() => navigate(link)}>
+                              <ExternalLink /> {a.target_label || 'Ouvrir'}
+                            </Button>
+                          ) : (a.target_label || '—')
+                        },
+                      },
+                      {
+                        key: 'actions',
+                        header: '',
+                        align: 'right',
+                        cell: (a) => (reschedId === a.id ? (
+                          <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                            <input type="date" min={todayStr()}
+                                   className="form-control form-control-sm w-auto"
+                                   value={reschedDate}
+                                   onChange={e => setReschedDate(e.target.value)} />
+                            <Button size="sm" onClick={() => saveResched(a)}>OK</Button>
+                            <Button size="sm" variant="outline" onClick={cancelResched}>Annuler</Button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                            <Button size="sm" variant="outline" onClick={() => openResched(a)}>
+                              <CalendarClock /> Reporter
+                            </Button>
+                            <Button size="sm" onClick={() => markDone(a)}>
+                              <CalendarCheck2 /> Fait
+                            </Button>
+                          </span>
+                        )),
+                      },
+                    ]}
+                    rows={data[key]}
+                  />
                 </CardContent>
               </Card>
             )

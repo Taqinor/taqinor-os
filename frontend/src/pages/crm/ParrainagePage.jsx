@@ -3,6 +3,7 @@
 // récompense par défaut + l'activation se règlent dans Paramètres.
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
+import { Table } from '../reporting/Table'
 
 const STATUTS = [
   ['en_attente', 'En attente'],
@@ -95,35 +96,32 @@ export default function ParrainagePage() {
         <button className="btn btn-primary" onClick={create}>+ Ajouter</button>
       </div>
 
-      <table className="data-table">
-        <thead>
-          <tr><th>Parrain</th><th>Filleul</th><th>Récompense</th>
-            <th>Statut</th><th>Créé le</th></tr>
-        </thead>
-        <tbody>
-          {rows.map(p => (
-            <tr key={p.id}>
-              <td>{p.parrain_nom}</td>
-              <td>{p.filleul_nom || '—'}</td>
-              <td>{p.recompense ? dh(p.recompense) : '—'}</td>
-              <td>
-                <select className="form-control" value={p.statut}
-                        onChange={e => setStatut(p.id, e.target.value)}
-                        style={{ maxWidth: 180 }}>
-                  {STATUTS.map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </td>
-              <td>{(p.date_creation || '').slice(0, 10)}</td>
-            </tr>
-          ))}
-          {!rows.length && (
-            <tr><td colSpan={5} style={{ color: '#94a3b8' }}>
-              Aucun parrainage.</td></tr>
-          )}
-        </tbody>
-      </table>
+      {/* P167 — migré vers le moteur de tableau partagé (plus de data-table). */}
+      <Table
+        aria-label="Parrainages"
+        getRowKey={(p) => p.id}
+        columns={[
+          { key: 'parrain', header: 'Parrain', cell: (p) => p.parrain_nom },
+          { key: 'filleul', header: 'Filleul', cell: (p) => p.filleul_nom || '—' },
+          { key: 'recompense', header: 'Récompense', cell: (p) => (p.recompense ? dh(p.recompense) : '—') },
+          {
+            key: 'statut',
+            header: 'Statut',
+            cell: (p) => (
+              <select className="form-control" value={p.statut}
+                      onChange={e => setStatut(p.id, e.target.value)}
+                      style={{ maxWidth: 180 }}>
+                {STATUTS.map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            ),
+          },
+          { key: 'cree', header: 'Créé le', cell: (p) => (p.date_creation || '').slice(0, 10) },
+        ]}
+        rows={rows}
+        empty={<span className="text-muted-foreground">Aucun parrainage.</span>}
+      />
     </div>
   )
 }
