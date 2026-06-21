@@ -17,34 +17,42 @@
   --font-display: 'Archivo', 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-brand: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
 
-  /* ── Primitives — palette de marque Taqinor (apps/web) ─────────────────── */
-  /* Brass = accent « énergie » solaire, utilisé avec parcimonie */
-  --color-brass-50: #fdf8ec;
-  --color-brass-100: #faedc8;
-  --color-brass-200: #f6dd94;
-  --color-brass-300: #f3cc66;
-  --color-brass-400: #e8b54a;
-  --color-brass-500: #d39a2c;
-  --color-brass-600: #8f6a0e;
-  --color-brass-700: #6f520b;
-  /* Nuit / encre = base neutre profonde */
-  --color-nuit: #070b1d;
-  --color-nuit-800: #0b1226;
-  --color-nuit-700: #101a3c;
-  --color-encre: #0c1335;
-  --color-encre-soft: #3f4a6e;
-  --color-encre-faint: #5a6488;
-  /* Azur = bleus de marque */
-  --color-azur-100: #dde5f8;
-  --color-azur-200: #b9c8f0;
-  --color-azur-600: #2342b5;
-  --color-azur-700: #1c3494;
-  --color-azur-900: #0f1c54;
-  --color-azur-950: #0a1238;
-  /* Lune = gris froids clairs */
-  --color-lune: #d6dbe9;
-  --color-lune-soft: #adb5cd;
-  --color-lune-faint: #8d96b4;
+  /* ── Primitives — palette de marque Taqinor (apps/web) ─────────────────────
+     F120 — rampes ré-exprimées en OKLCH (perceptuellement uniformes, façon
+     palette Tailwind v4). Chaque valeur OKLCH reproduit EXACTEMENT l'hex rendu
+     hier (round-trip sRGB à ΔE ≈ 0, 0 écart RGB sur 0–255) : aucun écran
+     existant ne change et la couche sémantique rend les mêmes couleurs.
+     Format `oklch(L% C H)` : L = clarté (0–100 %), C = chroma, H = teinte (deg).
+     La progression de L décrit la rampe de chaque famille (claire → foncée). */
+
+  /* Brass = accent « énergie » solaire (teinte ~79–91°), utilisé avec parcimonie.
+     Rampe de clarté décroissante 50 → 700 (hex d'origine en commentaire). */
+  --color-brass-50: oklch(98% 0.0167 88);       /* #fdf8ec */
+  --color-brass-100: oklch(94.7% 0.0502 90.96); /* #faedc8 */
+  --color-brass-200: oklch(90.2% 0.0958 91.3);  /* #f6dd94 */
+  --color-brass-300: oklch(85.9% 0.1283 88.58); /* #f3cc66 */
+  --color-brass-400: oklch(80% 0.1353 82.89);   /* #e8b54a */
+  --color-brass-500: oklch(72.3% 0.1364 78.98); /* #d39a2c */
+  --color-brass-600: oklch(54.7% 0.1083 83.29); /* #8f6a0e */
+  --color-brass-700: oklch(45.7% 0.0894 83.46); /* #6f520b */
+  /* Nuit / encre = base neutre profonde (teinte navy ~267–271°). */
+  --color-nuit: oklch(15.7% 0.0388 271.18);     /* #070b1d */
+  --color-nuit-800: oklch(18.8% 0.0422 267.69); /* #0b1226 */
+  --color-nuit-700: oklch(23.1% 0.0668 268.44); /* #101a3c */
+  --color-encre: oklch(20.4% 0.0672 270.57);    /* #0c1335 */
+  --color-encre-soft: oklch(41.6% 0.0621 270.54);  /* #3f4a6e */
+  --color-encre-faint: oklch(50.9% 0.0587 272.2);  /* #5a6488 */
+  /* Azur = bleus de marque (teinte ~266–269°). */
+  --color-azur-100: oklch(92.2% 0.0272 267.52); /* #dde5f8 */
+  --color-azur-200: oklch(83.5% 0.0586 268.96); /* #b9c8f0 */
+  --color-azur-600: oklch(43.6% 0.1851 266.55); /* #2342b5 */
+  --color-azur-700: oklch(37.5% 0.1598 267.03); /* #1c3494 */
+  --color-azur-900: oklch(25.7% 0.103 268.08);  /* #0f1c54 */
+  --color-azur-950: oklch(20.3% 0.0745 269.53); /* #0a1238 */
+  /* Lune = gris froids clairs (teinte ~270–272°). */
+  --color-lune: oklch(89.2% 0.0199 270.19);     /* #d6dbe9 */
+  --color-lune-soft: oklch(77.5% 0.0353 270.93);  /* #adb5cd */
+  --color-lune-faint: oklch(67.6% 0.0456 272.02); /* #8d96b4 */
 }
 
 /* ── Couche sémantique : variables runtime (clair = défaut) ──────────────── */
@@ -80,15 +88,53 @@
 
   --border: #dde3f0;
   --input: #d2d9ea;
+  /* Anneau de focus (F122). `--ring` = couleur azur (contraste ≥ 3:1 sur le
+     fond clair et sur les surfaces) ; `--ring-width` ≥ 2px ; `--ring-offset`
+     décolle l'anneau du contrôle. `--focus-ring` est l'ombre prête à poser :
+     un liseré net de 2px + un halo discret pour le détacher du fond. */
   --ring: #2342b5;
+  --ring-width: 2px;
+  --ring-offset: 2px;
+  --focus-ring: 0 0 0 var(--ring-width) var(--ring),
+                0 0 0 calc(var(--ring-width) + var(--ring-offset)) var(--background);
 
   --radius: 0.625rem;
 
-  /* Élévation / ombres */
+  /* ── F121 — Échelle typographique documentée ───────────────────────────────
+     Sept paliers : display / h1 / h2 / h3 / body / small / caption.
+     Chaque palier = taille (rem) + interligne + letter-spacing. Le tracking
+     devient de plus en plus négatif vers les grandes tailles (les gros titres
+     se resserrent, le corps reste neutre, les petits textes s'aèrent).
+     Miroir exact de TEXT_SCALE dans theme.js (gardé par un test). */
+  --text-display: 3rem;        --text-display-lh: 1.05;  --text-display-ls: -0.03em;
+  --text-h1: 2.25rem;          --text-h1-lh: 1.1;        --text-h1-ls: -0.025em;
+  --text-h2: 1.75rem;          --text-h2-lh: 1.2;        --text-h2-ls: -0.02em;
+  --text-h3: 1.375rem;         --text-h3-lh: 1.3;        --text-h3-ls: -0.015em;
+  --text-body: 1rem;           --text-body-lh: 1.55;     --text-body-ls: 0em;
+  --text-small: 0.875rem;      --text-small-lh: 1.45;    --text-small-ls: 0.005em;
+  --text-caption: 0.75rem;     --text-caption-lh: 1.4;   --text-caption-ls: 0.02em;
+
+  /* Élévation / ombres — échelle brute (rgb teinté nuit #0c1335). */
   --shadow-xs: 0 1px 2px 0 rgb(12 19 53 / 0.06);
   --shadow-sm: 0 1px 3px 0 rgb(12 19 53 / 0.10), 0 1px 2px -1px rgb(12 19 53 / 0.08);
   --shadow-md: 0 4px 12px -2px rgb(12 19 53 / 0.12), 0 2px 6px -2px rgb(12 19 53 / 0.08);
   --shadow-lg: 0 12px 28px -6px rgb(12 19 53 / 0.18), 0 6px 12px -6px rgb(12 19 53 / 0.10);
+
+  /* ── F122 — Discipline d'élévation : quelle surface utilise quoi ────────────
+     Tokens d'élévation NOMMÉS par rôle. Règle : une carte ne « flotte » pas —
+     elle se définit par une bordure 1px (ou un « shadow-ring » : liseré net
+     sans étalement) ; seuls les calques au-dessus du flux (menu/modal/toast)
+     portent une vraie ombre douce multi-couches teintée nuit. Niveaux :
+       carte (repos)  → bordure 1px / shadow-ring,
+       carte (survol) → ombre très légère,
+       menu/dropdown  → ombre moyenne,
+       modal/dialog   → ombre forte,
+       toast          → ombre forte (flotte au-dessus de tout). */
+  --elevation-card: 0 0 0 1px var(--border);          /* « shadow-ring » 1px */
+  --elevation-card-hover: var(--shadow-sm);
+  --elevation-menu: var(--shadow-md);
+  --elevation-modal: var(--shadow-lg);
+  --elevation-toast: var(--shadow-lg);
 
   /* Z-index — échelle unique */
   --z-base: 0;
@@ -107,42 +153,51 @@
 }
 
 .dark {
-  --background: #070b1d;
+  /* ── F123 — Mode sombre = élévation par la clarté ──────────────────────────
+     La profondeur s'exprime par la CLARTÉ des surfaces (pas seulement l'ombre) :
+     base → carte → popover deviennent progressivement PLUS claires (~+3,6 pts L
+     OKLCH par niveau). Le noir pur est banni : la base est un navy très sombre
+     (≈ L 15,7 %, jamais #000). L'accent brass est désaturé ~25 % (chroma
+     0,128 → 0,096) pour rester lisible sans être criard. Les bordures sont
+     relevées et tout texte garde un contraste ≥ AA (vérifié : fg ≈ 14–16:1,
+     muted ≈ 9:1, primary ≈ 12:1). Surfaces en OKLCH (cf. F120). */
+  --background: oklch(15.7% 0.028 270);   /* base navy — pas de noir pur */
   --foreground: #e7ecf6;
 
-  --surface: #0b1226;
-  --card: #0b1226;
+  --surface: oklch(19.3% 0.028 270);      /* alias historique de --card */
+  --card: oklch(19.3% 0.028 270);         /* base +3,6 L */
   --card-foreground: #e7ecf6;
-  --popover: #0b1226;
+  --popover: oklch(23% 0.028 270);        /* carte +3,7 L */
   --popover-foreground: #e7ecf6;
 
-  --primary: #f3cc66;
+  --primary: oklch(85.9% 0.0961 89);      /* brass-300 désaturé ~25 % */
   --primary-foreground: #1a1505;
 
-  --secondary: #101a3c;
+  --secondary: oklch(24% 0.03 269);
   --secondary-foreground: #d6dbe9;
-  --muted: #101a3c;
+  --muted: oklch(24% 0.03 269);
   --muted-foreground: #adb5cd;
-  --accent: #152870;
+  --accent: oklch(33% 0.10 268);
   --accent-foreground: #e7ecf6;
 
   --destructive: #e06a52;
   --destructive-foreground: #1a0a06;
   --success: #4caf6a;
   --success-foreground: #07140a;
-  --warning: #f3cc66;
+  --warning: oklch(85.9% 0.0961 89);
   --warning-foreground: #1a1505;
   --info: #7fa0ef;
   --info-foreground: #0a1238;
 
-  --border: #1f2a4d;
-  --input: #243156;
-  --ring: #f3cc66;
+  --border: oklch(33% 0.03 270);          /* bordures relevées (≈ +3,6 L) */
+  --input: oklch(37% 0.03 270);
+  --ring: oklch(85.9% 0.0961 89);
 
-  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.40);
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.50), 0 1px 2px -1px rgb(0 0 0 / 0.40);
-  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.55), 0 2px 6px -2px rgb(0 0 0 / 0.45);
-  --shadow-lg: 0 12px 28px -6px rgb(0 0 0 / 0.65), 0 6px 12px -6px rgb(0 0 0 / 0.50);
+  /* Ombres teintées nuit (navy 12 19 53), pas de noir pur — F123. */
+  --shadow-xs: 0 1px 2px 0 rgb(3 5 12 / 0.45);
+  --shadow-sm: 0 1px 3px 0 rgb(3 5 12 / 0.55), 0 1px 2px -1px rgb(3 5 12 / 0.45);
+  --shadow-md: 0 4px 12px -2px rgb(3 5 12 / 0.6), 0 2px 6px -2px rgb(3 5 12 / 0.5);
+  --shadow-lg: 0 12px 28px -6px rgb(3 5 12 / 0.7), 0 6px 12px -6px rgb(3 5 12 / 0.55);
 }
 
 /* ── Map sémantique → utilitaires Tailwind v4 (inline = thémable runtime) ── */
@@ -183,6 +238,14 @@
   --shadow-ui-sm: var(--shadow-sm);
   --shadow-ui-md: var(--shadow-md);
   --shadow-ui-lg: var(--shadow-lg);
+
+  /* F122 — élévations nommées exposées en utilitaires shadow-* */
+  --shadow-card: var(--elevation-card);
+  --shadow-card-hover: var(--elevation-card-hover);
+  --shadow-menu: var(--elevation-menu);
+  --shadow-modal: var(--elevation-modal);
+  --shadow-toast: var(--elevation-toast);
+  --shadow-focus-ring: var(--focus-ring);
 }
 
 /* ── F20 — Densité (comfortable = défaut, identique à aujourd'hui) ───────── */
@@ -215,8 +278,25 @@
   font-size: var(--ui-text);
 }
 
-/* Chiffres tabulaires pour tout montant / quantité (F16) */
-.tabular-nums { font-variant-numeric: tabular-nums; }
+/* ── F121 — Utilitaires d'échelle typographique ──────────────────────────────
+   Applique taille + interligne + tracking d'un palier en une classe. Utilisés
+   par les nouveaux titres /src/ui ; n'affectent aucun écran existant. */
+.text-display { font-size: var(--text-display); line-height: var(--text-display-lh); letter-spacing: var(--text-display-ls); }
+.text-h1 { font-size: var(--text-h1); line-height: var(--text-h1-lh); letter-spacing: var(--text-h1-ls); }
+.text-h2 { font-size: var(--text-h2); line-height: var(--text-h2-lh); letter-spacing: var(--text-h2-ls); }
+.text-h3 { font-size: var(--text-h3); line-height: var(--text-h3-lh); letter-spacing: var(--text-h3-ls); }
+.text-body { font-size: var(--text-body); line-height: var(--text-body-lh); letter-spacing: var(--text-body-ls); }
+.text-small { font-size: var(--text-small); line-height: var(--text-small-lh); letter-spacing: var(--text-small-ls); }
+.text-caption { font-size: var(--text-caption); line-height: var(--text-caption-lh); letter-spacing: var(--text-caption-ls); }
+
+/* ── F121 — Chiffres tabulaires + zéro barré pour tout montant / quantité /
+   référence (F16). `tabular-nums` aligne les colonnes de chiffres ; `slashed
+   zero` (font-feature-settings 'zero') distingue 0 de O dans les références.
+   Appliqué via `.tabular-nums` sur tableaux, KPI/Stat, totaux et références. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+}
 
 /* ── Animations d'overlay (Dialog/Popover/Dropdown/Tooltip…) ─────────────── */
 @theme {
