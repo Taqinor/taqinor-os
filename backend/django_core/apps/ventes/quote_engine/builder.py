@@ -331,11 +331,33 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     total_sans_before = totaux_sans["ttc_avant"]
     total_avec_before = totaux_avec["ttc_avant"]
 
+    # ── Q5 — Toiture 3D : figures du layout FINALISÉ (additif, GARDÉ) ─────────
+    # Quand le devis porte un layout 3D finalisé (Devis.roof_layout), ses
+    # kWc / production / économies réels remplacent l'estimation — UNIQUEMENT
+    # quand le layout est présent. Sans layout, RIEN ici ne s'exécute et la
+    # sortie reste byte-identique (back-compat, règle #4). On n'écrase jamais
+    # une étude déjà saisie : on ne fait que COMPLÉTER les figures manquantes.
+    roof_layout = getattr(devis, "roof_layout", None)
+    if roof_layout:
+        _res = (roof_layout.get("result") or {}) if isinstance(
+            roof_layout, dict) else {}
+        _kwc = _res.get("kwc")
+        if _kwc:
+            puissance_kwc = round(float(_kwc), 2)
+        _stored = dict(devis.etude_params or {})
+        if _res.get("annualKwh") and not _stored.get("production_annuelle"):
+            _stored["production_annuelle"] = int(_res["annualKwh"])
+        if _res.get("savings") and not _stored.get("economies_annuelles"):
+            _stored["economies_annuelles"] = int(_res["savings"])
+        devis_etude_override = _stored
+    else:
+        devis_etude_override = devis.etude_params or {}
+
     # ── Canonical performance figures: ONE source of truth ───────────────────
     # When the quote carries a stored étude (industrial), its consumption-driven
     # production/savings are canonical; payback and prix/kWc are recomputed from
     # the canonical totals so edited lines can never desynchronize the document.
-    etude = dict(devis.etude_params or {})
+    etude = dict(devis_etude_override or {})
     roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec)
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
@@ -508,6 +530,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             devis.date_acceptation.strftime("%d/%m/%Y")
             if getattr(devis, "date_acceptation", None) else ""),
     }
+    # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
+    # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est
+    # ajoutée → la sortie reste strictement identique à aujourd'hui.
+    roof_image = getattr(devis, "roof_image", None)
+    if roof_image:
+        data["roof_image_key"] = roof_image
     return data
 
 
