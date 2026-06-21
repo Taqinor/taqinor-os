@@ -1,0 +1,12 @@
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from .views import EnginRoulantViewSet, VehiculeViewSet
+
+router = DefaultRouter()
+router.register(r'vehicules', VehiculeViewSet)
+router.register(r'engins', EnginRoulantViewSet)
+
+urlpatterns = [
+    path('', include(router.urls)),
+]

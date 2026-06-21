@@ -1,8 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    CompteComptable, CompteTresorerie, EcritureComptable, Journal,
-    LigneEcriture, PlanComptable,
+    CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
+    Journal, LigneEcriture, PeriodeComptable, PlanComptable,
 )
 
 
@@ -49,3 +49,19 @@ class CompteTresorerieAdmin(admin.ModelAdmin):
                     'actif')
     list_filter = ('type_compte', 'actif')
     search_fields = ('libelle', 'banque', 'rib', 'iban')
+
+
+@admin.register(ExerciceComptable)
+class ExerciceComptableAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'date_debut', 'date_fin', 'statut',
+                    'an_reporte', 'company')
+    list_filter = ('statut', 'an_reporte')
+    search_fields = ('libelle',)
+
+
+@admin.register(PeriodeComptable)
+class PeriodeComptableAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'type_periode', 'date_debut', 'date_fin',
+                    'verrouillee', 'company')
+    list_filter = ('type_periode', 'verrouillee')
+    search_fields = ('libelle',)

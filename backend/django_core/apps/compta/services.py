@@ -12,15 +12,24 @@ Trois blocs :
   équilibrée à partir d'une liste de lignes.
 * ``ecriture_*_facture/paiement/avoir`` (FG109) — auto-génération depuis un
   document émis, idempotente, OFF par défaut (réglage ``COMPTA_AUTO_ECRITURES``).
+* ``cloturer_periode`` / ``rouvrir_periode`` (FG115) — verrouillage/déverrouillage
+  d'une période ; ``verifier_facture_modifiable`` garde l'immutabilité des
+  factures en période close.
+* ``creer_ecriture_od`` (FG116) — écriture de régularisation manuelle (OD) sans
+  document source, équilibrée et refusée si la période est verrouillée.
+* ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
+  report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
 from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from .models import (
-    CompteComptable, EcritureComptable, Journal, LigneEcriture, PlanComptable,
+    CompteComptable, EcritureComptable, ExerciceComptable, Journal,
+    LigneEcriture, PeriodeComptable, PlanComptable,
 )
 
 
@@ -341,3 +350,226 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
         reference=avoir.reference, source_type='avoir', source_id=avoir.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
+
+
+# ── FG115 — Clôture & verrouillage de période comptable ────────────────────
+
+@transaction.atomic
+def cloturer_periode(periode, *, user=None):
+    """Verrouille une période : ses écritures & factures deviennent immuables.
+
+    Idempotent (re-clôturer une période déjà close ne change rien d'autre que
+    de rafraîchir l'acteur/horodatage si manquants). Renvoie la période.
+    """
+    if not periode.verrouillee:
+        periode.verrouillee = True
+        periode.date_verrouillage = timezone.now()
+        periode.verrouillee_par = user
+        periode.save(update_fields=[
+            'verrouillee', 'date_verrouillage', 'verrouillee_par'])
+    return periode
+
+
+@transaction.atomic
+def rouvrir_periode(periode):
+    """Déverrouille une période close (correction admin). Renvoie la période.
+
+    Lève ``ValidationError`` si la période appartient à un exercice déjà
+    clôturé (FG117) — on rouvre alors l'exercice d'abord.
+    """
+    if periode.exercice_id and periode.exercice.est_cloture:
+        raise ValidationError(
+            "Impossible de rouvrir une période d'un exercice clôturé : "
+            "rouvrez d'abord l'exercice.")
+    if periode.verrouillee:
+        periode.verrouillee = False
+        periode.date_verrouillage = None
+        periode.verrouillee_par = None
+        periode.save(update_fields=[
+            'verrouillee', 'date_verrouillage', 'verrouillee_par'])
+    return periode
+
+
+def periode_verrouillee_pour(company, une_date):
+    """Période VERROUILLÉE couvrant ``une_date`` (ou None). Lecture seule."""
+    if une_date is None:
+        return None
+    return PeriodeComptable.objects.filter(
+        company=company, verrouillee=True,
+        date_debut__lte=une_date, date_fin__gte=une_date,
+    ).first()
+
+
+def verifier_facture_modifiable(facture):
+    """Garde l'immutabilité d'une facture en période close (FG115).
+
+    À appeler depuis la couche service de ``ventes`` avant toute modification
+    d'une facture. ``facture`` est lue par valeur (``company``, ``date_emission``)
+    — aucun import du modèle ``ventes`` ici. Lève ``ValidationError`` si la
+    date de la facture tombe dans une période verrouillée.
+    """
+    company = getattr(facture, 'company', None)
+    une_date = getattr(facture, 'date_emission', None)
+    if company is None or une_date is None:
+        return
+    if PeriodeComptable.date_verrouillee(company.id, une_date):
+        raise ValidationError(
+            "Période comptable clôturée : la facture du "
+            f"{une_date} est verrouillée et ne peut plus être modifiée.")
+
+
+def creer_periode(company, date_debut, date_fin, *, type_periode=None,
+                  libelle='', exercice=None):
+    """Crée (ou récupère) une période comptable pour la société (idempotent).
+
+    L'unicité ``(company, date_debut, date_fin)`` garantit qu'on ne duplique
+    jamais une même période. Renvoie la ``PeriodeComptable``.
+    """
+    periode, _ = PeriodeComptable.objects.get_or_create(
+        company=company, date_debut=date_debut, date_fin=date_fin,
+        defaults={
+            'type_periode': type_periode or PeriodeComptable.Type.MOIS,
+            'libelle': libelle,
+            'exercice': exercice,
+        },
+    )
+    return periode
+
+
+# ── FG116 — Écritures de régularisation / OD manuelles ─────────────────────
+
+@transaction.atomic
+def creer_ecriture_od(company, date_ecriture, libelle, lignes, *,
+                      journal=None, reference='', created_by=None,
+                      statut=None):
+    """Écriture de régularisation manuelle (OD) sans document source.
+
+    Pour provisions, amortissements, corrections… : pas de ``source_type``/
+    ``source_id`` (écriture purement manuelle). Passe par le journal OD par
+    défaut, exige l'équilibre Σ débit = Σ crédit (via ``creer_ecriture``) et est
+    refusée si la période de ``date_ecriture`` est verrouillée (garde-fou du
+    modèle, FG115). Sème le journal OD au besoin. Renvoie l'écriture.
+    """
+    if journal is None:
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+        if journal is None:
+            seed_journaux(company)
+            journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if PeriodeComptable.date_verrouillee(company.id, date_ecriture):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de saisir une écriture "
+            f"de régularisation au {date_ecriture}.")
+    return creer_ecriture(
+        company, journal, date_ecriture, libelle, lignes,
+        reference=reference, created_by=created_by,
+        statut=statut or EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── FG117 — À-nouveaux / réouverture d'exercice ────────────────────────────
+
+def creer_exercice(company, date_debut, date_fin, *, libelle=''):
+    """Crée (ou récupère) un exercice comptable (idempotent). Renvoie l'objet."""
+    exercice, _ = ExerciceComptable.objects.get_or_create(
+        company=company, date_debut=date_debut, date_fin=date_fin,
+        defaults={'libelle': libelle},
+    )
+    return exercice
+
+
+@transaction.atomic
+def cloturer_exercice(exercice, *, user=None):
+    """Clôture un exercice : statut ``cloture`` + verrouille toutes ses périodes.
+
+    Idempotent. Renvoie l'exercice. La réouverture (correction) passe par
+    ``rouvrir_exercice``.
+    """
+    if not exercice.est_cloture:
+        exercice.statut = ExerciceComptable.Statut.CLOTURE
+        exercice.date_cloture = timezone.now()
+        exercice.save(update_fields=['statut', 'date_cloture'])
+    for periode in exercice.periodes.all():
+        cloturer_periode(periode, user=user)
+    return exercice
+
+
+@transaction.atomic
+def rouvrir_exercice(exercice):
+    """Rouvre un exercice clôturé (correction admin). Renvoie l'exercice."""
+    if exercice.est_cloture:
+        exercice.statut = ExerciceComptable.Statut.OUVERT
+        exercice.date_cloture = None
+        exercice.save(update_fields=['statut', 'date_cloture'])
+    return exercice
+
+
+# Comptes de bilan : classes 1 à 5 (le résultat des classes 6/7 est soldé via
+# le compte de résultat — non reporté tel quel en à-nouveau).
+_CLASSES_BILAN = (1, 2, 3, 4, 5)
+
+
+@transaction.atomic
+def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
+    """Reporte les soldes de bilan de l'exercice clos dans le nouvel exercice.
+
+    « À-nouveaux » : on solde chaque compte de bilan (classes 1-5) de
+    l'exercice clos par une écriture d'ouverture datée du premier jour du
+    nouvel exercice, dans le journal AN (À-nouveaux). Idempotent : ne reporte
+    pas deux fois (``ExerciceComptable.an_reporte``). Renvoie l'écriture créée
+    (ou None s'il n'y a aucun solde à reporter).
+
+    Le résultat (classes 6/7) n'est PAS reporté ligne à ligne ; il est porté au
+    bilan via le CPC et s'affecte ensuite (1191) — hors périmètre de ce report
+    automatique d'à-nouveaux de bilan.
+    """
+    from . import selectors  # import local : évite tout cycle au chargement.
+
+    company = exercice_clos.company
+    if company != exercice_nouveau.company:
+        raise ValidationError(
+            "Les deux exercices doivent appartenir à la même société.")
+    if exercice_nouveau.an_reporte:
+        return _ecriture_an_existante(company, exercice_nouveau)
+
+    # Journal AN (créé au besoin).
+    journal = _journal(company, Journal.Type.A_NOUVEAUX)
+    if journal is None:
+        journal, _ = Journal.objects.get_or_create(
+            company=company, code='AN',
+            defaults={'libelle': 'À-nouveaux',
+                      'type_journal': Journal.Type.A_NOUVEAUX})
+
+    # Soldes des comptes de bilan à la date de fin de l'exercice clos.
+    lignes = []
+    for compte in CompteComptable.objects.filter(
+            company=company, classe__in=_CLASSES_BILAN).order_by('numero'):
+        solde = selectors.solde_compte(
+            company, compte, date_fin=exercice_clos.date_fin)
+        if solde == Decimal('0'):
+            continue
+        if solde > 0:
+            lignes.append({'compte': compte, 'debit': solde,
+                           'credit': Decimal('0'),
+                           'libelle': "À-nouveau"})
+        else:
+            lignes.append({'compte': compte, 'debit': Decimal('0'),
+                           'credit': -solde, 'libelle': "À-nouveau"})
+
+    exercice_nouveau.an_reporte = True
+    exercice_nouveau.save(update_fields=['an_reporte'])
+    if not lignes:
+        return None
+    ecriture = creer_ecriture(
+        company, journal, exercice_nouveau.date_debut,
+        "Report des à-nouveaux", lignes,
+        reference=f'AN-{exercice_nouveau.date_debut.year}',
+        source_type='a_nouveaux', source_id=exercice_nouveau.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    return ecriture
+
+
+def _ecriture_an_existante(company, exercice):
+    return EcritureComptable.objects.filter(
+        company=company, source_type='a_nouveaux',
+        source_id=exercice.id).first()
