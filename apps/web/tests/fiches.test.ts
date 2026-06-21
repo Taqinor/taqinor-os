@@ -1,5 +1,8 @@
 // Garde-fou des fiches techniques (W141–W145) : la bibliothèque /produits et
 // l'alignement des slugs avec le moteur de devis Django.
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FICHES,
@@ -8,6 +11,9 @@ import {
   ficheBySlug,
   ficheDownloadHref,
 } from '../src/lib/fiches';
+
+// Racine des assets publics servis tels quels par Astro (apps/web/public).
+const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../public');
 
 describe('fiches techniques — manifest', () => {
   it('chaque fiche a slug unique, datasheet https et catégorie connue', () => {
@@ -25,6 +31,18 @@ describe('fiches techniques — manifest', () => {
   it('le téléchargement renvoie la copie auto-hébergée si présente, sinon la source', () => {
     for (const f of FICHES) {
       expect(ficheDownloadHref(f)).toBe(f.pdf ?? f.datasheet);
+    }
+  });
+
+  // W146 : chaque PDF auto-hébergé (pdf non-null) DOIT exister sur disque sous
+  // apps/web/public — sinon le lien /fiches/<slug>.pdf tomberait en 404.
+  it('chaque PDF auto-hébergé existe réellement sous public/', () => {
+    for (const f of FICHES) {
+      if (f.pdf === null) continue;
+      expect(f.pdf.startsWith('/'), `pdf doit être une URL absolue de site: ${f.pdf}`).toBe(true);
+      // '/fiches/x.pdf' -> <public>/fiches/x.pdf
+      const onDisk = resolve(PUBLIC_DIR, '.' + f.pdf);
+      expect(existsSync(onDisk), `fichier PDF manquant: ${onDisk}`).toBe(true);
     }
   });
 
