@@ -15,8 +15,9 @@ import { downloadXlsx } from '../api/importApi'
 import { formatMAD, formatNumber, formatPercent, toNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardContent, CardDescription,
-  Stat, Badge, StatusPill, Segmented, Skeleton, EmptyState,
+  Stat, Badge, StatusPill, Segmented, Skeleton, EmptyState, Progress,
 } from '../ui'
+import { Table } from './reporting/Table'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
 // K149 — toutes les figures passent par les utilitaires F19 (Intl fr-MA / MAD).
@@ -62,7 +63,7 @@ function TooltipDH({ active, payload, label }) {
   )
 }
 
-// ── Barre de conversion (token-themed) ───────────────────────────────────────
+// ── Barre de conversion (J146 — composant Progress partagé) ──────────────────
 function ConversionBar({ label, value, max, tone }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
   return (
@@ -74,37 +75,30 @@ function ConversionBar({ label, value, max, tone }) {
           <span className="font-normal text-muted-foreground">({formatPercent(pct)})</span>
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={tone}
-          style={{ width: `${pct}%`, height: '100%', borderRadius: 9999, transition: 'width 0.6s ease' }}
-        />
-      </div>
+      <Progress value={pct} tone={tone} />
     </div>
   )
 }
 
 // ── Valeur du pipeline (T7) — section auto-chargée (lecture seule) ───────────
 function StageTable({ title, rows, keyField, labelField }) {
+  // J146 — migré vers le primitif Table partagé (plus de <table data-table>).
+  // L878 — le primitif enveloppe toujours sa table d'un conteneur scrollable.
   return (
     <div>
       <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </div>
-      {/* L878 — table scrollable dans sa carte (pas de scroll horizontal de page sur 375px). */}
-      <div className="overflow-x-auto">
-        <table className="data-table">
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s[keyField]}>
-                <td>{s[labelField]}</td>
-                <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(s.count)}</td>
-                <td className="ta-right font-semibold tabular-nums">{dh(s.valeur)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Table
+        aria-label={title}
+        getRowKey={(s) => s[keyField]}
+        columns={[
+          { key: labelField, cell: (s) => s[labelField] },
+          { key: 'count', align: 'right', cellClassName: 'text-muted-foreground', cell: (s) => formatNumber(s.count) },
+          { key: 'valeur', align: 'right', cellClassName: 'font-semibold', cell: (s) => dh(s.valeur) },
+        ]}
+        rows={rows}
+      />
     </div>
   )
 }
@@ -152,20 +146,16 @@ function PipelineSection() {
                 <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Pertes par motif
                 </div>
-                {/* L878 — table scrollable dans sa carte (pas de scroll horizontal de page sur 375px). */}
-                <div className="overflow-x-auto">
-                  <table className="data-table">
-                    <tbody>
-                      {p.perdus_par_motif.map((m) => (
-                        <tr key={m.motif}>
-                          <td>{m.motif}</td>
-                          <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(m.count)}</td>
-                          <td className="ta-right tabular-nums">{dh(m.valeur)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table
+                  aria-label="Pertes par motif"
+                  getRowKey={(m) => m.motif}
+                  columns={[
+                    { key: 'motif', cell: (m) => m.motif },
+                    { key: 'count', align: 'right', cellClassName: 'text-muted-foreground', cell: (m) => formatNumber(m.count) },
+                    { key: 'valeur', align: 'right', cell: (m) => dh(m.valeur) },
+                  ]}
+                  rows={p.perdus_par_motif}
+                />
               </div>
             )}
           </div>
@@ -436,9 +426,9 @@ export function Component() {
         <Card>
           <CardHeader><CardTitle>Tunnel de conversion</CardTitle></CardHeader>
           <CardContent>
-            <ConversionBar label="Devis créés" value={conversion.nb_devis} max={conversion.nb_devis} tone="bg-info" />
-            <ConversionBar label="Devis acceptés" value={conversion.nb_acceptes} max={conversion.nb_devis} tone="bg-success" />
-            <ConversionBar label="Factures émises" value={conversion.nb_factures} max={conversion.nb_devis} tone="bg-primary" />
+            <ConversionBar label="Devis créés" value={conversion.nb_devis} max={conversion.nb_devis} tone="info" />
+            <ConversionBar label="Devis acceptés" value={conversion.nb_acceptes} max={conversion.nb_devis} tone="success" />
+            <ConversionBar label="Factures émises" value={conversion.nb_factures} max={conversion.nb_devis} tone="primary" />
             {conversion.nb_devis > 0 && (
               <div className="mt-4 rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
                 Taux de conversion global :{' '}
@@ -495,34 +485,23 @@ export function Component() {
         <Card className="mb-4">
           <CardHeader><CardTitle>Créances clients (factures impayées)</CardTitle></CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Client</th>
-                    <th className="ta-right">Nb factures</th>
-                    <th className="ta-right">Montant total</th>
-                    <th className="ta-right">Retard max</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {creances.map((c, i) => (
-                    <tr key={i}>
-                      <td className="font-medium">{c.client}</td>
-                      <td className="ta-right text-muted-foreground tabular-nums">{formatNumber(c.nb_factures)}</td>
-                      <td className="ta-right font-semibold tabular-nums text-destructive">{dh(c.montant_total)}</td>
-                      <td className="ta-right">
-                        {c.jours_retard_max > 0 ? (
-                          <StatusPill tone="danger" dot={false} label={`${c.jours_retard_max} j`} />
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table
+              aria-label="Créances clients"
+              columns={[
+                { key: 'client', header: 'Client', cellClassName: 'font-medium', cell: (c) => c.client },
+                { key: 'nb_factures', header: 'Nb factures', align: 'right', cellClassName: 'text-muted-foreground', cell: (c) => formatNumber(c.nb_factures) },
+                { key: 'montant_total', header: 'Montant total', align: 'right', cellClassName: 'font-semibold text-destructive', cell: (c) => dh(c.montant_total) },
+                {
+                  key: 'jours_retard_max',
+                  header: 'Retard max',
+                  align: 'right',
+                  cell: (c) => (c.jours_retard_max > 0
+                    ? <StatusPill tone="danger" dot={false} label={`${c.jours_retard_max} j`} />
+                    : <span className="text-muted-foreground">—</span>),
+                },
+              ]}
+              rows={creances}
+            />
           </CardContent>
         </Card>
       )}
