@@ -40,16 +40,37 @@ img, table, pre { max-width: 100%; }
 /* M62 — Défilement fluide (ancres, scrollIntoView). */
 html { scroll-behavior: smooth; }
 
-/* M62 — Confort de mouvement (catch-all). En complément des `--motion-*` déjà
-   mis à 0 dans tokens.css, on neutralise TOUTE animation/transition CSS — y
-   compris celles des écrans legacy qui n'utilisent pas ces tokens — quand
-   l'utilisateur demande à réduire les animations. */
+/* M62 / N163 — Confort de mouvement RAFFINÉ. On NE coupe PAS tout : sous
+   `prefers-reduced-motion` on supprime le MOUVEMENT et l'ÉCHELLE (translations,
+   scale, animations qui bougent) mais on CONSERVE les transitions d'OPACITÉ et
+   de COULEUR — elles restituent un retour visuel (survol, état, apparition) sans
+   gêner les personnes sensibles au mouvement (WCAG 2.3.3 « Animation from
+   Interactions »). En complément des `--motion-*` déjà mis à 0 dans tokens.css.
+
+   Mécanique :
+     • on neutralise les keyframes (elles décrivent souvent translate/scale) ;
+     • on annule les transitions de `transform` (le mouvement) et on remet
+       `transform` à son état final immédiat ;
+     • les autres transitions (couleur/opacité/fond) gardent une durée courte. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+    /* Mouvement coupé : on retire `transform` de la liste des propriétés en
+       transition (plus d'animation de translation/scale), mais on GARDE des
+       transitions courtes pour opacité / couleur / fond / ombre / contour. */
+    transition-property: opacity, color, background-color, border-color,
+                         box-shadow, fill, stroke !important;
+    transition-duration: 120ms !important;
+  }
+  /* Annulation de la mise à l'échelle d'INTERACTION (:active/:hover) introduite
+     par la passe tactile / la coquille : aucun résidu de mouvement/échelle.
+     Ciblé sur les contrôles concernés (pas `*` : on ne casse pas les transforms
+     de positionnement comme translateY(-50%)). */
+  button:active, [role="button"]:active, .btn:active, .btn-sm:active,
+  a.btn:active, .header-brand:hover, .header-brand:active {
+    transform: none !important;
   }
 }
 
