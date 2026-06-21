@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Trash2, Plus, Settings, Search, Download, Inbox, Pencil, Bell, Save,
+  Check, CheckCircle2, AlertCircle, Loader2,
 } from 'lucide-react'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
@@ -8,7 +9,8 @@ import { formatMAD, formatNumber, formatPercent, formatDate, formatPhoneMA } fro
 import {
   Button, IconButton, Spinner,
   Badge, StatusPill, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
-  Stat, Separator, Skeleton, SkeletonText, EmptyState,
+  Stat, Separator, Skeleton, SkeletonText, SkeletonLine, SkeletonAvatar, SkeletonCard, EmptyState,
+  ErrorBoundary,
   Label, Input, Textarea, CurrencyInput, PercentInput, PhoneInput,
   Checkbox, Switch, RadioGroup, RadioGroupItem, Slider, Segmented,
   Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
@@ -25,6 +27,10 @@ import {
   FileUpload,
   Form, FormSection, FormField, FormActions, FormErrorSummary, useDirtyGuard,
 } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { useConfirmDialog, toastPromise } from '../../ui/confirm'
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useOptimisticSave } from '../../hooks/useOptimisticSave'
 import { DataTableDemo } from './DataTableDemo'
 import {
   runValidation, errorSummary, isDirty, required, email,
@@ -62,6 +68,179 @@ function Section({ id, title, children }) {
       <Separator className="my-3" />
       <div className="flex flex-wrap items-start gap-3">{children}</div>
     </section>
+  )
+}
+
+/* P170 — Petits utilitaires DOC propres au guide de style (jeton mono, libellé). */
+function Code({ children }) {
+  return (
+    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8125rem] text-foreground">
+      {children}
+    </code>
+  )
+}
+
+/* Nuancier : une pastille de couleur + son rôle/jeton. La couleur vient d'une
+   variable de thème (jamais une valeur en dur) pour rester fidèle aux tokens. */
+function Swatch({ token, role, varName }) {
+  return (
+    <div className="flex w-32 flex-col gap-1.5">
+      <div
+        className="h-12 w-full rounded-lg border border-border"
+        style={{ background: `var(${varName})` }}
+        aria-hidden="true"
+      />
+      <div className="flex flex-col">
+        <span className="text-xs font-medium text-foreground">{role}</span>
+        <Code>{token}</Code>
+      </div>
+    </div>
+  )
+}
+
+/* Ligne « definition of done » avec puce verte. */
+function DoneItem({ children }) {
+  return (
+    <li className="flex items-start gap-2 text-sm">
+      <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+      <span className="text-muted-foreground">{children}</span>
+    </li>
+  )
+}
+
+/* ── P170 · Démo : confirmation + toasts (ui/confirm) ──────────────────────── */
+function ConfirmToastDemo() {
+  const { confirm, confirmDelete } = useConfirmDialog()
+
+  async function onConfirm() {
+    const ok = await confirm({
+      title: 'Marquer comme contacté ?',
+      description: 'Le lead passera à l’étape suivante du pipeline.',
+      confirmLabel: 'Marquer',
+    })
+    if (ok) toast.success('Lead marqué comme contacté.')
+  }
+
+  async function onDelete() {
+    const ok = await confirmDelete({
+      title: 'Supprimer ce devis ?',
+      description: 'Le devis DV-2026-014 sera définitivement supprimé.',
+    })
+    if (ok) toast.error('Devis supprimé.')
+  }
+
+  function onPromise() {
+    // Promesse simulée (aucun appel réseau) : chargement → succès automatiques.
+    const fake = new Promise((resolve) => setTimeout(resolve, 1200))
+    toastPromise(fake, {
+      loading: 'Enregistrement du devis…',
+      success: 'Devis enregistré.',
+      error: 'Échec de l’enregistrement.',
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="outline" onClick={onConfirm}>Confirmation générique</Button>
+      <Button variant="destructive" onClick={onDelete}><Trash2 /> Confirmer la suppression</Button>
+      <Button variant="outline" onClick={onPromise}>toastPromise (mutation)</Button>
+    </div>
+  )
+}
+
+/* ── P170 · Démo : ResponsiveDialog (modale bureau / tiroir bas mobile) ────── */
+function ResponsiveDialogDemo() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex flex-col gap-2">
+      <Button variant="outline" onClick={() => setOpen(true)}>Ouvrir le dialog adaptatif</Button>
+      <p className="max-w-md text-xs text-muted-foreground">
+        Même surface de props ; modale centrée à partir de 768 px, tiroir bas en dessous.
+      </p>
+      <ResponsiveDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Assigner le lead"
+        description="Choisissez le commercial responsable de ce dossier."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={() => { setOpen(false); toast.success('Lead assigné.') }}>Assigner</Button>
+          </>
+        }
+      >
+        <p className="py-2 text-sm text-muted-foreground">
+          Contenu identique quelle que soit la taille d’écran — un seul composant.
+        </p>
+      </ResponsiveDialog>
+    </div>
+  )
+}
+
+/* ── P170 · Démo : useDelayedLoading (anti-scintillement) ──────────────────── */
+function DelayedLoadingDemo() {
+  const [loading, setLoading] = useState(false)
+  const { phase, showSpinner, showSkeleton } = useDelayedLoading(loading)
+
+  function run(ms) {
+    setLoading(true)
+    setTimeout(() => setLoading(false), ms)
+  }
+
+  return (
+    <div className="flex w-full max-w-md flex-col gap-3">
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={() => run(150)}>Rapide (150 ms)</Button>
+        <Button size="sm" variant="outline" onClick={() => run(400)}>Moyen (400 ms)</Button>
+        <Button size="sm" variant="outline" onClick={() => run(900)}>Lent (900 ms)</Button>
+      </div>
+      <div className="flex min-h-[72px] items-center rounded-lg border border-border bg-card p-3">
+        {phase === 'idle' && <span className="text-sm text-muted-foreground">Prêt — lancez un chargement.</span>}
+        {phase === 'pending' && <span className="text-sm text-muted-foreground">…</span>}
+        {showSpinner && <span className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</span>}
+        {showSkeleton && <div className="w-full"><SkeletonText lines={2} /></div>}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Phase actuelle : <Code>{phase}</Code>. Rien sous 300 ms, spinner 300–500 ms, squelette au-delà.
+      </p>
+    </div>
+  )
+}
+
+/* ── P170 · Démo : useOptimisticSave (edit optimiste + rollback) ───────────── */
+function OptimisticSaveDemo() {
+  const [serverValue, setServerValue] = useState('Reda Kasri')
+  const { value, statusLabel, status, save } = useOptimisticSave(serverValue)
+  const [draft, setDraft] = useState(serverValue)
+
+  // Commit simulé : réussit après 700 ms, ou rejette si on demande l'échec.
+  function commitOk(next) {
+    return new Promise((resolve) => setTimeout(() => { setServerValue(next); resolve(next) }, 700))
+  }
+  function commitFail() {
+    return new Promise((unused, reject) => setTimeout(() => reject(new Error('réseau')), 700))
+  }
+
+  return (
+    <div className="flex w-full max-w-md flex-col gap-3">
+      <div className="grid gap-1.5">
+        <Label htmlFor="opt-name">Nom du client (affiché : optimiste)</Label>
+        <Input id="opt-name" value={draft} onChange={(e) => setDraft(e.target.value)} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={() => save(draft, commitOk)}>Enregistrer (réussit)</Button>
+        <Button size="sm" variant="outline" onClick={() => save(draft, commitFail)}>Enregistrer (échoue → rollback)</Button>
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          {status === 'saving' && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+          {status === 'saved' && <CheckCircle2 className="size-4 text-success" aria-hidden="true" />}
+          {status === 'error' && <AlertCircle className="size-4 text-destructive" aria-hidden="true" />}
+          {statusLabel || (status === 'error' ? 'Échec — valeur restaurée' : '')}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Valeur affichée : <Code>{String(value)}</Code> — appliquée immédiatement, restaurée si le commit rejette.
+      </p>
+    </div>
   )
 }
 
@@ -122,6 +301,258 @@ export function UIShowcase() {
               <ThemeToggle />
             </div>
           </header>
+
+          {/* ── P170 — Fondation du design system (Groupe F) documentée ─────── */}
+          <section id="tokens" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">Jetons de design (fondation F)</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Système à 3 couches : primitives de marque (OKLCH) → rôles sémantiques (clair/sombre)
+              → composants. Aucun écran existant ne change ; les nouveaux primitifs consomment ces jetons.
+            </p>
+            <Separator className="my-3" />
+
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Couleurs sémantiques</h3>
+            <div className="flex flex-wrap gap-3">
+              <Swatch role="Fond" token="--background" varName="--background" />
+              <Swatch role="Surface / carte" token="--card" varName="--card" />
+              <Swatch role="Primaire (laiton)" token="--primary" varName="--primary" />
+              <Swatch role="Accent" token="--accent" varName="--accent" />
+              <Swatch role="Succès" token="--success" varName="--success" />
+              <Swatch role="Attention" token="--warning" varName="--warning" />
+              <Swatch role="Danger" token="--destructive" varName="--destructive" />
+              <Swatch role="Info" token="--info" varName="--info" />
+              <Swatch role="Bordure" token="--border" varName="--border" />
+              <Swatch role="Anneau de focus" token="--ring" varName="--ring" />
+            </div>
+
+            <h3 className="mb-2 mt-5 text-sm font-semibold text-foreground">
+              Palette de marque (OKLCH) — laiton « énergie »
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              <Swatch role="brass 100" token="--color-brass-100" varName="--color-brass-100" />
+              <Swatch role="brass 300" token="--color-brass-300" varName="--color-brass-300" />
+              <Swatch role="brass 400" token="--color-brass-400" varName="--color-brass-400" />
+              <Swatch role="brass 500" token="--color-brass-500" varName="--color-brass-500" />
+              <Swatch role="azur 600" token="--color-azur-600" varName="--color-azur-600" />
+              <Swatch role="nuit" token="--color-nuit" varName="--color-nuit" />
+              <Swatch role="lune" token="--color-lune" varName="--color-lune" />
+            </div>
+
+            <h3 className="mb-2 mt-5 text-sm font-semibold text-foreground">
+              Échelle typographique (F121) — 7 paliers
+            </h3>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-display font-display font-bold">Display — 3rem</p>
+              <p className="text-h1 font-display font-bold">Titre H1 — 2,25rem</p>
+              <p className="text-h2 font-display font-semibold">Titre H2 — 1,75rem</p>
+              <p className="text-h3 font-display font-semibold">Titre H3 — 1,375rem</p>
+              <p className="text-body">Corps — 1rem · interligne confortable pour la lecture.</p>
+              <p className="text-small text-muted-foreground">Small — 0,875rem · libellés, aides.</p>
+              <p className="text-caption text-muted-foreground">Caption — 0,75rem · légendes, notes de bas.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Le tracking se resserre vers les grandes tailles ; <Code>.tabular-nums</Code> aligne les
+                chiffres (montants, références) avec zéro barré.
+              </p>
+            </div>
+
+            <h3 className="mb-2 mt-5 text-sm font-semibold text-foreground">
+              Élévation (F122) — par rôle, jamais « flottant » au hasard
+            </h3>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="rounded-lg bg-card p-3 text-xs text-muted-foreground shadow-card">Carte · shadow-card (liseré 1px)</div>
+              <div className="rounded-lg bg-card p-3 text-xs text-muted-foreground shadow-card-hover">Survol · shadow-card-hover</div>
+              <div className="rounded-lg bg-card p-3 text-xs text-muted-foreground shadow-menu">Menu · shadow-menu</div>
+              <div className="rounded-lg bg-card p-3 text-xs text-muted-foreground shadow-modal">Modal · shadow-modal</div>
+              <div className="rounded-lg bg-card p-3 text-xs text-muted-foreground shadow-toast">Toast · shadow-toast</div>
+            </div>
+
+            <h3 className="mb-2 mt-5 text-sm font-semibold text-foreground">
+              Anneau de focus (F122) & mouvement
+            </h3>
+            <div className="flex flex-wrap items-center gap-4">
+              <span
+                className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                style={{ boxShadow: 'var(--focus-ring)' }}
+              >
+                Aperçu de l’anneau de focus
+              </span>
+              <ul className="text-sm text-muted-foreground">
+                <li>Vitesses : <Code>--motion-fast</Code> 120ms · <Code>--motion-base</Code> 180ms · <Code>--motion-slow</Code> 260ms</li>
+                <li>Courbe : <Code>--ease-standard</Code> · respecte <Code>prefers-reduced-motion</Code></li>
+              </ul>
+            </div>
+          </section>
+
+          {/* ── P170 — Kit graphique (formatage de marque) ────────────────────── */}
+          <section id="kit" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">Kit graphique</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Conventions transverses : police de marque, formats MAD/téléphone marocains,
+              chiffres tabulaires, et iconographie (lucide-react, taille via classes).
+            </p>
+            <Separator className="my-3" />
+            <div className="flex flex-wrap items-start gap-6">
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="font-display text-base font-semibold">Archivo / Hanken Grotesk</span>
+                <span className="text-muted-foreground">font-display (titres) · font-brand (corps)</span>
+              </div>
+              <DefinitionList
+                className="w-full max-w-sm"
+                items={[
+                  { term: 'Montant (MAD)', description: <span className="tabular-nums">{formatMAD(1284500.5)}</span> },
+                  { term: 'Téléphone', description: formatPhoneMA('+212612345678') },
+                  { term: 'Chiffres tabulaires', description: <span className="tabular-nums">1 234 567 · 0OO0</span> },
+                ]}
+              />
+              <div className="flex items-center gap-3 text-muted-foreground">
+                <Bell className="size-4" aria-hidden="true" />
+                <Settings className="size-5" aria-hidden="true" />
+                <Download className="size-6" aria-hidden="true" />
+                <span className="text-xs">Icônes lucide — dimensionnées par <Code>size-*</Code></span>
+              </div>
+            </div>
+          </section>
+
+          {/* ── P170 — Modes de densité ───────────────────────────────────────── */}
+          <section id="density" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">Modes de densité</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Deux densités pilotées par <Code>data-density</Code> (jetons <Code>--control-h</Code>,
+              <Code> --row-py</Code>, <Code>--field-gap</Code>…). Le sélecteur en tête de page bascule
+              toute la vitrine — y compris le DataTable. Densité active : <Code>{density}</Code>.
+            </p>
+            <Separator className="my-3" />
+            <div className="flex flex-wrap items-start gap-4">
+              <Segmented
+                value={density}
+                onChange={setDensity}
+                options={[
+                  { value: 'comfortable', label: 'Confort (défaut)' },
+                  { value: 'compact', label: 'Compact' },
+                ]}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button>Bouton</Button>
+                <Input className="w-40" placeholder="Champ" />
+                <Badge tone="primary">Étiquette</Badge>
+              </div>
+            </div>
+          </section>
+
+          {/* ── P170 — Definition of done (checklist par composant) ───────────── */}
+          <section id="dod" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Definition of done (par composant)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Critères à cocher avant d’ajouter un composant au système. Chaque primitif livré ici
+              les respecte.
+            </p>
+            <Separator className="my-3" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Card className="p-4">
+                <CardTitle className="text-sm">Apparence & thème</CardTitle>
+                <ul className="mt-3 space-y-2">
+                  <DoneItem>Couleurs via jetons sémantiques — aucune valeur en dur.</DoneItem>
+                  <DoneItem>Rendu correct en clair ET en sombre.</DoneItem>
+                  <DoneItem>Élévation choisie par rôle (carte / menu / modal / toast).</DoneItem>
+                  <DoneItem>Réagit aux deux modes de densité.</DoneItem>
+                </ul>
+              </Card>
+              <Card className="p-4">
+                <CardTitle className="text-sm">Accessibilité & comportement</CardTitle>
+                <ul className="mt-3 space-y-2">
+                  <DoneItem>Navigable au clavier, anneau de focus visible.</DoneItem>
+                  <DoneItem>Rôles/aria corrects ; libellés en français.</DoneItem>
+                  <DoneItem>Respecte <Code>prefers-reduced-motion</Code>.</DoneItem>
+                  <DoneItem>Mobile : cible tactile ≥ 44px, repli adapté.</DoneItem>
+                </ul>
+              </Card>
+              <Card className="p-4">
+                <CardTitle className="text-sm">États</CardTitle>
+                <ul className="mt-3 space-y-2">
+                  <DoneItem>États repos / survol / focus / actif / désactivé.</DoneItem>
+                  <DoneItem>Chargement (squelette/spinner) et vide gérés.</DoneItem>
+                  <DoneItem>Erreur de saisie signalée inline (texte + couleur).</DoneItem>
+                </ul>
+              </Card>
+              <Card className="p-4">
+                <CardTitle className="text-sm">Qualité</CardTitle>
+                <ul className="mt-3 space-y-2">
+                  <DoneItem>Exporté depuis <Code>src/ui</Code>, props documentées.</DoneItem>
+                  <DoneItem>Test de rendu + (axe) accessibilité.</DoneItem>
+                  <DoneItem>Aucune nouvelle dépendance non justifiée.</DoneItem>
+                  <DoneItem>Documenté ici, dans <Code>/ui</Code>.</DoneItem>
+                </ul>
+              </Card>
+            </div>
+          </section>
+
+          {/* ── P170 — Nouveaux primitifs de fondation (confirm / dialog / etc.) ─ */}
+          <section id="foundation" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Primitifs de fondation (comportements)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Helpers transverses montés une seule fois à la racine de l’app — un seul import par page.
+              Chaque démo est isolée dans un <Code>ErrorBoundary</Code> pour ne jamais faire planter la page.
+            </p>
+            <Separator className="my-3" />
+            <div className="flex flex-col gap-6">
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
+                  Confirmation &amp; toasts (<Code>ui/confirm</Code>)
+                </h3>
+                <ErrorBoundary><ConfirmToastDemo /></ErrorBoundary>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
+                  ResponsiveDialog (modale ↔ tiroir bas)
+                </h3>
+                <ErrorBoundary><ResponsiveDialogDemo /></ErrorBoundary>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
+                  Squelettes de chargement (variantes)
+                </h3>
+                <ErrorBoundary>
+                  <div className="grid w-full gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Ligne / texte</p>
+                      <SkeletonLine />
+                      <SkeletonText lines={3} />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Avatar + bloc</p>
+                      <div className="flex items-center gap-3">
+                        <SkeletonAvatar />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-3.5 w-1/2" />
+                          <Skeleton className="h-3 w-1/3" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Carte</p>
+                      <SkeletonCard />
+                    </div>
+                  </div>
+                </ErrorBoundary>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
+                  Chargement différé anti-scintillement (<Code>useDelayedLoading</Code>)
+                </h3>
+                <ErrorBoundary><DelayedLoadingDemo /></ErrorBoundary>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
+                  Enregistrement optimiste + rollback (<Code>useOptimisticSave</Code>)
+                </h3>
+                <ErrorBoundary><OptimisticSaveDemo /></ErrorBoundary>
+              </div>
+            </div>
+          </section>
 
           <Section id="buttons" title="Boutons">
             <Button>Principal</Button>
@@ -436,6 +867,15 @@ export function UIShowcase() {
               « X–Y sur N », persistance URL, virtualisation et repli mobile en cartes.
             </p>
             <Separator className="my-3" />
+            {/* P170 — checklist des fonctions premium, avec où les voir dans la démo. */}
+            <ul className="mb-4 grid gap-2 text-sm sm:grid-cols-2">
+              <DoneItem><strong className="text-foreground">Densité</strong> — suit le sélecteur en tête de page (hauteurs de lignes/contrôles).</DoneItem>
+              <DoneItem><strong className="text-foreground">Épinglage</strong> — la colonne « Client » est gelée à gauche (<Code>pinned: &apos;left&apos;</Code>).</DoneItem>
+              <DoneItem><strong className="text-foreground">Barre d’actions groupées</strong> — cochez des lignes : slots configurables (assigner, statut, export, supprimer).</DoneItem>
+              <DoneItem><strong className="text-foreground">Cartes mobiles</strong> — sous 768 px, chaque ligne devient une carte empilée.</DoneItem>
+              <DoneItem><strong className="text-foreground">Édition en place</strong> — le montant est éditable (validation + toast + annuler).</DoneItem>
+              <DoneItem><strong className="text-foreground">Virtualisation</strong> — la 2ᵉ table fait défiler 619 lignes sans dépendance.</DoneItem>
+            </ul>
             <DataTableDemo />
           </section>
         </div>
