@@ -389,12 +389,25 @@ class DevisViewSet(viewsets.ModelViewSet):
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
-            # ERR74 — /proposal is a safe GET: render + stream, but do NOT
-            # persist fichier_pdf on every call (persist=False). The async
-            # generate-pdf task remains the path that records the key.
-            key = generate_premium_devis_pdf(
-                devis.id, clean_pdf_options(raw), persist=False)
-            pdf_bytes = download_pdf(key)
+            opts = clean_pdf_options(raw)
+            # Moteur redessiné (v2) pour le cas standard ; repli AUTOMATIQUE sur
+            # le moteur premium éprouvé pour tout ce qu'il ne couvre pas encore
+            # (one-page, étude, devis à une seule option, pompage). Le repli
+            # garantit qu'un PDF client n'est jamais cassé.
+            pdf_bytes = None
+            try:
+                from ..quote_engine_v2 import production as v2prod
+                if v2prod.v2_enabled():
+                    pdf_bytes = v2prod.render_pdf_bytes(devis, opts)
+            except Exception:
+                pdf_bytes = None
+            if pdf_bytes is None:
+                # ERR74 — /proposal is a safe GET: render + stream, but do NOT
+                # persist fichier_pdf on every call (persist=False). The async
+                # generate-pdf task remains the path that records the key.
+                key = generate_premium_devis_pdf(
+                    devis.id, opts, persist=False)
+                pdf_bytes = download_pdf(key)
         except Exception as exc:
             return Response(
                 {'detail': f'Génération de la proposition échouée : {exc}'},
