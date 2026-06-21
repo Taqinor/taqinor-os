@@ -1145,7 +1145,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   "salle blanche" palette-swap with its seam.** Files: `apps/web/src/styles/global.css`, light-section pages.
 - [ ] W176 — **Align off-scale section headings** (`DiagnosticForm`, `Faq`, `CtaBand`) to
   `v2-section-title`. Files: those components.
-- [ ] W177 — **Add a design-tokens doc + optional lint** guarding arbitrary `text-[…]`/`shadow-[…]`
+- [x] W177 — **Add a design-tokens doc + optional lint** guarding arbitrary `text-[…]`/`shadow-[…]`
   figure values. Files: `apps/web/STYLE.md` (or new doc), `apps/web/tests/`.
 
 **— Imagery & media —**
@@ -1217,7 +1217,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Motion & micro-interactions —**
 
-- [ ] W202 — **Fix the anchor scroll offset under the sticky header** (`#simulateur` lands hidden);
+- [x] W202 — **Fix the anchor scroll offset under the sticky header** (`#simulateur` lands hidden);
   add `scroll-padding-top`. Files: `apps/web/src/styles/global.css`.
 - [x] W203 — **Card-level hover (lift/border) on content + product cards** (many clickable cards
   have no hover at all). Files: `apps/web/src/styles/global.css` (`.cine-card`) + card wrappers.
@@ -1227,14 +1227,14 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   is static text). Files: `apps/web/src/pages/index.astro`.
 - [x] W206 — **Extract a `cine-in` stagger token** (literal `animation-delay:120/240/360ms`
   repeated across ~40 hero blocks). Files: `apps/web/src/styles/global.css` + heroes.
-- [ ] W207 — **Wire up or remove the orphaned `.reveal`/`.emerge` CSS scroll-timeline reveals**
+- [x] W207 — **Wire up or remove the orphaned `.reveal`/`.emerge` CSS scroll-timeline reveals**
   (defined, zero usages). Files: `apps/web/src/styles/global.css`, `v3-photo-motion.css`.
 - [ ] W208 — **Optional slow shimmer on `.seam-lumiere` + subtle brand-logo/testimonial-card hover.**
   Files: `apps/web/src/styles/global.css`, `v2.css`, `BrandStrip.astro`, `Testimonials.astro`.
 
 **— Shared interaction primitives —**
 
-- [ ] W209 — **Global `focus-visible` brass ring on all interactive elements** (CTAs/nav/card
+- [x] W209 — **Global `focus-visible` brass ring on all interactive elements** (CTAs/nav/card
   links have none; some set `focus:outline-none`). Files: `apps/web/src/styles/global.css` + chrome.
 - [ ] W210 — **Propagate the signature `.glow` to every primary CTA** (header, CtaBand, StickyCta
   are flat `transition-colors`). Files: `Header.astro`, `CtaBand.astro`, `StickyCta.astro`.
@@ -1260,7 +1260,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   metric-matched fallbacks** to kill the FOUT flash and font-swap CLS on the LCP `<h1>`. Files:
   `apps/web/src/layouts/Layout.astro`, `apps/web/src/styles/global.css`.
 - [ ] W216 — **Skip-to-content link + `id` on `<main>`.** Files: `apps/web/src/layouts/Layout.astro`.
-- [ ] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
+- [x] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
   the dark canvas + scrollbar/autofill) + a `::selection` brass color. Files: `apps/web/src/styles/global.css`.
 - [x] W218 — **Complete the favicon/app-icon set** + `site.webmanifest` + `theme-color`.
   *(Shipped 2026-06-21: real brand lockup wired as `apple-touch-icon.png` (256px) + `icon-512.png`
@@ -1275,7 +1275,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   Files: `apps/web/src/layouts/Layout.astro`.
 - [ ] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
   `apps/web/src/styles/v2.css`, `apps/web/src/lib/countup.ts`.
-- [ ] W221 — **Add `prefers-contrast: more` / `forced-colors` handling** for the faint "lune"
+- [x] W221 — **Add `prefers-contrast: more` / `forced-colors` handling** for the faint "lune"
   inks and brass glow. Files: `apps/web/src/styles/global.css`.
 
 ---
@@ -1457,3 +1457,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W198: optional cover field in content schema; graceful cover figure on blog articles; hover lift on guides/blog index cards (reduced-motion gated).
 - 2026-06-21 — W199: reusable Callout / PullQuote / KeyFigure prose components (accessible), wired into a guide as example.
 - 2026-06-21 — W200: RelatedLinks component replacing duplicated internal-link chip rows across 11 guides + blog; branded list/table styling + mobile reflow in prose.css; 73 new tests (proseW195to200).
+- 2026-06-21 — W202: html scroll-padding-top (clamp 4–5.5rem) so sticky-header anchors land below the header.
+- 2026-06-21 — W209: global :focus-visible brass ring on a/button/[role=button]/inputs/select/textarea/summary (overridable).
+- 2026-06-21 — W217: color-scheme: dark globally (native controls/scrollbars) + brass ::selection.
+- 2026-06-21 — W221: prefers-contrast: more remaps faint inks + kills .lum glow; forced-colors neutralizes decorative shadows and defers to system colors.
+- 2026-06-21 — W207: removed dead .reveal/.emerge scroll-timeline CSS (zero usages confirmed by grep), left a note.
+- 2026-06-21 — W177: STYLE.md §7 design-system tokens/utilities doc + tests/styleTokens.test.ts (39 assertions guarding token/utility presence; +dead-class-stays-removed).
