@@ -112,9 +112,9 @@ class TestAgricoleRender(SimpleTestCase):
         data.update(opts)
         return render.build_html(renderer._augment(data))
 
-    def test_five_page_roots_present(self):
+    def test_four_page_roots_present(self):
         html = self._html()
-        for cls in ("a1-root", "a2-root", "a3-root", "a4-root", "a5-root"):
+        for cls in ("a1-root", "a2-root", "a3-root", "a4-root"):
             self.assertIn(cls, html)
 
     def test_key_content_present(self):
@@ -144,14 +144,14 @@ class TestAgricoleRender(SimpleTestCase):
 
 @tag("weasyprint")
 class TestAgricolePageCount(SimpleTestCase):
-    """Real PDF render — exactly 5 A4 pages (WeasyPrint, CI/Docker)."""
-    def test_five_pages(self):
+    """Real PDF render — exactly 4 A4 pages (WeasyPrint, CI/Docker)."""
+    def test_four_pages(self):
         try:
             import weasyprint  # noqa: F401
         except Exception:  # pragma: no cover - skip where native libs absent
             self.skipTest("weasyprint native libs unavailable")
         from weasyprint import HTML
-        data = renderer._augment(sample_data.build("agrumes"))
-        html = render.build_html(data)
-        doc = HTML(string=html).render()
-        self.assertEqual(len(doc.pages), 5)
+        for key in sample_data.keys():
+            data = renderer._augment(sample_data.build(key))
+            doc = HTML(string=render.build_html(data)).render()
+            self.assertEqual(len(doc.pages), 4, f"{key} not 4 pages")

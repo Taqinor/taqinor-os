@@ -16,20 +16,21 @@ selected for `mode_installation == "agricole"` in the full/premium format
 (`backend/django_core/apps/ventes/quote_engine/agricole/`). The agricole one-page
 format stays on the legacy engine (fast WhatsApp/field send).
 
-Five A4 pages:
+**Four A4 pages** (consolidated 2026-06-21 from the original airy 5-page layout,
+which is frozen on tag `agricole-quote-v5-5pages` / branch
+`agricole-quote-v5-5pages-locked` — restore with `git checkout` if ever wanted):
 1. **Cover / "En un coup d'œil"** — hero water/day number, "0 carburant",
-   6 at-a-glance cards (débit, HMT, pompe, kWc, économie/an, amortissement,
-   subvention FDA), tangibility ("≈ X ha irrigués"), CO₂.
+   6 at-a-glance cards (débit, HMT, pompe, kWc, économie/an, amortissement),
+   tangibility ("≈ X ha irrigués"), CO₂.
 2. **Étude technique** — labelled system schematic (soleil → panneaux → variateur
-   → pompe/forage → bassin → champ), the HMT breakdown, the sizing chain, the
-   1.4× array rationale.
-3. **Production & équipement** — water-delivered-per-month + PV-production charts,
-   the equipment table with brand/description/warranty + Sous-total HT.
-4. **Investissement & rentabilité** — transparent HT→remise→TVA→TTC chain, the
-   FDA 30 % subsidy block, **solaire vs butane vs diesel** (annual cost + cost/m³),
-   the décompensation punch line, payback curve, CO₂/fuel-avoided.
-5. **Confiance & engagement** — garanties, FDA/ABH accompaniment, conditions,
-   next steps, "Bon pour accord" signature, CTA.
+   → pompe/forage → bassin → champ), the HMT breakdown, the sizing chain, AND the
+   water-delivered + PV-production charts (folded up to fill the page).
+3. **Équipement & investissement** — equipment table (brand/description/warranty),
+   the transparent HT→remise→TVA→TTC chain + FDA 30 % subsidy side by side, and
+   the garanties badges.
+4. **Rentabilité & engagement** — **solaire vs butane vs diesel** annual cost +
+   payback curve + the décompensation punch line + CO₂/fuel-avoided, then
+   conditions + "Bon pour accord" signature + CTA.
 
 Supporting modules:
 - `economics.py` + `constants.py` — solar-vs-butane-vs-diesel, FDA subsidy,
@@ -58,8 +59,9 @@ Toggleable persuasion sections (founder choice): `show_subsidy`,
 
 ## Verification
 - 3 real sample PDFs rendered (citrus/Souss-Massa, olive/Saïss surface pump,
-  date palm/Drâa diesel) — each exactly 5 pages, no overflow:
-  `docs/samples/agricole/`.
+  date palm/Drâa diesel) — each exactly 4 pages, no overflow:
+  `docs/samples/agricole_4p/` (the locked 5-page set stays in
+  `docs/samples/agricole/`).
 - Backend tests: `apps/ventes/tests/test_agricole_quote.py` (selection,
   economics, toggles, no-invented-numbers, render content, 5-page WeasyPrint).
   Pure-Python parts verified locally; the WeasyPrint page-count test runs in CI.

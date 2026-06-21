@@ -15,7 +15,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 ENGINE = REPO / "backend" / "django_core" / "apps" / "ventes" / "quote_engine"
-OUT = REPO / "docs" / "samples" / "agricole"
+# 4-page version output. The 5-page version is frozen on the
+# `agricole-quote-v5-5pages` tag (its samples live in docs/samples/agricole/).
+OUT = REPO / "docs" / "samples" / "agricole_4p"
 
 # Import the agricole package standalone (no Django needed for company=None).
 sys.path.insert(0, str(ENGINE))

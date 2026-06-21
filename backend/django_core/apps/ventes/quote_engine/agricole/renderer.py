@@ -56,7 +56,7 @@ def _augment(data: dict) -> dict:
     d.setdefault("client_full", d.get("client_name") or "Client")
     d["validity_days"] = d.get("validity_days", 30)
     d["site_url"] = d.get("site_url", "taqinor.ma")
-    d["pages_total"] = 5
+    d["pages_total"] = 4
     d["links"] = d.get("links") or {
         "realisations": "taqinor.ma/realisations",
         "avis": "taqinor.ma/avis",

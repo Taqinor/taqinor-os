@@ -8,6 +8,7 @@ def build(ctx) -> str:
     from . import theme
     d = ctx["d"]; C = ctx["C"]; fmt = ctx["fmt"]; fmt_dec = ctx["fmt_dec"]
     fonts = ctx["fonts"]; schematic = ctx.get("schematic", "")
+    charts = ctx["charts"]
     etude = d.get("etude") or {}
 
     navy = C["navy"]; gold = C["gold"]; green = C["green"]; water = C["water"]
@@ -110,6 +111,26 @@ def build(ctx) -> str:
     facts_html = "".join(
         f'<div class="a2-fact"><span>{k}</span><b>{v}</b></div>' for k, v in facts)
 
+    # Production / eau charts (folded up from the old page 3 to fill this page).
+    show_water = d.get("show_water_yield", True) and has_water
+    annual_m3 = d.get("annual_m3") or 0
+    prod_kwh = d.get("prod_kwh_year") or 0
+    chart_cards = []
+    if show_water:
+        chart_cards.append(
+            f'<div class="a2-chart"><div class="a2-ch-head">'
+            f'<div class="a2-ch-t">Eau livrée mois par mois</div>'
+            f'<div class="a2-ch-s">≈ {fmt(annual_m3)} m³/an</div></div>'
+            f'<img src="{charts["water"]}" alt="Eau par mois"></div>')
+    if prod_kwh > 0:
+        chart_cards.append(
+            f'<div class="a2-chart"><div class="a2-ch-head">'
+            f'<div class="a2-ch-t">Production solaire</div>'
+            f'<div class="a2-ch-s">≈ {fmt(prod_kwh)} kWh/an</div></div>'
+            f'<img src="{charts["production"]}" alt="Production par mois"></div>')
+    charts_html = (f'<div class="a2-charts">{"".join(chart_cards)}</div>'
+                   if chart_cards else "")
+
     css = f"""
 <style>
 .a2-root{{font-family:{f_sans};color:{ink};width:210mm;height:297mm;background:#fff;
@@ -149,10 +170,16 @@ def build(ctx) -> str:
 .a2-fact{{flex:1 1 30%;border:1px solid {line};border-radius:10px;background:{wash};padding:8px 11px;}}
 .a2-fact span{{display:block;font-size:6.8pt;letter-spacing:.06em;text-transform:uppercase;color:{muted_2};font-weight:700;}}
 .a2-fact b{{display:block;font-size:9pt;color:{ink};margin-top:2px;}}
-.a2-why{{margin-top:11px;border:1px solid #CFE3F2;border-left:4px solid {water};border-radius:12px;
-  background:linear-gradient(100deg,{water_bg},#fff 74%);padding:11px 14px;}}
+.a2-why{{margin-top:10px;border:1px solid #CFE3F2;border-left:4px solid {water};border-radius:10px;
+  background:linear-gradient(100deg,{water_bg},#fff 74%);padding:9px 13px;}}
 .a2-why b{{color:{water};}}
-.a2-why-t{{font-size:8.4pt;color:{ink};line-height:1.4;}}
+.a2-why-t{{font-size:8pt;color:{ink};line-height:1.35;}}
+.a2-charts{{display:flex;gap:12px;margin-top:12px;}}
+.a2-chart{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:12px;padding:9px 12px;}}
+.a2-ch-head{{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;}}
+.a2-ch-t{{font-size:8.2pt;font-weight:700;color:{navy};}}
+.a2-ch-s{{font-size:8.2pt;font-weight:700;color:{water};}}
+.a2-chart img{{width:100%;height:auto;display:block;}}
 </style>
 """
     sch_html = ""
@@ -175,11 +202,12 @@ def build(ctx) -> str:
     </div>
     <div class="a2-col">
       {hmt_block}
-      <div class="a2-why"><div class="a2-why-t">Le champ solaire est volontairement
-        <b>≈ 1,4 × la puissance de la pompe</b> : la pompe démarre plus tôt, traverse les passages
-        nuageux et termine le volume du jour dans la fenêtre d'ensoleillement utile.</div></div>
+      <div class="a2-why"><div class="a2-why-t">Champ solaire <b>≈ 1,4 × la pompe</b> :
+        elle démarre plus tôt, traverse les passages nuageux et termine le volume du
+        jour dans la fenêtre d'ensoleillement utile.</div></div>
     </div>
   </div>
+  {charts_html}
 </div>
 """
     return html

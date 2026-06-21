@@ -7,7 +7,7 @@ from pathlib import Path
 from . import theme
 from . import charts as charts_mod
 from . import schematic as schematic_mod
-from . import cover, study, yield_page, economics_page, trust
+from . import cover, study, yield_page, economics_page
 
 
 def build_ctx(data: dict) -> dict:
@@ -32,15 +32,21 @@ def _wrap(inner: str, n: int, data: dict) -> str:
 
 
 def build_html(data: dict) -> str:
+    """Assemble the 4-page premium agricole proposal.
+
+    p1 cover · p2 étude + schéma + production/eau · p3 équipement + prix +
+    subvention FDA + garanties · p4 rentabilité (carburant + payback + impact)
+    + conditions + signature. The 5-page airy version is preserved on the
+    `agricole-quote-v5-5pages` tag / locked branch.
+    """
     ctx = build_ctx(data)
     p1 = _wrap(cover.build(ctx), 1, data)
     p2 = _wrap(study.build(ctx), 2, data)
     p3 = _wrap(yield_page.build(ctx), 3, data)
     p4 = _wrap(economics_page.build(ctx), 4, data)
-    p5 = _wrap(trust.build(ctx), 5, data)
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}</style></head>"
-            f"<body>{p1}{p2}{p3}{p4}{p5}</body></html>")
+            f"<body>{p1}{p2}{p3}{p4}</body></html>")
 
 
 def render_pdf(out_path, data: dict) -> str:
