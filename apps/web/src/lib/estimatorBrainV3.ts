@@ -39,7 +39,7 @@
  *
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
-import { geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
+import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M } from './roofPro2';
 import {
   PANEL2_WATT,
@@ -513,6 +513,7 @@ function packFlushCells(
   setbackM: number,
   p: FlushCellParams,
   clearanceM: number,
+  overhangM = 0,
 ): { cx: number; cy: number }[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -533,26 +534,37 @@ function packFlushCells(
   }
 
   const colPitch = p.rowWidthM + PANEL_SIDE_GAP_M;
-  const rows = Math.floor((vMax - vMin) / p.rowPitchM);
-  const cols = Math.floor((uMax - uMin) / colPitch);
+  // W108 — débord : fenêtre de balayage étendue d'un nombre ENTIER de pas de chaque
+  // côté (phase du lattice inchangée → panneaux intérieurs identiques). overhangM=0
+  // → ohRows=ohCols=0 → calepinage identique à aujourd'hui.
+  const ohRows = overhangM > 0 ? Math.ceil(overhangM / p.rowPitchM) : 0;
+  const ohCols = overhangM > 0 ? Math.ceil(overhangM / colPitch) : 0;
+  const rows = Math.floor((vMax - vMin) / p.rowPitchM) + 2 * ohRows;
+  const cols = Math.floor((uMax - uMin) / colPitch) + 2 * ohCols;
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
   const inObstruction = (c: [number, number]): boolean =>
     obstructionsENU.some((o) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM);
+  // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
+  // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM`. overhangM=0
+  // → équivaut exactement à l'ancienne règle (dedans/pile-rive ET retrait).
   const cellInside = (corners: [number, number][]): boolean =>
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
-      return (pointInPolygon(c, ringENU) || d <= EDGE_EPS_M) && d >= setbackM - EDGE_EPS_M;
+      const sd = pointInPolygon(c, ringENU) ? d : -d;
+      return sd >= setbackM - overhangM - EDGE_EPS_M;
     });
 
+  const vStart = vMin + setbackM - ohRows * p.rowPitchM;
+  const uStart = uMin + setbackM - ohCols * colPitch;
   const panels: { cx: number; cy: number }[] = [];
   for (let r = 0; r < rows; r++) {
-    const v0 = vMin + setbackM + r * p.rowPitchM;
+    const v0 = vStart + r * p.rowPitchM;
     const v1 = v0 + p.panelPlanDepthM;
-    if (v1 > vMax - setbackM + EDGE_EPS_M) break;
+    if (v1 > vMax - setbackM + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
-      const u0 = uMin + setbackM + c * colPitch;
+      const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
       const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];
       if (!cellInside(corners)) continue;
@@ -568,21 +580,25 @@ function packFlushCells(
  * Pave UN pan en pente, en portrait ET paysage, garde le meilleur. L'inclinaison =
  * la pente du pan, l'azimut = la face du pan — imposés, jamais balayés.
  */
-export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clearanceM?: number } = {}): FlushPack {
+export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clearanceM?: number; overhangM?: number } = {}): FlushPack {
   const { ring, pitchDeg, facingAzimuthDeg } = plane;
   const areaM2 = geodesicAreaM2(ring);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
+  // W108 — débord autorisé des panneaux au-delà de la rive (rails sur le toit).
+  const overhangM = Math.max(0, opts.overhangM ?? 0);
   const beta = pitchDeg * DEG2RAD;
   const obstructions = plane.obstructions ?? [];
-  const usableAreaM2 = Math.max(0, areaM2 - obstructionOverlapM2(ring, obstructions, areaM2));
+  // W108 — borne « Σ empreintes ≤ utile » élargie de l'anneau de débord (Minkowski).
+  const overhangRingM2 = overhangM > 0 ? geodesicPerimeterM(ring) * overhangM + Math.PI * overhangM * overhangM : 0;
+  const usableAreaM2 = Math.max(0, areaM2 + overhangRingM2 - obstructionOverlapM2(ring, obstructions, areaM2));
   const off = offSouth(facingAzimuthDeg);
   const northFacing = Math.abs(off) > NORTH_FACING_OFFSOUTH_DEG;
 
   const buildGrid = (orientation: AxisOrient, slopeLenM: number, rowWidthM: number, ringENU: [number, number][], obsENU: [number, number][][]): FlushGrid => {
     const panelPlanDepthM = slopeLenM * Math.cos(beta);
     const rowPitchM = panelPlanDepthM + FLUSH_MAINTENANCE_GAP_M;
-    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM);
+    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM);
     return {
       orientation,
       count: panels.length,
