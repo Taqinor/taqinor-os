@@ -211,6 +211,9 @@ class Installation(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+    # FG100 — champs personnalisés (additif, jamais destructif).
+    # Les définitions viennent de apps.customfields (module='installation').
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Chantier'

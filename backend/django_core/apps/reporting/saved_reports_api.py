@@ -24,8 +24,8 @@ class SavedReportSerializer(serializers.ModelSerializer):
         # company + owner posés côté serveur — jamais lus du corps.
         fields = [
             'id', 'name', 'definition', 'target_kind', 'target_kind_label',
-            'schedule', 'schedule_label', 'recipients', 'last_sent_at',
-            'created_at', 'updated_at',
+            'schedule', 'schedule_label', 'recipients', 'pinned',
+            'last_sent_at', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'target_kind_label', 'schedule_label', 'last_sent_at',

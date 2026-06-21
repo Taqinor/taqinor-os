@@ -13,6 +13,10 @@ class CustomFieldDef(models.Model):
         LEAD = 'lead', 'Lead'
         CLIENT = 'client', 'Client'
         PRODUIT = 'produit', 'Produit'
+        # FG100 — nouveaux modules opérationnels (additif, jamais destructif).
+        DEVIS = 'devis', 'Devis'
+        INSTALLATION = 'installation', 'Chantier'
+        TICKET = 'ticket', 'Ticket SAV'
 
     class FieldType(models.TextChoices):
         TEXT = 'text', 'Texte'

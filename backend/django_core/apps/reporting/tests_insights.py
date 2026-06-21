@@ -293,3 +293,322 @@ class TestCommissions(InsightsBase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
         resp = api.get(f'{BASE}/commissions/')
         self.assertEqual(resp.status_code, 403)
+
+
+class TestSalesLeaderboard(InsightsBase):
+    """FG93 — classement commerciaux : CA HT, taux victoire, deal moyen, kWc."""
+
+    def _make_devis_with_ligne(self, company, reference, client, produit,
+                                lead=None, statut='accepte',
+                                date_acceptation=None):
+        """Crée un devis avec une ligne (total_ht calculé dynamiquement)."""
+        from datetime import date
+        from apps.ventes.models import Devis, LigneDevis
+        devis = Devis.objects.create(
+            company=company, reference=reference, client=client,
+            lead=lead, statut=statut,
+            date_acceptation=date_acceptation or date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='Produit test',
+            quantite=Decimal('5'), prix_unitaire=Decimal('10000'))
+        return devis
+
+    def test_leaderboard_shape_and_scope(self):
+        """CA HT calculé depuis les lignes ; classement borné à la société."""
+        from datetime import date
+        from apps.crm.models import Client
+        # Crée un commercial avec un lead et un devis signé.
+        owner = User.objects.create_user(
+            username='lb_comm1', password='x',
+            role_legacy='responsable', company=self.company)
+        client = Client.objects.create(company=self.company, nom='CLI-LB')
+        produit = Produit.objects.create(
+            company=self.company, nom='P-LB', sku='LB-1',
+            prix_vente=Decimal('10000'))
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead LB', stage='SIGNED', owner=owner)
+        self._make_devis_with_ligne(
+            self.company, 'D-LB-1', client, produit, lead=lead)
+
+        resp = self.api.get('/api/django/reporting/insights/sales-leaderboard/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('rows', resp.data)
+        rows = resp.data['rows']
+        self.assertTrue(len(rows) >= 1)
+        row = next((r for r in rows if r['commercial'] == 'lb_comm1'), None)
+        self.assertIsNotNone(row, 'lb_comm1 manquant dans le classement')
+        for key in ('ca_ht', 'nb_devis_signes', 'avg_deal_ht', 'kwc'):
+            self.assertIn(key, row)
+        self.assertEqual(row['nb_devis_signes'], 1)
+        # CA HT = 5 × 10 000 = 50 000
+        self.assertEqual(Decimal(row['ca_ht']), Decimal('50000'))
+
+    def test_other_company_excluded(self):
+        """Données d'une autre société jamais incluses."""
+        from datetime import date
+        from apps.crm.models import Client
+        other_client = Client.objects.create(company=self.other, nom='OtherCli')
+        other_produit = Produit.objects.create(
+            company=self.other, nom='P-OTHER', sku='OTH-1',
+            prix_vente=Decimal('100'))
+        other_user = User.objects.create_user(
+            username='other_lbcom', password='x',
+            role_legacy='responsable', company=self.other)
+        from apps.ventes.models import Devis, LigneDevis
+        devis = Devis.objects.create(
+            company=self.other, reference='D-LB-OTHER', client=other_client,
+            statut=Devis.Statut.ACCEPTE, date_acceptation=date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=other_produit, designation='P',
+            quantite=Decimal('1'), prix_unitaire=Decimal('9999'))
+        resp = self.api.get('/api/django/reporting/insights/sales-leaderboard/')
+        self.assertEqual(resp.status_code, 200)
+        names = {r['commercial'] for r in resp.data['rows']}
+        self.assertNotIn('other_lbcom', names)
+
+    def test_xlsx_export(self):
+        resp = self.api.get(
+            '/api/django/reporting/insights/sales-leaderboard/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
+
+
+class TestCFGroupBy(InsightsBase):
+    """FG94 — group-by sur champ personnalisé (visible_liste)."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.customfields.models import CustomFieldDef
+        # Crée un champ visible_liste sur lead pour la société courante.
+        self.cf = CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='segment',
+            libelle='Segment', type='choice',
+            options=['Résidentiel', 'Industriel'],
+            visible_liste=True, actif=True)
+
+    def test_group_by_returns_counts(self):
+        """L'endpoint compte les leads par valeur du champ personnalisé."""
+        Lead.objects.create(
+            company=self.company, nom='L1', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        Lead.objects.create(
+            company=self.company, nom='L2', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        Lead.objects.create(
+            company=self.company, nom='L3', stage='NEW',
+            custom_data={'segment': 'Industriel'})
+        # Lead sans valeur → groupe '(vide)'.
+        Lead.objects.create(company=self.company, nom='L4', stage='NEW')
+
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=segment')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = {r['valeur']: r['count'] for r in resp.data['rows']}
+        self.assertEqual(rows.get('Résidentiel'), 2)
+        self.assertEqual(rows.get('Industriel'), 1)
+        self.assertEqual(rows.get('(vide)'), 1)
+        self.assertEqual(resp.data['total'], 4)
+
+    def test_non_visible_liste_returns_404(self):
+        """Un champ non visible_liste renvoie 404."""
+        from apps.customfields.models import CustomFieldDef
+        CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='interne',
+            libelle='Interne', type='text',
+            visible_liste=False, actif=True)
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=interne')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_missing_params_returns_400(self):
+        resp = self.api.get('/api/django/reporting/insights/cf-group-by/')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_other_company_data_excluded(self):
+        """Les leads d'une autre société ne sont pas comptés."""
+        Lead.objects.create(
+            company=self.other, nom='LX', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        Lead.objects.create(
+            company=self.company, nom='L1', stage='NEW',
+            custom_data={'segment': 'Résidentiel'})
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=segment')
+        self.assertEqual(resp.status_code, 200)
+        rows = {r['valeur']: r['count'] for r in resp.data['rows']}
+        # Seul le lead de la société courante (1) doit apparaître.
+        self.assertEqual(rows.get('Résidentiel'), 1)
+        self.assertEqual(resp.data['total'], 1)
+
+    def test_xlsx_export(self):
+        resp = self.api.get(
+            '/api/django/reporting/insights/cf-group-by/'
+            '?module=lead&code=segment&export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
+
+
+class TestCohorts(InsightsBase):
+    """FG98 — analyse cohortes leads par mois d'acquisition."""
+
+    def _make_lead(self, nom, stage, months_ago=0, canal=None):
+        """Crée un lead dont la date_creation est décalée de months_ago mois."""
+        from datetime import date as d, timedelta
+        today = d.today()
+        # Décaler au premier du mois cible.
+        target_month = today.replace(day=1)
+        for _ in range(months_ago):
+            target_month = (target_month - timedelta(days=1)).replace(day=1)
+        lead = Lead.objects.create(
+            company=self.company, nom=nom, stage=stage,
+            canal=canal or '')
+        Lead.objects.filter(pk=lead.pk).update(date_creation=target_month)
+        lead.refresh_from_db()
+        return lead
+
+    def test_cohorts_shape(self):
+        """L'endpoint retourne from/to/cohorts."""
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('from', 'to', 'cohorts'):
+            self.assertIn(key, resp.data)
+        self.assertIsInstance(resp.data['cohorts'], list)
+
+    def test_cohorts_counts_leads_by_month(self):
+        """Deux leads du mois courant appartiennent à la même cohorte."""
+        self._make_lead('A', 'NEW', months_ago=0)
+        self._make_lead('B', 'SIGNED', months_ago=0)
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        self.assertEqual(resp.status_code, 200)
+        from datetime import date as d
+        month_key = d.today().strftime('%Y-%m')
+        entry = next(
+            (c for c in resp.data['cohorts'] if c['cohorte'] == month_key), None)
+        self.assertIsNotNone(entry, f'Cohorte {month_key} absente')
+        self.assertGreaterEqual(entry['nb_leads'], 2)
+        self.assertGreaterEqual(entry['nb_signes'], 1)
+
+    def test_cohorts_taux_signature(self):
+        """Taux de signature cohérent (0–100)."""
+        self._make_lead('C1', 'SIGNED', months_ago=1)
+        self._make_lead('C2', 'NEW', months_ago=1)
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        self.assertEqual(resp.status_code, 200)
+        for entry in resp.data['cohorts']:
+            self.assertGreaterEqual(entry['taux_signature'], 0)
+            self.assertLessEqual(entry['taux_signature'], 100)
+
+    def test_cohorts_company_scoped(self):
+        """Les leads d'une autre société n'apparaissent pas."""
+        Lead.objects.create(company=self.other, nom='Foreign', stage='NEW')
+        self._make_lead('Local', 'NEW', months_ago=0)
+        resp = self.api.get('/api/django/reporting/insights/cohorts/')
+        total_leads = sum(c['nb_leads'] for c in resp.data['cohorts'])
+        # Seulement le lead local.
+        self.assertGreaterEqual(total_leads, 1)
+        # Tous les leads comptés sont de la société courante.
+        from apps.crm.models import Lead as L
+        local_count = L.objects.filter(company=self.company, is_archived=False).count()
+        self.assertEqual(total_leads, local_count)
+
+    def test_cohorts_xlsx_export(self):
+        """?export=xlsx retourne un fichier ZIP (xlsx)."""
+        resp = self.api.get('/api/django/reporting/insights/cohorts/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
+
+    def test_cohorts_group_by_canal(self):
+        """?group_by=canal scinde les cohortes par canal."""
+        self._make_lead('G1', 'NEW', months_ago=0, canal='facebook')
+        self._make_lead('G2', 'NEW', months_ago=0, canal='google')
+        resp = self.api.get(
+            '/api/django/reporting/insights/cohorts/?group_by=canal')
+        self.assertEqual(resp.status_code, 200)
+        # Les clés de cohorte contiennent un séparateur '/'.
+        keys_with_canal = [
+            c['cohorte'] for c in resp.data['cohorts']
+            if '/' in c['cohorte']
+        ]
+        self.assertTrue(len(keys_with_canal) > 0,
+                        'Les cohortes group_by=canal doivent avoir "mois/canal"')
+
+
+class TestProfitability(InsightsBase):
+    """FG99 — rentabilité par segment (ADMIN uniquement, prix achat INTERNE)."""
+
+    def setUp(self):
+        super().setUp()
+        # L'utilisateur InsightsBase a role_legacy='admin' mais IsAdminRole
+        # vérifie le rôle via can_view_activity_log ou role_legacy.
+        # On force role_legacy='admin' déjà fait dans InsightsBase.setUp.
+
+    def test_requires_admin_role(self):
+        """Un responsable non-admin ne peut pas accéder."""
+        User = get_user_model()
+        resp_user = User.objects.create_user(
+            username='resp_p99', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
+        resp = api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_shape_and_200(self):
+        """L'admin reçoit un 200 avec les clés attendues."""
+        resp = self.api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('internal', 'segment', 'rows',
+                    'total_revenue_ht', 'total_cost_estimate', 'total_margin'):
+            self.assertIn(key, resp.data, f'Clé manquante : {key}')
+        self.assertTrue(resp.data['internal'])
+
+    def test_invalid_segment_returns_400(self):
+        """Un segment non supporté retourne 400."""
+        resp = self.api.get(
+            '/api/django/reporting/insights/profitability/?segment=invalid')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_rows_have_margin_fields(self):
+        """Chaque ligne contient revenue_ht, cost_estimate, margin, margin_pct."""
+        from apps.installations.models import Installation
+        from apps.crm.models import Client
+        client = Client.objects.create(company=self.company, nom='ProfCli')
+        Installation.objects.create(
+            company=self.company, client=client, reference='PROF-01',
+            type_installation='residentiel')
+        resp = self.api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        for row in resp.data['rows']:
+            for key in ('segment_value', 'count', 'revenue_ht',
+                        'cost_estimate', 'margin', 'margin_pct'):
+                self.assertIn(key, row, f'Clé manquante dans row: {key}')
+
+    def test_company_scoped(self):
+        """Les chantiers d'une autre société ne sont pas inclus."""
+        from apps.installations.models import Installation
+        from apps.crm.models import Client
+        other_client = Client.objects.create(company=self.other, nom='OtherCli')
+        Installation.objects.create(
+            company=self.other, client=other_client, reference='OTHER-PROF')
+        resp = self.api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        # total count n'inclut que la société courante
+        total = sum(r['count'] for r in resp.data['rows'])
+        from apps.installations.models import Installation as Inst
+        local_count = Inst.objects.filter(company=self.company).count()
+        self.assertEqual(total, local_count)
+
+    def test_xlsx_export(self):
+        """?export=xlsx retourne un fichier xlsx valide."""
+        resp = self.api.get(
+            '/api/django/reporting/insights/profitability/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))

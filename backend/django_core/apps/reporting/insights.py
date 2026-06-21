@@ -17,6 +17,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from django.db.models import Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -608,4 +609,416 @@ def commissions(request):
     return Response({
         'enabled': True, 'mode': mode, 'valeur': str(valeur),
         'base_label': base_label, 'rows': out, 'total': str(total),
+    })
+
+
+# ── FG93 — Classement commerciaux ───────────────────────────────────────────
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def sales_leaderboard(request):
+    """FG93 — Classement commerciaux (CA signé, taux de victoire, deal moyen,
+    kWc par responsable).
+
+    Responsable = owner du lead associé au devis, sinon created_by. Commission
+    et prix d'achat EXCLUS — indicateurs purement commerciaux. Période
+    optionnelle ?from=&to= sur la date d'acceptation du devis.
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+    from apps.ventes.models import Devis
+    from apps.crm.models import Lead
+    from apps.installations.models import Installation
+    from decimal import Decimal
+
+    # Devis signés (statut=accepte) bornés à la société.
+    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+              .select_related('lead', 'lead__owner', 'created_by'))
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+    if start:
+        signed = signed.filter(date_acceptation__gte=start)
+    if end:
+        signed = signed.filter(date_acceptation__lte=end)
+
+    # kWc installé par devis (chemin devis→chantier).
+    kwc_by_devis = defaultdict(Decimal)
+    insts = (Installation.objects.filter(**co)
+             .exclude(devis__isnull=True)
+             .values_list('devis_id', 'puissance_installee_kwc'))
+    for devis_id, kwc in insts:
+        if kwc:
+            kwc_by_devis[devis_id] += Decimal(kwc)
+
+    # Tous les leads de la société pour calculer le nb total par responsable.
+    leads_qs = Lead.objects.filter(**co, is_archived=False)
+    if start:
+        leads_qs = leads_qs.filter(date_creation__gte=start)
+    if end:
+        leads_qs = leads_qs.filter(date_creation__lte=end)
+    leads_by_owner = defaultdict(int)
+    for row in leads_qs.values('owner_id').annotate(n=Count('id')):
+        leads_by_owner[row['owner_id']] = row['n']
+
+    agg = {}
+    for d in signed:
+        if d.lead_id and d.lead and d.lead.owner_id:
+            owner = d.lead.owner
+        else:
+            owner = d.created_by
+        uid = owner.id if owner else 0
+        slot = agg.setdefault(uid, {
+            'commercial': _username(owner) or '—',
+            'ca_ht': Decimal('0'),
+            'nb_devis': 0,
+            'kwc': Decimal('0'),
+        })
+        slot['ca_ht'] += Decimal(d.total_ht)
+        slot['nb_devis'] += 1
+        slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
+
+    rows = []
+    for uid, slot in agg.items():
+        total_leads = leads_by_owner.get(uid, 0)
+        win_rate = round(slot['nb_devis'] / total_leads * 100, 1) if total_leads else None
+        avg_deal = round(float(slot['ca_ht']) / slot['nb_devis'], 2) if slot['nb_devis'] else 0
+        rows.append({
+            'commercial': slot['commercial'],
+            'ca_ht': str(slot['ca_ht']),
+            'nb_devis_signes': slot['nb_devis'],
+            'avg_deal_ht': str(avg_deal),
+            'kwc': str(slot['kwc']),
+            'win_rate_pct': win_rate,
+        })
+
+    rows.sort(key=lambda r: float(r['ca_ht']), reverse=True)
+
+    x = _maybe_xlsx(
+        request, 'classement-commerciaux.xlsx',
+        ['Commercial', 'CA HT signé', 'Devis signés', 'Deal moyen HT', 'kWc', 'Taux victoire %'],
+        [[r['commercial'], r['ca_ht'], r['nb_devis_signes'],
+          r['avg_deal_ht'], r['kwc'], r['win_rate_pct'] or '—']
+         for r in rows],
+        'Classement commerciaux')
+    if x:
+        return x
+
+    return Response({'rows': rows, 'total_commerciaux': len(rows)})
+
+
+# ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def cf_group_by(request):
+    """FG94 — Agrégation (group-by) sur un champ personnalisé.
+
+    Paramètres :
+      ?module=lead|client|produit|devis|installation|ticket
+      ?code=<code_du_champ>
+    Renvoie le compte d'enregistrements par valeur du champ personnalisé
+    (depuis custom_data[code]), borné à la société. Seuls les champs avec
+    `visible_liste=True` sont aggregables (dead flag activé). Les valeurs
+    manquantes ou vides sont regroupées sous '(vide)'.
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    module = request.query_params.get('module', '').strip()
+    code = request.query_params.get('code', '').strip()
+
+    if not module or not code:
+        return Response(
+            {'detail': 'Paramètres requis : ?module=<module>&code=<code>'},
+            status=400)
+
+    # Vérifier que le champ est bien visible_liste pour ce module.
+    from apps.customfields.models import CustomFieldDef
+    try:
+        cf_def = CustomFieldDef.objects.get(
+            company=request.user.company, module=module, code=code,
+            actif=True, visible_liste=True)
+    except CustomFieldDef.DoesNotExist:
+        # Superuser sans company ou champ non visible_liste.
+        if request.user.is_superuser:
+            try:
+                cf_def = CustomFieldDef.objects.get(
+                    module=module, code=code, actif=True, visible_liste=True)
+            except CustomFieldDef.DoesNotExist:
+                return Response(
+                    {'detail': 'Champ non trouvé ou non visible dans les listes.'},
+                    status=404)
+        else:
+            return Response(
+                {'detail': 'Champ non trouvé ou non visible dans les listes.'},
+                status=404)
+
+    # Résoudre le modèle cible.
+    model = _cf_module_model(module)
+    if model is None:
+        return Response({'detail': f'Module {module!r} non supporté.'}, status=400)
+
+    qs = model.objects.filter(**co)
+    buckets = defaultdict(int)
+    for row in qs.values_list('custom_data', flat=True).iterator():
+        val = (row or {}).get(code)
+        key = str(val).strip() if val not in (None, '') else '(vide)'
+        buckets[key] += 1
+
+    rows = sorted(
+        [{'valeur': k, 'count': v} for k, v in buckets.items()],
+        key=lambda r: -r['count'])
+
+    x = _maybe_xlsx(
+        request, f'cf-{module}-{code}.xlsx',
+        [cf_def.libelle, 'Nombre'],
+        [[r['valeur'], r['count']] for r in rows],
+        f'{cf_def.libelle} par valeur')
+    if x:
+        return x
+
+    return Response({
+        'module': module, 'code': code, 'libelle': cf_def.libelle,
+        'rows': rows, 'total': sum(r['count'] for r in rows),
+    })
+
+
+def _cf_module_model(module):
+    """Résout un module CustomField vers le modèle Django porteur de custom_data."""
+    if module == 'lead':
+        from apps.crm.models import Lead
+        return Lead
+    if module == 'client':
+        from apps.crm.models import Client
+        return Client
+    if module == 'produit':
+        from apps.stock.models import Produit
+        return Produit
+    if module == 'devis':
+        from apps.ventes.models import Devis
+        return Devis
+    if module == 'installation':
+        from apps.installations.models import Installation
+        return Installation
+    if module == 'ticket':
+        from apps.sav.models import Ticket
+        return Ticket
+    return None
+
+
+# ── FG98 — Analyse cohortes / saisonnalité ────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def cohorts(request):
+    """FG98 — Cohortes de leads par mois d'acquisition.
+
+    Paramètres optionnels :
+      ?from=YYYY-MM-DD  &to=YYYY-MM-DD  — fenêtre (défaut : 12 mois)
+      ?group_by=canal   — dimension de regroupement secondaire (défaut : aucune)
+
+    Retourne pour chaque mois d'acquisition :
+      - nb_leads           : leads entrants dans la cohorte
+      - nb_signes          : signés à terme (toute date de signature)
+      - taux_signature     : %
+      - avg_days_to_sign   : durée moyenne lead→SIGNED (en jours)
+
+    Les données sont company-scopées côté serveur.
+    """
+    from apps.crm.models import Lead
+
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+
+    # Fenêtre par défaut : 12 mois glissants.
+    today = date.today()
+    if not start:
+        start = (today.replace(day=1) - timedelta(days=365)).replace(day=1)
+    if not end:
+        end = today
+
+    qs = Lead.objects.filter(
+        **co, is_archived=False,
+        date_creation__date__gte=start,
+        date_creation__date__lte=end,
+    )
+
+    group_by = request.query_params.get('group_by', '').strip()
+    valid_group_by = {'canal'}  # champs supportés pour le group-by secondaire
+
+    # Buckets par mois d'acquisition.
+    cohort_map: dict = defaultdict(lambda: {
+        'leads': [], 'signes': 0, 'durees': []
+    })
+
+    for lead in qs.only('id', 'stage', 'date_creation', 'canal',
+                         'date_modification').iterator():
+        month_key = lead.date_creation.strftime('%Y-%m') if lead.date_creation else 'inconnu'
+        dim_key = month_key
+        if group_by in valid_group_by:
+            canal = getattr(lead, 'canal', '') or ''
+            dim_key = f'{month_key}/{canal or "—"}'
+
+        cohort_map[dim_key]['leads'].append(lead.id)
+        if lead.stage == 'SIGNED':
+            cohort_map[dim_key]['signes'] += 1
+            # Proxy : date_modification ≈ date de signature (auto_now).
+            if lead.date_modification and lead.date_creation:
+                sig_date = lead.date_modification.date()
+                created_date = lead.date_creation.date()
+                delta = (sig_date - created_date).days
+                if delta >= 0:
+                    cohort_map[dim_key]['durees'].append(delta)
+
+    result = []
+    for key in sorted(cohort_map.keys()):
+        bucket = cohort_map[key]
+        nb = len(bucket['leads'])
+        signes = bucket['signes']
+        durees = bucket['durees']
+        taux = round(signes / nb * 100, 1) if nb > 0 else 0.0
+        avg_days = round(sum(durees) / len(durees), 1) if durees else None
+        entry = {
+            'cohorte': key,
+            'nb_leads': nb,
+            'nb_signes': signes,
+            'taux_signature': taux,
+            'avg_days_to_sign': avg_days,
+        }
+        result.append(entry)
+
+    x = _maybe_xlsx(
+        request, 'cohortes.xlsx',
+        ['Cohorte', 'Leads', 'Signés', 'Taux (%)', 'Délai moyen (j)'],
+        [[r['cohorte'], r['nb_leads'], r['nb_signes'],
+          r['taux_signature'], r['avg_days_to_sign'] or '']
+         for r in result],
+        'Cohortes')
+    if x:
+        return x
+
+    return Response({
+        'from': start.isoformat(),
+        'to': end.isoformat(),
+        'group_by': group_by or None,
+        'cohorts': result,
+    })
+
+
+# ── FG99 — Rentabilité par segment ───────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def profitability(request):
+    """FG99 — Rentabilité agrégée par segment (ADMIN uniquement).
+
+    Prix d'achat utilisé UNIQUEMENT en interne (marge).  Jamais exposé dans
+    un export client, jamais dans un PDF.
+
+    Paramètres optionnels :
+      ?segment=type_installation|canal   (défaut : type_installation)
+      ?from=YYYY-MM-DD  &to=YYYY-MM-DD
+      ?export=xlsx
+
+    Retourne pour chaque valeur de segment :
+      - segment_value   : valeur du segment
+      - count           : nombre de chantiers
+      - revenue_ht      : CA facturé HT (somme Factures non annulées)
+      - cost_estimate   : coût matière estimé (HT achat × qté)  [INTERNE]
+      - margin          : marge brute  [INTERNE]
+      - margin_pct      : taux de marge  [INTERNE]
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    from apps.installations.models import Installation
+    from apps.ventes.models import Devis, Facture
+
+    segment_field = request.query_params.get('segment', 'type_installation')
+    allowed = {'type_installation', 'canal'}
+    if segment_field not in allowed:
+        return Response(
+            {'detail': f'?segment doit être parmi {sorted(allowed)}.'},
+            status=400)
+
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+
+    chantiers_qs = Installation.objects.filter(**co).select_related(
+        'devis', 'lead').prefetch_related('devis__lignes__produit')
+    if start:
+        chantiers_qs = chantiers_qs.filter(date_creation__date__gte=start)
+    if end:
+        chantiers_qs = chantiers_qs.filter(date_creation__date__lte=end)
+
+    # Factures non annulées par devis_id.
+    factures = (Facture.objects.filter(**co)
+                .exclude(statut=Facture.Statut.ANNULEE)
+                .exclude(devis__isnull=True)
+                .prefetch_related('lignes'))
+    invoiced_by_devis = defaultdict(Decimal)
+    for f in factures:
+        invoiced_by_devis[f.devis_id] += Decimal(f.total_ht)
+
+    buckets: dict = defaultdict(lambda: {
+        'count': 0, 'revenue': Decimal('0'), 'cost': Decimal('0')
+    })
+
+    for ch in chantiers_qs:
+        if segment_field == 'type_installation':
+            key = ch.type_installation or '—'
+        else:  # canal
+            key = (ch.lead.canal if ch.lead_id and ch.lead else '') or '—'
+
+        invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
+                    if ch.devis_id else Decimal('0'))
+        cost = _devis_cost_estimate(ch.devis) if ch.devis_id else Decimal('0')
+        buckets[key]['count'] += 1
+        buckets[key]['revenue'] += invoiced
+        buckets[key]['cost'] += cost
+
+    rows = []
+    for key in sorted(buckets.keys()):
+        b = buckets[key]
+        margin = b['revenue'] - b['cost']
+        margin_pct = (float(margin / b['revenue'] * 100)
+                      if b['revenue'] else 0.0)
+        rows.append({
+            'segment_value': key,
+            'count': b['count'],
+            'revenue_ht': str(b['revenue']),
+            'cost_estimate': str(b['cost']),    # INTERNE
+            'margin': str(margin),              # INTERNE
+            'margin_pct': round(margin_pct, 1),  # INTERNE
+        })
+    rows.sort(key=lambda r: r['revenue_ht'], reverse=True)
+
+    x = _maybe_xlsx(
+        request, 'rentabilite-INTERNE.xlsx',
+        ['Segment', 'Chantiers', 'CA facturé HT',
+         'Coût estimé (interne)', 'Marge (interne)', 'Marge %'],
+        [[r['segment_value'], r['count'], r['revenue_ht'],
+          r['cost_estimate'], r['margin'], r['margin_pct']]
+         for r in rows],
+        'Rentabilité par segment (interne)')
+    if x:
+        return x
+
+    total_rev = sum((Decimal(r['revenue_ht']) for r in rows), Decimal('0'))
+    total_cost = sum((Decimal(r['cost_estimate']) for r in rows), Decimal('0'))
+
+    return Response({
+        'internal': True,
+        'segment': segment_field,
+        'from': start.isoformat() if start else None,
+        'to': end.isoformat() if end else None,
+        'total_revenue_ht': str(total_rev),
+        'total_cost_estimate': str(total_cost),
+        'total_margin': str(total_rev - total_cost),
+        'rows': rows,
     })

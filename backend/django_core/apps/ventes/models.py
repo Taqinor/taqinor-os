@@ -142,6 +142,9 @@ class Devis(models.Model):
         'self', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='remplace')
     is_active = models.BooleanField(default=True)
+    # FG100 — champs personnalisés (additif, jamais destructif).
+    # Les définitions viennent de apps.customfields (module='devis').
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Devis'

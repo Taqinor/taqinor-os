@@ -1,9 +1,11 @@
 // T13/T14/T15 — Hub « Rapports » : ventes/pipeline, stock, service (chantier +
 // SAV). Lecture seule ; chaque rapport est exportable en .xlsx. Données
 // agrégées côté serveur, bornées à la société.
+// FG91 — onglet « Mes rapports » : CRUD des rapports sauvegardés (SavedReport),
+// avec planification email et épinglage tableau de bord.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, BarChart3 } from 'lucide-react'
+import { Download, BarChart3, BookmarkPlus, Trash2, Pin, PinOff, Mail } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
@@ -92,6 +94,16 @@ function Table({ headers, rows, footer }) {
 // formatées) — base du pied « Total » L882.
 const sumBy = (arr, key) => (arr || []).reduce((s, o) => s + Number(o[key] || 0), 0)
 
+// FG101 — Lien de forage (drill-down) : affiche la valeur + un lien vers la
+// liste filtrée.  Peut être utilisé comme cellule de tableau (Row[0]).
+function DrillLink({ to, children }) {
+  return (
+    <Link to={to} className="font-medium text-info hover:underline">
+      {children}
+    </Link>
+  )
+}
+
 // Sous-titre interne d'une carte.
 function Subhead({ children }) {
   return (
@@ -144,6 +156,239 @@ function InsightCard({ title, note, onExport, children }) {
 }
 
 const fmt = (n) => formatNumber(n)
+
+// ── FG91 — Mes rapports sauvegardés ─────────────────────────────────────────
+// Labels FR pour les choix server.
+const KIND_LABELS = { sales: 'Ventes', stock: 'Stock', service: 'Service' }
+const SCHEDULE_LABELS = { none: 'Aucune', daily: 'Quotidien', weekly: 'Hebdomadaire' }
+
+// Formulaire de création/édition d'un rapport sauvegardé.
+function SavedReportForm({ initial, onSave, onCancel }) {
+  const [name, setName] = useState(initial?.name || '')
+  const [kind, setKind] = useState(initial?.target_kind || 'sales')
+  const [schedule, setSchedule] = useState(initial?.schedule || 'none')
+  const [recipients, setRecipients] = useState(initial?.recipients || '')
+  const [pinned, setPinned] = useState(initial?.pinned || false)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!name.trim()) { setErr('Le nom est requis.'); return }
+    setSaving(true)
+    setErr('')
+    try {
+      await onSave({ name: name.trim(), target_kind: kind, schedule, recipients, pinned })
+    } catch {
+      setErr('Erreur lors de l'enregistrement.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      {err && <p className="text-sm text-destructive">{err}</p>}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">Nom *</label>
+        <Input value={name} onChange={e => setName(e.target.value)}
+               placeholder="Ex : Ventes mensuelles" maxLength={255} />
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Type</label>
+          <select value={kind} onChange={e => setKind(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+            {Object.entries(KIND_LABELS).map(([v, l]) =>
+              <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Envoi automatique</label>
+          <select value={schedule} onChange={e => setSchedule(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+            {Object.entries(SCHEDULE_LABELS).map(([v, l]) =>
+              <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+      </div>
+      {schedule !== 'none' && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            Destinataires (séparés par virgule)
+          </label>
+          <Input value={recipients} onChange={e => setRecipients(e.target.value)}
+                 placeholder="ex: boss@exemple.com, equipe@exemple.com" />
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <input id="pinned" type="checkbox" checked={pinned}
+               onChange={e => setPinned(e.target.checked)} className="accent-primary" />
+        <label htmlFor="pinned" className="text-sm">Épingler sur le tableau de bord</label>
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving}>
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+          Annuler
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// Onglet « Mes rapports » — liste + CRUD des SavedReport.
+function MesRapports() {
+  const [reports, setReports] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)  // null = nouveau
+  const [deletingId, setDeletingId] = useState(null)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    reportingApi.listSavedReports()
+      .then(r => {
+        const data = r.data
+        setReports(Array.isArray(data) ? data : (data.results || []))
+      })
+      .catch(() => setReports([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleCreate = async (payload) => {
+    await reportingApi.createSavedReport(payload)
+    setShowForm(false)
+    load()
+  }
+
+  const handleUpdate = async (id, payload) => {
+    await reportingApi.updateSavedReport(id, payload)
+    setEditing(null)
+    load()
+  }
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Supprimer ce rapport sauvegardé ?')) return
+    setDeletingId(id)
+    try {
+      await reportingApi.deleteSavedReport(id)
+      load()
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const togglePin = async (r) => {
+    await reportingApi.updateSavedReport(r.id, { pinned: !r.pinned })
+    load()
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2].map(i => <Skeleton key={i} className="h-20 w-full" />)}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Sauvegardez et planifiez l'envoi automatique de vos rapports par email.
+        </p>
+        {!showForm && !editing && (
+          <Button size="sm" onClick={() => setShowForm(true)}>
+            <BookmarkPlus className="mr-1 h-4 w-4" /> Nouveau rapport
+          </Button>
+        )}
+      </div>
+
+      {showForm && !editing && (
+        <Card>
+          <CardHeader><CardTitle>Nouveau rapport sauvegardé</CardTitle></CardHeader>
+          <CardContent>
+            <SavedReportForm
+              onSave={handleCreate}
+              onCancel={() => setShowForm(false)}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {reports.length === 0 && !showForm && (
+        <EmptyState icon={BarChart3} title="Aucun rapport sauvegardé"
+                    description="Créez votre premier rapport pour le consulter rapidement." />
+      )}
+
+      {reports.map(r => (
+        <Card key={r.id}>
+          {editing?.id === r.id ? (
+            <>
+              <CardHeader><CardTitle>Modifier : {r.name}</CardTitle></CardHeader>
+              <CardContent>
+                <SavedReportForm
+                  initial={r}
+                  onSave={(payload) => handleUpdate(r.id, payload)}
+                  onCancel={() => setEditing(null)}
+                />
+              </CardContent>
+            </>
+          ) : (
+            <>
+              <CardHeader className="flex-row items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <CardTitle className="flex items-center gap-2">
+                    {r.pinned && <Pin className="h-4 w-4 text-warning" aria-label="Épinglé" />}
+                    {r.name}
+                  </CardTitle>
+                  <CardDescription>
+                    {KIND_LABELS[r.target_kind] || r.target_kind}
+                    {' · '}
+                    Envoi : {SCHEDULE_LABELS[r.schedule] || r.schedule}
+                    {r.schedule !== 'none' && r.recipients && (
+                      <span className="ml-1 inline-flex items-center gap-1">
+                        <Mail className="h-3 w-3" />
+                        {r.recipients.split(/[,;\n]/).filter(Boolean).length} destinataire(s)
+                      </span>
+                    )}
+                    {r.last_sent_at && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        Dernier envoi : {r.last_sent_at.slice(0, 10)}
+                      </span>
+                    )}
+                  </CardDescription>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button variant="ghost" size="icon" title={r.pinned ? 'Désépingler' : 'Épingler'}
+                          onClick={() => togglePin(r)}>
+                    {r.pinned
+                      ? <PinOff className="h-4 w-4 text-warning" />
+                      : <Pin className="h-4 w-4" />}
+                  </Button>
+                  <Button variant="ghost" size="sm"
+                          onClick={() => { setShowForm(false); setEditing(r) }}>
+                    Modifier
+                  </Button>
+                  <Button variant="ghost" size="icon"
+                          disabled={deletingId === r.id}
+                          onClick={() => handleDelete(r.id)}
+                          title="Supprimer">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </CardHeader>
+            </>
+          )}
+        </Card>
+      ))}
+    </div>
+  )
+}
 
 // Carte d'erreur FR quand un rapport échoue (réseau / serveur).
 function ErrorCard({ title, message }) {
@@ -294,6 +539,7 @@ export function Component() {
           <TabsTrigger value="stock">Stock</TabsTrigger>
           <TabsTrigger value="service">Service</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
+          <TabsTrigger value="mes-rapports">Mes rapports</TabsTrigger>
         </TabsList>
 
         {/* ── Filtre de période (ventes / stock / service) ── */}
@@ -317,24 +563,44 @@ export function Component() {
         <TabsContent value="ventes">
           {renderReportCard('sales', 'Ventes & pipeline', () => (
             <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
+              {/* FG101 — funnel : clic sur étape → liste leads filtrée par stage */}
               <Table headers={['Étape', 'Leads']}
-                     rows={sales.funnel.map(f => [f.label, fmt(f.count)])}
+                     rows={sales.funnel.map(f => [
+                       <DrillLink to={`/crm/leads?stage=${f.stage}`}>{f.label}</DrillLink>,
+                       fmt(f.count),
+                     ])}
                      footer={['Total', fmt(sumBy(sales.funnel, 'count'))]} />
               {sales.devis_par_statut?.length > 0 && (
                 <>
                   <Subhead>Devis par statut</Subhead>
                   <Table headers={['Statut', 'Nombre']}
-                         rows={sales.devis_par_statut.map(d => [d.label, fmt(d.count)])}
+                         rows={sales.devis_par_statut.map(d => [
+                           <DrillLink to={`/ventes/devis?statut=${d.statut}`}>{d.label}</DrillLink>,
+                           fmt(d.count),
+                         ])}
                          footer={['Total', fmt(sumBy(sales.devis_par_statut, 'count'))]} />
                 </>
               )}
               <Subhead>Par responsable</Subhead>
+              {/* FG101 — clic sur responsable → liste leads filtrée par owner */}
               <Table headers={['Responsable', 'Leads', 'Gagnés']}
-                     rows={sales.par_responsable.map(r => [r.owner__username || '—', fmt(r.count), fmt(r.gagnes)])}
+                     rows={sales.par_responsable.map(r => [
+                       r.owner__username
+                         ? <DrillLink to={`/crm/leads?owner=${encodeURIComponent(r.owner__username)}`}>{r.owner__username}</DrillLink>
+                         : '—',
+                       fmt(r.count), fmt(r.gagnes),
+                     ])}
                      footer={['Total', fmt(sumBy(sales.par_responsable, 'count')), fmt(sumBy(sales.par_responsable, 'gagnes'))]} />
               <Subhead>Pertes par motif</Subhead>
+              {/* FG101 — clic sur motif → liste leads perdus filtrée */}
               <Table headers={['Motif', 'Nombre']}
-                     rows={sales.perdus_par_motif.map(r => [r.motif_perte || 'Non précisé', fmt(r.count)])}
+                     rows={sales.perdus_par_motif.map(r => [
+                       <DrillLink
+                         to={`/crm/leads?perdu=true${r.motif_perte ? `&motif=${encodeURIComponent(r.motif_perte)}` : ''}`}>
+                         {r.motif_perte || 'Non précisé'}
+                       </DrillLink>,
+                       fmt(r.count),
+                     ])}
                      footer={['Total', fmt(sumBy(sales.perdus_par_motif, 'count'))]} />
             </ReportCard>
           ))}
@@ -353,8 +619,14 @@ export function Component() {
                      rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
                      footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
               <Subhead>Stock bas</Subhead>
+              {/* FG101 — clic sur produit → liste stock filtrée par recherche */}
               <Table headers={['Produit', 'SKU', 'Stock', 'Seuil']}
-                     rows={stock.bas_stock.map(p => [p.nom, p.sku || '—', fmt(p.quantite_stock), fmt(p.seuil_alerte)])} />
+                     rows={stock.bas_stock.map(p => [
+                       <DrillLink to={`/stock/produits?search=${encodeURIComponent(p.nom)}`}>{p.nom}</DrillLink>,
+                       p.sku || '—',
+                       fmt(p.quantite_stock),
+                       fmt(p.seuil_alerte),
+                     ])} />
             </ReportCard>
           ))}
         </TabsContent>
@@ -369,8 +641,12 @@ export function Component() {
                 {' · '}garanties expirant ≤90 j : <span className="tabular-nums">{fmt(service.garanties_expirantes_90j)}</span>
               </p>
               <Subhead>Chantiers par statut</Subhead>
+              {/* FG101 — clic sur statut → liste chantiers filtrée */}
               <Table headers={['Statut', 'Nombre']}
-                     rows={service.chantiers_par_statut.map(c => [c.statut, fmt(c.count)])}
+                     rows={service.chantiers_par_statut.map(c => [
+                       <DrillLink to={`/chantiers?statut=${encodeURIComponent(c.statut)}`}>{c.statut}</DrillLink>,
+                       fmt(c.count),
+                     ])}
                      footer={['Total', fmt(sumBy(service.chantiers_par_statut, 'count'))]} />
               <Subhead>Activité technicien</Subhead>
               <Table headers={['Technicien', 'Interventions']}
@@ -527,6 +803,11 @@ export function Component() {
               )}
             </InsightCard>
           </div>
+        </TabsContent>
+
+        {/* ── FG91 — Mes rapports sauvegardés ── */}
+        <TabsContent value="mes-rapports">
+          <MesRapports />
         </TabsContent>
       </Tabs>
     </div>
