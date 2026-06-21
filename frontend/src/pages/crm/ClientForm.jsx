@@ -5,6 +5,8 @@ import {
   Form, FormSection, FormField, FormErrorSummary,
   Input, Textarea, Segmented, Button, useDirtyGuard,
 } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { toast } from '../../ui/confirm'
 import { canonicalPhoneMA } from '../../lib/format'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 
@@ -143,8 +145,10 @@ export default function ClientForm({ client = null, onClose }) {
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
+        toast.success('Client mis à jour.')
       } else {
         await dispatch(createClient(payload)).unwrap()
+        toast.success('Client créé.')
       }
       onClose()
     } catch (err) {
@@ -166,19 +170,18 @@ export default function ClientForm({ client = null, onClose }) {
     errors.email ? { field: 'cf-email', message: errors.email } : null,
   ].filter(Boolean)
 
+  // M158 — modale centrée (≥768 px) / tiroir bas (<768 px) via ResponsiveDialog,
+  // afin que l'édition d'un client soit confortable sur mobile.
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">
-            {isEdit ? 'Éditer le client' : 'Nouveau client'}
-          </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
-
-        <Form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            <FormErrorSummary errors={errorList} />
+    <ResponsiveDialog
+      open
+      onOpenChange={(o) => { if (!o) onClose() }}
+      title={isEdit ? 'Éditer le client' : 'Nouveau client'}
+      className="sm:max-w-lg"
+    >
+      <Form onSubmit={handleSubmit}>
+        <div className="modal-body">
+          <FormErrorSummary errors={errorList} />
 
             <FormSection title="Coordonnées">
               <FormField label="Nom" required htmlFor="cf-nom" error={errors.nom}>
@@ -321,21 +324,20 @@ export default function ClientForm({ client = null, onClose }) {
               </FormSection>
             )}
 
-            {errors.submit && (
-              <div className="form-error-box">{errors.submit}</div>
-            )}
-          </div>
+          {errors.submit && (
+            <div className="form-error-box">{errors.submit}</div>
+          )}
+        </div>
 
-          <div className="modal-footer">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Annuler
-            </Button>
-            <Button type="submit" loading={saving} disabled={saving}>
-              {saving ? 'Enregistrement...' : (isEdit ? 'Mettre à jour' : 'Créer le client')}
-            </Button>
-          </div>
-        </Form>
-      </div>
-    </div>
+        <div className="modal-footer">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" loading={saving} disabled={saving}>
+            {saving ? 'Enregistrement...' : (isEdit ? 'Mettre à jour' : 'Créer le client')}
+          </Button>
+        </div>
+      </Form>
+    </ResponsiveDialog>
   )
 }

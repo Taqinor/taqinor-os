@@ -8,7 +8,6 @@ import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/s
 import {
   PIPELINE_STAGES,
   STAGE_LABELS,
-  STAGE_COLORS,
   CANAL_LABELS,
   PRIORITE_LABELS,
   PRIORITE_STARS,
@@ -20,7 +19,7 @@ import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
-  Button, Checkbox, IconButton,
+  Button, Checkbox, IconButton, StatusPill,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../../../../ui'
@@ -48,16 +47,6 @@ const PRIORITE_OPTIONS = [
   { value: 'normale', label: PRIORITE_LABELS.normale },
   { value: 'haute', label: PRIORITE_LABELS.haute },
 ]
-
-// Fond de pastille d'étape : couleur de l'étape à ~14 % d'opacité.
-const stageBg = (hex) => {
-  const h = String(hex ?? '').replace('#', '')
-  if (h.length !== 6) return 'rgba(100,116,139,0.14)'
-  const r = parseInt(h.slice(0, 2), 16)
-  const g = parseInt(h.slice(2, 4), 16)
-  const b = parseInt(h.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, 0.14)`
-}
 
 // Priorité : haute > normale > basse (ordre croissant = haute d'abord).
 const PRIO_RANK = { haute: 0, normale: 1, basse: 2 }
@@ -246,15 +235,14 @@ export default function ListView({
                     options={STAGE_OPTIONS}
                     disabled={!onInlineSave}
                     display={(
-                      <span
+                      // Pastille d'étape via StatusPill (tons tokenisés depuis
+                      // statusTone) — plus aucune palette #hex en dur ici. Le
+                      // libellé FR vient de stages.js (miroir STAGES.py).
+                      <StatusPill
+                        status={lead.stage}
+                        label={STAGE_LABELS[lead.stage] ?? lead.stage}
                         className="lv-stage-badge"
-                        style={{
-                          background: stageBg(STAGE_COLORS[lead.stage]),
-                          color: STAGE_COLORS[lead.stage] ?? '#475569',
-                        }}
-                      >
-                        {STAGE_LABELS[lead.stage] ?? lead.stage}
-                      </span>
+                      />
                     )}
                     onSave={(v) => onInlineSave(lead, 'stage', v)}
                   />

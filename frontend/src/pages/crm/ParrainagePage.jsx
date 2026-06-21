@@ -46,39 +46,44 @@ export default function ParrainagePage() {
     try { await crmApi.saveParrainage(id, { statut }); load() } catch { /* */ }
   }
 
+  // P169 — plus aucun style={} en dur : tout passe par des classes Tailwind/tokens.
+  const cardCls = 'stat-card min-w-[150px] rounded-xl border border-border bg-card px-[1.1rem] py-[0.85rem]'
+  const lblCls = 'text-[11px] uppercase text-muted-foreground'
+  const valCls = 'mt-1 text-xl font-bold text-foreground'
+
   return (
-    <div className="page" style={{ maxWidth: 1000 }}>
+    <div className="page max-w-[1000px]">
       <div className="page-header"><h2>Parrainage</h2></div>
 
       {stats && (
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap',
-          marginBottom: 16 }}>
-          <div className="stat-card" style={cardS}>
-            <div style={lblS}>Parrainages</div>
-            <div style={valS}>{stats.total}</div>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <div className={cardCls}>
+            <div className={lblCls}>Parrainages</div>
+            <div className={valCls}>{stats.total}</div>
           </div>
-          <div className="stat-card" style={cardS}>
-            <div style={lblS}>Convertis</div>
-            <div style={valS}>{stats.par_statut?.converti || 0}</div>
+          <div className={cardCls}>
+            <div className={lblCls}>Convertis</div>
+            <div className={valCls}>{stats.par_statut?.converti || 0}</div>
           </div>
-          <div className="stat-card" style={cardS}>
-            <div style={lblS}>Récompenses (total)</div>
-            <div style={valS}>{dh(stats.recompenses_total)}</div>
+          <div className={cardCls}>
+            <div className={lblCls}>Récompenses (total)</div>
+            <div className={valCls}>{dh(stats.recompenses_total)}</div>
           </div>
-          <div className="stat-card" style={cardS}>
-            <div style={lblS}>Récompenses versées</div>
-            <div style={valS}>{dh(stats.recompenses_versees)}</div>
+          <div className={cardCls}>
+            <div className={lblCls}>Récompenses versées</div>
+            <div className={valCls}>{dh(stats.recompenses_versees)}</div>
           </div>
         </div>
       )}
 
-      {msg && <div className="alert alert-info" style={{ background: '#fef2f2',
-        border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 8,
-        padding: '0.6rem 0.85rem', marginBottom: 12 }}>{msg}</div>}
+      {msg && (
+        <div className="alert alert-info mb-3 rounded-lg border border-destructive/30 bg-destructive/12 px-[0.85rem] py-[0.6rem] text-destructive">
+          {msg}
+        </div>
+      )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap',
-        marginBottom: 16, alignItems: 'flex-end' }}>
-        <select className="form-control" style={{ maxWidth: 220 }}
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <select className="form-control max-w-[220px]"
                 value={form.parrain}
                 onChange={e => setForm(f => ({ ...f, parrain: e.target.value }))}>
           <option value="">— Parrain (client) —</option>
@@ -86,11 +91,11 @@ export default function ParrainagePage() {
             <option key={c.id} value={c.id}>{c.nom} {c.prenom || ''}</option>
           ))}
         </select>
-        <input className="form-control" style={{ maxWidth: 200 }}
+        <input className="form-control max-w-[200px]"
                placeholder="Nom du filleul" value={form.filleul_nom}
                onChange={e => setForm(f => ({ ...f, filleul_nom: e.target.value }))} />
-        <input className="form-control" type="number" min="0" step="any"
-               style={{ maxWidth: 150 }} placeholder="Récompense (défaut)"
+        <input className="form-control max-w-[150px]" type="number" min="0" step="any"
+               placeholder="Récompense (défaut)"
                value={form.recompense}
                onChange={e => setForm(f => ({ ...f, recompense: e.target.value }))} />
         <button className="btn btn-primary" onClick={create}>+ Ajouter</button>
@@ -108,9 +113,8 @@ export default function ParrainagePage() {
             key: 'statut',
             header: 'Statut',
             cell: (p) => (
-              <select className="form-control" value={p.statut}
-                      onChange={e => setStatut(p.id, e.target.value)}
-                      style={{ maxWidth: 180 }}>
+              <select className="form-control max-w-[180px]" value={p.statut}
+                      onChange={e => setStatut(p.id, e.target.value)}>
                 {STATUTS.map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
@@ -125,10 +129,3 @@ export default function ParrainagePage() {
     </div>
   )
 }
-
-const cardS = {
-  background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
-  padding: '0.85rem 1.1rem', minWidth: 150,
-}
-const lblS = { fontSize: 11, color: '#64748b', textTransform: 'uppercase' }
-const valS = { fontSize: 20, fontWeight: 700, color: '#0d1b3e', marginTop: 4 }
