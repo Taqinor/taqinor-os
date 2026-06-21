@@ -369,6 +369,35 @@ summary:focus-visible {
   }
 }
 
+/* ─── W191 — Spinner + fade-in résultat ────────────────────────────────────
+   ONE shared @keyframes spin — gated behind prefers-reduced-motion so the
+   wheel never spins when motion is reduced (the .spinner just shows static).
+   .spinner : inline block, 1 em × 1 em, transparent fill + brass border cap.
+   .result-fade : utilisé sur #lf-success pour un fondu doux à l'apparition. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .spinner {
+    animation: spin 0.75s linear infinite;
+  }
+
+  .result-fade {
+    animation: cineIn 0.5s cubic-bezier(0.2, 0.65, 0.25, 1) both;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* ─── W173 — Rythme vertical des sections ──────────────────────────────────
    Remplace les valeurs py-* ad-hoc par des tokens cohérents avec le site.
    .section      → espacement standard (py ≈ 96 px → 128 px)

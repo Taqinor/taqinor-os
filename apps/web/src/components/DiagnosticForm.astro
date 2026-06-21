@@ -165,9 +165,11 @@ const inputClass =
           class="bg-azur-600 px-6 py-3.5 text-base font-bold text-white transition-colors hover:bg-azur-700">
           {t('form.next')}
         </button>
+        <!-- W191 — spinner hidden by default; shown via JS during submit -->
         <button type="submit" id="lf-submit"
-          class="hidden bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
-          {t('form.submit')}
+          class="hidden items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
+          <span id="lf-spinner" class="spinner hidden" aria-hidden="true"></span>
+          <span id="lf-submit-label">{t('form.submit')}</span>
         </button>
       </div>
     </form>
@@ -225,6 +227,9 @@ const inputClass =
   const backBtn = document.getElementById('diag-back') as HTMLButtonElement;
   const progressEl = document.getElementById('diag-progress')!;
   const sunEl = document.getElementById('diag-sun')!;
+  // W191 — spinner elements (null-safe: absent in old builds)
+  const spinnerEl = document.getElementById('lf-spinner') as HTMLElement | null;
+  const submitLabelEl = document.getElementById('lf-submit-label') as HTMLElement | null;
 
   // Chaînes traduites embarquées par le serveur (libellés VISIBLES uniquement —
   // jamais la charge utile). Repli sur le FR si l'attribut manque.
@@ -359,7 +364,12 @@ const inputClass =
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = I18N.submitting;
+    // W191 — show spinner + aria-busy; update label text without destroying innerHTML
+    if (submitLabelEl) submitLabelEl.textContent = I18N.submitting;
+    else submitBtn.textContent = I18N.submitting; // fallback if spans absent
+    spinnerEl?.classList.remove('hidden');
+    submitBtn.classList.add('flex');
+    form?.setAttribute('aria-busy', 'true');
     try {
       const res = await fetch('/api/simulate', {
         method: 'POST',
@@ -377,6 +387,8 @@ const inputClass =
       kwcEl.textContent = data.band.kwcLabel;
       roiEl.textContent = data.band.paybackLabel;
       waEl.href = data.whatsappUrl;
+      // W191 — fade-in result (CSS animation gated under no-preference)
+      success.classList.add('result-fade');
       success.classList.remove('hidden');
       success.scrollIntoView({ behavior: 'smooth', block: 'center' });
       // Sur mobile : ouverture automatique de WhatsApp après l'état de remerciement
@@ -390,7 +402,12 @@ const inputClass =
       errEl.classList.remove('hidden');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = I18N.submit;
+      // W191 — restore button state
+      spinnerEl?.classList.add('hidden');
+      submitBtn.classList.remove('flex');
+      form?.removeAttribute('aria-busy');
+      if (submitLabelEl) submitLabelEl.textContent = I18N.submit;
+      else submitBtn.textContent = I18N.submit;
     }
   });
 </script>
