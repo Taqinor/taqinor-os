@@ -15,6 +15,17 @@ export const IconButton = forwardRef(function IconButton(
   ref,
 ) {
   const accessibleLabel = label ?? props['aria-label'] ?? 'Bouton'
+  // G125 — un bouton à icône seule DOIT être étiqueté. En dev, on signale
+  // l'oubli (sans casser : le repli ci-dessus garantit un nom accessible).
+  if (
+    import.meta.env?.DEV &&
+    label == null &&
+    props['aria-label'] == null
+  ) {
+    console.warn(
+      'IconButton: `label` (ou `aria-label`) est requis pour un bouton à icône seule ; repli sur « Bouton ».',
+    )
+  }
   return (
     <Button
       ref={ref}
