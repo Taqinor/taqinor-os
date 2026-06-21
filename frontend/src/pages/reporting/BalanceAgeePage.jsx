@@ -6,6 +6,7 @@ import { downloadXlsx } from '../../api/importApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { formatMAD } from '../../lib/format'
 import { Button, Card, CardContent, Segmented, Skeleton, EmptyState } from '../../ui'
+import { Table } from './Table'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -109,64 +110,52 @@ export default function BalanceAgeePage() {
         </Card>
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto p-0 sm:p-0">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Client</th>
-                  <th className="ta-right">0–30 j</th>
-                  <th className="ta-right">31–60 j</th>
-                  <th className="ta-right">61–90 j</th>
-                  <th className="ta-right">90+ j</th>
-                  <th className="ta-right">Total dû</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(r => (
-                  <tr key={r.client_id}>
-                    <td data-label="Client"><strong>{r.client_nom}</strong></td>
-                    <td data-label="0–30 j" className="ta-right tabular-nums">{dh(r.b0_30)}</td>
-                    <td data-label="31–60 j" className="ta-right tabular-nums">{dh(r.b31_60)}</td>
-                    <td data-label="61–90 j" className="ta-right tabular-nums">{dh(r.b61_90)}</td>
-                    <td data-label="90+ j" className="ta-right tabular-nums text-destructive">{dh(r.b90_plus)}</td>
-                    <td data-label="Total dû" className="ta-right tabular-nums"><strong>{dh(r.total)}</strong></td>
-                    <td className="ta-right">
-                      <Button variant="outline" size="sm" onClick={() => releve(r)}>
-                        <FileText /> Relevé
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={7}>
-                      <EmptyState
-                        icon={CheckCircle2}
-                        title="Aucun encours client"
-                        description={segment === 'all'
-                          ? 'Aucune facture impayée en attente de règlement.'
-                          : 'Aucun encours dans cette tranche.'}
-                        className="border-0 py-6"
-                      />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {filtered.length > 0 && (
-                <tfoot>
-                  <tr className="font-bold">
-                    <td data-label="Total">Total</td>
-                    <td data-label="0–30 j" className="ta-right tabular-nums">{dh(sum('b0_30'))}</td>
-                    <td data-label="31–60 j" className="ta-right tabular-nums">{dh(sum('b31_60'))}</td>
-                    <td data-label="61–90 j" className="ta-right tabular-nums">{dh(sum('b61_90'))}</td>
-                    <td data-label="90+ j" className="ta-right tabular-nums">{dh(sum('b90_plus'))}</td>
-                    <td data-label="Total dû" className="ta-right tabular-nums">{dh(sum('total'))}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
+          <CardContent className="p-0 sm:p-0">
+            {/* J146 — migré vers le primitif Table partagé (plus de data-table). */}
+            <Table
+              aria-label="Balance âgée"
+              getRowKey={(r) => r.client_id}
+              columns={[
+                { key: 'client_nom', header: 'Client', cell: (r) => <strong>{r.client_nom}</strong> },
+                { key: 'b0_30', header: '0–30 j', align: 'right', cell: (r) => dh(r.b0_30) },
+                { key: 'b31_60', header: '31–60 j', align: 'right', cell: (r) => dh(r.b31_60) },
+                { key: 'b61_90', header: '61–90 j', align: 'right', cell: (r) => dh(r.b61_90) },
+                { key: 'b90_plus', header: '90+ j', align: 'right', cellClassName: 'text-destructive', cell: (r) => dh(r.b90_plus) },
+                { key: 'total', header: 'Total dû', align: 'right', cell: (r) => <strong>{dh(r.total)}</strong> },
+                {
+                  key: 'releve',
+                  header: '',
+                  align: 'right',
+                  cell: (r) => (
+                    <Button variant="outline" size="sm" onClick={() => releve(r)}>
+                      <FileText /> Relevé
+                    </Button>
+                  ),
+                },
+              ]}
+              rows={filtered}
+              empty={(
+                <EmptyState
+                  icon={CheckCircle2}
+                  title="Aucun encours client"
+                  description={segment === 'all'
+                    ? 'Aucune facture impayée en attente de règlement.'
+                    : 'Aucun encours dans cette tranche.'}
+                  className="border-0 py-6"
+                />
               )}
-            </table>
+              footer={filtered.length > 0 && (
+                <tr className="border-t border-border font-bold">
+                  <td className="px-3 py-2" data-label="Total">Total</td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-label="0–30 j">{dh(sum('b0_30'))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-label="31–60 j">{dh(sum('b31_60'))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-label="61–90 j">{dh(sum('b61_90'))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-label="90+ j">{dh(sum('b90_plus'))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" data-label="Total dû">{dh(sum('total'))}</td>
+                  <td className="px-3 py-2" />
+                </tr>
+              )}
+            />
           </CardContent>
         </Card>
       )}

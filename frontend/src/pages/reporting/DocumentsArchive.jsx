@@ -5,6 +5,7 @@ import {
 import api from '../../api/axios'
 import reportingApi from '../../api/reportingApi'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Skeleton, EmptyState } from '../../ui'
+import { Table } from './Table'
 import { typeLabel, sortDocsDesc } from './archiveDocs'
 
 // L865 — on réutilise le renderer PDF.js (canvas, même origine) du panneau
@@ -167,40 +168,37 @@ export default function DocumentsArchive({ kind, id }) {
             className="border-0 py-6"
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr><th>Type</th><th>Référence</th><th>Date</th><th /></tr>
-              </thead>
-              <tbody>
-                {sortDocsDesc(data.documents).map((d, i) => (
-                  <tr key={i}>
-                    <td data-label="Type">{typeLabel(d)}</td>
-                    <td data-label="Référence">{d.reference || '—'}</td>
-                    <td data-label="Date" className="tabular-nums">{d.date || '—'}</td>
-                    <td className="ta-right">
-                      {(d.has_pdf ?? !!d.download_url) ? (
-                        <div className="flex flex-col items-end gap-1">
-                          <Button variant="outline" size="sm" onClick={() => openDoc(d, i)}>
-                            <Eye /> Aperçu
-                          </Button>
-                          {/* L860 — erreur de fetch PDF montrée inline. */}
-                          {rowError[i] && (
-                            <span className="text-xs text-destructive" role="alert">
-                              {rowError[i]}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        // L863 — bon de commande sans PDF : affordance claire.
-                        <span className="text-xs text-muted-foreground">Pas de PDF</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          /* J146 — migré vers le primitif Table partagé (plus de data-table). */
+          <Table
+            aria-label="Documents archivés"
+            columns={[
+              { key: 'type', header: 'Type', cell: (d) => typeLabel(d) },
+              { key: 'reference', header: 'Référence', cell: (d) => d.reference || '—' },
+              { key: 'date', header: 'Date', cellClassName: 'tabular-nums', cell: (d) => d.date || '—' },
+              {
+                key: 'action',
+                header: '',
+                align: 'right',
+                cell: (d, i) => ((d.has_pdf ?? !!d.download_url) ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <Button variant="outline" size="sm" onClick={() => openDoc(d, i)}>
+                      <Eye /> Aperçu
+                    </Button>
+                    {/* L860 — erreur de fetch PDF montrée inline. */}
+                    {rowError[i] && (
+                      <span className="text-xs text-destructive" role="alert">
+                        {rowError[i]}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  // L863 — bon de commande sans PDF : affordance claire.
+                  <span className="text-xs text-muted-foreground">Pas de PDF</span>
+                )),
+              },
+            ]}
+            rows={sortDocsDesc(data.documents)}
+          />
         )}
       </CardContent>
 

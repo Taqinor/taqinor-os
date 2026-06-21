@@ -11,6 +11,7 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
   AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+import { Table } from '../reporting/Table'
 import { formatMAD } from '../../lib/format'
 
 const STATUT_TABS = [
@@ -124,59 +125,53 @@ export default function AvoirsPage() {
         />
       ) : (
         <Card className="mt-4 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Référence</th><th>Facture</th><th>Client</th>
-                  <th className="ta-right">Total TTC</th><th>Motif</th>
-                  <th>Statut</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(a => (
-                  <tr key={a.id}>
-                    <td><strong>{a.reference}</strong></td>
-                    <td>{a.facture_reference}</td>
-                    <td>{a.client_nom}</td>
-                    <td className="ta-right tabular-nums">{formatMAD(a.total_ttc)}</td>
-                    <td>{a.motif || '—'}</td>
-                    <td>
-                      <StatusPill status={a.statut} label={a.statut_display} />
-                    </td>
-                    <td className="ta-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => download(a)}>
-                          <FileText /> PDF
-                        </Button>
-                        {isAdmin && a.statut !== 'annulee' && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10">
-                                Annuler
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Annuler l'avoir {a.reference} ?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Cette action marque l'avoir comme annulé.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Retour</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => annuler(a)}>Annuler l'avoir</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* P167 — migré vers le moteur de tableau partagé. */}
+          <Table
+            aria-label="Avoirs"
+            getRowKey={(a) => a.id}
+            columns={[
+              { key: 'reference', header: 'Référence', cell: (a) => <strong>{a.reference}</strong> },
+              { key: 'facture', header: 'Facture', cell: (a) => a.facture_reference },
+              { key: 'client', header: 'Client', cell: (a) => a.client_nom },
+              { key: 'total_ttc', header: 'Total TTC', align: 'right', cell: (a) => formatMAD(a.total_ttc) },
+              { key: 'motif', header: 'Motif', cell: (a) => a.motif || '—' },
+              { key: 'statut', header: 'Statut', cell: (a) => <StatusPill status={a.statut} label={a.statut_display} /> },
+              {
+                key: 'actions',
+                header: '',
+                align: 'right',
+                cell: (a) => (
+                  <div className="flex items-center justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => download(a)}>
+                      <FileText /> PDF
+                    </Button>
+                    {isAdmin && a.statut !== 'annulee' && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10">
+                            Annuler
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Annuler l'avoir {a.reference} ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action marque l'avoir comme annulé.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Retour</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => annuler(a)}>Annuler l'avoir</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+            rows={filtered}
+          />
         </Card>
       )}
     </div>
