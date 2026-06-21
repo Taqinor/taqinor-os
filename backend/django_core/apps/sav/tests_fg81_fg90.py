@@ -132,7 +132,7 @@ class TestSavSlaSettings(TestCase):
         sla.sla_resolution_days = 5
         sla.save()
 
-        prod = make_produit(self.co, sku='SLAP')
+        make_produit(self.co, sku='SLAP')
         inst, client = make_installation(self.co, ref='CHT-SLA')
         r = self.api.post('/api/django/sav/tickets/', {
             'client': client.id, 'installation': inst.id,
@@ -145,7 +145,7 @@ class TestSavSlaSettings(TestCase):
 
     def test_sla_breach_false_when_not_enabled(self):
         """FG81 — sla_due_at est None quand breach non activé."""
-        prod = make_produit(self.co, sku='SLAP2')
+        make_produit(self.co, sku='SLAP2')
         inst, client = make_installation(self.co, ref='CHT-SLA2')
         r = self.api.post('/api/django/sav/tickets/', {
             'client': client.id, 'installation': inst.id,

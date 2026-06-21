@@ -267,7 +267,7 @@ class EtatsTests(TestCase):
     def test_lettrage_equilibre_requis(self):
         clients = services.get_compte(self.co, '3421')
         lignes = selectors.lignes_non_lettrees(self.co, clients)
-        ids = [l.id for l in lignes]
+        ids = [lig.id for lig in lignes]
         # Les deux lignes 3421 (débit 120 / crédit 120) soldent → lettrables.
         n = selectors.lettrer(self.co, ids, 'A')
         self.assertEqual(n, 2)

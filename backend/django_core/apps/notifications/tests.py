@@ -579,9 +579,9 @@ class SweepTaskTests(TestCase):
         from .sweeps import _sweep_sav_breaching
 
         other_co = Company.objects.create(nom='AutreCo')
-        other_mgr = CustomUser.objects.create_user(
+        CustomUser.objects.create_user(
             username='other_sweepmgr', password='x',
-            company=other_co, role_legacy='admin')  # noqa: F841
+            company=other_co, role_legacy='admin')
 
         # Ticket de l'AUTRE société.
         other_client = Client.objects.create(company=other_co, nom='OtherClient')

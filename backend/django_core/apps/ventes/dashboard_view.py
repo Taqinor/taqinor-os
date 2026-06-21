@@ -126,15 +126,6 @@ def dashboard_quote_to_cash(request):
 
     # ── Factures ─────────────────────────────────────────────────────────────
     # On filtre sur date_emission et date_creation (les deux peuvent exister).
-    periode_fac = Q(company=company) & (
-        Q(date_emission__range=[
-            request.query_params.get('start', (timezone.now().date()
-                                               - __import__('datetime').timedelta(days=365)).isoformat()),
-            request.query_params.get('end', timezone.now().date().isoformat()),
-        ])
-        if (request.query_params.get('start') and request.query_params.get('end'))
-        else Q()
-    )
     factures_qs = Facture.objects.filter(company=company)
     agg_fac = factures_qs.aggregate(
         total=Count('id'),

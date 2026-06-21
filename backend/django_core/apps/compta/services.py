@@ -132,9 +132,9 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
     'libelle'?, 'tiers_type'?, 'tiers_id'?}``. La somme des débits doit égaler
     la somme des crédits, sinon RIEN n'est créé (transaction atomique).
     """
-    debit_total = sum((Decimal(l.get('debit') or 0) for l in lignes),
+    debit_total = sum((Decimal(lig.get('debit') or 0) for lig in lignes),
                       Decimal('0'))
-    credit_total = sum((Decimal(l.get('credit') or 0) for l in lignes),
+    credit_total = sum((Decimal(lig.get('credit') or 0) for lig in lignes),
                        Decimal('0'))
     if not lignes:
         raise ValidationError("Une écriture doit comporter au moins une ligne.")

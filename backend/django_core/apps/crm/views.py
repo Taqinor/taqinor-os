@@ -709,7 +709,6 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         from .models import Client as ClientModel
         from apps.ventes.utils.phone import normalize_ma_phone
 
-        matches = ClientModel.objects.filter(company=company)
         conditions = []
         phone_norm = normalize_ma_phone(lead.telephone or '') if lead.telephone else None
         email_norm = (lead.email or '').strip().lower() or None

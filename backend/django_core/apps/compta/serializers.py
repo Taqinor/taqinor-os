@@ -113,9 +113,9 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
             if len(lignes) < 2:
                 raise serializers.ValidationError(
                     "Une écriture doit comporter au moins deux lignes.")
-            debit = sum((Decimal(l.get('debit') or 0) for l in lignes),
+            debit = sum((Decimal(lig.get('debit') or 0) for lig in lignes),
                         Decimal('0'))
-            credit = sum((Decimal(l.get('credit') or 0) for l in lignes),
+            credit = sum((Decimal(lig.get('credit') or 0) for lig in lignes),
                          Decimal('0'))
             if debit != credit:
                 raise serializers.ValidationError(

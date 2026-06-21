@@ -78,7 +78,6 @@ def cash_flow_forecast(request):
 
     # Bornes des buckets temporels.
     week_end = today + timedelta(days=6)
-    next_week_start = today + timedelta(days=7)
     next_week_end = today + timedelta(days=13)
     month_end = _end_of_month(today)
     next_month_start = _start_of_next_month(today)

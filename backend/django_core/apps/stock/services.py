@@ -890,7 +890,6 @@ def generer_bcf_reappro(company, user, fournisseur_id):
             note='Réapprovisionnement automatique (stock < seuil)',
             created_by=user)
         for produit, qte, prix in lignes_produits:
-            from decimal import Decimal
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, produit=produit,
                 quantite=qte,
@@ -1113,8 +1112,8 @@ def supplier_performance(company, fournisseur):
                         lead_times.append(delta)
 
         # Taux de remplissage = qte reçue / qte commandée
-        total_cmd = sum(l.quantite for l in bc.lignes.all())
-        total_recu = sum(l.quantite_recue for l in bc.lignes.all())
+        total_cmd = sum(lig.quantite for lig in bc.lignes.all())
+        total_recu = sum(lig.quantite_recue for lig in bc.lignes.all())
         if total_cmd > 0:
             fill_rates.append(total_recu / total_cmd * 100)
 

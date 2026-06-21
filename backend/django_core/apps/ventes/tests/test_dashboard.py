@@ -194,7 +194,7 @@ class TestDashboardAggregation(TestCase):
 
     def test_dso_calculation(self):
         # DSO = encours / (montant_facture / 30)
-        f = _facture(self.co, self.cli, statut='emise', ttc=Decimal('3000'))
+        _facture(self.co, self.cli, statut='emise', ttc=Decimal('3000'))
         r = self.api.get(URL)
         dso = r.data['dso_jours']
         # encours = 3000, montant_facture = 3000 → DSO = 30

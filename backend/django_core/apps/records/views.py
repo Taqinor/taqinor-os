@@ -180,7 +180,7 @@ def _log_done_to_chatter(activity, user):
 
 
 # ── Commentaires (FG7) ──────────────────────────────────────────────
-import re as _re
+import re as _re  # noqa: E402
 
 _MENTION_RE = _re.compile(r'@(\w+)')
 

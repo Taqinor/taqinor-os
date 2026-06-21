@@ -350,7 +350,7 @@ class TestSalesLeaderboard(InsightsBase):
         other_produit = Produit.objects.create(
             company=self.other, nom='P-OTHER', sku='OTH-1',
             prix_vente=Decimal('100'))
-        other_user = User.objects.create_user(
+        User.objects.create_user(
             username='other_lbcom', password='x',
             role_legacy='responsable', company=self.other)
         from apps.ventes.models import Devis, LigneDevis

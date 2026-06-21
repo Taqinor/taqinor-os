@@ -193,7 +193,7 @@ class TestReleveImport(TestCase):
 
     def test_commit_match_by_montant_when_no_ref(self):
         """Sans référence, le match peut se faire par montant."""
-        fac = self._facture(ttc=Decimal('7777'))
+        self._facture(ttc=Decimal('7777'))
         csv_bytes = _make_csv([{
             'date': '2026-06-20', 'reference': '',
             'montant': '7777',

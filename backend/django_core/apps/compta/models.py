@@ -241,11 +241,11 @@ class EcritureComptable(models.Model):
 
     @property
     def total_debit(self):
-        return sum((l.debit for l in self.lignes.all()), Decimal('0'))
+        return sum((lig.debit for lig in self.lignes.all()), Decimal('0'))
 
     @property
     def total_credit(self):
-        return sum((l.credit for l in self.lignes.all()), Decimal('0'))
+        return sum((lig.credit for lig in self.lignes.all()), Decimal('0'))
 
     @property
     def est_equilibree(self):
@@ -264,8 +264,8 @@ class EcritureComptable(models.Model):
         lignes = list(self.lignes.all())
         if not lignes:
             return
-        debit = sum((l.debit for l in lignes), Decimal('0'))
-        credit = sum((l.credit for l in lignes), Decimal('0'))
+        debit = sum((lig.debit for lig in lignes), Decimal('0'))
+        credit = sum((lig.credit for lig in lignes), Decimal('0'))
         if debit != credit:
             raise ValidationError(
                 "L'écriture comptable doit être équilibrée : "

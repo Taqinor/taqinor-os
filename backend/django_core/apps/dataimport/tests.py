@@ -197,7 +197,7 @@ class TestEquipementsImport(ImportBase):
         from apps.sav.models import Equipement
         f = self._csv(
             'SKU,Chantier,Serie\n'
-            f'SKU-EQ1,CHANT-EQ1,SN-001\n')
+            'SKU-EQ1,CHANT-EQ1,SN-001\n')
         resp = self.api.post('/api/django/imports/commit/',
                              {'file': f, 'target': 'equipements'}, format='multipart')
         self.assertEqual(resp.status_code, 200, resp.data)

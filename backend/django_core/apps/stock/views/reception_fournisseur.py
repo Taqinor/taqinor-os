@@ -122,7 +122,6 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         """FG56 — Crée une FactureFournisseur à partir de cette réception
         confirmée. Calcule HT/TVA/TTC depuis les lignes BCF. INTERNE."""
         from ..services import facturer_reception
-        from ..serializers import FactureFournisseurSerializer
         reception = self.get_object()
         try:
             facture = facturer_reception(

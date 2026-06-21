@@ -149,7 +149,6 @@ def funnel_velocity(request):
         events = [(lead.date_creation, 'NEW')]
         for ch in changes:
             try:
-                new_stage = ch.new_value  # label FR — cherchons la clé
                 # Retrouver la clé depuis le label
                 key = next(
                     (k for k, v in stage_mod.STAGE_LABELS.items() if v == ch.new_value),

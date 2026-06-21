@@ -71,7 +71,7 @@ class TestComparaisonOptionsField(TestCase):
 
     def test_comparaison_none_does_not_crash_list(self):
         """La liste des devis (GET /ventes/devis/) ne crash pas même sans options."""
-        d = _devis(self.co, self.user, self.cli, ref='DEV-FG48-LIST')
+        _devis(self.co, self.user, self.cli, ref='DEV-FG48-LIST')
         api = _auth(self.user)
         r = api.get('/api/django/ventes/devis/')
         self.assertEqual(r.status_code, 200)

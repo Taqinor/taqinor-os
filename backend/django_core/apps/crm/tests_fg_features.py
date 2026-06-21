@@ -412,7 +412,7 @@ class TestFG38ClientMatch(TestCase):
         self.assertEqual(resp.data, [])
 
     def test_client_match_result_fields(self):
-        client = Client.objects.create(
+        Client.objects.create(
             company=self.company, nom='Field Check', prenom='Ahmed',
             email='fieldcheck@test.ma',
         )
