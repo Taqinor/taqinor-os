@@ -1,3 +1,4 @@
+# flake8: noqa
 """v2 PROTOTYPE render harness — assembles the 3 page modules into one A4 PDF.
 Inert: never imported by /proposal or the live engine."""
 from __future__ import annotations

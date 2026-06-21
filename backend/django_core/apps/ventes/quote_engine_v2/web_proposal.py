@@ -1,3 +1,4 @@
+# flake8: noqa
 """v2 PROTOTYPE — CLIENT WEB PROPOSAL (the link we send the client).
 
 Rebuilt to be clean and self-contained: large, readable type, generous

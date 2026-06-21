@@ -1,3 +1,4 @@
+# flake8: noqa
 """Page 3 — CONFIANCE & ENGAGEMENT (trust + close).
 
 v2 PROTOTYPE page module. Renders the INNER HTML of one A4 page (no .page

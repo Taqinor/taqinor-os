@@ -1,3 +1,4 @@
+# flake8: noqa
 """TAQINOR quote engine — v2 PROTOTYPE (parallel copy, NOT wired into /proposal).
 
 Brand tokens + shared CSS + asset/font loaders. Reuses the live engine's

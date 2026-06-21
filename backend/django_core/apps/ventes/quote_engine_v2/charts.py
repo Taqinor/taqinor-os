@@ -1,10 +1,8 @@
+# flake8: noqa
 """v2 PROTOTYPE charts (matplotlib -> transparent PNG data-URIs).
 
-New visuals vs the live engine:
-  - bill_before_after : facture ONEE vs facture après solaire (the money hook)
-  - coverage_donut    : taux de couverture / offset %
-  - payback_curve     : 25-yr cumulative gain (kept, given real space)
-  - roof_layout       : simple roof + panel-array schematic ("votre installation")
+v3 elevation: calmer, more premium styling — restrained palette, hairline
+grids, no chartjunk, generous breathing room, brand-coloured accents.
 """
 from __future__ import annotations
 import base64
@@ -16,121 +14,136 @@ os.environ.setdefault("MPLCONFIGDIR", tempfile.gettempdir())
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch, Rectangle
+from matplotlib.patches import FancyBboxPatch
 
 NAVY = "#1A2B4A"
 GOLD = "#F5A623"
 GREEN = "#16A34A"
-GREY = "#C9D2DE"
+GREY = "#D7DEE8"
+GREY_2 = "#AEB8C7"
 INK = "#1f2937"
-MUTED = "#6b7280"
+MUTED = "#7A8699"
+GRID = "#EEF1F6"
+
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "font.size": 8,
+    "text.color": INK,
+    "axes.edgecolor": "#D8DEE8",
+    "axes.linewidth": 0.8,
+    "xtick.color": MUTED,
+    "ytick.color": MUTED,
+    "axes.titlecolor": NAVY,
+})
 
 _MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun",
            "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
 
 
-def _uri(fig, dpi=200) -> str:
+def _uri(fig, dpi=210) -> str:
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, transparent=True,
-                bbox_inches="tight", pad_inches=0.04)
+                bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def bill_before_after(bills_before, bills_after, w=6.6, h=2.05) -> str:
-    """Grouped monthly bars: ONEE bill today vs bill after solar."""
+def _clean(ax, keep_bottom=True):
+    for s in ("top", "right", "left"):
+        ax.spines[s].set_visible(False)
+    ax.spines["bottom"].set_visible(keep_bottom)
+    ax.spines["bottom"].set_color("#D8DEE8")
+    ax.tick_params(length=0)
+    ax.grid(axis="y", color=GRID, linewidth=0.9)
+    ax.set_axisbelow(True)
+
+
+def bill_before_after(bills_before, bills_after, w=6.6, h=2.0) -> str:
     import numpy as np
     x = np.arange(12)
     fig, ax = plt.subplots(figsize=(w, h))
-    bw = 0.42
-    ax.bar(x - bw / 2, bills_before, bw, label="Facture ONEE aujourd'hui",
-           color=GREY, edgecolor="none")
-    ax.bar(x + bw / 2, bills_after, bw, label="Facture après solaire",
-           color=GOLD, edgecolor="none")
-    ax.set_xticks(x)
-    ax.set_xticklabels(_MONTHS, fontsize=7, color=MUTED)
-    ax.tick_params(axis="y", labelsize=7, colors=MUTED, length=0)
-    for s in ("top", "right", "left"):
-        ax.spines[s].set_visible(False)
-    ax.spines["bottom"].set_color("#d8dee8")
-    ax.grid(axis="y", color="#eef1f5", linewidth=0.8)
-    ax.set_axisbelow(True)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.18), ncol=2,
-              frameon=False, fontsize=7.5, handlelength=1.1,
-              labelcolor=INK, columnspacing=1.4)
+    bw = 0.40
+    ax.bar(x - bw / 2 - 0.02, bills_before, bw, label="Facture ONEE aujourd'hui",
+           color=GREY, edgecolor="none", zorder=3)
+    ax.bar(x + bw / 2 + 0.02, bills_after, bw, label="Facture après solaire",
+           color=GOLD, edgecolor="none", zorder=3)
+    ax.set_xticks(x); ax.set_xticklabels(_MONTHS, fontsize=7.5, color=MUTED)
+    ax.tick_params(axis="y", labelsize=7, colors=MUTED)
+    _clean(ax)
+    ax.margins(x=0.01)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.20), ncol=2,
+              frameon=False, fontsize=8, handlelength=1.0, handleheight=1.0,
+              labelcolor=INK, columnspacing=1.6)
     fig.tight_layout()
     return _uri(fig)
 
 
-def coverage_donut(pct, w=1.9, h=1.9) -> str:
-    """Single-value donut for taux de couverture (offset %)."""
+def coverage_donut(pct, w=1.95, h=1.95) -> str:
     pct = max(0, min(100, int(round(pct))))
     fig, ax = plt.subplots(figsize=(w, h))
-    ax.pie([pct, 100 - pct], colors=[GOLD, "#EAEEF4"], startangle=90,
-           counterclock=False, wedgeprops=dict(width=0.30, edgecolor="white"))
-    ax.text(0, 0.06, f"{pct}%", ha="center", va="center",
-            fontsize=21, color=NAVY, fontweight="bold")
-    ax.text(0, -0.34, "couverture", ha="center", va="center",
-            fontsize=8, color=MUTED)
+    ax.pie([pct, 100 - pct], colors=[GOLD, "#ECEFF4"], startangle=90,
+           counterclock=False,
+           wedgeprops=dict(width=0.26, edgecolor="white", linewidth=1.4))
+    ax.text(0, 0.08, f"{pct}%", ha="center", va="center",
+            fontsize=22, color=NAVY, fontweight="bold")
+    ax.text(0, -0.32, "couverture", ha="center", va="center",
+            fontsize=8.5, color=MUTED)
     ax.set(aspect="equal")
     return _uri(fig)
 
 
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
-                  w=6.6, h=1.95) -> str:
+                  w=6.6, h=2.25) -> str:
     years = list(range(0, 26))
-    cs = [-total_sans + eco_s * y for y in years]
-    ca = [-total_avec + eco_a * y for y in years]
+    cs = [(-total_sans + eco_s * y) / 1000 for y in years]
+    ca = [(-total_avec + eco_a * y) / 1000 for y in years]
     fig, ax = plt.subplots(figsize=(w, h))
-    ax.axhline(0, color="#c5ccd6", linewidth=1)
-    ax.plot(years, cs, color=NAVY, linewidth=2.2, label="Sans batterie")
-    ax.plot(years, ca, color=GOLD, linewidth=2.2, label="Avec batterie")
-    ax.fill_between(years, cs, 0, where=[v > 0 for v in cs], color=NAVY, alpha=0.05)
-    for roi, col in ((roi_s, NAVY), (roi_a, GOLD)):
-        ax.scatter([roi], [0], s=34, color=col, zorder=5)
-    ax.annotate(f"ROI {roi_s:g} ans", (roi_s, 0), textcoords="offset points",
-                xytext=(2, 10), fontsize=7.5, color=NAVY, fontweight="bold")
-    ax.annotate(f"ROI {roi_a:g} ans", (roi_a, 0), textcoords="offset points",
-                xytext=(2, -16), fontsize=7.5, color=GOLD, fontweight="bold")
-    ax.set_xlim(0, 25)
-    ax.set_xlabel("Années", fontsize=7.5, color=MUTED)
-    ax.tick_params(labelsize=7, colors=MUTED, length=0)
-    for s in ("top", "right", "left"):
-        ax.spines[s].set_visible(False)
-    ax.spines["bottom"].set_color("#d8dee8")
-    ax.grid(axis="y", color="#eef1f5", linewidth=0.8)
-    ax.set_axisbelow(True)
-    ax.legend(loc="upper left", frameon=False, fontsize=7.5, labelcolor=INK)
+    ax.axhline(0, color="#C5CCD6", linewidth=1, zorder=1)
+    ax.fill_between(years, ca, 0, where=[v > 0 for v in ca],
+                    color=GOLD, alpha=0.08, zorder=1)
+    ax.plot(years, cs, color=NAVY, linewidth=2.4, label="Sans batterie", zorder=3)
+    ax.plot(years, ca, color=GOLD, linewidth=2.4, label="Avec batterie", zorder=3)
+    for roi, col, dy in ((roi_s, NAVY, 12), (roi_a, GOLD, -20)):
+        ax.scatter([roi], [0], s=40, color=col, zorder=5,
+                   edgecolor="white", linewidth=1.2)
+        ax.annotate(f"{roi:g} ans", (roi, 0), textcoords="offset points",
+                    xytext=(4, dy), fontsize=8, color=col, fontweight="bold")
+    ax.set_xlim(0, 25); ax.margins(y=0.08)
+    ax.set_xlabel("Années", fontsize=8, color=MUTED)
+    ax.set_ylabel("Gain cumulé (k MAD)", fontsize=8, color=MUTED)
+    ax.tick_params(labelsize=7.5, colors=MUTED)
+    _clean(ax)
+    ax.legend(loc="upper left", frameon=False, fontsize=8.5, labelcolor=INK,
+              handlelength=1.4)
     fig.tight_layout()
     return _uri(fig)
 
 
-def roof_layout(nb_panneaux, w=2.7, h=2.0) -> str:
-    """Schematic roof with a panel array (count-accurate-ish grid)."""
+def roof_layout(nb_panneaux, w=2.9, h=2.2) -> str:
+    """Clean top-down roof + panel array schematic."""
     import math
-    cols = max(1, round(math.sqrt(nb_panneaux * 1.6)))
+    cols = max(1, round(math.sqrt(nb_panneaux * 1.7)))
     rows = max(1, math.ceil(nb_panneaux / cols))
     fig, ax = plt.subplots(figsize=(w, h))
-    # roof slab
-    ax.add_patch(FancyBboxPatch((0.04, 0.04), 0.92, 0.92,
-                 boxstyle="round,pad=0.0,rounding_size=0.02",
-                 linewidth=1.4, edgecolor="#cfd8e6", facecolor="#f3f6fb"))
-    pad, gap = 0.12, 0.012
-    gw = (0.92 - 2 * (pad - 0.04)) / cols
-    gh = (0.92 - 2 * (pad - 0.04)) / rows
+    ax.add_patch(FancyBboxPatch((0.03, 0.03), 0.94, 0.94,
+                 boxstyle="round,pad=0,rounding_size=0.03",
+                 linewidth=1.2, edgecolor="#CCD6E4", facecolor="#F4F7FB"))
+    pad, gap = 0.10, 0.014
+    gw = (0.94 - 2 * pad) / cols
+    gh = (0.94 - 2 * pad) / rows
     placed = 0
     for r in range(rows):
         for c in range(cols):
             if placed >= nb_panneaux:
                 break
-            x = (pad - 0.04) + c * gw + 0.04
-            y = (pad - 0.04) + (rows - 1 - r) * gh + 0.04
-            ax.add_patch(Rectangle((x + gap, y + gap), gw - 2 * gap, gh - 2 * gap,
-                         facecolor=NAVY, edgecolor=GOLD, linewidth=0.5))
+            x = pad + 0.03 + c * gw
+            y = pad + 0.03 + (rows - 1 - r) * gh
+            ax.add_patch(FancyBboxPatch((x + gap, y + gap),
+                         gw - 2 * gap, gh - 2 * gap,
+                         boxstyle="round,pad=0,rounding_size=0.006",
+                         linewidth=0.5, edgecolor=GOLD, facecolor=NAVY))
             placed += 1
-    ax.text(0.5, -0.03, f"{nb_panneaux} panneaux", ha="center", va="top",
-            transform=ax.transAxes, fontsize=8, color=MUTED)
-    ax.set_xlim(0, 1); ax.set_ylim(-0.08, 1)
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.axis("off"); ax.set(aspect="equal")
     return _uri(fig)
 

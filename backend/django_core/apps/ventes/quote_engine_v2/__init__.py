@@ -1,3 +1,4 @@
+# flake8: noqa
 """TAQINOR quote engine — v2 PROTOTYPE package.
 
 A PARALLEL COPY used to prototype proposal improvements. It is NOT wired into

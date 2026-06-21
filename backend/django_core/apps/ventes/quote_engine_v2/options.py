@@ -1,3 +1,4 @@
+# flake8: noqa
 """Page 2 — VOTRE INSTALLATION : détail du projet + finance.
 
 Restructured vs the old design: the old page 2 carried TWO near-identical

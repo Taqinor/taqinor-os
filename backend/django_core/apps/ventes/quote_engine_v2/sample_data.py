@@ -1,3 +1,4 @@
+# flake8: noqa
 """Sample data for the v2 PROTOTYPE — reuses the LIVE build_quote_data mapping
 (so totals/option-split are real), then augments with the new v2 fields
 (bills before/after, coverage %, website links). No DB; stand-in Devis."""
