@@ -110,7 +110,7 @@ export default function Composer({
   const uploadFiles = async (files) => {
     for (const file of files) {
       try {
-        const res = await messagesApi.uploadAttachment(file)
+        const res = await messagesApi.uploadAttachment(activeId, file)
         setAttachments((prev) => [...prev, { id: res.data.id, name: res.data.name || file.name }])
       } catch (err) {
         toastError(err.response?.data?.detail || `Échec de l’envoi de ${file.name}`)

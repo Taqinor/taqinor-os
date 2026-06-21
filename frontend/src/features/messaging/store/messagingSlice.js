@@ -34,7 +34,8 @@ export const fetchUnreadCount = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const res = await messagesApi.unreadCount()
-      return res.data?.unread ?? res.data?.count ?? 0
+      // Le backend répond { per_conversation: {id: n}, total }.
+      return res.data?.total ?? res.data?.unread ?? res.data?.count ?? 0
     } catch (err) {
       return rejectWithValue(err.response?.data ?? err.message)
     }

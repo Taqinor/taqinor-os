@@ -77,14 +77,36 @@ def _resolve_mentions(conversation, body):
     return hit
 
 
+def _members_by_ids(conversation, ids):
+    """Membres de la conversation dont l'id figure dans `ids` (S16).
+
+    On ne mentionne JAMAIS un utilisateur qui n'est pas membre : la liste
+    fournie par le client est filtrée à l'appartenance, côté serveur."""
+    wanted = {int(i) for i in (ids or []) if str(i).isdigit()}
+    if not wanted:
+        return []
+    from .models import ConversationMember
+    return [
+        m.user for m in ConversationMember.objects.filter(
+            conversation=conversation, user_id__in=wanted)
+        .select_related('user')
+        if m.user is not None
+    ]
+
+
 @transaction.atomic
 def create_message(*, conversation, sender, company, body='', kind=None,
-                   reply_to=None, record_type=None, record_id=None):
+                   reply_to=None, record_type=None, record_id=None,
+                   mention_ids=None):
     """Crée un message dans une conversation (membre déjà vérifié en amont).
 
     Gère le partage d'enregistrement (S8) et les @mentions (S9). La société est
     TOUJOURS celle de la conversation/appelant. Lève ValueError si un
-    enregistrement partagé n'appartient pas à la société."""
+    enregistrement partagé n'appartient pas à la société.
+
+    Les @mentions sont résolues depuis le corps (@username/@email) ET, en plus,
+    depuis la liste d'ids `mention_ids` fournie par le client (S16) — toujours
+    filtrée à l'appartenance, jamais cross-conversation."""
     from .models import Message, MessageMention
 
     shared_ct = None
@@ -118,8 +140,12 @@ def create_message(*, conversation, sender, company, body='', kind=None,
     conversation.updated_at = timezone.now()
     conversation.save(update_fields=['updated_at'])
 
-    # @mentions → lignes dédiées (push plus fort).
-    mentioned = _resolve_mentions(conversation, body)
+    # @mentions → lignes dédiées (push plus fort). On unionne les mentions
+    # détectées dans le texte et celles explicitement fournies par le client.
+    mentioned_map = {u.pk: u for u in _resolve_mentions(conversation, body)}
+    for u in _members_by_ids(conversation, mention_ids):
+        mentioned_map[u.pk] = u
+    mentioned = list(mentioned_map.values())
     for u in mentioned:
         MessageMention.objects.get_or_create(message=msg, mentioned_user=u)
 

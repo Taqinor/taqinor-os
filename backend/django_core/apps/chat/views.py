@@ -93,6 +93,70 @@ class ConversationViewSet(viewsets.ModelViewSet):
         company = _company(request)
         return Response(services.unread_summary(request.user, company))
 
+    # ── S9 — sourdine par conversation ────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='mute')
+    def mute(self, request, pk=None):
+        """Active/désactive la sourdine de la conversation pour le membre
+        courant. Body : {muted: bool}. Scopé société + appartenance."""
+        conv = self.get_object()  # déjà scopé société (cross-tenant → 404)
+        member = ConversationMember.objects.filter(
+            conversation=conv, user=request.user).first()
+        if member is None:
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        muted = request.data.get('muted')
+        member.is_muted = bool(muted) if muted is not None else True
+        member.save(update_fields=['is_muted'])
+        return Response(self.get_serializer(conv).data)
+
+    # ── S20 — gestion des membres d'un canal ──────────────────────────
+    def _require_admin(self, conv):
+        """Retourne le membre admin courant, ou None si non-admin/non-membre."""
+        return ConversationMember.objects.filter(
+            conversation=conv, user=self.request.user,
+            role=ConversationMember.Role.ADMIN).first()
+
+    @action(detail=True, methods=['post'], url_path='members')
+    def add_members(self, request, pk=None):
+        """Ajoute des membres au canal (admin seulement, même société)."""
+        conv = self.get_object()
+        if self._require_admin(conv) is None:
+            return Response(
+                {'detail': 'Action réservée aux administrateurs du canal.'},
+                status=status.HTTP_403_FORBIDDEN)
+        company = _company(request)
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        member_ids = request.data.get('member_ids') or []
+        for uid in member_ids:
+            u = User.objects.filter(pk=uid, company=company).first()
+            if u is not None:
+                ConversationMember.objects.get_or_create(
+                    conversation=conv, user=u)
+        return Response(self.get_serializer(conv).data)
+
+    @action(detail=True, methods=['delete'],
+            url_path='members/(?P<user_id>[0-9]+)')
+    def remove_member(self, request, pk=None, user_id=None):
+        """Retire un membre du canal (admin seulement)."""
+        conv = self.get_object()
+        if self._require_admin(conv) is None:
+            return Response(
+                {'detail': 'Action réservée aux administrateurs du canal.'},
+                status=status.HTTP_403_FORBIDDEN)
+        ConversationMember.objects.filter(
+            conversation=conv, user_id=user_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='leave')
+    def leave(self, request, pk=None):
+        """Le membre courant quitte la conversation."""
+        conv = self.get_object()
+        ConversationMember.objects.filter(
+            conversation=conv, user=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """S5 — recherche scopée société + appartenance."""
@@ -178,6 +242,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 reply_to=reply_to,
                 record_type=request.data.get('record_type'),
                 record_id=request.data.get('record_id'),
+                mention_ids=request.data.get('mentions'),
             )
         except ValueError as exc:
             return Response({'detail': str(exc)},
