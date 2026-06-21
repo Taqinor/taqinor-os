@@ -231,6 +231,11 @@ function setupDom() {
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
   const diag = el('details', 'diag') as HTMLDetailsElement;
   diag.appendChild(el('input', 'lf-area'));
+  // W110 — coordonnées client surfacées en haut (le composant relocalisé) : Nom / Téléphone /
+  // Ville. prefillLead les reporte quand fournis, et remplit la ville depuis rp9-address.
+  diag.appendChild(el('input', 'lf-name'));
+  diag.appendChild(el('input', 'lf-phone'));
+  diag.appendChild(el('input', 'lf-city'));
   const orient = el('select', 'lf-orient') as HTMLSelectElement;
   for (const id of ['sud', 'sud-est', 'sud-ouest', 'est', 'ouest']) {
     const o = document.createElement('option');
@@ -1200,6 +1205,37 @@ describe('runtime W97 §1 — prefill via le CTA + aucun POST de lead', () => {
       expect(url).not.toContain('/api/preview-lead');
       expect(url).not.toContain('/api/simulate');
     }
+  });
+
+  it('W110 — le CTA remplit lf-city depuis l\'adresse géocodée (rp9-address) sans POST', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    // simule une adresse géocodée déjà présente dans le champ de recherche
+    (document.getElementById('rp9-address') as HTMLInputElement).value = 'Casablanca, Maroc';
+    traceRoof(fakeMaps[0], 16);
+    const cta = document.getElementById('rp9-cta') as HTMLButtonElement;
+    cta.click(); // → prefillLead(d) : handoff, JAMAIS un POST
+    // W110 — la ville du diagnostic est pré-remplie depuis l'adresse géocodée (champ vide).
+    expect(lf('lf-city')).toBe('Casablanca, Maroc');
+    // toujours aucun POST de lead/simulation
+    const calls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const c of calls) {
+      const url = String(c[0]);
+      expect(url).not.toContain('/api/preview-lead');
+      expect(url).not.toContain('/api/simulate');
+    }
+  });
+
+  it('W110 — une ville DÉJÀ saisie n\'est pas écrasée par l\'adresse géocodée', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    (document.getElementById('rp9-address') as HTMLInputElement).value = 'Casablanca, Maroc';
+    (document.getElementById('lf-city') as HTMLInputElement).value = 'Rabat';
+    traceRoof(fakeMaps[0], 16);
+    (document.getElementById('rp9-cta') as HTMLButtonElement).click();
+    expect(lf('lf-city')).toBe('Rabat'); // saisie utilisateur préservée
   });
 
   it('toit plat Est-Ouest verrouillé : l\'orientation pré-remplie reste « sud » (W85)', async () => {
