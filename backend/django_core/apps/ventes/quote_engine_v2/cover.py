@@ -196,7 +196,8 @@ def build(ctx):
 .c1-opt{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:12px;
   background:#fff;padding:15px 16px 14px;position:relative;display:flex;
   flex-direction:column;}}
-.c1-opt.c1-reco{{border:1.5px solid {gold};background:#fff;}}
+.c1-opt.c1-reco{{border:1.5px solid {gold};
+  background:linear-gradient(180deg,#FFFCF5,#ffffff 55%);}}
 .c1-opt-head{{display:flex;align-items:flex-start;justify-content:space-between;
   margin-bottom:2px;}}
 .c1-opt-k{{font-size:6.5pt;letter-spacing:2px;color:{gold};font-weight:700;

@@ -138,6 +138,20 @@ def build(ctx) -> str:
 
     tva_note = d.get("tva_note", "")
 
+    # ── Payback takeaway figures (read straight off the quote data) ───────────
+    def _yrs(v):
+        return f"{v:g}".replace(".", ",") if v else "—"
+    roi_s, roi_a = d.get("roi_s"), d.get("roi_a")
+    if roi_s and roi_a:
+        lo, hi = sorted((roi_s, roi_a))
+        roi_range = f"{_yrs(lo)} – {_yrs(hi)} ans"
+    else:
+        roi_range = "—"
+    # Net cumulative gain over 25 yrs for the recommended (battery) option,
+    # rounded to a clean headline figure.
+    gain25 = max(0, round(d.get("eco_a_ann", 0) * 25 - d.get("total_avec", 0)))
+    gain25 = round(gain25 / 1000) * 1000
+
     style = f"""
 <style>
   .p2-wrap {{ padding:9mm 14mm 0 14mm; }}
@@ -234,9 +248,22 @@ def build(ctx) -> str:
   .p2-fin-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:13pt;
     color:{C['navy']}; margin-right:4mm; }}
   .p2-fin-sub {{ font-size:8pt; color:{C['muted']}; }}
-  .p2-fin-chart {{ margin-top:1.5mm; text-align:center; }}
-  .p2-fin-chart img {{ width:100%; max-height:37mm; height:auto;
+  .p2-fin-grid {{ display:flex; gap:7mm; align-items:stretch; margin-top:2mm; }}
+  .p2-fin-chart {{ flex:1 1 60%; display:flex; align-items:center; }}
+  .p2-fin-chart img {{ width:100%; max-height:42mm; height:auto;
     object-fit:contain; }}
+  .p2-fin-panel {{ flex:0 0 36%; display:flex; flex-direction:column;
+    justify-content:center; gap:3mm; border-left:1px solid {C['line']};
+    padding-left:6mm; }}
+  .p2-fin-k {{ display:block; font-size:6.8pt; letter-spacing:.11em;
+    text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
+    margin-bottom:1mm; }}
+  .p2-fin-v {{ display:block; font-family:{fonts['display']}; font-size:18pt;
+    color:{C['navy']}; line-height:1; }}
+  .p2-fin-v small {{ font-family:{fonts['sans']}; font-size:8.5pt;
+    color:{C['muted']}; font-weight:600; }}
+  .p2-fin-s {{ display:block; font-size:7.2pt; color:{C['muted']};
+    margin-top:1mm; }}
 </style>
 """
 
@@ -295,7 +322,25 @@ def build(ctx) -> str:
       <span class="p2-fin-title">Rentabilité sur 25 ans</span>
       <span class="p2-fin-sub">gain cumulé, deux scénarios — le point marque le retour sur investissement</span>
     </div>
-    <div class="p2-fin-chart"><img src="{charts['payback']}" alt="Courbe de rentabilité 25 ans"></div>
+    <div class="p2-fin-grid">
+      <div class="p2-fin-chart"><img src="{charts['payback']}" alt="Courbe de rentabilité 25 ans"></div>
+      <div class="p2-fin-panel">
+        <div>
+          <span class="p2-fin-k">Retour sur investissement</span>
+          <span class="p2-fin-v">{roi_range}</span>
+        </div>
+        <div>
+          <span class="p2-fin-k">Gain net sur 25 ans</span>
+          <span class="p2-fin-v">≈ {fmt(gain25)} <small>MAD</small></span>
+          <span class="p2-fin-s">option avec batterie</span>
+        </div>
+        <div>
+          <span class="p2-fin-k">Production garantie</span>
+          <span class="p2-fin-v">25 ans</span>
+          <span class="p2-fin-s">panneaux &amp; performance</span>
+        </div>
+      </div>
+    </div>
   </div>
 
 </div>
