@@ -1133,7 +1133,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [x] W170 — **Bring `produits/*` + legal pages onto the `v2-page-title` scale + `V2Enhance`
   engine** (they bypass it and feel like a different site). Files: `apps/web/src/pages/produits/index.astro`,
   `apps/web/src/pages/produits/[slug].astro`, `politique-de-confidentialite.astro`, `mentions-legales.astro`.
-- [ ] W171 — **Extract a `PhotoCaption` scrim component** (duplicated ~30× verbatim with drifting
+- [x] W171 — **Extract a `PhotoCaption` scrim component** (duplicated ~30× verbatim with drifting
   padding). Files: new `apps/web/src/components/PhotoCaption.astro` + gallery pages.
 - [x] W172 — **Tokenize the hero scrim gradient** (mid-stop hand-tuned per page: `/35`, `/45`,
   `/55`…). Files: `apps/web/src/styles/global.css` + heroes.
@@ -1150,19 +1150,19 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Imagery & media —**
 
-- [ ] W178 — **Lightbox / zoom on gallery + case-study photos** (detail shots are never viewable
+- [x] W178 — **Lightbox / zoom on gallery + case-study photos** (detail shots are never viewable
   full-size today). Files: `apps/web/src/pages/realisations/index.astro`, `apps/web/src/pages/realisations/[slug].astro`.
-- [ ] W179 — **Standardize one hover-zoom token** across all clickable photo cards (inconsistent
+- [x] W179 — **Standardize one hover-zoom token** across all clickable photo cards (inconsistent
   `1.02`/`1.04`/none). Files: `apps/web/src/components/VideoChantier.astro` + gallery pages.
 - [ ] W180 — **Fix mixed aspect-ratio crop vs declared `ratio`** (silent crop + slightly wrong
   anti-CLS height). Files: `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`.
-- [ ] W181 — **Add `object-position` focal-point control to `Picture.astro`** (everything is
+- [x] W181 — **Add `object-position` focal-point control to `Picture.astro`** (everything is
   center-cropped). Files: `apps/web/src/components/Picture.astro`, `apps/web/src/lib/realisations.ts`.
-- [ ] W182 — **Style the chantier `<video>`** (default browser chrome clashes with navy/brass;
+- [x] W182 — **Style the chantier `<video>`** (default browser chrome clashes with navy/brass;
   add poster + explicit dims + a save-data/mobile encode). Files: `apps/web/src/components/VideoChantier.astro`.
-- [ ] W183 — **Optical-size-normalize + monochrome the brand-logo row** (per-brand height
+- [x] W183 — **Optical-size-normalize + monochrome the brand-logo row** (per-brand height
   multipliers + grayscale→color hover). Files: `apps/web/src/lib/brands.ts`, `apps/web/src/components/BrandStrip.astro`.
-- [ ] W184 — **Before/during/after diptych or slider on case pages** (source material already
+- [x] W184 — **Before/during/after diptych or slider on case pages** (source material already
   exists). Files: `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/lib/realisations.ts`.
 - [ ] W185 — **Per-realisation OG card** (each case reuses a generic OG today). Files:
   `apps/web/src/pages/realisations/[slug].astro`.
@@ -1443,3 +1443,11 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W192: estimator chips → true segmented control (clear brass active state + focus-visible) and branded .rp9-range sliders; math/values/prefill untouched, step="any" kept.
 - 2026-06-21 — W193: WhatsAppMock realism — online dot, read double-ticks, bubble tails + WhatsApp radii, date separator; decorative only.
 - 2026-06-21 — W212: équipement comparison grid given a middle breakpoint (1 col <lg, 2 cols ≥lg) across fr/en/ar twins; content unchanged.
+- 2026-06-21 — W171: extracted PhotoCaption.astro scrim component; replaced duplicated inline caption scrims on realisations pages.
+- 2026-06-21 — W178: accessible dependency-free lightbox (ESC/arrows/focus-trap/aria) on realisations index gallery + case-study photos.
+- 2026-06-21 — W179: standardized hover-zoom to 1.04 across VideoChantier poster + realisations photo cards; reduced-motion gated.
+- 2026-06-21 — W181: Picture.astro gains optional position/objectPosition prop (default unchanged); realisations data carries optional objectPosition + phase fields.
+- 2026-06-21 — W182: VideoChantier styled (brass frame + glow, poster, explicit dims, preload=none, reserved aspect-ratio → zero CLS).
+- 2026-06-21 — W183: brand-logo row optical-size normalization (per-brand heightMultiplier) + grayscale→colour hover; brands.test.ts updated.
+- 2026-06-21 — W184: before/during/after phased "chantier en phases" section on realisations/[slug] (phase field in data; graceful when absent).
+- 2026-06-21 — W185 NOT DONE (deferred): needs Layout.astro to accept a per-page og:image prop — handled in the CORE Layout slice.
