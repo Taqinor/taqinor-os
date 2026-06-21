@@ -285,13 +285,17 @@ body{{font-family:{theme.FONT_SANS};color:{C['ink']};background:#fff;
 </div></body></html>"""
 
 
-def render(out_html=None, out_pdf=None, width_px=1080, height_px=4200):
+def render(out_pdf=None, width_px=1080, height_px=4200):
+    """Return the proposal HTML; optionally also render a PDF preview.
+
+    Deliberately does NOT write the HTML (which carries the client's name and
+    the tokenized signer link) to disk — callers that want a file handle the
+    returned string themselves, so no client data is persisted in clear text.
+    """
     data = sample_data.build()
     ch = charts_mod.build_all(data)
     hero = theme.hero_image_b64()
     html = build_html(data, ch, hero, width_px, height_px)
-    if out_html:
-        Path(out_html).write_text(html, encoding="utf-8")
     if out_pdf:
         from weasyprint import HTML
         base = str(Path(__file__).resolve().parent)
