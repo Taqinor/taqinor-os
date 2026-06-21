@@ -21,8 +21,9 @@ relies on the agent's own memory — the file on disk is the memory.
 
 1. **Read this whole file.**
 2. **Drain the WHOLE BUILD QUEUE — never just one task, with MAXIMUM SAFE PARALLELISM.** Process
-   EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and
-   MANUAL sections entirely. **At the START, run `python scripts/plan_lanes.py docs/WEB_PLAN.md`**
+   EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`) of EVERY category —
+   auto-gating is OFF; ignore only the NEEDS YOUR INPUT and MANUAL sections (those wait on a
+   founder-provided prerequisite). **At the START, run `python scripts/plan_lanes.py docs/WEB_PLAN.md`**
    to compute the file-ownership + dependency graph from the real `apps/web` code and emit a
    **maximally-parallel wave plan** (a lane shares a file or has a dependency and runs in
    sequence; different lanes never touch each other's files; each wave takes one head per lane,
@@ -62,11 +63,13 @@ relies on the agent's own memory — the file on disk is the memory.
    secrets and Cloudflare dashboard variables (e.g. `PUBLIC_MAPTILER_KEY`,
    `LEAD_WEBHOOK_URL`, `LEAD_WEBHOOK_SECRET`) are **dashboard-only** — changing one is a
    manual step for the founder; list it under MANUAL, never block on it silently.
-7. **Skip-and-note blockers, never stall.** If a task hits a blocker (a paid/external
-   dependency that isn't pre-approved, a new Cloudflare secret the founder hasn't set, anything
-   touching the public site or the lead form, or a real taste/promotion decision): do **not**
-   guess and do **not** stall. Mark it `[BLOCKED: <one-line reason>]`, move it to GATED, and
-   continue with the remaining tasks. A single blocked task must never halt the run.
+7. **Skip-and-note real blockers only, never stall.** Auto-gating is OFF: a new npm dependency or
+   an architecture change is buildable — NOTE it in the DONE LOG. A task is a blocker ONLY when it
+   needs something a run can't satisfy: a **paid** API/account (a cost to approve), a **new
+   Cloudflare secret** the founder hasn't set, real-world data only the founder has, or a real
+   **taste/promotion** decision (promoting a preview live). Then do **not** guess and do **not**
+   stall: mark it `[BLOCKED: <one-line reason>]`, move it to **NEEDS YOUR INPUT**, and continue.
+   A single blocked task must never halt the run.
 8. **STOP only when** the BUILD QUEUE is drained, a usage/length cap pauses the run (fine — the
    plan is idempotent; re-firing resumes from the first still-unchecked task), or every
    remaining task is blocked. Then **report once**, in plain language only — no diffs, no commit
@@ -132,11 +135,14 @@ a task can be run from Claude Code on the web or the phone with no PC involved.
 - **All new user-facing text in French.** Code/identifiers in English.
 - **Promotion to the live site is the founder's call** — never auto-promote a preview.
 
-**Pre-approved (do NOT treat as blockers):** PVGIS (already wired). Anything else new (a paid
-API, a new npm dep beyond what `apps/web` already ships) → `[BLOCKED]`.
+**Dependencies & categories (2026-06-21 — auto-gating OFF).** A web run builds every task and is no
+longer stopped by a category. A **new npm dependency** is allowed when a task plainly needs it — just
+NOTE it in the DONE LOG. Still waits on you (→ NEEDS YOUR INPUT): a **paid** API/account (a cost to
+approve), a **new Cloudflare secret**, real-world data only you have, and a **taste/business** call
+(promotion to the live site). The site stays dependency-light by preference; PVGIS is already wired.
 
 **Status legend:** `[ ]` to do · `[x]` done · `[SKIP]` not needed / already present ·
-`[BLOCKED: reason]` needs a decision (moved to GATED).
+`[BLOCKED: reason]` waits on a founder-provided prerequisite (→ NEEDS YOUR INPUT).
 
 ---
 
@@ -548,17 +554,14 @@ plumbing + a beautiful client-facing surface.*
 > Note: exposing a `/preview/*` tool publicly is normally WG1-GATED; W112 is a NEW,
 > deliberately minimal *capture* surface (no design shown), which the founder authorized.
 
-> **BLOCKED 2026-06-21 (whole W112–W118 lane).** These are the `apps/web` halves of a
-> pipeline whose backend (`docs/PLAN2.md` Group Q — Q1 `Devis.roof_layout` storage, Q2 client
-> pin capture, Q3 `build_devis_from_layout`, Q4 render storage, Q5 quote-data feed, Q6 tokenized
-> proposal endpoint, Q7 e-sign) **is all still unchecked `[ ]` and unbuilt** — there is no
-> `roof_layout` / proposal-token / e-sign code in the backend today. With the request/response
-> contract undefined and unimplemented, every web task here would ship a dead-end public route
-> (`/devis/mon-toit`, `/proposition/[token]`), an auth-gated internal route, and lead-creating
-> proxies pointed at a phantom backend — exactly the brand-new architecture + lead-data-flow
-> stop-and-ask in the STANDING RULES. Build PLAN2 Group Q first (OS plan), then re-fire.
+> **UNBLOCKED 2026-06-21 (whole W112–W118 lane).** The backend dependency shipped: `docs/PLAN2.md`
+> Group Q (Q1 `Devis.roof_layout` storage, Q2 client pin capture, Q3 `build_devis_from_layout`,
+> Q4 render storage, Q5 quote-data feed, Q6 tokenized proposal endpoint, Q7 e-sign) is **all done
+> `[x]`** on `main`. The request/response contract now exists, so these `apps/web` halves are
+> buildable — wire them against the live Q1–Q7 endpoints (proxy via `apps/web/src/pages/api/`).
+> The lead-data flow these touch is real now, not a phantom backend.
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
+- [ ] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
   minimal public route (e.g. `/devis/mon-toit`) that reuses roofPro11's MapTiler address
   search + satellite map, lets the client **drop a pin on their roof** (drawing the
   outline is OPTIONAL, not required), and enter contact + bill, then submits the
@@ -569,7 +572,7 @@ plumbing + a beautiful client-facing surface.*
   pin reaches the backend. Files: new `apps/web/src/pages/devis/mon-toit.astro`,
   `roof-tool-pro11.ts` (captureOnly branch), reuse `roofPro11/mapDraw.ts`.
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
+- [ ] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
   the tool state (`AreaRecord[]`, and the lighter pin/outline) and extend
   `initRoofToolPro8` boot to **hydrate from the backend** via a token URL param
   (`?lead=<token>` for the client's pin, `?devis=<id>` for a saved layout), fetching from
@@ -578,7 +581,7 @@ plumbing + a beautiful client-facing surface.*
   Files: `roofPro11/prefill.ts` (load fns), `roof-tool-pro11.ts` (boot hydration),
   `apps/web/src/pages/api/roof-layout.ts` (proxy).
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W114 — **Meriem design + finalize (where the panels appear, privately).** An
+- [ ] W114 — **Meriem design + finalize (where the panels appear, privately).** An
   internal/gated route that boots the FULL tool **hydrated with the client's pin** (W113);
   Meriem draws the outline if the client didn't, runs the existing auto-fill/optimizer,
   edits, then a **"Valider & générer le devis"** action serializes the finalized layout +
@@ -587,13 +590,13 @@ plumbing + a beautiful client-facing surface.*
   layout saved. Files: `apps/web/src/pages/internal/devis-design.astro` (or reuse the
   preview route gated), `roof-tool-pro11.ts` (finalize action), api proxy.
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
+- [ ] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
   (`roofPro11/scene3d.ts`) to capture the finished roof-with-panels render and upload it
   to the backend (Q4) on finalize (W114). **Done =** finalizing produces + stores a clean
   PNG of the 3D roof; vitest/asserts the data-URL is produced. Files:
   `roofPro11/scene3d.ts` (snapshot fn), W114 finalize wiring.
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
+- [ ] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
   mobile-first **public** route (e.g. `/proposition/<token>`) that fetches the quote data
   (Q6) and renders the proposal as a beautiful web page — NOT just a PDF: a hero with the
   roof render, the facture **avant → après** + couverture %, the two options, the
@@ -602,13 +605,13 @@ plumbing + a beautiful client-facing surface.*
   proposal responsively on phone + desktop; Lighthouse mobile ≥ 90. Files: new
   `apps/web/src/pages/proposition/[token].astro` + components + the Q6 fetch.
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
+- [ ] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
   an option, type name + check "Bon pour accord" → POST to Q7 → success state ("Devis
   accepté ✓"), with the signed PDF offered as a download. **Done =** signing flips the
   Devis to *accepté* and shows confirmation; invalid/expired token handled. Files:
   `proposition/[token].astro` signature component, `apps/web/src/pages/api/` proxy.
 
-- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
+- [ ] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
   generate the tokenized proposal URL and surface it for sending — prefilled email (reuse
   the existing SendGrid path) and a WhatsApp deep link (`wa.me` with the client's number +
   a French message + the link). **Done =** Meriem gets a one-click "Envoyer par email" and
@@ -1280,20 +1283,33 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 ---
 
-## GATED — needs the founder's decision before building (agent does NOT auto-build)
+## NEEDS YOUR INPUT — ungated; each waits on something only you can give (with my recommendation)
 
-- **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
-  website is a **taste + business decision** — never an unattended run. The founder decides
-  which preview, when, and how it links into the public funnel.
-- **WG2 — Harmonize the tariff model. — [RESOLVED 2026-06-17 → see W11 in BUILD QUEUE]** The
-  founder supplied the verified June 2026 régie barème, so this is now an active build task
-  (W11), not gated. Délégataire (Lydec/Redal/Amendis) exact grids still await a real bill per
-  city — those numbers remain gated until then.
-- **WG3 — Any new paid API or npm dependency** beyond PVGIS / what `apps/web` already ships.
-- **WG4 — A true dated/Markdown blog (Astro content collection). — [RESOLVED 2026-06-21 → see
-  W132–W139 in BUILD QUEUE]** The founder authorized the architecture change. The blog ships as a
-  core Astro content collection under `/blog` (dated, tagged, RSS), kept editorially distinct from
-  the evergreen `/guides`, with no new npm dependency — now active build tasks W132–W139, not gated.
+**Auto-gating is OFF (2026-06-21).** A web run no longer skips a task for being a new dep, an
+architecture change, or a taste call — it builds and NOTES it. What remains here genuinely needs
+**you**: a real-world data drop, a Cloudflare dashboard secret, or a taste/business call.
+
+- **WG1 — Promote a `/preview/*` tool to the live public site.** A taste + business decision (which
+  tool, when, how it links into the funnel). **MY RECOMMENDATION: promote `toiture-3d-pro-11`** — the
+  most-refined 3D roof-trace tool and the strongest top-of-funnel hook ("trace your roof → see your
+  potential → get a quote"). It needs two manual founder steps first: set **`PUBLIC_MAPTILER_KEY`** in
+  the Cloudflare dashboard (else tiles 404 in prod) and **approve a privacy line** for home-location
+  data. Then a web run wires it in and flips off `noindex` for that one page. Promote one polished
+  tool, not the whole lab. Effort M.
+- **WG2 — Délégataire exact tariff grids** (Lydec/Casablanca, Redal/Rabat, Amendis/Tanger). The régie
+  barème half is RESOLVED (W11). **MY RECOMMENDATION: KEEP GATED — pure data gate, do NOT guess.**
+  Wrong tariffs would make the public ROI estimator lie in the three biggest urban markets. **Provide
+  one recent bill per city** (a photo) and it becomes a small transcription task (S) into the W11
+  model. Until then the ONEE/régie fallback is the honest default.
+- **WG3 — A new paid API or npm dependency** beyond PVGIS / what `apps/web` ships. No longer a blanket
+  gate: a web run MAY add a needed dependency and NOTE it in the DONE LOG. Only a **paid** API/account
+  (a cost you must approve) or a **new Cloudflare secret** still waits on you. **MY RECOMMENDATION:
+  keep the site dependency-light; approve paid APIs case by case.**
+- **W187 — 6 manufacturer logo SVGs** (Canadian Solar, JA Solar, Jinko, Deye, Dyness, Nexans). Blocked
+  by network egress (only npm is reachable; the open web returns 403), not by a decision. **MY
+  RECOMMENDATION: drop a zip of the 6 official monochrome SVGs** (from each brand's media kit — correct
+  colours + license-clean, better than random web logos). Wiring them into `public/brands/` +
+  `brands.ts` is then trivial (S). The text word-mark fallback is fine meanwhile — low urgency.
 
 ---
 
