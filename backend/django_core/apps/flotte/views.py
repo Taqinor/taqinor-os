@@ -1,34 +1,28 @@
-"""Vues du module Gestion de flotte (toutes scopées société).
+"""Vues du module Gestion de flotte (toutes scopées société, admin-gated).
 
-La flotte est INTERNE. Chaque viewset filtre par ``request.user.company``
-(``TenantMixin``) et pose la société côté serveur ; aucune société n'est jamais
-acceptée du corps de requête (multi-tenant).
+La flotte est INTERNE : aucune donnée n'est exposée côté client. L'accès est
+réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``). Chaque
+viewset filtre par ``request.user.company`` (``TenantMixin``) et pose la société
+côté serveur ; aucune société n'est jamais acceptée du corps de requête.
 """
 from rest_framework import filters, viewsets
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin
 
-from .models import EnginRoulant, Vehicule
-from .serializers import EnginRoulantSerializer, VehiculeSerializer
-
-READ_ACTIONS = ['list', 'retrieve']
+from .models import Vehicule
+from .serializers import VehiculeSerializer
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée (TenantMixin). Lecture tout rôle, écriture
-    responsable/admin."""
-
-    def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+    """Base : société scopée + accès Administrateur/Responsable uniquement."""
+    permission_classes = [IsResponsableOrAdmin]
 
 
 class VehiculeViewSet(_FlotteBaseViewSet):
-    """Véhicules immatriculés du parc (FLOTTE2). Filtrable par énergie/statut,
+    """Véhicules du parc (FLOTTE2). Filtrable par énergie/statut/type,
     recherche par immatriculation/marque/modèle."""
-    queryset = Vehicule.objects.all()
+    queryset = Vehicule.objects.select_related('conducteur').all()
     serializer_class = VehiculeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['immatriculation', 'marque', 'modele']
@@ -44,25 +38,7 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         energie = params.get('energie')
         if energie:
             qs = qs.filter(energie=energie)
-        return qs
-
-
-class EnginRoulantViewSet(_FlotteBaseViewSet):
-    """Engins roulants suivis au compteur d'heures (FLOTTE4). Filtrable par
-    type/statut, recherche par désignation/marque/modèle."""
-    queryset = EnginRoulant.objects.all()
-    serializer_class = EnginRoulantSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nom', 'marque', 'modele']
-    ordering_fields = ['nom', 'compteur_heures', 'statut', 'date_creation']
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        params = self.request.query_params
-        statut = params.get('statut')
-        if statut:
-            qs = qs.filter(statut=statut)
-        type_engin = params.get('type_engin')
-        if type_engin:
-            qs = qs.filter(type_engin=type_engin)
+        type_vehicule = params.get('type_vehicule')
+        if type_vehicule:
+            qs = qs.filter(type_vehicule=type_vehicule)
         return qs

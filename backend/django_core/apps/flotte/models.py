@@ -1,56 +1,83 @@
 """Modèles du module Gestion de flotte (`apps.flotte`).
 
-Squelette multi-société (FLOTTE1) enrichi des premiers actifs roulants :
+Socle multi-société (FLOTTE1 / FLOTTE2) : le parc roulant de la société.
 
-* ``Vehicule`` (FLOTTE2) — véhicules immatriculés du parc (immatriculation,
-  marque, modèle, énergie, kilométrage, valeur, statut).
-* ``EnginRoulant`` (FLOTTE4) — engins non immatriculés suivis au compteur
-  d'heures (nacelle, groupe électrogène, chariot…).
+* ``Vehicule`` (FLOTTE2) — un véhicule/engin du parc (immatriculation, marque,
+  modèle, type, énergie, kilométrage, valeur d'acquisition, mise en circulation,
+  statut, conducteur).
 
 Tout est multi-société : chaque modèle porte un FK ``company`` posé côté serveur
 (jamais lu du corps de requête). Module entièrement additif — aucun comportement
 existant n'est modifié.
 """
+from decimal import Decimal
+
+from django.conf import settings
 from django.db import models
 
 
-# ── FLOTTE2 — Véhicules immatriculés ───────────────────────────────────────
+# ── FLOTTE2 — Véhicules & engins du parc ───────────────────────────────────
 
 class Vehicule(models.Model):
-    """Un véhicule immatriculé du parc de la société."""
+    """Un véhicule/engin immatriculé du parc de la société."""
+
+    class TypeVehicule(models.TextChoices):
+        VEHICULE = 'vehicule', 'Véhicule léger'
+        CAMIONNETTE = 'camionnette', 'Camionnette'
+        UTILITAIRE = 'utilitaire', 'Utilitaire'
+        NACELLE = 'nacelle', 'Nacelle'
+        GROUPE = 'groupe_electrogene', 'Groupe électrogène'
+        CHARIOT = 'chariot', 'Chariot élévateur'
+        AUTRE = 'autre', 'Autre'
 
     class Energie(models.TextChoices):
-        DIESEL = 'diesel', 'Diesel'
         ESSENCE = 'essence', 'Essence'
+        DIESEL = 'diesel', 'Diesel'
         ELECTRIQUE = 'electrique', 'Électrique'
         HYBRIDE = 'hybride', 'Hybride'
+        GPL = 'gpl', 'GPL'
 
     class Statut(models.TextChoices):
         ACTIF = 'actif', 'Actif'
         MAINTENANCE = 'maintenance', 'En maintenance'
-        REFORME = 'reforme', 'Réformé'
+        HORS_SERVICE = 'hors_service', 'Hors service'
+        CEDE = 'cede', 'Cédé'
 
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
-        related_name='vehicules',
+        related_name='flotte_vehicules',
         verbose_name='Société',
     )
     immatriculation = models.CharField(
-        max_length=30, verbose_name='Immatriculation')
-    marque = models.CharField(max_length=80, blank=True, verbose_name='Marque')
-    modele = models.CharField(max_length=80, blank=True, verbose_name='Modèle')
+        max_length=20, verbose_name='Immatriculation')
+    marque = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Marque')
+    modele = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Modèle')
+    type_vehicule = models.CharField(
+        max_length=30, choices=TypeVehicule.choices,
+        default=TypeVehicule.CAMIONNETTE, verbose_name='Type de véhicule')
     energie = models.CharField(
         max_length=20, choices=Energie.choices, default=Energie.DIESEL,
         verbose_name='Énergie')
     kilometrage = models.PositiveIntegerField(
         default=0, verbose_name='Kilométrage')
-    valeur = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0,
-        verbose_name='Valeur (MAD)')
+    valeur_acquisition = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name="Valeur d'acquisition")
+    date_mise_circulation = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en circulation')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.ACTIF,
         verbose_name='Statut')
+    conducteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='vehicules_conduits',
+        verbose_name='Conducteur',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -61,56 +88,4 @@ class Vehicule(models.Model):
         ordering = ['immatriculation']
 
     def __str__(self):
-        return f'{self.immatriculation} — {self.marque} {self.modele}'.strip()
-
-
-# ── FLOTTE4 — Engins roulants suivis au compteur d'heures ──────────────────
-
-class EnginRoulant(models.Model):
-    """Un engin non immatriculé suivi au compteur d'heures.
-
-    Distinct du ``Vehicule`` immatriculé : nacelles, groupes électrogènes et
-    chariots se suivent au compteur d'heures (et non au kilométrage).
-    """
-
-    class Type(models.TextChoices):
-        NACELLE = 'nacelle', 'Nacelle'
-        GROUPE = 'groupe_electrogene', 'Groupe électrogène'
-        CHARIOT = 'chariot', 'Chariot'
-
-    class Statut(models.TextChoices):
-        ACTIF = 'actif', 'Actif'
-        MAINTENANCE = 'maintenance', 'En maintenance'
-        REFORME = 'reforme', 'Réformé'
-
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='engins_roulants',
-        verbose_name='Société',
-    )
-    nom = models.CharField(max_length=120, verbose_name='Désignation')
-    type_engin = models.CharField(
-        max_length=30, choices=Type.choices, default=Type.NACELLE,
-        verbose_name='Type d\'engin')
-    marque = models.CharField(max_length=80, blank=True, verbose_name='Marque')
-    modele = models.CharField(max_length=80, blank=True, verbose_name='Modèle')
-    compteur_heures = models.DecimalField(
-        max_digits=10, decimal_places=1, default=0,
-        verbose_name='Compteur d\'heures')
-    valeur = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0,
-        verbose_name='Valeur (MAD)')
-    statut = models.CharField(
-        max_length=20, choices=Statut.choices, default=Statut.ACTIF,
-        verbose_name='Statut')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
-
-    class Meta:
-        verbose_name = 'Engin roulant'
-        verbose_name_plural = 'Engins roulants'
-        ordering = ['nom']
-
-    def __str__(self):
-        return f'{self.nom} ({self.get_type_engin_display()})'
+        return f'{self.immatriculation} — {self.marque} {self.modele}'
