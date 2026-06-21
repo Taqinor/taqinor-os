@@ -7,6 +7,10 @@
 // ne ressemblait pas au vrai logo, d'où ce rendu. Sur l'en-tête sombre
 // (theme="dark") le texte passe en blanc ; le soleil garde ses couleurs de
 // marque sur les deux fonds (il porte son propre disque doré).
+//
+// W168 — lueur brass sur le soleil (réduite si prefers-reduced-motion).
+// La classe `.sun-glow` applique un filter:drop-shadow doré subtil via CSS ;
+// l'animation pulse est masquée par la media query reduced-motion.
 interface Props {
   size?: number;
   theme?: 'light' | 'dark';
@@ -44,7 +48,7 @@ const rays = Array.from({ length: 8 }, (_, i) => {
     height={sun}
     viewBox="0 0 100 100"
     aria-hidden="true"
-    class="mx-px inline-block shrink-0"
+    class="sun-glow mx-px inline-block shrink-0"
     style="vertical-align:middle;"
   >
     <g stroke={gold} stroke-width="6" stroke-linecap="round">
@@ -58,3 +62,26 @@ const rays = Array.from({ length: 8 }, (_, i) => {
   </svg>
   <span aria-hidden="true">R</span>
 </span>
+
+<style>
+  /* Static brass drop-shadow — always present, gives depth without animation */
+  .sun-glow {
+    filter: drop-shadow(0 0 4px rgb(247 185 25 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
+  }
+
+  /* Gentle pulse only when motion is welcome */
+  @media (prefers-reduced-motion: no-preference) {
+    .sun-glow {
+      animation: sun-pulse 3.5s ease-in-out infinite;
+    }
+  }
+
+  @keyframes sun-pulse {
+    0%, 100% {
+      filter: drop-shadow(0 0 4px rgb(247 185 25 / 0.45)) drop-shadow(0 0 10px rgb(232 181 74 / 0.25));
+    }
+    50% {
+      filter: drop-shadow(0 0 6px rgb(247 185 25 / 0.65)) drop-shadow(0 0 18px rgb(232 181 74 / 0.35));
+    }
+  }
+</style>
