@@ -1359,15 +1359,17 @@ S/M/L. The cross-app safety rules (#1–#5, multi-tenant, buy-prices-never-clien
   itself is **free** (ad-attribution signal, not messaging). **MY RECOMMENDATION: low effort to
   finish (M) and the hook + hashable lead data already exist — provide the pixel token and I'll wire
   the SHA-256-hashed event POST; or build the no-op scaffold now (it's nearly free risk).**
-- **G11 — Chatbot / AI assistant → one LLM key.** The chatbot (NL→SQL agent) AND the cross-app AI
-  assistant (PLAN2 Group R, already built) are wired to a multi-provider factory that already
-  supports Claude (`langchain-anthropic` is vendored — no new dependency). They run free on Groq
-  today and degrade gracefully with no key. **MY RECOMMENDATION: provide ONE Anthropic
-  `CLAUDE_API_KEY`, set `SQL_AGENT_PROVIDER=claude` + `SQL_AGENT_MODEL=claude-sonnet-4-6` — that one
-  key also powers FG352 (RAG), FG353 (summarise), FG354 (reply drafts), FG358 (photo QA). Set a
-  monthly spend cap in the Anthropic console.** Use `claude-haiku-4-5` for cheap summaries,
-  `claude-opus-4-8` in reserve. Effort to enable: S (config). **Note: FG357 voice-to-text and FG361
-  forecasting are NOT key-gated** (free faster-whisper / `statsmodels`) — build them independently.
+- **G11 — Chatbot / AI assistant → LLM provider.** The chatbot (NL→SQL agent) AND the cross-app AI
+  assistant (PLAN2 Group R, already built) run on a multi-provider factory (`SQL_AGENT_PROVIDER` =
+  `groq` | `openai` | `claude` | `ollama`). **MY RECOMMENDATION: stay on the default — Groq's FREE
+  tier (`llama-3.3-70b-versatile`) — it already works and costs nothing.** The SAME free Groq key
+  also powers FG352 (RAG synthesis), FG353 (summarise), FG354 (reply drafts), and the assistant's
+  voice (Groq Whisper). `openai`/`claude` are **optional PAID quality upgrades** (better
+  reasoning/French, only if Groq's quality/limits prove insufficient); `ollama` is **fully free but
+  self-hosted** (needs your own GPU/CPU) if you ever outgrow Groq's free rate limits. FG358 photo QA
+  needs a **vision** model — reuse the already-configured Zhipu key, not a new one. **No new paid key
+  is required.** FG357 voice and FG361 forecasting aren't LLM-gated at all (free faster-whisper /
+  `statsmodels`).
 - **G12 — Microsoft 365** (Entra ID, Outlook, OneDrive, Teams). Needs an **Entra app registration**
   in your tenant (client id/secret + admin-consented Graph scopes). **MY RECOMMENDATION: confirm
   your team's mail/file stack first — if you live in Google Workspace, skip M365 and prioritise
