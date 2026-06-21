@@ -91,6 +91,43 @@ class Activity(models.Model):
         return f'{self.activity_type} — {self.summary or self.due_date}'
 
 
+class Comment(models.Model):
+    """FG7 — Commentaire générique rattaché à un enregistrement (GenericForeignKey).
+
+    Supporte les @mentions : les noms d'utilisateur mentionnés dans le corps
+    (`@username`) sont résolus et notifiés (via `notifications.notify()`).
+
+    Mêmes cibles autorisées (ALLOWED_TARGETS) que Activity/Attachment.
+    Company + auteur toujours posés côté serveur."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='comments')
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    body = models.TextField()
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='comments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [
+            models.Index(fields=['content_type', 'object_id']),
+            models.Index(fields=['company', 'created_at']),
+        ]
+        verbose_name = 'Commentaire'
+        verbose_name_plural = 'Commentaires'
+
+    def __str__(self):
+        return f'Commentaire #{self.pk} par {self.author_id}'
+
+
 class Attachment(models.Model):
     """Pièce jointe rattachée à un enregistrement (générique), stockée MinIO."""
     company = models.ForeignKey(

@@ -17,10 +17,10 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Activity, ActivityType, Attachment
+from .models import Activity, ActivityType, Attachment, Comment
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
-    resolve_target,
+    CommentSerializer, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
 
@@ -177,6 +177,95 @@ def _log_done_to_chatter(activity, user):
                 sav_activity.log_note(target, user, body)
     except Exception:
         pass
+
+
+# ── Commentaires (FG7) ──────────────────────────────────────────────
+import re as _re
+
+_MENTION_RE = _re.compile(r'@(\w+)')
+
+
+def _parse_mentions(body):
+    """Retourne la liste des noms d'utilisateur mentionnés dans `body`."""
+    return list(set(_MENTION_RE.findall(body or '')))
+
+
+def _notify_mentions(body, author, company):
+    """Notifie les utilisateurs mentionnés via @username (best-effort)."""
+    mentions = _parse_mentions(body)
+    if not mentions:
+        return
+    try:
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        User = get_user_model()
+        for username in mentions:
+            try:
+                user = User.objects.get(username=username, company=company)
+                if user == author:
+                    continue  # pas d'auto-notification
+                notify(
+                    user, ET.LEAD_ASSIGNED,  # réutilise l'event le plus proche
+                    f'{author.username} vous a mentionné',
+                    body=body[:200],
+                    company=company)
+            except User.DoesNotExist:
+                pass
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    """FG7 — Commentaires génériques + @mentions.
+
+    Lecture : tout rôle. Création/modification : propriétaire ou admin.
+    Suppression : admin seulement. Scopé société (company posée côté serveur)."""
+    serializer_class = CommentSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        if self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = _scoped(
+            Comment.objects.select_related('author', 'content_type'),
+            self.request.user)
+        model = self.request.query_params.get('model')
+        oid = self.request.query_params.get('id')
+        if model and oid:
+            try:
+                ct, _ = resolve_target(model, oid, _company(self.request))
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(content_type=ct, object_id=oid)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            ct, _obj = resolve_target(
+                request.data.get('model'), request.data.get('id'), company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        comment = ser.save(
+            company=company,
+            content_type=ct,
+            object_id=request.data.get('id'),
+            author=request.user)
+        # Notifie les @mentions (best-effort, jamais d'erreur remontée).
+        _notify_mentions(comment.body, request.user, company)
+        return Response(CommentSerializer(comment).data,
+                        status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        serializer.save()
 
 
 # ── Pièces jointes ──────────────────────────────────────────────────

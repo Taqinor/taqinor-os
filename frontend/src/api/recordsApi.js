@@ -13,6 +13,14 @@ const recordsApi = {
   markActivityDone: (id, next) =>
     api.post(`/records/activities/${id}/done/`, next ? { next } : {}),
 
+  // ── Commentaires (FG7) ──
+  getComments: (model, id) =>
+    api.get('/records/comments/', { params: { model, id } }),
+  createComment: (model, id, body) =>
+    api.post('/records/comments/', { model, id, body }),
+  updateComment: (id, body) => api.patch(`/records/comments/${id}/`, { body }),
+  deleteComment: (id) => api.delete(`/records/comments/${id}/`),
+
   // ── Pièces jointes ──
   getAttachments: (model, id) =>
     api.get('/records/attachments/', { params: { model, id } }),
