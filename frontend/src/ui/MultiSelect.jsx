@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
-import { Check, ChevronsUpDown, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
 
@@ -26,6 +26,7 @@ export const MultiSelect = forwardRef(function MultiSelect(
     placeholder = 'Sélectionner…',
     searchPlaceholder = 'Rechercher…',
     emptyText = 'Aucun résultat',
+    errorText = 'Erreur de chargement',
     disabled,
     invalid,
     maxTokens = 99,
@@ -189,7 +190,10 @@ export const MultiSelect = forwardRef(function MultiSelect(
               </div>
             )}
             {!loading && error && (
-              <div className="py-6 text-center text-sm text-destructive">Erreur de chargement</div>
+              <div role="alert" className="flex items-center justify-center gap-2 px-2 py-6 text-center text-sm text-destructive">
+                <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+                <span>{(error && error.message) || errorText}</span>
+              </div>
             )}
             {!loading && !error && filtered.length === 0 && (
               <div className="py-6 text-center text-sm text-muted-foreground">{emptyText}</div>
