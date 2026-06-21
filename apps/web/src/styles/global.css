@@ -107,10 +107,107 @@
 
 html {
   scroll-behavior: smooth;
+  /* W202 — Fix anchor scroll offset under the sticky header (~5 rem desktop,
+     responsive: tighter on mobile where header may be shorter). */
+  scroll-padding-top: clamp(4rem, 7vw, 5.5rem);
+  /* W217 — native controls (select, scrollbars, autofill) render dark on the
+     night canvas; avoids the jarring white system-UI flash. */
+  color-scheme: dark;
 }
 
 body {
   text-rendering: optimizeLegibility;
+}
+
+/* W217 — Brass/azur text selection, readable on both dark and light sections. */
+::selection {
+  background-color: rgb(232 181 74 / 0.35);
+  color: var(--color-lune);
+}
+
+/* W209 — Global focus-visible brass ring.
+   Targets all interactive elements. Using :focus-visible ensures keyboard users
+   get a clear indicator without disturbing pointer users.
+   Specificity is deliberately low so components that legitimately style their
+   own focus (e.g. .btn-pill) can still override with a more specific rule;
+   the important on outline-offset is only needed to override stray
+   outline:none declarations that suppress focus entirely. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-brass-300);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ─── W221 — prefers-contrast: more ────────────────────────────────────────
+   Bump faint/soft lune inks toward higher contrast and remove decorative glow. */
+@media (prefers-contrast: more) {
+  :root {
+    /* Shift faint ink toward the full lune value for legibility */
+    --color-lune-faint: var(--color-lune-soft);
+    --color-lune-soft: var(--color-lune);
+  }
+
+  /* Kill decorative text-glow on high-contrast to avoid halation */
+  .lum {
+    text-shadow: none;
+  }
+
+  /* Reinforce card borders for legibility */
+  .cine-card {
+    border-color: rgb(255 255 255 / 0.35);
+  }
+
+  /* Brass focus ring: thicker for high-contrast mode */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* ─── W221 — forced-colors (Windows High Contrast / Contrast Mode) ──────────
+   Keep text legible; neutralize decorative shadows/glows that invert or
+   disappear under forced-colors. Use system color keywords so the OS palette
+   drives the experience. */
+@media (forced-colors: active) {
+  .lum {
+    /* Remove glow; text colour will be forced by OS — keep it readable */
+    text-shadow: none;
+    color: CanvasText;
+  }
+
+  .cine-card {
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  .btn-pill {
+    border: 1.5px solid ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
+
+  .hero-scrim {
+    /* Scrims are decorative; under forced-colors a plain overlay suffices */
+    background: Canvas;
+    opacity: 0.5;
+  }
+
+  /* Disable decorative box-shadow glows */
+  .glow,
+  .shadow-premium {
+    box-shadow: none;
+  }
 }
 
 /* ---- Signature typographique : les chiffres sont le protagoniste ------ */
@@ -226,21 +323,10 @@ body {
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
 }
 
-/* Révélation au défilement — translation seule, 350 ms, jamais d'opacité
-   (contraste mesurable, aucun contenu masqué si l'animation échoue). */
-@media (prefers-reduced-motion: no-preference) {
-  .reveal {
-    transform: translateY(16px);
-    animation: reveal 0.35s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
-    animation-timeline: view();
-    animation-range: entry 0% entry 30%;
-  }
-  @keyframes reveal {
-    to {
-      transform: none;
-    }
-  }
+/* W207 — .reveal and .emerge were defined here but had zero usages across all
+   .astro/.tsx/.ts/.js sources (confirmed by grep). Removed as dead code. */
 
+@media (prefers-reduced-motion: no-preference) {
   .glow:hover {
     box-shadow: 0 0 38px -6px rgb(232 181 74 / 0.55);
   }
@@ -255,22 +341,6 @@ body {
     to {
       opacity: 1;
       transform: none;
-    }
-  }
-
-  /* Les photos émergent de la nuit : léger éclaircissement à l'entrée.
-     Gardé derrière @supports — sans scroll-timeline, jamais d'assombrissement. */
-  @supports (animation-timeline: view()) {
-    .emerge {
-      filter: brightness(0.85);
-      animation: emerge 0.6s ease-out forwards;
-      animation-timeline: view();
-      animation-range: entry 0% entry 25%;
-    }
-  }
-  @keyframes emerge {
-    to {
-      filter: brightness(1);
     }
   }
 
