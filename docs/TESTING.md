@@ -62,10 +62,13 @@ les commit sous `e2e/**-snapshots/` pour activer la vraie comparaison pixel.
 ## Smoke e2e vs matrice complète
 
 Le projet Playwright `setup` (connexion réelle) est une **dépendance** des projets
-`chromium`/`mobile`, donc il tourne toujours. Le smoke par-merge cible les parcours
-UTILISATEUR critiques (`--project=chromium leads.spec.js devis.spec.js
-health.spec.js`) ; la matrice complète (toutes les specs + mobile) part dans
-`release-verify`.
+`chromium`/`mobile`, donc il tourne toujours. Le smoke par-merge cible des parcours
+UTILISATEUR **self-contained** (`--project=chromium devis.spec.js health.spec.js`
+— `devis` = lead → devis → PDF) ; la matrice complète (toutes les specs + mobile)
+part dans `release-verify`. ⚠️ Pour promouvoir un spec en smoke il doit être
+AUTONOME : `leads.spec` (E7 → Signé) dépend d'un devis créé par un spec antérieur
+dans la matrice ordonnée, donc il reste en e2e complet (le rendre autonome est un
+préalable à sa promotion).
 
 ### Règle permanente : un parcours e2e par fonctionnalité
 Toute nouvelle fonctionnalité ship avec **au moins un test e2e qui la pilote comme
@@ -103,6 +106,24 @@ requirements complètes) — palier 3 car les dépendances sont lourdes
 (langchain/torch). Les suites se sautent proprement si une dépendance manque.
 Promotion possible en gate par-merge (path-gated sur `backend/fastapi_ia/**`) une
 fois la stabilité confirmée.
+
+## Cohérence des données inter-modules
+Tous les liens inter-modules sont de **vrais FK** (`db_constraint=True`) : la base
+empêche déjà les orphelins (la ligne référencée existe forcément). Ce qu'un FK ne
+garantit PAS : qu'elle soit dans la **bonne société**. D'où l'outil :
+
+```bash
+python manage.py check_data_integrity          # rapport + exit 1 si fuite
+```
+
+`authentication/management/commands/check_data_integrity.py` — auditeur LECTURE
+SEULE, **générique** (registre d'apps Django) : il couvre AUTOMATIQUEMENT tout
+modèle, présent ou futur, portant un FK `company`, et signale tout FK pointant vers
+une autre société (168 liens analysés aujourd'hui). À lancer sur la prod (sans
+risque) ou en cron. Le logique est gardée par `tests_data_integrity.py` (détecte un
+lien inter-sociétés planté, ignore les données propres). C'est le filet « quand on
+ajoute une fonctionnalité, la donnée reste connectée DANS sa société » — il s'étend
+tout seul aux nouveaux modèles.
 
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,

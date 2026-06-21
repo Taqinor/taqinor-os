@@ -399,12 +399,13 @@ jobs:
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
           cd ../../frontend
-          # Palier « smoke » par-merge : parcours UTILISATEUR critiques (CRM lead,
-          # lead → devis → PDF, santé des pages). Specs ÉPROUVÉES uniquement, pour
-          # attraper « ça marchait pas au final » AVANT le merge. Le projet `setup`
-          # se connecte via la dépendance Playwright. La MATRICE e2e complète
-          # (toutes les specs + mobile) tourne dans release-verify.yml.
-          npx playwright test --project=chromium leads.spec.js devis.spec.js health.spec.js
+          # Palier « smoke » par-merge : parcours UTILISATEUR critiques + santé.
+          # `devis.spec` = lead → devis → PDF (le projet `setup` se connecte aussi
+          # via la dépendance Playwright). On garde des specs SELF-CONTAINED ici :
+          # `leads.spec` (E7 → Signé) dépend d'un devis créé par un spec antérieur
+          # dans la matrice ordonnée → reste en e2e COMPLET (release-verify), pas
+          # en smoke. La matrice complète + mobile tourne dans release-verify.yml.
+          npx playwright test --project=chromium devis.spec.js health.spec.js
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
