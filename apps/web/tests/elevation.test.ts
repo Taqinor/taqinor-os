@@ -72,9 +72,10 @@ describe('prévisualisations supprimées', () => {
     // (installation-solaire-[city], faq, garanties, pourquoi-taqinor,
     // marocains-du-monde) + 1 (à-propos, W13) + 5 du lot IA/contenu W23–W30
     // (pompage-solaire, batteries-stockage, maintenance-monitoring, financement,
-    // nos-solutions). Les études de cas et guides vivent en sous-dossier
-    // (realisations/, guides/) et ne comptent pas ici.
-    expect(slugs.length).toBe(20);
+    // nos-solutions) + 1 (recharge-voiture-electrique-solaire, pilier EV W120).
+    // Les études de cas, guides et articles de blog vivent en sous-dossier
+    // (realisations/, guides/, blog/) et ne comptent pas ici.
+    expect(slugs.length).toBe(21);
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {

@@ -116,7 +116,7 @@ Ce calcul est le point de départ. La réalité dépend de votre consommation to
 
 → **[Découvrir le pilier complet : recharge VE au solaire au Maroc](/recharge-voiture-electrique-solaire)**
 
-→ **[Obtenir un diagnostic personnalisé](/login)**
+→ **[Obtenir un diagnostic personnalisé](/contact#simulateur)**
 
 ---
 

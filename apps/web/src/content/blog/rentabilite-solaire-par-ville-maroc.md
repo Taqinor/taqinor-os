@@ -78,7 +78,7 @@ Le **payback résidentiel standard** est de **5 à 7 ans** — chiffre cohérent
 
 ## Simulez votre installation
 
-Les chiffres ci-dessus sont des fourchettes de marché. Votre rentabilité réelle dépend de votre consommation, votre ville, la surface et l'orientation de votre toit. [Obtenez un devis personnalisé](/login) pour une estimation précise.
+Les chiffres ci-dessus sont des fourchettes de marché. Votre rentabilité réelle dépend de votre consommation, votre ville, la surface et l'orientation de votre toit. [Obtenez un devis personnalisé](/contact#simulateur) pour une estimation précise.
 
 ---
 
