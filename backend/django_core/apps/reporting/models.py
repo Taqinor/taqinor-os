@@ -43,6 +43,9 @@ class SavedReport(models.Model):
     recipients = models.TextField(blank=True, default='')
     # Dernier envoi réussi (anti-doublon léger / traçabilité). NULL = jamais.
     last_sent_at = models.DateTimeField(null=True, blank=True)
+    # FG91 — épingle le rapport comme carte sur le tableau de bord. ADDITIF,
+    # default False = aucun changement de comportement pour les rapports existants.
+    pinned = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

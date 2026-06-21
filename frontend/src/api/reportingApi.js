@@ -40,6 +40,34 @@ const reportingApi = {
     api.post('/reporting/calendar/reschedule/', payload),
   // N85 — Vue carte. Points géolocalisés ; filtres optionnels ?types=&statuts=.
   getGeoPoints: (params) => api.get('/reporting/geo/', { params }),
+  // FG91 — Rapports sauvegardés (CRUD). company + owner posés côté serveur.
+  listSavedReports: () => api.get('/reporting/saved-reports/'),
+  createSavedReport: (data) => api.post('/reporting/saved-reports/', data),
+  updateSavedReport: (id, data) =>
+    api.patch(`/reporting/saved-reports/${id}/`, data),
+  deleteSavedReport: (id) => api.delete(`/reporting/saved-reports/${id}/`),
+  // FG92 — Comparaison périodique (MoM/YoY). ?compare=prev|yoy.
+  dashboardCompare: (compare) =>
+    api.get('/reporting/dashboard/', { params: { compare } }),
+  salesReportCompare: (params) =>
+    api.get('/reporting/reports/sales/', { params }),
+  // FG93 — Classement commerciaux.
+  salesLeaderboard: (params) =>
+    api.get('/reporting/insights/sales-leaderboard/', { params }),
+  // FG94 — Données custom-field pour reporting (group-by, filtres ?cf_<code>=).
+  cfGroupBy: (module, code, params) =>
+    api.get('/reporting/insights/cf-group-by/', {
+      params: { module, code, ...(params || {}) },
+    }),
+  // FG97 — Analytiques du Journal.
+  auditAnalytics: (params) =>
+    api.get('/reporting/audit/analytics/', { params }),
+  // FG98 — Cohortes / saisonnalité.
+  cohorts: (params) =>
+    api.get('/reporting/insights/cohorts/', { params }),
+  // FG99 — Rentabilité par segment (admin).
+  profitability: (params) =>
+    api.get('/reporting/insights/profitability/', { params }),
 }
 
 export default reportingApi
