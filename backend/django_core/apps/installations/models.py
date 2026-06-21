@@ -51,6 +51,13 @@ from .models_field import (
     SafetySignoff,
     SafetyCheckItem,
 )
+from .models_projet import (
+    JalonProjet,
+    ModeleProjet,
+    ModeleProjetJalon,
+    ModeleProjetBomLigne,
+    ReunionChantier,
+)
 
 __all__ = [
     'Installation',
@@ -77,4 +84,9 @@ __all__ = [
     'SafetyChecklistSlot',
     'SafetySignoff',
     'SafetyCheckItem',
+    'JalonProjet',
+    'ModeleProjet',
+    'ModeleProjetJalon',
+    'ModeleProjetBomLigne',
+    'ReunionChantier',
 ]
