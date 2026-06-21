@@ -3,11 +3,11 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
-from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage
+from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage, MessageTemplate
 from .serializers import (
     ClientSerializer, LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
-    ParrainageSerializer, _tag_en_usage, _motif_en_usage,
+    ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
 )
 from . import activity
 from .services import default_responsable_for
@@ -168,6 +168,90 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+    # FG32 — Segmentation clients ────────────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='segments',
+            permission_classes=[IsAnyRole])
+    def segments(self, request):
+        """Segmentation client : top clients, sans devis récent, à recontacter.
+
+        ?segment= top | sans_devis | a_recontacter | dormants
+        Calculs basés sur les totaux facturés et dates de devis existants.
+        """
+        from django.utils import timezone
+        import datetime
+        segment = request.query_params.get('segment', 'top')
+        qs = self.get_queryset()
+        now = timezone.now()
+        cutoff_12m = now - datetime.timedelta(days=365)
+        cutoff_18m = now - datetime.timedelta(days=548)
+
+        result = []
+
+        if segment == 'top':
+            # Top 20 clients par valeur facturée TTC (toutes factures non annulées)
+            from decimal import Decimal
+            scored = []
+            for c in qs:
+                total = sum(
+                    f.total_ttc for f in c.factures.all() if f.statut != 'annulee'
+                ) or Decimal('0')
+                scored.append((float(total), c))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            result = [
+                {
+                    'id': c.id, 'nom': str(c),
+                    'total_facture_ttc': round(t, 2),
+                    'segment': 'top',
+                }
+                for t, c in scored[:20]
+            ]
+
+        elif segment == 'sans_devis':
+            # Clients sans devis depuis plus de 12 mois (ou jamais)
+            for c in qs:
+                last = c.devis.order_by('-date_creation').first()
+                if last is None or last.date_creation < cutoff_12m:
+                    result.append({
+                        'id': c.id, 'nom': str(c),
+                        'last_devis': last.date_creation.isoformat() if last else None,
+                        'segment': 'sans_devis',
+                    })
+
+        elif segment == 'a_recontacter':
+            # Clients avec au moins un devis mais aucun signé dans les 12 derniers mois
+            for c in qs:
+                if not c.devis.exists():
+                    continue
+                signed_recent = c.devis.filter(
+                    statut='accepte', date_creation__gte=cutoff_12m
+                ).exists()
+                if not signed_recent:
+                    result.append({
+                        'id': c.id, 'nom': str(c),
+                        'nb_devis': c.devis.count(),
+                        'segment': 'a_recontacter',
+                    })
+
+        elif segment == 'dormants':
+            # Clients sans aucune activité (devis/facture) depuis 18 mois
+            for c in qs:
+                last_devis = c.devis.order_by('-date_creation').first()
+                last_facture = c.factures.order_by('-date_emission').first()
+                last_date = None
+                if last_devis:
+                    last_date = last_devis.date_creation
+                if last_facture and (last_date is None or
+                                     last_facture.date_emission > last_date):
+                    last_date = last_facture.date_emission
+                if last_date is None or last_date < cutoff_18m:
+                    result.append({
+                        'id': c.id, 'nom': str(c),
+                        'last_activity': last_date.isoformat() if last_date else None,
+                        'segment': 'dormants',
+                    })
+
+        return Response({'segment': segment, 'count': len(result), 'results': result})
+
 
 class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
@@ -233,9 +317,12 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
-        activity.log_changes(old, serializer.instance, self.request.user)
-        from .services import sync_relance_activity
-        sync_relance_activity(serializer.instance, self.request.user)
+        new_lead = serializer.instance
+        activity.log_changes(old, new_lead, self.request.user)
+        from .services import sync_relance_activity, maybe_set_first_contacted_at
+        sync_relance_activity(new_lead, self.request.user)
+        # FG28 — Pose first_contacted_at à la première sortie de l'étape NEW.
+        maybe_set_first_contacted_at(old, new_lead)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
@@ -513,16 +600,248 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})
 
+    # ── FG31 — File de relance du jour ───────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='relances',
+            permission_classes=[IsAnyRole])
+    def relances(self, request):
+        """File de relance consolidée.
+
+        scope= overdue (en retard) | today (aujourd'hui) | week (cette semaine)
+        Portée de visibilité de l'utilisateur respectée (scope_queryset).
+        """
+        from django.utils import timezone
+        import datetime
+        scope = request.query_params.get('scope', 'today')
+        today = timezone.localdate()
+        qs = self.get_queryset().filter(
+            is_archived=False,
+            relance_date__isnull=False,
+        )
+        if scope == 'overdue':
+            qs = qs.filter(relance_date__lt=today)
+        elif scope == 'week':
+            week_end = today + datetime.timedelta(days=6)
+            qs = qs.filter(relance_date__lte=week_end)
+        else:  # today
+            qs = qs.filter(relance_date=today)
+        qs = qs.order_by('relance_date', 'nom')
+        serializer = LeadSerializer(qs, many=True, context={'request': request})
+        return Response({'count': qs.count(), 'results': serializer.data})
+
+    # ── FG34 — ROI par source / campagne ────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='roi-sources',
+            permission_classes=[IsAnyRole])
+    def roi_sources(self, request):
+        """Agrégation ROI par canal et par campagne UTM.
+
+        Renvoie pour chaque groupe :
+          canal, utm_campaign (optionnel), lead_count, signed_count,
+          win_rate (%), signed_value_ttc (somme des devis acceptés TTC).
+        Filtres : ?from=YYYY-MM-DD &to=YYYY-MM-DD &canal=<key>
+        """
+        from django.db.models import Count, Q, Sum
+        import datetime
+
+        qs = self.get_queryset().filter(is_archived=False)
+
+        # Filtres date optionnels
+        from_ = request.query_params.get('from')
+        to_ = request.query_params.get('to')
+        if from_:
+            try:
+                qs = qs.filter(date_creation__date__gte=
+                               datetime.date.fromisoformat(from_))
+            except ValueError:
+                pass
+        if to_:
+            try:
+                qs = qs.filter(date_creation__date__lte=
+                               datetime.date.fromisoformat(to_))
+            except ValueError:
+                pass
+        canal_filter = request.query_params.get('canal')
+        if canal_filter:
+            qs = qs.filter(canal=canal_filter)
+
+        # Grouper par canal puis par campagne
+        from .stages import STAGE_LABELS
+        result = []
+        for canal_key in (qs.values_list('canal', flat=True)
+                           .order_by('canal').distinct()):
+            canal_qs = qs.filter(canal=canal_key)
+            # Par campagne UTM (None = pas de campagne)
+            campaigns = (canal_qs.values_list('utm_campaign', flat=True)
+                         .order_by('utm_campaign').distinct())
+            for campaign in campaigns:
+                grp = canal_qs.filter(utm_campaign=campaign)
+                lead_count = grp.count()
+                signed = grp.filter(stage='SIGNED')
+                signed_count = signed.count()
+                # Somme des devis TTC des leads signés
+                signed_value = 0
+                for lead in signed.prefetch_related('devis'):
+                    for d in lead.devis.filter(statut='accepte'):
+                        try:
+                            signed_value += float(d.total_ttc)
+                        except Exception:
+                            pass
+                result.append({
+                    'canal': canal_key,
+                    'utm_campaign': campaign,
+                    'lead_count': lead_count,
+                    'signed_count': signed_count,
+                    'win_rate': round(signed_count / lead_count * 100, 1)
+                              if lead_count else 0,
+                    'signed_value_ttc': round(signed_value, 2),
+                })
+        return Response(result)
+
+    # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────
+    @action(detail=True, methods=['get'], url_path='client-match',
+            permission_classes=[IsAnyRole])
+    def client_match(self, request, pk=None):
+        """Cherche si le lead correspond à un Client existant de la société.
+
+        Normalise téléphone et email, puis cherche dans Client (pas dans Lead).
+        Retourne [] si aucune correspondance ou {id, nom, nb_devis, nb_chantiers}
+        pour chaque client correspondant.
+        """
+        lead = self.get_object()
+        company = request.user.company
+        from .models import Client as ClientModel
+        from apps.ventes.utils.phone import normalize_ma_phone
+
+        matches = ClientModel.objects.filter(company=company)
+        conditions = []
+        phone_norm = normalize_ma_phone(lead.telephone or '') if lead.telephone else None
+        email_norm = (lead.email or '').strip().lower() or None
+        if phone_norm:
+            conditions.append(
+                Lead._meta.model.objects.none()  # placeholder — on fait direct
+            )
+
+        # Recherche directe sur Client
+        client_qs = ClientModel.objects.filter(company=company)
+        found = []
+        pks_seen = set()
+        if phone_norm:
+            for c in client_qs:
+                norm = normalize_ma_phone(c.telephone or '') if c.telephone else None
+                if norm and norm == phone_norm and c.pk not in pks_seen:
+                    found.append(c)
+                    pks_seen.add(c.pk)
+        if email_norm:
+            for c in client_qs.filter(email__iexact=email_norm):
+                if c.pk not in pks_seen:
+                    found.append(c)
+                    pks_seen.add(c.pk)
+
+        result = []
+        for c in found:
+            result.append({
+                'id': c.id,
+                'nom': f"{c.nom} {c.prenom or ''}".strip(),
+                'email': c.email,
+                'telephone': c.telephone,
+                'nb_devis': c.devis.count(),
+                'nb_chantiers': c.installations.count() if hasattr(c, 'installations') else 0,
+            })
+        return Response(result)
+
+    # ── FG28 — Filtre SLA non contactés ──────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='sla-breach',
+            permission_classes=[IsAnyRole])
+    def sla_breach(self, request):
+        """Leads NEW non contactés depuis plus de lead_sla_hours (filtre SLA).
+
+        Retourne les leads dont first_contacted_at est NULL, stage=NEW,
+        créés il y a plus de lead_sla_hours heures (selon le profil société).
+        """
+        from django.utils import timezone
+        import datetime
+        from .services import lead_sla_hours as get_sla_hours
+        sla = get_sla_hours(request.user.company)
+        if sla == 0:
+            return Response({'sla_hours': 0, 'count': 0, 'results': []})
+        cutoff = timezone.now() - datetime.timedelta(hours=sla)
+        qs = self.get_queryset().filter(
+            is_archived=False,
+            stage='NEW',
+            first_contacted_at__isnull=True,
+            date_creation__lte=cutoff,
+        ).order_by('date_creation')
+        serializer = LeadSerializer(qs, many=True, context={'request': request})
+        return Response({
+            'sla_hours': sla,
+            'count': qs.count(),
+            'results': serializer.data,
+        })
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
-        """Note manuelle (appel, commentaire…) — auteur pris de la requête."""
+        """Note manuelle (appel, commentaire…) — auteur pris de la requête.
+
+        FG28 : si le lead est encore en NEW et n'a jamais été contacté, cette
+        note constitue la première prise de contact → first_contacted_at est posé.
+        """
         lead = self.get_object()
         body = (request.data.get('body') or '').strip()
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         act = activity.log_note(lead, request.user, body)
+        # FG28 — première note = premier contact (même sans changer d'étape)
+        if lead.stage == 'NEW' and lead.first_contacted_at is None:
+            from django.utils import timezone
+            lead.first_contacted_at = timezone.now()
+            lead.save(update_fields=['first_contacted_at'])
+        return Response(LeadActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
+    # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
+    @action(detail=True, methods=['post'], url_path='log-interaction',
+            permission_classes=[IsResponsableOrAdmin])
+    def log_interaction(self, request, pk=None):
+        """Enregistre un appel ou un e-mail dans le chatter du lead.
+
+        Corps requis :
+          - kind : 'appel' | 'email'
+          - body : texte libre (résumé de l'échange), facultatif
+          - outcome : parmi les choix LeadActivity.OUTCOMES, facultatif
+
+        L'auteur et la société sont toujours pris côté serveur.
+        """
+        from .models import LeadActivity
+        lead = self.get_object()
+        kind = (request.data.get('kind') or '').strip()
+        valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL}
+        if kind not in valid_kinds:
+            return Response(
+                {'kind': f"Valeur invalide. Choisir parmi : {', '.join(valid_kinds)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        body = (request.data.get('body') or '').strip()
+        outcome = (request.data.get('outcome') or '').strip()
+        valid_outcomes = {k for k, _ in LeadActivity.OUTCOMES}
+        if outcome and outcome not in valid_outcomes:
+            return Response(
+                {'outcome': f"Valeur invalide. Choisir parmi : {', '.join(valid_outcomes)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        act = LeadActivity.objects.create(
+            lead=lead,
+            company=lead.company,
+            kind=kind,
+            body=body or None,
+            outcome=outcome,
+            user=request.user,
+        )
+        # FG28 — tout contact direct = première prise de contact
+        if lead.stage == 'NEW' and lead.first_contacted_at is None:
+            from django.utils import timezone
+            lead.first_contacted_at = timezone.now()
+            lead.save(update_fields=['first_contacted_at'])
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -736,3 +1055,52 @@ class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
             'recompenses_total': str(rec_total),
             'recompenses_versees': str(rec_versee),
         })
+
+
+# ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
+
+class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Modèles de messages CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin.
+
+    La société est toujours posée côté serveur (TenantMixin). Un modèle archivé
+    reste accessible en détail mais n'apparaît plus dans la liste par défaut
+    (?archived=true pour les voir).
+    """
+    queryset = MessageTemplate.objects.all()
+    serializer_class = MessageTemplateSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'corps']
+    ordering_fields = ['nom', 'date_creation']
+    ordering = ['nom']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list':
+            archived = self.request.query_params.get('archived')
+            if archived not in ('1', 'true'):
+                qs = qs.filter(archived=False)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
+    @action(detail=True, methods=['post'], url_path='render',
+            permission_classes=[IsAnyRole])
+    def render_template(self, request, pk=None):
+        """Applique les variables {prenom}/{ville}/{lien} et retourne le texte.
+
+        Corps : {prenom, ville, lien} (tous optionnels).
+        """
+        tmpl = self.get_object()
+        prenom = request.data.get('prenom', '')
+        ville = request.data.get('ville', '')
+        lien = request.data.get('lien', '')
+        return Response({'texte': tmpl.render(prenom=prenom, ville=ville, lien=lien)})

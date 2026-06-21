@@ -302,6 +302,15 @@ class Lead(models.Model):
 
     note = models.TextField(blank=True, null=True)
 
+    # FG28 — Horodatage de la PREMIÈRE prise de contact (set server-side dès
+    # que le stage sort de NEW ou qu'une note de contact est enregistrée).
+    # Nullable : NULL = jamais contacté. Permet le calcul du délai de réponse
+    # et l'alerte SLA « non contacté > Xh » (filtre kanban + badge rouge).
+    first_contacted_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Premier contact à',
+    )
+
     # ── Archivage réversible (2026-06-13) — additif ──
     # Un lead archivé disparaît des vues par défaut (kanban/liste/calendrier/
     # graphique) mais reste filtrable (« Archivés ») et restaurable. La
@@ -389,6 +398,24 @@ class LeadActivity(models.Model):
         CREATION = 'creation', 'Création'
         MODIFICATION = 'modification', 'Modification'
         NOTE = 'note', 'Note'
+        # FG30 — Interactions de communication typées
+        APPEL = 'appel', 'Appel'
+        EMAIL = 'email', 'E-mail'
+
+    # FG30 — Résultat optionnel d'un appel ou e-mail (affiché dans le chatter).
+    OUTCOMES = [
+        ('',        '—'),
+        ('joint',   'Joint'),
+        ('non_joint', 'Non joint'),
+        ('rappel',  'À rappeler'),
+        ('refuse',  'Refus'),
+        ('interesse', 'Intéressé'),
+    ]
+    outcome = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=OUTCOMES,
+        verbose_name="Résultat de l'interaction",
+    )
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -484,6 +511,58 @@ class MotifPerte(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class MessageTemplate(models.Model):
+    """FG36 — Modèles de messages WhatsApp/SMS réutilisables en CRM.
+
+    Chaque modèle porte un nom, une langue, un corps avec des variables
+    substituables ({prenom}, {ville}, {lien}) et un flag d'archivage.
+    Scoped par société ; éditable uniquement par l'admin.
+    """
+
+    class Langue(models.TextChoices):
+        FR = 'fr', 'Français'
+        DARIJA = 'darija', 'Darija'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='crm_message_templates',
+    )
+    nom = models.CharField(max_length=150, verbose_name='Nom du modèle')
+    langue = models.CharField(
+        max_length=10, choices=Langue.choices, default=Langue.FR,
+        verbose_name='Langue')
+    # Variables disponibles : {prenom}, {ville}, {lien} (lien devis)
+    corps = models.TextField(verbose_name='Corps du message')
+    archived = models.BooleanField(default=False, verbose_name='Archivé')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Modèle de message'
+        verbose_name_plural = 'Modèles de messages'
+
+    def __str__(self):
+        return f"{self.nom} ({self.get_langue_display()})"
+
+    def render(self, prenom='', ville='', lien='') -> str:
+        """Substitue les variables dans le corps du modèle."""
+        return (self.corps
+                .replace('{prenom}', prenom or '')
+                .replace('{ville}', ville or '')
+                .replace('{lien}', lien or ''))
 
 
 class Parrainage(models.Model):
