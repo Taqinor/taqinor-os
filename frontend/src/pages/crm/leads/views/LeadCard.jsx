@@ -112,8 +112,7 @@ export default function LeadCard({
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
         {dernierDevisExpire && (
           <span
-            className="kb-badge-expire"
-            style={{ background: '#fff7ed', color: '#c2410c' }}
+            className="kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning"
             title="Le dernier devis du lead est expiré"
           >
             Devis expiré
@@ -121,8 +120,7 @@ export default function LeadCard({
         )}
         {inactif && (
           <span
-            className="kb-badge-inactif"
-            style={{ background: '#f1f5f9', color: '#64748b' }}
+            className="kb-badge-inactif rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
             title={`Aucune modification depuis ${jInactif} jours`}
           >
             Inactif {jInactif} j
@@ -193,8 +191,7 @@ export default function LeadCard({
 
       {factureManquante && (
         <div
-          className="kb-card-facture-manquante"
-          style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}
+          className="kb-card-facture-manquante mt-0.5 text-[11px] text-warning"
           title="Le devis auto (⚡) est désactivé tant qu'il manque des informations"
         >
           Facture manquante : {factureManquante}
@@ -205,12 +202,7 @@ export default function LeadCard({
         action.planifier && onPlanifierRelance ? (
           <button
             type="button"
-            className="kb-card-action kb-card-action-link"
-            style={{
-              fontSize: '11px', color: '#2563eb', marginTop: '2px',
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              textAlign: 'left',
-            }}
+            className="kb-card-action kb-card-action-link mt-0.5 cursor-pointer border-0 bg-transparent p-0 text-left text-[11px] text-info"
             onClick={(e) => { e.stopPropagation(); onPlanifierRelance(lead) }}
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
@@ -218,10 +210,7 @@ export default function LeadCard({
             → {action.label}
           </button>
         ) : (
-          <div
-            className="kb-card-action"
-            style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}
-          >
+          <div className="kb-card-action mt-0.5 text-[11px] text-muted-foreground">
             → {action.label}
           </div>
         )

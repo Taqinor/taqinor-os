@@ -13,9 +13,63 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, PIPELINE_STAGES,
+  formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
+import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
+import { toast } from '../../../../ui/confirm'
 import LeadCard from './LeadCard'
+
+// J140 + L151 — alternative CLAVIER au glisser-déposer : un sélecteur d'étape
+// accessible sous chaque carte. Enregistrement OPTIMISTE avec rollback via
+// useOptimisticSave (n'utilise que le commit existant `onInlineSave` → thunk
+// updateLead). Affiche le libellé inline « Enregistrement… / Enregistré » et
+// estompe la carte pendant le commit (affordance « ligne en cours »).
+const STAGE_MOVE_OPTIONS = PIPELINE_STAGES.map(
+  (s) => ({ value: s, label: STAGE_LABELS[s] ?? s }),
+)
+
+export function StageMover({ lead, onInlineSave }) {
+  const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(
+    lead.stage,
+    { onError: () => toast.error("Changement d'étape non enregistré — réessayez.") },
+  )
+  if (!onInlineSave) return null
+  const onChange = (e) => {
+    const next = e.target.value
+    if (next === value) return
+    save(next, (v) => onInlineSave(lead, 'stage', v))
+  }
+  // stopPropagation : interagir avec le select ne doit jamais démarrer un drag.
+  return (
+    <div
+      className="kb-stage-mover"
+      {...rowProps}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <label className="sr-only" htmlFor={`kb-stage-${lead.id}`}>
+        Changer l'étape de {lead.nom || 'ce lead'}
+      </label>
+      <select
+        id={`kb-stage-${lead.id}`}
+        className="form-control kb-stage-select"
+        value={value}
+        disabled={isSaving}
+        onChange={onChange}
+      >
+        {STAGE_MOVE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {statusLabel && (
+        <span className="kb-stage-status text-xs text-muted-foreground">
+          {statusLabel}
+        </span>
+      )}
+    </div>
+  )
+}
 
 // Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
 // prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
@@ -35,7 +89,7 @@ const stageRank = (stage) => PIPELINE_STAGES.indexOf(stage)
 // pendant que le DragOverlay suit le pointeur.
 function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
-  selected, onToggleSelect, onPlanifierRelance,
+  selected, onToggleSelect, onPlanifierRelance, onInlineSave,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -46,13 +100,16 @@ function DraggableCard({
     <div
       ref={setNodeRef}
       className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
-      {...listeners}
-      {...attributes}
     >
-      <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
-                users={users} onReassign={onReassign}
-                selected={selected} onToggleSelect={onToggleSelect}
-                onPlanifierRelance={onPlanifierRelance} />
+      {/* Le drag n'est rattaché qu'à la carte ; le sélecteur d'étape (clavier)
+          vit hors de la poignée pour rester utilisable au clavier/souris. */}
+      <div {...listeners} {...attributes}>
+        <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
+                  users={users} onReassign={onReassign}
+                  selected={selected} onToggleSelect={onToggleSelect}
+                  onPlanifierRelance={onPlanifierRelance} />
+      </div>
+      <StageMover lead={lead} onInlineSave={onInlineSave} />
     </div>
   )
 }
@@ -78,8 +135,7 @@ function StageColumn({ col, children }) {
         )}
         {col.totalDevis > 0 && (
           <span
-            className="kb-col-forecast"
-            style={{ fontSize: '11px', color: '#64748b', display: 'block' }}
+            className="kb-col-forecast block text-[11px] text-muted-foreground"
             title={`Prévisionnel pondéré (${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} %)`}
           >
             Prév. {formatMAD(forecast)}
@@ -108,6 +164,7 @@ export default function KanbanView({
   selected = new Set(),
   onToggleSelect,
   onPlanifierRelance,
+  onInlineSave,
 }) {
   // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
   const [reculMsg, setReculMsg] = useState(false)
@@ -153,14 +210,8 @@ export default function KanbanView({
     >
       {reculMsg && (
         <div
-          className="kb-recul-msg"
+          className="kb-recul-msg mb-2 rounded-lg border border-destructive/30 bg-destructive/12 px-3 py-1.5 text-[13px] font-semibold text-destructive"
           role="status"
-          style={{
-            background: '#fef2f2', color: '#b91c1c',
-            border: '1px solid #fecaca', borderRadius: '8px',
-            padding: '6px 12px', marginBottom: '8px',
-            fontSize: '13px', fontWeight: 600,
-          }}
         >
           On ne recule pas une étape
         </div>
@@ -180,6 +231,7 @@ export default function KanbanView({
                 selected={selected.has(lead.id)}
                 onToggleSelect={onToggleSelect}
                 onPlanifierRelance={onPlanifierRelance}
+                onInlineSave={onInlineSave}
               />
             ))}
           </StageColumn>
