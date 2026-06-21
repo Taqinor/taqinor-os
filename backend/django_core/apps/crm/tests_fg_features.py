@@ -18,9 +18,22 @@ def make_company(slug='fg-co', nom='FG Co'):
 
 
 def make_user(company, username, role='responsable'):
+    # Assign a real system Role (not just role_legacy) so the user carries the
+    # correct menu tier / write permissions the CRM endpoints are gated on.
+    from apps.roles.models import Role, ADMIN_PERMISSIONS, RESPONSABLE_PERMISSIONS
+    _defs = {
+        'admin': ('Administrateur', ADMIN_PERMISSIONS),
+        'responsable': ('Responsable', RESPONSABLE_PERMISSIONS),
+    }
+    nom, perms = _defs.get(role, _defs['responsable'])
+    role_obj, _ = Role.objects.get_or_create(
+        company=company, nom=nom,
+        defaults={'permissions': perms, 'est_systeme': True},
+    )
     return User.objects.create_user(
         username=username,
         password='x',
+        role=role_obj,
         role_legacy=role,
         company=company,
     )
@@ -436,7 +449,7 @@ class TestFG30CommunicationLog(TestCase):
     def test_log_appel_creates_activity(self):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
-            {'kind': 'appel', 'body': 'Résumé de l'appel', 'outcome': 'joint'},
+            {'kind': 'appel', 'body': "Résumé de l'appel", 'outcome': 'joint'},
             format='json',
         )
         self.assertEqual(resp.status_code, 201, resp.data)

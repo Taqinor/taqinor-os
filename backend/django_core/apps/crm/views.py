@@ -327,11 +327,13 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
                                           'check_duplicates', 'doublons',
-                                          'export_xlsx']:
+                                          'export_xlsx', 'relances',
+                                          'roi_sources', 'sla_breach',
+                                          'client_match']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
-            'whatsapp_devis', 'bulk',
+            'whatsapp_devis', 'bulk', 'log_interaction',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -1082,7 +1084,7 @@ class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'render_template']:
             return [IsAnyRole()]
         return [IsAdminRole()]
 
