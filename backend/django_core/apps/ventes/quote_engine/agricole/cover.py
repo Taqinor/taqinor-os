@@ -141,9 +141,12 @@ def build(ctx) -> str:
 .a1-bign-t{{font-size:12pt;font-weight:700;color:{navy};line-height:1.15;}}
 .a1-hook-r{{flex:0 0 56mm;border:1px solid {line};border-left:5px solid {gold};border-radius:14px;
   background:linear-gradient(180deg,#FFFCF5,#fff 60%);padding:14px 16px;display:flex;
-  flex-direction:column;justify-content:center;}}
-.a1-zero{{font-family:{f_display};font-size:26pt;color:{gold};line-height:1;}}
-.a1-zero-t{{font-size:9pt;color:{navy};font-weight:700;margin-top:4px;line-height:1.25;}}
+  flex-direction:column;justify-content:center;overflow:hidden;}}
+.a1-zero{{white-space:nowrap;line-height:1;}}
+.a1-zero b{{font-family:{f_display};font-weight:400;font-size:33pt;color:{gold};}}
+.a1-zero i{{font-style:normal;font-size:9pt;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:{gold};margin-left:8px;}}
+.a1-zero-t{{font-size:9pt;color:{navy};font-weight:700;margin-top:7px;line-height:1.25;}}
 .a1-zero-s{{font-size:8pt;color:{muted};margin-top:4px;line-height:1.3;}}
 /* kpi grid */
 .a1-kpis{{display:flex;flex-wrap:wrap;gap:11px;margin-top:12px;}}
@@ -208,7 +211,7 @@ def build(ctx) -> str:
         </div>
       </div>
       <div class="a1-hook-r">
-        <div class="a1-zero">0 carburant</div>
+        <div class="a1-zero"><b>0</b><i>carburant</i></div>
         <div class="a1-zero-t">Plus de bonbonnes,<br>plus de gasoil.</div>
         <div class="a1-zero-s">Le soleil fait tourner votre pompe — l'eau que vous pompez devient gratuite.</div>
       </div>
